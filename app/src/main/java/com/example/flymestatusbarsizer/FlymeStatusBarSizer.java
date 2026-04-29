@@ -15,6 +15,7 @@ import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.telephony.CellSignalStrength;
 import android.telephony.PhoneStateListener;
 import android.telephony.SignalStrength;
@@ -87,9 +88,17 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final int SIGNAL_SCENE_KEYGUARD = 1;
     private static final int SIGNAL_SCENE_CONTROL_CENTER = 2;
     private static final Object CONFIG_REFRESH_LOCK = new Object();
+    private static final Object CONFIG_CACHE_LOCK = new Object();
+    private static final Object RUNTIME_REFRESH_LOCK = new Object();
+    private static final long CONFIG_CACHE_TTL_MS = 500L;
+    private static final long TELEPHONY_CACHE_TTL_MS = 30000L;
+    private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
+    private static volatile boolean NETWORK_TYPE_REFRESH_PENDING;
     private static Handler MAIN_HANDLER;
     private static volatile Context SYSTEM_UI_CONTEXT;
+    private static volatile Config CACHED_CONFIG;
+    private static volatile long CACHED_CONFIG_UPTIME;
     private static BroadcastReceiver USER_UNLOCKED_RECEIVER;
     private static BroadcastReceiver SUBSCRIPTION_CHANGED_RECEIVER;
     private static ContentObserver SETTINGS_OBSERVER;
@@ -97,6 +106,10 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static int secondaryMobileSubId = UNSET_SUB_ID;
     private static int latestPrimarySignalLevel = 0;
     private static int latestSecondarySignalLevel = IosSignalDrawable.NO_SECONDARY_LEVEL;
+    private static final HashMap<Integer, Integer> TELEPHONY_SIGNAL_LEVELS_BY_SUB_ID = new HashMap<>();
+    private static final HashMap<Integer, Long> TELEPHONY_SIGNAL_LEVEL_TIMES_BY_SUB_ID = new HashMap<>();
+    private static final HashMap<Integer, String> ACTIVE_DATA_NETWORK_LABELS_BY_SUB_ID = new HashMap<>();
+    private static final HashMap<Integer, Long> ACTIVE_DATA_NETWORK_LABEL_TIMES_BY_SUB_ID = new HashMap<>();
 
     @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
@@ -1070,7 +1083,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             info = new MobileSignalInfo(currentSlot, info.level, info.subId);
         }
         registerTelephonySignalListener(imageView.getContext(), info.subId);
-        int telephonyLevel = getTelephonySignalLevel(imageView.getContext(), info.subId);
+        int telephonyLevel = getCachedTelephonySignalLevel(info.subId);
         if (telephonyLevel != IosSignalDrawable.NO_SECONDARY_LEVEL && telephonyLevel != info.level) {
             info = new MobileSignalInfo(info.slot, telephonyLevel, info.subId);
         }
@@ -1396,7 +1409,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         View signal = findSystemUiChild(view, "mobile_signal");
         if (signal instanceof ImageView) {
             int subId = invokeNoArgInt(view, "getSubId", getIntField(view, "subId", UNSET_SUB_ID));
-            int level = getTelephonySignalLevel(view.getContext(), subId);
+            int level = getCachedTelephonySignalLevel(subId);
             if (level == IosSignalDrawable.NO_SECONDARY_LEVEL) {
                 level = 0;
             }
@@ -1498,6 +1511,17 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (context == null || subId == UNSET_SUB_ID || subId < 0) {
             return IosSignalDrawable.NO_SECONDARY_LEVEL;
         }
+        int cachedLevel = getCachedTelephonySignalLevel(subId);
+        if (cachedLevel != IosSignalDrawable.NO_SECONDARY_LEVEL) {
+            return cachedLevel;
+        }
+        return queryTelephonySignalLevel(context, subId);
+    }
+
+    private static int queryTelephonySignalLevel(Context context, int subId) {
+        if (context == null || subId == UNSET_SUB_ID || subId < 0) {
+            return IosSignalDrawable.NO_SECONDARY_LEVEL;
+        }
         try {
             TelephonyManager manager = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
             if (manager == null) {
@@ -1507,9 +1531,33 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (strength == null) {
                 return IosSignalDrawable.NO_SECONDARY_LEVEL;
             }
-            return mapMobileSignalLevel(strength.getLevel());
+            int level = mapMobileSignalLevel(strength.getLevel());
+            rememberTelephonySignalLevel(subId, level);
+            return level;
         } catch (Throwable ignored) {
             return IosSignalDrawable.NO_SECONDARY_LEVEL;
+        }
+    }
+
+    private static int getCachedTelephonySignalLevel(int subId) {
+        synchronized (TELEPHONY_SIGNAL_LEVELS_BY_SUB_ID) {
+            Integer level = TELEPHONY_SIGNAL_LEVELS_BY_SUB_ID.get(subId);
+            Long uptime = TELEPHONY_SIGNAL_LEVEL_TIMES_BY_SUB_ID.get(subId);
+            if (level != null && uptime != null
+                    && SystemClock.uptimeMillis() - uptime <= TELEPHONY_CACHE_TTL_MS) {
+                return level;
+            }
+        }
+        return IosSignalDrawable.NO_SECONDARY_LEVEL;
+    }
+
+    private static void rememberTelephonySignalLevel(int subId, int level) {
+        if (!isValidSubId(subId)) {
+            return;
+        }
+        synchronized (TELEPHONY_SIGNAL_LEVELS_BY_SUB_ID) {
+            TELEPHONY_SIGNAL_LEVELS_BY_SUB_ID.put(subId, level);
+            TELEPHONY_SIGNAL_LEVEL_TIMES_BY_SUB_ID.put(subId, SystemClock.uptimeMillis());
         }
     }
 
@@ -1526,6 +1574,14 @@ public class FlymeStatusBarSizer extends XposedModule {
                 if (manager == null) {
                     return;
                 }
+                int initialLevel = queryTelephonySignalLevel(context, subId);
+                if (initialLevel != IosSignalDrawable.NO_SECONDARY_LEVEL) {
+                    rememberTelephonySignalLevel(subId, initialLevel);
+                }
+                String initialNetworkType = queryActiveDataNetworkTypeLabel(context, subId, true);
+                if (initialNetworkType != null) {
+                    rememberActiveDataNetworkTypeLabel(subId, initialNetworkType);
+                }
                 PhoneStateListener listener = new PhoneStateListener(context.getMainExecutor()) {
                     @Override
                     public void onSignalStrengthsChanged(SignalStrength signalStrength) {
@@ -1537,12 +1593,14 @@ public class FlymeStatusBarSizer extends XposedModule {
 
                     @Override
                     public void onDisplayInfoChanged(TelephonyDisplayInfo telephonyDisplayInfo) {
-                        refreshTrackedNetworkTypeViews();
+                        invalidateNetworkTypeCache();
+                        scheduleNetworkTypeRefresh();
                     }
 
                     @Override
                     public void onDataConnectionStateChanged(int state, int networkType) {
-                        refreshTrackedNetworkTypeViews();
+                        invalidateNetworkTypeCache();
+                        scheduleNetworkTypeRefresh();
                     }
                 };
                 manager.createForSubscriptionId(subId).listen(listener,
@@ -1559,6 +1617,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         Handler handler = MAIN_HANDLER;
         Runnable action = () -> {
             int mappedLevel = mapMobileSignalLevel(level);
+            rememberTelephonySignalLevel(subId, mappedLevel);
             ArrayList<ImageView> signalViews = new ArrayList<>(MOBILE_SIGNAL_RAW_INFOS.keySet());
             for (ImageView imageView : signalViews) {
                 MobileSignalInfo info = MOBILE_SIGNAL_RAW_INFOS.get(imageView);
@@ -1948,7 +2007,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 && isValidSubId(viewSubId) && viewSubId != activeDataSubId) {
             label = "";
         } else {
-            label = getActiveDataNetworkTypeLabel(imageView.getContext(), activeDataSubId, true);
+            label = getCachedOrRememberedActiveDataNetworkTypeLabel(activeDataSubId);
         }
         if (label == null) {
             label = "";
@@ -2062,6 +2121,21 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!isValidSubId(subId)) {
             return null;
         }
+        String cachedLabel = getCachedActiveDataNetworkTypeLabel(subId);
+        if (cachedLabel != null) {
+            return cachedLabel;
+        }
+        return queryActiveDataNetworkTypeLabel(context, subId, preferRemembered);
+    }
+
+    private static String queryActiveDataNetworkTypeLabel(Context context, int subId, boolean preferRemembered) {
+        if (context == null) {
+            return null;
+        }
+        if (!isValidSubId(subId)) {
+            return null;
+        }
+        String label = null;
         try {
             TelephonyManager manager = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
             if (manager == null) {
@@ -2070,22 +2144,67 @@ public class FlymeStatusBarSizer extends XposedModule {
             TelephonyManager dataManager = manager.createForSubscriptionId(subId);
             String displayLabel = getTelephonyDisplayInfoNetworkTypeLabel(dataManager);
             if (displayLabel != null) {
-                return displayLabel;
+                label = displayLabel;
+                rememberActiveDataNetworkTypeLabel(subId, label);
+                return label;
             }
             String serviceStateLabel = getServiceStateNetworkTypeLabel(dataManager);
             if (serviceStateLabel != null) {
-                return serviceStateLabel;
+                label = serviceStateLabel;
+                rememberActiveDataNetworkTypeLabel(subId, label);
+                return label;
             }
-            return "";
+            label = "";
+            rememberActiveDataNetworkTypeLabel(subId, label);
+            return label;
         } catch (Throwable ignored) {
         }
         if (preferRemembered) {
             String rememberedLabel = getRememberedNetworkTypeLabelForSubId(subId);
             if (rememberedLabel != null) {
-                return rememberedLabel;
+                label = rememberedLabel;
+                rememberActiveDataNetworkTypeLabel(subId, label);
+                return label;
             }
         }
         return null;
+    }
+
+    private static String getCachedActiveDataNetworkTypeLabel(int subId) {
+        synchronized (ACTIVE_DATA_NETWORK_LABELS_BY_SUB_ID) {
+            String label = ACTIVE_DATA_NETWORK_LABELS_BY_SUB_ID.get(subId);
+            Long uptime = ACTIVE_DATA_NETWORK_LABEL_TIMES_BY_SUB_ID.get(subId);
+            if (label != null && uptime != null
+                    && SystemClock.uptimeMillis() - uptime <= TELEPHONY_CACHE_TTL_MS) {
+                return label;
+            }
+        }
+        return null;
+    }
+
+    private static String getCachedOrRememberedActiveDataNetworkTypeLabel(int subId) {
+        String label = getCachedActiveDataNetworkTypeLabel(subId);
+        if (label != null) {
+            return label;
+        }
+        return getRememberedNetworkTypeLabelForSubId(subId);
+    }
+
+    private static void rememberActiveDataNetworkTypeLabel(int subId, String label) {
+        if (!isValidSubId(subId) || label == null) {
+            return;
+        }
+        synchronized (ACTIVE_DATA_NETWORK_LABELS_BY_SUB_ID) {
+            ACTIVE_DATA_NETWORK_LABELS_BY_SUB_ID.put(subId, label);
+            ACTIVE_DATA_NETWORK_LABEL_TIMES_BY_SUB_ID.put(subId, SystemClock.uptimeMillis());
+        }
+    }
+
+    private static void invalidateNetworkTypeCache() {
+        synchronized (ACTIVE_DATA_NETWORK_LABELS_BY_SUB_ID) {
+            ACTIVE_DATA_NETWORK_LABELS_BY_SUB_ID.clear();
+            ACTIVE_DATA_NETWORK_LABEL_TIMES_BY_SUB_ID.clear();
+        }
     }
 
     private static int getActiveDataSubId() {
@@ -2442,6 +2561,8 @@ public class FlymeStatusBarSizer extends XposedModule {
             SETTINGS_OBSERVER = new ContentObserver(MAIN_HANDLER) {
                 @Override
                 public void onChange(boolean selfChange) {
+                    invalidateConfigCache();
+                    invalidateNetworkTypeCache();
                     refreshTrackedRuntimeViews();
                 }
             };
@@ -2478,8 +2599,17 @@ public class FlymeStatusBarSizer extends XposedModule {
             } catch (Throwable ignored) {
             }
             CONFIG_REFRESH_REGISTERED = true;
-            MAIN_HANDLER.postDelayed(FlymeStatusBarSizer::refreshTrackedRuntimeViews, 2000);
-            MAIN_HANDLER.postDelayed(FlymeStatusBarSizer::refreshTrackedRuntimeViews, 10000);
+            scheduleInitialRuntimeRefreshes();
+        }
+    }
+
+    private static void scheduleInitialRuntimeRefreshes() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        for (long delay : INITIAL_RUNTIME_REFRESH_DELAYS_MS) {
+            handler.postDelayed(FlymeStatusBarSizer::refreshTrackedRuntimeViews, delay);
         }
     }
 
@@ -2501,19 +2631,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         Handler handler = MAIN_HANDLER;
         Runnable action = () -> {
             resetMobileSubscriptionState();
+            invalidateNetworkTypeCache();
             refreshTrackedSignalViews(true);
             refreshTrackedNetworkTypeViews();
-            Handler delayedHandler = MAIN_HANDLER;
-            if (delayedHandler != null) {
-                delayedHandler.postDelayed(() -> {
-                    refreshTrackedSignalViews(true);
-                    refreshTrackedNetworkTypeViews();
-                }, 500);
-                delayedHandler.postDelayed(() -> {
-                    refreshTrackedSignalViews(true);
-                    refreshTrackedNetworkTypeViews();
-                }, 2000);
-            }
         };
         if (handler != null) {
             handler.post(action);
@@ -2539,6 +2659,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         synchronized (CELL_SIGNAL_STRENGTH_SUB_IDS) {
             CELL_SIGNAL_STRENGTH_SUB_IDS.clear();
         }
+        synchronized (TELEPHONY_SIGNAL_LEVELS_BY_SUB_ID) {
+            TELEPHONY_SIGNAL_LEVELS_BY_SUB_ID.clear();
+            TELEPHONY_SIGNAL_LEVEL_TIMES_BY_SUB_ID.clear();
+        }
         synchronized (NETWORK_TYPE_LABELS_BY_SUB_ID) {
             NETWORK_TYPE_LABELS_BY_SUB_ID.clear();
         }
@@ -2552,6 +2676,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         refreshTrackedTextScaling();
         refreshTrackedSignalViews();
         refreshTrackedNetworkTypeViews();
+    }
+
+    private static void invalidateConfigCache() {
+        synchronized (CONFIG_CACHE_LOCK) {
+            CACHED_CONFIG = null;
+            CACHED_CONFIG_UPTIME = 0L;
+        }
     }
 
     private static void refreshTrackedTextScaling() {
@@ -2608,7 +2739,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 if (forceRequery || info == null) {
                     int slot = getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN);
                     int subId = getMobileSubId(imageView);
-                    int level = getTelephonySignalLevel(imageView.getContext(), subId);
+                    int level = getCachedTelephonySignalLevel(subId);
                     if (level == IosSignalDrawable.NO_SECONDARY_LEVEL) {
                         level = forceRequery || info == null ? 0 : info.level;
                     }
@@ -2646,7 +2777,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                         && isValidSubId(viewSubId) && viewSubId != activeDataSubId) {
                     label = "";
                 } else {
-                    label = getActiveDataNetworkTypeLabel(imageView.getContext(), activeDataSubId, true);
+                    label = getCachedOrRememberedActiveDataNetworkTypeLabel(activeDataSubId);
                 }
                 if (label == null) {
                     label = "";
@@ -2656,6 +2787,25 @@ public class FlymeStatusBarSizer extends XposedModule {
                 imageView.invalidate();
             }
         });
+    }
+
+    private static void scheduleNetworkTypeRefresh() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        synchronized (RUNTIME_REFRESH_LOCK) {
+            if (NETWORK_TYPE_REFRESH_PENDING) {
+                return;
+            }
+            NETWORK_TYPE_REFRESH_PENDING = true;
+        }
+        handler.postDelayed(() -> {
+            synchronized (RUNTIME_REFRESH_LOCK) {
+                NETWORK_TYPE_REFRESH_PENDING = false;
+            }
+            refreshTrackedNetworkTypeViews();
+        }, 80);
     }
 
     private static float getConnectionRateBaselineOffset(View view) {
@@ -3300,11 +3450,16 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
 
         static Config load(Context context) {
-            Config config = new Config();
             if (context == null) {
-                return config;
+                return new Config();
             }
             rememberSystemUiContext(context);
+            long now = SystemClock.uptimeMillis();
+            Config cached = CACHED_CONFIG;
+            if (cached != null && now - CACHED_CONFIG_UPTIME <= CONFIG_CACHE_TTL_MS) {
+                return cached;
+            }
+            Config config = new Config();
             try (Cursor cursor = context.getContentResolver().query(SETTINGS_URI, null, null, null, null)) {
                 if (cursor == null) {
                     return config;
@@ -3317,6 +3472,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                     config.apply(key, value);
                 }
             } catch (Throwable ignored) {
+            }
+            synchronized (CONFIG_CACHE_LOCK) {
+                CACHED_CONFIG = config;
+                CACHED_CONFIG_UPTIME = now;
             }
             return config;
         }
