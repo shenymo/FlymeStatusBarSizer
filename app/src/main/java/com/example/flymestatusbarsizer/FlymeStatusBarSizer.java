@@ -22,12 +22,10 @@ import android.view.ViewParent;
 import android.widget.ImageView;
 import android.widget.TextView;
 
-import java.util.ArrayList;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.List;
+import java.util.ArrayList;
 import java.util.WeakHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -38,7 +36,6 @@ import io.github.libxposed.api.XposedModuleInterface;
 public class FlymeStatusBarSizer extends XposedModule {
     private static final String TAG = "FlymeStatusBarSizer";
     private static final String SYSTEM_UI = "com.android.systemui";
-    private static final boolean DEBUG_WIFI_UPDATES = true;
     private static volatile FlymeStatusBarSizer MODULE;
 
     private static final Uri SETTINGS_URI = Uri.parse("content://" + SettingsStore.AUTHORITY + "/settings");
@@ -50,7 +47,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, Integer> ORIGINAL_CONNECTION_RATE_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, String> NETWORK_TYPE_LABELS = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, Integer> WIFI_SIGNAL_LEVELS = new WeakHashMap<>();
-    private static final WeakHashMap<View, String> WIFI_STATE_DEBUG_KEYS = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> TRACKED_STATUS_TEXT_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_CONNECTION_RATE_VIEWS = new WeakHashMap<>();
     private static final Pattern WIFI_LEVEL_PATTERN = Pattern.compile("(?:^|[_-])([0-4])(?:$|[_-])");
@@ -178,7 +174,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                     if (target instanceof View) {
                         View view = (View) target;
                         applyWifiSizing(view);
-                        applyWifiStateLevel(view, chain.getArgs());
+                        if (chain.getArgs().size() > 0) {
+                            applyFlymeWifiStateResource(view, chain.getArg(0));
+                        }
                     }
                     return result;
                 });
@@ -247,7 +245,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 String name = method.getName();
                 if (!"setImageTintList".equals(name) && !"setColorFilter".equals(name)
                         && !"setImageTintMode".equals(name) && !"setImageResource".equals(name)
-                        && !"setImageDrawable".equals(name) && !"setImageLevel".equals(name)) {
+                        && !"setImageDrawable".equals(name)) {
                     continue;
                 }
                 method.setAccessible(true);
@@ -281,19 +279,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                         }
                         if ("setImageResource".equals(name) && "wifi_signal".equals(idName)
                                 && chain.getArgs().size() == 1 && chain.getArg(0) instanceof Integer) {
-                            logWifiImageUpdate(imageView, "setImageResource", (Integer) chain.getArg(0));
                             applyWifiSignalResource(imageView, (Integer) chain.getArg(0));
-                        } else if ("setImageLevel".equals(name) && "wifi_signal".equals(idName)
-                                && chain.getArgs().size() == 1 && chain.getArg(0) instanceof Integer) {
-                            logWifiImageUpdate(imageView, "setImageLevel", (Integer) chain.getArg(0));
-                            applyWifiSignalLevel(imageView, (Integer) chain.getArg(0));
-                        } else if ("setImageDrawable".equals(name) && "wifi_signal".equals(idName)
-                                && !(imageView.getDrawable() instanceof IosWifiDrawable)) {
-                            logWifiImageUpdate(imageView, "setImageDrawable", imageView.getDrawable());
-                            Config config = Config.load(imageView.getContext());
-                            if (config.enabled && config.iosWifiStyle) {
-                                applyIosWifiImageView(imageView, getCurrentWifiLevel(imageView), config);
-                            }
                         }
                         if ("mobile_signal".equals(idName) && imageView.getDrawable() instanceof IosSignalDrawable) {
                             syncDrawableTint(imageView, (IosSignalDrawable) imageView.getDrawable());
@@ -653,7 +639,10 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         ImageView imageView = (ImageView) child;
-        applyIosWifiImageView(imageView, getCurrentWifiLevel(imageView), config);
+        Integer level = WIFI_SIGNAL_LEVELS.get(imageView);
+        if (level != null) {
+            applyIosWifiImageView(imageView, level, config);
+        }
     }
 
     private static void applySignalImageSizing(ImageView imageView, Config config) {
@@ -777,37 +766,23 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         Integer level = getWifiSignalLevel(imageView.getResources(), resId);
         if (level == null) {
-            String resourceName = getResourceName(imageView.getResources(), resId);
-            logToFramework("Unable to parse wifi_signal level from resource: "
-                    + resourceName + " (" + resId + ")");
-            level = IosWifiDrawable.LEVEL_ERROR;
-        }
-        WIFI_SIGNAL_LEVELS.put(imageView, level);
-        applyIosWifiImageView(imageView, level, config);
-    }
-
-    private static void applyWifiSignalLevel(ImageView imageView, int imageLevel) {
-        Config config = Config.load(imageView.getContext());
-        if (!config.enabled || !config.iosWifiStyle) {
             return;
         }
-        int level = normalizeWifiImageLevel(imageLevel);
         WIFI_SIGNAL_LEVELS.put(imageView, level);
         applyIosWifiImageView(imageView, level, config);
     }
 
-    private static void applyWifiStateLevel(View root, List<?> args) {
+    private static void applyFlymeWifiStateResource(View root, Object state) {
         Config config = Config.load(root.getContext());
-        if (!config.enabled || !config.iosWifiStyle) {
+        if (!config.enabled || !config.iosWifiStyle || state == null) {
             return;
         }
-        logWifiStateUpdate(root, args);
-        Integer level = extractWifiLevel(root.getResources(), args, 0);
-        if (level == null) {
-            level = extractWifiLevel(root.getResources(), root, 0);
+        int resId = getIntField(state, "resId", 0);
+        if (resId <= 0) {
+            return;
         }
+        Integer level = getWifiSignalLevel(root.getResources(), resId);
         if (level == null) {
-            logWifiStateDebug(root, args);
             return;
         }
         View child = findSystemUiChild(root, "wifi_signal");
@@ -820,32 +795,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             WIFI_SIGNAL_LEVELS.put(imageView, level);
             applyIosWifiImageView(imageView, level, config);
         }
-    }
-
-    private static void logWifiImageUpdate(ImageView imageView, String methodName, Object value) {
-        if (!DEBUG_WIFI_UPDATES) {
-            return;
-        }
-        String detail;
-        if (value instanceof Integer) {
-            int intValue = (Integer) value;
-            detail = intValue + " resource=" + getResourceName(imageView.getResources(), intValue);
-        } else if (value instanceof Drawable) {
-            Drawable drawable = (Drawable) value;
-            detail = drawable.getClass().getName() + " level=" + drawable.getLevel()
-                    + " intrinsic=" + drawable.getIntrinsicWidth() + "x" + drawable.getIntrinsicHeight();
-        } else {
-            detail = String.valueOf(value);
-        }
-        logToFramework("wifi_signal " + methodName + ": " + detail);
-    }
-
-    private static void logWifiStateUpdate(View root, List<?> args) {
-        if (!DEBUG_WIFI_UPDATES) {
-            return;
-        }
-        logToFramework("Flyme wifi state update on " + root.getClass().getName()
-                + ": " + buildWifiStateDebugSignature(args));
     }
 
     private static void applyIosWifiImageView(ImageView imageView, int level, Config config) {
@@ -899,166 +848,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         offsetView(imageView, config.iosWifiOffsetX, config.iosWifiOffsetY);
     }
 
-    private static int getCurrentWifiLevel(ImageView imageView) {
-        Integer rememberedLevel = WIFI_SIGNAL_LEVELS.get(imageView);
-        if (rememberedLevel != null) {
-            return rememberedLevel;
-        }
-        Integer resourceLevel = getWifiLevelFromImageViewResource(imageView);
-        if (resourceLevel != null) {
-            WIFI_SIGNAL_LEVELS.put(imageView, resourceLevel);
-            return resourceLevel;
-        }
-        Integer drawableLevel = getWifiLevelFromDrawable(imageView.getDrawable());
-        if (drawableLevel != null) {
-            WIFI_SIGNAL_LEVELS.put(imageView, drawableLevel);
-            return drawableLevel;
-        }
-        return IosWifiDrawable.LEVEL_ERROR;
-    }
-
-    private static Integer getWifiLevelFromImageViewResource(ImageView imageView) {
-        Object resource = getField(imageView, "mResource");
-        if (!(resource instanceof Integer)) {
-            return null;
-        }
-        return getWifiSignalLevel(imageView.getResources(), (Integer) resource);
-    }
-
-    private static Integer getWifiLevelFromDrawable(Drawable drawable) {
-        if (drawable == null) {
-            return null;
-        }
-        int level = drawable.getLevel();
-        if (level > 0) {
-            return normalizeWifiImageLevel(level);
-        }
-        Drawable current = drawable.getCurrent();
-        if (current != null && current != drawable && current.getLevel() > 0) {
-            return normalizeWifiImageLevel(current.getLevel());
-        }
-        return null;
-    }
-
-    private static Integer extractWifiLevel(Resources resources, Object value, int depth) {
-        if (value == null || depth > 3) {
-            return null;
-        }
-        if (value instanceof List<?>) {
-            for (Object item : (List<?>) value) {
-                Integer level = extractWifiLevel(resources, item, depth + 1);
-                if (level != null) {
-                    return level;
-                }
-            }
-            return null;
-        }
-        Class<?> clazz = value.getClass();
-        if (isSimpleValue(clazz)) {
-            return null;
-        }
-        while (clazz != null && clazz != Object.class) {
-            for (Field field : clazz.getDeclaredFields()) {
-                if (Modifier.isStatic(field.getModifiers())) {
-                    continue;
-                }
-                String name = field.getName().toLowerCase();
-                Object fieldValue;
-                try {
-                    field.setAccessible(true);
-                    fieldValue = field.get(value);
-                } catch (Throwable ignored) {
-                    continue;
-                }
-                Integer directLevel = wifiLevelFromNamedValue(resources, name, fieldValue);
-                if (directLevel != null) {
-                    return directLevel;
-                }
-                if (shouldInspectWifiField(name, fieldValue)) {
-                    Integer nestedLevel = extractWifiLevel(resources, fieldValue, depth + 1);
-                    if (nestedLevel != null) {
-                        return nestedLevel;
-                    }
-                }
-            }
-            clazz = clazz.getSuperclass();
-        }
-        return null;
-    }
-
-    private static Integer wifiLevelFromNamedValue(Resources resources, String name, Object value) {
-        if (!(value instanceof Number)) {
-            return null;
-        }
-        int number = ((Number) value).intValue();
-        Integer resourceLevel = wifiLevelFromResourceField(resources, name, number);
-        if (resourceLevel != null) {
-            return resourceLevel;
-        }
-        if (name.contains("rssi")) {
-            return wifiLevelFromRssi(number);
-        }
-        if (name.contains("level") || name.contains("signal") || name.contains("strength")) {
-            if (number > IosWifiDrawable.MAX_LEVEL && number > 10) {
-                return null;
-            }
-            return normalizeWifiImageLevel(number);
-        }
-        return null;
-    }
-
-    private static Integer wifiLevelFromResourceField(Resources resources, String name, int value) {
-        if (resources == null || value == 0 || !isLikelyResourceIdField(name)) {
-            return null;
-        }
-        return getWifiSignalLevel(resources, value);
-    }
-
-    private static boolean isLikelyResourceIdField(String name) {
-        return name.contains("res") || name.contains("resource")
-                || name.contains("drawable") || name.contains("icon");
-    }
-
-    private static boolean shouldInspectWifiField(String name, Object value) {
-        if (value == null || isSimpleValue(value.getClass())) {
-            return false;
-        }
-        return name.contains("wifi") || name.contains("state") || name.contains("model")
-                || name.contains("icon") || name.contains("signal");
-    }
-
-    private static boolean isSimpleValue(Class<?> clazz) {
-        return clazz.isPrimitive() || Number.class.isAssignableFrom(clazz)
-                || CharSequence.class.isAssignableFrom(clazz) || Boolean.class == clazz
-                || Character.class == clazz || clazz.isEnum();
-    }
-
-    private static int wifiLevelFromRssi(int rssi) {
-        if (rssi >= -55) {
-            return 4;
-        }
-        if (rssi >= -65) {
-            return 3;
-        }
-        if (rssi >= -75) {
-            return 2;
-        }
-        if (rssi >= -85) {
-            return 1;
-        }
-        return 0;
-    }
-
-    private static void logWifiStateDebug(View root, List<?> args) {
-        String signature = buildWifiStateDebugSignature(args);
-        String lastSignature = WIFI_STATE_DEBUG_KEYS.get(root);
-        if (signature.equals(lastSignature)) {
-            return;
-        }
-        WIFI_STATE_DEBUG_KEYS.put(root, signature);
-        logToFramework("Unable to extract Wi-Fi level from Flyme wifi state: " + signature);
-    }
-
     private static void logToFramework(String message) {
         android.util.Log.w(TAG, message);
         FlymeStatusBarSizer module = MODULE;
@@ -1069,79 +858,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             module.log(android.util.Log.WARN, TAG, message, null);
         } catch (Throwable ignored) {
         }
-    }
-
-    private static String buildWifiStateDebugSignature(List<?> args) {
-        StringBuilder builder = new StringBuilder();
-        if (args == null || args.isEmpty()) {
-            return "no args";
-        }
-        for (Object arg : args) {
-            if (builder.length() > 0) {
-                builder.append(" | ");
-            }
-            appendWifiStateDebug(builder, arg, 0);
-        }
-        return builder.toString();
-    }
-
-    private static void appendWifiStateDebug(StringBuilder builder, Object value, int depth) {
-        if (value == null) {
-            builder.append("null");
-            return;
-        }
-        Class<?> clazz = value.getClass();
-        builder.append(clazz.getName()).append("{");
-        if (depth > 1 || isSimpleValue(clazz)) {
-            builder.append(String.valueOf(value)).append("}");
-            return;
-        }
-        int count = 0;
-        while (clazz != null && clazz != Object.class && count < 12) {
-            for (Field field : clazz.getDeclaredFields()) {
-                if (Modifier.isStatic(field.getModifiers())) {
-                    continue;
-                }
-                String name = field.getName();
-                String lowerName = name.toLowerCase();
-                if (!lowerName.contains("wifi") && !lowerName.contains("level")
-                        && !lowerName.contains("signal") && !lowerName.contains("rssi")
-                        && !lowerName.contains("icon") && !lowerName.contains("state")) {
-                    continue;
-                }
-                if (count > 0) {
-                    builder.append(", ");
-                }
-                builder.append(name).append("=");
-                try {
-                    field.setAccessible(true);
-                    Object fieldValue = field.get(value);
-                    if (fieldValue == null || isSimpleValue(fieldValue.getClass())) {
-                        builder.append(String.valueOf(fieldValue));
-                    } else {
-                        builder.append(fieldValue.getClass().getName());
-                    }
-                } catch (Throwable ignored) {
-                    builder.append("<err>");
-                }
-                count++;
-                if (count >= 12) {
-                    break;
-                }
-            }
-            clazz = clazz.getSuperclass();
-        }
-        builder.append("}");
-    }
-
-    private static int normalizeWifiImageLevel(int imageLevel) {
-        if (imageLevel <= 0) {
-            return 0;
-        }
-        if (imageLevel <= IosWifiDrawable.MAX_LEVEL) {
-            return imageLevel;
-        }
-        return IosWifiDrawable.MAX_LEVEL;
     }
 
     private static Integer getWifiSignalLevel(Resources resources, int resId) {
