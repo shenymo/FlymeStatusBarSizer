@@ -95,7 +95,7 @@ public class SettingsProvider extends ContentProvider {
 
     @Override
     public String getType(Uri uri) {
-        return "vnd.android.cursor.item/vnd.com.example.flymestatusbarsizer.settings";
+        return "vnd.android.cursor.item/vnd.com.fiyme.statusbarsizer.settings";
     }
 
     @Override

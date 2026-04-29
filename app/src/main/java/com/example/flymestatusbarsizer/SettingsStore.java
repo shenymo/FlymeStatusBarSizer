@@ -4,7 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 final class SettingsStore {
-    static final String AUTHORITY = "com.example.flymestatusbarsizer.settings";
+    static final String AUTHORITY = "com.fiyme.statusbarsizer.settings";
     static final String PREFS = "status_bar_sizer";
 
     static final String KEY_ENABLED = "enabled";
