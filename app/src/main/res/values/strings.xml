@@ -2,5 +2,4 @@
 <resources>
     <string name="app_name">Flyme Status Bar Sizer</string>
     <string name="module_description">Enlarge Flyme SystemUI status bar icons.</string>
-    <string name="advanced_settings_title">详细图标设置</string>
 </resources>

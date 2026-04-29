@@ -555,8 +555,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             scaleChild(root, "mobile_out", 1f, config.scaled(config.activityIconFactor));
             scaleChild(root, "wifi_in", 1f, config.scaled(config.activityIconFactor));
             scaleChild(root, "wifi_out", 1f, config.scaled(config.activityIconFactor));
-            setChildHidden(root, "mobile_type", config.hideMobileType && !config.iosNetworkTypeStyle);
-            setChildHidden(root, "mobile_type_container", config.hideMobileType && !config.iosNetworkTypeStyle);
             if (shouldRecordDesktopReference(root)) {
                 root.post(() -> {
                     recordDesktopIconSize(root, "mobile_signal", DESKTOP_MOBILE_SIGNAL_SIZE);
@@ -1670,7 +1668,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         int connectionRateOffsetX = SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X;
         int connectionRateOffsetY = SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y;
         float textScale = SettingsStore.DEFAULT_TEXT_SCALE / 100f;
-        boolean hideMobileType = SettingsStore.DEFAULT_HIDE_MOBILE_TYPE;
         boolean iosBatteryStyle = SettingsStore.DEFAULT_IOS_BATTERY_STYLE;
         boolean iosSignalStyle = SettingsStore.DEFAULT_IOS_SIGNAL_STYLE;
         boolean iosNetworkTypeStyle = SettingsStore.DEFAULT_IOS_NETWORK_TYPE_STYLE;
@@ -1764,8 +1761,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                 connectionRateOffsetY = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y);
             } else if (SettingsStore.KEY_TEXT_SCALE.equals(key)) {
                 textScale = parseInt(value, SettingsStore.DEFAULT_TEXT_SCALE) / 100f;
-            } else if (SettingsStore.KEY_HIDE_MOBILE_TYPE.equals(key)) {
-                hideMobileType = "1".equals(value);
             } else if (SettingsStore.KEY_IOS_BATTERY_STYLE.equals(key)) {
                 iosBatteryStyle = "1".equals(value);
             } else if (SettingsStore.KEY_IOS_SIGNAL_STYLE.equals(key)) {

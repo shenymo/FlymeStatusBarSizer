@@ -11,7 +11,7 @@ import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
-public class BatterySettingsActivity extends Activity {
+public class OtherIconSettingsActivity extends Activity {
     private SharedPreferences prefs;
 
     @Override
@@ -30,40 +30,39 @@ public class BatterySettingsActivity extends Activity {
                 ScrollView.LayoutParams.WRAP_CONTENT));
 
         TextView title = new TextView(this);
-        title.setText("iOS \u98ce\u683c\u7535\u6c60\u56fe\u6807");
+        title.setText("\u5176\u4ed6\u56fe\u6807");
         title.setTextColor(Color.rgb(32, 33, 36));
         title.setTextSize(24);
         root.addView(title, matchWrap());
 
         TextView summary = new TextView(this);
-        summary.setText("\u8fd9\u91cc\u8c03\u6574\u7535\u6c60\u56fe\u6807\u7684\u7f29\u653e\u5f3a\u5ea6\u3001iOS \u98ce\u683c\u7535\u6c60\u7684\u5c3a\u5bf8\u3001\u504f\u79fb\u548c\u5185\u90e8\u6570\u5b57\u3002");
+        summary.setText("\u8fd9\u91cc\u653e\u666e\u901a\u72b6\u6001\u680f\u56fe\u6807\u3001\u4e0a\u4e0b\u884c\u7bad\u5934\u548c\u5f53\u524d\u7f51\u901f\u4f4d\u7f6e\u7b49\u8f85\u52a9\u9879\u3002");
         summary.setTextColor(Color.rgb(95, 99, 104));
         summary.setTextSize(14);
         summary.setPadding(0, dp(6), 0, dp(14));
         root.addView(summary, matchWrap());
 
-        addSlider(root, "\u7535\u6c60\u7f29\u653e\u5f3a\u5ea6", "FlymeBatteryMeterView \u8ddf\u968f\u6574\u4f53\u7f29\u653e\u7684\u5f3a\u5ea6\u3002",
-                SettingsStore.KEY_BATTERY_FACTOR, SettingsStore.DEFAULT_BATTERY_FACTOR, 0, 160, "%");
-        addSlider(root, "\u7535\u6c60\u957f\u5ea6", "\u5305\u542b\u53f3\u4fa7\u7535\u6c60\u5934\u7684\u6574\u4f53\u7ed8\u5236\u5bbd\u5ea6\u3002", SettingsStore.KEY_IOS_BATTERY_WIDTH,
-                SettingsStore.DEFAULT_IOS_BATTERY_WIDTH, 16, 44, "dp");
-        addSlider(root, "\u7535\u6c60\u5bbd\u5ea6", "\u7535\u6c60\u4e3b\u4f53\u9ad8\u5ea6\u3002", SettingsStore.KEY_IOS_BATTERY_HEIGHT,
-                SettingsStore.DEFAULT_IOS_BATTERY_HEIGHT, 8, 24, "dp");
-        addSlider(root, "\u5de6\u53f3\u504f\u79fb", "\u6b63\u6570\u5411\u53f3\uff0c\u8d1f\u6570\u5411\u5de6\u3002", SettingsStore.KEY_IOS_BATTERY_OFFSET_X,
-                SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X, -20, 20, "dp");
-        addSlider(root, "\u4e0a\u4e0b\u504f\u79fb", "\u6b63\u6570\u5411\u4e0b\uff0c\u8d1f\u6570\u5411\u4e0a\u3002", SettingsStore.KEY_IOS_BATTERY_OFFSET_Y,
-                SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y, -20, 20, "dp");
-        addSlider(root, "\u5185\u90e8\u5b57\u4f53\u5927\u5c0f", "\u6570\u5b57\u9ad8\u5ea6\u5360\u7535\u6c60\u9ad8\u5ea6\u7684\u6bd4\u4f8b\u3002", SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE,
-                SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE, 40, 100, "%");
+        addSlider(root, "\u666e\u901a\u72b6\u6001\u680f\u56fe\u6807\u7f29\u653e\u5f3a\u5ea6", "StatusBarIconView \u8ddf\u968f\u6574\u4f53\u7f29\u653e\u7684\u5f3a\u5ea6\u3002",
+                SettingsStore.KEY_STATUS_ICON_FACTOR, SettingsStore.DEFAULT_STATUS_ICON_FACTOR, 0, 160, "%");
+        addSlider(root, "\u4e0a\u4e0b\u884c\u7bad\u5934\u7f29\u653e\u5f3a\u5ea6", "mobile_in/out \u548c wifi_in/out \u8ddf\u968f\u6574\u4f53\u7f29\u653e\u7684\u5f3a\u5ea6\u3002",
+                SettingsStore.KEY_ACTIVITY_ICON_FACTOR, SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR, 0, 160, "%");
+        addSectionTitle(root, "\u5f53\u524d\u7f51\u901f\u504f\u79fb");
+        addSlider(root, "\u5f53\u524d\u7f51\u901f\u5de6\u53f3\u504f\u79fb",
+                "\u5728\u81ea\u52a8\u5bf9\u9f50\u7684\u57fa\u7840\u4e0a\u518d\u989d\u5916\u5de6\u53f3\u5fae\u8c03\uff0c\u6b63\u6570\u5411\u53f3\uff0c\u8d1f\u6570\u5411\u5de6\u3002",
+                SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X,
+                -80, 80, "dp");
+        addSlider(root, "\u5f53\u524d\u7f51\u901f\u4e0a\u4e0b\u504f\u79fb",
+                "\u5728\u81ea\u52a8\u5bf9\u9f50\u7684\u57fa\u7840\u4e0a\u518d\u989d\u5916\u4e0a\u4e0b\u5fae\u8c03\uff0c\u6b63\u6570\u5411\u4e0b\uff0c\u8d1f\u6570\u5411\u4e0a\u3002",
+                SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y,
+                -80, 80, "dp");
 
         TextView reset = button("\u6062\u590d\u672c\u9875\u9ed8\u8ba4");
         reset.setOnClickListener(v -> {
             prefs.edit()
-                    .remove(SettingsStore.KEY_BATTERY_FACTOR)
-                    .remove(SettingsStore.KEY_IOS_BATTERY_WIDTH)
-                    .remove(SettingsStore.KEY_IOS_BATTERY_HEIGHT)
-                    .remove(SettingsStore.KEY_IOS_BATTERY_OFFSET_X)
-                    .remove(SettingsStore.KEY_IOS_BATTERY_OFFSET_Y)
-                    .remove(SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE)
+                    .remove(SettingsStore.KEY_STATUS_ICON_FACTOR)
+                    .remove(SettingsStore.KEY_ACTIVITY_ICON_FACTOR)
+                    .remove(SettingsStore.KEY_CONNECTION_RATE_OFFSET_X)
+                    .remove(SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y)
                     .apply();
             recreate();
         });
@@ -109,13 +108,21 @@ public class BatterySettingsActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.addView(titleView, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-        header.addView(valueView, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        header.addView(valueView, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         card.addView(header, matchWrap());
         card.addView(subtitleView, matchWrap());
         card.addView(seekBar, matchWrapWithTop(8));
         root.addView(card, matchWrapWithTop(10));
+    }
+
+    private void addSectionTitle(LinearLayout root, String text) {
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setTextColor(Color.rgb(32, 33, 36));
+        view.setTextSize(18);
+        view.setPadding(0, dp(16), 0, dp(2));
+        root.addView(view, matchWrap());
     }
 
     private LinearLayout card() {

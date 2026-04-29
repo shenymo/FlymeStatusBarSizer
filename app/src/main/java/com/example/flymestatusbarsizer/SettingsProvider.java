@@ -73,7 +73,6 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X));
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y));
         add(cursor, SettingsStore.KEY_TEXT_SCALE, prefs.getInt(SettingsStore.KEY_TEXT_SCALE, SettingsStore.DEFAULT_TEXT_SCALE));
-        add(cursor, SettingsStore.KEY_HIDE_MOBILE_TYPE, prefs.getBoolean(SettingsStore.KEY_HIDE_MOBILE_TYPE, SettingsStore.DEFAULT_HIDE_MOBILE_TYPE));
         add(cursor, SettingsStore.KEY_IOS_BATTERY_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_BATTERY_STYLE, SettingsStore.DEFAULT_IOS_BATTERY_STYLE));
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_SIGNAL_STYLE, SettingsStore.DEFAULT_IOS_SIGNAL_STYLE));
         add(cursor, SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, SettingsStore.DEFAULT_IOS_NETWORK_TYPE_STYLE));
