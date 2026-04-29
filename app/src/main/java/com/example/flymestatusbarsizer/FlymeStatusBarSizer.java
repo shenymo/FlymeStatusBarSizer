@@ -15,6 +15,11 @@ import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.telephony.CellSignalStrength;
+import android.telephony.PhoneStateListener;
+import android.telephony.SignalStrength;
+import android.telephony.TelephonyManager;
+import android.telephony.TelephonyDisplayInfo;
 import android.text.SpannableStringBuilder;
 import android.view.Gravity;
 import android.view.View;
@@ -29,6 +34,7 @@ import java.lang.reflect.Modifier;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.WeakHashMap;
 import java.util.regex.Matcher;
@@ -50,14 +56,22 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<View, Integer> ORIGINAL_CONNECTION_RATE_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, String> NETWORK_TYPE_LABELS = new WeakHashMap<>();
+    private static final WeakHashMap<ImageView, Integer> NETWORK_TYPE_RES_IDS = new WeakHashMap<>();
+    private static final HashMap<Integer, String> NETWORK_TYPE_LABELS_BY_SUB_ID = new HashMap<>();
     private static final WeakHashMap<ImageView, Integer> WIFI_SIGNAL_LEVELS = new WeakHashMap<>();
     private static final WeakHashMap<Drawable, ImageView> MOBILE_SIGNAL_DRAWABLE_OWNERS = new WeakHashMap<>();
     private static final WeakHashMap<View, Integer> MOBILE_VIEW_SLOTS = new WeakHashMap<>();
+    private static final WeakHashMap<ImageView, MobileSignalInfo> MOBILE_SIGNAL_RAW_INFOS = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, MobileSignalInfo> MOBILE_SIGNAL_INFOS = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, Boolean> PRIMARY_SIGNAL_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, Boolean> SECONDARY_SIGNAL_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> TRACKED_STATUS_TEXT_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_CONNECTION_RATE_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<TelephonyManager, Integer> TELEPHONY_MANAGER_SUB_IDS = new WeakHashMap<>();
+    private static final WeakHashMap<SignalStrength, Integer> SIGNAL_STRENGTH_SUB_IDS = new WeakHashMap<>();
+    private static final WeakHashMap<CellSignalStrength, Integer> CELL_SIGNAL_STRENGTH_SUB_IDS = new WeakHashMap<>();
+    private static final HashMap<Integer, Integer> FLYME_SLOT_INDEX_BY_SUB_ID = new HashMap<>();
+    private static final HashMap<Integer, PhoneStateListener> SIGNAL_LISTENERS_BY_SUB_ID = new HashMap<>();
     private static final Pattern WIFI_LEVEL_PATTERN = Pattern.compile("(?:^|[_-])([0-4])(?:$|[_-])");
     private static final Pattern WIFI_COMPACT_LEVEL_PATTERN = Pattern.compile("(?:wifi|wlan|signal|level)[_-]?([0-4])");
     private static final Pattern MOBILE_AOSP_LEVEL_PATTERN = Pattern.compile("ic_mobile_([0-5])_[45]_bar");
@@ -75,11 +89,13 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final Object CONFIG_REFRESH_LOCK = new Object();
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
     private static Handler MAIN_HANDLER;
+    private static volatile Context SYSTEM_UI_CONTEXT;
     private static BroadcastReceiver USER_UNLOCKED_RECEIVER;
+    private static BroadcastReceiver SUBSCRIPTION_CHANGED_RECEIVER;
     private static ContentObserver SETTINGS_OBSERVER;
     private static int primaryMobileSubId = UNSET_SUB_ID;
     private static int secondaryMobileSubId = UNSET_SUB_ID;
-    private static int latestPrimarySignalLevel = IosSignalDrawable.MAX_LEVEL;
+    private static int latestPrimarySignalLevel = 0;
     private static int latestSecondarySignalLevel = IosSignalDrawable.NO_SECONDARY_LEVEL;
 
     @Override
@@ -94,6 +110,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookConstructAndBind(loader, "com.android.systemui.statusbar.pipeline.mobile.ui.view.ModernStatusBarMobileView");
         hookConstructAndBind(loader, "com.android.systemui.statusbar.pipeline.mobile.ui.view.ModernShadeCarrierGroupMobileView");
         hookConstructAndBind(loader, "com.android.systemui.statusbar.pipeline.wifi.ui.view.ModernStatusBarWifiView");
+        hookFlymeSlotIndexUpdates(loader);
+        hookTelephonyDebugSignals(loader);
         hookFlymeWifiView(loader);
         hookConnectionRateView(loader);
         hookImageViewTintUpdates(loader);
@@ -211,6 +229,146 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private void hookFlymeSlotIndexUpdates(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.statusbar.pipeline.mobile.ui.viewmodel.MobileIconsViewModel",
+                    false, loader);
+            for (Method method : clazz.getDeclaredMethods()) {
+                if (!"handleLatestVmFlymeSlotIndexChanged".equals(method.getName())
+                        || method.getParameterTypes().length != 2
+                        || method.getParameterTypes()[0] != int.class
+                        || method.getParameterTypes()[1] != int.class) {
+                    continue;
+                }
+                method.setAccessible(true);
+                hook(method).intercept(chain -> {
+                    Object result = chain.proceed();
+                    if (chain.getArg(0) instanceof Integer && chain.getArg(1) instanceof Integer) {
+                        int subId = (Integer) chain.getArg(0);
+                        int slotIndex = (Integer) chain.getArg(1);
+                        recordFlymeSlotIndex(subId, slotIndex);
+                        refreshTrackedSignalViews(true);
+                    }
+                    return result;
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook Flyme slot index updates", t);
+        }
+    }
+
+    private void hookTelephonyDebugSignals(ClassLoader loader) {
+        hookTelephonyManagerDebugSignals();
+        hookSignalStrengthDebugLevels();
+        hookCellSignalStrengthDebugLevels(loader);
+    }
+
+    private void hookTelephonyManagerDebugSignals() {
+        try {
+            for (Method method : TelephonyManager.class.getDeclaredMethods()) {
+                String name = method.getName();
+                Class<?>[] parameterTypes = method.getParameterTypes();
+                if ("createForSubscriptionId".equals(name)
+                        && parameterTypes.length == 1
+                        && parameterTypes[0] == int.class
+                        && TelephonyManager.class.isAssignableFrom(method.getReturnType())) {
+                    method.setAccessible(true);
+                    hook(method).intercept(chain -> {
+                        Object result = chain.proceed();
+                        if (result instanceof TelephonyManager && chain.getArg(0) instanceof Integer) {
+                            rememberTelephonyManagerSubId((TelephonyManager) result, (Integer) chain.getArg(0));
+                        }
+                        return result;
+                    });
+                } else if ("getSignalStrength".equals(name)
+                        && parameterTypes.length == 0
+                        && SignalStrength.class.isAssignableFrom(method.getReturnType())) {
+                    method.setAccessible(true);
+                    hook(method).intercept(chain -> {
+                        Object result = chain.proceed();
+                        int subId = getKnownTelephonyManagerSubId(chain.getThisObject());
+                        if (result instanceof SignalStrength && isValidSubId(subId)) {
+                            rememberSignalStrengthSubId((SignalStrength) result, subId);
+                        }
+                        return result;
+                    });
+                }
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook TelephonyManager debug signals", t);
+        }
+    }
+
+    private void hookSignalStrengthDebugLevels() {
+        try {
+            for (Method method : SignalStrength.class.getDeclaredMethods()) {
+                String name = method.getName();
+                if ("getLevel".equals(name)
+                        && method.getParameterTypes().length == 0
+                        && method.getReturnType() == int.class) {
+                    method.setAccessible(true);
+                    hook(method).intercept(chain -> {
+                        Object result = chain.proceed();
+                        int fallback = result instanceof Integer ? (Integer) result : 0;
+                        int subId = getKnownSignalStrengthSubId(chain.getThisObject());
+                        return getDebugSignalLevelForSubId(subId, fallback);
+                    });
+                } else if ("getCellSignalStrengths".equals(name)) {
+                    method.setAccessible(true);
+                    hook(method).intercept(chain -> {
+                        Object result = chain.proceed();
+                        int subId = getKnownSignalStrengthSubId(chain.getThisObject());
+                        if (isValidSubId(subId) && result instanceof Iterable) {
+                            for (Object item : (Iterable<?>) result) {
+                                if (item instanceof CellSignalStrength) {
+                                    rememberCellSignalStrengthSubId((CellSignalStrength) item, subId);
+                                }
+                            }
+                        }
+                        return result;
+                    });
+                }
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook SignalStrength debug levels", t);
+        }
+    }
+
+    private void hookCellSignalStrengthDebugLevels(ClassLoader loader) {
+        String[] classNames = {
+                "android.telephony.CellSignalStrengthCdma",
+                "android.telephony.CellSignalStrengthGsm",
+                "android.telephony.CellSignalStrengthWcdma",
+                "android.telephony.CellSignalStrengthTdscdma",
+                "android.telephony.CellSignalStrengthLte",
+                "android.telephony.CellSignalStrengthNr"
+        };
+        for (String className : classNames) {
+            try {
+                Class<?> clazz = Class.forName(className, false, loader);
+                for (Method method : clazz.getDeclaredMethods()) {
+                    if (!"getLevel".equals(method.getName())
+                            || method.getParameterTypes().length != 0
+                            || method.getReturnType() != int.class) {
+                        continue;
+                    }
+                    method.setAccessible(true);
+                    hook(method).intercept(chain -> {
+                        Object result = chain.proceed();
+                        int fallback = result instanceof Integer ? (Integer) result : 0;
+                        Object signal = chain.getThisObject();
+                        int subId = signal instanceof CellSignalStrength
+                                ? getKnownCellSignalStrengthSubId((CellSignalStrength) signal)
+                                : UNSET_SUB_ID;
+                        return getDebugSignalLevelForSubId(subId, fallback);
+                    });
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
     private void hookConnectionRateView(ClassLoader loader) {
         try {
             Class<?> clazz = Class.forName("com.flyme.statusbar.connectionRateView.ConnectionRateView", false, loader);
@@ -298,7 +456,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                                 && chain.getArgs().size() == 1 && chain.getArg(0) instanceof Drawable) {
                             Drawable drawable = (Drawable) chain.getArg(0);
                             MOBILE_SIGNAL_DRAWABLE_OWNERS.put(drawable, imageView);
-                            applyMobileSignalDrawableState(imageView, drawable.getLevel());
+                            handleMobileSignalDrawableState(imageView, drawable.getLevel());
                         }
                         if (("setImageResource".equals(name) || "setImageDrawable".equals(name))
                                 && "mobile_signal".equals(idName)
@@ -342,7 +500,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 if (thisObject instanceof Drawable && chain.getArg(0) instanceof Integer) {
                     ImageView imageView = MOBILE_SIGNAL_DRAWABLE_OWNERS.get((Drawable) thisObject);
                     if (imageView != null) {
-                        applyMobileSignalDrawableState(imageView, (Integer) chain.getArg(0));
+                        handleMobileSignalDrawableState(imageView, (Integer) chain.getArg(0));
                     }
                 }
                 return result;
@@ -365,7 +523,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                     if (thisObject instanceof Drawable && chain.getArg(0) instanceof Integer) {
                         ImageView imageView = MOBILE_SIGNAL_DRAWABLE_OWNERS.get((Drawable) thisObject);
                         if (imageView != null) {
-                            applyMobileSignalDrawableState(imageView, (Integer) chain.getArg(0));
+                            handleMobileSignalDrawableState(imageView, (Integer) chain.getArg(0));
                         }
                     }
                     return result;
@@ -828,7 +986,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         MobileSignalInfo info = MOBILE_SIGNAL_INFOS.get(imageView);
-        int primaryLevel = info == null ? IosSignalDrawable.MAX_LEVEL : info.level;
+        int primaryLevel = info == null ? 0 : info.level;
         int slot = info == null ? getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN) : info.slot;
         primaryLevel = getConfiguredSignalLevel(config, slot, primaryLevel);
         int secondaryLevel = getDrawableSecondaryLevel(imageView, config, info);
@@ -883,12 +1041,17 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!config.enabled || !config.iosSignalStyle) {
             return;
         }
+        int subId = getMobileSubId(imageView);
         MobileSignalInfo info = getMobileSignalInfo(imageView.getResources(), resId,
-                getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN));
+                getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN), subId);
         if (info == null) {
             return;
         }
         applyMobileSignalInfo(imageView, info, config);
+    }
+
+    private static void handleMobileSignalDrawableState(ImageView imageView, int state) {
+        applyMobileSignalDrawableState(imageView, state);
     }
 
     private static void applyMobileSignalDrawableState(ImageView imageView, int state) {
@@ -898,36 +1061,48 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         int slot = getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN);
         int level = mapSignalDrawableStateLevel(state);
-        applyMobileSignalInfo(imageView, new MobileSignalInfo(slot, level), config);
+        applyMobileSignalInfo(imageView, new MobileSignalInfo(slot, level, getMobileSubId(imageView)), config);
     }
 
     private static void applyMobileSignalInfo(ImageView imageView, MobileSignalInfo info, Config config) {
-        if (info.slot == MOBILE_SLOT_UNKNOWN) {
-            info = new MobileSignalInfo(getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN), info.level);
+        int currentSlot = getMobileSignalSlot(imageView, info.slot);
+        if (currentSlot != MOBILE_SLOT_UNKNOWN && currentSlot != info.slot) {
+            info = new MobileSignalInfo(currentSlot, info.level, info.subId);
         }
-        MOBILE_SIGNAL_INFOS.put(imageView, info);
+        registerTelephonySignalListener(imageView.getContext(), info.subId);
+        int telephonyLevel = getTelephonySignalLevel(imageView.getContext(), info.subId);
+        if (telephonyLevel != IosSignalDrawable.NO_SECONDARY_LEVEL && telephonyLevel != info.level) {
+            info = new MobileSignalInfo(info.slot, telephonyLevel, info.subId);
+        }
+        MOBILE_SIGNAL_RAW_INFOS.put(imageView, info);
+        MobileSignalInfo displayInfo = info;
+        MOBILE_SIGNAL_INFOS.put(imageView, displayInfo);
         if (config.iosSignalDebugEnabled) {
-            applyDebugMobileSignalInfo(imageView, info, config);
+            applyDebugMobileSignalInfo(imageView, displayInfo, config);
             return;
         }
-        if (info.slot == MOBILE_SLOT_PRIMARY) {
-            latestPrimarySignalLevel = info.level;
+        if (displayInfo.slot == MOBILE_SLOT_PRIMARY) {
+            latestPrimarySignalLevel = displayInfo.level;
             PRIMARY_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
-            imageView.setVisibility(View.VISIBLE);
-            applyIosSignalImageView(imageView, info.level, getDrawableSecondaryLevel(imageView, config, info), config);
-        } else if (info.slot == MOBILE_SLOT_SECONDARY) {
-            latestSecondarySignalLevel = info.level;
+            SECONDARY_SIGNAL_VIEWS.remove(imageView);
+            setMobileSignalViewVisible(imageView, true);
+            applyIosSignalImageView(imageView, displayInfo.level, getDrawableSecondaryLevel(imageView, config, displayInfo), config);
+        } else if (displayInfo.slot == MOBILE_SLOT_SECONDARY) {
+            latestSecondarySignalLevel = displayInfo.level;
             SECONDARY_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
+            PRIMARY_SIGNAL_VIEWS.remove(imageView);
             if (config.iosSignalDualCombined) {
-                imageView.setVisibility(View.GONE);
+                setMobileSignalViewVisible(imageView, false);
                 updatePrimarySignalDrawables();
             } else {
-                imageView.setVisibility(View.VISIBLE);
-                applyIosSignalImageView(imageView, info.level, IosSignalDrawable.NO_SECONDARY_LEVEL, config);
+                setMobileSignalViewVisible(imageView, true);
+                applyIosSignalImageView(imageView, displayInfo.level, IosSignalDrawable.NO_SECONDARY_LEVEL, config);
             }
         } else {
-            imageView.setVisibility(View.VISIBLE);
-            applyIosSignalImageView(imageView, info.level, IosSignalDrawable.NO_SECONDARY_LEVEL, config);
+            PRIMARY_SIGNAL_VIEWS.remove(imageView);
+            SECONDARY_SIGNAL_VIEWS.remove(imageView);
+            setMobileSignalViewVisible(imageView, true);
+            applyIosSignalImageView(imageView, displayInfo.level, IosSignalDrawable.NO_SECONDARY_LEVEL, config);
         }
     }
 
@@ -936,28 +1111,30 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (slot == MOBILE_SLOT_SECONDARY) {
             latestSecondarySignalLevel = mapMobileSignalLevel(config.iosSignalDebugSim2Level);
             SECONDARY_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
+            PRIMARY_SIGNAL_VIEWS.remove(imageView);
             if (config.iosSignalDualCombined) {
-                imageView.setVisibility(View.GONE);
+                setMobileSignalViewVisible(imageView, false);
                 updatePrimarySignalDrawables();
                 return;
             }
             if (config.iosSignalDebugSim2Enabled) {
-                imageView.setVisibility(View.VISIBLE);
+                setMobileSignalViewVisible(imageView, true);
                 applyIosSignalImageView(imageView, config.iosSignalDebugSim2Level,
                         IosSignalDrawable.NO_SECONDARY_LEVEL, config);
             } else {
-                imageView.setVisibility(View.GONE);
+                setMobileSignalViewVisible(imageView, false);
             }
             return;
         }
 
         latestPrimarySignalLevel = getDebugPrimaryDisplayLevel(config, info.level);
         PRIMARY_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
+        SECONDARY_SIGNAL_VIEWS.remove(imageView);
         if (!hasAnyDebugSignal(config)) {
-            imageView.setVisibility(View.GONE);
+            setMobileSignalViewVisible(imageView, false);
             return;
         }
-        imageView.setVisibility(View.VISIBLE);
+        setMobileSignalViewVisible(imageView, true);
         applyIosSignalImageView(imageView, latestPrimarySignalLevel,
                 getDrawableSecondaryLevel(imageView, config, info), config);
     }
@@ -973,10 +1150,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                 continue;
             }
             if (config.iosSignalDebugEnabled && !hasAnyDebugSignal(config)) {
-                view.setVisibility(View.GONE);
+                setMobileSignalViewVisible(view, false);
                 continue;
             }
-            view.setVisibility(View.VISIBLE);
+            setMobileSignalViewVisible(view, true);
             MobileSignalInfo info = MOBILE_SIGNAL_INFOS.get(view);
             int primaryLevel = info == null ? latestPrimarySignalLevel : info.level;
             primaryLevel = getDebugPrimaryDisplayLevel(config, primaryLevel);
@@ -1012,6 +1189,98 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static boolean hasAnyDebugSignal(Config config) {
         return config.iosSignalDebugSim1Enabled || config.iosSignalDebugSim2Enabled;
+    }
+
+    private static void setMobileSignalViewVisible(ImageView imageView, boolean visible) {
+        View container = findMobileSignalContainer(imageView);
+        if (container != null && container != imageView) {
+            setViewCollapsed(container, !visible);
+            imageView.setVisibility(visible ? View.VISIBLE : View.GONE);
+            return;
+        }
+        setViewCollapsed(imageView, !visible);
+    }
+
+    private static View findMobileSignalContainer(ImageView imageView) {
+        View current = imageView;
+        View mobileContainer = null;
+        while (current != null) {
+            String idName = getSystemUiIdName(current);
+            if ("statusIcons".equals(idName) || "system_icons".equals(idName)) {
+                break;
+            }
+            if (MOBILE_VIEW_SLOTS.containsKey(current) || current.getClass().getName().contains("Mobile")) {
+                mobileContainer = current;
+            }
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return mobileContainer == null ? imageView : mobileContainer;
+    }
+
+    private static void setViewCollapsed(View view, boolean collapsed) {
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp != null) {
+            int[] originalSize = ORIGINAL_SIZES.get(view);
+            if (originalSize == null) {
+                originalSize = new int[]{lp.width, lp.height};
+                ORIGINAL_SIZES.put(view, originalSize);
+            }
+            if (collapsed) {
+                lp.width = 0;
+            } else {
+                lp.width = originalSize[0];
+                lp.height = originalSize[1];
+            }
+            if (lp instanceof ViewGroup.MarginLayoutParams) {
+                ViewGroup.MarginLayoutParams marginLp = (ViewGroup.MarginLayoutParams) lp;
+                int[] originalMargins = ORIGINAL_MARGINS.get(view);
+                if (originalMargins == null) {
+                    originalMargins = new int[]{
+                            marginLp.leftMargin,
+                            marginLp.topMargin,
+                            marginLp.rightMargin,
+                            marginLp.bottomMargin,
+                            marginLp.getMarginStart(),
+                            marginLp.getMarginEnd()
+                    };
+                    ORIGINAL_MARGINS.put(view, originalMargins);
+                }
+                if (collapsed) {
+                    marginLp.leftMargin = 0;
+                    marginLp.rightMargin = 0;
+                    marginLp.setMarginStart(0);
+                    marginLp.setMarginEnd(0);
+                } else {
+                    marginLp.leftMargin = originalMargins[0];
+                    marginLp.topMargin = originalMargins[1];
+                    marginLp.rightMargin = originalMargins[2];
+                    marginLp.bottomMargin = originalMargins[3];
+                    marginLp.setMarginStart(originalMargins[4]);
+                    marginLp.setMarginEnd(originalMargins[5]);
+                }
+            }
+            view.setLayoutParams(lp);
+        }
+        int[] originalPadding = ORIGINAL_PADDINGS.get(view);
+        if (originalPadding == null) {
+            originalPadding = new int[]{
+                    view.getPaddingLeft(),
+                    view.getPaddingTop(),
+                    view.getPaddingRight(),
+                    view.getPaddingBottom()
+            };
+            ORIGINAL_PADDINGS.put(view, originalPadding);
+        }
+        if (collapsed) {
+            view.setMinimumWidth(0);
+            view.setPadding(0, originalPadding[1], 0, originalPadding[3]);
+            view.setVisibility(View.GONE);
+        } else {
+            view.setPadding(originalPadding[0], originalPadding[1], originalPadding[2], originalPadding[3]);
+            view.setVisibility(View.VISIBLE);
+        }
+        view.requestLayout();
     }
 
     private static void applyWifiSignalResource(ImageView imageView, int resId) {
@@ -1126,18 +1395,73 @@ public class FlymeStatusBarSizer extends XposedModule {
         MOBILE_VIEW_SLOTS.put(view, slot);
         View signal = findSystemUiChild(view, "mobile_signal");
         if (signal instanceof ImageView) {
-            MOBILE_SIGNAL_INFOS.put((ImageView) signal,
-                    new MobileSignalInfo(slot, IosSignalDrawable.MAX_LEVEL));
+            int subId = invokeNoArgInt(view, "getSubId", getIntField(view, "subId", UNSET_SUB_ID));
+            int level = getTelephonySignalLevel(view.getContext(), subId);
+            if (level == IosSignalDrawable.NO_SECONDARY_LEVEL) {
+                level = 0;
+            }
+            MobileSignalInfo info = new MobileSignalInfo(slot, level, subId);
+            MOBILE_SIGNAL_RAW_INFOS.put((ImageView) signal, info);
+            MOBILE_SIGNAL_INFOS.put((ImageView) signal, info);
         }
+    }
+
+    private static void recordFlymeSlotIndex(int subId, int slotIndex) {
+        if (subId < 0 || slotIndex < 0) {
+            return;
+        }
+        synchronized (FLYME_SLOT_INDEX_BY_SUB_ID) {
+            FLYME_SLOT_INDEX_BY_SUB_ID.put(subId, slotIndex);
+        }
+    }
+
+    private static int getRecordedFlymeSlotForSubId(int subId) {
+        synchronized (FLYME_SLOT_INDEX_BY_SUB_ID) {
+            Integer slotIndex = FLYME_SLOT_INDEX_BY_SUB_ID.get(subId);
+            if (slotIndex == null) {
+                return MOBILE_SLOT_UNKNOWN;
+            }
+            return mobileSlotFromFlymeIndexLocked(slotIndex);
+        }
+    }
+
+    private static int mobileSlotFromFlymeIndexLocked(int slotIndex) {
+        boolean hasZero = false;
+        for (Integer value : FLYME_SLOT_INDEX_BY_SUB_ID.values()) {
+            if (value != null && value == 0) {
+                hasZero = true;
+                break;
+            }
+        }
+        if (hasZero) {
+            return mobileSlotFromZeroBasedIndex(slotIndex);
+        }
+        return mobileSlotFromOneBasedIndex(slotIndex);
+    }
+
+    private static int mobileSlotFromZeroBasedIndex(int slotIndex) {
+        if (slotIndex == 0) {
+            return MOBILE_SLOT_PRIMARY;
+        }
+        if (slotIndex == 1) {
+            return MOBILE_SLOT_SECONDARY;
+        }
+        return MOBILE_SLOT_UNKNOWN;
+    }
+
+    private static int mobileSlotFromOneBasedIndex(int slotIndex) {
+        if (slotIndex == 1) {
+            return MOBILE_SLOT_PRIMARY;
+        }
+        if (slotIndex == 2) {
+            return MOBILE_SLOT_SECONDARY;
+        }
+        return MOBILE_SLOT_UNKNOWN;
     }
 
     private static int getMobileSignalSlot(ImageView imageView, int fallback) {
         View current = imageView;
         while (current != null) {
-            Integer slot = MOBILE_VIEW_SLOTS.get(current);
-            if (slot != null && slot != MOBILE_SLOT_UNKNOWN) {
-                return slot;
-            }
             if (current.getClass().getName().contains("Mobile")) {
                 int viewSlot = getMobileSlotFromView(current);
                 if (viewSlot != MOBILE_SLOT_UNKNOWN) {
@@ -1145,26 +1469,276 @@ public class FlymeStatusBarSizer extends XposedModule {
                     return viewSlot;
                 }
             }
+            Integer slot = MOBILE_VIEW_SLOTS.get(current);
+            if (slot != null && slot != MOBILE_SLOT_UNKNOWN) {
+                return slot;
+            }
             ViewParent parent = current.getParent();
             current = parent instanceof View ? (View) parent : null;
         }
         return fallback;
     }
 
+    private static int getMobileSubId(ImageView imageView) {
+        View current = imageView;
+        while (current != null) {
+            if (current.getClass().getName().contains("Mobile")) {
+                int subId = invokeNoArgInt(current, "getSubId", getIntField(current, "subId", UNSET_SUB_ID));
+                if (subId != UNSET_SUB_ID && subId >= 0) {
+                    return subId;
+                }
+            }
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return UNSET_SUB_ID;
+    }
+
+    private static int getTelephonySignalLevel(Context context, int subId) {
+        if (context == null || subId == UNSET_SUB_ID || subId < 0) {
+            return IosSignalDrawable.NO_SECONDARY_LEVEL;
+        }
+        try {
+            TelephonyManager manager = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
+            if (manager == null) {
+                return IosSignalDrawable.NO_SECONDARY_LEVEL;
+            }
+            SignalStrength strength = manager.createForSubscriptionId(subId).getSignalStrength();
+            if (strength == null) {
+                return IosSignalDrawable.NO_SECONDARY_LEVEL;
+            }
+            return mapMobileSignalLevel(strength.getLevel());
+        } catch (Throwable ignored) {
+            return IosSignalDrawable.NO_SECONDARY_LEVEL;
+        }
+    }
+
+    private static void registerTelephonySignalListener(Context context, int subId) {
+        if (context == null || subId == UNSET_SUB_ID || subId < 0) {
+            return;
+        }
+        synchronized (SIGNAL_LISTENERS_BY_SUB_ID) {
+            if (SIGNAL_LISTENERS_BY_SUB_ID.containsKey(subId)) {
+                return;
+            }
+            try {
+                TelephonyManager manager = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
+                if (manager == null) {
+                    return;
+                }
+                PhoneStateListener listener = new PhoneStateListener(context.getMainExecutor()) {
+                    @Override
+                    public void onSignalStrengthsChanged(SignalStrength signalStrength) {
+                        if (signalStrength == null) {
+                            return;
+                        }
+                        updateSignalLevelForSubId(subId, signalStrength.getLevel());
+                    }
+
+                    @Override
+                    public void onDisplayInfoChanged(TelephonyDisplayInfo telephonyDisplayInfo) {
+                        refreshTrackedNetworkTypeViews();
+                    }
+
+                    @Override
+                    public void onDataConnectionStateChanged(int state, int networkType) {
+                        refreshTrackedNetworkTypeViews();
+                    }
+                };
+                manager.createForSubscriptionId(subId).listen(listener,
+                        PhoneStateListener.LISTEN_SIGNAL_STRENGTHS
+                                | PhoneStateListener.LISTEN_DISPLAY_INFO_CHANGED
+                                | PhoneStateListener.LISTEN_DATA_CONNECTION_STATE);
+                SIGNAL_LISTENERS_BY_SUB_ID.put(subId, listener);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private static void updateSignalLevelForSubId(int subId, int level) {
+        Handler handler = MAIN_HANDLER;
+        Runnable action = () -> {
+            int mappedLevel = mapMobileSignalLevel(level);
+            ArrayList<ImageView> signalViews = new ArrayList<>(MOBILE_SIGNAL_RAW_INFOS.keySet());
+            for (ImageView imageView : signalViews) {
+                MobileSignalInfo info = MOBILE_SIGNAL_RAW_INFOS.get(imageView);
+                if (imageView == null || info == null || info.subId != subId) {
+                    continue;
+                }
+                Config config = Config.load(imageView.getContext());
+                if (!config.enabled || !config.iosSignalStyle) {
+                    continue;
+                }
+                applyMobileSignalInfo(imageView,
+                        new MobileSignalInfo(info.slot, mappedLevel, info.subId), config);
+                imageView.requestLayout();
+                imageView.invalidate();
+            }
+        };
+        if (handler != null) {
+            handler.post(action);
+        } else if (Looper.myLooper() == Looper.getMainLooper()) {
+            action.run();
+        }
+    }
+
+    private static void rememberSystemUiContext(Context context) {
+        if (context == null || SYSTEM_UI_CONTEXT != null) {
+            return;
+        }
+        SYSTEM_UI_CONTEXT = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+    }
+
+    private static boolean isValidSubId(int subId) {
+        return subId != UNSET_SUB_ID && subId >= 0;
+    }
+
+    private static void rememberTelephonyManagerSubId(TelephonyManager manager, int subId) {
+        if (manager == null || !isValidSubId(subId)) {
+            return;
+        }
+        synchronized (TELEPHONY_MANAGER_SUB_IDS) {
+            TELEPHONY_MANAGER_SUB_IDS.put(manager, subId);
+        }
+    }
+
+    private static int getKnownTelephonyManagerSubId(Object manager) {
+        if (manager instanceof TelephonyManager) {
+            synchronized (TELEPHONY_MANAGER_SUB_IDS) {
+                Integer subId = TELEPHONY_MANAGER_SUB_IDS.get((TelephonyManager) manager);
+                if (subId != null) {
+                    return subId;
+                }
+            }
+        }
+        int subId = invokeNoArgInt(manager, "getSubscriptionId", UNSET_SUB_ID);
+        if (isValidSubId(subId)) {
+            return subId;
+        }
+        return getIntField(manager, "mSubId", UNSET_SUB_ID);
+    }
+
+    private static void rememberSignalStrengthSubId(SignalStrength signalStrength, int subId) {
+        if (signalStrength == null || !isValidSubId(subId)) {
+            return;
+        }
+        synchronized (SIGNAL_STRENGTH_SUB_IDS) {
+            SIGNAL_STRENGTH_SUB_IDS.put(signalStrength, subId);
+        }
+        try {
+            for (CellSignalStrength cellSignalStrength : signalStrength.getCellSignalStrengths()) {
+                rememberCellSignalStrengthSubId(cellSignalStrength, subId);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static int getKnownSignalStrengthSubId(Object signalStrength) {
+        if (!(signalStrength instanceof SignalStrength)) {
+            return UNSET_SUB_ID;
+        }
+        synchronized (SIGNAL_STRENGTH_SUB_IDS) {
+            Integer subId = SIGNAL_STRENGTH_SUB_IDS.get((SignalStrength) signalStrength);
+            return subId == null ? UNSET_SUB_ID : subId;
+        }
+    }
+
+    private static void rememberCellSignalStrengthSubId(CellSignalStrength cellSignalStrength, int subId) {
+        if (cellSignalStrength == null || !isValidSubId(subId)) {
+            return;
+        }
+        synchronized (CELL_SIGNAL_STRENGTH_SUB_IDS) {
+            CELL_SIGNAL_STRENGTH_SUB_IDS.put(cellSignalStrength, subId);
+        }
+    }
+
+    private static int getKnownCellSignalStrengthSubId(CellSignalStrength cellSignalStrength) {
+        if (cellSignalStrength == null) {
+            return UNSET_SUB_ID;
+        }
+        synchronized (CELL_SIGNAL_STRENGTH_SUB_IDS) {
+            Integer subId = CELL_SIGNAL_STRENGTH_SUB_IDS.get(cellSignalStrength);
+            return subId == null ? UNSET_SUB_ID : subId;
+        }
+    }
+
+    private static int getDebugSignalLevelForSubId(int subId, int fallbackLevel) {
+        if (!isValidSubId(subId)) {
+            return fallbackLevel;
+        }
+        Config config = Config.load(SYSTEM_UI_CONTEXT);
+        if (!config.enabled || !config.iosSignalDebugEnabled) {
+            return fallbackLevel;
+        }
+        int slot = getMobileSlotForSubId(SYSTEM_UI_CONTEXT, subId);
+        if (slot == MOBILE_SLOT_PRIMARY) {
+            return config.iosSignalDebugSim1Enabled
+                    ? mapMobileSignalLevel(config.iosSignalDebugSim1Level) : 0;
+        }
+        if (slot == MOBILE_SLOT_SECONDARY) {
+            return config.iosSignalDebugSim2Enabled
+                    ? mapMobileSignalLevel(config.iosSignalDebugSim2Level) : 0;
+        }
+        return fallbackLevel;
+    }
+
     private static int getMobileSlotFromView(View view) {
+        int subId = invokeNoArgInt(view, "getSubId", getIntField(view, "subId", UNSET_SUB_ID));
+        if (subId != UNSET_SUB_ID && subId >= 0) {
+            int slot = getMobileSlotForSubId(view.getContext(), subId);
+            if (slot != MOBILE_SLOT_UNKNOWN) {
+                return slot;
+            }
+        }
+        int physicalSlot = getPhysicalSlotIndexFromView(view);
+        if (physicalSlot == 0) {
+            return MOBILE_SLOT_PRIMARY;
+        }
+        if (physicalSlot == 1) {
+            return MOBILE_SLOT_SECONDARY;
+        }
         String slotName = invokeNoArgString(view, "getSlot");
         int slotFromName = getMobileSlotFromName(slotName == null ? "" : slotName.toLowerCase());
         if (slotFromName != MOBILE_SLOT_UNKNOWN) {
             return slotFromName;
         }
-        int subId = invokeNoArgInt(view, "getSubId", getIntField(view, "subId", UNSET_SUB_ID));
-        if (subId != UNSET_SUB_ID && subId >= 0) {
-            return getMobileSlotForSubId(subId);
-        }
         return MOBILE_SLOT_UNKNOWN;
     }
 
-    private static int getMobileSlotForSubId(int subId) {
+    private static int getPhysicalSlotIndexFromView(View view) {
+        int slotIndex = invokeNoArgInt(view, "getSlotIndex", UNSET_SUB_ID);
+        if (slotIndex >= 0) {
+            return slotIndex;
+        }
+        slotIndex = invokeNoArgInt(view, "getSlotId", UNSET_SUB_ID);
+        if (slotIndex >= 0) {
+            return slotIndex;
+        }
+        String[] fieldNames = {"slotIndex", "mSlotIndex", "slotId", "mSlotId", "simSlotIndex",
+                "mSimSlotIndex", "phoneId", "mPhoneId"};
+        for (String fieldName : fieldNames) {
+            slotIndex = getIntField(view, fieldName, UNSET_SUB_ID);
+            if (slotIndex >= 0) {
+                return slotIndex;
+            }
+        }
+        return -1;
+    }
+
+    private static int getMobileSlotForSubId(Context context, int subId) {
+        int physicalSlot = getPhysicalSlotIndexForSubId(context, subId);
+        if (physicalSlot == 0) {
+            primaryMobileSubId = subId;
+            return MOBILE_SLOT_PRIMARY;
+        }
+        if (physicalSlot == 1) {
+            secondaryMobileSubId = subId;
+            return MOBILE_SLOT_SECONDARY;
+        }
+        int recordedSlot = getRecordedFlymeSlotForSubId(subId);
+        if (recordedSlot != MOBILE_SLOT_UNKNOWN) {
+            return recordedSlot;
+        }
         if (primaryMobileSubId == UNSET_SUB_ID || primaryMobileSubId == subId) {
             primaryMobileSubId = subId;
             return MOBILE_SLOT_PRIMARY;
@@ -1176,7 +1750,55 @@ public class FlymeStatusBarSizer extends XposedModule {
         return MOBILE_SLOT_UNKNOWN;
     }
 
-    private static MobileSignalInfo getMobileSignalInfo(Resources resources, int resId, int fallbackSlot) {
+    private static int getPhysicalSlotIndexForSubId(Context context, int subId) {
+        try {
+            int slotIndex = android.telephony.SubscriptionManager.getSlotIndex(subId);
+            if (slotIndex >= 0) {
+                return slotIndex;
+            }
+        } catch (Throwable ignored) {
+        }
+        if (context != null) {
+            try {
+                Class<?> managerClass = Class.forName("android.telephony.SubscriptionManager");
+                Method from = managerClass.getDeclaredMethod("from", Context.class);
+                Object manager = from.invoke(null, context);
+                if (manager != null) {
+                    Method getInfo = managerClass.getDeclaredMethod("getActiveSubscriptionInfo", int.class);
+                    Object info = getInfo.invoke(manager, subId);
+                    if (info != null) {
+                        Method getSimSlotIndex = info.getClass().getDeclaredMethod("getSimSlotIndex");
+                        Object value = getSimSlotIndex.invoke(info);
+                        if (value instanceof Integer) {
+                            return (Integer) value;
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        try {
+            Class<?> clazz = Class.forName("android.telephony.SubscriptionManager");
+            Method method = clazz.getDeclaredMethod("getSlotIndex", int.class);
+            Object value = method.invoke(null, subId);
+            if (value instanceof Integer) {
+                return (Integer) value;
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            Class<?> clazz = Class.forName("android.telephony.SubscriptionManager");
+            Method method = clazz.getDeclaredMethod("getSlotId", int.class);
+            Object value = method.invoke(null, subId);
+            if (value instanceof Integer) {
+                return (Integer) value;
+            }
+        } catch (Throwable ignored) {
+        }
+        return -1;
+    }
+
+    private static MobileSignalInfo getMobileSignalInfo(Resources resources, int resId, int fallbackSlot, int subId) {
         if (resId == 0) {
             return null;
         }
@@ -1185,13 +1807,10 @@ public class FlymeStatusBarSizer extends XposedModule {
             return null;
         }
         String lowerName = name.toLowerCase();
-        int slot = getMobileSlotFromName(lowerName);
-        if (slot == MOBILE_SLOT_UNKNOWN) {
-            slot = fallbackSlot;
-        }
+        int slot = fallbackSlot != MOBILE_SLOT_UNKNOWN ? fallbackSlot : getMobileSlotFromName(lowerName);
         if (lowerName.contains("null") || lowerName.contains("no_signal")
                 || lowerName.contains("no_sims") || lowerName.contains("empty")) {
-            return new MobileSignalInfo(slot, 0);
+            return new MobileSignalInfo(slot, 0, subId);
         }
         Matcher matcher = MOBILE_AOSP_LEVEL_PATTERN.matcher(lowerName);
         Integer lastLevel = null;
@@ -1213,10 +1832,17 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (lastLevel == null) {
             return null;
         }
-        return new MobileSignalInfo(slot, mapMobileSignalLevel(lastLevel));
+        return new MobileSignalInfo(slot, mapMobileSignalLevel(lastLevel), subId);
     }
 
     private static int getMobileSlotFromName(String lowerName) {
+        if (lowerName.contains("slot0") || lowerName.contains("phone0")
+                || lowerName.contains("slot_0") || lowerName.contains("phone_0")) {
+            return MOBILE_SLOT_PRIMARY;
+        }
+        if (lowerName.contains("phone1") || lowerName.contains("phone_1")) {
+            return MOBILE_SLOT_SECONDARY;
+        }
         if (lowerName.contains("signal1") || lowerName.contains("sim1")
                 || lowerName.contains("slot1") || lowerName.contains("sub1")) {
             return MOBILE_SLOT_PRIMARY;
@@ -1229,8 +1855,13 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int mapSignalDrawableStateLevel(int state) {
-        int rawLevel = state & 0xff;
-        if (rawLevel >= 90) {
+        int lowByteLevel = state & 0xff;
+        int highByteLevel = (state >> 8) & 0xff;
+        int rawLevel = lowByteLevel;
+        if (highByteLevel > 0 && highByteLevel <= IosSignalDrawable.MAX_LEVEL
+                && lowByteLevel >= IosSignalDrawable.MAX_LEVEL) {
+            rawLevel = highByteLevel;
+        } else if (rawLevel >= 90) {
             rawLevel -= 90;
         }
         return mapMobileSignalLevel(rawLevel);
@@ -1304,8 +1935,29 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!config.enabled || !config.iosNetworkTypeStyle) {
             return;
         }
-        String label = getNetworkTypeLabel(imageView.getResources(), resId);
+        NETWORK_TYPE_RES_IDS.put(imageView, resId);
+        int activeDataSubId = getActiveDataSubId();
+        int viewSubId = getMobileSubId(imageView);
+        int viewSlot = getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN);
+        String resourceLabel = getNetworkTypeLabel(imageView.getResources(), resId);
+        rememberNetworkTypeLabelForSubId(viewSubId, resourceLabel);
+        String label = null;
+        if (config.iosSignalDualCombined && viewSlot == MOBILE_SLOT_SECONDARY) {
+            label = "";
+        } else if (!config.iosSignalDualCombined && isValidSubId(activeDataSubId)
+                && isValidSubId(viewSubId) && viewSubId != activeDataSubId) {
+            label = "";
+        } else {
+            label = getActiveDataNetworkTypeLabel(imageView.getContext(), activeDataSubId, true);
+        }
         if (label == null) {
+            label = "";
+        }
+        applyNetworkTypeLabel(imageView, label);
+    }
+
+    private static void applyNetworkTypeLabel(ImageView imageView, String label) {
+        if (label == null || label.length() == 0) {
             NETWORK_TYPE_LABELS.remove(imageView);
             ensureNetworkTypePlaceholder(imageView);
             imageView.setVisibility(View.INVISIBLE);
@@ -1375,6 +2027,149 @@ public class FlymeStatusBarSizer extends XposedModule {
             return "5G";
         }
         return null;
+    }
+
+    private static void rememberNetworkTypeLabelForSubId(int subId, String label) {
+        if (!isValidSubId(subId)) {
+            return;
+        }
+        synchronized (NETWORK_TYPE_LABELS_BY_SUB_ID) {
+            if (label == null || label.length() == 0) {
+                NETWORK_TYPE_LABELS_BY_SUB_ID.remove(subId);
+            } else {
+                NETWORK_TYPE_LABELS_BY_SUB_ID.put(subId, label);
+            }
+        }
+    }
+
+    private static String getRememberedNetworkTypeLabelForSubId(int subId) {
+        if (!isValidSubId(subId)) {
+            return null;
+        }
+        synchronized (NETWORK_TYPE_LABELS_BY_SUB_ID) {
+            return NETWORK_TYPE_LABELS_BY_SUB_ID.get(subId);
+        }
+    }
+
+    private static String getActiveDataNetworkTypeLabel(Context context) {
+        return getActiveDataNetworkTypeLabel(context, getActiveDataSubId(), true);
+    }
+
+    private static String getActiveDataNetworkTypeLabel(Context context, int subId, boolean preferRemembered) {
+        if (context == null) {
+            return null;
+        }
+        if (!isValidSubId(subId)) {
+            return null;
+        }
+        try {
+            TelephonyManager manager = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
+            if (manager == null) {
+                return null;
+            }
+            TelephonyManager dataManager = manager.createForSubscriptionId(subId);
+            String displayLabel = getTelephonyDisplayInfoNetworkTypeLabel(dataManager);
+            if (displayLabel != null) {
+                return displayLabel;
+            }
+            String serviceStateLabel = getServiceStateNetworkTypeLabel(dataManager);
+            if (serviceStateLabel != null) {
+                return serviceStateLabel;
+            }
+            return "";
+        } catch (Throwable ignored) {
+        }
+        if (preferRemembered) {
+            String rememberedLabel = getRememberedNetworkTypeLabelForSubId(subId);
+            if (rememberedLabel != null) {
+                return rememberedLabel;
+            }
+        }
+        return null;
+    }
+
+    private static int getActiveDataSubId() {
+        try {
+            Class<?> clazz = Class.forName("android.telephony.SubscriptionManager");
+            Method method = clazz.getDeclaredMethod("getActiveDataSubscriptionId");
+            Object value = method.invoke(null);
+            if (value instanceof Integer && isValidSubId((Integer) value)) {
+                return (Integer) value;
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            Class<?> clazz = Class.forName("android.telephony.SubscriptionManager");
+            Method method = clazz.getDeclaredMethod("getDefaultDataSubscriptionId");
+            Object value = method.invoke(null);
+            if (value instanceof Integer && isValidSubId((Integer) value)) {
+                return (Integer) value;
+            }
+        } catch (Throwable ignored) {
+        }
+        return UNSET_SUB_ID;
+    }
+
+    private static String getTelephonyDisplayInfoNetworkTypeLabel(TelephonyManager manager) {
+        Object displayInfo = invokeNoArg(manager, "getTelephonyDisplayInfo");
+        if (displayInfo == null) {
+            return null;
+        }
+        int networkType = invokeNoArgInt(displayInfo, "getNetworkType",
+                getIntField(displayInfo, "mNetworkType", -1));
+        int overrideNetworkType = invokeNoArgInt(displayInfo, "getOverrideNetworkType",
+                getIntField(displayInfo, "mOverrideNetworkType", 0));
+        if (overrideNetworkType == 5) {
+            return "5GA";
+        }
+        if (overrideNetworkType == 4) {
+            return "5G+";
+        }
+        if (overrideNetworkType == 3) {
+            return "5G";
+        }
+        if (networkType == TelephonyManager.NETWORK_TYPE_NR) {
+            return "5G";
+        }
+        return "";
+    }
+
+    private static String getServiceStateNetworkTypeLabel(TelephonyManager manager) {
+        Object serviceState = invokeNoArg(manager, "getServiceState");
+        if (serviceState == null) {
+            return null;
+        }
+        int nrState = invokeNoArgInt(serviceState, "getNrState", getIntField(serviceState, "mNrState", -1));
+        if (nrState == 3) {
+            return "5G";
+        }
+        Object infos = invokeNoArg(serviceState, "getNetworkRegistrationInfoList");
+        if (infos instanceof Iterable) {
+            boolean sawRegisteredData = false;
+            for (Object info : (Iterable<?>) infos) {
+                int domain = invokeNoArgInt(info, "getDomain", -1);
+                int transportType = invokeNoArgInt(info, "getTransportType", -1);
+                int registrationState = invokeNoArgInt(info, "getRegistrationState",
+                        invokeNoArgInt(info, "getNetworkRegistrationState", -1));
+                int accessNetworkTechnology = invokeNoArgInt(info, "getAccessNetworkTechnology", -1);
+                if (domain == 2 && transportType == 1 && (registrationState == 1 || registrationState == 5)) {
+                    sawRegisteredData = true;
+                    if (accessNetworkTechnology == TelephonyManager.NETWORK_TYPE_NR) {
+                        return "5G";
+                    }
+                }
+            }
+            if (sawRegisteredData) {
+                return "";
+            }
+        }
+        String state = String.valueOf(serviceState);
+        if (state.contains("domain=PS") && state.contains("transportType=WWAN")
+                && (state.contains("registrationState=HOME") || state.contains("registrationState=ROAMING"))
+                && state.contains("accessNetworkTechnology=NR")) {
+            return "5G";
+        }
+        return "";
     }
 
     private static void syncDrawableTint(ImageView imageView, android.graphics.drawable.Drawable drawable) {
@@ -1636,11 +2431,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (context == null || CONFIG_REFRESH_REGISTERED) {
             return;
         }
+        rememberSystemUiContext(context);
         synchronized (CONFIG_REFRESH_LOCK) {
             if (CONFIG_REFRESH_REGISTERED) {
                 return;
             }
             Context appContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+            rememberSystemUiContext(appContext);
             MAIN_HANDLER = new Handler(Looper.getMainLooper());
             SETTINGS_OBSERVER = new ContentObserver(MAIN_HANDLER) {
                 @Override
@@ -1662,15 +2459,99 @@ public class FlymeStatusBarSizer extends XposedModule {
                 appContext.registerReceiver(USER_UNLOCKED_RECEIVER, new IntentFilter(Intent.ACTION_USER_UNLOCKED));
             } catch (Throwable ignored) {
             }
+            SUBSCRIPTION_CHANGED_RECEIVER = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context receiverContext, Intent intent) {
+                    handleSubscriptionsChanged();
+                }
+            };
+            try {
+                IntentFilter filter = new IntentFilter();
+                filter.addAction("android.intent.action.SIM_STATE_CHANGED");
+                filter.addAction("android.telephony.action.SIM_CARD_STATE_CHANGED");
+                filter.addAction("android.telephony.action.SIM_APPLICATION_STATE_CHANGED");
+                filter.addAction("android.telephony.action.DEFAULT_SUBSCRIPTION_CHANGED");
+                filter.addAction("android.telephony.action.DEFAULT_DATA_SUBSCRIPTION_CHANGED");
+                filter.addAction("android.telephony.action.MULTI_SIM_CONFIG_CHANGED");
+                filter.addAction("android.telephony.action.CARRIER_CONFIG_CHANGED");
+                registerRuntimeReceiver(appContext, SUBSCRIPTION_CHANGED_RECEIVER, filter);
+            } catch (Throwable ignored) {
+            }
             CONFIG_REFRESH_REGISTERED = true;
             MAIN_HANDLER.postDelayed(FlymeStatusBarSizer::refreshTrackedRuntimeViews, 2000);
             MAIN_HANDLER.postDelayed(FlymeStatusBarSizer::refreshTrackedRuntimeViews, 10000);
         }
     }
 
+    private static void registerRuntimeReceiver(Context context, BroadcastReceiver receiver, IntentFilter filter) {
+        try {
+            Method method = Context.class.getDeclaredMethod("registerReceiver",
+                    BroadcastReceiver.class, IntentFilter.class, int.class);
+            method.invoke(context, receiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            return;
+        } catch (Throwable ignored) {
+        }
+        try {
+            context.registerReceiver(receiver, filter);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void handleSubscriptionsChanged() {
+        Handler handler = MAIN_HANDLER;
+        Runnable action = () -> {
+            resetMobileSubscriptionState();
+            refreshTrackedSignalViews(true);
+            refreshTrackedNetworkTypeViews();
+            Handler delayedHandler = MAIN_HANDLER;
+            if (delayedHandler != null) {
+                delayedHandler.postDelayed(() -> {
+                    refreshTrackedSignalViews(true);
+                    refreshTrackedNetworkTypeViews();
+                }, 500);
+                delayedHandler.postDelayed(() -> {
+                    refreshTrackedSignalViews(true);
+                    refreshTrackedNetworkTypeViews();
+                }, 2000);
+            }
+        };
+        if (handler != null) {
+            handler.post(action);
+        } else {
+            action.run();
+        }
+    }
+
+    private static void resetMobileSubscriptionState() {
+        primaryMobileSubId = UNSET_SUB_ID;
+        secondaryMobileSubId = UNSET_SUB_ID;
+        latestPrimarySignalLevel = 0;
+        latestSecondarySignalLevel = IosSignalDrawable.NO_SECONDARY_LEVEL;
+        synchronized (FLYME_SLOT_INDEX_BY_SUB_ID) {
+            FLYME_SLOT_INDEX_BY_SUB_ID.clear();
+        }
+        synchronized (TELEPHONY_MANAGER_SUB_IDS) {
+            TELEPHONY_MANAGER_SUB_IDS.clear();
+        }
+        synchronized (SIGNAL_STRENGTH_SUB_IDS) {
+            SIGNAL_STRENGTH_SUB_IDS.clear();
+        }
+        synchronized (CELL_SIGNAL_STRENGTH_SUB_IDS) {
+            CELL_SIGNAL_STRENGTH_SUB_IDS.clear();
+        }
+        synchronized (NETWORK_TYPE_LABELS_BY_SUB_ID) {
+            NETWORK_TYPE_LABELS_BY_SUB_ID.clear();
+        }
+        MOBILE_VIEW_SLOTS.clear();
+        MOBILE_SIGNAL_INFOS.clear();
+        PRIMARY_SIGNAL_VIEWS.clear();
+        SECONDARY_SIGNAL_VIEWS.clear();
+    }
+
     private static void refreshTrackedRuntimeViews() {
         refreshTrackedTextScaling();
         refreshTrackedSignalViews();
+        refreshTrackedNetworkTypeViews();
     }
 
     private static void refreshTrackedTextScaling() {
@@ -1705,12 +2586,16 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void refreshTrackedSignalViews() {
+        refreshTrackedSignalViews(false);
+    }
+
+    private static void refreshTrackedSignalViews(boolean forceRequery) {
         Handler handler = MAIN_HANDLER;
         if (handler == null) {
             return;
         }
         handler.post(() -> {
-            ArrayList<ImageView> signalViews = new ArrayList<>(MOBILE_SIGNAL_INFOS.keySet());
+            ArrayList<ImageView> signalViews = new ArrayList<>(MOBILE_SIGNAL_RAW_INFOS.keySet());
             for (ImageView imageView : signalViews) {
                 if (imageView == null) {
                     continue;
@@ -1719,12 +2604,54 @@ public class FlymeStatusBarSizer extends XposedModule {
                 if (!config.enabled || !config.iosSignalStyle) {
                     continue;
                 }
-                MobileSignalInfo info = MOBILE_SIGNAL_INFOS.get(imageView);
-                if (info == null) {
+                MobileSignalInfo info = MOBILE_SIGNAL_RAW_INFOS.get(imageView);
+                if (forceRequery || info == null) {
                     int slot = getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN);
-                    info = new MobileSignalInfo(slot, latestPrimarySignalLevel);
+                    int subId = getMobileSubId(imageView);
+                    int level = getTelephonySignalLevel(imageView.getContext(), subId);
+                    if (level == IosSignalDrawable.NO_SECONDARY_LEVEL) {
+                        level = forceRequery || info == null ? 0 : info.level;
+                    }
+                    info = new MobileSignalInfo(slot, level, subId);
                 }
                 applyMobileSignalInfo(imageView, info, config);
+                imageView.requestLayout();
+                imageView.invalidate();
+            }
+        });
+    }
+
+    private static void refreshTrackedNetworkTypeViews() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        handler.post(() -> {
+            ArrayList<ImageView> typeViews = new ArrayList<>(NETWORK_TYPE_RES_IDS.keySet());
+            int activeDataSubId = getActiveDataSubId();
+            for (ImageView imageView : typeViews) {
+                if (imageView == null) {
+                    continue;
+                }
+                Config config = Config.load(imageView.getContext());
+                if (!config.enabled || !config.iosNetworkTypeStyle) {
+                    continue;
+                }
+                int viewSubId = getMobileSubId(imageView);
+                int viewSlot = getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN);
+                String label = null;
+                if (config.iosSignalDualCombined && viewSlot == MOBILE_SLOT_SECONDARY) {
+                    label = "";
+                } else if (!config.iosSignalDualCombined && isValidSubId(activeDataSubId)
+                        && isValidSubId(viewSubId) && viewSubId != activeDataSubId) {
+                    label = "";
+                } else {
+                    label = getActiveDataNetworkTypeLabel(imageView.getContext(), activeDataSubId, true);
+                }
+                if (label == null) {
+                    label = "";
+                }
+                applyNetworkTypeLabel(imageView, label);
                 imageView.requestLayout();
                 imageView.invalidate();
             }
@@ -2309,10 +3236,16 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final class MobileSignalInfo {
         final int slot;
         final int level;
+        final int subId;
 
         MobileSignalInfo(int slot, int level) {
+            this(slot, level, UNSET_SUB_ID);
+        }
+
+        MobileSignalInfo(int slot, int level, int subId) {
             this.slot = slot;
             this.level = mapMobileSignalLevel(level);
+            this.subId = subId;
         }
     }
 
@@ -2368,6 +3301,10 @@ public class FlymeStatusBarSizer extends XposedModule {
 
         static Config load(Context context) {
             Config config = new Config();
+            if (context == null) {
+                return config;
+            }
+            rememberSystemUiContext(context);
             try (Cursor cursor = context.getContentResolver().query(SETTINGS_URI, null, null, null, null)) {
                 if (cursor == null) {
                     return config;
