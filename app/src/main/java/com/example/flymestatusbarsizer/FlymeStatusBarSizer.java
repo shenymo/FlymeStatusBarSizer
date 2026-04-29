@@ -30,6 +30,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.text.SimpleDateFormat;
@@ -54,6 +55,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, int[]> ORIGINAL_MARGINS = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_PADDINGS = new WeakHashMap<>();
     private static final WeakHashMap<View, float[]> ORIGINAL_TRANSLATIONS = new WeakHashMap<>();
+    private static final WeakHashMap<View, String> VIEW_ID_NAME_CACHE = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<View, Integer> ORIGINAL_CONNECTION_RATE_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, String> NETWORK_TYPE_LABELS = new WeakHashMap<>();
@@ -90,7 +92,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final Object CONFIG_REFRESH_LOCK = new Object();
     private static final Object CONFIG_CACHE_LOCK = new Object();
     private static final Object RUNTIME_REFRESH_LOCK = new Object();
-    private static final long CONFIG_CACHE_TTL_MS = 500L;
+    private static final long CONFIG_CACHE_TTL_MS = 5000L;
     private static final long TELEPHONY_CACHE_TTL_MS = 30000L;
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
@@ -110,6 +112,10 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final HashMap<Integer, Long> TELEPHONY_SIGNAL_LEVEL_TIMES_BY_SUB_ID = new HashMap<>();
     private static final HashMap<Integer, String> ACTIVE_DATA_NETWORK_LABELS_BY_SUB_ID = new HashMap<>();
     private static final HashMap<Integer, Long> ACTIVE_DATA_NETWORK_LABEL_TIMES_BY_SUB_ID = new HashMap<>();
+    private static final HashMap<String, Integer> SYSTEM_UI_ID_CACHE = new HashMap<>();
+    private static final HashMap<String, Field> FIELD_CACHE = new HashMap<>();
+    private static final HashMap<String, Method> NO_ARG_METHOD_CACHE = new HashMap<>();
+    private static volatile Method SET_MEASURED_DIMENSION_METHOD;
 
     @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
@@ -128,7 +134,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookFlymeWifiView(loader);
         hookConnectionRateView(loader);
         hookImageViewTintUpdates(loader);
-        hookDrawableLevels();
         hookSignalDrawableLevels(loader);
         hookConstructors(loader, "com.android.systemui.statusbar.StatusBarIconView", view -> {
             Config config = Config.load(view.getContext());
@@ -1725,7 +1730,14 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!isValidSubId(subId)) {
             return fallbackLevel;
         }
-        Config config = Config.load(SYSTEM_UI_CONTEXT);
+        Config config = CACHED_CONFIG;
+        if (config == null) {
+            Context context = SYSTEM_UI_CONTEXT;
+            if (context == null) {
+                return fallbackLevel;
+            }
+            config = Config.load(context);
+        }
         if (!config.enabled || !config.iosSignalDebugEnabled) {
             return fallbackLevel;
         }
@@ -2023,9 +2035,16 @@ public class FlymeStatusBarSizer extends XposedModule {
             setParentVisibility(imageView, true);
             return;
         }
+        String oldLabel = NETWORK_TYPE_LABELS.get(imageView);
         NETWORK_TYPE_LABELS.put(imageView, label);
         imageView.setVisibility(View.VISIBLE);
         setParentVisibility(imageView, true);
+        if (label.equals(oldLabel)
+                && imageView.getDrawable() instanceof NetworkTypeDrawable) {
+            syncDrawableTint(imageView, imageView.getDrawable());
+            imageView.setAdjustViewBounds(false);
+            return;
+        }
         NetworkTypeDrawable drawable = new NetworkTypeDrawable(label, imageView.getResources().getDisplayMetrics().density);
         syncDrawableTint(imageView, drawable);
         imageView.setImageDrawable(drawable);
@@ -3266,8 +3285,21 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int getSystemUiId(Context context, String name) {
+        if (context == null || name == null) {
+            return 0;
+        }
+        synchronized (SYSTEM_UI_ID_CACHE) {
+            Integer cached = SYSTEM_UI_ID_CACHE.get(name);
+            if (cached != null) {
+                return cached;
+            }
+        }
         Resources resources = context.getResources();
-        return resources.getIdentifier(name, "id", SYSTEM_UI);
+        int id = resources.getIdentifier(name, "id", SYSTEM_UI);
+        synchronized (SYSTEM_UI_ID_CACHE) {
+            SYSTEM_UI_ID_CACHE.put(name, id);
+        }
+        return id;
     }
 
     private static int getSystemUiDimen(Context context, String name) {
@@ -3277,13 +3309,32 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static String getSystemUiIdName(View view) {
+        if (view == null) {
+            return "";
+        }
+        synchronized (VIEW_ID_NAME_CACHE) {
+            String cached = VIEW_ID_NAME_CACHE.get(view);
+            if (cached != null) {
+                return cached;
+            }
+        }
         int id = view.getId();
         if (id == View.NO_ID) {
+            synchronized (VIEW_ID_NAME_CACHE) {
+                VIEW_ID_NAME_CACHE.put(view, "");
+            }
             return "";
         }
         try {
-            return view.getResources().getResourceEntryName(id);
+            String name = view.getResources().getResourceEntryName(id);
+            synchronized (VIEW_ID_NAME_CACHE) {
+                VIEW_ID_NAME_CACHE.put(view, name);
+            }
+            return name;
         } catch (Resources.NotFoundException ignored) {
+            synchronized (VIEW_ID_NAME_CACHE) {
+                VIEW_ID_NAME_CACHE.put(view, "");
+            }
             return "";
         }
     }
@@ -3292,17 +3343,70 @@ public class FlymeStatusBarSizer extends XposedModule {
         return Math.round(value * view.getResources().getDisplayMetrics().density);
     }
 
-    private static Object getField(Object target, String name) {
-        try {
-            Class<?> clazz = target.getClass();
-            while (clazz != null) {
-                try {
-                    java.lang.reflect.Field field = clazz.getDeclaredField(name);
-                    field.setAccessible(true);
-                    return field.get(target);
-                } catch (NoSuchFieldException ignored) {
-                    clazz = clazz.getSuperclass();
+    private static String memberCacheKey(Class<?> clazz, String name) {
+        return clazz.getName() + "#" + name;
+    }
+
+    private static Field findCachedField(Class<?> targetClass, String name) {
+        String key = memberCacheKey(targetClass, name);
+        synchronized (FIELD_CACHE) {
+            Field cached = FIELD_CACHE.get(key);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        Class<?> clazz = targetClass;
+        while (clazz != null) {
+            try {
+                Field field = clazz.getDeclaredField(name);
+                field.setAccessible(true);
+                synchronized (FIELD_CACHE) {
+                    FIELD_CACHE.put(key, field);
                 }
+                return field;
+            } catch (NoSuchFieldException ignored) {
+                clazz = clazz.getSuperclass();
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static Method findCachedNoArgMethod(Class<?> targetClass, String name) {
+        String key = memberCacheKey(targetClass, name);
+        synchronized (NO_ARG_METHOD_CACHE) {
+            Method cached = NO_ARG_METHOD_CACHE.get(key);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        Class<?> clazz = targetClass;
+        while (clazz != null) {
+            try {
+                Method method = clazz.getDeclaredMethod(name);
+                method.setAccessible(true);
+                synchronized (NO_ARG_METHOD_CACHE) {
+                    NO_ARG_METHOD_CACHE.put(key, method);
+                }
+                return method;
+            } catch (NoSuchMethodException ignored) {
+                clazz = clazz.getSuperclass();
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static Object getField(Object target, String name) {
+        if (target == null || name == null) {
+            return null;
+        }
+        try {
+            Field field = findCachedField(target.getClass(), name);
+            if (field != null) {
+                return field.get(target);
             }
         } catch (Throwable ignored) {
         }
@@ -3310,17 +3414,13 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void setIntField(Object target, String name, int value) {
+        if (target == null || name == null) {
+            return;
+        }
         try {
-            Class<?> clazz = target.getClass();
-            while (clazz != null) {
-                try {
-                    java.lang.reflect.Field field = clazz.getDeclaredField(name);
-                    field.setAccessible(true);
-                    field.setInt(target, value);
-                    return;
-                } catch (NoSuchFieldException ignored) {
-                    clazz = clazz.getSuperclass();
-                }
+            Field field = findCachedField(target.getClass(), name);
+            if (field != null) {
+                field.setInt(target, value);
             }
         } catch (Throwable ignored) {
         }
@@ -3342,16 +3442,13 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static Object invokeNoArg(Object target, String name) {
+        if (target == null || name == null) {
+            return null;
+        }
         try {
-            Class<?> clazz = target.getClass();
-            while (clazz != null) {
-                try {
-                    Method method = clazz.getDeclaredMethod(name);
-                    method.setAccessible(true);
-                    return method.invoke(target);
-                } catch (NoSuchMethodException ignored) {
-                    clazz = clazz.getSuperclass();
-                }
+            Method method = findCachedNoArgMethod(target.getClass(), name);
+            if (method != null) {
+                return method.invoke(target);
             }
         } catch (Throwable ignored) {
         }
@@ -3365,8 +3462,12 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void setMeasuredDimension(View view, int width, int height) {
         try {
-            Method method = View.class.getDeclaredMethod("setMeasuredDimension", int.class, int.class);
-            method.setAccessible(true);
+            Method method = SET_MEASURED_DIMENSION_METHOD;
+            if (method == null) {
+                method = View.class.getDeclaredMethod("setMeasuredDimension", int.class, int.class);
+                method.setAccessible(true);
+                SET_MEASURED_DIMENSION_METHOD = method;
+            }
             method.invoke(view, width, height);
         } catch (Throwable ignored) {
         }
