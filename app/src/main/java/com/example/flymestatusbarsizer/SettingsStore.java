@@ -60,7 +60,7 @@ final class SettingsStore {
 
     static final boolean DEFAULT_ENABLED = true;
     static final int DEFAULT_GLOBAL_ICON_SCALE = 125;
-    static final int DEFAULT_MOBILE_SIGNAL_FACTOR = 29;
+    static final int DEFAULT_MOBILE_SIGNAL_FACTOR = 50;
     static final int DEFAULT_WIFI_SIGNAL_FACTOR = 70;
     static final int DEFAULT_BATTERY_FACTOR = 100;
     static final int DEFAULT_STATUS_ICON_FACTOR = 46;

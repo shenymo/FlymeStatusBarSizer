@@ -110,6 +110,7 @@ public class MainActivity extends Activity {
         TextView reset = button("\u6062\u590d\u9ed8\u8ba4");
         reset.setOnClickListener(v -> {
             prefs.edit().clear().apply();
+            SettingsStore.notifyChanged(this);
             recreate();
         });
         root.addView(reset, matchWrapWithTop(14));
@@ -189,6 +190,7 @@ public class MainActivity extends Activity {
                 editor.putInt(key, settings.optInt(key, SettingsStore.defaultInt(key)));
             }
             editor.apply();
+            SettingsStore.notifyChanged(this);
             showToast("\u914d\u7f6e\u5df2\u5bfc\u5165");
             recreate();
         } catch (Throwable t) {
