@@ -7,6 +7,8 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.widget.CompoundButton;
 import android.widget.LinearLayout;
@@ -62,7 +64,7 @@ public class MainActivity extends Activity {
                 SettingsStore.KEY_ENABLED, SettingsStore.DEFAULT_ENABLED);
         addSwitch(root, "iOS \u98ce\u683c\u7535\u6c60", "\u7528\u4ee3\u7801\u7ed8\u5236\u7070\u5e95\u3001\u767d\u8272\u7535\u91cf\u548c\u9ed1\u8272\u6570\u5b57",
                 SettingsStore.KEY_IOS_BATTERY_STYLE, SettingsStore.DEFAULT_IOS_BATTERY_STYLE);
-        addSwitch(root, "iOS \u98ce\u683c\u79fb\u52a8\u4fe1\u53f7\u683c", "\u8bd5\u9a8c\u529f\u80fd\uff1a\u7528\u4ee3\u7801\u7ed8\u5236\u7684\u56fa\u5b9a\u6ee1\u683c\u4fe1\u53f7\u66ff\u6362 mobile_signal",
+        addSwitch(root, "iOS \u98ce\u683c\u79fb\u52a8\u4fe1\u53f7\u683c", "\u6839\u636e SystemUI \u4e0b\u53d1\u7684\u79fb\u52a8\u4fe1\u53f7\u72b6\u6001\u52a8\u6001\u7ed8\u5236\u4fe1\u53f7\u5f3a\u5ea6",
                 SettingsStore.KEY_IOS_SIGNAL_STYLE, SettingsStore.DEFAULT_IOS_SIGNAL_STYLE);
         addSwitch(root, "iOS \u98ce\u683c 5G \u6807\u8bc6", "\u53ea\u663e\u793a 5G / 5GA / 5G+\uff0c\u5176\u4ed6\u7f51\u7edc\u7c7b\u578b\u6807\u8bc6\u81ea\u52a8\u9690\u85cf",
                 SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, SettingsStore.DEFAULT_IOS_NETWORK_TYPE_STYLE);
@@ -96,8 +98,14 @@ public class MainActivity extends Activity {
         importConfig.setOnClickListener(v -> startImportConfig());
         root.addView(importConfig, matchWrapWithTop(10));
 
+        TextView restartSystemUi = button("\u91cd\u542f SystemUI");
+        restartSystemUi.setOnClickListener(v -> restartSystemUi());
+        root.addView(restartSystemUi, matchWrapWithTop(10));
+
         addSlider(root, "\u6587\u5b57\u5927\u5c0f", "\u72b6\u6001\u680f\u65f6\u949f\u7b49\u6587\u5b57\u5355\u72ec\u7f29\u653e",
                 SettingsStore.KEY_TEXT_SCALE, SettingsStore.DEFAULT_TEXT_SCALE, 80, 130, "%");
+        addSwitch(root, "\u65f6\u95f4\u663e\u793a\u661f\u671f", "\u5728\u72b6\u6001\u680f\u65f6\u95f4\u53f3\u4fa7\u8ffd\u52a0\u5f53\u524d\u661f\u671f",
+                SettingsStore.KEY_SHOW_CLOCK_WEEKDAY, SettingsStore.DEFAULT_SHOW_CLOCK_WEEKDAY);
 
         TextView reset = button("\u6062\u590d\u9ed8\u8ba4");
         reset.setOnClickListener(v -> {
@@ -200,6 +208,34 @@ public class MainActivity extends Activity {
 
     private void showToast(String message) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
+
+    private void restartSystemUi() {
+        showToast("\u6b63\u5728\u91cd\u542f SystemUI...");
+        new Thread(() -> {
+            boolean success = false;
+            String error = null;
+            try {
+                Process process = new ProcessBuilder("su", "-c",
+                        "pkill -f com.android.systemui || killall com.android.systemui")
+                        .redirectErrorStream(true)
+                        .start();
+                success = process.waitFor() == 0;
+            } catch (Throwable t) {
+                error = t.getMessage();
+            }
+            boolean finalSuccess = success;
+            String finalError = error;
+            new Handler(Looper.getMainLooper()).post(() -> {
+                if (finalSuccess) {
+                    showToast("SystemUI \u5df2\u91cd\u542f");
+                } else if (finalError == null || finalError.length() == 0) {
+                    showToast("\u91cd\u542f\u5931\u8d25\uff0c\u8bf7\u786e\u8ba4\u5df2\u6388\u4e88 root \u6743\u9650");
+                } else {
+                    showToast("\u91cd\u542f\u5931\u8d25\uff1a" + finalError);
+                }
+            });
+        }).start();
     }
 
     private void addSwitch(LinearLayout root, String title, String subtitle, String key, boolean defaultValue) {

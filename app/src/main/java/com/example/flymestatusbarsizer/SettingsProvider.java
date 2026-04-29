@@ -78,8 +78,27 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X));
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y));
         add(cursor, SettingsStore.KEY_TEXT_SCALE, prefs.getInt(SettingsStore.KEY_TEXT_SCALE, SettingsStore.DEFAULT_TEXT_SCALE));
+        add(cursor, SettingsStore.KEY_SHOW_CLOCK_WEEKDAY, prefs.getBoolean(SettingsStore.KEY_SHOW_CLOCK_WEEKDAY, SettingsStore.DEFAULT_SHOW_CLOCK_WEEKDAY));
         add(cursor, SettingsStore.KEY_IOS_BATTERY_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_BATTERY_STYLE, SettingsStore.DEFAULT_IOS_BATTERY_STYLE));
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_SIGNAL_STYLE, SettingsStore.DEFAULT_IOS_SIGNAL_STYLE));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_DUAL_COMBINED,
+                prefs.getBoolean(SettingsStore.KEY_IOS_SIGNAL_DUAL_COMBINED,
+                        SettingsStore.DEFAULT_IOS_SIGNAL_DUAL_COMBINED));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_DEBUG_ENABLED,
+                prefs.getBoolean(SettingsStore.KEY_IOS_SIGNAL_DEBUG_ENABLED,
+                        SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_ENABLED));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM1_ENABLED,
+                prefs.getBoolean(SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM1_ENABLED,
+                        SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM1_ENABLED));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM2_ENABLED,
+                prefs.getBoolean(SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM2_ENABLED,
+                        SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM2_ENABLED));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM1_LEVEL,
+                prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM1_LEVEL,
+                        SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM1_LEVEL));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL,
+                prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL,
+                        SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM2_LEVEL));
         add(cursor, SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, SettingsStore.DEFAULT_IOS_NETWORK_TYPE_STYLE));
         add(cursor, SettingsStore.KEY_IOS_WIFI_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_WIFI_STYLE, SettingsStore.DEFAULT_IOS_WIFI_STYLE));
         return cursor;
