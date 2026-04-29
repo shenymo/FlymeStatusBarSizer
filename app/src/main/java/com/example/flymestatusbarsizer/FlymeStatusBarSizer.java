@@ -27,6 +27,8 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.WeakHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import io.github.libxposed.api.XposedModule;
 import io.github.libxposed.api.XposedModuleInterface;
@@ -43,8 +45,10 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<View, Integer> ORIGINAL_CONNECTION_RATE_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, String> NETWORK_TYPE_LABELS = new WeakHashMap<>();
+    private static final WeakHashMap<ImageView, Integer> WIFI_SIGNAL_LEVELS = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> TRACKED_STATUS_TEXT_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_CONNECTION_RATE_VIEWS = new WeakHashMap<>();
+    private static final Pattern WIFI_LEVEL_PATTERN = Pattern.compile("(?:^|[_-])([0-4])(?:$|[_-])");
     private static final int[] DESKTOP_MOBILE_SIGNAL_SIZE = new int[2];
     private static final int[] DESKTOP_NETWORK_TYPE_SIZE = new int[2];
     private static final int SIGNAL_SCENE_DESKTOP = 0;
@@ -266,10 +270,22 @@ public class FlymeStatusBarSizer extends XposedModule {
                                 }
                             }
                         }
+                        if ("setImageResource".equals(name) && "wifi_signal".equals(idName)
+                                && chain.getArgs().size() == 1 && chain.getArg(0) instanceof Integer) {
+                            applyWifiSignalResource(imageView, (Integer) chain.getArg(0));
+                        } else if ("setImageDrawable".equals(name) && "wifi_signal".equals(idName)
+                                && !(imageView.getDrawable() instanceof IosWifiDrawable)) {
+                            Config config = Config.load(imageView.getContext());
+                            if (config.enabled && config.iosWifiStyle) {
+                                applyIosWifiImageView(imageView, getRememberedWifiLevel(imageView), config);
+                            }
+                        }
                         if ("mobile_signal".equals(idName) && imageView.getDrawable() instanceof IosSignalDrawable) {
                             syncDrawableTint(imageView, (IosSignalDrawable) imageView.getDrawable());
                         } else if ("mobile_type".equals(idName) && imageView.getDrawable() instanceof NetworkTypeDrawable) {
                             syncDrawableTint(imageView, (NetworkTypeDrawable) imageView.getDrawable());
+                        } else if ("wifi_signal".equals(idName) && imageView.getDrawable() instanceof IosWifiDrawable) {
+                            syncDrawableTint(imageView, (IosWifiDrawable) imageView.getDrawable());
                         }
                     }
                     return result;
@@ -544,6 +560,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 applyKnownNetworkTypeStyle(root, config);
             }
             scaleChild(root, "wifi_signal", config.scaled(config.wifiSignalFactor), config.scaled(config.wifiSignalFactor));
+            applyIosWifiStyle(root, config);
             if (!shouldUseDesktopSignalReference(root)) {
                 float networkTypeScale = config.scaled(config.networkTypeFactor);
                 scaleChild(root, "mobile_type", networkTypeScale, networkTypeScale);
@@ -579,6 +596,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (wifiIcon != null) {
                 scaleView(wifiIcon, config.scaled(config.wifiSignalFactor), config.scaled(config.wifiSignalFactor));
             }
+            applyIosWifiStyle(root, config);
         });
     }
 
@@ -609,6 +627,18 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         applyIosSignalImageView((ImageView) child, config);
+    }
+
+    private static void applyIosWifiStyle(View root, Config config) {
+        if (!config.iosWifiStyle) {
+            return;
+        }
+        View child = findSystemUiChild(root, "wifi_signal");
+        if (!(child instanceof ImageView)) {
+            return;
+        }
+        ImageView imageView = (ImageView) child;
+        applyIosWifiImageView(imageView, getRememberedWifiLevel(imageView), config);
     }
 
     private static void applySignalImageSizing(ImageView imageView, Config config) {
@@ -722,6 +752,112 @@ public class FlymeStatusBarSizer extends XposedModule {
         imageView.setAdjustViewBounds(false);
         if (applyMarginOffset) {
             offsetView(imageView, offsetXDp, offsetYDp);
+        }
+    }
+
+    private static void applyWifiSignalResource(ImageView imageView, int resId) {
+        Config config = Config.load(imageView.getContext());
+        if (!config.enabled || !config.iosWifiStyle) {
+            return;
+        }
+        Integer level = getWifiSignalLevel(imageView.getResources(), resId);
+        if (level == null) {
+            String resourceName = getResourceName(imageView.getResources(), resId);
+            android.util.Log.w(TAG, "Unable to parse wifi_signal level from resource: "
+                    + resourceName + " (" + resId + ")");
+            level = IosWifiDrawable.LEVEL_ERROR;
+        }
+        WIFI_SIGNAL_LEVELS.put(imageView, level);
+        applyIosWifiImageView(imageView, level, config);
+    }
+
+    private static void applyIosWifiImageView(ImageView imageView, int level, Config config) {
+        Drawable current = imageView.getDrawable();
+        if (current instanceof IosWifiDrawable) {
+            ((IosWifiDrawable) current).setLevelValue(level);
+            syncDrawableTint(imageView, current);
+        } else {
+            IosWifiDrawable drawable = new IosWifiDrawable(level,
+                    imageView.getResources().getDisplayMetrics().density);
+            syncDrawableTint(imageView, drawable);
+            imageView.setImageDrawable(drawable);
+        }
+        imageView.setAdjustViewBounds(false);
+        imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        disableAncestorClipping(imageView, 8);
+        applyIosWifiLayout(imageView, config);
+    }
+
+    private static void applyIosWifiLayout(ImageView imageView, Config config) {
+        ViewGroup.LayoutParams lp = imageView.getLayoutParams();
+        if (lp != null) {
+            float scale = config.scaled(config.wifiSignalFactor);
+            lp.width = Math.round(dp(imageView, config.iosWifiWidth) * scale);
+            lp.height = Math.round(dp(imageView, config.iosWifiHeight) * scale);
+            if (lp instanceof ViewGroup.MarginLayoutParams) {
+                ViewGroup.MarginLayoutParams marginLp = (ViewGroup.MarginLayoutParams) lp;
+                int[] original = ORIGINAL_MARGINS.get(imageView);
+                if (original == null) {
+                    original = new int[]{
+                            marginLp.leftMargin,
+                            marginLp.topMargin,
+                            marginLp.rightMargin,
+                            marginLp.bottomMargin,
+                            marginLp.getMarginStart(),
+                            marginLp.getMarginEnd()
+                    };
+                    ORIGINAL_MARGINS.put(imageView, original);
+                }
+                int marginEnd = original[5] + dp(imageView, config.iosWifiMarginEnd);
+                marginLp.setMarginEnd(marginEnd);
+                marginLp.rightMargin = original[2] + dp(imageView, config.iosWifiMarginEnd);
+            }
+            if (lp instanceof android.widget.FrameLayout.LayoutParams) {
+                ((android.widget.FrameLayout.LayoutParams) lp).gravity = Gravity.CENTER;
+            }
+            imageView.setLayoutParams(lp);
+            imageView.requestLayout();
+        }
+        disableAncestorClipping(imageView, 8);
+        offsetView(imageView, config.iosWifiOffsetX, config.iosWifiOffsetY);
+    }
+
+    private static int getRememberedWifiLevel(ImageView imageView) {
+        Integer level = WIFI_SIGNAL_LEVELS.get(imageView);
+        return level == null ? IosWifiDrawable.LEVEL_ERROR : level;
+    }
+
+    private static Integer getWifiSignalLevel(Resources resources, int resId) {
+        if (resId == 0) {
+            return null;
+        }
+        String name = getResourceName(resources, resId);
+        if (name == null) {
+            return null;
+        }
+        String lowerName = name.toLowerCase();
+        if (lowerName.contains("null") || lowerName.contains("empty")
+                || lowerName.contains("no_network") || lowerName.contains("not_connected")
+                || lowerName.contains("disconnected") || lowerName.contains("slash")
+                || lowerName.contains("off")) {
+            return 0;
+        }
+        if (lowerName.contains("full") || lowerName.contains("fully_connected")) {
+            return IosWifiDrawable.MAX_LEVEL;
+        }
+        Matcher matcher = WIFI_LEVEL_PATTERN.matcher(lowerName);
+        Integer lastLevel = null;
+        while (matcher.find()) {
+            lastLevel = Integer.parseInt(matcher.group(1));
+        }
+        return lastLevel;
+    }
+
+    private static String getResourceName(Resources resources, int resId) {
+        try {
+            return resources.getResourceEntryName(resId);
+        } catch (Resources.NotFoundException ignored) {
+            return null;
         }
     }
 
@@ -1664,6 +1800,11 @@ public class FlymeStatusBarSizer extends XposedModule {
         int iosBatteryOffsetX = SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X;
         int iosBatteryOffsetY = SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y;
         int iosBatteryTextSize = SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE;
+        int iosWifiWidth = SettingsStore.DEFAULT_IOS_WIFI_WIDTH;
+        int iosWifiHeight = SettingsStore.DEFAULT_IOS_WIFI_HEIGHT;
+        int iosWifiOffsetX = SettingsStore.DEFAULT_IOS_WIFI_OFFSET_X;
+        int iosWifiOffsetY = SettingsStore.DEFAULT_IOS_WIFI_OFFSET_Y;
+        int iosWifiMarginEnd = SettingsStore.DEFAULT_IOS_WIFI_MARGIN_END;
         int activityIconFactor = SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR;
         int connectionRateOffsetX = SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X;
         int connectionRateOffsetY = SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y;
@@ -1671,6 +1812,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         boolean iosBatteryStyle = SettingsStore.DEFAULT_IOS_BATTERY_STYLE;
         boolean iosSignalStyle = SettingsStore.DEFAULT_IOS_SIGNAL_STYLE;
         boolean iosNetworkTypeStyle = SettingsStore.DEFAULT_IOS_NETWORK_TYPE_STYLE;
+        boolean iosWifiStyle = SettingsStore.DEFAULT_IOS_WIFI_STYLE;
 
         float scaled(int factorPercent) {
             return 1f + ((globalIconScale - 1f) * (factorPercent / 100f));
@@ -1753,6 +1895,16 @@ public class FlymeStatusBarSizer extends XposedModule {
                 iosBatteryOffsetY = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y);
             } else if (SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE.equals(key)) {
                 iosBatteryTextSize = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE);
+            } else if (SettingsStore.KEY_IOS_WIFI_WIDTH.equals(key)) {
+                iosWifiWidth = parseInt(value, SettingsStore.DEFAULT_IOS_WIFI_WIDTH);
+            } else if (SettingsStore.KEY_IOS_WIFI_HEIGHT.equals(key)) {
+                iosWifiHeight = parseInt(value, SettingsStore.DEFAULT_IOS_WIFI_HEIGHT);
+            } else if (SettingsStore.KEY_IOS_WIFI_OFFSET_X.equals(key)) {
+                iosWifiOffsetX = parseInt(value, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_X);
+            } else if (SettingsStore.KEY_IOS_WIFI_OFFSET_Y.equals(key)) {
+                iosWifiOffsetY = parseInt(value, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_Y);
+            } else if (SettingsStore.KEY_IOS_WIFI_MARGIN_END.equals(key)) {
+                iosWifiMarginEnd = parseInt(value, SettingsStore.DEFAULT_IOS_WIFI_MARGIN_END);
             } else if (SettingsStore.KEY_ACTIVITY_ICON_FACTOR.equals(key)) {
                 activityIconFactor = parseInt(value, SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR);
             } else if (SettingsStore.KEY_CONNECTION_RATE_OFFSET_X.equals(key)) {
@@ -1767,6 +1919,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                 iosSignalStyle = "1".equals(value);
             } else if (SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE.equals(key)) {
                 iosNetworkTypeStyle = "1".equals(value);
+            } else if (SettingsStore.KEY_IOS_WIFI_STYLE.equals(key)) {
+                iosWifiStyle = "1".equals(value);
             }
         }
 

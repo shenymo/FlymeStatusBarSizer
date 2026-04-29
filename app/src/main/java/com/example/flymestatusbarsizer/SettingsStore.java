@@ -35,6 +35,11 @@ final class SettingsStore {
     static final String KEY_IOS_BATTERY_OFFSET_X = "ios_battery_offset_x";
     static final String KEY_IOS_BATTERY_OFFSET_Y = "ios_battery_offset_y";
     static final String KEY_IOS_BATTERY_TEXT_SIZE = "ios_battery_text_size";
+    static final String KEY_IOS_WIFI_WIDTH = "ios_wifi_width";
+    static final String KEY_IOS_WIFI_HEIGHT = "ios_wifi_height";
+    static final String KEY_IOS_WIFI_OFFSET_X = "ios_wifi_offset_x";
+    static final String KEY_IOS_WIFI_OFFSET_Y = "ios_wifi_offset_y";
+    static final String KEY_IOS_WIFI_MARGIN_END = "ios_wifi_margin_end";
     static final String KEY_ACTIVITY_ICON_FACTOR = "activity_icon_factor";
     static final String KEY_CONNECTION_RATE_OFFSET_X = "connection_rate_offset_x";
     static final String KEY_CONNECTION_RATE_OFFSET_Y = "connection_rate_offset_y";
@@ -42,6 +47,7 @@ final class SettingsStore {
     static final String KEY_IOS_BATTERY_STYLE = "ios_battery_style";
     static final String KEY_IOS_SIGNAL_STYLE = "ios_signal_style";
     static final String KEY_IOS_NETWORK_TYPE_STYLE = "ios_network_type_style";
+    static final String KEY_IOS_WIFI_STYLE = "ios_wifi_style";
 
     static final boolean DEFAULT_ENABLED = true;
     static final int DEFAULT_GLOBAL_ICON_SCALE = 115;
@@ -71,6 +77,11 @@ final class SettingsStore {
     static final int DEFAULT_IOS_BATTERY_OFFSET_X = 0;
     static final int DEFAULT_IOS_BATTERY_OFFSET_Y = 0;
     static final int DEFAULT_IOS_BATTERY_TEXT_SIZE = 72;
+    static final int DEFAULT_IOS_WIFI_WIDTH = 20;
+    static final int DEFAULT_IOS_WIFI_HEIGHT = 14;
+    static final int DEFAULT_IOS_WIFI_OFFSET_X = 0;
+    static final int DEFAULT_IOS_WIFI_OFFSET_Y = 0;
+    static final int DEFAULT_IOS_WIFI_MARGIN_END = 0;
     static final int DEFAULT_ACTIVITY_ICON_FACTOR = 75;
     static final int DEFAULT_CONNECTION_RATE_OFFSET_X = 0;
     static final int DEFAULT_CONNECTION_RATE_OFFSET_Y = 0;
@@ -78,6 +89,7 @@ final class SettingsStore {
     static final boolean DEFAULT_IOS_BATTERY_STYLE = true;
     static final boolean DEFAULT_IOS_SIGNAL_STYLE = true;
     static final boolean DEFAULT_IOS_NETWORK_TYPE_STYLE = true;
+    static final boolean DEFAULT_IOS_WIFI_STYLE = true;
 
     static final String[] INT_KEYS = {
             KEY_GLOBAL_ICON_SCALE,
@@ -107,6 +119,11 @@ final class SettingsStore {
             KEY_IOS_BATTERY_OFFSET_X,
             KEY_IOS_BATTERY_OFFSET_Y,
             KEY_IOS_BATTERY_TEXT_SIZE,
+            KEY_IOS_WIFI_WIDTH,
+            KEY_IOS_WIFI_HEIGHT,
+            KEY_IOS_WIFI_OFFSET_X,
+            KEY_IOS_WIFI_OFFSET_Y,
+            KEY_IOS_WIFI_MARGIN_END,
             KEY_ACTIVITY_ICON_FACTOR,
             KEY_CONNECTION_RATE_OFFSET_X,
             KEY_CONNECTION_RATE_OFFSET_Y,
@@ -117,7 +134,8 @@ final class SettingsStore {
             KEY_ENABLED,
             KEY_IOS_BATTERY_STYLE,
             KEY_IOS_SIGNAL_STYLE,
-            KEY_IOS_NETWORK_TYPE_STYLE
+            KEY_IOS_NETWORK_TYPE_STYLE,
+            KEY_IOS_WIFI_STYLE
     };
 
     private SettingsStore() {
@@ -196,6 +214,16 @@ final class SettingsStore {
                 return DEFAULT_IOS_BATTERY_OFFSET_Y;
             case KEY_IOS_BATTERY_TEXT_SIZE:
                 return DEFAULT_IOS_BATTERY_TEXT_SIZE;
+            case KEY_IOS_WIFI_WIDTH:
+                return DEFAULT_IOS_WIFI_WIDTH;
+            case KEY_IOS_WIFI_HEIGHT:
+                return DEFAULT_IOS_WIFI_HEIGHT;
+            case KEY_IOS_WIFI_OFFSET_X:
+                return DEFAULT_IOS_WIFI_OFFSET_X;
+            case KEY_IOS_WIFI_OFFSET_Y:
+                return DEFAULT_IOS_WIFI_OFFSET_Y;
+            case KEY_IOS_WIFI_MARGIN_END:
+                return DEFAULT_IOS_WIFI_MARGIN_END;
             case KEY_ACTIVITY_ICON_FACTOR:
                 return DEFAULT_ACTIVITY_ICON_FACTOR;
             case KEY_CONNECTION_RATE_OFFSET_X:
@@ -219,6 +247,8 @@ final class SettingsStore {
                 return DEFAULT_IOS_SIGNAL_STYLE;
             case KEY_IOS_NETWORK_TYPE_STYLE:
                 return DEFAULT_IOS_NETWORK_TYPE_STYLE;
+            case KEY_IOS_WIFI_STYLE:
+                return DEFAULT_IOS_WIFI_STYLE;
             default:
                 return false;
         }

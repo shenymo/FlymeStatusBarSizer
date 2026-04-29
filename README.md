@@ -17,6 +17,7 @@ Main feature groups:
 - Per-icon scaling factors for mobile signal, Wi-Fi, battery, generic icons, arrows, and 5G/network type labels.
 - iOS-style battery drawing.
 - iOS-style mobile signal bars.
+- iOS-style Wi-Fi arcs with dynamic strength parsed from SystemUI Wi-Fi resources.
 - iOS-style 5G label replacement.
 - Current network speed text scaling and offset tuning.
 - Config import/export as JSON.
@@ -50,7 +51,7 @@ Important files:
 
 - `app/src/main/java/com/example/flymestatusbarsizer/WifiSettingsActivity.java`
   - Wi-Fi icon settings.
-  - Contains Wi-Fi signal scale.
+  - Contains Wi-Fi signal scale, iOS Wi-Fi drawing toggle, live preview, dimensions, offsets, and right-side margin.
 
 - `app/src/main/java/com/example/flymestatusbarsizer/OtherIconSettingsActivity.java`
   - Other status bar icon settings.
@@ -65,6 +66,9 @@ Important files:
 
 - `app/src/main/java/com/example/flymestatusbarsizer/IosSignalDrawable.java`
   - Draws iOS-style signal bars.
+
+- `app/src/main/java/com/example/flymestatusbarsizer/IosWifiDrawable.java`
+  - Draws iOS-style Wi-Fi strength arcs.
 
 - `app/src/main/java/com/example/flymestatusbarsizer/NetworkTypeDrawable.java`
   - Draws iOS-style network type labels such as 5G/5GA/5G+.
@@ -108,6 +112,7 @@ Boolean keys:
 - `ios_battery_style`: default true. Enables custom iOS-style battery drawing.
 - `ios_signal_style`: default true. Enables custom iOS-style mobile signal bars.
 - `ios_network_type_style`: default true. Enables custom iOS-style 5G/network type label drawing.
+- `ios_wifi_style`: default true. Enables custom iOS-style Wi-Fi drawing based on parsed `wifi_signal` resource levels.
 
 Integer keys:
 
@@ -153,6 +158,14 @@ IOS battery keys:
 - `ios_battery_offset_x`: default 0 dp, UI range -20 to 20 dp.
 - `ios_battery_offset_y`: default 0 dp, UI range -20 to 20 dp.
 - `ios_battery_text_size`: default 72 percent, UI range 40-100 percent.
+
+IOS Wi-Fi keys:
+
+- `ios_wifi_width`: default 20 dp, UI range 10-36 dp.
+- `ios_wifi_height`: default 14 dp, UI range 8-28 dp.
+- `ios_wifi_offset_x`: default 0 dp, UI range -20 to 20 dp.
+- `ios_wifi_offset_y`: default 0 dp, UI range -20 to 20 dp.
+- `ios_wifi_margin_end`: default 0 dp, UI range -20 to 20 dp.
 
 Current network speed keys:
 
@@ -350,7 +363,8 @@ The module targets:
   - `SignalNetworkSettingsActivity.java` for UI.
 
 - Change Wi-Fi icon sizing:
-  - `applyWifiSizing(...)` and Flyme Wi-Fi hooks in `FlymeStatusBarSizer.java`
+  - `applyWifiSizing(...)`, `applyIosWifiStyle(...)`, `applyWifiSignalResource(...)`, and Flyme Wi-Fi hooks in `FlymeStatusBarSizer.java`
+  - `IosWifiDrawable.java`
   - `WifiSettingsActivity.java` for UI.
 
 - Change current network speed behavior:
@@ -372,7 +386,12 @@ The module targets:
 - Module enabled: true.
 - iOS battery style: true.
 - iOS mobile signal style: true.
+- iOS Wi-Fi style: true.
 - iOS 5G/network type style: true.
 - Hide 4G/5G switch: removed.
+
+## Wi-Fi Dynamic Drawing Notes
+
+When `ios_wifi_style` is enabled, `wifi_signal` resource updates are parsed into signal levels and replaced with `IosWifiDrawable`. If the resource name cannot be parsed, the module intentionally does not fall back to the original PNG: it draws a visible error placeholder and writes a `FlymeStatusBarSizer` warning log containing the resource name and id.
 
 

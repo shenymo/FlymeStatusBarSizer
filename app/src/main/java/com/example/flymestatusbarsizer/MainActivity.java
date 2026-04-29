@@ -66,6 +66,8 @@ public class MainActivity extends Activity {
                 SettingsStore.KEY_IOS_SIGNAL_STYLE, SettingsStore.DEFAULT_IOS_SIGNAL_STYLE);
         addSwitch(root, "iOS \u98ce\u683c 5G \u6807\u8bc6", "\u53ea\u663e\u793a 5G / 5GA / 5G+\uff0c\u5176\u4ed6\u7f51\u7edc\u7c7b\u578b\u6807\u8bc6\u81ea\u52a8\u9690\u85cf",
                 SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, SettingsStore.DEFAULT_IOS_NETWORK_TYPE_STYLE);
+        addSwitch(root, "iOS \u98ce\u683c Wi-Fi", "\u6839\u636e wifi_signal \u8d44\u6e90\u52a8\u6001\u7ed8\u5236 Wi-Fi \u5f3a\u5ea6",
+                SettingsStore.KEY_IOS_WIFI_STYLE, SettingsStore.DEFAULT_IOS_WIFI_STYLE);
 
         addSlider(root, "\u72b6\u6001\u680f\u6574\u4f53\u56fe\u6807\u7f29\u653e", "\u79fb\u52a8\u4fe1\u53f7\u3001Wi-Fi\u3001\u7535\u6c60\u3001\u4e0a\u4e0b\u884c\u7bad\u5934\u548c\u666e\u901a\u56fe\u6807\u4e00\u8d77\u6309\u539f\u59cb\u5c3a\u5bf8\u7f29\u653e",
                 SettingsStore.KEY_GLOBAL_ICON_SCALE, SettingsStore.DEFAULT_GLOBAL_ICON_SCALE, 80, 160, "%");

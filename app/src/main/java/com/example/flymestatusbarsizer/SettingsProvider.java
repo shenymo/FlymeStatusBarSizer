@@ -69,6 +69,11 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_IOS_BATTERY_OFFSET_X, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_OFFSET_X, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X));
         add(cursor, SettingsStore.KEY_IOS_BATTERY_OFFSET_Y, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_OFFSET_Y, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y));
         add(cursor, SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE));
+        add(cursor, SettingsStore.KEY_IOS_WIFI_WIDTH, prefs.getInt(SettingsStore.KEY_IOS_WIFI_WIDTH, SettingsStore.DEFAULT_IOS_WIFI_WIDTH));
+        add(cursor, SettingsStore.KEY_IOS_WIFI_HEIGHT, prefs.getInt(SettingsStore.KEY_IOS_WIFI_HEIGHT, SettingsStore.DEFAULT_IOS_WIFI_HEIGHT));
+        add(cursor, SettingsStore.KEY_IOS_WIFI_OFFSET_X, prefs.getInt(SettingsStore.KEY_IOS_WIFI_OFFSET_X, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_X));
+        add(cursor, SettingsStore.KEY_IOS_WIFI_OFFSET_Y, prefs.getInt(SettingsStore.KEY_IOS_WIFI_OFFSET_Y, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_Y));
+        add(cursor, SettingsStore.KEY_IOS_WIFI_MARGIN_END, prefs.getInt(SettingsStore.KEY_IOS_WIFI_MARGIN_END, SettingsStore.DEFAULT_IOS_WIFI_MARGIN_END));
         add(cursor, SettingsStore.KEY_ACTIVITY_ICON_FACTOR, prefs.getInt(SettingsStore.KEY_ACTIVITY_ICON_FACTOR, SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR));
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X));
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y));
@@ -76,6 +81,7 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_IOS_BATTERY_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_BATTERY_STYLE, SettingsStore.DEFAULT_IOS_BATTERY_STYLE));
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_SIGNAL_STYLE, SettingsStore.DEFAULT_IOS_SIGNAL_STYLE));
         add(cursor, SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, SettingsStore.DEFAULT_IOS_NETWORK_TYPE_STYLE));
+        add(cursor, SettingsStore.KEY_IOS_WIFI_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_WIFI_STYLE, SettingsStore.DEFAULT_IOS_WIFI_STYLE));
         return cursor;
     }
 
