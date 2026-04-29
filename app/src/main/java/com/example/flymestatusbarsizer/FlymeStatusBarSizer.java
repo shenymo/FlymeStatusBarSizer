@@ -39,6 +39,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, int[]> ORIGINAL_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_MARGINS = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_PADDINGS = new WeakHashMap<>();
+    private static final WeakHashMap<View, float[]> ORIGINAL_TRANSLATIONS = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<View, Integer> ORIGINAL_CONNECTION_RATE_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, String> NETWORK_TYPE_LABELS = new WeakHashMap<>();
@@ -191,8 +192,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                         if (thisObject instanceof View) {
                             View view = (View) thisObject;
                             applyConnectionRateTextScale(view);
+                            applyConnectionRateOffset(view);
                             Object canvas = chain.getArg(0);
-                            float alignmentOffset = getConnectionRateAlignmentOffset(view);
+                            float alignmentOffset = getConnectionRateAlignmentOffset(view)
+                                    + getConnectionRateManualDrawOffsetY(view);
                             if (canvas instanceof Canvas && alignmentOffset != 0f) {
                                 Canvas drawCanvas = (Canvas) canvas;
                                 int saveCount = drawCanvas.save();
@@ -210,7 +213,11 @@ public class FlymeStatusBarSizer extends XposedModule {
                         trackConnectionRateView(view);
                         ensureConfigRefreshObserver(view.getContext());
                         applyConnectionRateTextScale(view);
-                        view.postDelayed(() -> applyConnectionRateTextScale(view), 500);
+                        applyConnectionRateOffset(view);
+                        view.postDelayed(() -> {
+                            applyConnectionRateTextScale(view);
+                            applyConnectionRateOffset(view);
+                        }, 500);
                     }
                     return result;
                 });
@@ -957,6 +964,60 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private static void applyConnectionRateOffset(View view) {
+        Config config = Config.load(view.getContext());
+        int dx = config.enabled ? dp(view, config.connectionRateOffsetX) : 0;
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp instanceof ViewGroup.MarginLayoutParams) {
+            ViewGroup.MarginLayoutParams marginLp = (ViewGroup.MarginLayoutParams) lp;
+            int[] original = ORIGINAL_MARGINS.get(view);
+            if (original == null) {
+                original = new int[]{
+                        marginLp.leftMargin,
+                        marginLp.topMargin,
+                        marginLp.rightMargin,
+                        marginLp.bottomMargin,
+                        marginLp.getMarginStart(),
+                        marginLp.getMarginEnd()
+                };
+                ORIGINAL_MARGINS.put(view, original);
+            }
+            int left = original[0] + dx;
+            int top = original[1];
+            int right = original[2] - dx;
+            int bottom = original[3];
+            int start = original[4] + dx;
+            int end = original[5] - dx;
+            disableAncestorClipping(view, 6);
+            if (marginLp.leftMargin != left || marginLp.topMargin != top
+                    || marginLp.rightMargin != right || marginLp.bottomMargin != bottom
+                    || marginLp.getMarginStart() != start || marginLp.getMarginEnd() != end) {
+                marginLp.leftMargin = left;
+                marginLp.topMargin = top;
+                marginLp.rightMargin = right;
+                marginLp.bottomMargin = bottom;
+                marginLp.setMarginStart(start);
+                marginLp.setMarginEnd(end);
+                view.setLayoutParams(marginLp);
+                view.requestLayout();
+            }
+            return;
+        }
+        float[] original = ORIGINAL_TRANSLATIONS.get(view);
+        if (original == null) {
+            original = new float[]{view.getTranslationX(), view.getTranslationY()};
+            ORIGINAL_TRANSLATIONS.put(view, original);
+        }
+        disableAncestorClipping(view, 6);
+        view.setTranslationX(original[0] + dx);
+        view.setTranslationY(original[1]);
+    }
+
+    private static float getConnectionRateManualDrawOffsetY(View view) {
+        Config config = Config.load(view.getContext());
+        return config.enabled ? dp(view, config.connectionRateOffsetY) : 0f;
+    }
+
     private static void trackStatusTextView(TextView textView) {
         TRACKED_STATUS_TEXT_VIEWS.put(textView, Boolean.TRUE);
     }
@@ -1025,6 +1086,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                     continue;
                 }
                 applyConnectionRateTextScale(view);
+                applyConnectionRateOffset(view);
                 view.requestLayout();
                 view.invalidate();
             }
@@ -1605,6 +1667,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         int iosBatteryOffsetY = SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y;
         int iosBatteryTextSize = SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE;
         int activityIconFactor = SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR;
+        int connectionRateOffsetX = SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X;
+        int connectionRateOffsetY = SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y;
         float textScale = SettingsStore.DEFAULT_TEXT_SCALE / 100f;
         boolean hideMobileType = SettingsStore.DEFAULT_HIDE_MOBILE_TYPE;
         boolean iosBatteryStyle = SettingsStore.DEFAULT_IOS_BATTERY_STYLE;
@@ -1694,6 +1758,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                 iosBatteryTextSize = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE);
             } else if (SettingsStore.KEY_ACTIVITY_ICON_FACTOR.equals(key)) {
                 activityIconFactor = parseInt(value, SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR);
+            } else if (SettingsStore.KEY_CONNECTION_RATE_OFFSET_X.equals(key)) {
+                connectionRateOffsetX = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X);
+            } else if (SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y.equals(key)) {
+                connectionRateOffsetY = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y);
             } else if (SettingsStore.KEY_TEXT_SCALE.equals(key)) {
                 textScale = parseInt(value, SettingsStore.DEFAULT_TEXT_SCALE) / 100f;
             } else if (SettingsStore.KEY_HIDE_MOBILE_TYPE.equals(key)) {

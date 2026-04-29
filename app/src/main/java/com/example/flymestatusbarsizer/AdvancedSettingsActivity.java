@@ -105,12 +105,14 @@ public class AdvancedSettingsActivity extends Activity {
         addPercentSlider(root, "\u4e0a\u4e0b\u884c\u7bad\u5934", "mobile_in/out \u548c wifi_in/out \u8ddf\u968f\u6574\u4f53\u7f29\u653e\u7684\u5f3a\u5ea6",
                 SettingsStore.KEY_ACTIVITY_ICON_FACTOR, SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR);
         addSectionTitle(root, "\u5f53\u524d\u7f51\u901f\u504f\u79fb");
-        addOffsetSlider(root, "\u5f53\u524d\u7f51\u901f\u5de6\u53f3\u504f\u79fb",
+        addSlider(root, "\u5f53\u524d\u7f51\u901f\u5de6\u53f3\u504f\u79fb",
                 "\u5728\u81ea\u52a8\u5bf9\u9f50\u7684\u57fa\u7840\u4e0a\u518d\u989d\u5916\u5de6\u53f3\u5fae\u8c03\uff0c\u6b63\u6570\u5411\u53f3\uff0c\u8d1f\u6570\u5411\u5de6\u3002",
-                SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X);
-        addOffsetSlider(root, "\u5f53\u524d\u7f51\u901f\u4e0a\u4e0b\u504f\u79fb",
+                SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X,
+                -80, 80, "dp");
+        addSlider(root, "\u5f53\u524d\u7f51\u901f\u4e0a\u4e0b\u504f\u79fb",
                 "\u5728\u81ea\u52a8\u5bf9\u9f50\u7684\u57fa\u7840\u4e0a\u518d\u989d\u5916\u4e0a\u4e0b\u5fae\u8c03\uff0c\u6b63\u6570\u5411\u4e0b\uff0c\u8d1f\u6570\u5411\u4e0a\u3002",
-                SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y);
+                SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y,
+                -80, 80, "dp");
 
         TextView reset = button("\u6062\u590d\u672c\u9875\u9ed8\u8ba4");
         reset.setOnClickListener(v -> {
