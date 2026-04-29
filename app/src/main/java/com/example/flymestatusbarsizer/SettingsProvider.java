@@ -1,0 +1,110 @@
+package com.example.flymestatusbarsizer;
+
+import android.content.ContentProvider;
+import android.content.ContentValues;
+import android.content.SharedPreferences;
+import android.database.Cursor;
+import android.database.MatrixCursor;
+import android.net.Uri;
+
+public class SettingsProvider extends ContentProvider {
+    @Override
+    public boolean onCreate() {
+        return true;
+    }
+
+    @Override
+    public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
+        SharedPreferences prefs = SettingsStore.prefs(getContext());
+        MatrixCursor cursor = new MatrixCursor(new String[]{"key", "value"});
+        add(cursor, SettingsStore.KEY_ENABLED, prefs.getBoolean(SettingsStore.KEY_ENABLED, SettingsStore.DEFAULT_ENABLED));
+        add(cursor, SettingsStore.KEY_GLOBAL_ICON_SCALE, prefs.getInt(SettingsStore.KEY_GLOBAL_ICON_SCALE, SettingsStore.DEFAULT_GLOBAL_ICON_SCALE));
+        add(cursor, SettingsStore.KEY_MOBILE_SIGNAL_FACTOR, prefs.getInt(SettingsStore.KEY_MOBILE_SIGNAL_FACTOR, SettingsStore.DEFAULT_MOBILE_SIGNAL_FACTOR));
+        add(cursor, SettingsStore.KEY_WIFI_SIGNAL_FACTOR, prefs.getInt(SettingsStore.KEY_WIFI_SIGNAL_FACTOR, SettingsStore.DEFAULT_WIFI_SIGNAL_FACTOR));
+        add(cursor, SettingsStore.KEY_BATTERY_FACTOR, prefs.getInt(SettingsStore.KEY_BATTERY_FACTOR, SettingsStore.DEFAULT_BATTERY_FACTOR));
+        add(cursor, SettingsStore.KEY_STATUS_ICON_FACTOR, prefs.getInt(SettingsStore.KEY_STATUS_ICON_FACTOR, SettingsStore.DEFAULT_STATUS_ICON_FACTOR));
+        add(cursor, SettingsStore.KEY_NETWORK_TYPE_FACTOR, prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_FACTOR, SettingsStore.DEFAULT_NETWORK_TYPE_FACTOR));
+        add(cursor, SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_OFFSET_X));
+        add(cursor, SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_OFFSET_Y));
+        add(cursor, SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_X,
+                prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_X,
+                        prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X)));
+        add(cursor, SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y,
+                prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y,
+                        prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y)));
+        add(cursor, SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X,
+                prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X,
+                        prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X)));
+        add(cursor, SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y,
+                prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y,
+                        prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y)));
+        add(cursor, SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X,
+                prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X,
+                        prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X)));
+        add(cursor, SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y,
+                prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y,
+                        prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y)));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_OFFSET_X, prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_OFFSET_X));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y, prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_OFFSET_Y));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X,
+                prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X,
+                        prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X)));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y,
+                prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y,
+                        prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y)));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X,
+                prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X,
+                        prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X)));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y,
+                prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y,
+                        prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y)));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X,
+                prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X,
+                        prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X)));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y,
+                prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y,
+                        prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y)));
+        add(cursor, SettingsStore.KEY_IOS_BATTERY_WIDTH, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_WIDTH, SettingsStore.DEFAULT_IOS_BATTERY_WIDTH));
+        add(cursor, SettingsStore.KEY_IOS_BATTERY_HEIGHT, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_HEIGHT, SettingsStore.DEFAULT_IOS_BATTERY_HEIGHT));
+        add(cursor, SettingsStore.KEY_IOS_BATTERY_OFFSET_X, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_OFFSET_X, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X));
+        add(cursor, SettingsStore.KEY_IOS_BATTERY_OFFSET_Y, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_OFFSET_Y, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y));
+        add(cursor, SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE));
+        add(cursor, SettingsStore.KEY_ACTIVITY_ICON_FACTOR, prefs.getInt(SettingsStore.KEY_ACTIVITY_ICON_FACTOR, SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR));
+        add(cursor, SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X));
+        add(cursor, SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y));
+        add(cursor, SettingsStore.KEY_TEXT_SCALE, prefs.getInt(SettingsStore.KEY_TEXT_SCALE, SettingsStore.DEFAULT_TEXT_SCALE));
+        add(cursor, SettingsStore.KEY_HIDE_MOBILE_TYPE, prefs.getBoolean(SettingsStore.KEY_HIDE_MOBILE_TYPE, SettingsStore.DEFAULT_HIDE_MOBILE_TYPE));
+        add(cursor, SettingsStore.KEY_IOS_BATTERY_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_BATTERY_STYLE, SettingsStore.DEFAULT_IOS_BATTERY_STYLE));
+        add(cursor, SettingsStore.KEY_IOS_SIGNAL_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_SIGNAL_STYLE, SettingsStore.DEFAULT_IOS_SIGNAL_STYLE));
+        add(cursor, SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, SettingsStore.DEFAULT_IOS_NETWORK_TYPE_STYLE));
+        return cursor;
+    }
+
+    private static void add(MatrixCursor cursor, String key, boolean value) {
+        cursor.addRow(new Object[]{key, value ? "1" : "0"});
+    }
+
+    private static void add(MatrixCursor cursor, String key, int value) {
+        cursor.addRow(new Object[]{key, Integer.toString(value)});
+    }
+
+    @Override
+    public String getType(Uri uri) {
+        return "vnd.android.cursor.item/vnd.com.example.flymestatusbarsizer.settings";
+    }
+
+    @Override
+    public Uri insert(Uri uri, ContentValues values) {
+        return null;
+    }
+
+    @Override
+    public int delete(Uri uri, String selection, String[] selectionArgs) {
+        return 0;
+    }
+
+    @Override
+    public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
+        return 0;
+    }
+}

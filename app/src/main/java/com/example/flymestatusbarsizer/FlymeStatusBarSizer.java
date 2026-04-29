@@ -1,0 +1,1718 @@
+package com.example.flymestatusbarsizer;
+
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.res.Resources;
+import android.database.ContentObserver;
+import android.database.Cursor;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
+import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.ViewParent;
+import android.widget.ImageView;
+import android.widget.TextView;
+
+import java.util.ArrayList;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.WeakHashMap;
+
+import io.github.libxposed.api.XposedModule;
+import io.github.libxposed.api.XposedModuleInterface;
+
+public class FlymeStatusBarSizer extends XposedModule {
+    private static final String TAG = "FlymeStatusBarSizer";
+    private static final String SYSTEM_UI = "com.android.systemui";
+
+    private static final Uri SETTINGS_URI = Uri.parse("content://" + SettingsStore.AUTHORITY + "/settings");
+    private static final WeakHashMap<View, int[]> ORIGINAL_SIZES = new WeakHashMap<>();
+    private static final WeakHashMap<View, int[]> ORIGINAL_MARGINS = new WeakHashMap<>();
+    private static final WeakHashMap<View, int[]> ORIGINAL_PADDINGS = new WeakHashMap<>();
+    private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_SIZES = new WeakHashMap<>();
+    private static final WeakHashMap<View, Integer> ORIGINAL_CONNECTION_RATE_TEXT_SIZES = new WeakHashMap<>();
+    private static final WeakHashMap<ImageView, String> NETWORK_TYPE_LABELS = new WeakHashMap<>();
+    private static final WeakHashMap<TextView, Boolean> TRACKED_STATUS_TEXT_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> TRACKED_CONNECTION_RATE_VIEWS = new WeakHashMap<>();
+    private static final int[] DESKTOP_MOBILE_SIGNAL_SIZE = new int[2];
+    private static final int[] DESKTOP_NETWORK_TYPE_SIZE = new int[2];
+    private static final int SIGNAL_SCENE_DESKTOP = 0;
+    private static final int SIGNAL_SCENE_KEYGUARD = 1;
+    private static final int SIGNAL_SCENE_CONTROL_CENTER = 2;
+    private static final Object CONFIG_REFRESH_LOCK = new Object();
+    private static volatile boolean CONFIG_REFRESH_REGISTERED;
+    private static Handler MAIN_HANDLER;
+    private static BroadcastReceiver USER_UNLOCKED_RECEIVER;
+    private static ContentObserver SETTINGS_OBSERVER;
+
+    @Override
+    public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
+        if (!SYSTEM_UI.equals(param.getPackageName()) || !param.isFirstPackage()) {
+            return;
+        }
+
+        ClassLoader loader = param.getDefaultClassLoader();
+        hookConstructAndBind(loader, "com.flyme.systemui.statusbar.net.mobile.ui.view.FlymeModernStatusBarMobileView");
+        hookConstructAndBind(loader, "com.android.systemui.statusbar.pipeline.mobile.ui.view.ModernStatusBarMobileView");
+        hookConstructAndBind(loader, "com.android.systemui.statusbar.pipeline.mobile.ui.view.ModernShadeCarrierGroupMobileView");
+        hookConstructAndBind(loader, "com.android.systemui.statusbar.pipeline.wifi.ui.view.ModernStatusBarWifiView");
+        hookFlymeWifiView(loader);
+        hookConnectionRateView(loader);
+        hookImageViewTintUpdates(loader);
+        hookConstructors(loader, "com.android.systemui.statusbar.StatusBarIconView", view -> {
+            Config config = Config.load(view.getContext());
+            if (!config.enabled) {
+                return;
+            }
+            view.setScaleX(config.scaled(config.statusIconFactor));
+            view.setScaleY(config.scaled(config.statusIconFactor));
+        });
+        hookConstructors(loader, "com.flyme.statusbar.battery.FlymeBatteryMeterView", view -> {
+            Config config = Config.load(view.getContext());
+            if (!config.enabled) {
+                return;
+            }
+            normalizeBatterySpacing(view);
+            view.post(() -> normalizeBatterySpacing(view));
+            disableAncestorClipping(view, 6);
+            resizeIosBatteryView(view, config, getBooleanField(view, "mCharging", false));
+            view.setScaleX(config.scaled(config.batteryFactor));
+            view.setScaleY(config.scaled(config.batteryFactor));
+        });
+        hookFlymeBatteryMeterViewDraw(loader);
+        hookFlymeBatteryMeterViewMeasure(loader);
+        hookConstructors(loader, "com.flyme.statusbar.battery.FlymeBatteryTextView", view -> {
+            Config config = Config.load(view.getContext());
+            if (!config.enabled || !(view instanceof TextView)) {
+                return;
+            }
+            TextView textView = (TextView) view;
+            applyTextScale(textView, config);
+            if (config.iosBatteryStyle) {
+                textView.setTextColor(Color.WHITE);
+                setIntField(textView, "mNormalColor", Color.WHITE);
+                setIntField(textView, "mLowColor", Color.WHITE);
+            }
+        });
+        hookBatteryDrawable(loader);
+        hookStatusTextView(loader, "com.android.systemui.statusbar.policy.Clock");
+        hookStatusTextView(loader, "com.android.systemui.statusbar.OperatorNameView");
+        hookStatusTextView(loader, "com.android.keyguard.CarrierText");
+        hookStatusTextView(loader, "com.android.systemui.util.AutoMarqueeTextView");
+        hookConstructors(loader, "com.android.systemui.statusbar.phone.KeyguardStatusBarView", view -> {
+            disableChildClipping(view);
+            disableAncestorClipping(view, 3);
+            applyReferenceSignalSizing(view);
+        });
+        hookConstructors(loader, "com.flyme.statusbar.bouncer.KeyguardBouncerStatusBarView", view -> {
+            disableChildClipping(view);
+            disableAncestorClipping(view, 3);
+            applyReferenceSignalSizing(view);
+        });
+        hookConstructors(loader, "com.android.systemui.shade.carrier.ShadeCarrier", view -> {
+            disableChildClipping(view);
+            disableAncestorClipping(view, 3);
+            applyReferenceSignalSizing(view);
+        });
+    }
+
+    private void hookConstructAndBind(ClassLoader loader, String className) {
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            for (Method method : clazz.getDeclaredMethods()) {
+                if (!"constructAndBind".equals(method.getName())) {
+                    continue;
+                }
+                if (!Modifier.isStatic(method.getModifiers()) || !View.class.isAssignableFrom(method.getReturnType())) {
+                    continue;
+                }
+                method.setAccessible(true);
+                hook(method).intercept(chain -> {
+                    Object result = chain.proceed();
+                    if (result instanceof View) {
+                        applyStatusBarSizing((View) result);
+                    }
+                    return result;
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook " + className, t);
+        }
+    }
+
+    private void hookFlymeWifiView(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName("com.flyme.systemui.statusbar.net.wifi.FlymeStatusBarWifiView", false, loader);
+            for (Method method : clazz.getDeclaredMethods()) {
+                String name = method.getName();
+                if (!"fromContext".equals(name) && !"initViewState".equals(name)
+                        && !"updateState".equals(name) && !"applyWifiState".equals(name)) {
+                    continue;
+                }
+                method.setAccessible(true);
+                hook(method).intercept(chain -> {
+                    Object result = chain.proceed();
+                    Object target = result instanceof View ? result : chain.getThisObject();
+                    if (target instanceof View) {
+                        applyWifiSizing((View) target);
+                    }
+                    return result;
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook FlymeStatusBarWifiView", t);
+        }
+    }
+
+    private void hookConnectionRateView(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName("com.flyme.statusbar.connectionRateView.ConnectionRateView", false, loader);
+            for (Method method : clazz.getDeclaredMethods()) {
+                String name = method.getName();
+                if (!"dispatchDraw".equals(name) && !"onAttachedToWindow".equals(name)
+                        && !"onConfigurationChanged".equals(name)) {
+                    continue;
+                }
+                method.setAccessible(true);
+                hook(method).intercept(chain -> {
+                    Object thisObject = chain.getThisObject();
+                    boolean dispatchDraw = "dispatchDraw".equals(name);
+                    if (dispatchDraw) {
+                        if (thisObject instanceof View) {
+                            View view = (View) thisObject;
+                            applyConnectionRateTextScale(view);
+                            Object canvas = chain.getArg(0);
+                            float alignmentOffset = getConnectionRateAlignmentOffset(view);
+                            if (canvas instanceof Canvas && alignmentOffset != 0f) {
+                                Canvas drawCanvas = (Canvas) canvas;
+                                int saveCount = drawCanvas.save();
+                                drawCanvas.translate(0f, alignmentOffset);
+                                Object result = chain.proceed();
+                                drawCanvas.restoreToCount(saveCount);
+                                return result;
+                            }
+                        }
+                        return chain.proceed();
+                    }
+                    Object result = chain.proceed();
+                    if (thisObject instanceof View) {
+                        View view = (View) thisObject;
+                        trackConnectionRateView(view);
+                        ensureConfigRefreshObserver(view.getContext());
+                        applyConnectionRateTextScale(view);
+                        view.postDelayed(() -> applyConnectionRateTextScale(view), 500);
+                    }
+                    return result;
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook ConnectionRateView", t);
+        }
+    }
+
+    private void hookImageViewTintUpdates(ClassLoader loader) {
+        try {
+            Class<?> clazz = ImageView.class;
+            for (Method method : clazz.getDeclaredMethods()) {
+                String name = method.getName();
+                if (!"setImageTintList".equals(name) && !"setColorFilter".equals(name)
+                        && !"setImageTintMode".equals(name) && !"setImageResource".equals(name)
+                        && !"setImageDrawable".equals(name)) {
+                    continue;
+                }
+                method.setAccessible(true);
+                hook(method).intercept(chain -> {
+                    Object result = chain.proceed();
+                    Object thisObject = chain.getThisObject();
+                    if (thisObject instanceof ImageView) {
+                        ImageView imageView = (ImageView) thisObject;
+                        String idName = getSystemUiIdName(imageView);
+                        if ("setImageResource".equals(name) && "mobile_type".equals(idName)
+                                && chain.getArgs().size() == 1 && chain.getArg(0) instanceof Integer) {
+                            applyNetworkTypeResource(imageView, (Integer) chain.getArg(0));
+                            if (isReferenceSignalContextChild(imageView)) {
+                                Config config = Config.load(imageView.getContext());
+                                if (config.enabled) {
+                                    applyReferenceNetworkTypeSizing(imageView, config);
+                                }
+                            }
+                        }
+                        if (("setImageResource".equals(name) || "setImageDrawable".equals(name))
+                                && "mobile_signal".equals(idName)
+                                && !(imageView.getDrawable() instanceof IosSignalDrawable)) {
+                            Config config = Config.load(imageView.getContext());
+                            if (config.enabled) {
+                                if (isReferenceSignalContextChild(imageView)) {
+                                    applyReferenceSignalImageSizing(imageView, config);
+                                } else {
+                                    applySignalImageSizing(imageView, config);
+                                }
+                            }
+                        }
+                        if ("mobile_signal".equals(idName) && imageView.getDrawable() instanceof IosSignalDrawable) {
+                            syncDrawableTint(imageView, (IosSignalDrawable) imageView.getDrawable());
+                        } else if ("mobile_type".equals(idName) && imageView.getDrawable() instanceof NetworkTypeDrawable) {
+                            syncDrawableTint(imageView, (NetworkTypeDrawable) imageView.getDrawable());
+                        }
+                    }
+                    return result;
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook ImageView tint updates", t);
+        }
+    }
+
+    private void hookBatteryDrawable(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName("com.flyme.statusbar.battery.BatteryMeterDrawable", false, loader);
+            for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
+                constructor.setAccessible(true);
+                hook(constructor).intercept(chain -> {
+                    Object result = chain.proceed();
+                    applyIosBatteryStyleIfNeeded(chain.getThisObject());
+                    return result;
+                });
+            }
+            for (Method method : clazz.getDeclaredMethods()) {
+                if (!"draw".equals(method.getName()) || method.getParameterTypes().length != 1) {
+                    continue;
+                }
+                method.setAccessible(true);
+                hook(method).intercept(chain -> {
+                    Object drawable = chain.getThisObject();
+                    if (drawIosBatteryIfNeeded(drawable, (Canvas) chain.getArg(0))) {
+                        return null;
+                    }
+                    applyIosBatteryStyleIfNeeded(drawable);
+                    return chain.proceed();
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook BatteryMeterDrawable", t);
+        }
+    }
+
+    private void hookFlymeBatteryMeterViewDraw(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName("com.flyme.statusbar.battery.FlymeBatteryMeterView", false, loader);
+            for (Method method : clazz.getDeclaredMethods()) {
+                if (!"onDraw".equals(method.getName()) || method.getParameterTypes().length != 1) {
+                    continue;
+                }
+                method.setAccessible(true);
+                hook(method).intercept(chain -> {
+                    Object view = chain.getThisObject();
+                    if (drawIosBatteryViewIfNeeded(view, (Canvas) chain.getArg(0))) {
+                        return null;
+                    }
+                    return chain.proceed();
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook FlymeBatteryMeterView.onDraw", t);
+        }
+    }
+
+    private void hookFlymeBatteryMeterViewMeasure(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName("com.flyme.statusbar.battery.FlymeBatteryMeterView", false, loader);
+            for (Method method : clazz.getDeclaredMethods()) {
+                if (!"onMeasure".equals(method.getName()) || method.getParameterTypes().length != 2) {
+                    continue;
+                }
+                method.setAccessible(true);
+                hook(method).intercept(chain -> {
+                    Object view = chain.getThisObject();
+                    if (measureIosBatteryViewIfNeeded(view)) {
+                        return null;
+                    }
+                    return chain.proceed();
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook FlymeBatteryMeterView.onMeasure", t);
+        }
+    }
+
+    private static boolean drawIosBatteryIfNeeded(Object drawable, Canvas canvas) {
+        Context context = (Context) getField(drawable, "mContext");
+        if (context == null || !(drawable instanceof Drawable)) {
+            return false;
+        }
+        Config config = Config.load(context);
+        if (!config.enabled || !config.iosBatteryStyle) {
+            return false;
+        }
+        int level = getIntField(drawable, "mLevel", 0);
+        boolean pluggedIn = getBooleanField(drawable, "mPluggedIn", false);
+        boolean charging = getBooleanField(drawable, "mCharging", false);
+        boolean showPercent = getBooleanField(drawable, "mShowPercent", false);
+        IosBatteryPainter.draw((Drawable) drawable, canvas, level, pluggedIn, charging, showPercent);
+        return true;
+    }
+
+    private static boolean drawIosBatteryViewIfNeeded(Object view, Canvas canvas) {
+        if (!(view instanceof View)) {
+            return false;
+        }
+        View batteryView = (View) view;
+        Config config = Config.load(batteryView.getContext());
+        if (!config.enabled || !config.iosBatteryStyle) {
+            return false;
+        }
+        int level = getIntField(view, "mLastLevel", 0);
+        boolean pluggedIn = getBooleanField(view, "mLastPlugged", false);
+        boolean charging = getBooleanField(view, "mCharging", false);
+        resizeIosBatteryView(batteryView, config, charging);
+        boolean showPercent = getBooleanField(view, "mShowBatteryPercent", false);
+        int width = dp(batteryView, config.iosBatteryWidth);
+        int height = dp(batteryView, config.iosBatteryHeight);
+        int left = dp(batteryView, config.iosBatteryOffsetX);
+        int top = Math.round((batteryView.getHeight() - height) / 2f) + dp(batteryView, config.iosBatteryOffsetY);
+        int boltWidth = charging ? Math.round(width * 0.5f) : 0;
+        int boltExtraHeight = dp(batteryView, 2);
+        int fillColor = normalizeIconColor(getIntField(view, "mFilterColor", Color.BLACK));
+        IosBatteryPainter.draw(canvas, new Rect(left, top, left + width, top + height),
+                level, pluggedIn, charging, showPercent, config.iosBatteryTextSize,
+                fillColor, contrastTextColor(fillColor), boltWidth, boltExtraHeight);
+        return true;
+    }
+
+    private static boolean measureIosBatteryViewIfNeeded(Object view) {
+        if (!(view instanceof View)) {
+            return false;
+        }
+        View batteryView = (View) view;
+        Config config = Config.load(batteryView.getContext());
+        if (!config.enabled || !config.iosBatteryStyle) {
+            return false;
+        }
+        boolean charging = getBooleanField(view, "mCharging", false);
+        setMeasuredDimension(batteryView, iosBatteryMeasuredWidth(batteryView, config, charging),
+                iosBatteryMeasuredHeight(batteryView, config));
+        return true;
+    }
+
+    private static int normalizeIconColor(int color) {
+        return Color.alpha(color) == 0 ? Color.BLACK : color;
+    }
+
+    private static int contrastTextColor(int color) {
+        int r = Color.red(color);
+        int g = Color.green(color);
+        int b = Color.blue(color);
+        return (r * 299 + g * 587 + b * 114) / 1000 < 128 ? Color.WHITE : Color.BLACK;
+    }
+
+    private static void resizeIosBatteryView(View view, Config config, boolean charging) {
+        if (!config.iosBatteryStyle) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        int width = iosBatteryMeasuredWidth(view, config, charging);
+        int height = iosBatteryMeasuredHeight(view, config);
+        boolean changed = false;
+        if (lp.width != width) {
+            lp.width = width;
+            changed = true;
+        }
+        if (lp.height > 0 && lp.height < height) {
+            lp.height = height;
+            changed = true;
+        }
+        if (changed) {
+            view.setLayoutParams(lp);
+            view.requestLayout();
+        }
+    }
+
+    private static int iosBatteryMeasuredWidth(View view, Config config, boolean charging) {
+        int batteryWidth = dp(view, config.iosBatteryWidth);
+        return charging ? batteryWidth + Math.round(batteryWidth * 0.5f) : batteryWidth;
+    }
+
+    private static int iosBatteryMeasuredHeight(View view, Config config) {
+        return dp(view, config.iosBatteryHeight) + dp(view, 2);
+    }
+
+    private static void applyIosBatteryStyleIfNeeded(Object drawable) {
+        Context context = (Context) getField(drawable, "mContext");
+        if (context == null) {
+            return;
+        }
+        Config config = Config.load(context);
+        if (!config.enabled || !config.iosBatteryStyle) {
+            return;
+        }
+        setIntField(drawable, "mDarkModeBackgroundColor", Color.BLACK);
+        setIntField(drawable, "mLightModeBackgroundColor", Color.BLACK);
+        setIntField(drawable, "mDarkModeFillColor", Color.BLACK);
+        setIntField(drawable, "mLightModeFillColor", Color.BLACK);
+        setIntField(drawable, "mIconTint", Color.BLACK);
+        setPaintColor(drawable, "mFramePaint", Color.BLACK);
+        setPaintColor(drawable, "mBatteryPaint", Color.BLACK);
+        setPaintColor(drawable, "mTextPaint", Color.WHITE);
+        setPaintColor(drawable, "mWarningTextPaint", Color.WHITE);
+        setPaintColor(drawable, "mBoltPaint", Color.WHITE);
+        setPaintColor(drawable, "mPlusPaint", Color.WHITE);
+    }
+
+    private void hookConstructors(ClassLoader loader, String className, ViewAction action) {
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
+                constructor.setAccessible(true);
+                hook(constructor).intercept(chain -> {
+                    Object result = chain.proceed();
+                    Object thisObject = chain.getThisObject();
+                    if (thisObject instanceof View) {
+                        View view = (View) thisObject;
+                        view.post(() -> action.apply(view));
+                    }
+                    return result;
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook " + className, t);
+        }
+    }
+
+    private static void applyStatusBarSizing(View root) {
+        applyStatusBarSizingOnce(root);
+        root.postDelayed(() -> applyStatusBarSizingOnce(root), 500);
+        root.postDelayed(() -> applyStatusBarSizingOnce(root), 1500);
+    }
+
+    private static void applyReferenceSignalSizing(View root) {
+        applyReferenceSignalSizingOnce(root);
+        root.postDelayed(() -> applyReferenceSignalSizingOnce(root), 500);
+        root.postDelayed(() -> applyReferenceSignalSizingOnce(root), 1500);
+    }
+
+    private static void applyWifiSizing(View root) {
+        applyWifiSizingOnce(root);
+        root.postDelayed(() -> applyWifiSizingOnce(root), 300);
+        root.postDelayed(() -> applyWifiSizingOnce(root), 1000);
+    }
+
+    private static void applyStatusBarSizingOnce(View root) {
+        root.post(() -> {
+            Config config = Config.load(root.getContext());
+            if (!config.enabled) {
+                return;
+            }
+            normalizeMobileSpacing(root);
+            if (shouldUseDesktopSignalReference(root)) {
+                View signal = findSystemUiChild(root, "mobile_signal");
+                if (signal instanceof ImageView) {
+                    applyReferenceSignalImageSizing((ImageView) signal, config);
+                } else {
+                    scaleChild(root, "mobile_signal", config.scaled(config.mobileSignalFactor),
+                            config.scaled(config.mobileSignalFactor));
+                    applyIosSignalStyle(root, config);
+                }
+                applyKnownNetworkTypeStyle(root, config);
+                View type = findSystemUiChild(root, "mobile_type");
+                if (type instanceof ImageView) {
+                    applyReferenceNetworkTypeSizing((ImageView) type, config);
+                }
+            } else {
+                scaleChild(root, "mobile_signal", config.scaled(config.mobileSignalFactor),
+                        config.scaled(config.mobileSignalFactor));
+                applyIosSignalStyle(root, config);
+                applyKnownNetworkTypeStyle(root, config);
+            }
+            scaleChild(root, "wifi_signal", config.scaled(config.wifiSignalFactor), config.scaled(config.wifiSignalFactor));
+            if (!shouldUseDesktopSignalReference(root)) {
+                float networkTypeScale = config.scaled(config.networkTypeFactor);
+                scaleChild(root, "mobile_type", networkTypeScale, networkTypeScale);
+            }
+            float networkTypeScale = config.scaled(config.networkTypeFactor);
+            scaleChild(root, "mobile_volte", networkTypeScale, networkTypeScale);
+            offsetNetworkType(root, getNetworkTypeOffsetX(root, config), getNetworkTypeOffsetY(root, config));
+            scaleChild(root, "mobile_in", 1f, config.scaled(config.activityIconFactor));
+            scaleChild(root, "mobile_out", 1f, config.scaled(config.activityIconFactor));
+            scaleChild(root, "wifi_in", 1f, config.scaled(config.activityIconFactor));
+            scaleChild(root, "wifi_out", 1f, config.scaled(config.activityIconFactor));
+            setChildHidden(root, "mobile_type", config.hideMobileType && !config.iosNetworkTypeStyle);
+            setChildHidden(root, "mobile_type_container", config.hideMobileType && !config.iosNetworkTypeStyle);
+            if (shouldRecordDesktopReference(root)) {
+                root.post(() -> {
+                    recordDesktopIconSize(root, "mobile_signal", DESKTOP_MOBILE_SIGNAL_SIZE);
+                    recordDesktopIconSize(root, "mobile_type", DESKTOP_NETWORK_TYPE_SIZE);
+                });
+                root.postDelayed(() -> {
+                    recordDesktopIconSize(root, "mobile_signal", DESKTOP_MOBILE_SIGNAL_SIZE);
+                    recordDesktopIconSize(root, "mobile_type", DESKTOP_NETWORK_TYPE_SIZE);
+                }, 300);
+            }
+        });
+    }
+
+    private static void applyWifiSizingOnce(View root) {
+        root.post(() -> {
+            Config config = Config.load(root.getContext());
+            if (!config.enabled) {
+                return;
+            }
+            scaleChild(root, "wifi_signal", config.scaled(config.wifiSignalFactor), config.scaled(config.wifiSignalFactor));
+            View wifiIcon = (View) getField(root, "mWifiIcon");
+            if (wifiIcon != null) {
+                scaleView(wifiIcon, config.scaled(config.wifiSignalFactor), config.scaled(config.wifiSignalFactor));
+            }
+        });
+    }
+
+    private static void applyReferenceSignalSizingOnce(View root) {
+        root.post(() -> {
+            Config config = Config.load(root.getContext());
+            if (!config.enabled) {
+                return;
+            }
+            View child = findSystemUiChild(root, "mobile_signal");
+            if (child instanceof ImageView) {
+                applyReferenceSignalImageSizing((ImageView) child, config);
+            }
+            View type = findSystemUiChild(root, "mobile_type");
+            if (type instanceof ImageView) {
+                applyKnownNetworkTypeStyle(root, config);
+                applyReferenceNetworkTypeSizing((ImageView) type, config);
+            }
+        });
+    }
+
+    private static void applyIosSignalStyle(View root, Config config) {
+        if (!config.iosSignalStyle) {
+            return;
+        }
+        View child = findSystemUiChild(root, "mobile_signal");
+        if (!(child instanceof ImageView)) {
+            return;
+        }
+        applyIosSignalImageView((ImageView) child, config);
+    }
+
+    private static void applySignalImageSizing(ImageView imageView, Config config) {
+        scaleView(imageView, config.scaled(config.mobileSignalFactor), config.scaled(config.mobileSignalFactor));
+        applyIosSignalImageView(imageView, config);
+    }
+
+    private static void applyReferenceSignalImageSizing(ImageView imageView, Config config) {
+        int offsetX = getIosSignalOffsetX(imageView, config);
+        int offsetY = getIosSignalOffsetY(imageView, config);
+        int[] desktopSize = getRecordedSize(DESKTOP_MOBILE_SIGNAL_SIZE);
+        int width = desktopSize == null ? 0 : desktopSize[0];
+        int height = desktopSize == null ? 0 : desktopSize[1];
+        if (width <= 0 || height <= 0) {
+            int baseSize = getSystemUiDimen(imageView.getContext(), "status_bar_mobile_signal_size");
+            if (baseSize > 0) {
+                width = Math.round(baseSize * config.scaled(config.mobileSignalFactor));
+                height = width;
+            }
+        }
+        if (width > 0 && height > 0) {
+            ViewGroup.LayoutParams lp = imageView.getLayoutParams();
+            if (lp != null) {
+                lp.width = width;
+                lp.height = height;
+                if (lp instanceof android.widget.FrameLayout.LayoutParams) {
+                    ((android.widget.FrameLayout.LayoutParams) lp).gravity = Gravity.CENTER;
+                }
+                imageView.setLayoutParams(lp);
+                imageView.requestLayout();
+            }
+        } else {
+            scaleView(imageView, config.scaled(config.mobileSignalFactor), config.scaled(config.mobileSignalFactor));
+        }
+        if (config.iosSignalStyle) {
+            applyIosSignalImageView(imageView, config, offsetX, offsetY, false);
+            imageView.setTranslationX(dp(imageView, offsetX));
+            imageView.setTranslationY(dp(imageView, offsetY));
+        } else {
+            imageView.setTranslationX(0f);
+            imageView.setTranslationY(0f);
+        }
+    }
+
+    private static void applyReferenceNetworkTypeSizing(ImageView imageView, Config config) {
+        int offsetX = getNetworkTypeOffsetX(imageView, config);
+        int offsetY = getNetworkTypeOffsetY(imageView, config);
+        int[] desktopSize = getRecordedSize(DESKTOP_NETWORK_TYPE_SIZE);
+        int width = desktopSize == null ? 0 : desktopSize[0];
+        int height = desktopSize == null ? 0 : desktopSize[1];
+        if (width <= 0 || height <= 0) {
+            int baseHeight = getSystemUiDimen(imageView.getContext(), "status_bar_mobile_type_size");
+            if (baseHeight <= 0) {
+                scaleView(imageView, config.scaled(config.networkTypeFactor), config.scaled(config.networkTypeFactor));
+                imageView.setTranslationX(dp(imageView, offsetX));
+                imageView.setTranslationY(dp(imageView, offsetY));
+                return;
+            }
+            float scale = config.scaled(config.networkTypeFactor);
+            height = Math.round(baseHeight * scale);
+            Drawable drawable = imageView.getDrawable();
+            if (drawable != null) {
+                int intrinsicWidth = Math.max(drawable.getIntrinsicWidth(), 1);
+                int intrinsicHeight = Math.max(drawable.getIntrinsicHeight(), 1);
+                width = Math.round(height * (intrinsicWidth / (float) intrinsicHeight));
+            } else {
+                width = height;
+            }
+        }
+        ViewGroup.LayoutParams lp = imageView.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        lp.width = width;
+        lp.height = height;
+        if (lp instanceof android.widget.FrameLayout.LayoutParams) {
+            ((android.widget.FrameLayout.LayoutParams) lp).gravity = Gravity.CENTER_VERTICAL;
+        }
+        imageView.setLayoutParams(lp);
+        imageView.setAdjustViewBounds(false);
+        imageView.requestLayout();
+        imageView.setTranslationX(dp(imageView, offsetX));
+        imageView.setTranslationY(dp(imageView, offsetY));
+    }
+
+    private static void applyIosSignalImageView(ImageView imageView, Config config) {
+        applyIosSignalImageView(imageView, config,
+                getIosSignalOffsetX(imageView, config),
+                getIosSignalOffsetY(imageView, config),
+                true);
+    }
+
+    private static void applyIosSignalImageView(ImageView imageView, Config config, boolean applyMarginOffset) {
+        applyIosSignalImageView(imageView, config,
+                getIosSignalOffsetX(imageView, config),
+                getIosSignalOffsetY(imageView, config),
+                applyMarginOffset);
+    }
+
+    private static void applyIosSignalImageView(ImageView imageView, Config config,
+            int offsetXDp, int offsetYDp, boolean applyMarginOffset) {
+        if (!config.iosSignalStyle) {
+            return;
+        }
+        IosSignalDrawable drawable = new IosSignalDrawable(imageView.getResources().getDisplayMetrics().density);
+        drawable.setState(imageView.getDrawableState());
+        drawable.setTintList(imageView.getImageTintList());
+        drawable.setTintMode(imageView.getImageTintMode());
+        drawable.setColorFilter(imageView.getColorFilter());
+        imageView.setImageDrawable(drawable);
+        imageView.setAdjustViewBounds(false);
+        if (applyMarginOffset) {
+            offsetView(imageView, offsetXDp, offsetYDp);
+        }
+    }
+
+    private static void applyNetworkTypeResource(ImageView imageView, int resId) {
+        Config config = Config.load(imageView.getContext());
+        if (!config.enabled || !config.iosNetworkTypeStyle) {
+            return;
+        }
+        String label = getNetworkTypeLabel(imageView.getResources(), resId);
+        if (label == null) {
+            NETWORK_TYPE_LABELS.remove(imageView);
+            ensureNetworkTypePlaceholder(imageView);
+            imageView.setVisibility(View.INVISIBLE);
+            setParentVisibility(imageView, true);
+            return;
+        }
+        NETWORK_TYPE_LABELS.put(imageView, label);
+        imageView.setVisibility(View.VISIBLE);
+        setParentVisibility(imageView, true);
+        NetworkTypeDrawable drawable = new NetworkTypeDrawable(label, imageView.getResources().getDisplayMetrics().density);
+        syncDrawableTint(imageView, drawable);
+        imageView.setImageDrawable(drawable);
+        imageView.setAdjustViewBounds(false);
+    }
+
+    private static void ensureNetworkTypePlaceholder(ImageView imageView) {
+        if (imageView.getDrawable() instanceof NetworkTypeDrawable) {
+            return;
+        }
+        NetworkTypeDrawable drawable = new NetworkTypeDrawable("5G",
+                imageView.getResources().getDisplayMetrics().density);
+        syncDrawableTint(imageView, drawable);
+        imageView.setImageDrawable(drawable);
+        imageView.setAdjustViewBounds(false);
+    }
+
+    private static void applyKnownNetworkTypeStyle(View root, Config config) {
+        if (!config.iosNetworkTypeStyle) {
+            return;
+        }
+        View child = findSystemUiChild(root, "mobile_type");
+        if (!(child instanceof ImageView)) {
+            return;
+        }
+        ImageView imageView = (ImageView) child;
+        String label = NETWORK_TYPE_LABELS.get(imageView);
+        if (label == null) {
+            return;
+        }
+        imageView.setVisibility(View.VISIBLE);
+        setParentVisibility(imageView, true);
+        if (!(imageView.getDrawable() instanceof NetworkTypeDrawable)) {
+            NetworkTypeDrawable drawable = new NetworkTypeDrawable(label, imageView.getResources().getDisplayMetrics().density);
+            syncDrawableTint(imageView, drawable);
+            imageView.setImageDrawable(drawable);
+        }
+    }
+
+    private static String getNetworkTypeLabel(Resources resources, int resId) {
+        if (resId == 0) {
+            return null;
+        }
+        String name;
+        try {
+            name = resources.getResourceEntryName(resId).toLowerCase();
+        } catch (Resources.NotFoundException ignored) {
+            return null;
+        }
+        if (name.contains("5ga") || name.contains("5g_a") || name.contains("5g_advanced")) {
+            return "5GA";
+        }
+        if (name.contains("5g_plus") || name.contains("5g_ca") || name.contains("5g_sa")
+                || name.contains("5g_uwb") || name.contains("fully_connected_5g_plus")) {
+            return "5G+";
+        }
+        if (name.contains("5g") && !name.contains("5g_e") && !name.contains("5ge")) {
+            return "5G";
+        }
+        return null;
+    }
+
+    private static void syncDrawableTint(ImageView imageView, android.graphics.drawable.Drawable drawable) {
+        drawable.setState(imageView.getDrawableState());
+        drawable.setTintList(imageView.getImageTintList());
+        drawable.setTintMode(imageView.getImageTintMode());
+        drawable.setColorFilter(imageView.getColorFilter());
+    }
+
+    private static void setParentVisibility(View view, boolean visible) {
+        ViewParent parent = view.getParent();
+        if (parent instanceof View && "mobile_type_container".equals(getSystemUiIdName((View) parent))) {
+            ((View) parent).setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private static boolean shouldUseDesktopSignalReference(View view) {
+        return isReferenceSignalContextChild(view);
+    }
+
+    private static boolean shouldRecordDesktopReference(View view) {
+        return !isReferenceSignalContextChild(view);
+    }
+
+    private static boolean isReferenceSignalContextChild(View view) {
+        return hasAncestorClass(view,
+                "com.android.systemui.statusbar.phone.KeyguardStatusBarView",
+                "com.flyme.statusbar.bouncer.KeyguardBouncerStatusBarView",
+                "com.flyme.systemui.controlcenter.qs.QSStatusBar",
+                "com.android.systemui.shade.carrier.ShadeCarrier",
+                "com.android.systemui.shade.carrier.ShadeCarrierGroup");
+    }
+
+    private static boolean hasAncestorClass(View view, String... classNames) {
+        View current = view;
+        while (current != null) {
+            String className = current.getClass().getName();
+            for (String targetClass : classNames) {
+                if (targetClass.equals(className)) {
+                    return true;
+                }
+            }
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return false;
+    }
+
+    private static int getIosSignalOffsetX(View view, Config config) {
+        int scene = resolveSignalScene(view);
+        if (scene == SIGNAL_SCENE_KEYGUARD) {
+            return config.iosSignalKeyguardOffsetX;
+        }
+        if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
+            return config.iosSignalControlCenterOffsetX;
+        }
+        return config.iosSignalDesktopOffsetX;
+    }
+
+    private static int getIosSignalOffsetY(View view, Config config) {
+        int scene = resolveSignalScene(view);
+        if (scene == SIGNAL_SCENE_KEYGUARD) {
+            return config.iosSignalKeyguardOffsetY;
+        }
+        if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
+            return config.iosSignalControlCenterOffsetY;
+        }
+        return config.iosSignalDesktopOffsetY;
+    }
+
+    private static int getNetworkTypeOffsetX(View view, Config config) {
+        int scene = resolveSignalScene(view);
+        if (scene == SIGNAL_SCENE_KEYGUARD) {
+            return config.networkTypeKeyguardOffsetX;
+        }
+        if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
+            return config.networkTypeControlCenterOffsetX;
+        }
+        return config.networkTypeDesktopOffsetX;
+    }
+
+    private static int getNetworkTypeOffsetY(View view, Config config) {
+        int scene = resolveSignalScene(view);
+        if (scene == SIGNAL_SCENE_KEYGUARD) {
+            return config.networkTypeKeyguardOffsetY;
+        }
+        if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
+            return config.networkTypeControlCenterOffsetY;
+        }
+        return config.networkTypeDesktopOffsetY;
+    }
+
+    private static int resolveSignalScene(View view) {
+        if (hasAncestorClass(view,
+                "com.android.systemui.statusbar.phone.KeyguardStatusBarView",
+                "com.flyme.statusbar.bouncer.KeyguardBouncerStatusBarView")) {
+            return SIGNAL_SCENE_KEYGUARD;
+        }
+        if (hasAncestorClass(view,
+                "com.flyme.systemui.controlcenter.qs.QSStatusBar",
+                "com.android.systemui.shade.carrier.ShadeCarrier",
+                "com.android.systemui.shade.carrier.ShadeCarrierGroup")) {
+            return SIGNAL_SCENE_CONTROL_CENTER;
+        }
+        return SIGNAL_SCENE_DESKTOP;
+    }
+
+
+    private void hookStatusTextView(ClassLoader loader, String className) {
+        hookConstructors(loader, className, view -> {
+            if (!(view instanceof TextView)) {
+                return;
+            }
+            Config config = Config.load(view.getContext());
+            if (!config.enabled || !isStatusTextView((TextView) view)) {
+                return;
+            }
+            trackStatusTextView((TextView) view);
+            ensureConfigRefreshObserver(view.getContext());
+            applyTextScale((TextView) view, config);
+            view.postDelayed(() -> {
+                Config delayedConfig = Config.load(view.getContext());
+                if (delayedConfig.enabled && isStatusTextView((TextView) view)) {
+                    applyTextScale((TextView) view, delayedConfig);
+                }
+            }, 1000);
+        });
+    }
+
+    private static void applyTextScale(TextView textView, Config config) {
+        Float original = ORIGINAL_TEXT_SIZES.get(textView);
+        if (original == null) {
+            original = textView.getTextSize();
+            ORIGINAL_TEXT_SIZES.put(textView, original);
+        }
+        textView.setTextSize(0, original * config.textScale);
+    }
+
+    private static void applyConnectionRateTextScale(View view) {
+        Config config = Config.load(view.getContext());
+        if (!config.enabled) {
+            return;
+        }
+        Object textSize = getField(view, "mTextSize");
+        if (textSize instanceof Integer) {
+            int currentTextSize = (Integer) textSize;
+            Integer original = ORIGINAL_CONNECTION_RATE_TEXT_SIZES.get(view);
+            if (original == null && currentTextSize > 0) {
+                original = currentTextSize;
+                ORIGINAL_CONNECTION_RATE_TEXT_SIZES.put(view, original);
+            }
+            if (original != null) {
+                setIntField(view, "mTextSize", Math.round(original * config.textScale));
+            }
+        }
+        Object unitView = getField(view, "mUnitView");
+        if (unitView instanceof TextView) {
+            applyTextScale((TextView) unitView, config);
+        }
+    }
+
+    private static void trackStatusTextView(TextView textView) {
+        TRACKED_STATUS_TEXT_VIEWS.put(textView, Boolean.TRUE);
+    }
+
+    private static void trackConnectionRateView(View view) {
+        TRACKED_CONNECTION_RATE_VIEWS.put(view, Boolean.TRUE);
+    }
+
+    private static void ensureConfigRefreshObserver(Context context) {
+        if (context == null || CONFIG_REFRESH_REGISTERED) {
+            return;
+        }
+        synchronized (CONFIG_REFRESH_LOCK) {
+            if (CONFIG_REFRESH_REGISTERED) {
+                return;
+            }
+            Context appContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+            MAIN_HANDLER = new Handler(Looper.getMainLooper());
+            SETTINGS_OBSERVER = new ContentObserver(MAIN_HANDLER) {
+                @Override
+                public void onChange(boolean selfChange) {
+                    refreshTrackedTextScaling();
+                }
+            };
+            try {
+                appContext.getContentResolver().registerContentObserver(SETTINGS_URI, true, SETTINGS_OBSERVER);
+            } catch (Throwable ignored) {
+            }
+            USER_UNLOCKED_RECEIVER = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context receiverContext, Intent intent) {
+                    refreshTrackedTextScaling();
+                }
+            };
+            try {
+                appContext.registerReceiver(USER_UNLOCKED_RECEIVER, new IntentFilter(Intent.ACTION_USER_UNLOCKED));
+            } catch (Throwable ignored) {
+            }
+            CONFIG_REFRESH_REGISTERED = true;
+            MAIN_HANDLER.postDelayed(FlymeStatusBarSizer::refreshTrackedTextScaling, 2000);
+            MAIN_HANDLER.postDelayed(FlymeStatusBarSizer::refreshTrackedTextScaling, 10000);
+        }
+    }
+
+    private static void refreshTrackedTextScaling() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        handler.post(() -> {
+            ArrayList<TextView> textViews = new ArrayList<>(TRACKED_STATUS_TEXT_VIEWS.keySet());
+            for (TextView textView : textViews) {
+                if (textView == null) {
+                    continue;
+                }
+                Config config = Config.load(textView.getContext());
+                if (config.enabled && isStatusTextView(textView)) {
+                    applyTextScale(textView, config);
+                    textView.requestLayout();
+                    textView.invalidate();
+                }
+            }
+            ArrayList<View> connectionRateViews = new ArrayList<>(TRACKED_CONNECTION_RATE_VIEWS.keySet());
+            for (View view : connectionRateViews) {
+                if (view == null) {
+                    continue;
+                }
+                applyConnectionRateTextScale(view);
+                view.requestLayout();
+                view.invalidate();
+            }
+        });
+    }
+
+    private static float getConnectionRateBaselineOffset(View view) {
+        int textSize = getIntField(view, "mTextSize", 0);
+        if (textSize <= 0) {
+            return 0f;
+        }
+        Object paintObject = getField(view, "mPaint");
+        Paint paint = paintObject instanceof Paint ? (Paint) paintObject : new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setTextSize(textSize);
+        Paint.FontMetrics metrics = paint.getFontMetrics();
+        return -(metrics.ascent + metrics.descent) / 2f;
+    }
+
+    private static float getConnectionRateAlignmentOffset(View view) {
+        Object unitObject = getField(view, "mUnitView");
+        if (!(unitObject instanceof TextView)) {
+            return getConnectionRateBaselineOffset(view);
+        }
+        TextView unitView = (TextView) unitObject;
+        int textSize = getIntField(view, "mTextSize", 0);
+        if (textSize <= 0 || unitView.getHeight() <= 0) {
+            return getConnectionRateBaselineOffset(view);
+        }
+        Object paintObject = getField(view, "mPaint");
+        Paint paint = paintObject instanceof Paint ? (Paint) paintObject : new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setTextSize(textSize);
+        Paint.FontMetrics metrics = paint.getFontMetrics();
+        int[] unitLocation = new int[2];
+        unitView.getLocationOnScreen(unitLocation);
+        float currentBaseline = unitView.getHeight() / 2f;
+        Float targetBottom = getBatteryAlignedBottom(view, unitLocation);
+        if (targetBottom == null) {
+            View referenceView = findConnectionRateReferenceView(view);
+            if (referenceView == null) {
+                return getConnectionRateBaselineOffset(view);
+            }
+            int[] referenceLocation = new int[2];
+            referenceView.getLocationOnScreen(referenceLocation);
+            targetBottom = (float) ((referenceLocation[1] - unitLocation[1]) + referenceView.getHeight());
+        }
+        float targetBaseline = targetBottom - metrics.descent;
+        return targetBaseline - currentBaseline;
+    }
+
+    private static Float getBatteryAlignedBottom(View connectionRateView, int[] unitLocation) {
+        View batteryView = findConnectionRateBatteryView(connectionRateView);
+        if (batteryView == null || batteryView.getHeight() <= 0) {
+            return null;
+        }
+        int[] batteryLocation = new int[2];
+        batteryView.getLocationOnScreen(batteryLocation);
+        return (batteryLocation[1] - unitLocation[1]) + getBatteryVisibleBottom(batteryView);
+    }
+
+    private static View findConnectionRateBatteryView(View view) {
+        ViewParent parent = view.getParent();
+        if (!(parent instanceof ViewGroup)) {
+            return null;
+        }
+        int batteryId = getSystemUiId(view.getContext(), "battery");
+        if (batteryId == 0) {
+            return null;
+        }
+        return ((ViewGroup) parent).findViewById(batteryId);
+    }
+
+    private static float getBatteryVisibleBottom(View batteryView) {
+        Config config = Config.load(batteryView.getContext());
+        if (config.enabled && config.iosBatteryStyle) {
+            int height = dp(batteryView, config.iosBatteryHeight);
+            int top = Math.round((batteryView.getHeight() - height) / 2f) + dp(batteryView, config.iosBatteryOffsetY);
+            return top + height;
+        }
+        int visibleHeight = getSystemUiDimen(batteryView.getContext(), "status_bar_battery_unified_icon_height");
+        if (visibleHeight <= 0) {
+            visibleHeight = getSystemUiDimen(batteryView.getContext(), "status_bar_battery_icon_height");
+        }
+        if (visibleHeight <= 0) {
+            return batteryView.getHeight();
+        }
+        float top = (batteryView.getHeight() - visibleHeight) / 2f;
+        return top + visibleHeight;
+    }
+
+    private static View findConnectionRateReferenceView(View view) {
+        ViewParent parent = view.getParent();
+        if (!(parent instanceof ViewGroup)) {
+            return null;
+        }
+        ViewGroup group = (ViewGroup) parent;
+        boolean passedSelf = false;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (!passedSelf) {
+                if (child == view) {
+                    passedSelf = true;
+                }
+                continue;
+            }
+            View candidate = findFirstVisibleLeaf(child);
+            if (candidate != null) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static View findFirstVisibleLeaf(View view) {
+        if (view == null || view.getVisibility() != View.VISIBLE || view.getWidth() <= 0 || view.getHeight() <= 0) {
+            return null;
+        }
+        if (!(view instanceof ViewGroup)) {
+            return view;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View candidate = findFirstVisibleLeaf(group.getChildAt(i));
+            if (candidate != null) {
+                return candidate;
+            }
+        }
+        return view;
+    }
+
+    private static void disableAncestorClipping(View view, int maxDepth) {
+        ViewParent parent = view.getParent();
+        int depth = 0;
+        while (parent instanceof ViewGroup && depth < maxDepth) {
+            ViewGroup group = (ViewGroup) parent;
+            group.setClipChildren(false);
+            group.setClipToPadding(false);
+            parent = group.getParent();
+            depth++;
+        }
+    }
+
+    private static void disableChildClipping(View view) {
+        if (!(view instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) view;
+        group.setClipChildren(false);
+        group.setClipToPadding(false);
+        for (int i = 0; i < group.getChildCount(); i++) {
+            disableChildClipping(group.getChildAt(i));
+        }
+    }
+
+    private static boolean isStatusTextView(TextView textView) {
+        String idName = getSystemUiIdName(textView);
+        return "operator_name".equals(idName)
+                || "battery_percent".equals(idName)
+                || "keyguard_clock".equals(idName)
+                || "clock".equals(idName)
+                || "shade_carrier_text".equals(idName)
+                || "mobile_carrier_text".equals(idName)
+                || "no_carrier_text".equals(idName)
+                || "keyguard_carrier_text".equals(idName)
+                || "carrier_text".equals(idName);
+    }
+
+    private static void setChildHidden(View root, String idName, boolean hidden) {
+        if (!hidden) {
+            return;
+        }
+        int id = getSystemUiId(root.getContext(), idName);
+        if (id == 0) {
+            return;
+        }
+        View child = root.findViewById(id);
+        if (child != null) {
+            child.setVisibility(View.GONE);
+        }
+    }
+
+    private static void resizeChild(View root, String idName, int widthDp, int heightDp) {
+        int id = getSystemUiId(root.getContext(), idName);
+        if (id == 0) {
+            return;
+        }
+        View child = root.findViewById(id);
+        if (child == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = child.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        if (widthDp != ViewGroup.LayoutParams.WRAP_CONTENT) {
+            lp.width = dp(child, widthDp);
+        } else {
+            lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+        }
+        if (heightDp != ViewGroup.LayoutParams.WRAP_CONTENT) {
+            lp.height = dp(child, heightDp);
+        } else {
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+        }
+        child.setLayoutParams(lp);
+        child.requestLayout();
+    }
+
+    private static void scaleChild(View root, String idName, float widthScale, float heightScale) {
+        int id = getSystemUiId(root.getContext(), idName);
+        if (id == 0) {
+            return;
+        }
+        View child = root.findViewById(id);
+        if (child == null) {
+            return;
+        }
+        scaleView(child, widthScale, heightScale);
+    }
+
+    private static void offsetChild(View root, String idName, int offsetXDp, int offsetYDp) {
+        int id = getSystemUiId(root.getContext(), idName);
+        if (id == 0) {
+            return;
+        }
+        View child = root.findViewById(id);
+        if (child == null) {
+            return;
+        }
+        offsetView(child, offsetXDp, offsetYDp);
+    }
+
+    private static void offsetNetworkType(View root, int offsetXDp, int offsetYDp) {
+        View container = findSystemUiChild(root, "mobile_type_container");
+        if (container != null) {
+            offsetView(container, offsetXDp, offsetYDp);
+        } else {
+            offsetChild(root, "mobile_type", offsetXDp, offsetYDp);
+        }
+        offsetChild(root, "mobile_volte", offsetXDp, offsetYDp);
+    }
+
+    private static void recordDesktopIconSize(View root, String idName, int[] sizeOutput) {
+        View child = findSystemUiChild(root, idName);
+        if (child == null || isReferenceSignalContextChild(child)) {
+            return;
+        }
+        int width = getCurrentLayoutWidth(child);
+        int height = getCurrentLayoutHeight(child);
+        if (width > 0 && height > 0) {
+            sizeOutput[0] = width;
+            sizeOutput[1] = height;
+        }
+    }
+
+    private static int[] getRecordedSize(int[] size) {
+        return size[0] > 0 && size[1] > 0 ? new int[]{size[0], size[1]} : null;
+    }
+
+    private static int getCurrentLayoutWidth(View view) {
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp != null && lp.width > 0) {
+            return lp.width;
+        }
+        return view.getWidth();
+    }
+
+    private static int getCurrentLayoutHeight(View view) {
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp != null && lp.height > 0) {
+            return lp.height;
+        }
+        return view.getHeight();
+    }
+
+    private static View findSystemUiChild(View root, String idName) {
+        int id = getSystemUiId(root.getContext(), idName);
+        if (id == 0) {
+            return null;
+        }
+        return root.findViewById(id);
+    }
+
+    private static void normalizeMobileSpacing(View root) {
+        if (!isStatusIconsChild(root)) {
+            return;
+        }
+        int gapPx = getUnifiedStatusIconGapPx(root.getContext());
+        if (gapPx <= 0) {
+            return;
+        }
+        if (applyHorizontalMargins(root, gapPx, 0)) {
+            return;
+        }
+        View mobileGroup = findSystemUiChild(root, "mobile_group");
+        if (mobileGroup != null && mobileGroup != root) {
+            applyHorizontalMargins(mobileGroup, gapPx, 0);
+        }
+    }
+
+    private static void normalizeBatterySpacing(View view) {
+        if (view == null) {
+            return;
+        }
+        int gapPx = getUnifiedStatusIconGapPx(view.getContext());
+        if (gapPx <= 0) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (!(lp instanceof ViewGroup.MarginLayoutParams)) {
+            return;
+        }
+        ViewGroup.MarginLayoutParams marginLp = (ViewGroup.MarginLayoutParams) lp;
+        int[] original = ORIGINAL_MARGINS.get(view);
+        if (original == null) {
+            original = new int[]{
+                    marginLp.leftMargin,
+                    marginLp.topMargin,
+                    marginLp.rightMargin,
+                    marginLp.bottomMargin,
+                    marginLp.getMarginStart(),
+                    marginLp.getMarginEnd()
+            };
+            ORIGINAL_MARGINS.put(view, original);
+        }
+        marginLp.leftMargin = original[0];
+        marginLp.topMargin = original[1];
+        marginLp.rightMargin = original[2];
+        marginLp.bottomMargin = original[3];
+        marginLp.leftMargin = gapPx;
+        marginLp.rightMargin = original[2];
+        marginLp.setMarginStart(gapPx);
+        marginLp.setMarginEnd(original[5]);
+        view.setLayoutParams(marginLp);
+        view.requestLayout();
+    }
+
+    private static boolean applyHorizontalMargins(View view, int startPx, int endPx) {
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (!(lp instanceof ViewGroup.MarginLayoutParams)) {
+            return false;
+        }
+        ViewGroup.MarginLayoutParams marginLp = (ViewGroup.MarginLayoutParams) lp;
+        int[] original = ORIGINAL_MARGINS.get(view);
+        if (original == null) {
+            original = new int[]{
+                    marginLp.leftMargin,
+                    marginLp.topMargin,
+                    marginLp.rightMargin,
+                    marginLp.bottomMargin,
+                    marginLp.getMarginStart(),
+                    marginLp.getMarginEnd()
+            };
+            ORIGINAL_MARGINS.put(view, original);
+        }
+        marginLp.leftMargin = startPx;
+        marginLp.topMargin = original[1];
+        marginLp.rightMargin = endPx;
+        marginLp.bottomMargin = original[3];
+        marginLp.setMarginStart(startPx);
+        marginLp.setMarginEnd(endPx);
+        view.setLayoutParams(marginLp);
+        view.requestLayout();
+        return true;
+    }
+
+    private static boolean isStatusIconsChild(View view) {
+        return hasAncestorIdName(view, "statusIcons") || hasAncestorIdName(view, "system_icons");
+    }
+
+    private static boolean hasAncestorIdName(View view, String idName) {
+        View current = view;
+        while (current != null) {
+            if (idName.equals(getSystemUiIdName(current))) {
+                return true;
+            }
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return false;
+    }
+
+    private static int getUnifiedStatusIconGapPx(Context context) {
+        int gap = getSystemUiDimen(context, "stat_sys_battery_margin_start");
+        if (gap > 0) {
+            return gap;
+        }
+        gap = getSystemUiDimen(context, "status_bar_bindable_icon_padding");
+        if (gap > 0) {
+            return gap;
+        }
+        gap = getSystemUiDimen(context, "status_bar_horizontal_padding");
+        if (gap > 0) {
+            return gap;
+        }
+        return Math.round(3f * context.getResources().getDisplayMetrics().density);
+    }
+
+    private static void offsetView(View child, int offsetXDp, int offsetYDp) {
+        ViewGroup.LayoutParams lp = child.getLayoutParams();
+        if (!(lp instanceof ViewGroup.MarginLayoutParams)) {
+            child.setTranslationX(dp(child, offsetXDp));
+            child.setTranslationY(dp(child, offsetYDp));
+            return;
+        }
+        ViewGroup.MarginLayoutParams marginLp = (ViewGroup.MarginLayoutParams) lp;
+        int[] original = ORIGINAL_MARGINS.get(child);
+        if (original == null) {
+            original = new int[]{
+                    marginLp.leftMargin,
+                    marginLp.topMargin,
+                    marginLp.rightMargin,
+                    marginLp.bottomMargin,
+                    marginLp.getMarginStart(),
+                    marginLp.getMarginEnd()
+            };
+            ORIGINAL_MARGINS.put(child, original);
+        }
+        int dx = dp(child, offsetXDp);
+        int dy = dp(child, offsetYDp);
+        marginLp.leftMargin = original[0] + dx;
+        marginLp.topMargin = original[1] + dy;
+        marginLp.rightMargin = original[2] - dx;
+        marginLp.bottomMargin = original[3] - dy;
+        marginLp.setMarginStart(original[4] + dx);
+        marginLp.setMarginEnd(original[5] - dx);
+        child.setLayoutParams(marginLp);
+        child.requestLayout();
+    }
+
+    private static void scaleView(View child, float widthScale, float heightScale) {
+        ViewGroup.LayoutParams lp = child.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        int[] original = ORIGINAL_SIZES.get(child);
+        int currentWidth = lp.width > 0 ? lp.width : child.getWidth();
+        int currentHeight = lp.height > 0 ? lp.height : child.getHeight();
+        if (original == null) {
+            if (currentWidth <= 0 && currentHeight <= 0) {
+                return;
+            }
+            original = new int[]{currentWidth, currentHeight};
+            ORIGINAL_SIZES.put(child, original);
+        } else {
+            if (original[0] <= 0 && currentWidth > 0) {
+                original[0] = Math.round(currentWidth / Math.max(widthScale, 0.01f));
+            }
+            if (original[1] <= 0 && currentHeight > 0) {
+                original[1] = Math.round(currentHeight / Math.max(heightScale, 0.01f));
+            }
+        }
+        int baseWidth = original[0];
+        int baseHeight = original[1];
+        if (baseWidth > 0 && widthScale > 0f) {
+            lp.width = Math.round(baseWidth * widthScale);
+        }
+        if (baseHeight > 0 && heightScale > 0f) {
+            lp.height = Math.round(baseHeight * heightScale);
+        }
+        child.setLayoutParams(lp);
+        child.requestLayout();
+    }
+
+    private static int getSystemUiId(Context context, String name) {
+        Resources resources = context.getResources();
+        return resources.getIdentifier(name, "id", SYSTEM_UI);
+    }
+
+    private static int getSystemUiDimen(Context context, String name) {
+        Resources resources = context.getResources();
+        int id = resources.getIdentifier(name, "dimen", SYSTEM_UI);
+        return id == 0 ? 0 : resources.getDimensionPixelSize(id);
+    }
+
+    private static String getSystemUiIdName(View view) {
+        int id = view.getId();
+        if (id == View.NO_ID) {
+            return "";
+        }
+        try {
+            return view.getResources().getResourceEntryName(id);
+        } catch (Resources.NotFoundException ignored) {
+            return "";
+        }
+    }
+
+    private static int dp(View view, int value) {
+        return Math.round(value * view.getResources().getDisplayMetrics().density);
+    }
+
+    private static Object getField(Object target, String name) {
+        try {
+            Class<?> clazz = target.getClass();
+            while (clazz != null) {
+                try {
+                    java.lang.reflect.Field field = clazz.getDeclaredField(name);
+                    field.setAccessible(true);
+                    return field.get(target);
+                } catch (NoSuchFieldException ignored) {
+                    clazz = clazz.getSuperclass();
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static void setIntField(Object target, String name, int value) {
+        try {
+            Class<?> clazz = target.getClass();
+            while (clazz != null) {
+                try {
+                    java.lang.reflect.Field field = clazz.getDeclaredField(name);
+                    field.setAccessible(true);
+                    field.setInt(target, value);
+                    return;
+                } catch (NoSuchFieldException ignored) {
+                    clazz = clazz.getSuperclass();
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static int getIntField(Object target, String name, int fallback) {
+        Object value = getField(target, name);
+        return value instanceof Integer ? (Integer) value : fallback;
+    }
+
+    private static boolean getBooleanField(Object target, String name, boolean fallback) {
+        Object value = getField(target, name);
+        return value instanceof Boolean ? (Boolean) value : fallback;
+    }
+
+    private static void setMeasuredDimension(View view, int width, int height) {
+        try {
+            Method method = View.class.getDeclaredMethod("setMeasuredDimension", int.class, int.class);
+            method.setAccessible(true);
+            method.invoke(view, width, height);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void setPaintColor(Object target, String name, int color) {
+        Object value = getField(target, name);
+        if (value instanceof Paint) {
+            ((Paint) value).setColor(color);
+        }
+    }
+
+    private interface ViewAction {
+        void apply(View view);
+    }
+
+    private static final class Config {
+        boolean enabled = SettingsStore.DEFAULT_ENABLED;
+        float globalIconScale = SettingsStore.DEFAULT_GLOBAL_ICON_SCALE / 100f;
+        int mobileSignalFactor = SettingsStore.DEFAULT_MOBILE_SIGNAL_FACTOR;
+        int wifiSignalFactor = SettingsStore.DEFAULT_WIFI_SIGNAL_FACTOR;
+        int batteryFactor = SettingsStore.DEFAULT_BATTERY_FACTOR;
+        int statusIconFactor = SettingsStore.DEFAULT_STATUS_ICON_FACTOR;
+        int networkTypeFactor = SettingsStore.DEFAULT_NETWORK_TYPE_FACTOR;
+        int networkTypeDesktopOffsetX = SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X;
+        int networkTypeDesktopOffsetY = SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y;
+        int networkTypeKeyguardOffsetX = SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X;
+        int networkTypeKeyguardOffsetY = SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y;
+        int networkTypeControlCenterOffsetX = SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X;
+        int networkTypeControlCenterOffsetY = SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y;
+        int iosSignalDesktopOffsetX = SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X;
+        int iosSignalDesktopOffsetY = SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y;
+        int iosSignalKeyguardOffsetX = SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X;
+        int iosSignalKeyguardOffsetY = SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y;
+        int iosSignalControlCenterOffsetX = SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X;
+        int iosSignalControlCenterOffsetY = SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y;
+        int iosBatteryWidth = SettingsStore.DEFAULT_IOS_BATTERY_WIDTH;
+        int iosBatteryHeight = SettingsStore.DEFAULT_IOS_BATTERY_HEIGHT;
+        int iosBatteryOffsetX = SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X;
+        int iosBatteryOffsetY = SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y;
+        int iosBatteryTextSize = SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE;
+        int activityIconFactor = SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR;
+        float textScale = SettingsStore.DEFAULT_TEXT_SCALE / 100f;
+        boolean hideMobileType = SettingsStore.DEFAULT_HIDE_MOBILE_TYPE;
+        boolean iosBatteryStyle = SettingsStore.DEFAULT_IOS_BATTERY_STYLE;
+        boolean iosSignalStyle = SettingsStore.DEFAULT_IOS_SIGNAL_STYLE;
+        boolean iosNetworkTypeStyle = SettingsStore.DEFAULT_IOS_NETWORK_TYPE_STYLE;
+
+        float scaled(int factorPercent) {
+            return 1f + ((globalIconScale - 1f) * (factorPercent / 100f));
+        }
+
+        static Config load(Context context) {
+            Config config = new Config();
+            try (Cursor cursor = context.getContentResolver().query(SETTINGS_URI, null, null, null, null)) {
+                if (cursor == null) {
+                    return config;
+                }
+                int keyColumn = cursor.getColumnIndex("key");
+                int valueColumn = cursor.getColumnIndex("value");
+                while (cursor.moveToNext()) {
+                    String key = cursor.getString(keyColumn);
+                    String value = cursor.getString(valueColumn);
+                    config.apply(key, value);
+                }
+            } catch (Throwable ignored) {
+            }
+            return config;
+        }
+
+        private void apply(String key, String value) {
+            if (SettingsStore.KEY_ENABLED.equals(key)) {
+                enabled = "1".equals(value);
+            } else if (SettingsStore.KEY_GLOBAL_ICON_SCALE.equals(key)) {
+                globalIconScale = parseInt(value, SettingsStore.DEFAULT_GLOBAL_ICON_SCALE) / 100f;
+            } else if (SettingsStore.KEY_MOBILE_SIGNAL_FACTOR.equals(key)) {
+                mobileSignalFactor = parseInt(value, SettingsStore.DEFAULT_MOBILE_SIGNAL_FACTOR);
+            } else if (SettingsStore.KEY_WIFI_SIGNAL_FACTOR.equals(key)) {
+                wifiSignalFactor = parseInt(value, SettingsStore.DEFAULT_WIFI_SIGNAL_FACTOR);
+            } else if (SettingsStore.KEY_BATTERY_FACTOR.equals(key)) {
+                batteryFactor = parseInt(value, SettingsStore.DEFAULT_BATTERY_FACTOR);
+            } else if (SettingsStore.KEY_STATUS_ICON_FACTOR.equals(key)) {
+                statusIconFactor = parseInt(value, SettingsStore.DEFAULT_STATUS_ICON_FACTOR);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_FACTOR.equals(key)) {
+                networkTypeFactor = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_FACTOR);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_OFFSET_X.equals(key)) {
+                int legacyValue = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_OFFSET_X);
+                networkTypeDesktopOffsetX = legacyValue;
+                networkTypeKeyguardOffsetX = legacyValue;
+                networkTypeControlCenterOffsetX = legacyValue;
+            } else if (SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y.equals(key)) {
+                int legacyValue = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_OFFSET_Y);
+                networkTypeDesktopOffsetY = legacyValue;
+                networkTypeKeyguardOffsetY = legacyValue;
+                networkTypeControlCenterOffsetY = legacyValue;
+            } else if (SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_X.equals(key)) {
+                networkTypeDesktopOffsetX = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y.equals(key)) {
+                networkTypeDesktopOffsetY = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X.equals(key)) {
+                networkTypeKeyguardOffsetX = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y.equals(key)) {
+                networkTypeKeyguardOffsetY = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X.equals(key)) {
+                networkTypeControlCenterOffsetX = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y.equals(key)) {
+                networkTypeControlCenterOffsetY = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y);
+            } else if (SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X.equals(key)) {
+                iosSignalDesktopOffsetX = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X);
+            } else if (SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y.equals(key)) {
+                iosSignalDesktopOffsetY = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y);
+            } else if (SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X.equals(key)) {
+                iosSignalKeyguardOffsetX = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X);
+            } else if (SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y.equals(key)) {
+                iosSignalKeyguardOffsetY = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y);
+            } else if (SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X.equals(key)) {
+                iosSignalControlCenterOffsetX = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X);
+            } else if (SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y.equals(key)) {
+                iosSignalControlCenterOffsetY = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y);
+            } else if (SettingsStore.KEY_IOS_BATTERY_WIDTH.equals(key)) {
+                iosBatteryWidth = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_WIDTH);
+            } else if (SettingsStore.KEY_IOS_BATTERY_HEIGHT.equals(key)) {
+                iosBatteryHeight = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_HEIGHT);
+            } else if (SettingsStore.KEY_IOS_BATTERY_OFFSET_X.equals(key)) {
+                iosBatteryOffsetX = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X);
+            } else if (SettingsStore.KEY_IOS_BATTERY_OFFSET_Y.equals(key)) {
+                iosBatteryOffsetY = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y);
+            } else if (SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE.equals(key)) {
+                iosBatteryTextSize = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE);
+            } else if (SettingsStore.KEY_ACTIVITY_ICON_FACTOR.equals(key)) {
+                activityIconFactor = parseInt(value, SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR);
+            } else if (SettingsStore.KEY_TEXT_SCALE.equals(key)) {
+                textScale = parseInt(value, SettingsStore.DEFAULT_TEXT_SCALE) / 100f;
+            } else if (SettingsStore.KEY_HIDE_MOBILE_TYPE.equals(key)) {
+                hideMobileType = "1".equals(value);
+            } else if (SettingsStore.KEY_IOS_BATTERY_STYLE.equals(key)) {
+                iosBatteryStyle = "1".equals(value);
+            } else if (SettingsStore.KEY_IOS_SIGNAL_STYLE.equals(key)) {
+                iosSignalStyle = "1".equals(value);
+            } else if (SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE.equals(key)) {
+                iosNetworkTypeStyle = "1".equals(value);
+            }
+        }
+
+        private static int parseInt(String value, int fallback) {
+            try {
+                return Integer.parseInt(value);
+            } catch (NumberFormatException ignored) {
+                return fallback;
+            }
+        }
+    }
+}
