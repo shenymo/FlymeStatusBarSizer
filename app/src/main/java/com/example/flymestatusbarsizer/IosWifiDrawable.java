@@ -40,6 +40,12 @@ final class IosWifiDrawable extends Drawable {
     }
 
     @Override
+    protected boolean onLevelChange(int level) {
+        setLevelValue(normalizeLevel(level));
+        return true;
+    }
+
+    @Override
     public void draw(Canvas canvas) {
         Rect bounds = getBounds();
         float width = bounds.width();
@@ -186,6 +192,16 @@ final class IosWifiDrawable extends Drawable {
         color = newColor;
         invalidateSelf();
         return true;
+    }
+
+    private static int normalizeLevel(int level) {
+        if (level <= 0) {
+            return 0;
+        }
+        if (level <= MAX_LEVEL) {
+            return level;
+        }
+        return MAX_LEVEL;
     }
 
     @Override
