@@ -78,6 +78,10 @@ public class MainActivity extends Activity {
         signalNetwork.setOnClickListener(v -> startActivity(new Intent(this, SignalNetworkSettingsActivity.class)));
         root.addView(signalNetwork, matchWrapWithTop(10));
 
+        TextView signalDebug = button("\u4fe1\u53f7\u683c\u8c03\u8bd5");
+        signalDebug.setOnClickListener(v -> startActivity(new Intent(this, SignalDebugActivity.class)));
+        root.addView(signalDebug, matchWrapWithTop(10));
+
         TextView battery = button("iOS \u98ce\u683c\u7535\u6c60\u8bbe\u7f6e");
         battery.setOnClickListener(v -> startActivity(new Intent(this, BatterySettingsActivity.class)));
         root.addView(battery, matchWrapWithTop(10));

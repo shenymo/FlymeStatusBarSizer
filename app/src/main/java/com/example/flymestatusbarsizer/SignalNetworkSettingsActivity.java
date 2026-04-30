@@ -48,22 +48,6 @@ public class SignalNetworkSettingsActivity extends Activity {
         addSwitch(root, "\u53cc\u5361\u5408\u4e00\u4fe1\u53f7\u683c", "\u5361 1 \u663e\u793a\u4e3a\u4e3b\u4fe1\u53f7\u683c\uff0c\u5361 2 \u6536\u5230\u4e0b\u65b9\u56db\u4e2a\u5c0f\u70b9\u91cc\u3002",
                 SettingsStore.KEY_IOS_SIGNAL_DUAL_COMBINED,
                 SettingsStore.DEFAULT_IOS_SIGNAL_DUAL_COMBINED);
-        addSectionTitle(root, "\u4fe1\u53f7\u683c\u8c03\u8bd5");
-        addSwitch(root, "\u542f\u7528\u8c03\u8bd5\u4fe1\u53f7", "\u5f00\u542f\u540e\u5ffd\u7565 SystemUI \u4e0b\u53d1\u7684\u771f\u5b9e\u4fe1\u53f7\uff0c\u6539\u7528\u4e0b\u9762\u8bbe\u7f6e\u7acb\u5373\u66f4\u65b0\u72b6\u6001\u680f\u3002",
-                SettingsStore.KEY_IOS_SIGNAL_DEBUG_ENABLED,
-                SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_ENABLED);
-        addSwitch(root, "\u5361 1 \u5f00\u542f", "\u5173\u95ed\u65f6\u4e0d\u663e\u793a\u5361 1\uff1b\u53ea\u5f00\u5361 2 \u65f6\u6309\u5355\u5361\u4fe1\u53f7\u683c\u663e\u793a\u3002",
-                SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM1_ENABLED,
-                SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM1_ENABLED);
-        addSlider(root, "\u5361 1 \u4fe1\u53f7", "\u8c03\u8bd5\u6a21\u5f0f\u4e0b\u5361 1 \u7684\u4fe1\u53f7\u5f3a\u5ea6\u3002",
-                SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM1_LEVEL,
-                SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM1_LEVEL, 0, 4, "\u683c");
-        addSwitch(root, "\u5361 2 \u5f00\u542f", "\u53cc\u5361\u5408\u4e00\u65f6\u5361 2 \u663e\u793a\u5728\u4e0b\u65b9\u56db\u4e2a\u5c0f\u70b9\u91cc\u3002",
-                SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM2_ENABLED,
-                SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM2_ENABLED);
-        addSlider(root, "\u5361 2 \u4fe1\u53f7", "\u8c03\u8bd5\u6a21\u5f0f\u4e0b\u5361 2 \u7684\u4fe1\u53f7\u5f3a\u5ea6\u3002",
-                SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL,
-                SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM2_LEVEL, 0, 4, "\u683c");
         addSlider(root, "\u79fb\u52a8\u4fe1\u53f7\u7f29\u653e\u5f3a\u5ea6", "mobile_signal \u8ddf\u968f\u6574\u4f53\u7f29\u653e\u7684\u5f3a\u5ea6\u3002",
                 SettingsStore.KEY_MOBILE_SIGNAL_FACTOR, SettingsStore.DEFAULT_MOBILE_SIGNAL_FACTOR, 0, 160, "%");
         addOffsetSliderWithFallback(root, "\u684c\u9762\u72b6\u6001\u680f\u5de6\u53f3\u504f\u79fb",
@@ -140,11 +124,6 @@ public class SignalNetworkSettingsActivity extends Activity {
                     .remove(SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X)
                     .remove(SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y)
                     .remove(SettingsStore.KEY_IOS_SIGNAL_DUAL_COMBINED)
-                    .remove(SettingsStore.KEY_IOS_SIGNAL_DEBUG_ENABLED)
-                    .remove(SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM1_ENABLED)
-                    .remove(SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM2_ENABLED)
-                    .remove(SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM1_LEVEL)
-                    .remove(SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL)
                     .apply();
             SettingsStore.notifyChanged(this);
             recreate();

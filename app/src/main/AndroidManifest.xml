@@ -32,6 +32,11 @@
             android:label="iOS &#x4FE1;&#x53F7;&#x683C;&#x4E0E; 5G &#x6807;&#x8BC6;" />
 
         <activity
+            android:name=".SignalDebugActivity"
+            android:exported="false"
+            android:label="&#x4FE1;&#x53F7;&#x683C;&#x8C03;&#x8BD5;" />
+
+        <activity
             android:name=".WifiSettingsActivity"
             android:exported="false"
             android:label="Wi-Fi &#x56FE;&#x6807;" />

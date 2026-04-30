@@ -99,6 +99,20 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL,
                 prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL,
                         SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM2_LEVEL));
+        add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY,
+                prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_LEVEL,
+                prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_LEVEL, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SLOT,
+                prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SLOT, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUB_ID,
+                prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUB_ID, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_STATE,
+                prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_STATE, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SOURCE,
+                prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SOURCE, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_ERROR,
+                prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_ERROR, ""));
         add(cursor, SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, SettingsStore.DEFAULT_IOS_NETWORK_TYPE_STYLE));
         add(cursor, SettingsStore.KEY_IOS_WIFI_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_WIFI_STYLE, SettingsStore.DEFAULT_IOS_WIFI_STYLE));
         return cursor;
@@ -110,6 +124,10 @@ public class SettingsProvider extends ContentProvider {
 
     private static void add(MatrixCursor cursor, String key, int value) {
         cursor.addRow(new Object[]{key, Integer.toString(value)});
+    }
+
+    private static void add(MatrixCursor cursor, String key, String value) {
+        cursor.addRow(new Object[]{key, value == null ? "" : value});
     }
 
     @Override
@@ -129,6 +147,21 @@ public class SettingsProvider extends ContentProvider {
 
     @Override
     public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
-        return 0;
+        if (values == null || getContext() == null) {
+            return 0;
+        }
+        SharedPreferences.Editor editor = SettingsStore.prefs(getContext()).edit();
+        int changed = 0;
+        for (String key : values.keySet()) {
+            if (key != null && key.startsWith("runtime_signal_debug_")) {
+                Object value = values.get(key);
+                editor.putString(key, value == null ? "" : String.valueOf(value));
+                changed++;
+            }
+        }
+        if (changed > 0) {
+            editor.apply();
+        }
+        return changed;
     }
 }

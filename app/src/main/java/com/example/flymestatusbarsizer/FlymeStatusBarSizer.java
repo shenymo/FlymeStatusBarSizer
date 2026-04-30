@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer;
 
 import android.content.BroadcastReceiver;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -66,6 +67,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, Integer> MOBILE_VIEW_SLOTS = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, MobileSignalInfo> MOBILE_SIGNAL_RAW_INFOS = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, MobileSignalInfo> MOBILE_SIGNAL_INFOS = new WeakHashMap<>();
+    private static final WeakHashMap<ImageView, Boolean> TRACKED_MOBILE_SIGNAL_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, Boolean> PRIMARY_SIGNAL_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, Boolean> SECONDARY_SIGNAL_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> TRACKED_STATUS_TEXT_VIEWS = new WeakHashMap<>();
@@ -94,9 +96,12 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final Object RUNTIME_REFRESH_LOCK = new Object();
     private static final long CONFIG_CACHE_TTL_MS = 5000L;
     private static final long TELEPHONY_CACHE_TTL_MS = 30000L;
+    private static final long SIGNAL_DEBUG_REPORT_MIN_INTERVAL_MS = 200L;
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
     private static volatile boolean NETWORK_TYPE_REFRESH_PENDING;
+    private static volatile boolean LAST_SIGNAL_DEBUG_ENABLED;
+    private static volatile long LAST_SIGNAL_DEBUG_REPORT_UPTIME;
     private static Handler MAIN_HANDLER;
     private static volatile Context SYSTEM_UI_CONTEXT;
     private static volatile Config CACHED_CONFIG;
@@ -131,6 +136,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookConstructAndBind(loader, "com.android.systemui.statusbar.pipeline.wifi.ui.view.ModernStatusBarWifiView");
         hookFlymeSlotIndexUpdates(loader);
         hookTelephonyDebugSignals(loader);
+        hookSignalIconModelDebugStates(loader);
         hookFlymeWifiView(loader);
         hookConnectionRateView(loader);
         hookImageViewTintUpdates(loader);
@@ -280,6 +286,36 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookTelephonyManagerDebugSignals();
         hookSignalStrengthDebugLevels();
         hookCellSignalStrengthDebugLevels(loader);
+    }
+
+    private void hookSignalIconModelDebugStates(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.statusbar.pipeline.mobile.domain.model.SignalIconModel$Cellular",
+                    false, loader);
+            for (Method method : clazz.getDeclaredMethods()) {
+                if (!"toSignalDrawableState".equals(method.getName())
+                        || method.getParameterTypes().length != 0
+                        || method.getReturnType() != int.class) {
+                    continue;
+                }
+                method.setAccessible(true);
+                hook(method).intercept(chain -> {
+                    Object result = chain.proceed();
+                    int fallback = result instanceof Integer ? (Integer) result : 0;
+                    Config config = getCachedOrLoadedConfig();
+                    if (config == null || !config.enabled || !config.iosSignalDebugEnabled) {
+                        return fallback;
+                    }
+                    return buildSignalDrawableState(getDebugPrimaryLevel(config), fallback);
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook SignalIconModel debug states", t);
+            reportSignalDebug(SYSTEM_UI_CONTEXT, "SignalIconModel hook",
+                    MOBILE_SLOT_UNKNOWN, UNSET_SUB_ID, 0, IosSignalDrawable.NO_SECONDARY_LEVEL,
+                    "Failed to hook SignalIconModel debug states: " + t);
+        }
     }
 
     private void hookTelephonyManagerDebugSignals() {
@@ -473,8 +509,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                         if ("setImageDrawable".equals(name) && "mobile_signal".equals(idName)
                                 && chain.getArgs().size() == 1 && chain.getArg(0) instanceof Drawable) {
                             Drawable drawable = (Drawable) chain.getArg(0);
-                            MOBILE_SIGNAL_DRAWABLE_OWNERS.put(drawable, imageView);
-                            handleMobileSignalDrawableState(imageView, drawable.getLevel());
+                            if (!(drawable instanceof IosSignalDrawable)) {
+                                MOBILE_SIGNAL_DRAWABLE_OWNERS.put(drawable, imageView);
+                            }
                         }
                         if (("setImageResource".equals(name) || "setImageDrawable".equals(name))
                                 && "mobile_signal".equals(idName)
@@ -523,7 +560,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                 }
                 return result;
             });
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            reportSignalDebug(SYSTEM_UI_CONTEXT, "SignalDrawable hook",
+                    MOBILE_SLOT_UNKNOWN, UNSET_SUB_ID, 0, IosSignalDrawable.NO_SECONDARY_LEVEL,
+                    "Failed to hook SignalDrawable levels: " + t);
         }
     }
 
@@ -1004,9 +1044,13 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         MobileSignalInfo info = MOBILE_SIGNAL_INFOS.get(imageView);
+        if (info == null) {
+            info = MOBILE_SIGNAL_RAW_INFOS.get(imageView);
+        }
+        if (shouldCollapseCombinedSecondarySignal(imageView, config, info)) {
+            return;
+        }
         int primaryLevel = info == null ? 0 : info.level;
-        int slot = info == null ? getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN) : info.slot;
-        primaryLevel = getConfiguredSignalLevel(config, slot, primaryLevel);
         int secondaryLevel = getDrawableSecondaryLevel(imageView, config, info);
         applyIosSignalImageView(imageView, primaryLevel, secondaryLevel, config);
         if (applyMarginOffset) {
@@ -1019,6 +1063,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!config.iosSignalStyle) {
             return;
         }
+        TRACKED_MOBILE_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
         Drawable current = imageView.getDrawable();
         if (current instanceof IosSignalDrawable) {
             ((IosSignalDrawable) current).setLevels(primaryLevel, secondaryLevel);
@@ -1034,18 +1079,29 @@ public class FlymeStatusBarSizer extends XposedModule {
         imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
     }
 
+    private static boolean shouldCollapseCombinedSecondarySignal(ImageView imageView,
+            Config config, MobileSignalInfo info) {
+        if (!config.iosSignalDualCombined) {
+            return false;
+        }
+        int slot = info == null ? getKnownMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN) : info.slot;
+        if (slot != MOBILE_SLOT_SECONDARY) {
+            return false;
+        }
+        if (info != null) {
+            latestSecondarySignalLevel = info.level;
+            MOBILE_SIGNAL_INFOS.put(imageView, info);
+            SECONDARY_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
+            PRIMARY_SIGNAL_VIEWS.remove(imageView);
+        }
+        setMobileSignalViewVisible(imageView, false);
+        updatePrimarySignalDrawables();
+        return true;
+    }
+
     private static int getDrawableSecondaryLevel(ImageView imageView, Config config, MobileSignalInfo info) {
         if (!config.iosSignalDualCombined) {
             return IosSignalDrawable.NO_SECONDARY_LEVEL;
-        }
-        if (config.iosSignalDebugEnabled) {
-            if (!config.iosSignalDebugSim1Enabled || !config.iosSignalDebugSim2Enabled) {
-                return IosSignalDrawable.NO_SECONDARY_LEVEL;
-            }
-            int slot = info == null ? getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN) : info.slot;
-            return slot != MOBILE_SLOT_SECONDARY
-                    ? mapMobileSignalLevel(config.iosSignalDebugSim2Level)
-                    : IosSignalDrawable.NO_SECONDARY_LEVEL;
         }
         int slot = info == null ? getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN) : info.slot;
         if (slot != MOBILE_SLOT_PRIMARY || latestSecondarySignalLevel == IosSignalDrawable.NO_SECONDARY_LEVEL) {
@@ -1060,11 +1116,17 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         int subId = getMobileSubId(imageView);
+        int slot = getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN);
         MobileSignalInfo info = getMobileSignalInfo(imageView.getResources(), resId,
-                getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN), subId);
+                slot, subId);
         if (info == null) {
+            reportSignalDebug(imageView.getContext(), "mobile_signal resource",
+                    slot, subId, resId, IosSignalDrawable.NO_SECONDARY_LEVEL,
+                    "Unable to parse mobile signal resource: " + getResourceName(imageView.getResources(), resId));
             return;
         }
+        reportSignalDebug(imageView.getContext(), "mobile_signal resource",
+                info.slot, info.subId, resId, info.level, null);
         applyMobileSignalInfo(imageView, info, config);
     }
 
@@ -1077,28 +1139,35 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!config.enabled || !config.iosSignalStyle) {
             return;
         }
+        TRACKED_MOBILE_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
         int slot = getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN);
+        int subId = getMobileSubId(imageView);
         int level = mapSignalDrawableStateLevel(state);
-        applyMobileSignalInfo(imageView, new MobileSignalInfo(slot, level, getMobileSubId(imageView)), config);
+        if (level == IosSignalDrawable.NO_SECONDARY_LEVEL) {
+            reportSignalDebug(imageView.getContext(), "SignalDrawable level",
+                    slot, subId, state, level, "Ignored non-signal state");
+            return;
+        }
+        reportSignalDebug(imageView.getContext(), "SignalDrawable level",
+                slot, subId, state, level, null);
+        applyMobileSignalInfo(imageView, new MobileSignalInfo(slot, level, subId), config);
     }
 
     private static void applyMobileSignalInfo(ImageView imageView, MobileSignalInfo info, Config config) {
+        TRACKED_MOBILE_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
         int currentSlot = getMobileSignalSlot(imageView, info.slot);
         if (currentSlot != MOBILE_SLOT_UNKNOWN && currentSlot != info.slot) {
             info = new MobileSignalInfo(currentSlot, info.level, info.subId);
         }
         registerTelephonySignalListener(imageView.getContext(), info.subId);
-        int telephonyLevel = getCachedTelephonySignalLevel(info.subId);
-        if (telephonyLevel != IosSignalDrawable.NO_SECONDARY_LEVEL && telephonyLevel != info.level) {
-            info = new MobileSignalInfo(info.slot, telephonyLevel, info.subId);
+        if (!config.iosSignalDebugEnabled) {
+            rememberTelephonySignalLevel(info.subId, info.level);
         }
-        MOBILE_SIGNAL_RAW_INFOS.put(imageView, info);
+        if (!config.iosSignalDebugEnabled || !MOBILE_SIGNAL_RAW_INFOS.containsKey(imageView)) {
+            MOBILE_SIGNAL_RAW_INFOS.put(imageView, info);
+        }
         MobileSignalInfo displayInfo = info;
         MOBILE_SIGNAL_INFOS.put(imageView, displayInfo);
-        if (config.iosSignalDebugEnabled) {
-            applyDebugMobileSignalInfo(imageView, displayInfo, config);
-            return;
-        }
         if (displayInfo.slot == MOBILE_SLOT_PRIMARY) {
             latestPrimarySignalLevel = displayInfo.level;
             PRIMARY_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
@@ -1124,39 +1193,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private static void applyDebugMobileSignalInfo(ImageView imageView, MobileSignalInfo info, Config config) {
-        int slot = info.slot;
-        if (slot == MOBILE_SLOT_SECONDARY) {
-            latestSecondarySignalLevel = mapMobileSignalLevel(config.iosSignalDebugSim2Level);
-            SECONDARY_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
-            PRIMARY_SIGNAL_VIEWS.remove(imageView);
-            if (config.iosSignalDualCombined) {
-                setMobileSignalViewVisible(imageView, false);
-                updatePrimarySignalDrawables();
-                return;
-            }
-            if (config.iosSignalDebugSim2Enabled) {
-                setMobileSignalViewVisible(imageView, true);
-                applyIosSignalImageView(imageView, config.iosSignalDebugSim2Level,
-                        IosSignalDrawable.NO_SECONDARY_LEVEL, config);
-            } else {
-                setMobileSignalViewVisible(imageView, false);
-            }
-            return;
-        }
-
-        latestPrimarySignalLevel = getDebugPrimaryDisplayLevel(config, info.level);
-        PRIMARY_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
-        SECONDARY_SIGNAL_VIEWS.remove(imageView);
-        if (!hasAnyDebugSignal(config)) {
-            setMobileSignalViewVisible(imageView, false);
-            return;
-        }
-        setMobileSignalViewVisible(imageView, true);
-        applyIosSignalImageView(imageView, latestPrimarySignalLevel,
-                getDrawableSecondaryLevel(imageView, config, info), config);
-    }
-
     private static void updatePrimarySignalDrawables() {
         ArrayList<ImageView> views = new ArrayList<>(PRIMARY_SIGNAL_VIEWS.keySet());
         for (ImageView view : views) {
@@ -1167,46 +1203,12 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (!config.enabled || !config.iosSignalStyle || !config.iosSignalDualCombined) {
                 continue;
             }
-            if (config.iosSignalDebugEnabled && !hasAnyDebugSignal(config)) {
-                setMobileSignalViewVisible(view, false);
-                continue;
-            }
             setMobileSignalViewVisible(view, true);
             MobileSignalInfo info = MOBILE_SIGNAL_INFOS.get(view);
             int primaryLevel = info == null ? latestPrimarySignalLevel : info.level;
-            primaryLevel = getDebugPrimaryDisplayLevel(config, primaryLevel);
-            int secondaryLevel = config.iosSignalDebugEnabled
-                    ? getDrawableSecondaryLevel(view, config, info) : latestSecondarySignalLevel;
+            int secondaryLevel = latestSecondarySignalLevel;
             applyIosSignalImageView(view, primaryLevel, secondaryLevel, config);
         }
-    }
-
-    private static int getConfiguredSignalLevel(Config config, int slot, int fallbackLevel) {
-        if (!config.iosSignalDebugEnabled) {
-            return fallbackLevel;
-        }
-        if (slot == MOBILE_SLOT_SECONDARY) {
-            return config.iosSignalDebugSim2Enabled
-                    ? mapMobileSignalLevel(config.iosSignalDebugSim2Level) : 0;
-        }
-        return getDebugPrimaryDisplayLevel(config, fallbackLevel);
-    }
-
-    private static int getDebugPrimaryDisplayLevel(Config config, int fallbackLevel) {
-        if (!config.iosSignalDebugEnabled) {
-            return fallbackLevel;
-        }
-        if (config.iosSignalDebugSim1Enabled) {
-            return mapMobileSignalLevel(config.iosSignalDebugSim1Level);
-        }
-        if (config.iosSignalDebugSim2Enabled) {
-            return mapMobileSignalLevel(config.iosSignalDebugSim2Level);
-        }
-        return 0;
-    }
-
-    private static boolean hasAnyDebugSignal(Config config) {
-        return config.iosSignalDebugSim1Enabled || config.iosSignalDebugSim2Enabled;
     }
 
     private static void setMobileSignalViewVisible(ImageView imageView, boolean visible) {
@@ -1402,6 +1404,144 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private static void reportSignalDebug(Context context, String source, int slot, int subId,
+            int state, int level, String error) {
+        Context targetContext = context != null ? context : SYSTEM_UI_CONTEXT;
+        if (targetContext == null) {
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        if ((error == null || error.length() == 0)
+                && now - LAST_SIGNAL_DEBUG_REPORT_UPTIME < SIGNAL_DEBUG_REPORT_MIN_INTERVAL_MS) {
+            return;
+        }
+        LAST_SIGNAL_DEBUG_REPORT_UPTIME = now;
+        try {
+            String time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+                    .format(new Date());
+            String levelText = level == IosSignalDrawable.NO_SECONDARY_LEVEL
+                    ? "unknown" : Integer.toString(level);
+            String stateText = "0x" + Integer.toHexString(state);
+            String summary = time
+                    + "\nsource=" + safeDebugText(source)
+                    + "\nslot=" + slotToDebugText(slot)
+                    + "\nsubId=" + subId
+                    + "\nstate=" + stateText
+                    + "\nlevel=" + levelText;
+            if (error != null && error.length() > 0) {
+                summary += "\nerror=" + error;
+            }
+            ContentValues values = new ContentValues();
+            values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY, summary);
+            values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_LEVEL, levelText);
+            values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SLOT, slotToDebugText(slot));
+            values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUB_ID, Integer.toString(subId));
+            values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_STATE, stateText);
+            values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SOURCE, safeDebugText(source));
+            values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_ERROR, error == null ? "" : error);
+            targetContext.getContentResolver().update(SETTINGS_URI, values, null, null);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void reportCurrentTrackedSignalState(Context context, String source) {
+        ImageView primaryView = null;
+        ImageView secondaryView = null;
+        MobileSignalInfo primaryInfo = null;
+        MobileSignalInfo secondaryInfo = null;
+        ArrayList<ImageView> views = collectTrackedMobileSignalViews();
+        for (ImageView view : views) {
+            MobileSignalInfo info = MOBILE_SIGNAL_INFOS.get(view);
+            if (info == null) {
+                info = MOBILE_SIGNAL_RAW_INFOS.get(view);
+            }
+            if (view == null || info == null) {
+                continue;
+            }
+            if (info.slot == MOBILE_SLOT_PRIMARY && primaryInfo == null) {
+                primaryView = view;
+                primaryInfo = info;
+            } else if (info.slot == MOBILE_SLOT_SECONDARY && secondaryInfo == null) {
+                secondaryView = view;
+                secondaryInfo = info;
+            }
+        }
+        if (primaryInfo == null && secondaryInfo == null) {
+            reportSignalDebug(context, source, MOBILE_SLOT_UNKNOWN, UNSET_SUB_ID,
+                    0, IosSignalDrawable.NO_SECONDARY_LEVEL,
+                    "No tracked mobile signal info yet");
+            return;
+        }
+        String time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+                .format(new Date());
+        String summary = time
+                + "\nsource=" + safeDebugText(source)
+                + "\nprimary=" + signalInfoSummary(primaryView, primaryInfo)
+                + "\nsecondary=" + signalInfoSummary(secondaryView, secondaryInfo)
+                + "\nlatestPrimary=" + latestPrimarySignalLevel
+                + "\nlatestSecondary=" + (latestSecondarySignalLevel == IosSignalDrawable.NO_SECONDARY_LEVEL
+                        ? "unknown" : Integer.toString(latestSecondarySignalLevel))
+                + "\ntrackedViews=" + views.size();
+        ContentValues values = new ContentValues();
+        values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY, summary);
+        values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SOURCE, safeDebugText(source));
+        values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SLOT,
+                primaryInfo != null && secondaryInfo != null ? "primary+secondary"
+                        : primaryInfo != null ? "primary" : "secondary");
+        values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_LEVEL,
+                primaryInfo == null ? "" : Integer.toString(primaryInfo.level));
+        values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUB_ID,
+                primaryInfo == null ? "" : Integer.toString(primaryInfo.subId));
+        values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_STATE,
+                primaryView == null ? "" : "0x" + Integer.toHexString(getTrackedSignalDrawableState(primaryView)));
+        values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_ERROR, "");
+        try {
+            Context targetContext = primaryView != null ? primaryView.getContext()
+                    : secondaryView != null ? secondaryView.getContext() : context;
+            if (targetContext != null) {
+                targetContext.getContentResolver().update(SETTINGS_URI, values, null, null);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static String signalInfoSummary(ImageView view, MobileSignalInfo info) {
+        if (info == null) {
+            return "none";
+        }
+        return "slot=" + slotToDebugText(info.slot)
+                + ", subId=" + info.subId
+                + ", level=" + info.level
+                + ", state=0x" + Integer.toHexString(getTrackedSignalDrawableState(view))
+                + ", hasView=" + (view != null);
+    }
+
+    private static int getTrackedSignalDrawableState(ImageView imageView) {
+        if (imageView == null) {
+            return 0;
+        }
+        for (Drawable drawable : new ArrayList<>(MOBILE_SIGNAL_DRAWABLE_OWNERS.keySet())) {
+            if (MOBILE_SIGNAL_DRAWABLE_OWNERS.get(drawable) == imageView) {
+                return drawable == null ? 0 : drawable.getLevel();
+            }
+        }
+        return 0;
+    }
+
+    private static String safeDebugText(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static String slotToDebugText(int slot) {
+        if (slot == MOBILE_SLOT_PRIMARY) {
+            return "primary";
+        }
+        if (slot == MOBILE_SLOT_SECONDARY) {
+            return "secondary";
+        }
+        return "unknown";
+    }
+
     private static void registerMobileViewSlot(View view) {
         if (view == null || !view.getClass().getName().contains("Mobile")) {
             return;
@@ -1413,10 +1553,11 @@ public class FlymeStatusBarSizer extends XposedModule {
         MOBILE_VIEW_SLOTS.put(view, slot);
         View signal = findSystemUiChild(view, "mobile_signal");
         if (signal instanceof ImageView) {
+            TRACKED_MOBILE_SIGNAL_VIEWS.put((ImageView) signal, Boolean.TRUE);
             int subId = invokeNoArgInt(view, "getSubId", getIntField(view, "subId", UNSET_SUB_ID));
             int level = getCachedTelephonySignalLevel(subId);
             if (level == IosSignalDrawable.NO_SECONDARY_LEVEL) {
-                level = 0;
+                level = getLastKnownSignalLevelForSlot(slot);
             }
             MobileSignalInfo info = new MobileSignalInfo(slot, level, subId);
             MOBILE_SIGNAL_RAW_INFOS.put((ImageView) signal, info);
@@ -1477,6 +1618,37 @@ public class FlymeStatusBarSizer extends XposedModule {
         return MOBILE_SLOT_UNKNOWN;
     }
 
+    private static int getKnownMobileSignalSlot(ImageView imageView, int fallback) {
+        MobileSignalInfo info = MOBILE_SIGNAL_INFOS.get(imageView);
+        if (info != null && info.slot != MOBILE_SLOT_UNKNOWN) {
+            return info.slot;
+        }
+        info = MOBILE_SIGNAL_RAW_INFOS.get(imageView);
+        if (info != null && info.slot != MOBILE_SLOT_UNKNOWN) {
+            return info.slot;
+        }
+        return getMobileSignalSlot(imageView, fallback);
+    }
+
+    private static ArrayList<ImageView> collectTrackedMobileSignalViews() {
+        ArrayList<ImageView> views = new ArrayList<>();
+        addTrackedMobileSignalViews(views, TRACKED_MOBILE_SIGNAL_VIEWS);
+        addTrackedMobileSignalViews(views, MOBILE_SIGNAL_INFOS);
+        addTrackedMobileSignalViews(views, MOBILE_SIGNAL_RAW_INFOS);
+        addTrackedMobileSignalViews(views, PRIMARY_SIGNAL_VIEWS);
+        addTrackedMobileSignalViews(views, SECONDARY_SIGNAL_VIEWS);
+        return views;
+    }
+
+    private static void addTrackedMobileSignalViews(ArrayList<ImageView> views,
+            WeakHashMap<ImageView, ?> source) {
+        for (ImageView view : new ArrayList<>(source.keySet())) {
+            if (view != null && !views.contains(view)) {
+                views.add(view);
+            }
+        }
+    }
+
     private static int getMobileSignalSlot(ImageView imageView, int fallback) {
         View current = imageView;
         while (current != null) {
@@ -1512,15 +1684,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         return UNSET_SUB_ID;
     }
 
-    private static int getTelephonySignalLevel(Context context, int subId) {
-        if (context == null || subId == UNSET_SUB_ID || subId < 0) {
-            return IosSignalDrawable.NO_SECONDARY_LEVEL;
+    private static int getLastKnownSignalLevelForSlot(int slot) {
+        if (slot == MOBILE_SLOT_PRIMARY) {
+            return latestPrimarySignalLevel;
         }
-        int cachedLevel = getCachedTelephonySignalLevel(subId);
-        if (cachedLevel != IosSignalDrawable.NO_SECONDARY_LEVEL) {
-            return cachedLevel;
+        if (slot == MOBILE_SLOT_SECONDARY) {
+            return latestSecondarySignalLevel == IosSignalDrawable.NO_SECONDARY_LEVEL
+                    ? 0 : latestSecondarySignalLevel;
         }
-        return queryTelephonySignalLevel(context, subId);
+        return latestPrimarySignalLevel;
     }
 
     private static int queryTelephonySignalLevel(Context context, int subId) {
@@ -1579,9 +1751,12 @@ public class FlymeStatusBarSizer extends XposedModule {
                 if (manager == null) {
                     return;
                 }
-                int initialLevel = queryTelephonySignalLevel(context, subId);
-                if (initialLevel != IosSignalDrawable.NO_SECONDARY_LEVEL) {
-                    rememberTelephonySignalLevel(subId, initialLevel);
+                Config config = Config.load(context);
+                if (!config.iosSignalDebugEnabled) {
+                    int initialLevel = queryTelephonySignalLevel(context, subId);
+                    if (initialLevel != IosSignalDrawable.NO_SECONDARY_LEVEL) {
+                        rememberTelephonySignalLevel(subId, initialLevel);
+                    }
                 }
                 String initialNetworkType = queryActiveDataNetworkTypeLabel(context, subId, true);
                 if (initialNetworkType != null) {
@@ -1730,15 +1905,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!isValidSubId(subId)) {
             return fallbackLevel;
         }
-        Config config = CACHED_CONFIG;
-        if (config == null) {
-            Context context = SYSTEM_UI_CONTEXT;
-            if (context == null) {
-                return fallbackLevel;
-            }
-            config = Config.load(context);
-        }
-        if (!config.enabled || !config.iosSignalDebugEnabled) {
+        Config config = getCachedOrLoadedConfig();
+        if (config == null || !config.enabled || !config.iosSignalDebugEnabled) {
             return fallbackLevel;
         }
         int slot = getMobileSlotForSubId(SYSTEM_UI_CONTEXT, subId);
@@ -1751,6 +1919,55 @@ public class FlymeStatusBarSizer extends XposedModule {
                     ? mapMobileSignalLevel(config.iosSignalDebugSim2Level) : 0;
         }
         return fallbackLevel;
+    }
+
+    private static Config getCachedOrLoadedConfig() {
+        Config config = CACHED_CONFIG;
+        if (config != null) {
+            return config;
+        }
+        Context context = SYSTEM_UI_CONTEXT;
+        return context == null ? null : Config.load(context);
+    }
+
+    private static int getDebugPrimaryLevel(Config config) {
+        if (config.iosSignalDebugSim1Enabled) {
+            return mapMobileSignalLevel(config.iosSignalDebugSim1Level);
+        }
+        if (config.iosSignalDebugSim2Enabled) {
+            return mapMobileSignalLevel(config.iosSignalDebugSim2Level);
+        }
+        return 0;
+    }
+
+    private static int getDebugLevelForSlot(Config config, int slot, int fallbackLevel) {
+        if (slot == MOBILE_SLOT_SECONDARY) {
+            return config.iosSignalDebugSim2Enabled
+                    ? mapMobileSignalLevel(config.iosSignalDebugSim2Level) : 0;
+        }
+        if (slot == MOBILE_SLOT_PRIMARY || slot == MOBILE_SLOT_UNKNOWN) {
+            return getDebugPrimaryLevel(config);
+        }
+        return fallbackLevel;
+    }
+
+    private static int getDefaultDebugSlot(Config config) {
+        if (config != null && !config.iosSignalDebugSim1Enabled && config.iosSignalDebugSim2Enabled) {
+            return MOBILE_SLOT_SECONDARY;
+        }
+        return MOBILE_SLOT_PRIMARY;
+    }
+
+    private static int buildSignalDrawableState(int level, int fallbackState) {
+        int numberOfLevels = (fallbackState >> 8) & 0xff;
+        if (numberOfLevels <= 0 || numberOfLevels >= 90) {
+            numberOfLevels = IosSignalDrawable.MAX_LEVEL;
+        }
+        int stateType = (fallbackState >> 16) & 0xff;
+        if (stateType == 3) {
+            stateType = 0;
+        }
+        return mapMobileSignalLevel(level) | (numberOfLevels << 8) | (stateType << 16);
     }
 
     private static int getMobileSlotFromView(View view) {
@@ -1927,15 +2144,18 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static int mapSignalDrawableStateLevel(int state) {
         int lowByteLevel = state & 0xff;
-        int highByteLevel = (state >> 8) & 0xff;
-        int rawLevel = lowByteLevel;
-        if (highByteLevel > 0 && highByteLevel <= IosSignalDrawable.MAX_LEVEL
-                && lowByteLevel >= IosSignalDrawable.MAX_LEVEL) {
-            rawLevel = highByteLevel;
-        } else if (rawLevel >= 90) {
-            rawLevel -= 90;
+        int numberOfLevels = (state >> 8) & 0xff;
+        int stateType = (state >> 16) & 0xff;
+        if (state == 0 || numberOfLevels == 0) {
+            return IosSignalDrawable.NO_SECONDARY_LEVEL;
         }
-        return mapMobileSignalLevel(rawLevel);
+        if (stateType == 3) {
+            return IosSignalDrawable.NO_SECONDARY_LEVEL;
+        }
+        if (lowByteLevel >= 90) {
+            return 0;
+        }
+        return mapMobileSignalLevel(lowByteLevel);
     }
 
     private static int mapMobileSignalLevel(int level) {
@@ -2582,7 +2802,20 @@ public class FlymeStatusBarSizer extends XposedModule {
                 public void onChange(boolean selfChange) {
                     invalidateConfigCache();
                     invalidateNetworkTypeCache();
-                    refreshTrackedRuntimeViews();
+                    Config config = Config.load(appContext);
+                    refreshTrackedTextScaling();
+                    if (config.iosSignalDebugEnabled) {
+                        applyDebugSignalDrawableStates(config);
+                    } else {
+                        refreshTrackedSignalViews(LAST_SIGNAL_DEBUG_ENABLED);
+                    }
+                    LAST_SIGNAL_DEBUG_ENABLED = config.iosSignalDebugEnabled;
+                    refreshTrackedNetworkTypeViews();
+                    Handler handler = MAIN_HANDLER;
+                    if (handler != null) {
+                        handler.postDelayed(() ->
+                                reportCurrentTrackedSignalState(appContext, "manual hook status refresh"), 100);
+                    }
                 }
             };
             try {
@@ -2618,6 +2851,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             } catch (Throwable ignored) {
             }
             CONFIG_REFRESH_REGISTERED = true;
+            LAST_SIGNAL_DEBUG_ENABLED = Config.load(appContext).iosSignalDebugEnabled;
             scheduleInitialRuntimeRefreshes();
         }
     }
@@ -2628,7 +2862,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         for (long delay : INITIAL_RUNTIME_REFRESH_DELAYS_MS) {
-            handler.postDelayed(FlymeStatusBarSizer::refreshTrackedRuntimeViews, delay);
+            handler.postDelayed(() -> refreshTrackedRuntimeViews(true), delay);
         }
     }
 
@@ -2686,14 +2920,19 @@ public class FlymeStatusBarSizer extends XposedModule {
             NETWORK_TYPE_LABELS_BY_SUB_ID.clear();
         }
         MOBILE_VIEW_SLOTS.clear();
+        TRACKED_MOBILE_SIGNAL_VIEWS.clear();
         MOBILE_SIGNAL_INFOS.clear();
         PRIMARY_SIGNAL_VIEWS.clear();
         SECONDARY_SIGNAL_VIEWS.clear();
     }
 
     private static void refreshTrackedRuntimeViews() {
+        refreshTrackedRuntimeViews(false);
+    }
+
+    private static void refreshTrackedRuntimeViews(boolean forceSignalRequery) {
         refreshTrackedTextScaling();
-        refreshTrackedSignalViews();
+        refreshTrackedSignalViews(forceSignalRequery);
         refreshTrackedNetworkTypeViews();
     }
 
@@ -2739,6 +2978,76 @@ public class FlymeStatusBarSizer extends XposedModule {
         refreshTrackedSignalViews(false);
     }
 
+    private static void applyDebugSignalDrawableStates(Config config) {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null || config == null || !config.enabled || !config.iosSignalDebugEnabled) {
+            return;
+        }
+        handler.post(() -> {
+            ArrayList<Drawable> drawables = new ArrayList<>(MOBILE_SIGNAL_DRAWABLE_OWNERS.keySet());
+            boolean injectedPrimary = false;
+            boolean injectedSecondary = false;
+            int injectedCount = 0;
+            for (Drawable drawable : drawables) {
+                ImageView imageView = MOBILE_SIGNAL_DRAWABLE_OWNERS.get(drawable);
+                if (drawable == null || imageView == null) {
+                    continue;
+                }
+                int slot = getKnownMobileSignalSlot(imageView, getDefaultDebugSlot(config));
+                int fallbackLevel = mapSignalDrawableStateLevel(drawable.getLevel());
+                if (fallbackLevel == IosSignalDrawable.NO_SECONDARY_LEVEL) {
+                    fallbackLevel = getLastKnownSignalLevelForSlot(slot);
+                }
+                int fakeLevel = getDebugLevelForSlot(config, slot, fallbackLevel);
+                int fakeState = buildSignalDrawableState(fakeLevel, drawable.getLevel());
+                reportSignalDebug(imageView.getContext(), "debug SignalDrawable state",
+                        slot, getMobileSubId(imageView), fakeState, fakeLevel, null);
+                drawable.setLevel(fakeState);
+                injectedCount++;
+                if (slot == MOBILE_SLOT_PRIMARY) {
+                    injectedPrimary = true;
+                } else if (slot == MOBILE_SLOT_SECONDARY) {
+                    injectedSecondary = true;
+                }
+            }
+            if (injectedCount == 0) {
+                ArrayList<ImageView> views = collectTrackedMobileSignalViews();
+                for (ImageView imageView : views) {
+                    if (imageView == null) {
+                        continue;
+                    }
+                    int slot = getKnownMobileSignalSlot(imageView, getDefaultDebugSlot(config));
+                    int fakeLevel = getDebugLevelForSlot(config, slot, getLastKnownSignalLevelForSlot(slot));
+                    int fakeState = buildSignalDrawableState(fakeLevel, 0);
+                    reportSignalDebug(imageView.getContext(), "debug synthetic SystemUI state",
+                            slot, getMobileSubId(imageView), fakeState, fakeLevel, null);
+                    applyMobileSignalDrawableState(imageView, fakeState);
+                    injectedCount++;
+                    if (slot == MOBILE_SLOT_PRIMARY) {
+                        injectedPrimary = true;
+                    } else if (slot == MOBILE_SLOT_SECONDARY) {
+                        injectedSecondary = true;
+                    }
+                }
+            }
+            if (config.iosSignalDualCombined && config.iosSignalDebugSim1Enabled
+                    && config.iosSignalDebugSim2Enabled && injectedPrimary && !injectedSecondary) {
+                latestSecondarySignalLevel = mapMobileSignalLevel(config.iosSignalDebugSim2Level);
+                updatePrimarySignalDrawables();
+                reportSignalDebug(SYSTEM_UI_CONTEXT, "debug virtual secondary signal",
+                        MOBILE_SLOT_SECONDARY, UNSET_SUB_ID,
+                        buildSignalDrawableState(latestSecondarySignalLevel, 0),
+                        latestSecondarySignalLevel,
+                        "No secondary SystemUI signal view was found; using a virtual SIM 2 for combined debug");
+            } else if (!injectedPrimary && !injectedSecondary) {
+                reportSignalDebug(SYSTEM_UI_CONTEXT, "debug SignalDrawable state",
+                        MOBILE_SLOT_UNKNOWN, UNSET_SUB_ID, 0,
+                        IosSignalDrawable.NO_SECONDARY_LEVEL,
+                        "No tracked SystemUI mobile signal drawable or ImageView was found");
+            }
+        });
+    }
+
     private static void refreshTrackedSignalViews(boolean forceRequery) {
         Handler handler = MAIN_HANDLER;
         if (handler == null) {
@@ -2758,9 +3067,20 @@ public class FlymeStatusBarSizer extends XposedModule {
                 if (forceRequery || info == null) {
                     int slot = getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN);
                     int subId = getMobileSubId(imageView);
-                    int level = getCachedTelephonySignalLevel(subId);
+                    int level = forceRequery && !config.iosSignalDebugEnabled
+                            ? queryTelephonySignalLevel(imageView.getContext(), subId)
+                            : getCachedTelephonySignalLevel(subId);
                     if (level == IosSignalDrawable.NO_SECONDARY_LEVEL) {
-                        level = forceRequery || info == null ? 0 : info.level;
+                        level = getCachedTelephonySignalLevel(subId);
+                    }
+                    if (level == IosSignalDrawable.NO_SECONDARY_LEVEL
+                            && forceRequery && LAST_SIGNAL_DEBUG_ENABLED) {
+                        reportSignalDebug(imageView.getContext(), "restore real signal",
+                                slot, subId, 0, level, "Real signal query failed; keeping current drawable state");
+                        continue;
+                    }
+                    if (level == IosSignalDrawable.NO_SECONDARY_LEVEL) {
+                        level = info == null ? getLastKnownSignalLevelForSlot(slot) : info.level;
                     }
                     info = new MobileSignalInfo(slot, level, subId);
                 }

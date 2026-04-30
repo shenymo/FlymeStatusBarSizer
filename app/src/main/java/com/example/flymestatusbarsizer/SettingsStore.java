@@ -55,6 +55,13 @@ final class SettingsStore {
     static final String KEY_IOS_SIGNAL_DEBUG_SIM2_ENABLED = "ios_signal_debug_sim2_enabled";
     static final String KEY_IOS_SIGNAL_DEBUG_SIM1_LEVEL = "ios_signal_debug_sim1_level";
     static final String KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL = "ios_signal_debug_sim2_level";
+    static final String KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY = "runtime_signal_debug_summary";
+    static final String KEY_RUNTIME_SIGNAL_DEBUG_LEVEL = "runtime_signal_debug_level";
+    static final String KEY_RUNTIME_SIGNAL_DEBUG_SLOT = "runtime_signal_debug_slot";
+    static final String KEY_RUNTIME_SIGNAL_DEBUG_SUB_ID = "runtime_signal_debug_sub_id";
+    static final String KEY_RUNTIME_SIGNAL_DEBUG_STATE = "runtime_signal_debug_state";
+    static final String KEY_RUNTIME_SIGNAL_DEBUG_SOURCE = "runtime_signal_debug_source";
+    static final String KEY_RUNTIME_SIGNAL_DEBUG_ERROR = "runtime_signal_debug_error";
     static final String KEY_IOS_NETWORK_TYPE_STYLE = "ios_network_type_style";
     static final String KEY_IOS_WIFI_STYLE = "ios_wifi_style";
 
