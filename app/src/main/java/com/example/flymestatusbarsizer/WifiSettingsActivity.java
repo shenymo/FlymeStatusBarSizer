@@ -28,7 +28,6 @@ public class WifiSettingsActivity extends Activity {
     private int wifiHeightDp;
     private int wifiOffsetXDp;
     private int wifiOffsetYDp;
-    private int wifiMarginEndDp;
     private boolean showContainer = true;
 
     @Override
@@ -39,7 +38,6 @@ public class WifiSettingsActivity extends Activity {
         wifiHeightDp = prefs.getInt(SettingsStore.KEY_IOS_WIFI_HEIGHT, SettingsStore.DEFAULT_IOS_WIFI_HEIGHT);
         wifiOffsetXDp = prefs.getInt(SettingsStore.KEY_IOS_WIFI_OFFSET_X, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_X);
         wifiOffsetYDp = prefs.getInt(SettingsStore.KEY_IOS_WIFI_OFFSET_Y, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_Y);
-        wifiMarginEndDp = prefs.getInt(SettingsStore.KEY_IOS_WIFI_MARGIN_END, SettingsStore.DEFAULT_IOS_WIFI_MARGIN_END);
 
         ScrollView scrollView = new ScrollView(this);
         scrollView.setBackgroundColor(Color.rgb(245, 245, 245));
@@ -58,14 +56,11 @@ public class WifiSettingsActivity extends Activity {
         root.addView(title, matchWrap());
 
         TextView summary = new TextView(this);
-        summary.setText("\u8fd9\u91cc\u8c03\u6574 Wi-Fi \u4fe1\u53f7\u56fe\u6807\u8ddf\u968f\u6574\u4f53\u7f29\u653e\u7684\u5f3a\u5ea6\u3002");
+        summary.setText("\u8fd9\u91cc\u8c03\u6574 Wi-Fi \u4fe1\u53f7\u56fe\u6807\u8ddf\u968f\u6574\u4f53\u7f29\u653e\u7684\u5f3a\u5ea6\uff0ciOS \u98ce\u683c Wi-Fi \u5df2\u9ed8\u8ba4\u5f00\u542f\u3002");
         summary.setTextColor(Color.rgb(95, 99, 104));
         summary.setTextSize(14);
         summary.setPadding(0, dp(6), 0, dp(14));
         root.addView(summary, matchWrap());
-
-        addSwitch(root, "iOS \u98ce\u683c Wi-Fi", "\u6839\u636e SystemUI \u4e0b\u53d1\u7684 wifi_signal \u8d44\u6e90\u52a8\u6001\u7ed8\u5236\u4fe1\u53f7\u5f3a\u5ea6\u3002",
-                SettingsStore.KEY_IOS_WIFI_STYLE, SettingsStore.DEFAULT_IOS_WIFI_STYLE);
 
         addPreview(root);
         addLocalSwitch(root, "\u663e\u793a\u7ea2\u8272\u5bb9\u5668\u8fb9\u6846", showContainer, value -> {
@@ -94,19 +89,15 @@ public class WifiSettingsActivity extends Activity {
                 SettingsStore.KEY_IOS_WIFI_OFFSET_X, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_X, -80, 80, "dp");
         addSlider(root, "Wi-Fi \u5782\u76f4\u504f\u79fb", "\u6b63\u6570\u5411\u4e0b\uff0c\u8d1f\u6570\u5411\u4e0a\u3002",
                 SettingsStore.KEY_IOS_WIFI_OFFSET_Y, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_Y, -80, 80, "dp");
-        addSlider(root, "Wi-Fi \u53f3\u4fa7\u95f4\u8ddd", "\u8c03\u6574 Wi-Fi \u4e0e\u53f3\u4fa7\u56fe\u6807\u7684\u5e03\u5c40\u95f4\u8ddd\u3002",
-                SettingsStore.KEY_IOS_WIFI_MARGIN_END, SettingsStore.DEFAULT_IOS_WIFI_MARGIN_END, -80, 80, "dp");
 
         TextView reset = button("\u6062\u590d\u672c\u9875\u9ed8\u8ba4");
         reset.setOnClickListener(v -> {
             prefs.edit()
-                    .remove(SettingsStore.KEY_IOS_WIFI_STYLE)
                     .remove(SettingsStore.KEY_WIFI_SIGNAL_FACTOR)
                     .remove(SettingsStore.KEY_IOS_WIFI_WIDTH)
                     .remove(SettingsStore.KEY_IOS_WIFI_HEIGHT)
                     .remove(SettingsStore.KEY_IOS_WIFI_OFFSET_X)
                     .remove(SettingsStore.KEY_IOS_WIFI_OFFSET_Y)
-                    .remove(SettingsStore.KEY_IOS_WIFI_MARGIN_END)
                     .apply();
             recreate();
         });
@@ -155,8 +146,7 @@ public class WifiSettingsActivity extends Activity {
         iconContainer.setBackground(showContainer ? strokeRect(Color.TRANSPARENT, Color.RED, 1, 0) : null);
         metricsView.setText("container: " + wifiWidthDp + "dp x " + wifiHeightDp + "dp  /  preview: "
                 + width + "px x " + height + "px  /  offset: "
-                + wifiOffsetXDp + "dp, " + wifiOffsetYDp + "dp  /  marginEnd: "
-                + wifiMarginEndDp + "dp");
+                + wifiOffsetXDp + "dp, " + wifiOffsetYDp + "dp");
         preview.invalidate();
         iconContainer.invalidate();
         previewBox.invalidate();
@@ -219,8 +209,6 @@ public class WifiSettingsActivity extends Activity {
             wifiOffsetXDp = value;
         } else if (SettingsStore.KEY_IOS_WIFI_OFFSET_Y.equals(key)) {
             wifiOffsetYDp = value;
-        } else if (SettingsStore.KEY_IOS_WIFI_MARGIN_END.equals(key)) {
-            wifiMarginEndDp = value;
         } else {
             return;
         }

@@ -69,6 +69,12 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_IOS_BATTERY_OFFSET_X, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_OFFSET_X, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X));
         add(cursor, SettingsStore.KEY_IOS_BATTERY_OFFSET_Y, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_OFFSET_Y, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y));
         add(cursor, SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE));
+        add(cursor, SettingsStore.KEY_IOS_GROUP_BATTERY_SCALE, prefs.getInt(SettingsStore.KEY_IOS_GROUP_BATTERY_SCALE, SettingsStore.DEFAULT_IOS_GROUP_BATTERY_SCALE));
+        add(cursor, SettingsStore.KEY_IOS_GROUP_SIGNAL_SCALE, prefs.getInt(SettingsStore.KEY_IOS_GROUP_SIGNAL_SCALE, SettingsStore.DEFAULT_IOS_GROUP_SIGNAL_SCALE));
+        add(cursor, SettingsStore.KEY_IOS_GROUP_WIFI_SCALE, prefs.getInt(SettingsStore.KEY_IOS_GROUP_WIFI_SCALE, SettingsStore.DEFAULT_IOS_GROUP_WIFI_SCALE));
+        add(cursor, SettingsStore.KEY_IOS_GROUP_WIFI_SIGNAL_GAP, prefs.getInt(SettingsStore.KEY_IOS_GROUP_WIFI_SIGNAL_GAP, SettingsStore.DEFAULT_IOS_GROUP_WIFI_SIGNAL_GAP));
+        add(cursor, SettingsStore.KEY_IOS_GROUP_SIGNAL_BATTERY_GAP, prefs.getInt(SettingsStore.KEY_IOS_GROUP_SIGNAL_BATTERY_GAP, SettingsStore.DEFAULT_IOS_GROUP_SIGNAL_BATTERY_GAP));
+        add(cursor, SettingsStore.KEY_IOS_GROUP_START_GAP_ADJUST, prefs.getInt(SettingsStore.KEY_IOS_GROUP_START_GAP_ADJUST, SettingsStore.DEFAULT_IOS_GROUP_START_GAP_ADJUST));
         add(cursor, SettingsStore.KEY_IOS_WIFI_WIDTH, prefs.getInt(SettingsStore.KEY_IOS_WIFI_WIDTH, SettingsStore.DEFAULT_IOS_WIFI_WIDTH));
         add(cursor, SettingsStore.KEY_IOS_WIFI_HEIGHT, prefs.getInt(SettingsStore.KEY_IOS_WIFI_HEIGHT, SettingsStore.DEFAULT_IOS_WIFI_HEIGHT));
         add(cursor, SettingsStore.KEY_IOS_WIFI_OFFSET_X, prefs.getInt(SettingsStore.KEY_IOS_WIFI_OFFSET_X, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_X));

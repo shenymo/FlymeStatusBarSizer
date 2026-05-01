@@ -76,6 +76,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<ImageView, Boolean> SECONDARY_SIGNAL_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> TRACKED_STATUS_TEXT_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_CONNECTION_RATE_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> TRACKED_BATTERY_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<TelephonyManager, Integer> TELEPHONY_MANAGER_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<SignalStrength, Integer> SIGNAL_STRENGTH_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<CellSignalStrength, Integer> CELL_SIGNAL_STRENGTH_SUB_IDS = new WeakHashMap<>();
@@ -158,6 +159,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (!config.enabled) {
                 return;
             }
+            TRACKED_BATTERY_VIEWS.put(view, Boolean.TRUE);
             normalizeBatterySpacing(view);
             view.post(() -> normalizeBatterySpacing(view));
             disableAncestorClipping(view, 6);
@@ -704,9 +706,12 @@ public class FlymeStatusBarSizer extends XposedModule {
         boolean charging = getBooleanField(view, "mCharging", false);
         resizeIosBatteryView(batteryView, config, charging);
         boolean showPercent = getBooleanField(view, "mShowBatteryPercent", false);
-        int width = dp(batteryView, config.iosBatteryWidth);
-        int height = dp(batteryView, config.iosBatteryHeight);
-        int left = dp(batteryView, config.iosBatteryOffsetX);
+        int mergedIconsWidth = drawMergedStatusIconsInsideBattery(batteryView, canvas, config);
+        int[] batteryRenderSize = getMergedBatteryRenderSize(batteryView, config, charging);
+        int width = batteryRenderSize[0];
+        int height = batteryRenderSize[1];
+        int left = mergedIconsWidth + getMergedBatteryLeadingGap(batteryView, config)
+                + dp(batteryView, config.iosBatteryOffsetX);
         int top = Math.round((batteryView.getHeight() - height) / 2f) + dp(batteryView, config.iosBatteryOffsetY);
         int boltWidth = charging ? Math.round(width * 0.5f) : 0;
         int boltExtraHeight = dp(batteryView, 2);
@@ -727,8 +732,8 @@ public class FlymeStatusBarSizer extends XposedModule {
             return false;
         }
         boolean charging = getBooleanField(view, "mCharging", false);
-        setMeasuredDimension(batteryView, iosBatteryMeasuredWidth(batteryView, config, charging),
-                iosBatteryMeasuredHeight(batteryView, config));
+        setMeasuredDimension(batteryView, iosBatteryMeasuredWidthWithMergedIcons(batteryView, config, charging),
+                iosBatteryMeasuredHeightWithMergedIcons(batteryView, config));
         return true;
     }
 
@@ -751,8 +756,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (lp == null) {
             return;
         }
-        int width = iosBatteryMeasuredWidth(view, config, charging);
-        int height = iosBatteryMeasuredHeight(view, config);
+        int width = iosBatteryMeasuredWidthWithMergedIcons(view, config, charging);
+        int height = iosBatteryMeasuredHeightWithMergedIcons(view, config);
         boolean changed = false;
         if (lp.width != width) {
             lp.width = width;
@@ -769,12 +774,325 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int iosBatteryMeasuredWidth(View view, Config config, boolean charging) {
-        int batteryWidth = dp(view, config.iosBatteryWidth);
-        return charging ? batteryWidth + Math.round(batteryWidth * 0.5f) : batteryWidth;
+        return getMergedBatteryRenderSize(view, config, charging)[0];
     }
 
     private static int iosBatteryMeasuredHeight(View view, Config config) {
-        return dp(view, config.iosBatteryHeight) + dp(view, 2);
+        return getMergedBatteryRenderSize(view, config, false)[1] + dp(view, 2);
+    }
+
+    private static int iosBatteryMeasuredWidthWithMergedIcons(View view, Config config, boolean charging) {
+        return iosBatteryMeasuredWidth(view, config, charging)
+                + getMergedStatusIconsWidth(view, config)
+                + getMergedBatteryLeadingGap(view, config);
+    }
+
+    private static int iosBatteryMeasuredHeightWithMergedIcons(View view, Config config) {
+        return Math.max(iosBatteryMeasuredHeight(view, config), getMergedStatusIconsHeight(view, config));
+    }
+
+    private static boolean shouldMergeStatusIconsIntoBattery(Config config) {
+        return config != null && config.enabled && config.iosBatteryStyle;
+    }
+
+    private static int getMergedStatusIconsWidth(View batteryView, Config config) {
+        if (!shouldMergeStatusIconsIntoBattery(config)) {
+            return 0;
+        }
+        ArrayList<ImageView> sources = collectBatteryOverlaySignalViews(batteryView, config);
+        if (sources.isEmpty()) {
+            return 0;
+        }
+        int width = 0;
+        ImageView previous = null;
+        for (ImageView source : sources) {
+            int[] renderSize = getOverlayRenderSize(source, batteryView, config);
+            if (renderSize == null) {
+                continue;
+            }
+            if (previous != null) {
+                width += getMergedOverlayGapPx(batteryView, previous, source, config);
+            }
+            width += renderSize[0];
+            previous = source;
+        }
+        return width;
+    }
+
+    private static int getMergedStatusIconsHeight(View batteryView, Config config) {
+        if (!shouldMergeStatusIconsIntoBattery(config)) {
+            return 0;
+        }
+        int batteryHeight = getMergedBatteryRenderSize(batteryView, config, false)[1];
+        int overlayHeight = hasOverlayRenderSource(batteryView, config) ? getMaxMergedOverlayHeight(batteryView, config) : 0;
+        return Math.max(batteryHeight, overlayHeight);
+    }
+
+    private static int getMergedBatteryLeadingGap(View batteryView, Config config) {
+        return getMergedStatusIconsWidth(batteryView, config) > 0
+                ? dp(batteryView, config.iosGroupSignalBatteryGap)
+                : 0;
+    }
+
+    private static int drawMergedStatusIconsInsideBattery(View batteryView, Canvas canvas, Config config) {
+        if (!shouldMergeStatusIconsIntoBattery(config)) {
+            return 0;
+        }
+        ArrayList<ImageView> sources = collectBatteryOverlaySignalViews(batteryView, config);
+        if (sources.isEmpty()) {
+            return 0;
+        }
+        int[] batteryRenderSize = getMergedBatteryRenderSize(batteryView, config, false);
+        int batteryHeight = batteryRenderSize[1];
+        int batteryTop = Math.round((batteryView.getHeight() - batteryHeight) / 2f)
+                + dp(batteryView, config.iosBatteryOffsetY);
+        float batteryCenterY = batteryTop + batteryHeight / 2f;
+        int left = 0;
+        ImageView previous = null;
+        for (ImageView source : sources) {
+            int[] renderSize = getOverlayRenderSize(source, batteryView, config);
+            if (renderSize == null) {
+                continue;
+            }
+            if (previous != null) {
+                left += getMergedOverlayGapPx(batteryView, previous, source, config);
+            }
+            int width = renderSize[0];
+            int height = renderSize[1];
+            int top = Math.round(batteryCenterY - height / 2f);
+            drawOverlaySource(source, canvas, left, top, width, height);
+            left += width;
+            previous = source;
+        }
+        return left;
+    }
+
+    private static ArrayList<ImageView> collectBatteryOverlaySignalViews(View batteryView, Config config) {
+        ArrayList<ImageView> result = new ArrayList<>();
+        ImageView wifiView = findBatteryOverlayWifiView(batteryView);
+        if (shouldIncludeOverlaySource(wifiView, batteryView)) {
+            result.add(wifiView);
+        }
+        for (ImageView mobileView : collectBatteryOverlayMobileViews(batteryView, config)) {
+            if (shouldIncludeOverlaySource(mobileView, batteryView) && !result.contains(mobileView)) {
+                result.add(mobileView);
+            }
+        }
+        return result;
+    }
+
+    private static ArrayList<ImageView> collectBatteryOverlayMobileViews(View batteryView, Config config) {
+        ArrayList<ImageView> result = new ArrayList<>();
+        ImageView primary = null;
+        ImageView secondary = null;
+        ImageView fallback = null;
+        for (ImageView candidate : collectTrackedMobileSignalViews()) {
+            if (!isInSameSystemIconsCluster(candidate, batteryView)) {
+                continue;
+            }
+            MobileSignalInfo info = MOBILE_SIGNAL_INFOS.get(candidate);
+            if (info == null) {
+                info = MOBILE_SIGNAL_RAW_INFOS.get(candidate);
+            }
+            if (info != null && info.slot == MOBILE_SLOT_PRIMARY && primary == null) {
+                primary = candidate;
+            } else if (info != null && info.slot == MOBILE_SLOT_SECONDARY && secondary == null) {
+                secondary = candidate;
+            } else if (fallback == null) {
+                fallback = candidate;
+            }
+        }
+        if (primary != null) {
+            result.add(primary);
+        } else if (fallback != null) {
+            result.add(fallback);
+        }
+        if (!config.iosSignalDualCombined && secondary != null && secondary != primary) {
+            result.add(secondary);
+        }
+        return result;
+    }
+
+    private static ImageView findBatteryOverlayWifiView(View batteryView) {
+        for (ImageView candidate : new ArrayList<>(WIFI_SIGNAL_LEVELS.keySet())) {
+            if (isInSameSystemIconsCluster(candidate, batteryView)) {
+                return candidate;
+            }
+        }
+        View clusterRoot = findAncestorByIdName(batteryView, "system_icons");
+        if (clusterRoot == null) {
+            clusterRoot = batteryView.getParent() instanceof View ? (View) batteryView.getParent() : null;
+        }
+        View source = clusterRoot == null ? null : findSystemUiChild(clusterRoot, "wifi_signal");
+        return source instanceof ImageView ? (ImageView) source : null;
+    }
+
+    private static boolean shouldIncludeOverlaySource(ImageView source, View batteryView) {
+        return source != null
+                && source.getDrawable() != null
+                && isInSameSystemIconsCluster(source, batteryView);
+    }
+
+    private static boolean isInSameSystemIconsCluster(View candidate, View batteryView) {
+        if (candidate == null || batteryView == null) {
+            return false;
+        }
+        View candidateRoot = findAncestorByIdName(candidate, "system_icons");
+        View batteryRoot = findAncestorByIdName(batteryView, "system_icons");
+        return candidateRoot != null && candidateRoot == batteryRoot;
+    }
+
+    private static int getOverlaySourceWidth(ImageView source) {
+        int[] originalSize = ORIGINAL_SIZES.get(source);
+        if (originalSize != null && originalSize[0] > 0) {
+            return originalSize[0];
+        }
+        ViewGroup.LayoutParams lp = source.getLayoutParams();
+        if (lp != null && lp.width > 0) {
+            return lp.width;
+        }
+        if (source.getWidth() > 0) {
+            return source.getWidth();
+        }
+        Drawable drawable = source.getDrawable();
+        return drawable == null ? 0 : Math.max(drawable.getIntrinsicWidth(), 0);
+    }
+
+    private static int getOverlaySourceHeight(ImageView source) {
+        int[] originalSize = ORIGINAL_SIZES.get(source);
+        if (originalSize != null && originalSize[1] > 0) {
+            return originalSize[1];
+        }
+        ViewGroup.LayoutParams lp = source.getLayoutParams();
+        if (lp != null && lp.height > 0) {
+            return lp.height;
+        }
+        if (source.getHeight() > 0) {
+            return source.getHeight();
+        }
+        Drawable drawable = source.getDrawable();
+        return drawable == null ? 0 : Math.max(drawable.getIntrinsicHeight(), 0);
+    }
+
+    private static boolean hasOverlayRenderSource(View batteryView, Config config) {
+        for (ImageView source : collectBatteryOverlaySignalViews(batteryView, config)) {
+            if (getOverlayRenderSize(source, batteryView, config) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int getOverlayTargetHeight(View batteryView, Config config) {
+        return Math.max(dp(batteryView, config.iosBatteryHeight), 1);
+    }
+
+    private static int[] getOverlayRenderSize(ImageView source, View batteryView, Config config) {
+        int[] sourceSize = getOverlayReferenceSize(source);
+        int sourceWidth = sourceSize[0];
+        int sourceHeight = sourceSize[1];
+        if (sourceWidth <= 0 || sourceHeight <= 0) {
+            return null;
+        }
+        int targetHeight = Math.max(1, Math.round(getOverlayTargetHeight(batteryView, config)
+                * getMergedOverlayScale(source, config) / 100f));
+        int targetWidth = Math.max(1, Math.round(targetHeight * (sourceWidth / (float) sourceHeight)));
+        return new int[]{targetWidth, targetHeight};
+    }
+
+    private static int[] getOverlayReferenceSize(ImageView source) {
+        if (source == null) {
+            return new int[]{0, 0};
+        }
+        if (isMobileSignalOverlaySource(source)) {
+            int[] desktopSize = getRecordedSize(DESKTOP_MOBILE_SIGNAL_SIZE);
+            if (desktopSize != null && desktopSize[0] > 0 && desktopSize[1] > 0) {
+                return desktopSize;
+            }
+            Drawable drawable = source.getDrawable();
+            if (drawable != null) {
+                int intrinsicWidth = Math.max(drawable.getIntrinsicWidth(), 0);
+                int intrinsicHeight = Math.max(drawable.getIntrinsicHeight(), 0);
+                if (intrinsicWidth > 0 && intrinsicHeight > 0) {
+                    return new int[]{intrinsicWidth, intrinsicHeight};
+                }
+            }
+        }
+        return new int[]{getOverlaySourceWidth(source), getOverlaySourceHeight(source)};
+    }
+
+    private static int getMaxMergedOverlayHeight(View batteryView, Config config) {
+        int maxHeight = 0;
+        for (ImageView source : collectBatteryOverlaySignalViews(batteryView, config)) {
+            int[] renderSize = getOverlayRenderSize(source, batteryView, config);
+            if (renderSize != null) {
+                maxHeight = Math.max(maxHeight, renderSize[1]);
+            }
+        }
+        return maxHeight;
+    }
+
+    private static int[] getMergedBatteryRenderSize(View batteryView, Config config, boolean charging) {
+        int baseWidth = dp(batteryView, config.iosBatteryWidth);
+        int baseHeight = dp(batteryView, config.iosBatteryHeight);
+        int scaledWidth = Math.max(1, Math.round(baseWidth * config.iosGroupBatteryScale / 100f));
+        int scaledHeight = Math.max(1, Math.round(baseHeight * config.iosGroupBatteryScale / 100f));
+        if (charging) {
+            scaledWidth += Math.round(scaledWidth * 0.5f);
+        }
+        return new int[]{scaledWidth, scaledHeight};
+    }
+
+    private static int getMergedOverlayScale(ImageView source, Config config) {
+        return isWifiOverlaySource(source) ? config.iosGroupWifiScale : config.iosGroupSignalScale;
+    }
+
+    private static int getMergedOverlayGapPx(View batteryView, ImageView previous, ImageView current, Config config) {
+        return dp(batteryView, config.iosGroupWifiSignalGap);
+    }
+
+    private static boolean isWifiOverlaySource(ImageView source) {
+        return "wifi_signal".equals(getSystemUiIdName(source));
+    }
+
+    private static boolean isMobileSignalOverlaySource(ImageView source) {
+        return "mobile_signal".equals(getSystemUiIdName(source));
+    }
+
+    private static void drawOverlaySource(ImageView source, Canvas canvas,
+            int left, int top, int width, int height) {
+        Drawable drawable = source.getDrawable();
+        if (drawable == null || width <= 0 || height <= 0) {
+            return;
+        }
+        Rect oldBounds = new Rect(drawable.getBounds());
+        drawable.setBounds(left, top, left + width, top + height);
+        drawable.draw(canvas);
+        drawable.setBounds(oldBounds);
+    }
+
+    private static void refreshBatteryOverlayFor(View sourceView) {
+        if (sourceView == null) {
+            return;
+        }
+        View batteryView = findBatteryViewForStatusIcon(sourceView);
+        if (batteryView == null) {
+            return;
+        }
+        batteryView.requestLayout();
+        batteryView.invalidate();
+    }
+
+    private static View findBatteryViewForStatusIcon(View view) {
+        View clusterRoot = findAncestorByIdName(view, "system_icons");
+        if (!(clusterRoot instanceof ViewGroup)) {
+            return null;
+        }
+        int batteryId = getSystemUiId(view.getContext(), "battery");
+        if (batteryId == 0) {
+            return null;
+        }
+        return ((ViewGroup) clusterRoot).findViewById(batteryId);
     }
 
     private static void applyIosBatteryStyleIfNeeded(Object drawable) {
@@ -849,6 +1167,11 @@ public class FlymeStatusBarSizer extends XposedModule {
                 View signal = findSystemUiChild(root, "mobile_signal");
                 if (signal instanceof ImageView) {
                     applyReferenceSignalImageSizing((ImageView) signal, config);
+                    if (shouldMergeStatusIconsIntoBattery(config)) {
+                        setMobileSignalViewVisible((ImageView) signal, false);
+                    } else {
+                        restoreMobileSignalVisibility((ImageView) signal, config);
+                    }
                 } else {
                     float mobileSignalScale = config.scaled(config.getActiveMobileSignalFactor());
                     scaleChild(root, "mobile_signal", mobileSignalScale, mobileSignalScale);
@@ -856,10 +1179,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                     offsetChild(root, "mobile_signal",
                             getIosSignalOffsetX(root, config), getIosSignalOffsetY(root, config));
                 }
-                applyKnownNetworkTypeStyle(root, config);
                 View type = findSystemUiChild(root, "mobile_type");
                 if (type instanceof ImageView) {
-                    applyReferenceNetworkTypeSizing((ImageView) type, config);
+                    hideNetworkTypeView((ImageView) type);
                 }
             } else {
                 float mobileSignalScale = config.scaled(config.getActiveMobileSignalFactor());
@@ -867,13 +1189,23 @@ public class FlymeStatusBarSizer extends XposedModule {
                 applyIosSignalStyle(root, config);
                 offsetChild(root, "mobile_signal",
                         getIosSignalOffsetX(root, config), getIosSignalOffsetY(root, config));
-                applyKnownNetworkTypeStyle(root, config);
+                if (shouldMergeStatusIconsIntoBattery(config)) {
+                    View signal = findSystemUiChild(root, "mobile_signal");
+                    if (signal instanceof ImageView) {
+                        setMobileSignalViewVisible((ImageView) signal, false);
+                    }
+                } else {
+                    View signal = findSystemUiChild(root, "mobile_signal");
+                    if (signal instanceof ImageView) {
+                        restoreMobileSignalVisibility((ImageView) signal, config);
+                    }
+                }
             }
             scaleChild(root, "wifi_signal", config.scaled(config.wifiSignalFactor), config.scaled(config.wifiSignalFactor));
             applyIosWifiStyle(root, config);
-            if (!shouldUseDesktopSignalReference(root)) {
-                float networkTypeScale = config.scaled(config.getActiveNetworkTypeFactor());
-                scaleChild(root, "mobile_type", networkTypeScale, networkTypeScale);
+            View type = findSystemUiChild(root, "mobile_type");
+            if (type instanceof ImageView) {
+                hideNetworkTypeView((ImageView) type);
             }
             float networkTypeScale = config.scaled(config.getActiveNetworkTypeFactor());
             scaleChild(root, "mobile_volte", networkTypeScale, networkTypeScale);
@@ -905,6 +1237,14 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
             applyIosWifiStyle(root, config);
             hideActivityArrows(root);
+            View child = findSystemUiChild(root, "wifi_signal");
+            if (child instanceof ImageView) {
+                if (shouldMergeStatusIconsIntoBattery(config)) {
+                    setWifiSignalViewVisible((ImageView) child, false);
+                } else {
+                    setWifiSignalViewVisible((ImageView) child, true);
+                }
+            }
         });
     }
 
@@ -918,11 +1258,15 @@ public class FlymeStatusBarSizer extends XposedModule {
             View child = findSystemUiChild(root, "mobile_signal");
             if (child instanceof ImageView) {
                 applyReferenceSignalImageSizing((ImageView) child, config);
+                if (shouldMergeStatusIconsIntoBattery(config)) {
+                    setMobileSignalViewVisible((ImageView) child, false);
+                } else {
+                    restoreMobileSignalVisibility((ImageView) child, config);
+                }
             }
             View type = findSystemUiChild(root, "mobile_type");
             if (type instanceof ImageView) {
-                applyKnownNetworkTypeStyle(root, config);
-                applyReferenceNetworkTypeSizing((ImageView) type, config);
+                hideNetworkTypeView((ImageView) type);
             }
         });
     }
@@ -1037,6 +1381,18 @@ public class FlymeStatusBarSizer extends XposedModule {
         imageView.requestLayout();
         imageView.setTranslationX(dp(imageView, offsetX));
         imageView.setTranslationY(dp(imageView, offsetY));
+    }
+
+    private static void hideNetworkTypeView(ImageView imageView) {
+        if (imageView == null) {
+            return;
+        }
+        NETWORK_TYPE_LABELS.remove(imageView);
+        View container = imageView.getParent() instanceof View ? (View) imageView.getParent() : null;
+        if (container != null && "mobile_type_container".equals(getSystemUiIdName(container))) {
+            setViewCollapsed(container, true);
+        }
+        setViewCollapsed(imageView, true);
     }
 
     private static void applyIosSignalImageView(ImageView imageView, Config config) {
@@ -1214,6 +1570,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             setMobileSignalViewVisible(imageView, true);
             applyIosSignalImageView(imageView, displayInfo.level, IosSignalDrawable.NO_SECONDARY_LEVEL, config);
         }
+        if (shouldMergeStatusIconsIntoBattery(config)) {
+            refreshBatteryOverlayFor(imageView);
+        }
     }
 
     private static void updatePrimarySignalDrawables() {
@@ -1235,6 +1594,14 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void setMobileSignalViewVisible(ImageView imageView, boolean visible) {
+        Config config = Config.load(imageView.getContext());
+        if (shouldMergeStatusIconsIntoBattery(config)) {
+            View mergedContainer = imageView.getParent() instanceof View
+                    ? (View) imageView.getParent() : imageView;
+            setViewCollapsed(mergedContainer, true);
+            imageView.setVisibility(View.GONE);
+            return;
+        }
         View container = findMobileSignalContainer(imageView);
         if (container != null && container != imageView) {
             setViewCollapsed(container, !visible);
@@ -1259,6 +1626,12 @@ public class FlymeStatusBarSizer extends XposedModule {
             current = parent instanceof View ? (View) parent : null;
         }
         return mobileContainer == null ? imageView : mobileContainer;
+    }
+
+    private static void restoreMobileSignalVisibility(ImageView imageView, Config config) {
+        int slot = getKnownMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN);
+        boolean visible = !(config.iosSignalDualCombined && slot == MOBILE_SLOT_SECONDARY);
+        setMobileSignalViewVisible(imageView, visible);
     }
 
     private static void setViewCollapsed(View view, boolean collapsed) {
@@ -1379,6 +1752,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         disableAncestorClipping(imageView, 8);
         applyIosWifiLayout(imageView, config);
+        if (shouldMergeStatusIconsIntoBattery(config)) {
+            setWifiSignalViewVisible(imageView, false);
+            refreshBatteryOverlayFor(imageView);
+        }
     }
 
     private static void applyIosWifiLayout(ImageView imageView, Config config) {
@@ -1387,24 +1764,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             float scale = config.scaled(config.wifiSignalFactor);
             lp.width = Math.round(dp(imageView, config.iosWifiWidth) * scale);
             lp.height = Math.round(dp(imageView, config.iosWifiHeight) * scale);
-            if (lp instanceof ViewGroup.MarginLayoutParams) {
-                ViewGroup.MarginLayoutParams marginLp = (ViewGroup.MarginLayoutParams) lp;
-                int[] original = ORIGINAL_MARGINS.get(imageView);
-                if (original == null) {
-                    original = new int[]{
-                            marginLp.leftMargin,
-                            marginLp.topMargin,
-                            marginLp.rightMargin,
-                            marginLp.bottomMargin,
-                            marginLp.getMarginStart(),
-                            marginLp.getMarginEnd()
-                    };
-                    ORIGINAL_MARGINS.put(imageView, original);
-                }
-                int marginEnd = original[5] + dp(imageView, config.iosWifiMarginEnd);
-                marginLp.setMarginEnd(marginEnd);
-                marginLp.rightMargin = original[2] + dp(imageView, config.iosWifiMarginEnd);
-            }
             if (lp instanceof android.widget.FrameLayout.LayoutParams) {
                 ((android.widget.FrameLayout.LayoutParams) lp).gravity = Gravity.CENTER;
             }
@@ -1471,6 +1830,37 @@ public class FlymeStatusBarSizer extends XposedModule {
         view.setPadding(0, 0, 0, 0);
         view.setVisibility(View.GONE);
         view.requestLayout();
+    }
+
+    private static void setWifiSignalViewVisible(ImageView imageView, boolean visible) {
+        Config config = Config.load(imageView.getContext());
+        if (shouldMergeStatusIconsIntoBattery(config)) {
+            visible = false;
+        }
+        View container = findWifiSignalContainer(imageView);
+        if (container != null && container != imageView) {
+            setViewCollapsed(container, !visible);
+            imageView.setVisibility(visible ? View.VISIBLE : View.GONE);
+            return;
+        }
+        setViewCollapsed(imageView, !visible);
+    }
+
+    private static View findWifiSignalContainer(ImageView imageView) {
+        View current = imageView;
+        View wifiContainer = null;
+        while (current != null) {
+            String idName = getSystemUiIdName(current);
+            if ("statusIcons".equals(idName) || "system_icons".equals(idName)) {
+                break;
+            }
+            if ("wifi_group".equals(idName) || current.getClass().getName().contains("Wifi")) {
+                wifiContainer = current;
+            }
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return wifiContainer == null ? imageView : wifiContainer;
     }
 
     private static void logToFramework(String message) {
@@ -2357,30 +2747,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void applyNetworkTypeLabel(ImageView imageView, String label) {
-        if (label == null || label.length() == 0) {
-            NETWORK_TYPE_LABELS.remove(imageView);
-            ensureNetworkTypePlaceholder(imageView);
-            imageView.setVisibility(View.INVISIBLE);
-            setParentVisibility(imageView, true);
-            return;
-        }
-        String oldLabel = NETWORK_TYPE_LABELS.get(imageView);
-        NETWORK_TYPE_LABELS.put(imageView, label);
-        imageView.setVisibility(View.VISIBLE);
-        setParentVisibility(imageView, true);
-        imageView.setPadding(0, 0, 0, 0);
-        if (label.equals(oldLabel)
-                && imageView.getDrawable() instanceof NetworkTypeDrawable) {
-            syncDrawableTint(imageView, imageView.getDrawable());
-            imageView.setAdjustViewBounds(false);
-            applyNetworkTypeDrawableLayout(imageView, (NetworkTypeDrawable) imageView.getDrawable());
-            return;
-        }
-        NetworkTypeDrawable drawable = new NetworkTypeDrawable(label, imageView.getResources().getDisplayMetrics().density);
-        syncDrawableTint(imageView, drawable);
-        imageView.setImageDrawable(drawable);
-        imageView.setAdjustViewBounds(false);
-        applyNetworkTypeDrawableLayout(imageView, drawable);
+        hideNetworkTypeView(imageView);
     }
 
     private static void ensureNetworkTypePlaceholder(ImageView imageView) {
@@ -2397,28 +2764,9 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void applyKnownNetworkTypeStyle(View root, Config config) {
-        if (!config.iosNetworkTypeStyle) {
-            return;
-        }
         View child = findSystemUiChild(root, "mobile_type");
-        if (!(child instanceof ImageView)) {
-            return;
-        }
-        ImageView imageView = (ImageView) child;
-        String label = NETWORK_TYPE_LABELS.get(imageView);
-        if (label == null) {
-            return;
-        }
-        imageView.setVisibility(View.VISIBLE);
-        setParentVisibility(imageView, true);
-        imageView.setPadding(0, 0, 0, 0);
-        if (!(imageView.getDrawable() instanceof NetworkTypeDrawable)) {
-            NetworkTypeDrawable drawable = new NetworkTypeDrawable(label, imageView.getResources().getDisplayMetrics().density);
-            syncDrawableTint(imageView, drawable);
-            imageView.setImageDrawable(drawable);
-        }
-        if (imageView.getDrawable() instanceof NetworkTypeDrawable) {
-            applyNetworkTypeDrawableLayout(imageView, (NetworkTypeDrawable) imageView.getDrawable());
+        if (child instanceof ImageView) {
+            hideNetworkTypeView((ImageView) child);
         }
     }
 
@@ -3098,6 +3446,7 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void refreshTrackedRuntimeViews(boolean forceSignalRequery) {
         refreshTrackedTextScaling();
+        refreshTrackedBatteryViews();
         refreshTrackedSignalViews(forceSignalRequery);
         refreshTrackedNetworkTypeViews();
     }
@@ -3136,6 +3485,31 @@ public class FlymeStatusBarSizer extends XposedModule {
                 applyConnectionRateOffset(view);
                 view.requestLayout();
                 view.invalidate();
+            }
+        });
+    }
+
+    private static void refreshTrackedBatteryViews() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        handler.post(() -> {
+            ArrayList<View> batteryViews = new ArrayList<>(TRACKED_BATTERY_VIEWS.keySet());
+            for (View batteryView : batteryViews) {
+                if (batteryView == null) {
+                    continue;
+                }
+                Config config = Config.load(batteryView.getContext());
+                if (!config.enabled) {
+                    continue;
+                }
+                normalizeBatterySpacing(batteryView);
+                resizeIosBatteryView(batteryView, config, getBooleanField(batteryView, "mCharging", false));
+                batteryView.setScaleX(config.scaled(config.batteryFactor));
+                batteryView.setScaleY(config.scaled(config.batteryFactor));
+                batteryView.requestLayout();
+                batteryView.invalidate();
             }
         });
     }
@@ -3623,10 +3997,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (view == null) {
             return;
         }
-        int gapPx = getUnifiedStatusIconGapPx(view.getContext());
-        if (gapPx <= 0) {
-            return;
-        }
+        Config config = Config.load(view.getContext());
+        int gapPx = Math.max(0, getBatteryGroupStartGapPx(view.getContext(), config));
         ViewGroup.LayoutParams lp = view.getLayoutParams();
         if (!(lp instanceof ViewGroup.MarginLayoutParams)) {
             return;
@@ -3654,6 +4026,16 @@ public class FlymeStatusBarSizer extends XposedModule {
         marginLp.setMarginEnd(original[5]);
         view.setLayoutParams(marginLp);
         view.requestLayout();
+    }
+
+    private static int getBatteryGroupStartGapPx(Context context, Config config) {
+        int baseGap = getUnifiedStatusIconGapPx(context);
+        if (context == null || config == null) {
+            return baseGap;
+        }
+        int adjustPx = Math.round(config.iosGroupStartGapAdjust
+                * context.getResources().getDisplayMetrics().density);
+        return Math.max(0, baseGap + adjustPx);
     }
 
     private static boolean applyHorizontalMargins(View view, int startPx, int endPx) {
@@ -3699,6 +4081,18 @@ public class FlymeStatusBarSizer extends XposedModule {
             current = parent instanceof View ? (View) parent : null;
         }
         return false;
+    }
+
+    private static View findAncestorByIdName(View view, String idName) {
+        View current = view;
+        while (current != null) {
+            if (idName.equals(getSystemUiIdName(current))) {
+                return current;
+            }
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return null;
     }
 
     private static int getUnifiedStatusIconGapPx(Context context) {
@@ -4067,6 +4461,12 @@ public class FlymeStatusBarSizer extends XposedModule {
         int iosBatteryOffsetX = SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X;
         int iosBatteryOffsetY = SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y;
         int iosBatteryTextSize = SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE;
+        int iosGroupBatteryScale = SettingsStore.DEFAULT_IOS_GROUP_BATTERY_SCALE;
+        int iosGroupSignalScale = SettingsStore.DEFAULT_IOS_GROUP_SIGNAL_SCALE;
+        int iosGroupWifiScale = SettingsStore.DEFAULT_IOS_GROUP_WIFI_SCALE;
+        int iosGroupWifiSignalGap = SettingsStore.DEFAULT_IOS_GROUP_WIFI_SIGNAL_GAP;
+        int iosGroupSignalBatteryGap = SettingsStore.DEFAULT_IOS_GROUP_SIGNAL_BATTERY_GAP;
+        int iosGroupStartGapAdjust = SettingsStore.DEFAULT_IOS_GROUP_START_GAP_ADJUST;
         int iosWifiWidth = SettingsStore.DEFAULT_IOS_WIFI_WIDTH;
         int iosWifiHeight = SettingsStore.DEFAULT_IOS_WIFI_HEIGHT;
         int iosWifiOffsetX = SettingsStore.DEFAULT_IOS_WIFI_OFFSET_X;
@@ -4301,6 +4701,18 @@ public class FlymeStatusBarSizer extends XposedModule {
                 iosBatteryOffsetY = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y);
             } else if (SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE.equals(key)) {
                 iosBatteryTextSize = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE);
+            } else if (SettingsStore.KEY_IOS_GROUP_BATTERY_SCALE.equals(key)) {
+                iosGroupBatteryScale = parseInt(value, SettingsStore.DEFAULT_IOS_GROUP_BATTERY_SCALE);
+            } else if (SettingsStore.KEY_IOS_GROUP_SIGNAL_SCALE.equals(key)) {
+                iosGroupSignalScale = parseInt(value, SettingsStore.DEFAULT_IOS_GROUP_SIGNAL_SCALE);
+            } else if (SettingsStore.KEY_IOS_GROUP_WIFI_SCALE.equals(key)) {
+                iosGroupWifiScale = parseInt(value, SettingsStore.DEFAULT_IOS_GROUP_WIFI_SCALE);
+            } else if (SettingsStore.KEY_IOS_GROUP_WIFI_SIGNAL_GAP.equals(key)) {
+                iosGroupWifiSignalGap = parseInt(value, SettingsStore.DEFAULT_IOS_GROUP_WIFI_SIGNAL_GAP);
+            } else if (SettingsStore.KEY_IOS_GROUP_SIGNAL_BATTERY_GAP.equals(key)) {
+                iosGroupSignalBatteryGap = parseInt(value, SettingsStore.DEFAULT_IOS_GROUP_SIGNAL_BATTERY_GAP);
+            } else if (SettingsStore.KEY_IOS_GROUP_START_GAP_ADJUST.equals(key)) {
+                iosGroupStartGapAdjust = parseInt(value, SettingsStore.DEFAULT_IOS_GROUP_START_GAP_ADJUST);
             } else if (SettingsStore.KEY_IOS_WIFI_WIDTH.equals(key)) {
                 iosWifiWidth = parseInt(value, SettingsStore.DEFAULT_IOS_WIFI_WIDTH);
             } else if (SettingsStore.KEY_IOS_WIFI_HEIGHT.equals(key)) {
@@ -4349,6 +4761,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
 
         private void resolveToggleProfiles() {
+            iosBatteryStyle = true;
+            iosSignalStyle = true;
+            iosWifiStyle = true;
             if (mobileSignalFactorOff == UNSET_PROFILE_VALUE) {
                 mobileSignalFactorOff = mobileSignalFactor;
             }

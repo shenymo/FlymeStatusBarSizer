@@ -51,6 +51,12 @@ final class SettingsStore {
     static final String KEY_IOS_BATTERY_OFFSET_X = "ios_battery_offset_x";
     static final String KEY_IOS_BATTERY_OFFSET_Y = "ios_battery_offset_y";
     static final String KEY_IOS_BATTERY_TEXT_SIZE = "ios_battery_text_size";
+    static final String KEY_IOS_GROUP_BATTERY_SCALE = "ios_group_battery_scale";
+    static final String KEY_IOS_GROUP_SIGNAL_SCALE = "ios_group_signal_scale";
+    static final String KEY_IOS_GROUP_WIFI_SCALE = "ios_group_wifi_scale";
+    static final String KEY_IOS_GROUP_WIFI_SIGNAL_GAP = "ios_group_wifi_signal_gap";
+    static final String KEY_IOS_GROUP_SIGNAL_BATTERY_GAP = "ios_group_signal_battery_gap";
+    static final String KEY_IOS_GROUP_START_GAP_ADJUST = "ios_group_start_gap_adjust";
     static final String KEY_IOS_WIFI_WIDTH = "ios_wifi_width";
     static final String KEY_IOS_WIFI_HEIGHT = "ios_wifi_height";
     static final String KEY_IOS_WIFI_OFFSET_X = "ios_wifi_offset_x";
@@ -123,6 +129,12 @@ final class SettingsStore {
     static final int DEFAULT_IOS_BATTERY_OFFSET_X = 0;
     static final int DEFAULT_IOS_BATTERY_OFFSET_Y = 1;
     static final int DEFAULT_IOS_BATTERY_TEXT_SIZE = 81;
+    static final int DEFAULT_IOS_GROUP_BATTERY_SCALE = 100;
+    static final int DEFAULT_IOS_GROUP_SIGNAL_SCALE = 100;
+    static final int DEFAULT_IOS_GROUP_WIFI_SCALE = 100;
+    static final int DEFAULT_IOS_GROUP_WIFI_SIGNAL_GAP = 2;
+    static final int DEFAULT_IOS_GROUP_SIGNAL_BATTERY_GAP = 2;
+    static final int DEFAULT_IOS_GROUP_START_GAP_ADJUST = 0;
     static final int DEFAULT_IOS_WIFI_WIDTH = 21;
     static final int DEFAULT_IOS_WIFI_HEIGHT = 16;
     static final int DEFAULT_IOS_WIFI_OFFSET_X = 2;
@@ -188,6 +200,12 @@ final class SettingsStore {
             KEY_IOS_BATTERY_OFFSET_X,
             KEY_IOS_BATTERY_OFFSET_Y,
             KEY_IOS_BATTERY_TEXT_SIZE,
+            KEY_IOS_GROUP_BATTERY_SCALE,
+            KEY_IOS_GROUP_SIGNAL_SCALE,
+            KEY_IOS_GROUP_WIFI_SCALE,
+            KEY_IOS_GROUP_WIFI_SIGNAL_GAP,
+            KEY_IOS_GROUP_SIGNAL_BATTERY_GAP,
+            KEY_IOS_GROUP_START_GAP_ADJUST,
             KEY_IOS_WIFI_WIDTH,
             KEY_IOS_WIFI_HEIGHT,
             KEY_IOS_WIFI_OFFSET_X,
@@ -327,6 +345,18 @@ final class SettingsStore {
                 return DEFAULT_IOS_BATTERY_OFFSET_Y;
             case KEY_IOS_BATTERY_TEXT_SIZE:
                 return DEFAULT_IOS_BATTERY_TEXT_SIZE;
+            case KEY_IOS_GROUP_BATTERY_SCALE:
+                return DEFAULT_IOS_GROUP_BATTERY_SCALE;
+            case KEY_IOS_GROUP_SIGNAL_SCALE:
+                return DEFAULT_IOS_GROUP_SIGNAL_SCALE;
+            case KEY_IOS_GROUP_WIFI_SCALE:
+                return DEFAULT_IOS_GROUP_WIFI_SCALE;
+            case KEY_IOS_GROUP_WIFI_SIGNAL_GAP:
+                return DEFAULT_IOS_GROUP_WIFI_SIGNAL_GAP;
+            case KEY_IOS_GROUP_SIGNAL_BATTERY_GAP:
+                return DEFAULT_IOS_GROUP_SIGNAL_BATTERY_GAP;
+            case KEY_IOS_GROUP_START_GAP_ADJUST:
+                return DEFAULT_IOS_GROUP_START_GAP_ADJUST;
             case KEY_IOS_WIFI_WIDTH:
                 return DEFAULT_IOS_WIFI_WIDTH;
             case KEY_IOS_WIFI_HEIGHT:

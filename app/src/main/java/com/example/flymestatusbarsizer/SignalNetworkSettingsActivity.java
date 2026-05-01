@@ -32,13 +32,13 @@ public class SignalNetworkSettingsActivity extends Activity {
                 ScrollView.LayoutParams.WRAP_CONTENT));
 
         TextView title = new TextView(this);
-        title.setText("iOS \u4fe1\u53f7\u683c\u4e0e 5G \u6807\u8bc6");
+        title.setText("iOS \u79fb\u52a8\u4fe1\u53f7\u683c");
         title.setTextColor(Color.rgb(32, 33, 36));
         title.setTextSize(24);
         root.addView(title, matchWrap());
 
         TextView summary = new TextView(this);
-        summary.setText("\u8fd9\u91cc\u5355\u72ec\u8c03\u6574 iOS \u98ce\u683c\u79fb\u52a8\u4fe1\u53f7\u683c\u548c 5G \u6807\u8bc6\u7684\u5927\u5c0f\u4e0e\u4f4d\u7f6e\u3002");
+        summary.setText("\u8fd9\u91cc\u5355\u72ec\u8c03\u6574 iOS \u98ce\u683c\u79fb\u52a8\u4fe1\u53f7\u683c\u7684\u5927\u5c0f\u4e0e\u4f4d\u7f6e\u3002");
         summary.setTextColor(Color.rgb(95, 99, 104));
         summary.setTextSize(14);
         summary.setPadding(0, dp(6), 0, dp(14));
@@ -75,46 +75,10 @@ public class SignalNetworkSettingsActivity extends Activity {
                 SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y,
                 SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_OFFSET_Y);
 
-        addSectionTitle(root, "5G \u6807\u8bc6");
-        addSlider(root, "5G \u6807\u8bc6\u7f29\u653e\u5f3a\u5ea6", "mobile_type \u548c VoLTE \u6807\u8bc6\u8ddf\u968f\u6574\u4f53\u7f29\u653e\u7684\u5f3a\u5ea6\u3002",
-                SettingsStore.KEY_NETWORK_TYPE_FACTOR, SettingsStore.DEFAULT_NETWORK_TYPE_FACTOR, 0, 160, "%");
-        addOffsetSliderWithFallback(root, "\u684c\u9762\u72b6\u6001\u680f\u5de6\u53f3\u504f\u79fb",
-                "\u6b63\u6570\u5411\u53f3\uff0c\u8d1f\u6570\u5411\u5de6\uff0c\u7528\u6765\u5728\u653e\u5927\u540e\u5bf9\u9f50 5G \u6807\u8bc6\u3002",
-                SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X,
-                SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_OFFSET_X);
-        addOffsetSliderWithFallback(root, "\u684c\u9762\u72b6\u6001\u680f\u4e0a\u4e0b\u504f\u79fb",
-                "\u6b63\u6570\u5411\u4e0b\uff0c\u8d1f\u6570\u5411\u4e0a\uff0c\u7528\u6765\u8c03\u6574 5G \u6807\u8bc6\u9ad8\u5ea6\u3002",
-                SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y,
-                SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_OFFSET_Y);
-        addOffsetSliderWithFallback(root, "\u9501\u5c4f\u72b6\u6001\u680f\u5de6\u53f3\u504f\u79fb",
-                "\u9501\u5c4f\u53f3\u4e0a\u89d2\u7684 5G \u6807\u8bc6\u5355\u72ec\u8c03\u6574\u3002",
-                SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X,
-                SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_OFFSET_X);
-        addOffsetSliderWithFallback(root, "\u9501\u5c4f\u72b6\u6001\u680f\u4e0a\u4e0b\u504f\u79fb",
-                "\u9501\u5c4f\u53f3\u4e0a\u89d2\u7684 5G \u6807\u8bc6\u5355\u72ec\u8c03\u6574\u3002",
-                SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y,
-                SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_OFFSET_Y);
-        addOffsetSliderWithFallback(root, "\u63a7\u5236\u4e2d\u5fc3\u72b6\u6001\u680f\u5de6\u53f3\u504f\u79fb",
-                "\u63a7\u5236\u4e2d\u5fc3\u9876\u90e8\u548c\u8fd0\u8425\u5546\u533a\u4f1a\u5171\u7528\u8fd9\u7ec4 5G \u504f\u79fb\u3002",
-                SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X,
-                SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_OFFSET_X);
-        addOffsetSliderWithFallback(root, "\u63a7\u5236\u4e2d\u5fc3\u72b6\u6001\u680f\u4e0a\u4e0b\u504f\u79fb",
-                "\u63a7\u5236\u4e2d\u5fc3\u9876\u90e8\u548c\u8fd0\u8425\u5546\u533a\u4f1a\u5171\u7528\u8fd9\u7ec4 5G \u504f\u79fb\u3002",
-                SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y,
-                SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_OFFSET_Y);
         TextView reset = button("\u6062\u590d\u672c\u9875\u9ed8\u8ba4");
         reset.setOnClickListener(v -> {
             prefs.edit()
                     .remove(SettingsStore.KEY_MOBILE_SIGNAL_FACTOR)
-                    .remove(SettingsStore.KEY_NETWORK_TYPE_FACTOR)
-                    .remove(SettingsStore.KEY_NETWORK_TYPE_OFFSET_X)
-                    .remove(SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y)
-                    .remove(SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_X)
-                    .remove(SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y)
-                    .remove(SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X)
-                    .remove(SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y)
-                    .remove(SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X)
-                    .remove(SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y)
                     .remove(SettingsStore.KEY_IOS_SIGNAL_OFFSET_X)
                     .remove(SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y)
                     .remove(SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X)
