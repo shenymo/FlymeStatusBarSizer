@@ -372,18 +372,18 @@ public class MainActivity extends Activity {
                 "\u539f\u672c mobile_signal view \u8ddf\u968f\u5168\u5c40\u56fe\u6807\u7f29\u653e\u7684\u5f3a\u5ea6",
                 SettingsStore.KEY_MOBILE_SIGNAL_FACTOR, SettingsStore.DEFAULT_MOBILE_SIGNAL_FACTOR, 0, 160, "%");
         addDivider(page);
-        addOffsetSliderWithFallback(page, "\u684c\u9762\u4fe1\u53f7\u6c34\u5e73\u504f\u79fb",
+        addSliderRow(page, "\u684c\u9762\u4fe1\u53f7\u6c34\u5e73\u504f\u79fb",
                 "\u684c\u9762\u72b6\u6001\u680f\u4e0b\uff0c\u4fe1\u53f7\u683c\u5728\u56fe\u6807\u7ec4\u91cc\u7684\u5de6\u53f3\u4f4d\u7f6e",
                 SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X,
-                SettingsStore.KEY_IOS_SIGNAL_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_OFFSET_X);
+                -80, 80, "dp");
         addDivider(page);
-        addOffsetSliderWithFallback(page, "\u684c\u9762\u4fe1\u53f7\u5782\u76f4\u504f\u79fb",
+        addSliderRow(page, "\u684c\u9762\u4fe1\u53f7\u5782\u76f4\u504f\u79fb",
                 "\u684c\u9762\u72b6\u6001\u680f\u4e0b\uff0c\u4fe1\u53f7\u683c\u5728\u56fe\u6807\u7ec4\u91cc\u7684\u4e0a\u4e0b\u4f4d\u7f6e",
                 SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y,
-                SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_OFFSET_Y);
+                -80, 80, "dp");
         addDivider(page);
         addLongPressResetOffsetsRow(page, "\u6062\u590d\u4fe1\u53f7\u504f\u79fb",
-                "\u957f\u6309\u540e\u628a\u79fb\u52a8\u4fe1\u53f7\u5728\u5f00\u542f/\u5173\u95ed\u4e24\u5957\u914d\u7f6e\u91cc\u7684\u504f\u79fb\u5168\u90e8\u6062\u590d\u4e3a 0");
+                "\u957f\u6309\u540e\u628a\u79fb\u52a8\u4fe1\u53f7\u7684\u684c\u9762\u3001\u9501\u5c4f\u3001\u63a7\u5236\u4e2d\u5fc3\u504f\u79fb\u5168\u90e8\u6062\u590d\u4e3a 0");
         return page;
     }
 
@@ -779,34 +779,12 @@ public class MainActivity extends Activity {
 
     private void resetSignalAndNetworkOffsets() {
         prefs.edit()
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_X, 0)
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y, 0)
                 .putInt(SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X, 0)
                 .putInt(SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y, 0)
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X_OFF, 0)
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y_OFF, 0)
                 .putInt(SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X, 0)
                 .putInt(SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y, 0)
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X_OFF, 0)
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y_OFF, 0)
                 .putInt(SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X, 0)
                 .putInt(SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y, 0)
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X_OFF, 0)
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y_OFF, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_X, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_X_OFF, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y_OFF, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X_OFF, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y_OFF, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X_OFF, 0)
-                .putInt(SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y_OFF, 0)
                 .apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();

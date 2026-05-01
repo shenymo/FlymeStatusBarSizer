@@ -23,47 +23,24 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_WIFI_SIGNAL_FACTOR, prefs.getInt(SettingsStore.KEY_WIFI_SIGNAL_FACTOR, SettingsStore.DEFAULT_WIFI_SIGNAL_FACTOR));
         add(cursor, SettingsStore.KEY_BATTERY_FACTOR, prefs.getInt(SettingsStore.KEY_BATTERY_FACTOR, SettingsStore.DEFAULT_BATTERY_FACTOR));
         add(cursor, SettingsStore.KEY_STATUS_ICON_FACTOR, prefs.getInt(SettingsStore.KEY_STATUS_ICON_FACTOR, SettingsStore.DEFAULT_STATUS_ICON_FACTOR));
-        add(cursor, SettingsStore.KEY_NETWORK_TYPE_FACTOR, prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_FACTOR, SettingsStore.DEFAULT_NETWORK_TYPE_FACTOR));
-        add(cursor, SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_OFFSET_X));
-        add(cursor, SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_OFFSET_Y));
-        add(cursor, SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_X,
-                prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_X,
-                        prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X)));
-        add(cursor, SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y,
-                prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y,
-                        prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y)));
-        add(cursor, SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X,
-                prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X,
-                        prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X)));
-        add(cursor, SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y,
-                prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y,
-                        prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y)));
-        add(cursor, SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X,
-                prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X,
-                        prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_X, SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X)));
-        add(cursor, SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y,
-                prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y,
-                        prefs.getInt(SettingsStore.KEY_NETWORK_TYPE_OFFSET_Y, SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y)));
-        add(cursor, SettingsStore.KEY_IOS_SIGNAL_OFFSET_X, prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_OFFSET_X));
-        add(cursor, SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y, prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_OFFSET_Y));
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X,
                 prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X,
-                        prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X)));
+                        SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X));
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y,
                 prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y,
-                        prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y)));
+                        SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y));
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X,
                 prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X,
-                        prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X)));
+                        SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X));
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y,
                 prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y,
-                        prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y)));
+                        SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y));
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X,
                 prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X,
-                        prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X)));
+                        SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X));
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y,
                 prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y,
-                        prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y)));
+                        SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y));
         add(cursor, SettingsStore.KEY_IOS_BATTERY_WIDTH, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_WIDTH, SettingsStore.DEFAULT_IOS_BATTERY_WIDTH));
         add(cursor, SettingsStore.KEY_IOS_BATTERY_HEIGHT, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_HEIGHT, SettingsStore.DEFAULT_IOS_BATTERY_HEIGHT));
         add(cursor, SettingsStore.KEY_IOS_BATTERY_OFFSET_X, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_OFFSET_X, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X));
@@ -86,8 +63,6 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_SHOW_CLOCK_WEEKDAY, prefs.getBoolean(SettingsStore.KEY_SHOW_CLOCK_WEEKDAY, SettingsStore.DEFAULT_SHOW_CLOCK_WEEKDAY));
         add(cursor, SettingsStore.KEY_CLOCK_BOLD_ENABLED, prefs.getBoolean(SettingsStore.KEY_CLOCK_BOLD_ENABLED, SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED));
         add(cursor, SettingsStore.KEY_CLOCK_FONT_WEIGHT, prefs.getInt(SettingsStore.KEY_CLOCK_FONT_WEIGHT, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT));
-        add(cursor, SettingsStore.KEY_IOS_BATTERY_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_BATTERY_STYLE, SettingsStore.DEFAULT_IOS_BATTERY_STYLE));
-        add(cursor, SettingsStore.KEY_IOS_SIGNAL_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_SIGNAL_STYLE, SettingsStore.DEFAULT_IOS_SIGNAL_STYLE));
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_DUAL_COMBINED,
                 prefs.getBoolean(SettingsStore.KEY_IOS_SIGNAL_DUAL_COMBINED,
                         SettingsStore.DEFAULT_IOS_SIGNAL_DUAL_COMBINED));
@@ -120,8 +95,6 @@ public class SettingsProvider extends ContentProvider {
                 prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SOURCE, ""));
         add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_ERROR,
                 prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_ERROR, ""));
-        add(cursor, SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, SettingsStore.DEFAULT_IOS_NETWORK_TYPE_STYLE));
-        add(cursor, SettingsStore.KEY_IOS_WIFI_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_WIFI_STYLE, SettingsStore.DEFAULT_IOS_WIFI_STYLE));
         return cursor;
     }
 
