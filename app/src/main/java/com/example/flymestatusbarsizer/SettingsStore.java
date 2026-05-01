@@ -39,6 +39,11 @@ final class SettingsStore {
     static final String KEY_ACTIVITY_ICON_FACTOR = "activity_icon_factor";
     static final String KEY_CONNECTION_RATE_OFFSET_X = "connection_rate_offset_x";
     static final String KEY_CONNECTION_RATE_OFFSET_Y = "connection_rate_offset_y";
+    static final String KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED = "connection_rate_auto_visibility_enabled";
+    static final String KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB = "connection_rate_show_threshold_kb";
+    static final String KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB = "connection_rate_hide_threshold_kb";
+    static final String KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT = "connection_rate_show_sample_count";
+    static final String KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT = "connection_rate_hide_sample_count";
     static final String KEY_TEXT_SCALE = "text_scale";
     static final String KEY_SHOW_CLOCK_WEEKDAY = "show_clock_weekday";
     static final String KEY_CLOCK_BOLD_ENABLED = "clock_bold_enabled";
@@ -49,6 +54,9 @@ final class SettingsStore {
     static final String KEY_IOS_SIGNAL_DEBUG_SIM2_ENABLED = "ios_signal_debug_sim2_enabled";
     static final String KEY_IOS_SIGNAL_DEBUG_SIM1_LEVEL = "ios_signal_debug_sim1_level";
     static final String KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL = "ios_signal_debug_sim2_level";
+    static final String KEY_IOS_WIFI_DEBUG_ENABLED = "ios_wifi_debug_enabled";
+    static final String KEY_IOS_WIFI_DEBUG_VISIBLE = "ios_wifi_debug_visible";
+    static final String KEY_IOS_WIFI_DEBUG_LEVEL = "ios_wifi_debug_level";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY = "runtime_signal_debug_summary";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_LEVEL = "runtime_signal_debug_level";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_SLOT = "runtime_signal_debug_slot";
@@ -56,6 +64,14 @@ final class SettingsStore {
     static final String KEY_RUNTIME_SIGNAL_DEBUG_STATE = "runtime_signal_debug_state";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_SOURCE = "runtime_signal_debug_source";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_ERROR = "runtime_signal_debug_error";
+    static final String KEY_RUNTIME_WIFI_DEBUG_SUMMARY = "runtime_wifi_debug_summary";
+    static final String KEY_RUNTIME_WIFI_DEBUG_SNAPSHOT = "runtime_wifi_debug_snapshot";
+    static final String KEY_RUNTIME_WIFI_DEBUG_LEVEL = "runtime_wifi_debug_level";
+    static final String KEY_RUNTIME_WIFI_DEBUG_RES_ID = "runtime_wifi_debug_res_id";
+    static final String KEY_RUNTIME_WIFI_DEBUG_RES_NAME = "runtime_wifi_debug_res_name";
+    static final String KEY_RUNTIME_WIFI_DEBUG_VISIBLE = "runtime_wifi_debug_visible";
+    static final String KEY_RUNTIME_WIFI_DEBUG_SOURCE = "runtime_wifi_debug_source";
+    static final String KEY_RUNTIME_WIFI_DEBUG_ERROR = "runtime_wifi_debug_error";
 
     static final boolean DEFAULT_ENABLED = true;
     static final int DEFAULT_GLOBAL_ICON_SCALE = 130;
@@ -87,6 +103,11 @@ final class SettingsStore {
     static final int DEFAULT_ACTIVITY_ICON_FACTOR = 75;
     static final int DEFAULT_CONNECTION_RATE_OFFSET_X = 0;
     static final int DEFAULT_CONNECTION_RATE_OFFSET_Y = -3;
+    static final boolean DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED = false;
+    static final int DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB = 100;
+    static final int DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB = 32;
+    static final int DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT = 2;
+    static final int DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT = 3;
     static final int DEFAULT_TEXT_SCALE = 120;
     static final boolean DEFAULT_SHOW_CLOCK_WEEKDAY = true;
     static final boolean DEFAULT_CLOCK_BOLD_ENABLED = true;
@@ -97,6 +118,9 @@ final class SettingsStore {
     static final boolean DEFAULT_IOS_SIGNAL_DEBUG_SIM2_ENABLED = true;
     static final int DEFAULT_IOS_SIGNAL_DEBUG_SIM1_LEVEL = 4;
     static final int DEFAULT_IOS_SIGNAL_DEBUG_SIM2_LEVEL = 4;
+    static final boolean DEFAULT_IOS_WIFI_DEBUG_ENABLED = false;
+    static final boolean DEFAULT_IOS_WIFI_DEBUG_VISIBLE = true;
+    static final int DEFAULT_IOS_WIFI_DEBUG_LEVEL = 4;
 
     static final String[] INT_KEYS = {
             KEY_GLOBAL_ICON_SCALE,
@@ -128,20 +152,28 @@ final class SettingsStore {
             KEY_ACTIVITY_ICON_FACTOR,
             KEY_CONNECTION_RATE_OFFSET_X,
             KEY_CONNECTION_RATE_OFFSET_Y,
+            KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB,
+            KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB,
+            KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT,
+            KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT,
             KEY_IOS_SIGNAL_DEBUG_SIM1_LEVEL,
             KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL,
+            KEY_IOS_WIFI_DEBUG_LEVEL,
             KEY_TEXT_SCALE,
             KEY_CLOCK_FONT_WEIGHT
     };
 
     static final String[] BOOLEAN_KEYS = {
             KEY_ENABLED,
+            KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
             KEY_SHOW_CLOCK_WEEKDAY,
             KEY_CLOCK_BOLD_ENABLED,
             KEY_IOS_SIGNAL_DUAL_COMBINED,
             KEY_IOS_SIGNAL_DEBUG_ENABLED,
             KEY_IOS_SIGNAL_DEBUG_SIM1_ENABLED,
-            KEY_IOS_SIGNAL_DEBUG_SIM2_ENABLED
+            KEY_IOS_SIGNAL_DEBUG_SIM2_ENABLED,
+            KEY_IOS_WIFI_DEBUG_ENABLED,
+            KEY_IOS_WIFI_DEBUG_VISIBLE
     };
 
     private SettingsStore() {
@@ -231,10 +263,20 @@ final class SettingsStore {
                 return DEFAULT_CONNECTION_RATE_OFFSET_X;
             case KEY_CONNECTION_RATE_OFFSET_Y:
                 return DEFAULT_CONNECTION_RATE_OFFSET_Y;
+            case KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB:
+                return DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB;
+            case KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB:
+                return DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB;
+            case KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT:
+                return DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT;
+            case KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT:
+                return DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT;
             case KEY_IOS_SIGNAL_DEBUG_SIM1_LEVEL:
                 return DEFAULT_IOS_SIGNAL_DEBUG_SIM1_LEVEL;
             case KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL:
                 return DEFAULT_IOS_SIGNAL_DEBUG_SIM2_LEVEL;
+            case KEY_IOS_WIFI_DEBUG_LEVEL:
+                return DEFAULT_IOS_WIFI_DEBUG_LEVEL;
             case KEY_TEXT_SCALE:
                 return DEFAULT_TEXT_SCALE;
             case KEY_CLOCK_FONT_WEIGHT:
@@ -248,6 +290,8 @@ final class SettingsStore {
         switch (key) {
             case KEY_ENABLED:
                 return DEFAULT_ENABLED;
+            case KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED:
+                return DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED;
             case KEY_SHOW_CLOCK_WEEKDAY:
                 return DEFAULT_SHOW_CLOCK_WEEKDAY;
             case KEY_CLOCK_BOLD_ENABLED:
@@ -260,6 +304,10 @@ final class SettingsStore {
                 return DEFAULT_IOS_SIGNAL_DEBUG_SIM1_ENABLED;
             case KEY_IOS_SIGNAL_DEBUG_SIM2_ENABLED:
                 return DEFAULT_IOS_SIGNAL_DEBUG_SIM2_ENABLED;
+            case KEY_IOS_WIFI_DEBUG_ENABLED:
+                return DEFAULT_IOS_WIFI_DEBUG_ENABLED;
+            case KEY_IOS_WIFI_DEBUG_VISIBLE:
+                return DEFAULT_IOS_WIFI_DEBUG_VISIBLE;
             default:
                 return false;
         }

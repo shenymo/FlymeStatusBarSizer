@@ -59,6 +59,21 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_ACTIVITY_ICON_FACTOR, prefs.getInt(SettingsStore.KEY_ACTIVITY_ICON_FACTOR, SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR));
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X));
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y));
+        add(cursor, SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
+                prefs.getBoolean(SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
+                        SettingsStore.DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED));
+        add(cursor, SettingsStore.KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB,
+                prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB,
+                        SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB));
+        add(cursor, SettingsStore.KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB,
+                prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB,
+                        SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB));
+        add(cursor, SettingsStore.KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT,
+                prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT,
+                        SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT));
+        add(cursor, SettingsStore.KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT,
+                prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT,
+                        SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT));
         add(cursor, SettingsStore.KEY_TEXT_SCALE, prefs.getInt(SettingsStore.KEY_TEXT_SCALE, SettingsStore.DEFAULT_TEXT_SCALE));
         add(cursor, SettingsStore.KEY_SHOW_CLOCK_WEEKDAY, prefs.getBoolean(SettingsStore.KEY_SHOW_CLOCK_WEEKDAY, SettingsStore.DEFAULT_SHOW_CLOCK_WEEKDAY));
         add(cursor, SettingsStore.KEY_CLOCK_BOLD_ENABLED, prefs.getBoolean(SettingsStore.KEY_CLOCK_BOLD_ENABLED, SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED));
@@ -81,6 +96,15 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL,
                 prefs.getInt(SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL,
                         SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM2_LEVEL));
+        add(cursor, SettingsStore.KEY_IOS_WIFI_DEBUG_ENABLED,
+                prefs.getBoolean(SettingsStore.KEY_IOS_WIFI_DEBUG_ENABLED,
+                        SettingsStore.DEFAULT_IOS_WIFI_DEBUG_ENABLED));
+        add(cursor, SettingsStore.KEY_IOS_WIFI_DEBUG_VISIBLE,
+                prefs.getBoolean(SettingsStore.KEY_IOS_WIFI_DEBUG_VISIBLE,
+                        SettingsStore.DEFAULT_IOS_WIFI_DEBUG_VISIBLE));
+        add(cursor, SettingsStore.KEY_IOS_WIFI_DEBUG_LEVEL,
+                prefs.getInt(SettingsStore.KEY_IOS_WIFI_DEBUG_LEVEL,
+                        SettingsStore.DEFAULT_IOS_WIFI_DEBUG_LEVEL));
         add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY,
                 prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY, ""));
         add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_LEVEL,
@@ -95,6 +119,22 @@ public class SettingsProvider extends ContentProvider {
                 prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SOURCE, ""));
         add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_ERROR,
                 prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_ERROR, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_WIFI_DEBUG_SUMMARY,
+                prefs.getString(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_SUMMARY, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_WIFI_DEBUG_SNAPSHOT,
+                prefs.getString(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_SNAPSHOT, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_WIFI_DEBUG_LEVEL,
+                prefs.getString(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_LEVEL, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_WIFI_DEBUG_RES_ID,
+                prefs.getString(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_RES_ID, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_WIFI_DEBUG_RES_NAME,
+                prefs.getString(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_RES_NAME, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_WIFI_DEBUG_VISIBLE,
+                prefs.getString(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_VISIBLE, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_WIFI_DEBUG_SOURCE,
+                prefs.getString(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_SOURCE, ""));
+        add(cursor, SettingsStore.KEY_RUNTIME_WIFI_DEBUG_ERROR,
+                prefs.getString(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_ERROR, ""));
         return cursor;
     }
 
@@ -133,7 +173,8 @@ public class SettingsProvider extends ContentProvider {
         SharedPreferences.Editor editor = SettingsStore.prefs(getContext()).edit();
         int changed = 0;
         for (String key : values.keySet()) {
-            if (key != null && key.startsWith("runtime_signal_debug_")) {
+            if (key != null && (key.startsWith("runtime_signal_debug_")
+                    || key.startsWith("runtime_wifi_debug_"))) {
                 Object value = values.get(key);
                 editor.putString(key, value == null ? "" : String.valueOf(value));
                 changed++;

@@ -17,6 +17,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
@@ -74,6 +75,8 @@ public class MainActivity extends Activity {
     private int colorPrimaryDeep;
     private int colorStroke;
     private RightIconGroupPreviewView previewView;
+    private View[] mainPages;
+    private TextView[] mainTabs;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -98,27 +101,15 @@ public class MainActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(16) + topInset, dp(20), dp(28));
+        root.setPadding(dp(20), dp(16) + topInset, dp(20), dp(120));
         scrollView.addView(root, new ScrollView.LayoutParams(
                 ScrollView.LayoutParams.MATCH_PARENT,
                 ScrollView.LayoutParams.WRAP_CONTENT));
 
         root.addView(buildTopBar(), matchWrap());
-        root.addView(buildPreviewPlaceholder(), matchWrapWithTop(18));
-        root.addView(buildIntroCard(), matchWrapWithTop(16));
+        root.addView(buildMainPageContainer(), matchWrapWithTop(18));
 
-        addSectionLabel(root, "\u5168\u5c40\u8c03\u6574");
-        root.addView(buildGlobalCard(), matchWrapWithTop(10));
-
-        addSectionLabel(root, "\u53f3\u4e0a\u89d2\u56fe\u6807\u7ec4");
-        root.addView(buildRightIconGroupSection(), matchWrapWithTop(10));
-
-        addSectionLabel(root, "\u4fe1\u53f7\u8c03\u8bd5");
-        root.addView(buildSignalDebugEntryCard(), matchWrapWithTop(10));
-
-        addSectionLabel(root, "\u65f6\u95f4\u6587\u5b57");
-        root.addView(buildTimeCard(), matchWrapWithTop(10));
-
+        page.addView(buildBottomNavigation(), bottomNavigationLayoutParams());
         page.addView(buildFloatingMenuButton(), floatingMenuLayoutParams(topInset));
         setContentView(page);
     }
@@ -158,7 +149,7 @@ public class MainActivity extends Activity {
         left.addView(title, matchWrap());
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("\u4e3b\u9875\u76f4\u63a5\u8c03\u6574\u53f3\u4e0a\u89d2\u56fe\u6807\u7ec4\u7684\u91cd\u7ed8\u3001\u95f4\u8ddd\u548c\u5bf9\u9f50");
+        subtitle.setText("\u4e3b\u9875\u8c03\u53c2\uff0c\u8c03\u8bd5\u9875\u67e5 hook \u72b6\u6001\uff0c\u5173\u4e8e\u9875\u67e5\u7248\u672c\u548c\u6784\u5efa\u4fe1\u606f");
         subtitle.setTextColor(colorSubtext);
         subtitle.setTextSize(14);
         subtitle.setPadding(0, dp(4), 0, 0);
@@ -167,6 +158,141 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         return bar;
+    }
+
+    private View buildMainPageContainer() {
+        FrameLayout pageContainer = new FrameLayout(this);
+        LinearLayout homePage = buildHomePage();
+        LinearLayout debugPage = buildDebugPage();
+        LinearLayout aboutPage = buildAboutPage();
+        pageContainer.addView(homePage, matchWrapFrame());
+        pageContainer.addView(debugPage, matchWrapFrame());
+        pageContainer.addView(aboutPage, matchWrapFrame());
+        mainPages = new View[]{homePage, debugPage, aboutPage};
+        return pageContainer;
+    }
+
+    private View buildBottomNavigation() {
+        LinearLayout shell = card(colorSurface, 26);
+        shell.setOrientation(LinearLayout.HORIZONTAL);
+        shell.setPadding(dp(12), dp(12), dp(12), dp(12));
+        shell.setElevation(dp(8));
+
+        TextView homeTab = buildBottomNavTab("主页");
+        TextView debugTab = buildBottomNavTab("调试");
+        TextView aboutTab = buildBottomNavTab("关于");
+        shell.addView(homeTab, weightedWrap());
+        shell.addView(debugTab, weightedWrapWithStart(10));
+        shell.addView(aboutTab, weightedWrapWithStart(10));
+
+        mainTabs = new TextView[]{homeTab, debugTab, aboutTab};
+        bindMainTabs(0);
+        homeTab.setOnClickListener(v -> bindMainTabs(0));
+        debugTab.setOnClickListener(v -> bindMainTabs(1));
+        aboutTab.setOnClickListener(v -> bindMainTabs(2));
+        return shell;
+    }
+
+    private LinearLayout buildHomePage() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        page.addView(buildPreviewPlaceholder(), matchWrap());
+        page.addView(buildIntroCard(), matchWrapWithTop(16));
+
+        addSectionLabel(page, "全局调整");
+        page.addView(buildGlobalCard(), matchWrapWithTop(10));
+
+        addSectionLabel(page, "实时网速");
+        page.addView(buildConnectionRateCard(), matchWrapWithTop(10));
+
+        addSectionLabel(page, "右上角图标组");
+        page.addView(buildRightIconGroupSection(), matchWrapWithTop(10));
+
+        addSectionLabel(page, "时间文字");
+        page.addView(buildTimeCard(), matchWrapWithTop(10));
+        return page;
+    }
+
+    private LinearLayout buildDebugPage() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        addSectionLabel(page, "调试工具");
+        page.addView(buildSignalDebugEntryCard(), matchWrapWithTop(10));
+        page.addView(buildWifiDebugEntryCard(), matchWrapWithTop(10));
+        return page;
+    }
+
+    private LinearLayout buildAboutPage() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        addSectionLabel(page, "关于");
+
+        LinearLayout card = card(colorSurface, 28);
+
+        TextView title = new TextView(this);
+        title.setText("Flyme Status Bar Sizer");
+        title.setTextColor(colorText);
+        title.setTextSize(20);
+        card.addView(title, matchWrap());
+
+        TextView summary = new TextView(this);
+        summary.setText("状态栏右上角图标组重绘与布局调节模块。");
+        summary.setTextColor(colorSubtext);
+        summary.setTextSize(14);
+        summary.setPadding(0, dp(6), 0, 0);
+        card.addView(summary, matchWrap());
+
+        TextView githubTitle = new TextView(this);
+        githubTitle.setText("GitHub");
+        githubTitle.setTextColor(colorText);
+        githubTitle.setTextSize(15);
+        githubTitle.setPadding(0, dp(16), 0, 0);
+        card.addView(githubTitle, matchWrap());
+
+        TextView githubLink = new TextView(this);
+        githubLink.setText("https://github.com/shenymo/FlymeStatusBarSizer");
+        githubLink.setTextColor(colorPrimary);
+        githubLink.setTextSize(14);
+        githubLink.setSingleLine(false);
+        githubLink.setEllipsize(TextUtils.TruncateAt.END);
+        githubLink.setPadding(0, dp(6), 0, 0);
+        githubLink.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW,
+                Uri.parse("https://github.com/shenymo/FlymeStatusBarSizer"))));
+        card.addView(githubLink, matchWrap());
+
+        TextView versionTitle = new TextView(this);
+        versionTitle.setText("当前版本");
+        versionTitle.setTextColor(colorText);
+        versionTitle.setTextSize(15);
+        versionTitle.setPadding(0, dp(16), 0, 0);
+        card.addView(versionTitle, matchWrap());
+
+        TextView versionValue = new TextView(this);
+        versionValue.setText(BuildConfig.VERSION_NAME);
+        versionValue.setTextColor(colorSubtext);
+        versionValue.setTextSize(14);
+        versionValue.setPadding(0, dp(6), 0, 0);
+        card.addView(versionValue, matchWrap());
+
+        TextView buildDateTitle = new TextView(this);
+        buildDateTitle.setText("构建日期");
+        buildDateTitle.setTextColor(colorText);
+        buildDateTitle.setTextSize(15);
+        buildDateTitle.setPadding(0, dp(16), 0, 0);
+        card.addView(buildDateTitle, matchWrap());
+
+        TextView buildDateValue = new TextView(this);
+        buildDateValue.setText(BuildConfig.BUILD_DATE);
+        buildDateValue.setTextColor(colorSubtext);
+        buildDateValue.setTextSize(14);
+        buildDateValue.setPadding(0, dp(6), 0, 0);
+        card.addView(buildDateValue, matchWrap());
+
+        page.addView(card, matchWrapWithTop(10));
+        return page;
     }
 
     private View buildFloatingMenuButton() {
@@ -236,6 +362,96 @@ public class MainActivity extends Activity {
                 "\u65f6\u949f\u3001\u8fd0\u8425\u5546\u3001\u7535\u6c60\u767e\u5206\u6bd4\u7b49\u72b6\u6001\u680f\u6587\u5b57\u7edf\u4e00\u7f29\u653e",
                 SettingsStore.KEY_TEXT_SCALE, SettingsStore.DEFAULT_TEXT_SCALE, 80, 130, "%");
         return card;
+    }
+
+    private View buildConnectionRateCard() {
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+
+        TextView pageHint = new TextView(this);
+        pageHint.setText("分成 2 页来调，先定阈值逻辑，再细调网速文字位置");
+        pageHint.setTextColor(colorSubtext);
+        pageHint.setTextSize(13);
+        details.addView(pageHint, matchWrap());
+
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+        tabs.setPadding(0, dp(14), 0, 0);
+        TextView thresholdTab = buildSettingsPageTab("阈值逻辑");
+        TextView offsetTab = buildSettingsPageTab("文字偏移");
+        tabs.addView(thresholdTab, weightedWrap());
+        tabs.addView(offsetTab, weightedWrapWithStart(10));
+        details.addView(tabs, matchWrap());
+
+        FrameLayout pageContainer = new FrameLayout(this);
+        pageContainer.setPadding(0, dp(16), 0, 0);
+        LinearLayout thresholdPage = buildConnectionRateThresholdPage();
+        LinearLayout offsetPage = buildConnectionRateOffsetPage();
+        pageContainer.addView(thresholdPage, matchWrapFrame());
+        pageContainer.addView(offsetPage, matchWrapFrame());
+        details.addView(pageContainer, matchWrap());
+
+        View[] pages = new View[]{thresholdPage, offsetPage};
+        TextView[] pageTabs = new TextView[]{thresholdTab, offsetTab};
+        bindSettingsPageTabs(pages, pageTabs, 0);
+        thresholdTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 0));
+        offsetTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 1));
+
+        return buildExpandableInfoCard(
+                "实时网速",
+                "保留系统原采样，只在显示层加双阈值和确认次数，减少低速时的视觉干扰。",
+                "网速", details);
+    }
+
+    private LinearLayout buildConnectionRateThresholdPage() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        addProfileSectionHeader(page, "阈值显隐",
+                "显示阈值和隐藏阈值分开，连续采样确认后再切换，继续用 GONE 但尽量避免频繁抖动。");
+        addSwitchRow(page, "启用阈值显隐",
+                "高于显示阈值时显示，低于隐藏阈值时隐藏。只改显示，不改采样。",
+                SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
+                SettingsStore.DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED);
+        addDivider(page);
+        addSliderRow(page, "显示阈值",
+                "连续达到这个速度后才显示，单位 KB/s",
+                SettingsStore.KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB,
+                SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB, 0, 1024, "KB/s");
+        addDivider(page);
+        addSliderRow(page, "隐藏阈值",
+                "低于这个速度后才隐藏，单位 KB/s",
+                SettingsStore.KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB,
+                SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB, 0, 1024, "KB/s");
+        addDivider(page);
+        addSliderRow(page, "显示确认次数",
+                "连续多少次达到显示阈值才真正显示",
+                SettingsStore.KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT,
+                SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT, 1, 5, "次");
+        addDivider(page);
+        addSliderRow(page, "隐藏确认次数",
+                "连续多少次低于隐藏阈值才真正隐藏",
+                SettingsStore.KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT,
+                SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT, 1, 5, "次");
+        return page;
+    }
+
+    private LinearLayout buildConnectionRateOffsetPage() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        addProfileSectionHeader(page, "文字偏移",
+                "保留原有网速数字和单位的微调入口，只动位置，不改阈值状态机。");
+        addSliderRow(page, "网速水平偏移",
+                "保留原有的连接速率文字横向微调",
+                SettingsStore.KEY_CONNECTION_RATE_OFFSET_X,
+                SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X, -20, 20, "dp");
+        addDivider(page);
+        addSliderRow(page, "网速垂直偏移",
+                "保留原有的连接速率文字纵向微调",
+                SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y,
+                SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y, -20, 20, "dp");
+        return page;
     }
 
     private View buildRightIconGroupSection() {
@@ -417,6 +633,16 @@ public class MainActivity extends Activity {
         return tab;
     }
 
+    private TextView buildBottomNavTab(String text) {
+        TextView tab = new TextView(this);
+        tab.setText(text);
+        tab.setGravity(Gravity.CENTER);
+        tab.setTextSize(15);
+        tab.setPadding(dp(10), dp(12), dp(10), dp(12));
+        tab.setBackground(roundRect(colorSurfaceSoft, 999));
+        return tab;
+    }
+
     private void bindSettingsPageTabs(View[] pages, TextView[] tabs, int selectedIndex) {
         for (int i = 0; i < pages.length; i++) {
             boolean selected = i == selectedIndex;
@@ -424,6 +650,13 @@ public class MainActivity extends Activity {
             tabs[i].setTextColor(selected ? Color.WHITE : colorPrimary);
             tabs[i].setBackground(roundRect(selected ? colorPrimary : colorSurfaceSoft, 999));
         }
+    }
+
+    private void bindMainTabs(int selectedIndex) {
+        if (mainPages == null || mainTabs == null) {
+            return;
+        }
+        bindSettingsPageTabs(mainPages, mainTabs, selectedIndex);
     }
 
     private View buildTimeCard() {
@@ -461,6 +694,30 @@ public class MainActivity extends Activity {
         TextView action = chip("\u6253\u5f00\u8c03\u8bd5\u9875", colorPrimary, Color.WHITE);
         action.setPadding(dp(16), dp(10), dp(16), dp(10));
         action.setOnClickListener(v -> startActivity(new Intent(this, SignalDebugActivity.class)));
+        card.addView(action, matchWrapWithTop(16));
+
+        return card;
+    }
+
+    private View buildWifiDebugEntryCard() {
+        LinearLayout card = card(colorSurface, 28);
+
+        TextView title = new TextView(this);
+        title.setText("Wi-Fi 调试");
+        title.setTextColor(colorText);
+        title.setTextSize(18);
+        card.addView(title, matchWrap());
+
+        TextView summary = new TextView(this);
+        summary.setText("单独进入一个调试页，既可以查看模块当前拿到的 Wi-Fi hook 状态，也可以伪造 SystemUI 里的 Wi-Fi 显示状态和信号等级。");
+        summary.setTextColor(colorSubtext);
+        summary.setTextSize(14);
+        summary.setPadding(0, dp(6), 0, 0);
+        card.addView(summary, matchWrap());
+
+        TextView action = chip("打开调试页", colorPrimary, Color.WHITE);
+        action.setPadding(dp(16), dp(10), dp(16), dp(10));
+        action.setOnClickListener(v -> startActivity(new Intent(this, WifiDebugActivity.class)));
         card.addView(action, matchWrapWithTop(16));
 
         return card;
@@ -1097,6 +1354,17 @@ public class MainActivity extends Activity {
         return lp;
     }
 
+    private FrameLayout.LayoutParams bottomNavigationLayoutParams() {
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.BOTTOM;
+        lp.leftMargin = dp(20);
+        lp.rightMargin = dp(20);
+        lp.bottomMargin = dp(20);
+        return lp;
+    }
+
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
@@ -1274,7 +1542,7 @@ public class MainActivity extends Activity {
             batteryRect.set(batteryLeft, batteryTop,
                     batteryLeft + scaledBatteryWidth, batteryTop + scaledBatteryHeight);
             IosBatteryPainter.draw(canvas, batteryRect, PREVIEW_BATTERY_LEVEL, false, false, true,
-                    batteryTextSize, colorText, Color.WHITE, 0, 0);
+                    batteryTextSize, colorText, Color.WHITE);
             canvas.restore();
         }
 

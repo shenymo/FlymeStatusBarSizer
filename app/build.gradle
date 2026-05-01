@@ -6,12 +6,19 @@ android {
     namespace "com.example.flymestatusbarsizer"
     compileSdk 35
 
+    def buildDate = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())
+
+    buildFeatures {
+        buildConfig true
+    }
+
     defaultConfig {
         applicationId "com.fiyme.statusbarsizer"
         minSdk 26
         targetSdk 35
         versionCode 1
-        versionName "1.1"
+        versionName "1.2"
+        buildConfigField "String", "BUILD_DATE", "\"${buildDate}\""
     }
 
     lint {

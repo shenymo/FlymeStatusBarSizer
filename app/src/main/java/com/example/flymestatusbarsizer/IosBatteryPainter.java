@@ -3,7 +3,6 @@ package com.example.flymestatusbarsizer;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
@@ -16,7 +15,6 @@ final class IosBatteryPainter {
     private static final RectF CAP = new RectF();
     private static final RectF FILL = new RectF();
     private static final Rect TEXT_BOUNDS = new Rect();
-    private static final Path BOLT = new Path();
 
     private IosBatteryPainter() {
     }
@@ -24,12 +22,11 @@ final class IosBatteryPainter {
     static void draw(Drawable drawable, Canvas canvas, int level, boolean pluggedIn, boolean charging,
             boolean showPercent) {
         draw(canvas, drawable.getBounds(), level, pluggedIn, charging, showPercent,
-                SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE, Color.BLACK, Color.WHITE, 0, 0);
+                SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE, Color.BLACK, Color.WHITE);
     }
 
     static void draw(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
-            boolean showPercent, int textSizePercent, int fillColor, int textColor,
-            int chargingBoltWidth, int chargingBoltExtraHeight) {
+            boolean showPercent, int textSizePercent, int fillColor, int textColor) {
         if (bounds.width() <= 0 || bounds.height() <= 0) {
             return;
         }
@@ -67,7 +64,6 @@ final class IosBatteryPainter {
 
         if (charging) {
             drawPercent(canvas, BODY, clampedLevel, textSizePercent, contrastTextColor(CHARGING_FILL_COLOR));
-            drawChargingBolt(canvas, bounds.right, chargingBoltWidth, chargingBoltExtraHeight, fillColor);
         } else {
             drawPercent(canvas, BODY, clampedLevel, textSizePercent, textColor);
         }
@@ -84,31 +80,6 @@ final class IosBatteryPainter {
         float y = body.centerY() - (PAINT.descent() + PAINT.ascent()) / 2f;
         canvas.drawText(text, body.centerX(), y, PAINT);
         PAINT.setFakeBoldText(false);
-    }
-
-    private static void drawChargingBolt(Canvas canvas, float left, int width, int extraHeight, int color) {
-        if (width <= 0) {
-            return;
-        }
-        float boltHeight = BODY.height() + extraHeight;
-        float top = BODY.centerY() - boltHeight / 2f;
-        float bottom = BODY.centerY() + boltHeight / 2f;
-        float centerY = BODY.centerY();
-        float boltLeft = left + width * 0.18f;
-        float boltRight = left + width * 0.82f;
-        float midLeft = left + width * 0.39f;
-        float midRight = left + width * 0.65f;
-        BOLT.reset();
-        BOLT.moveTo(midRight, top);
-        BOLT.lineTo(boltLeft, centerY + boltHeight * 0.08f);
-        BOLT.lineTo(midLeft, centerY + boltHeight * 0.08f);
-        BOLT.lineTo(midLeft - width * 0.12f, bottom);
-        BOLT.lineTo(boltRight, centerY - boltHeight * 0.1f);
-        BOLT.lineTo(midRight, centerY - boltHeight * 0.1f);
-        BOLT.close();
-        PAINT.setStyle(Paint.Style.FILL);
-        PAINT.setColor(color);
-        canvas.drawPath(BOLT, PAINT);
     }
 
     private static int contrastTextColor(int color) {

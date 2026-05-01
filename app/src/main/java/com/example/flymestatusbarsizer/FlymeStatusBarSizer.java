@@ -62,7 +62,11 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<TextView, Typeface> ORIGINAL_TEXT_TYPEFACES = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Integer> ORIGINAL_TEXT_STYLES = new WeakHashMap<>();
     private static final WeakHashMap<View, Integer> ORIGINAL_CONNECTION_RATE_TEXT_SIZES = new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> TRACKED_WIFI_ROOT_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Object> LAST_REAL_WIFI_STATES = new WeakHashMap<>();
+    private static final WeakHashMap<ImageView, Boolean> TRACKED_WIFI_SIGNAL_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, Integer> WIFI_SIGNAL_LEVELS = new WeakHashMap<>();
+    private static final WeakHashMap<ImageView, Boolean> WIFI_SIGNAL_HIDDEN_STATES = new WeakHashMap<>();
     private static final WeakHashMap<Drawable, ImageView> MOBILE_SIGNAL_DRAWABLE_OWNERS = new WeakHashMap<>();
     private static final WeakHashMap<View, Integer> MOBILE_VIEW_SLOTS = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, MobileSignalInfo> MOBILE_SIGNAL_RAW_INFOS = new WeakHashMap<>();
@@ -72,6 +76,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<ImageView, Boolean> SECONDARY_SIGNAL_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> TRACKED_STATUS_TEXT_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_CONNECTION_RATE_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<View, ConnectionRateThresholdState> CONNECTION_RATE_THRESHOLD_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_BATTERY_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<TelephonyManager, Integer> TELEPHONY_MANAGER_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<SignalStrength, Integer> SIGNAL_STRENGTH_SUB_IDS = new WeakHashMap<>();
@@ -97,10 +102,22 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final long CONFIG_CACHE_TTL_MS = 5000L;
     private static final long TELEPHONY_CACHE_TTL_MS = 30000L;
     private static final long SIGNAL_DEBUG_REPORT_MIN_INTERVAL_MS = 200L;
+    private static final long WIFI_DEBUG_REPORT_MIN_INTERVAL_MS = 120L;
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
     private static volatile boolean LAST_SIGNAL_DEBUG_ENABLED;
+    private static volatile boolean LAST_WIFI_DEBUG_ENABLED;
+    private static volatile boolean INTERNAL_WIFI_DEBUG_APPLY;
     private static volatile long LAST_SIGNAL_DEBUG_REPORT_UPTIME;
+    private static volatile long LAST_WIFI_DEBUG_REPORT_UPTIME;
+    private static volatile String LAST_WIFI_DEBUG_SOURCE = "";
+    private static volatile String LAST_WIFI_DEBUG_VISIBLE = "";
+    private static volatile String LAST_WIFI_DEBUG_VISIBLE_FROM_STATE = "";
+    private static volatile String LAST_WIFI_DEBUG_LEVEL = "";
+    private static volatile String LAST_WIFI_DEBUG_RES_ID = "";
+    private static volatile String LAST_WIFI_DEBUG_RES_NAME = "";
+    private static volatile String LAST_WIFI_DEBUG_STATE = "";
+    private static volatile String LAST_WIFI_DEBUG_ERROR = "";
     private static Handler MAIN_HANDLER;
     private static volatile Context SYSTEM_UI_CONTEXT;
     private static volatile Config CACHED_CONFIG;
@@ -232,12 +249,32 @@ public class FlymeStatusBarSizer extends XposedModule {
                 }
                 method.setAccessible(true);
                 hook(method).intercept(chain -> {
+                    Object targetObject = chain.getThisObject();
+                    if (targetObject instanceof View) {
+                        trackWifiRootView((View) targetObject);
+                    }
+                    if (!"fromContext".equals(name) && chain.getArgs().size() > 0) {
+                        Object state = chain.getArg(0);
+                        if (targetObject instanceof View) {
+                            View root = (View) targetObject;
+                            Config config = Config.load(root.getContext());
+                            if (state != null) {
+                                if (!INTERNAL_WIFI_DEBUG_APPLY) {
+                                    rememberRealWifiState(root, state);
+                                }
+                                if (config.enabled && config.iosWifiDebugEnabled) {
+                                    applyDebugWifiStateToObject(root, state, config);
+                                }
+                            }
+                        }
+                    }
                     Object result = chain.proceed();
                     Object target = result instanceof View ? result : chain.getThisObject();
                     if (target instanceof View) {
                         View view = (View) target;
+                        trackWifiRootView(view);
                         applyWifiSizing(view);
-                        if (chain.getArgs().size() > 0) {
+                        if (!"fromContext".equals(name) && chain.getArgs().size() > 0) {
                             applyFlymeWifiStateResource(view, chain.getArg(0));
                         }
                     }
@@ -425,6 +462,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             for (Method method : clazz.getDeclaredMethods()) {
                 String name = method.getName();
                 if (!"dispatchDraw".equals(name) && !"onAttachedToWindow".equals(name)
+                        && !"onConnectionRateChange".equals(name)
                         && !"onConfigurationChanged".equals(name)) {
                     continue;
                 }
@@ -458,10 +496,22 @@ public class FlymeStatusBarSizer extends XposedModule {
                         ensureConfigRefreshObserver(view.getContext());
                         applyConnectionRateTextScale(view);
                         applyConnectionRateOffset(view);
-                        view.postDelayed(() -> {
-                            applyConnectionRateTextScale(view);
-                            applyConnectionRateOffset(view);
-                        }, 500);
+                        if ("onConnectionRateChange".equals(name) && chain.getArgs().size() == 2
+                                && chain.getArg(0) instanceof Boolean) {
+                            Object rateArg = chain.getArg(1);
+                            double rate = rateArg instanceof Number
+                                    ? ((Number) rateArg).doubleValue()
+                                    : getDoubleField(view, "mCurrentRate", 0d);
+                            applyConnectionRateThresholdVisibility(view,
+                                    (Boolean) chain.getArg(0), rate);
+                        } else {
+                            applyConnectionRateThresholdVisibility(view);
+                            view.postDelayed(() -> {
+                                applyConnectionRateTextScale(view);
+                                applyConnectionRateOffset(view);
+                                applyConnectionRateThresholdVisibility(view);
+                            }, 500);
+                        }
                     }
                     return result;
                 });
@@ -514,6 +564,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                         }
                         if ("setImageResource".equals(name) && "wifi_signal".equals(idName)
                                 && chain.getArgs().size() == 1 && chain.getArg(0) instanceof Integer) {
+                            TRACKED_WIFI_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
                             applyWifiSignalResource(imageView, (Integer) chain.getArg(0));
                         }
                         if (("setImageResource".equals(name) || "setImageDrawable".equals(name))
@@ -690,12 +741,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         int left = mergedIconsWidth + getMergedBatteryLeadingGap(batteryView, config)
                 + dp(batteryView, config.iosBatteryOffsetX);
         int top = Math.round((batteryView.getHeight() - height) / 2f) + dp(batteryView, config.iosBatteryOffsetY);
-        int boltWidth = charging ? Math.round(width * 0.5f) : 0;
-        int boltExtraHeight = dp(batteryView, 2);
         int fillColor = normalizeIconColor(getIntField(view, "mFilterColor", Color.BLACK));
         IosBatteryPainter.draw(canvas, new Rect(left, top, left + width, top + height),
                 level, pluggedIn, charging, showPercent, config.iosBatteryTextSize,
-                fillColor, contrastTextColor(fillColor), boltWidth, boltExtraHeight);
+                fillColor, contrastTextColor(fillColor));
         return true;
     }
 
@@ -904,6 +953,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static boolean shouldIncludeOverlaySource(ImageView source, View batteryView) {
         return source != null
                 && source.getDrawable() != null
+                && !isWifiOverlaySourceHidden(source)
                 && isInSameSystemIconsCluster(source, batteryView);
     }
 
@@ -1011,9 +1061,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         int baseHeight = dp(batteryView, config.iosBatteryHeight);
         int scaledWidth = Math.max(1, Math.round(baseWidth * config.iosGroupBatteryScale / 100f));
         int scaledHeight = Math.max(1, Math.round(baseHeight * config.iosGroupBatteryScale / 100f));
-        if (charging) {
-            scaledWidth += Math.round(scaledWidth * 0.5f);
-        }
         return new int[]{scaledWidth, scaledHeight};
     }
 
@@ -1208,11 +1255,11 @@ public class FlymeStatusBarSizer extends XposedModule {
             hideActivityArrows(root);
             View child = findSystemUiChild(root, "wifi_signal");
             if (child instanceof ImageView) {
+                boolean visible = !isWifiOverlaySourceHidden((ImageView) child);
                 if (shouldMergeStatusIconsIntoBattery(config)) {
-                    setWifiSignalViewVisible((ImageView) child, false);
-                } else {
-                    setWifiSignalViewVisible((ImageView) child, true);
+                    visible = false;
                 }
+                setWifiSignalViewVisible((ImageView) child, visible);
             }
         });
     }
@@ -1254,6 +1301,10 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         ImageView imageView = (ImageView) child;
+        if (isWifiOverlaySourceHidden(imageView)) {
+            setWifiSignalViewVisible(imageView, false);
+            return;
+        }
         Integer level = WIFI_SIGNAL_LEVELS.get(imageView);
         if (level != null) {
             applyIosWifiImageView(imageView, level, config);
@@ -1608,15 +1659,206 @@ public class FlymeStatusBarSizer extends XposedModule {
         view.requestLayout();
     }
 
+    private static void trackWifiRootView(View view) {
+        if (view == null) {
+            return;
+        }
+        TRACKED_WIFI_ROOT_VIEWS.put(view, Boolean.TRUE);
+        ensureConfigRefreshObserver(view.getContext());
+    }
+
+    private static void rememberRealWifiState(View root, Object state) {
+        if (root == null || state == null) {
+            return;
+        }
+        Object copied = copyWifiStateObject(state);
+        if (copied != null) {
+            LAST_REAL_WIFI_STATES.put(root, copied);
+        }
+    }
+
+    private static Object copyWifiStateObject(Object state) {
+        if (state == null) {
+            return null;
+        }
+        Object copied = invokeNoArg(state, "copy");
+        if (copied != null) {
+            return copied;
+        }
+        try {
+            Constructor<?> constructor = state.getClass().getDeclaredConstructor();
+            constructor.setAccessible(true);
+            Object clone = constructor.newInstance();
+            Method copyTo = state.getClass().getDeclaredMethod("copyTo", state.getClass());
+            copyTo.setAccessible(true);
+            copyTo.invoke(state, clone);
+            return clone;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static void applyDebugWifiStates(Config config) {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null || config == null || !config.enabled || !config.iosWifiDebugEnabled) {
+            return;
+        }
+        handler.post(() -> {
+            int injectedCount = 0;
+            for (View root : new ArrayList<>(TRACKED_WIFI_ROOT_VIEWS.keySet())) {
+                if (root == null) {
+                    continue;
+                }
+                if (applyDebugWifiStateToRoot(root, config)) {
+                    injectedCount++;
+                }
+            }
+            if (injectedCount == 0) {
+                publishWifiDebugSnapshot(SYSTEM_UI_CONTEXT, "manual hook status refresh",
+                        "trackedRoots=0", "No tracked FlymeStatusBarWifiView was found");
+            }
+        });
+    }
+
+    private static void restoreTrackedWifiStates() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        handler.post(() -> {
+            for (View root : new ArrayList<>(TRACKED_WIFI_ROOT_VIEWS.keySet())) {
+                if (root == null) {
+                    continue;
+                }
+                Object realState = LAST_REAL_WIFI_STATES.get(root);
+                if (realState == null) {
+                    continue;
+                }
+                invokeWifiStateMethod(root, "applyWifiState", copyWifiStateObject(realState));
+            }
+        });
+    }
+
+    private static boolean applyDebugWifiStateToRoot(View root, Config config) {
+        if (root == null || config == null) {
+            return false;
+        }
+        Object currentState = getField(root, "mState");
+        Object sourceState = currentState != null ? currentState : LAST_REAL_WIFI_STATES.get(root);
+        Object debugState = sourceState != null ? copyWifiStateObject(sourceState) : createWifiStateInstance(root);
+        if (debugState == null) {
+            return false;
+        }
+        applyDebugWifiStateToObject(root, debugState, config);
+        INTERNAL_WIFI_DEBUG_APPLY = true;
+        try {
+            invokeWifiStateMethod(root, "applyWifiState", debugState);
+        } finally {
+            INTERNAL_WIFI_DEBUG_APPLY = false;
+        }
+        applyFlymeWifiStateResource(root, debugState);
+        syncWifiRootVisibility(root, debugState);
+        return true;
+    }
+
+    private static Object createWifiStateInstance(View root) {
+        try {
+            ClassLoader loader = root == null ? null : root.getClass().getClassLoader();
+            Class<?> clazz = Class.forName("com.flyme.systemui.statusbar.net.wifi.WifiIconState",
+                    false, loader);
+            Constructor<?> constructor = clazz.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            return constructor.newInstance();
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static void applyDebugWifiStateToObject(View root, Object state, Config config) {
+        if (root == null || state == null || config == null) {
+            return;
+        }
+        boolean visible = config.iosWifiDebugVisible;
+        setBooleanField(state, "visible", visible);
+        setBooleanField(state, "activityIn", visible && getBooleanField(state, "activityIn", true));
+        setBooleanField(state, "activityOut", visible && getBooleanField(state, "activityOut", true));
+        setBooleanField(state, "noDefaultNetwork", !visible);
+        setBooleanField(state, "noValidatedNetwork", false);
+        setBooleanField(state, "noNetworksAvailable", !visible);
+        int resId = visible ? resolveDebugWifiResId(root.getResources(), config.iosWifiDebugLevel) : 0;
+        setIntField(state, "resId", resId);
+    }
+
+    private static int resolveDebugWifiResId(Resources resources, int level) {
+        if (resources == null) {
+            return 0;
+        }
+        int clamped = Math.max(0, Math.min(IosWifiDrawable.MAX_LEVEL, level));
+        String packageName = SYSTEM_UI_CONTEXT != null ? SYSTEM_UI_CONTEXT.getPackageName() : SYSTEM_UI;
+        String[] candidates = clamped <= 0
+                ? new String[]{"stat_sys_wifi_signal_0"}
+                : new String[]{
+                        "stat_sys_wifi_signal_" + clamped + "_fully_inout",
+                        "stat_sys_wifi_signal_" + clamped,
+                        "stat_sys_wifi_signal_" + clamped + "_fully_not_inout"
+                };
+        for (String name : candidates) {
+            int resId = resources.getIdentifier(name, "drawable", packageName);
+            if (resId != 0) {
+                return resId;
+            }
+        }
+        return 0;
+    }
+
+    private static void invokeWifiStateMethod(View root, String methodName, Object state) {
+        if (root == null || methodName == null || state == null) {
+            return;
+        }
+        try {
+            Method method = root.getClass().getDeclaredMethod(methodName, state.getClass());
+            method.setAccessible(true);
+            method.invoke(root, state);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void syncWifiRootVisibility(View root, Object state) {
+        if (root == null || state == null) {
+            return;
+        }
+        Boolean visible = resolveWifiSignalVisibility(state);
+        if (visible == null) {
+            return;
+        }
+        root.setVisibility(visible ? View.VISIBLE : View.GONE);
+        root.requestLayout();
+        root.invalidate();
+    }
+
     private static void applyWifiSignalResource(ImageView imageView, int resId) {
         Config config = Config.load(imageView.getContext());
         if (!config.enabled) {
             return;
         }
-        Integer level = getWifiSignalLevel(imageView.getResources(), resId);
-        if (level == null) {
+        TRACKED_WIFI_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
+        if (shouldHideWifiSignalResource(imageView.getResources(), resId)) {
+            reportWifiDebug(imageView.getContext(), "wifi_signal setImageResource",
+                    resId, null, Boolean.FALSE, null, null,
+                    "resource hidden by name", null);
+            applyWifiSignalHidden(imageView, config);
             return;
         }
+        Integer level = getWifiSignalLevel(imageView.getResources(), resId);
+        if (level == null) {
+            reportWifiDebug(imageView.getContext(), "wifi_signal setImageResource",
+                    resId, null, Boolean.TRUE, null, null,
+                    "resource visible but level parse failed", null);
+            return;
+        }
+        reportWifiDebug(imageView.getContext(), "wifi_signal setImageResource",
+                resId, null, Boolean.TRUE, level, null,
+                "level parsed from resource", null);
         WIFI_SIGNAL_LEVELS.put(imageView, level);
         applyIosWifiImageView(imageView, level, config);
     }
@@ -1626,27 +1868,64 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!config.enabled || state == null) {
             return;
         }
+        Boolean visibleFromState = resolveWifiSignalVisibility(state);
         int resId = getIntField(state, "resId", 0);
-        if (resId <= 0) {
-            return;
-        }
-        Integer level = getWifiSignalLevel(root.getResources(), resId);
-        if (level == null) {
-            return;
-        }
         View child = findSystemUiChild(root, "wifi_signal");
         if (!(child instanceof ImageView)) {
             Object wifiIcon = getField(root, "mWifiIcon");
             child = wifiIcon instanceof View ? (View) wifiIcon : null;
         }
-        if (child instanceof ImageView) {
-            ImageView imageView = (ImageView) child;
-            WIFI_SIGNAL_LEVELS.put(imageView, level);
-            applyIosWifiImageView(imageView, level, config);
+        if (!(child instanceof ImageView)) {
+            reportWifiDebug(root.getContext(), "FlymeStatusBarWifiView state",
+                    resId, visibleFromState, null, null, state,
+                    "wifi_signal child not found", null);
+            return;
         }
+        ImageView imageView = (ImageView) child;
+        TRACKED_WIFI_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
+        if (visibleFromState != null && !visibleFromState) {
+            reportWifiDebug(imageView.getContext(), "FlymeStatusBarWifiView state",
+                    resId, visibleFromState, Boolean.FALSE, null, state,
+                    "hidden by system state", null);
+            applyWifiSignalHidden(imageView, config);
+            return;
+        }
+        if (resId <= 0) {
+            if (visibleFromState != null && visibleFromState) {
+                WIFI_SIGNAL_HIDDEN_STATES.remove(imageView);
+            }
+            reportWifiDebug(imageView.getContext(), "FlymeStatusBarWifiView state",
+                    resId, visibleFromState, visibleFromState, null, state,
+                    "state updated without resource id", null);
+            return;
+        }
+        boolean hidden = visibleFromState == null
+                ? shouldHideWifiSignalResource(root.getResources(), resId)
+                : !visibleFromState;
+        if (hidden) {
+            reportWifiDebug(imageView.getContext(), "FlymeStatusBarWifiView state",
+                    resId, visibleFromState, Boolean.FALSE, null, state,
+                    visibleFromState == null ? "hidden by resource fallback" : "hidden by system state",
+                    null);
+            applyWifiSignalHidden(imageView, config);
+            return;
+        }
+        Integer level = getWifiSignalLevel(root.getResources(), resId);
+        if (level == null) {
+            reportWifiDebug(imageView.getContext(), "FlymeStatusBarWifiView state",
+                    resId, visibleFromState, Boolean.TRUE, null, state,
+                    "visible but level parse failed", null);
+            return;
+        }
+        reportWifiDebug(imageView.getContext(), "FlymeStatusBarWifiView state",
+                resId, visibleFromState, Boolean.TRUE, level, state,
+                "state and resource both resolved", null);
+        WIFI_SIGNAL_LEVELS.put(imageView, level);
+        applyIosWifiImageView(imageView, level, config);
     }
 
     private static void applyIosWifiImageView(ImageView imageView, int level, Config config) {
+        WIFI_SIGNAL_HIDDEN_STATES.remove(imageView);
         Drawable current = imageView.getDrawable();
         if (current instanceof IosWifiDrawable) {
             ((IosWifiDrawable) current).setLevelValue(level);
@@ -1664,7 +1943,69 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (shouldMergeStatusIconsIntoBattery(config)) {
             setWifiSignalViewVisible(imageView, false);
             refreshBatteryOverlayFor(imageView);
+            return;
         }
+        setWifiSignalViewVisible(imageView, true);
+    }
+
+    private static void applyWifiSignalHidden(ImageView imageView, Config config) {
+        WIFI_SIGNAL_LEVELS.remove(imageView);
+        WIFI_SIGNAL_HIDDEN_STATES.put(imageView, Boolean.TRUE);
+        setWifiSignalViewVisible(imageView, false);
+        if (shouldMergeStatusIconsIntoBattery(config)) {
+            refreshBatteryOverlayFor(imageView);
+        }
+    }
+
+    private static Boolean resolveWifiSignalVisibility(Object state) {
+        if (state == null) {
+            return null;
+        }
+        Boolean explicitVisible = findBooleanMember(state,
+                "visible", "mVisible", "iconVisible", "isIconVisible",
+                "wifiVisible", "isWifiVisible", "shouldShow", "show");
+        if (explicitVisible != null) {
+            return explicitVisible;
+        }
+        Boolean enabled = findBooleanMember(state,
+                "enabled", "mEnabled", "wifiEnabled", "isWifiEnabled");
+        if (enabled != null && !enabled) {
+            return false;
+        }
+        Boolean connected = findBooleanMember(state,
+                "connected", "mConnected", "wifiConnected", "isWifiConnected");
+        if (connected != null) {
+            return connected;
+        }
+        return null;
+    }
+
+    private static Boolean findBooleanMember(Object target, String... names) {
+        if (target == null || names == null) {
+            return null;
+        }
+        for (String name : names) {
+            Object fieldValue = getField(target, name);
+            if (fieldValue instanceof Boolean) {
+                return (Boolean) fieldValue;
+            }
+            Object methodValue = invokeNoArg(target, name);
+            if (methodValue instanceof Boolean) {
+                return (Boolean) methodValue;
+            }
+            if (name != null && name.length() > 0) {
+                String normalized = Character.toUpperCase(name.charAt(0)) + name.substring(1);
+                Object getterValue = invokeNoArg(target, "get" + normalized);
+                if (getterValue instanceof Boolean) {
+                    return (Boolean) getterValue;
+                }
+                Object isValue = invokeNoArg(target, "is" + normalized);
+                if (isValue instanceof Boolean) {
+                    return (Boolean) isValue;
+                }
+            }
+        }
+        return null;
     }
 
     private static void applyIosWifiLayout(ImageView imageView, Config config) {
@@ -1883,6 +2224,172 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
         } catch (Throwable ignored) {
         }
+    }
+
+    private static void reportWifiDebug(Context context, String source, int resId,
+            Boolean visibleFromState, Boolean visibleResolved, Integer level,
+            Object state, String note, String error) {
+        Context targetContext = context != null ? context : SYSTEM_UI_CONTEXT;
+        if (targetContext == null) {
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        if ((error == null || error.length() == 0)
+                && now - LAST_WIFI_DEBUG_REPORT_UPTIME < WIFI_DEBUG_REPORT_MIN_INTERVAL_MS) {
+            return;
+        }
+        LAST_WIFI_DEBUG_REPORT_UPTIME = now;
+        String resIdText = resId > 0 ? Integer.toString(resId) : "";
+        String resName = resId > 0 ? safeDebugText(getResourceName(targetContext.getResources(), resId)) : "";
+        String visibleText = booleanToDebugText(visibleResolved);
+        String levelText = level == null ? "unknown" : Integer.toString(level);
+        String stateText = state == null ? "" : state.getClass().getName();
+        publishWifiDebugEvent(targetContext, source, visibleText, levelText, resIdText, resName,
+                stateText, visibleFromState, note, error);
+    }
+
+    private static void reportCurrentTrackedWifiState(Context context, String source) {
+        ArrayList<ImageView> views = collectTrackedWifiSignalViews();
+        int trackedRoots = TRACKED_WIFI_ROOT_VIEWS.size();
+        ImageView trackedView = null;
+        for (ImageView candidate : views) {
+            if (candidate != null) {
+                trackedView = candidate;
+                break;
+            }
+        }
+        if (trackedView == null
+                && LAST_WIFI_DEBUG_SOURCE.length() == 0
+                && LAST_WIFI_DEBUG_RES_NAME.length() == 0
+                && LAST_WIFI_DEBUG_LEVEL.length() == 0) {
+            publishWifiDebugSnapshot(context, source,
+                    "trackedViews=0, trackedRoots=" + trackedRoots,
+                    "No tracked Wi-Fi signal view yet");
+            return;
+        }
+        Integer level = trackedView == null ? null : WIFI_SIGNAL_LEVELS.get(trackedView);
+        Boolean hidden = trackedView == null ? null : WIFI_SIGNAL_HIDDEN_STATES.get(trackedView);
+        Boolean visibleResolved = hidden == null ? (level == null ? null : Boolean.TRUE) : !hidden;
+        String drawableName = "";
+        if (trackedView != null && trackedView.getDrawable() != null) {
+            drawableName = trackedView.getDrawable().getClass().getSimpleName();
+        }
+        String note = "trackedViews=" + views.size() + ", trackedRoots=" + trackedRoots;
+        if (trackedView != null) {
+            note += ", hasDrawable=" + (trackedView.getDrawable() != null);
+            if (drawableName.length() > 0) {
+                note += ", drawable=" + drawableName;
+            }
+        }
+        publishWifiDebugSnapshot(context, source,
+                "visible=" + (visibleResolved != null ? booleanToDebugText(visibleResolved)
+                        : fallbackWifiDebugValue(LAST_WIFI_DEBUG_VISIBLE, "unknown"))
+                        + "\nlevel=" + (level != null ? Integer.toString(level)
+                        : fallbackWifiDebugValue(LAST_WIFI_DEBUG_LEVEL, "unknown"))
+                        + "\nresId=" + fallbackWifiDebugValue(LAST_WIFI_DEBUG_RES_ID, "")
+                        + "\nresName=" + safeDebugText(LAST_WIFI_DEBUG_RES_NAME)
+                        + "\nlastEventSource=" + safeDebugText(LAST_WIFI_DEBUG_SOURCE)
+                        + "\nlastEventVisibleFromState=" + fallbackWifiDebugValue(LAST_WIFI_DEBUG_VISIBLE_FROM_STATE, "unknown")
+                        + "\nlastEventState=" + safeDebugText(LAST_WIFI_DEBUG_STATE)
+                        + "\nnote=" + note,
+                LAST_WIFI_DEBUG_ERROR);
+    }
+
+    private static void publishWifiDebugEvent(Context context, String source, String visibleText,
+            String levelText, String resIdText, String resName, String stateText,
+            Boolean visibleFromState, String note, String error) {
+        Context targetContext = context != null ? context : SYSTEM_UI_CONTEXT;
+        if (targetContext == null) {
+            return;
+        }
+        try {
+            String time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+                    .format(new Date());
+            String summary = time
+                    + "\nsource=" + safeDebugText(source)
+                    + "\nvisible=" + fallbackWifiDebugValue(visibleText, "unknown")
+                    + "\nvisibleFromState=" + booleanToDebugText(visibleFromState)
+                    + "\nlevel=" + fallbackWifiDebugValue(levelText, "unknown")
+                    + "\nresId=" + fallbackWifiDebugValue(resIdText, "")
+                    + "\nresName=" + safeDebugText(resName)
+                    + "\nstate=" + safeDebugText(stateText);
+            if (note != null && note.length() > 0) {
+                summary += "\nnote=" + note;
+            }
+            if (error != null && error.length() > 0) {
+                summary += "\nerror=" + error;
+            }
+            LAST_WIFI_DEBUG_SOURCE = safeDebugText(source);
+            LAST_WIFI_DEBUG_VISIBLE = safeDebugText(visibleText);
+            LAST_WIFI_DEBUG_VISIBLE_FROM_STATE = booleanToDebugText(visibleFromState);
+            LAST_WIFI_DEBUG_LEVEL = safeDebugText(levelText);
+            LAST_WIFI_DEBUG_RES_ID = safeDebugText(resIdText);
+            LAST_WIFI_DEBUG_RES_NAME = safeDebugText(resName);
+            LAST_WIFI_DEBUG_STATE = safeDebugText(stateText);
+            LAST_WIFI_DEBUG_ERROR = safeDebugText(error);
+            ContentValues values = new ContentValues();
+            values.put(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_SUMMARY, summary);
+            values.put(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_LEVEL, safeDebugText(levelText));
+            values.put(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_RES_ID, safeDebugText(resIdText));
+            values.put(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_RES_NAME, safeDebugText(resName));
+            values.put(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_VISIBLE, safeDebugText(visibleText));
+            values.put(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_SOURCE, safeDebugText(source));
+            values.put(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_ERROR, error == null ? "" : error);
+            targetContext.getContentResolver().update(SETTINGS_URI, values, null, null);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void publishWifiDebugSnapshot(Context context, String source,
+            String body, String error) {
+        Context targetContext = context != null ? context : SYSTEM_UI_CONTEXT;
+        if (targetContext == null) {
+            return;
+        }
+        try {
+            String time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+                    .format(new Date());
+            String summary = time
+                    + "\nsource=" + safeDebugText(source);
+            if (body != null && body.length() > 0) {
+                summary += "\n" + body;
+            }
+            if (error != null && error.length() > 0) {
+                summary += "\nerror=" + error;
+            }
+            ContentValues values = new ContentValues();
+            values.put(SettingsStore.KEY_RUNTIME_WIFI_DEBUG_SNAPSHOT, summary);
+            targetContext.getContentResolver().update(SETTINGS_URI, values, null, null);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static ArrayList<ImageView> collectTrackedWifiSignalViews() {
+        ArrayList<ImageView> views = new ArrayList<>();
+        addTrackedWifiSignalViews(views, TRACKED_WIFI_SIGNAL_VIEWS);
+        addTrackedWifiSignalViews(views, WIFI_SIGNAL_LEVELS);
+        addTrackedWifiSignalViews(views, WIFI_SIGNAL_HIDDEN_STATES);
+        return views;
+    }
+
+    private static void addTrackedWifiSignalViews(ArrayList<ImageView> views,
+            WeakHashMap<ImageView, ?> source) {
+        for (ImageView view : new ArrayList<>(source.keySet())) {
+            if (view != null && !views.contains(view)) {
+                views.add(view);
+            }
+        }
+    }
+
+    private static String booleanToDebugText(Boolean value) {
+        if (value == null) {
+            return "unknown";
+        }
+        return value ? "true" : "false";
+    }
+
+    private static String fallbackWifiDebugValue(String value, String fallback) {
+        return value == null || value.length() == 0 ? fallback : value;
     }
 
     private static String signalInfoSummary(ImageView view, MobileSignalInfo info) {
@@ -2539,11 +3046,8 @@ public class FlymeStatusBarSizer extends XposedModule {
             return null;
         }
         String lowerName = name.toLowerCase();
-        if (lowerName.contains("null") || lowerName.contains("empty")
-                || lowerName.contains("no_network") || lowerName.contains("not_connected")
-                || lowerName.contains("disconnected") || lowerName.contains("slash")
-                || lowerName.contains("off")) {
-            return 0;
+        if (isWifiHiddenResourceName(lowerName)) {
+            return null;
         }
         Matcher matcher = WIFI_LEVEL_PATTERN.matcher(lowerName);
         Integer lastLevel = null;
@@ -2563,6 +3067,25 @@ public class FlymeStatusBarSizer extends XposedModule {
             return IosWifiDrawable.MAX_LEVEL;
         }
         return null;
+    }
+
+    private static boolean shouldHideWifiSignalResource(Resources resources, int resId) {
+        if (resId == 0) {
+            return false;
+        }
+        String name = getResourceName(resources, resId);
+        return name != null && isWifiHiddenResourceName(name.toLowerCase());
+    }
+
+    private static boolean isWifiHiddenResourceName(String lowerName) {
+        return lowerName.contains("null") || lowerName.contains("empty")
+                || lowerName.contains("no_network") || lowerName.contains("not_connected")
+                || lowerName.contains("disconnected") || lowerName.contains("slash")
+                || lowerName.contains("off");
+    }
+
+    private static boolean isWifiOverlaySourceHidden(ImageView imageView) {
+        return imageView != null && Boolean.TRUE.equals(WIFI_SIGNAL_HIDDEN_STATES.get(imageView));
     }
 
     private static int mapFlymeWifiResourceLevel(String resourceName, int parsedLevel) {
@@ -2839,6 +3362,165 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void trackConnectionRateView(View view) {
         TRACKED_CONNECTION_RATE_VIEWS.put(view, Boolean.TRUE);
+        rememberConnectionRateState(view);
+    }
+
+    private static ConnectionRateThresholdState rememberConnectionRateState(View view) {
+        ConnectionRateThresholdState state = CONNECTION_RATE_THRESHOLD_STATES.get(view);
+        if (state == null) {
+            state = new ConnectionRateThresholdState();
+            CONNECTION_RATE_THRESHOLD_STATES.put(view, state);
+        }
+        return state;
+    }
+
+    private static void applyConnectionRateThresholdVisibility(View view) {
+        if (view == null) {
+            return;
+        }
+        ConnectionRateThresholdState state = rememberConnectionRateState(view);
+        applyConnectionRateThresholdVisibility(view, state, Config.load(view.getContext()));
+    }
+
+    private static void applyConnectionRateThresholdVisibility(View view, boolean baseShow, double rate) {
+        if (view == null) {
+            return;
+        }
+        applyConnectionRateThresholdVisibility(view, baseShow, rate, rememberConnectionRateState(view),
+                Config.load(view.getContext()));
+    }
+
+    private static void applyConnectionRateThresholdVisibility(View view, ConnectionRateThresholdState state,
+            Config config) {
+        if (view == null || state == null || config == null) {
+            return;
+        }
+        boolean thresholdEnabled = config.enabled && config.connectionRateThresholdEnabled;
+        if (state.featureEnabled != thresholdEnabled) {
+            state.featureEnabled = thresholdEnabled;
+            state.resetCounters();
+            if (!thresholdEnabled) {
+                state.thresholdVisible = state.lastBaseShow;
+            } else {
+                state.thresholdVisible = false;
+            }
+        }
+        if (!thresholdEnabled) {
+            if (!state.hasBaseShow) {
+                return;
+            }
+            setBooleanField(view, "mShow", state.lastBaseShow);
+            applyConnectionRateVisibleState(view, state.lastBaseShow, getBooleanField(view, "mEnable", true),
+                    getBooleanField(view, "mIsDemoMode", false));
+            return;
+        }
+        setBooleanField(view, "mShow", state.thresholdVisible);
+        applyConnectionRateVisibleState(view, state.thresholdVisible, getBooleanField(view, "mEnable", true),
+                getBooleanField(view, "mIsDemoMode", false));
+    }
+
+    private static void applyConnectionRateThresholdVisibility(View view, boolean baseShow, double rate,
+            ConnectionRateThresholdState state, Config config) {
+        if (view == null || state == null || config == null) {
+            return;
+        }
+        state.lastBaseShow = baseShow;
+        state.hasBaseShow = true;
+        state.lastRate = rate;
+        boolean featureEnabled = config.enabled && config.connectionRateThresholdEnabled;
+        long configSignature = getConnectionRateThresholdSignature(config);
+        if (!featureEnabled) {
+            state.featureEnabled = false;
+            state.thresholdVisible = baseShow;
+            state.resetCounters();
+            state.lastConfigSignature = configSignature;
+            setBooleanField(view, "mShow", baseShow);
+            applyConnectionRateVisibleState(view, baseShow, getBooleanField(view, "mEnable", true),
+                    getBooleanField(view, "mIsDemoMode", false));
+            return;
+        }
+        if (!state.featureEnabled) {
+            state.reset();
+        }
+        state.featureEnabled = true;
+        if (state.lastConfigSignature != configSignature) {
+            state.resetCounters();
+            state.lastConfigSignature = configSignature;
+        }
+        double safeRate = sanitizeConnectionRate(rate);
+        int showThreshold = Math.max(config.connectionRateShowThresholdKb, config.connectionRateHideThresholdKb);
+        int hideThreshold = Math.min(config.connectionRateShowThresholdKb, config.connectionRateHideThresholdKb);
+        int showSamples = Math.max(1, config.connectionRateShowSampleCount);
+        int hideSamples = Math.max(1, config.connectionRateHideSampleCount);
+        if (!baseShow) {
+            state.resetCounters();
+            state.thresholdVisible = false;
+            setBooleanField(view, "mShow", false);
+            applyConnectionRateVisibleState(view, false, getBooleanField(view, "mEnable", true),
+                    getBooleanField(view, "mIsDemoMode", false));
+            return;
+        }
+        if (state.thresholdVisible) {
+            if (safeRate < hideThreshold) {
+                state.belowCount++;
+                state.aboveCount = 0;
+                if (state.belowCount >= hideSamples) {
+                    state.thresholdVisible = false;
+                    state.belowCount = 0;
+                }
+            } else {
+                state.belowCount = 0;
+            }
+        } else {
+            if (safeRate >= showThreshold) {
+                state.aboveCount++;
+                state.belowCount = 0;
+                if (state.aboveCount >= showSamples) {
+                    state.thresholdVisible = true;
+                    state.aboveCount = 0;
+                }
+            } else {
+                state.aboveCount = 0;
+            }
+        }
+        setBooleanField(view, "mShow", state.thresholdVisible);
+        applyConnectionRateVisibleState(view, state.thresholdVisible, getBooleanField(view, "mEnable", true),
+                getBooleanField(view, "mIsDemoMode", false));
+    }
+
+    private static void applyConnectionRateVisibleState(View view, boolean thresholdVisible, boolean enable,
+            boolean isDemoMode) {
+        if (view == null) {
+            return;
+        }
+        int visibility = thresholdVisible && enable ? View.VISIBLE : View.GONE;
+        if (!isDemoMode && view.getVisibility() != visibility) {
+            view.setVisibility(visibility);
+        }
+    }
+
+    private static double sanitizeConnectionRate(double rate) {
+        if (Double.isNaN(rate) || Double.isInfinite(rate) || rate < 0d) {
+            return 0d;
+        }
+        return rate;
+    }
+
+    private static long getConnectionRateThresholdSignature(Config config) {
+        if (config == null) {
+            return 0L;
+        }
+        int showThreshold = Math.max(config.connectionRateShowThresholdKb, config.connectionRateHideThresholdKb);
+        int hideThreshold = Math.min(config.connectionRateShowThresholdKb, config.connectionRateHideThresholdKb);
+        int showSamples = Math.max(1, config.connectionRateShowSampleCount);
+        int hideSamples = Math.max(1, config.connectionRateHideSampleCount);
+        long signature = 17L;
+        signature = signature * 31L + (config.enabled && config.connectionRateThresholdEnabled ? 1L : 0L);
+        signature = signature * 31L + showThreshold;
+        signature = signature * 31L + hideThreshold;
+        signature = signature * 31L + showSamples;
+        signature = signature * 31L + hideSamples;
+        return signature;
     }
 
     private static void ensureConfigRefreshObserver(Context context) {
@@ -2869,10 +3551,18 @@ public class FlymeStatusBarSizer extends XposedModule {
                         refreshTrackedSignalViews(LAST_SIGNAL_DEBUG_ENABLED);
                     }
                     LAST_SIGNAL_DEBUG_ENABLED = config.iosSignalDebugEnabled;
+                    if (config.iosWifiDebugEnabled) {
+                        applyDebugWifiStates(config);
+                    } else if (LAST_WIFI_DEBUG_ENABLED) {
+                        restoreTrackedWifiStates();
+                    }
+                    LAST_WIFI_DEBUG_ENABLED = config.iosWifiDebugEnabled;
                     Handler handler = MAIN_HANDLER;
                     if (handler != null) {
-                        handler.postDelayed(() ->
-                                reportCurrentTrackedSignalState(appContext, "manual hook status refresh"), 100);
+                        handler.postDelayed(() -> {
+                            reportCurrentTrackedSignalState(appContext, "manual hook status refresh");
+                            reportCurrentTrackedWifiState(appContext, "manual hook status refresh");
+                        }, 100);
                     }
                 }
             };
@@ -2910,6 +3600,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
             CONFIG_REFRESH_REGISTERED = true;
             LAST_SIGNAL_DEBUG_ENABLED = Config.load(appContext).iosSignalDebugEnabled;
+            LAST_WIFI_DEBUG_ENABLED = Config.load(appContext).iosWifiDebugEnabled;
             scheduleInitialRuntimeRefreshes();
         }
     }
@@ -3046,6 +3737,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 }
                 applyConnectionRateTextScale(view);
                 applyConnectionRateOffset(view);
+                applyConnectionRateThresholdVisibility(view);
                 view.requestLayout();
                 view.invalidate();
             }
@@ -3831,6 +4523,19 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private static void setBooleanField(Object target, String name, boolean value) {
+        if (target == null || name == null) {
+            return;
+        }
+        try {
+            Field field = findCachedField(target.getClass(), name);
+            if (field != null) {
+                field.setBoolean(target, value);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static int getIntField(Object target, String name, int fallback) {
         Object value = getField(target, name);
         return value instanceof Integer ? (Integer) value : fallback;
@@ -3868,6 +4573,11 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static boolean getBooleanField(Object target, String name, boolean fallback) {
         Object value = getField(target, name);
         return value instanceof Boolean ? (Boolean) value : fallback;
+    }
+
+    private static double getDoubleField(Object target, String name, double fallback) {
+        Object value = getField(target, name);
+        return value instanceof Double ? (Double) value : fallback;
     }
 
     private static void setMeasuredDimension(View view, int width, int height) {
@@ -3910,6 +4620,27 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private static final class ConnectionRateThresholdState {
+        boolean featureEnabled;
+        boolean thresholdVisible;
+        boolean lastBaseShow;
+        boolean hasBaseShow;
+        double lastRate;
+        long lastConfigSignature;
+        int aboveCount;
+        int belowCount;
+
+        void reset() {
+            thresholdVisible = false;
+            resetCounters();
+        }
+
+        void resetCounters() {
+            aboveCount = 0;
+            belowCount = 0;
+        }
+    }
+
     private static final class Config {
         boolean enabled = SettingsStore.DEFAULT_ENABLED;
         float globalIconScale = SettingsStore.DEFAULT_GLOBAL_ICON_SCALE / 100f;
@@ -3941,6 +4672,11 @@ public class FlymeStatusBarSizer extends XposedModule {
         int activityIconFactor = SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR;
         int connectionRateOffsetX = SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X;
         int connectionRateOffsetY = SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y;
+        boolean connectionRateThresholdEnabled = SettingsStore.DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED;
+        int connectionRateShowThresholdKb = SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB;
+        int connectionRateHideThresholdKb = SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB;
+        int connectionRateShowSampleCount = SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT;
+        int connectionRateHideSampleCount = SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT;
         float textScale = SettingsStore.DEFAULT_TEXT_SCALE / 100f;
         boolean showClockWeekday = SettingsStore.DEFAULT_SHOW_CLOCK_WEEKDAY;
         boolean clockBoldEnabled = SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED;
@@ -3951,6 +4687,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         boolean iosSignalDebugSim2Enabled = SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM2_ENABLED;
         int iosSignalDebugSim1Level = SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM1_LEVEL;
         int iosSignalDebugSim2Level = SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM2_LEVEL;
+        boolean iosWifiDebugEnabled = SettingsStore.DEFAULT_IOS_WIFI_DEBUG_ENABLED;
+        boolean iosWifiDebugVisible = SettingsStore.DEFAULT_IOS_WIFI_DEBUG_VISIBLE;
+        int iosWifiDebugLevel = SettingsStore.DEFAULT_IOS_WIFI_DEBUG_LEVEL;
 
         float scaled(int factorPercent) {
             return 1f + ((globalIconScale - 1f) * (factorPercent / 100f));
@@ -4068,6 +4807,16 @@ public class FlymeStatusBarSizer extends XposedModule {
                 connectionRateOffsetX = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X);
             } else if (SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y.equals(key)) {
                 connectionRateOffsetY = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y);
+            } else if (SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED.equals(key)) {
+                connectionRateThresholdEnabled = "1".equals(value);
+            } else if (SettingsStore.KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB.equals(key)) {
+                connectionRateShowThresholdKb = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB);
+            } else if (SettingsStore.KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB.equals(key)) {
+                connectionRateHideThresholdKb = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB);
+            } else if (SettingsStore.KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT.equals(key)) {
+                connectionRateShowSampleCount = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT);
+            } else if (SettingsStore.KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT.equals(key)) {
+                connectionRateHideSampleCount = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT);
             } else if (SettingsStore.KEY_TEXT_SCALE.equals(key)) {
                 textScale = parseInt(value, SettingsStore.DEFAULT_TEXT_SCALE) / 100f;
             } else if (SettingsStore.KEY_SHOW_CLOCK_WEEKDAY.equals(key)) {
@@ -4088,6 +4837,12 @@ public class FlymeStatusBarSizer extends XposedModule {
                 iosSignalDebugSim1Level = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM1_LEVEL);
             } else if (SettingsStore.KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL.equals(key)) {
                 iosSignalDebugSim2Level = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_DEBUG_SIM2_LEVEL);
+            } else if (SettingsStore.KEY_IOS_WIFI_DEBUG_ENABLED.equals(key)) {
+                iosWifiDebugEnabled = "1".equals(value);
+            } else if (SettingsStore.KEY_IOS_WIFI_DEBUG_VISIBLE.equals(key)) {
+                iosWifiDebugVisible = "1".equals(value);
+            } else if (SettingsStore.KEY_IOS_WIFI_DEBUG_LEVEL.equals(key)) {
+                iosWifiDebugLevel = parseInt(value, SettingsStore.DEFAULT_IOS_WIFI_DEBUG_LEVEL);
             }
         }
 

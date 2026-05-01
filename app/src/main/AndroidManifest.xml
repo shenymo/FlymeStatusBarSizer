@@ -26,6 +26,11 @@
             android:exported="false"
             android:label="&#x4FE1;&#x53F7;&#x683C;&#x8C03;&#x8BD5;" />
 
+        <activity
+            android:name=".WifiDebugActivity"
+            android:exported="false"
+            android:label="Wi-Fi &#x8C03;&#x8BD5;" />
+
         <provider
             android:name=".SettingsProvider"
             android:authorities="com.fiyme.statusbarsizer.settings"

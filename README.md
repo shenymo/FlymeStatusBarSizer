@@ -1,424 +1,191 @@
-# FlymeStatusBarSizer AI Handoff README
+# FlymeStatusBarSizer
 
-This project is an Android/Xposed module that customizes Flyme/SystemUI status bar sizing and several iOS-style status bar visuals. This README is written primarily for AI/code agents that need to understand the project quickly and find the right edit points.
+`FlymeStatusBarSizer` 是一个面向 Flyme / SystemUI 的 Android Xposed 模块，同时带有一个本地设置界面。
 
-Related document:
+它的目标不是简单缩放单个图标，而是把右上角状态栏图标组重新整理成一套更容易调的结构：以电池区域为锚点，把 `Wi-Fi / 移动信号 / 电池` 作为一组视觉图标统一处理，并提供实时预览、导入导出和信号调试能力。
 
-- `HOOK_CHAINS.md`: full summary of the module's hook registration points and runtime hook chains.
+相关文档：
 
-## What This App Does
+- [HOOK_CHAINS.md](HOOK_CHAINS.md)：Hook 注册点与运行链路说明
+- [SYSTEMUI_STATUS_BAR_NOTES.md](SYSTEMUI_STATUS_BAR_NOTES.md)：状态栏相关笔记
 
-FlymeStatusBarSizer has two sides:
+## 功能概览
 
-1. A normal Android settings app.
-2. An Xposed module loaded into `com.android.systemui`.
+当前版本主要提供以下能力：
 
-The settings app stores configuration in device-protected `SharedPreferences`. The Xposed side reads those settings through `SettingsProvider` using a `content://` URI and applies changes to SystemUI views by hooking constructors, factory methods, draw methods, and image update methods.
+- 全局状态栏图标缩放
+- 状态栏文字缩放与时钟字重控制
+- 自绘 iOS 风格电池图标
+- 自绘 iOS 风格 Wi-Fi 图标
+- 自绘 iOS 风格移动信号图标
+- 将 `Wi-Fi / 移动信号` 视觉上并入电池区域，统一为右上角图标组
+- 统一调整图标组内部缩放、间距、起始外间距
+- 分场景调整移动信号偏移
+  - 桌面
+  - 锁屏
+  - 控制中心
+- 隐藏系统原始网络制式标识
+  - 例如 `2G / 3G / 4G / 5G`
+- 隐藏系统原始上下行小箭头
+  - `mobile_in / mobile_out / wifi_in / wifi_out / mobile_inout`
+- 网速文字偏移调整
+- 配置导入 / 导出
+- 信号格调试页面
+  - 通过欺骗 SystemUI 的信号等级读取链路，验证桌面 / 锁屏 / 控制中心的信号格显示
 
-Main feature groups:
+## 当前界面结构
 
-- Global status bar icon scaling.
-- Per-icon scaling factors for mobile signal, Wi-Fi, battery, generic icons, arrows, and 5G/network type labels.
-- iOS-style battery drawing.
-- iOS-style mobile signal bars.
-- iOS-style Wi-Fi arcs with dynamic strength parsed from SystemUI Wi-Fi resources.
-- iOS-style 5G label replacement.
-- Current network speed text scaling and offset tuning.
-- Config import/export as JSON.
+应用侧目前只有两个页面：
 
-## Project Layout
+### 1. 主页面 `MainActivity`
 
-Important files:
+主页面包含：
 
-- `app/src/main/java/com/example/flymestatusbarsizer/FlymeStatusBarSizer.java`
-  - Main Xposed module.
-  - Hooks SystemUI and applies all runtime modifications.
-  - Most behavior bugs live here.
+- 实时预览区
+  - 预览右上角图标组画布
+  - 拖动参数后立即看到 `Wi-Fi / 信号 / 电池` 的组合效果
+- 全局调整
+  - 状态栏整体图标缩放
+  - 文字缩放
+- 右上角图标组设置
+  - 电池页
+  - Wi-Fi 页
+  - 移动信号页
+  - 组内排布页
+- 信号调试入口
+- 菜单
+  - 导入配置
+  - 导出配置
+  - 恢复默认
+  - 重启 SystemUI
 
-- `app/src/main/java/com/example/flymestatusbarsizer/SettingsStore.java`
-  - Canonical setting keys and defaults.
-  - Also contains `INT_KEYS`, `BOOLEAN_KEYS`, `defaultInt()`, and `defaultBoolean()` for full config import/export.
-  - If a new setting is added, update this file first.
+### 2. 信号格调试页 `SignalDebugActivity`
 
-- `app/src/main/java/com/example/flymestatusbarsizer/SettingsProvider.java`
-  - Exposes settings to the SystemUI/Xposed process through `content://com.example.flymestatusbarsizer.settings/settings`.
-  - Must include any setting that `FlymeStatusBarSizer.Config.load()` needs.
+这个页面用于验证模块是否正确跟随 SystemUI 的信号状态链路：
 
-- `app/src/main/java/com/example/flymestatusbarsizer/MainActivity.java`
-  - Main settings screen.
-  - Contains global toggles, global scale, text scale, navigation buttons, and JSON import/export.
+- 启用假信号等级
+- 分别控制 SIM1 / SIM2 是否参与测试
+- 分别设置 SIM1 / SIM2 的假信号格数
+- 查看 SystemUI 进程回传的运行时 Hook 状态
+- 一键恢复真实信号
 
+## 项目结构
 
-- `app/src/main/java/com/example/flymestatusbarsizer/SignalNetworkSettingsActivity.java`
-  - iOS mobile signal bars and 5G/network type label tuning.
-  - Contains mobile signal scale, 5G/network type scale and offsets, plus iOS signal offsets.
+核心文件如下：
 
-- `app/src/main/java/com/example/flymestatusbarsizer/WifiSettingsActivity.java`
-  - Wi-Fi icon settings.
-  - Contains Wi-Fi signal scale, iOS Wi-Fi drawing toggle, live preview, dimensions, offsets, and right-side margin.
+- [app/src/main/java/com/example/flymestatusbarsizer/FlymeStatusBarSizer.java](app/src/main/java/com/example/flymestatusbarsizer/FlymeStatusBarSizer.java)
+  - Xposed 模块主入口
+  - 负责 Hook `com.android.systemui`
+  - 负责读取配置并作用到运行中的 SystemUI 视图
 
-- `app/src/main/java/com/example/flymestatusbarsizer/OtherIconSettingsActivity.java`
-  - Other status bar icon settings.
-  - Contains generic status icon scale, activity arrow scale, and current network speed offsets.
+- [app/src/main/java/com/example/flymestatusbarsizer/MainActivity.java](app/src/main/java/com/example/flymestatusbarsizer/MainActivity.java)
+  - 主设置页
+  - 包含实时预览、图标组设置、导入导出、恢复默认等
 
-- `app/src/main/java/com/example/flymestatusbarsizer/BatterySettingsActivity.java`
-  - iOS battery icon settings.
-  - Contains battery scale, iOS battery dimensions, offsets, and inner text size.
+- [app/src/main/java/com/example/flymestatusbarsizer/SignalDebugActivity.java](app/src/main/java/com/example/flymestatusbarsizer/SignalDebugActivity.java)
+  - 信号格调试页
 
-- `app/src/main/java/com/example/flymestatusbarsizer/IosBatteryPainter.java`
-  - Draws the iOS-style battery.
+- [app/src/main/java/com/example/flymestatusbarsizer/SettingsStore.java](app/src/main/java/com/example/flymestatusbarsizer/SettingsStore.java)
+  - 所有配置 key 与默认值的唯一来源
+  - 同时维护 `INT_KEYS`、`BOOLEAN_KEYS`、`defaultInt()`、`defaultBoolean()`
 
-- `app/src/main/java/com/example/flymestatusbarsizer/IosSignalDrawable.java`
-  - Draws iOS-style signal bars.
+- [app/src/main/java/com/example/flymestatusbarsizer/SettingsProvider.java](app/src/main/java/com/example/flymestatusbarsizer/SettingsProvider.java)
+  - 通过 `content://` 向 SystemUI/Xposed 侧暴露配置
 
-- `app/src/main/java/com/example/flymestatusbarsizer/IosWifiDrawable.java`
-  - Draws iOS-style Wi-Fi strength arcs.
+- [app/src/main/java/com/example/flymestatusbarsizer/IosBatteryPainter.java](app/src/main/java/com/example/flymestatusbarsizer/IosBatteryPainter.java)
+  - 自绘电池图标
 
-- `app/src/main/java/com/example/flymestatusbarsizer/NetworkTypeDrawable.java`
-  - Draws the iOS-style `5G` network type label.
-  - All 5G-family SystemUI resources are normalized to this one label; non-5G
-    resources are hidden.
+- [app/src/main/java/com/example/flymestatusbarsizer/IosWifiDrawable.java](app/src/main/java/com/example/flymestatusbarsizer/IosWifiDrawable.java)
+  - 自绘 Wi-Fi 图标
 
-- `app/src/main/AndroidManifest.xml`
-  - Registers settings activities and exported settings provider.
+- [app/src/main/java/com/example/flymestatusbarsizer/IosSignalDrawable.java](app/src/main/java/com/example/flymestatusbarsizer/IosSignalDrawable.java)
+  - 自绘移动信号图标
 
-## Settings Flow
+- [app/src/main/AndroidManifest.xml](app/src/main/AndroidManifest.xml)
+  - 注册应用入口、调试页与 `SettingsProvider`
 
-Settings flow is:
+## 配置流转
+
+配置流转路径如下：
 
 ```text
-Settings Activity
+MainActivity / SignalDebugActivity
   -> SettingsStore.prefs(...)
-  -> device-protected SharedPreferences
-  -> SettingsProvider query(...)
+  -> 设备保护存储 SharedPreferences
+  -> SettingsProvider
   -> FlymeStatusBarSizer.Config.load(...)
-  -> runtime view/draw modifications in SystemUI
+  -> SystemUI 运行时 Hook 逻辑
 ```
 
-Important URI:
+配置读取使用的 URI：
 
-```java
-content://com.example.flymestatusbarsizer.settings/settings
+```text
+content://com.fiyme.statusbarsizer.settings/settings
 ```
 
-If a setting appears in the UI but does not affect SystemUI, check all of these places:
+如果新增一个配置项，至少要同步更新这些位置：
 
-1. `SettingsStore.java`: key/default exists.
-2. The relevant Activity writes the key.
-3. `SettingsProvider.java`: provider exports the key.
-4. `FlymeStatusBarSizer.Config`: field exists and `apply()` reads the key.
-5. Some runtime method actually uses the field.
-6. Config refresh or hook timing invalidates/reapplies the change.
+1. `SettingsStore.java`
+2. 对应设置页面写入逻辑
+3. `SettingsProvider.java`
+4. `FlymeStatusBarSizer.Config`
+5. 实际使用这个配置的运行时逻辑
 
-## Current Setting Groups
+## 当前设计方向
 
-Boolean keys:
+当前版本已经不再沿用早期那种“电池 / Wi-Fi / 信号 / 网络制式分别独立调”的方式，而是收敛到了“右上角图标组”思路：
 
-- `enabled`: global module enabled flag. Hook code still loads, but most modifications are skipped if false.
-- `ios_battery_style`: default true. Enables custom iOS-style battery drawing.
-- `ios_signal_style`: default true. Enables custom iOS-style mobile signal bars.
-- `ios_network_type_style`: default true. Enables custom iOS-style 5G/network type label drawing.
-- `ios_wifi_style`: default true. Enables custom iOS-style Wi-Fi drawing based on parsed `wifi_signal` resource levels.
-
-Integer keys:
+- 视觉上把 `Wi-Fi / 移动信号` 并入电池区域
+- 外部原始 `wifi_signal` / `mobile_signal` 视图在需要时会被隐藏
+- 系统原始 `mobile_type` 会被折叠隐藏
+- 组内统一缩放、统一高度、统一排布
+- 锁屏、控制中心、桌面等场景继续保留必要的移动信号偏移控制
 
-- `global_icon_scale`: default 115, range in main UI 80-160 percent.
-- `mobile_signal_factor`: default 100, range 0-160 percent.
-- `wifi_signal_factor`: default 100, range 0-160 percent.
-- `battery_factor`: default 100, range 0-160 percent.
-- `status_icon_factor`: default 55, range 0-160 percent.
-- `network_type_factor`: default 65, range 0-160 percent.
-- `activity_icon_factor`: default 75, range 0-160 percent.
-- `text_scale`: default 100, range 80-130 percent.
-- `clock_font_weight`: default 700, range in main UI 100-900.
+## 运行时行为说明
 
-Additional boolean keys:
+模块只在 `com.android.systemui` 首次加载时生效。
 
-- `clock_bold_enabled`: default false. Applies configurable font weight to the status bar clock and its appended weekday/date text.
+主要运行时处理包括：
 
-Network type / 5G label offsets:
+- Hook 状态栏 Wi-Fi / 移动信号视图构建过程
+- Hook 电池绘制与测量
+- Hook `ImageView` 的资源更新与 tint 更新
+- 持续跟踪 `mobile_signal`、`wifi_signal`、电池视图和状态栏文字
+- 配置变化后通过 `ContentObserver` 触发刷新
+- 在信号调试模式下，拦截 `SignalStrength / CellSignalStrength` 等等级读取链路
 
-- Legacy fallback keys:
-  - `network_type_offset_x`
-  - `network_type_offset_y`
-- Scene-specific keys:
-  - `network_type_desktop_offset_x`
-  - `network_type_desktop_offset_y`
-  - `network_type_keyguard_offset_x`
-  - `network_type_keyguard_offset_y`
-  - `network_type_control_center_offset_x`
-  - `network_type_control_center_offset_y`
+## 已收敛 / 已移除的旧设计
 
-IOS signal offsets:
+当前代码与文档都不再保留以下旧体系：
 
-- Legacy fallback keys:
-  - `ios_signal_offset_x`
-  - `ios_signal_offset_y`
-- Scene-specific keys:
-  - `ios_signal_desktop_offset_x`
-  - `ios_signal_desktop_offset_y`
-  - `ios_signal_keyguard_offset_x`
-  - `ios_signal_keyguard_offset_y`
-  - `ios_signal_control_center_offset_x`
-  - `ios_signal_control_center_offset_y`
+- 旧的 `network_type` / `mobile_type` 独立配置链
+- `2G / 3G / 4G / 5G` 文案或样式独立设置页
+- `iosBatteryStyle / iosSignalStyle / iosWifiStyle` 三个旧开关
+- `*_OFF` 双配置档体系
+- 旧的多 Activity 设置页拆分
 
-IOS battery keys:
+导入配置也已经按现有结构收敛，不再兼容旧配置格式中的这些旧 key。
 
-- `ios_battery_width`: default 28 dp, UI range 16-44 dp.
-- `ios_battery_height`: default 14 dp, UI range 8-24 dp.
-- `ios_battery_offset_x`: default 0 dp, UI range -20 to 20 dp.
-- `ios_battery_offset_y`: default 0 dp, UI range -20 to 20 dp.
-- `ios_battery_text_size`: default 72 percent, UI range 40-100 percent.
+## 维护建议
 
-IOS Wi-Fi keys:
+- 修改默认值时，优先改 [SettingsStore.java](app/src/main/java/com/example/flymestatusbarsizer/SettingsStore.java)
+- 修改预览区时，主入口在 [MainActivity.java](app/src/main/java/com/example/flymestatusbarsizer/MainActivity.java) 的 `RightIconGroupPreviewView`
+- 修改右上角图标组合并逻辑时，主入口在 [FlymeStatusBarSizer.java](app/src/main/java/com/example/flymestatusbarsizer/FlymeStatusBarSizer.java)
+- 如果发现某个设置项 UI 改了但 SystemUI 不生效，优先检查 `SettingsProvider -> Config.load -> 实际使用点`
+- 如果发现锁屏 / 控制中心 / 桌面表现不一致，优先检查场景识别与信号偏移逻辑，而不是先怀疑预览区
 
-- `ios_wifi_width`: default 20 dp, UI range 10-36 dp.
-- `ios_wifi_height`: default 14 dp, UI range 8-28 dp.
-- `ios_wifi_offset_x`: default 0 dp, UI range -20 to 20 dp.
-- `ios_wifi_offset_y`: default 0 dp, UI range -20 to 20 dp.
-- `ios_wifi_margin_end`: default 0 dp, UI range -20 to 20 dp.
+## 说明
 
-Current network speed keys:
+这是一个偏运行时重绘与 Hook 的项目，很多问题不是单纯的布局问题，而是：
 
-- `connection_rate_offset_x`: default 0 dp, UI range -80 to 80 dp.
-- `connection_rate_offset_y`: default 0 dp, UI range -80 to 80 dp.
+- SystemUI 视图创建时机
+- 资源更新时机
+- Flyme 与 AOSP 不同视图实现
+- 锁屏 / 控制中心 / 桌面三类上下文差异
 
-Removed/deprecated:
+因此改动时应尽量先确认：
 
-- `hide_mobile_type` was removed from active code and UI. Do not reintroduce it unless explicitly requested.
-
-## Xposed Hook Entry Points
-
-The module only runs for first load of `com.android.systemui`:
-
-```java
-onPackageLoaded(...)
-```
-
-Main hook groups in `FlymeStatusBarSizer.java`:
-
-- `hookConstructAndBind(...)`
-  - Hooks mobile and Wi-Fi status bar view factory methods.
-  - Calls `applyStatusBarSizing()` or similar sizing logic after views are built.
-
-- `hookFlymeWifiView(...)`
-  - Flyme-specific Wi-Fi view updates.
-
-- `hookConnectionRateView(...)`
-  - Hooks `com.flyme.statusbar.connectionRateView.ConnectionRateView`.
-  - Applies text scaling and manual offsets.
-  - Be careful: vertical offset is partly draw-time canvas translation, not just layout movement.
-
-- `hookImageViewTintUpdates(...)`
-  - Watches `ImageView` drawable/resource/tint changes.
-  - Re-applies iOS signal and network type drawables after SystemUI changes resources.
-  - The final `mobile_type.setImageResource(...)` binding path is the authoritative
-    source for visible Flyme network type labels.
-  - The normal SystemUI path is:
-    `MobileIconInteractorImpl -> NetworkTypeIconModel -> Icon.Resource -> mobile_type`.
-  - The module no longer provides a virtual 5G-family network type override.
-
-- `hookBatteryDrawable(...)`
-  - Hooks Flyme battery drawable drawing.
-
-- `hookFlymeBatteryMeterViewDraw(...)`
-  - Replaces Flyme battery view draw with iOS battery painter when enabled.
-
-- `hookFlymeBatteryMeterViewMeasure(...)`
-  - Adjusts measured size for custom iOS battery.
-
-- `hookStatusTextView(...)`
-  - Tracks clock/operator/carrier text for text scaling.
-
-## Key Runtime Methods To Know
-
-In `FlymeStatusBarSizer.java`:
-
-- `applyStatusBarSizing(View root)`
-  - Main mobile signal / network type / arrows sizing path.
-
-- `applyWifiSizing(View root)`
-  - Wi-Fi sizing path.
-
-- `applyIosSignalStyle(...)`
-  - Applies iOS signal drawable when enabled.
-
-- `applyKnownNetworkTypeStyle(...)`
-  - Applies iOS-style 5G/network type labels.
-
-- `applyNetworkTypeResource(ImageView imageView, int resId)`
-  - Converts the actual SystemUI `mobile_type` drawable resource into the module's
-    code-drawn label.
-  - Resource names such as `ic_5g_mobiledata`, `ic_5g_plus_mobiledata`, and
-    `ic_5g_a_mobiledata` all map to the same `5G` label.
-
-- `refreshTrackedNetworkTypeViews()`
-  - Re-applies tracked network type labels after setting changes.
-
-- `applyReferenceSignalSizing(...)`
-  - Handles lockscreen/control-center/reference-size contexts.
-
-- `applyConnectionRateTextScale(View view)`
-  - Adjusts network speed text size.
-
-- `applyConnectionRateOffset(View view)`
-  - Applies horizontal network speed movement.
-  - Vertical network speed offset is intentionally added to draw-time offset via `getConnectionRateManualDrawOffsetY()`.
-
-- `getConnectionRateAlignmentOffset(View view)`
-  - Auto-aligns network speed drawing to battery/reference bottom.
-  - This can fight layout-based vertical movement, which is why manual Y offset is draw-time.
-
-- `offsetView(View child, int offsetXDp, int offsetYDp)`
-  - Generic margin/translation offset helper for many views.
-
-- `scaleView(View child, float widthScale, float heightScale)`
-  - Generic layout-size scaling helper.
-
-- `disableAncestorClipping(View view, int maxDepth)`
-  - Used when offsets/drawables may extend beyond parent bounds.
-
-## Config Import/Export
-
-Implemented in `MainActivity.java`.
-
-Export:
-
-- Uses `Intent.ACTION_CREATE_DOCUMENT`.
-- Writes JSON with this structure:
-
-```json
-{
-  "schema": "flyme_status_bar_sizer",
-  "version": 1,
-  "settings": {
-    "enabled": true,
-    "global_icon_scale": 115
-  }
-}
-```
-
-The actual exported file includes every key from `SettingsStore.BOOLEAN_KEYS` and `SettingsStore.INT_KEYS`, even if the user never changed the value.
-
-Import:
-
-- Uses `Intent.ACTION_OPEN_DOCUMENT`.
-- Accepts the structured JSON above.
-- Also accepts a plain object where settings are at top level.
-- Clears old prefs first, then writes every known key with imported value or default fallback.
-
-When adding a new setting, update:
-
-1. `SettingsStore.KEY_*` and `DEFAULT_*`.
-2. `SettingsStore.INT_KEYS` or `BOOLEAN_KEYS`.
-3. `SettingsStore.defaultInt()` or `defaultBoolean()`.
-4. `SettingsProvider.query()` if SystemUI needs it.
-5. `FlymeStatusBarSizer.Config` if Xposed side needs it.
-6. The relevant Activity UI.
-
-## UI Pages
-
-Current page split:
-
-- Main page: global switches, global scale, navigation, import/export, text scale, clock weekday, and clock font weight.
-- Battery page: battery scale plus iOS battery dimensions/offset/text size.
-- Signal/network page: mobile signal scale plus iOS signal bars and 5G/network type label scale/offsets.
-- Wi-Fi page: Wi-Fi signal scale.
-- Other icons page: generic status icon scale, activity arrow scale, and current network speed offset.
-
-Most UI is created programmatically in Java. There are no XML layout files for these settings pages.
-
-## Known Gotchas
-
-- Many source files contain Chinese UI labels. To avoid encoding issues when editing from PowerShell or shell scripts, prefer Java Unicode escapes (`\uXXXX`) or use an editor that preserves UTF-8 correctly.
-
-- Do not assume a setting works just because it exists in an Activity. It must also be exposed by `SettingsProvider` and read/used by `FlymeStatusBarSizer.Config`.
-
-- SystemUI/Xposed changes often require restarting SystemUI or rebooting the phone.
-
-- Status bar parent layouts frequently clip children. Use `disableAncestorClipping(...)` when offsets appear to stop moving or get cut off.
-
-- Network speed vertical positioning is delicate. It has auto-alignment to the battery/reference view. Manual Y offset is currently applied at draw time to avoid auto-alignment cancelling it.
-
-- Some offsets have legacy fallback keys for compatibility. Do not remove these lightly:
-  - `network_type_offset_x/y`
-  - `ios_signal_offset_x/y`
-
-- `WeakHashMap` is used to remember original sizes/margins/translations for live SystemUI views. Avoid replacing these with normal maps unless there is a strong reason.
-
-## Build Notes
-
-This is a Gradle Android project:
-
-```powershell
-.\gradlew.bat assembleDebug
-```
-
-Network may be required if Gradle wrapper/dependencies are not cached. The Xposed API dependency is compile-only:
-
-```gradle
-compileOnly "io.github.libxposed:api:101.0.1"
-```
-
-The module targets:
-
-- `compileSdk 35`
-- `minSdk 26`
-- `targetSdk 35`
-- Java 17 source/target compatibility
-
-## Quick Task Map
-
-- Add a new setting:
-  - Start in `SettingsStore.java`, then `SettingsProvider.java`, then `FlymeStatusBarSizer.Config`, then UI Activity.
-
-- Change iOS battery drawing:
-  - `IosBatteryPainter.java`
-  - battery hooks in `FlymeStatusBarSizer.java`
-  - `BatterySettingsActivity.java` for UI.
-
-- Change iOS signal bars:
-  - `IosSignalDrawable.java`
-  - `applyIosSignalStyle(...)` and related methods in `FlymeStatusBarSizer.java`
-  - `SignalNetworkSettingsActivity.java` for UI.
-
-- Change 5G/network type labels:
-  - `NetworkTypeDrawable.java`
-  - `applyKnownNetworkTypeStyle(...)` and `applyNetworkTypeResource(...)` in `FlymeStatusBarSizer.java`
-  - Keep the resource binding path as the source of truth: 5G-family resources map
-    to `5G`, and non-5G resources are hidden.
-  - `SignalNetworkSettingsActivity.java` for UI.
-
-- Change Wi-Fi icon sizing:
-  - `applyWifiSizing(...)`, `applyIosWifiStyle(...)`, `applyWifiSignalResource(...)`, and Flyme Wi-Fi hooks in `FlymeStatusBarSizer.java`
-  - `IosWifiDrawable.java`
-  - `WifiSettingsActivity.java` for UI.
-
-- Change current network speed behavior:
-  - `hookConnectionRateView(...)`
-  - `applyConnectionRateTextScale(...)`
-  - `applyConnectionRateOffset(...)`
-  - `getConnectionRateAlignmentOffset(...)`
-  - `OtherIconSettingsActivity.java` for UI.
-
-- Change import/export:
-  - `MainActivity.java`
-  - `SettingsStore.INT_KEYS` / `BOOLEAN_KEYS`
-
-- Change settings provider output:
-  - `SettingsProvider.java`
-
-## Current Intentional Defaults
-
-- Module enabled: true.
-- iOS battery style: true.
-- iOS mobile signal style: true.
-- iOS Wi-Fi style: true.
-- iOS 5G/network type style: true.
-- Hide 4G/5G switch: removed.
-
-## Wi-Fi Dynamic Drawing Notes
-
-When `ios_wifi_style` is enabled, `wifi_signal` resource updates are parsed into signal levels and replaced with `IosWifiDrawable`. If the resource name cannot be parsed, the module intentionally does not fall back to the original PNG: it draws a visible error placeholder and writes a `FlymeStatusBarSizer` warning log containing the resource name and id.
-
-
+1. 目标视图是谁
+2. 它在哪个场景下创建
+3. 它是通过资源更新、Drawable 更新还是 draw/measure 被影响
+4. 配置改动后是否有刷新路径
