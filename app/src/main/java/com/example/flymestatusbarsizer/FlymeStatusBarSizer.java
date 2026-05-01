@@ -161,6 +161,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookMBackLongTouchIntent(loader);
         hookMBackNavBarExperiments(loader);
         hookMBackPillVisibility(loader);
+        hookBatterySpacingRefresh(loader);
         hookConstructors(loader, "com.android.systemui.statusbar.StatusBarIconView", view -> {
             Config config = Config.load(view.getContext());
             if (!config.enabled) {
@@ -706,6 +707,40 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook FlymeBatteryMeterView.onMeasure", t);
+        }
+    }
+
+    private void hookBatterySpacingRefresh(ClassLoader loader) {
+        String[] classNames = {
+                "com.android.systemui.statusbar.phone.KeyguardStatusBarView",
+                "com.flyme.statusbar.bouncer.KeyguardBouncerStatusBarView",
+                "com.flyme.systemui.controlcenter.qs.QSStatusBar"
+        };
+        for (String className : classNames) {
+            try {
+                Class<?> clazz = Class.forName(className, false, loader);
+                for (Method method : clazz.getDeclaredMethods()) {
+                    String name = method.getName();
+                    if (!"onLayout".equals(name)
+                            && !"onFinishInflate".equals(name)
+                            && !"onAttachedToWindow".equals(name)) {
+                        continue;
+                    }
+                    method.setAccessible(true);
+                    hook(method).intercept(chain -> {
+                        Object result = chain.proceed();
+                        Object thisObject = chain.getThisObject();
+                        if (thisObject instanceof View) {
+                            View root = (View) thisObject;
+                            root.post(() -> refreshBatterySpacingInRoot(root));
+                            root.postDelayed(() -> refreshBatterySpacingInRoot(root), 300);
+                        }
+                        return result;
+                    });
+                }
+            } catch (Throwable t) {
+                log(android.util.Log.WARN, TAG, "Failed to hook battery spacing refresh for " + className, t);
+            }
         }
     }
 
@@ -4521,16 +4556,42 @@ public class FlymeStatusBarSizer extends XposedModule {
             };
             ORIGINAL_MARGINS.put(view, original);
         }
-        marginLp.leftMargin = original[0];
-        marginLp.topMargin = original[1];
-        marginLp.rightMargin = original[2];
-        marginLp.bottomMargin = original[3];
-        marginLp.leftMargin = gapPx;
-        marginLp.rightMargin = original[2];
-        marginLp.setMarginStart(gapPx);
-        marginLp.setMarginEnd(original[5]);
+        int targetLeft = gapPx;
+        int targetTop = original[1];
+        int targetRight = original[2];
+        int targetBottom = original[3];
+        int targetStart = gapPx;
+        int targetEnd = original[5];
+        if (marginLp.leftMargin == targetLeft
+                && marginLp.topMargin == targetTop
+                && marginLp.rightMargin == targetRight
+                && marginLp.bottomMargin == targetBottom
+                && marginLp.getMarginStart() == targetStart
+                && marginLp.getMarginEnd() == targetEnd) {
+            return;
+        }
+        marginLp.leftMargin = targetLeft;
+        marginLp.topMargin = targetTop;
+        marginLp.rightMargin = targetRight;
+        marginLp.bottomMargin = targetBottom;
+        marginLp.setMarginStart(targetStart);
+        marginLp.setMarginEnd(targetEnd);
         view.setLayoutParams(marginLp);
         view.requestLayout();
+    }
+
+    private static void refreshBatterySpacingInRoot(View root) {
+        if (root == null) {
+            return;
+        }
+        Config config = Config.load(root.getContext());
+        if (!config.enabled) {
+            return;
+        }
+        View battery = findSystemUiChild(root, "battery");
+        if (battery != null) {
+            normalizeBatterySpacing(battery);
+        }
     }
 
     private static int getBatteryGroupStartGapPx(Context context, Config config) {
