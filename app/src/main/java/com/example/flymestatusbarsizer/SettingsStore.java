@@ -414,4 +414,36 @@ final class SettingsStore {
                 return false;
         }
     }
+
+    static boolean includeInBackup(String key) {
+        if (key == null) {
+            return false;
+        }
+        switch (key) {
+            case KEY_NETWORK_TYPE_FACTOR:
+            case KEY_NETWORK_TYPE_FACTOR_OFF:
+            case KEY_NETWORK_TYPE_OFFSET_X:
+            case KEY_NETWORK_TYPE_OFFSET_Y:
+            case KEY_NETWORK_TYPE_DESKTOP_OFFSET_X:
+            case KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y:
+            case KEY_NETWORK_TYPE_DESKTOP_OFFSET_X_OFF:
+            case KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y_OFF:
+            case KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X:
+            case KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y:
+            case KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X_OFF:
+            case KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y_OFF:
+            case KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X:
+            case KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y:
+            case KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X_OFF:
+            case KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y_OFF:
+            case KEY_IOS_WIFI_MARGIN_END:
+            case KEY_IOS_BATTERY_STYLE:
+            case KEY_IOS_SIGNAL_STYLE:
+            case KEY_IOS_NETWORK_TYPE_STYLE:
+            case KEY_IOS_WIFI_STYLE:
+                return false;
+            default:
+                return true;
+        }
+    }
 }

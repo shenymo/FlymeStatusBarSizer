@@ -113,6 +113,9 @@ public class MainActivity extends Activity {
         addSectionLabel(root, "\u53f3\u4e0a\u89d2\u56fe\u6807\u7ec4");
         root.addView(buildRightIconGroupSection(), matchWrapWithTop(10));
 
+        addSectionLabel(root, "\u4fe1\u53f7\u8c03\u8bd5");
+        root.addView(buildSignalDebugEntryCard(), matchWrapWithTop(10));
+
         addSectionLabel(root, "\u65f6\u95f4\u6587\u5b57");
         root.addView(buildTimeCard(), matchWrapWithTop(10));
 
@@ -523,6 +526,30 @@ public class MainActivity extends Activity {
         addSliderRow(card, "\u65f6\u95f4/\u65e5\u671f\u7c97\u7ec6",
                 "\u53ea\u5bf9\u72b6\u6001\u680f\u65f6\u95f4\u6587\u5b57\u751f\u6548\uff0c\u8303\u56f4 100-900",
                 SettingsStore.KEY_CLOCK_FONT_WEIGHT, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT, 100, 900, "");
+        return card;
+    }
+
+    private View buildSignalDebugEntryCard() {
+        LinearLayout card = card(colorSurface, 28);
+
+        TextView title = new TextView(this);
+        title.setText("\u4fe1\u53f7\u683c\u8c03\u8bd5");
+        title.setTextColor(colorText);
+        title.setTextSize(18);
+        card.addView(title, matchWrap());
+
+        TextView summary = new TextView(this);
+        summary.setText("\u5355\u72ec\u8fdb\u5165\u4e00\u4e2a\u8c03\u8bd5\u9875\uff0c\u7ed9 SystemUI \u63d0\u4f9b\u5047\u7684\u4fe1\u53f7\u7b49\u7ea7\uff0c\u7528\u6765\u68c0\u67e5\u684c\u9762\u3001\u9501\u5c4f\u3001\u63a7\u5236\u4e2d\u5fc3\u7684\u4fe1\u53f7\u683c\u8ddf\u968f\u60c5\u51b5\u3002");
+        summary.setTextColor(colorSubtext);
+        summary.setTextSize(14);
+        summary.setPadding(0, dp(6), 0, 0);
+        card.addView(summary, matchWrap());
+
+        TextView action = chip("\u6253\u5f00\u8c03\u8bd5\u9875", colorPrimary, Color.WHITE);
+        action.setPadding(dp(16), dp(10), dp(16), dp(10));
+        action.setOnClickListener(v -> startActivity(new Intent(this, SignalDebugActivity.class)));
+        card.addView(action, matchWrapWithTop(16));
+
         return card;
     }
 
@@ -1047,12 +1074,16 @@ public class MainActivity extends Activity {
             JSONObject root = new JSONObject();
             JSONObject settings = new JSONObject();
             root.put("schema", "flyme_status_bar_sizer");
-            root.put("version", 1);
+            root.put("version", 2);
             for (String key : SettingsStore.BOOLEAN_KEYS) {
-                settings.put(key, prefs.getBoolean(key, SettingsStore.defaultBoolean(key)));
+                if (SettingsStore.includeInBackup(key)) {
+                    settings.put(key, prefs.getBoolean(key, SettingsStore.defaultBoolean(key)));
+                }
             }
             for (String key : SettingsStore.INT_KEYS) {
-                settings.put(key, prefs.getInt(key, SettingsStore.defaultInt(key)));
+                if (SettingsStore.includeInBackup(key)) {
+                    settings.put(key, prefs.getInt(key, SettingsStore.defaultInt(key)));
+                }
             }
             root.put("settings", settings);
             output.write(root.toString(2).getBytes(StandardCharsets.UTF_8));
@@ -1071,43 +1102,27 @@ public class MainActivity extends Activity {
             JSONObject root = new JSONObject(readText(input));
             JSONObject settings = root.optJSONObject("settings");
             if (settings == null) {
-                settings = root;
+                showToast("\u5bfc\u5165\u5931\u8d25\uff1a\u914d\u7f6e\u6587\u4ef6\u683c\u5f0f\u4e0d\u6b63\u786e");
+                return;
+            }
+            if (!"flyme_status_bar_sizer".equals(root.optString("schema"))
+                    || root.optInt("version", 0) != 2) {
+                showToast("\u5bfc\u5165\u5931\u8d25\uff1a\u53ea\u652f\u6301\u65b0\u7248 v2 \u914d\u7f6e\u6587\u4ef6");
+                return;
             }
             SharedPreferences.Editor editor = prefs.edit().clear();
             for (String key : SettingsStore.BOOLEAN_KEYS) {
+                if (!SettingsStore.includeInBackup(key)) {
+                    continue;
+                }
                 editor.putBoolean(key, settings.optBoolean(key, SettingsStore.defaultBoolean(key)));
             }
             for (String key : SettingsStore.INT_KEYS) {
+                if (!SettingsStore.includeInBackup(key)) {
+                    continue;
+                }
                 editor.putInt(key, settings.optInt(key, SettingsStore.defaultInt(key)));
             }
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_MOBILE_SIGNAL_FACTOR_OFF, SettingsStore.KEY_MOBILE_SIGNAL_FACTOR);
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X_OFF, SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X);
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y_OFF, SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y);
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X_OFF, SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X);
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y_OFF, SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y);
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X_OFF, SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X);
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y_OFF, SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y);
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_NETWORK_TYPE_FACTOR_OFF, SettingsStore.KEY_NETWORK_TYPE_FACTOR);
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_X_OFF, SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_X);
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y_OFF, SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y);
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X_OFF, SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X);
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y_OFF, SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y);
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X_OFF, SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X);
-            applyOffProfileFallback(editor, settings,
-                    SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y_OFF, SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y);
             editor.apply();
             SettingsStore.notifyChanged(this);
             invalidatePreview();
@@ -1160,13 +1175,6 @@ public class MainActivity extends Activity {
                     }
                 })
                 .show();
-    }
-
-    private void applyOffProfileFallback(SharedPreferences.Editor editor, JSONObject settings,
-            String offKey, String onKey) {
-        if (!settings.has(offKey) && settings.has(onKey)) {
-            editor.putInt(offKey, settings.optInt(onKey, SettingsStore.defaultInt(offKey)));
-        }
     }
 
     private void showToast(String message) {
