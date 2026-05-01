@@ -2,6 +2,10 @@
 
 This project is an Android/Xposed module that customizes Flyme/SystemUI status bar sizing and several iOS-style status bar visuals. This README is written primarily for AI/code agents that need to understand the project quickly and find the right edit points.
 
+Related document:
+
+- `HOOK_CHAINS.md`: full summary of the module's hook registration points and runtime hook chains.
+
 ## What This App Does
 
 FlymeStatusBarSizer has two sides:
