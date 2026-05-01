@@ -79,6 +79,8 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y));
         add(cursor, SettingsStore.KEY_TEXT_SCALE, prefs.getInt(SettingsStore.KEY_TEXT_SCALE, SettingsStore.DEFAULT_TEXT_SCALE));
         add(cursor, SettingsStore.KEY_SHOW_CLOCK_WEEKDAY, prefs.getBoolean(SettingsStore.KEY_SHOW_CLOCK_WEEKDAY, SettingsStore.DEFAULT_SHOW_CLOCK_WEEKDAY));
+        add(cursor, SettingsStore.KEY_CLOCK_BOLD_ENABLED, prefs.getBoolean(SettingsStore.KEY_CLOCK_BOLD_ENABLED, SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED));
+        add(cursor, SettingsStore.KEY_CLOCK_FONT_WEIGHT, prefs.getInt(SettingsStore.KEY_CLOCK_FONT_WEIGHT, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT));
         add(cursor, SettingsStore.KEY_IOS_BATTERY_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_BATTERY_STYLE, SettingsStore.DEFAULT_IOS_BATTERY_STYLE));
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_STYLE, prefs.getBoolean(SettingsStore.KEY_IOS_SIGNAL_STYLE, SettingsStore.DEFAULT_IOS_SIGNAL_STYLE));
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_DUAL_COMBINED,

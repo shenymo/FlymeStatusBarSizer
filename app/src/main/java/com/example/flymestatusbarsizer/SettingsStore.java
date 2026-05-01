@@ -47,6 +47,8 @@ final class SettingsStore {
     static final String KEY_CONNECTION_RATE_OFFSET_Y = "connection_rate_offset_y";
     static final String KEY_TEXT_SCALE = "text_scale";
     static final String KEY_SHOW_CLOCK_WEEKDAY = "show_clock_weekday";
+    static final String KEY_CLOCK_BOLD_ENABLED = "clock_bold_enabled";
+    static final String KEY_CLOCK_FONT_WEIGHT = "clock_font_weight";
     static final String KEY_IOS_BATTERY_STYLE = "ios_battery_style";
     static final String KEY_IOS_SIGNAL_STYLE = "ios_signal_style";
     static final String KEY_IOS_SIGNAL_DUAL_COMBINED = "ios_signal_dual_combined";
@@ -103,6 +105,8 @@ final class SettingsStore {
     static final int DEFAULT_CONNECTION_RATE_OFFSET_Y = -3;
     static final int DEFAULT_TEXT_SCALE = 118;
     static final boolean DEFAULT_SHOW_CLOCK_WEEKDAY = true;
+    static final boolean DEFAULT_CLOCK_BOLD_ENABLED = false;
+    static final int DEFAULT_CLOCK_FONT_WEIGHT = 700;
     static final boolean DEFAULT_IOS_BATTERY_STYLE = true;
     static final boolean DEFAULT_IOS_SIGNAL_STYLE = true;
     static final boolean DEFAULT_IOS_SIGNAL_DUAL_COMBINED = true;
@@ -152,12 +156,14 @@ final class SettingsStore {
             KEY_CONNECTION_RATE_OFFSET_Y,
             KEY_IOS_SIGNAL_DEBUG_SIM1_LEVEL,
             KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL,
-            KEY_TEXT_SCALE
+            KEY_TEXT_SCALE,
+            KEY_CLOCK_FONT_WEIGHT
     };
 
     static final String[] BOOLEAN_KEYS = {
             KEY_ENABLED,
             KEY_SHOW_CLOCK_WEEKDAY,
+            KEY_CLOCK_BOLD_ENABLED,
             KEY_IOS_BATTERY_STYLE,
             KEY_IOS_SIGNAL_STYLE,
             KEY_IOS_SIGNAL_DUAL_COMBINED,
@@ -273,6 +279,8 @@ final class SettingsStore {
                 return DEFAULT_IOS_SIGNAL_DEBUG_SIM2_LEVEL;
             case KEY_TEXT_SCALE:
                 return DEFAULT_TEXT_SCALE;
+            case KEY_CLOCK_FONT_WEIGHT:
+                return DEFAULT_CLOCK_FONT_WEIGHT;
             default:
                 return 0;
         }
@@ -284,6 +292,8 @@ final class SettingsStore {
                 return DEFAULT_ENABLED;
             case KEY_SHOW_CLOCK_WEEKDAY:
                 return DEFAULT_SHOW_CLOCK_WEEKDAY;
+            case KEY_CLOCK_BOLD_ENABLED:
+                return DEFAULT_CLOCK_BOLD_ENABLED;
             case KEY_IOS_BATTERY_STYLE:
                 return DEFAULT_IOS_BATTERY_STYLE;
             case KEY_IOS_SIGNAL_STYLE:

@@ -12,8 +12,10 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -58,6 +60,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, float[]> ORIGINAL_TRANSLATIONS = new WeakHashMap<>();
     private static final WeakHashMap<View, String> VIEW_ID_NAME_CACHE = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_SIZES = new WeakHashMap<>();
+    private static final WeakHashMap<TextView, Typeface> ORIGINAL_TEXT_TYPEFACES = new WeakHashMap<>();
+    private static final WeakHashMap<TextView, Integer> ORIGINAL_TEXT_STYLES = new WeakHashMap<>();
     private static final WeakHashMap<View, Integer> ORIGINAL_CONNECTION_RATE_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, String> NETWORK_TYPE_LABELS = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, Integer> NETWORK_TYPE_RES_IDS = new WeakHashMap<>();
@@ -2819,6 +2823,38 @@ public class FlymeStatusBarSizer extends XposedModule {
             ORIGINAL_TEXT_SIZES.put(textView, original);
         }
         textView.setTextSize(0, original * config.textScale);
+        applyClockFontWeight(textView, config);
+    }
+
+    private static void applyClockFontWeight(TextView textView, Config config) {
+        if (!"clock".equals(getSystemUiIdName(textView))) {
+            return;
+        }
+        if (!ORIGINAL_TEXT_STYLES.containsKey(textView)) {
+            Typeface typeface = textView.getTypeface();
+            ORIGINAL_TEXT_TYPEFACES.put(textView, typeface);
+            ORIGINAL_TEXT_STYLES.put(textView, typeface != null ? typeface.getStyle() : Typeface.NORMAL);
+        }
+        Typeface originalTypeface = ORIGINAL_TEXT_TYPEFACES.get(textView);
+        Integer originalStyleValue = ORIGINAL_TEXT_STYLES.get(textView);
+        int originalStyle = originalStyleValue != null ? originalStyleValue : Typeface.NORMAL;
+        if (!config.clockBoldEnabled) {
+            textView.setTypeface(originalTypeface, originalStyle);
+            return;
+        }
+        int targetWeight = Math.max(100, Math.min(900, config.clockFontWeight));
+        boolean italic = (originalStyle & Typeface.ITALIC) != 0;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            textView.setTypeface(Typeface.create(originalTypeface, targetWeight, italic));
+            return;
+        }
+        int fallbackStyle;
+        if (targetWeight >= 600) {
+            fallbackStyle = italic ? Typeface.BOLD_ITALIC : Typeface.BOLD;
+        } else {
+            fallbackStyle = italic ? Typeface.ITALIC : Typeface.NORMAL;
+        }
+        textView.setTypeface(originalTypeface, fallbackStyle);
     }
 
     private static void applyConnectionRateTextScale(View view) {
@@ -4045,6 +4081,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         int connectionRateOffsetY = SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y;
         float textScale = SettingsStore.DEFAULT_TEXT_SCALE / 100f;
         boolean showClockWeekday = SettingsStore.DEFAULT_SHOW_CLOCK_WEEKDAY;
+        boolean clockBoldEnabled = SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED;
+        int clockFontWeight = SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT;
         boolean iosBatteryStyle = SettingsStore.DEFAULT_IOS_BATTERY_STYLE;
         boolean iosSignalStyle = SettingsStore.DEFAULT_IOS_SIGNAL_STYLE;
         boolean iosSignalDualCombined = SettingsStore.DEFAULT_IOS_SIGNAL_DUAL_COMBINED;
@@ -4170,6 +4208,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                 textScale = parseInt(value, SettingsStore.DEFAULT_TEXT_SCALE) / 100f;
             } else if (SettingsStore.KEY_SHOW_CLOCK_WEEKDAY.equals(key)) {
                 showClockWeekday = "1".equals(value);
+            } else if (SettingsStore.KEY_CLOCK_BOLD_ENABLED.equals(key)) {
+                clockBoldEnabled = "1".equals(value);
+            } else if (SettingsStore.KEY_CLOCK_FONT_WEIGHT.equals(key)) {
+                clockFontWeight = parseInt(value, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT);
             } else if (SettingsStore.KEY_IOS_BATTERY_STYLE.equals(key)) {
                 iosBatteryStyle = "1".equals(value);
             } else if (SettingsStore.KEY_IOS_SIGNAL_STYLE.equals(key)) {

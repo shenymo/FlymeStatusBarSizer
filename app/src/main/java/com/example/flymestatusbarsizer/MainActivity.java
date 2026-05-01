@@ -110,6 +110,10 @@ public class MainActivity extends Activity {
                 SettingsStore.KEY_TEXT_SCALE, SettingsStore.DEFAULT_TEXT_SCALE, 80, 130, "%");
         addSwitch(root, "\u65f6\u95f4\u663e\u793a\u661f\u671f", "\u5728\u72b6\u6001\u680f\u65f6\u95f4\u53f3\u4fa7\u8ffd\u52a0\u5f53\u524d\u661f\u671f",
                 SettingsStore.KEY_SHOW_CLOCK_WEEKDAY, SettingsStore.DEFAULT_SHOW_CLOCK_WEEKDAY);
+        addSwitch(root, "\u65f6\u95f4\u52a0\u7c97", "\u5f00\u542f\u540e\u53ef\u5bf9\u72b6\u6001\u680f\u65f6\u95f4\u4ee5\u53ca\u8ffd\u52a0\u7684\u65e5\u671f/\u661f\u671f\u5e94\u7528\u5b57\u91cd",
+                SettingsStore.KEY_CLOCK_BOLD_ENABLED, SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED);
+        addSlider(root, "\u65f6\u95f4/\u65e5\u671f\u7c97\u7ec6", "\u4ec5\u5bf9\u72b6\u6001\u680f\u65f6\u95f4\u53ca\u5176\u53f3\u4fa7\u8ffd\u52a0\u7684\u65e5\u671f/\u661f\u671f\u751f\u6548\uff0c\u9700\u5148\u5f00\u542f\u4e0a\u9762\u7684\u65f6\u95f4\u52a0\u7c97",
+                SettingsStore.KEY_CLOCK_FONT_WEIGHT, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT, 100, 900, "");
 
         TextView reset = button("\u6062\u590d\u9ed8\u8ba4");
         reset.setOnClickListener(v -> {

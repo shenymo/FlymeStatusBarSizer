@@ -126,6 +126,11 @@ Integer keys:
 - `network_type_factor`: default 65, range 0-160 percent.
 - `activity_icon_factor`: default 75, range 0-160 percent.
 - `text_scale`: default 100, range 80-130 percent.
+- `clock_font_weight`: default 700, range in main UI 100-900.
+
+Additional boolean keys:
+
+- `clock_bold_enabled`: default false. Applies configurable font weight to the status bar clock and its appended weekday/date text.
 
 Network type / 5G label offsets:
 
@@ -311,7 +316,7 @@ When adding a new setting, update:
 
 Current page split:
 
-- Main page: global switches, global scale, navigation, import/export, text scale.
+- Main page: global switches, global scale, navigation, import/export, text scale, clock weekday, and clock font weight.
 - Battery page: battery scale plus iOS battery dimensions/offset/text size.
 - Signal/network page: mobile signal scale plus iOS signal bars and 5G/network type label scale/offsets.
 - Wi-Fi page: Wi-Fi signal scale.
