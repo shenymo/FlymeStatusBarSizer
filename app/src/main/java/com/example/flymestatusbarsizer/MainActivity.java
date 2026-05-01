@@ -238,39 +238,6 @@ public class MainActivity extends Activity {
         return card;
     }
 
-    private View buildBatterySection() {
-        LinearLayout details = new LinearLayout(this);
-        details.setOrientation(LinearLayout.VERTICAL);
-        addSliderRow(details, "\u7535\u6c60\u7f29\u653e\u5f3a\u5ea6",
-                "FlymeBatteryMeterView \u8ddf\u968f\u6574\u4f53\u7f29\u653e\u7684\u5f3a\u5ea6",
-                SettingsStore.KEY_BATTERY_FACTOR, SettingsStore.DEFAULT_BATTERY_FACTOR, 0, 160, "%");
-        addDivider(details);
-        addSliderRow(details, "\u7535\u6c60\u957f\u5ea6",
-                "\u5305\u542b\u7535\u6c60\u5934\u7684\u6574\u4f53\u7ed8\u5236\u5bbd\u5ea6",
-                SettingsStore.KEY_IOS_BATTERY_WIDTH, SettingsStore.DEFAULT_IOS_BATTERY_WIDTH, 16, 44, "dp");
-        addDivider(details);
-        addSliderRow(details, "\u7535\u6c60\u9ad8\u5ea6",
-                "\u7535\u6c60\u4e3b\u4f53\u7684\u9ad8\u5ea6",
-                SettingsStore.KEY_IOS_BATTERY_HEIGHT, SettingsStore.DEFAULT_IOS_BATTERY_HEIGHT, 8, 24, "dp");
-        addDivider(details);
-        addSliderRow(details, "\u5de6\u53f3\u504f\u79fb",
-                "\u6b63\u6570\u5411\u53f3\uff0c\u8d1f\u6570\u5411\u5de6",
-                SettingsStore.KEY_IOS_BATTERY_OFFSET_X, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X, -20, 20, "dp");
-        addDivider(details);
-        addSliderRow(details, "\u4e0a\u4e0b\u504f\u79fb",
-                "\u6b63\u6570\u5411\u4e0b\uff0c\u8d1f\u6570\u5411\u4e0a",
-                SettingsStore.KEY_IOS_BATTERY_OFFSET_Y, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y, -20, 20, "dp");
-        addDivider(details);
-        addSliderRow(details, "\u5185\u90e8\u5b57\u4f53\u5927\u5c0f",
-                "\u7535\u91cf\u6570\u5b57\u5728\u7535\u6c60\u5185\u7684\u663e\u793a\u6bd4\u4f8b",
-                SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE, 40, 100, "%");
-        return buildExpandableFeatureCard(
-                "\u7535\u6c60",
-                "\u53ef\u4ee5\u5207\u6362 iOS \u98ce\u683c\u7535\u6c60\uff0c\u5e76\u8c03\u6574\u5c3a\u5bf8\u3001\u504f\u79fb\u548c\u5185\u90e8\u6570\u5b57",
-                FeatureToggle.single(SettingsStore.KEY_IOS_BATTERY_STYLE, SettingsStore.DEFAULT_IOS_BATTERY_STYLE),
-                "\u7535\u6c60", details);
-    }
-
     private View buildRightIconGroupSection() {
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
@@ -459,60 +426,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    private View buildSignalSection() {
-        LinearLayout details = new LinearLayout(this);
-        details.setOrientation(LinearLayout.VERTICAL);
-        addSwitchRow(details, "\u53cc\u5361\u5408\u4e00\u4fe1\u53f7\u683c",
-                "\u5361 1 \u4f5c\u4e3a\u4e3b\u4fe1\u53f7\u683c\uff0c\u5361 2 \u5408\u5e76\u5230\u4e0b\u65b9\u56db\u4e2a\u5c0f\u70b9",
-                SettingsStore.KEY_IOS_SIGNAL_DUAL_COMBINED, SettingsStore.DEFAULT_IOS_SIGNAL_DUAL_COMBINED);
-        addDivider(details);
-        addProfileSectionHeader(details, "\u5f00\u542f\u65f6\u914d\u7f6e",
-                "\u603b\u5f00\u5173\u6253\u5f00\u540e\uff0c\u4fe1\u53f7\u683c\u4f7f\u7528\u8fd9\u7ec4\u7f29\u653e\u548c\u504f\u79fb");
-        addSignalProfileRows(details, true);
-        addDivider(details);
-        addProfileSectionHeader(details, "\u5173\u95ed\u65f6\u914d\u7f6e",
-                "\u603b\u5f00\u5173\u5173\u95ed\u540e\uff0c\u539f\u751f\u4fe1\u53f7\u683c\u4f7f\u7528\u8fd9\u7ec4\u7f29\u653e\u548c\u504f\u79fb");
-        addSignalProfileRows(details, false);
-        addDivider(details);
-        addLongPressResetOffsetsRow(details, "\u6062\u590d", "\u957f\u6309\u540e\u628a\u5f00\u542f/\u5173\u95ed\u4e24\u5957\u914d\u7f6e\u91cc\u7684\u79fb\u52a8\u4fe1\u53f7\u504f\u79fb\u5168\u90e8\u6062\u590d\u4e3a 0");
-        return buildExpandableFeatureCard(
-                "\u4fe1\u53f7\u683c",
-                "\u8fd9\u4e2a\u603b\u5f00\u5173\u53ea\u63a7\u5236 iOS \u4fe1\u53f7\u683c\uff0c\u5f00\u542f\u548c\u5173\u95ed\u4f1a\u5207\u6362\u4e0b\u9762\u5404\u81ea\u7684\u4e24\u5957\u914d\u7f6e",
-                FeatureToggle.single(
-                        SettingsStore.KEY_IOS_SIGNAL_STYLE,
-                        SettingsStore.DEFAULT_IOS_SIGNAL_STYLE),
-                "Signal", details);
-    }
-
-    private View buildWifiSection() {
-        LinearLayout details = new LinearLayout(this);
-        details.setOrientation(LinearLayout.VERTICAL);
-        addSliderRow(details, "Wi-Fi \u7f29\u653e\u5f3a\u5ea6",
-                "wifi_signal \u56fe\u6807\u7684\u4e13\u5c5e\u7f29\u653e",
-                SettingsStore.KEY_WIFI_SIGNAL_FACTOR, SettingsStore.DEFAULT_WIFI_SIGNAL_FACTOR, 0, 160, "%");
-        addDivider(details);
-        addSliderRow(details, "Wi-Fi \u5bbd\u5ea6",
-                "\u81ea\u7ed8 Wi-Fi \u5bb9\u5668\u7684\u5e03\u5c40\u5bbd\u5ea6",
-                SettingsStore.KEY_IOS_WIFI_WIDTH, SettingsStore.DEFAULT_IOS_WIFI_WIDTH, 10, 60, "dp");
-        addDivider(details);
-        addSliderRow(details, "Wi-Fi \u9ad8\u5ea6",
-                "\u81ea\u7ed8 Wi-Fi \u5bb9\u5668\u7684\u5e03\u5c40\u9ad8\u5ea6",
-                SettingsStore.KEY_IOS_WIFI_HEIGHT, SettingsStore.DEFAULT_IOS_WIFI_HEIGHT, 8, 60, "dp");
-        addDivider(details);
-        addSliderRow(details, "Wi-Fi \u6c34\u5e73\u504f\u79fb",
-                "\u6b63\u6570\u5411\u53f3\uff0c\u8d1f\u6570\u5411\u5de6",
-                SettingsStore.KEY_IOS_WIFI_OFFSET_X, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_X, -80, 80, "dp");
-        addDivider(details);
-        addSliderRow(details, "Wi-Fi \u5782\u76f4\u504f\u79fb",
-                "\u6b63\u6570\u5411\u4e0b\uff0c\u8d1f\u6570\u5411\u4e0a",
-                SettingsStore.KEY_IOS_WIFI_OFFSET_Y, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_Y, -80, 80, "dp");
-        return buildExpandableFeatureCard(
-                "Wi-Fi",
-                "\u6839\u636e SystemUI \u4e0b\u53d1\u7684 wifi_signal \u8d44\u6e90\u52a8\u6001\u7ed8\u5236 Wi-Fi \u5f3a\u5ea6",
-                FeatureToggle.single(SettingsStore.KEY_IOS_WIFI_STYLE, SettingsStore.DEFAULT_IOS_WIFI_STYLE),
-                "Wi-Fi", details);
-    }
-
     private View buildTimeCard() {
         LinearLayout card = card(colorSurface, 28);
         addSwitchRow(card, "\u65f6\u95f4\u663e\u793a\u661f\u671f",
@@ -550,82 +463,6 @@ public class MainActivity extends Activity {
         action.setOnClickListener(v -> startActivity(new Intent(this, SignalDebugActivity.class)));
         card.addView(action, matchWrapWithTop(16));
 
-        return card;
-    }
-
-    private LinearLayout buildExpandableFeatureCard(String titleText, String subtitleText, FeatureToggle toggleConfig,
-            String badgeText, LinearLayout details) {
-        LinearLayout card = card(colorFeatureSurface, colorFeatureStroke, 28);
-
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-
-        LinearLayout textColumn = new LinearLayout(this);
-        textColumn.setOrientation(LinearLayout.VERTICAL);
-
-        TextView badge = chip(badgeText, colorSurfaceStrong, colorPrimary);
-        textColumn.addView(badge, matchWrap());
-
-        TextView title = new TextView(this);
-        title.setText(titleText);
-        title.setTextColor(colorText);
-        title.setTextSize(20);
-        title.setPadding(0, dp(10), 0, 0);
-        textColumn.addView(title, matchWrap());
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(14);
-        subtitle.setPadding(0, dp(6), 0, 0);
-        textColumn.addView(subtitle, matchWrap());
-
-        LinearLayout controls = new LinearLayout(this);
-        controls.setOrientation(LinearLayout.VERTICAL);
-        controls.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-
-        if (!toggleConfig.readOnly) {
-            Switch toggle = new Switch(this);
-            toggle.setChecked(readFeatureToggle(toggleConfig));
-            toggle.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) ->
-                    putFeatureToggle(toggleConfig, isChecked));
-            controls.addView(toggle, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT));
-        } else {
-            TextView followTag = chip("\u8ddf\u968f\u4fe1\u53f7\u683c", colorSurfaceStrong, colorPrimary);
-            controls.addView(followTag, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT));
-        }
-
-        TextView expand = new TextView(this);
-        expand.setText("\u5c55\u5f00");
-        expand.setTextColor(colorPrimary);
-        expand.setTextSize(13);
-        expand.setPadding(0, dp(6), 0, 0);
-        controls.addView(expand, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        header.addView(textColumn, new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        header.addView(controls, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        details.setVisibility(View.GONE);
-        details.setPadding(0, dp(16), 0, 0);
-
-        header.setOnClickListener(v -> {
-            boolean expanded = details.getVisibility() == View.VISIBLE;
-            details.setVisibility(expanded ? View.GONE : View.VISIBLE);
-            expand.setText(expanded ? "\u5c55\u5f00" : "\u6536\u8d77");
-        });
-
-        card.addView(header, matchWrap());
-        card.addView(details, matchWrap());
         return card;
     }
 
@@ -874,56 +711,6 @@ public class MainActivity extends Activity {
         root.addView(subtitle, matchWrapWithTop(2));
     }
 
-    private void addSignalProfileRows(LinearLayout root, boolean enabledProfile) {
-        String factorKey = enabledProfile
-                ? SettingsStore.KEY_MOBILE_SIGNAL_FACTOR
-                : SettingsStore.KEY_MOBILE_SIGNAL_FACTOR_OFF;
-        int factorDefault = enabledProfile
-                ? SettingsStore.DEFAULT_MOBILE_SIGNAL_FACTOR
-                : SettingsStore.DEFAULT_MOBILE_SIGNAL_FACTOR_OFF;
-        String factorFallbackKey = SettingsStore.KEY_MOBILE_SIGNAL_FACTOR;
-        int factorFallbackDefault = SettingsStore.DEFAULT_MOBILE_SIGNAL_FACTOR;
-        addSliderRowWithFallback(root, "\u4fe1\u53f7\u683c\u7f29\u653e\u5f3a\u5ea6",
-                "mobile_signal \u56fe\u6807\u7684\u4e13\u5c5e\u7f29\u653e",
-                factorKey, factorDefault, factorFallbackKey, factorFallbackDefault, 0, 160, "%");
-        addDivider(root);
-        addOffsetSliderWithFallback(root, "\u684c\u9762\u5de6\u53f3\u504f\u79fb",
-                "\u684c\u9762\u72b6\u6001\u680f\u4e0b\u7684\u4fe1\u53f7\u683c\u4f4d\u7f6e\u8c03\u6574\u3002\u6b63\u6570\u5411\u53f3\uff0c\u8d1f\u6570\u5411\u5de6",
-                enabledProfile ? SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X : SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X_OFF,
-                enabledProfile ? SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X : SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X_OFF,
-                SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X);
-        addDivider(root);
-        addOffsetSliderWithFallback(root, "\u684c\u9762\u4e0a\u4e0b\u504f\u79fb",
-                "\u684c\u9762\u72b6\u6001\u680f\u4e0b\u7684\u4fe1\u53f7\u683c\u9ad8\u5ea6\u8c03\u6574\u3002\u6b63\u6570\u5411\u4e0b\uff0c\u8d1f\u6570\u5411\u4e0a",
-                enabledProfile ? SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y : SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y_OFF,
-                enabledProfile ? SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y : SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y_OFF,
-                SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y);
-        addDivider(root);
-        addOffsetSliderWithFallback(root, "\u9501\u5c4f\u5de6\u53f3\u504f\u79fb",
-                "\u9501\u5c4f\u53f3\u4e0a\u89d2\u4fe1\u53f7\u683c\u7684\u4f4d\u7f6e\u8c03\u6574\u3002\u6b63\u6570\u5411\u53f3\uff0c\u8d1f\u6570\u5411\u5de6",
-                enabledProfile ? SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X : SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X_OFF,
-                enabledProfile ? SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X : SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X_OFF,
-                SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X);
-        addDivider(root);
-        addOffsetSliderWithFallback(root, "\u9501\u5c4f\u4e0a\u4e0b\u504f\u79fb",
-                "\u9501\u5c4f\u53f3\u4e0a\u89d2\u4fe1\u53f7\u683c\u7684\u9ad8\u5ea6\u8c03\u6574\u3002\u6b63\u6570\u5411\u4e0b\uff0c\u8d1f\u6570\u5411\u4e0a",
-                enabledProfile ? SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y : SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y_OFF,
-                enabledProfile ? SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y : SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y_OFF,
-                SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y);
-        addDivider(root);
-        addOffsetSliderWithFallback(root, "\u63a7\u5236\u4e2d\u5fc3\u5de6\u53f3\u504f\u79fb",
-                "\u63a7\u5236\u4e2d\u5fc3\u548c\u8fd0\u8425\u5546\u533a\u5171\u7528\u8fd9\u7ec4\u4fe1\u53f7\u683c\u53c2\u6570\u3002\u6b63\u6570\u5411\u53f3\uff0c\u8d1f\u6570\u5411\u5de6",
-                enabledProfile ? SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X : SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X_OFF,
-                enabledProfile ? SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X : SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X_OFF,
-                SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X);
-        addDivider(root);
-        addOffsetSliderWithFallback(root, "\u63a7\u5236\u4e2d\u5fc3\u4e0a\u4e0b\u504f\u79fb",
-                "\u63a7\u5236\u4e2d\u5fc3\u548c\u8fd0\u8425\u5546\u533a\u5171\u7528\u8fd9\u7ec4\u4fe1\u53f7\u683c\u53c2\u6570\u3002\u6b63\u6570\u5411\u4e0b\uff0c\u8d1f\u6570\u5411\u4e0a",
-                enabledProfile ? SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y : SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y_OFF,
-                enabledProfile ? SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y : SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y_OFF,
-                SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y);
-    }
-
     private void showTopMenu(View anchor) {
         PopupMenu popup = new PopupMenu(this, anchor);
         popup.getMenu().add(0, MENU_IMPORT, 0, "\u5bfc\u5165\u914d\u7f6e");
@@ -957,15 +744,6 @@ public class MainActivity extends Activity {
         return prefs.getInt(key, defaultValue);
     }
 
-    private boolean readFeatureToggle(FeatureToggle toggleConfig) {
-        boolean first = prefs.getBoolean(toggleConfig.primaryKey, toggleConfig.primaryDefaultValue);
-        if (toggleConfig.secondaryKey == null) {
-            return first;
-        }
-        boolean second = prefs.getBoolean(toggleConfig.secondaryKey, toggleConfig.secondaryDefaultValue);
-        return first && second;
-    }
-
     private int getIntValueWithFallback(String key, int defaultValue, String fallbackKey, int fallbackDefaultValue) {
         if (prefs.contains(key)) {
             return prefs.getInt(key, defaultValue);
@@ -975,16 +753,6 @@ public class MainActivity extends Activity {
 
     private void putBooleanSetting(String key, boolean value) {
         prefs.edit().putBoolean(key, value).apply();
-        SettingsStore.notifyChanged(this);
-        invalidatePreview();
-    }
-
-    private void putFeatureToggle(FeatureToggle toggleConfig, boolean value) {
-        SharedPreferences.Editor editor = prefs.edit().putBoolean(toggleConfig.primaryKey, value);
-        if (toggleConfig.secondaryKey != null) {
-            editor.putBoolean(toggleConfig.secondaryKey, value);
-        }
-        editor.apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
     }
@@ -1555,34 +1323,4 @@ public class MainActivity extends Activity {
         }
     }
 
-    private static final class FeatureToggle {
-        final String primaryKey;
-        final boolean primaryDefaultValue;
-        final String secondaryKey;
-        final boolean secondaryDefaultValue;
-        final boolean readOnly;
-
-        private FeatureToggle(String primaryKey, boolean primaryDefaultValue,
-                String secondaryKey, boolean secondaryDefaultValue, boolean readOnly) {
-            this.primaryKey = primaryKey;
-            this.primaryDefaultValue = primaryDefaultValue;
-            this.secondaryKey = secondaryKey;
-            this.secondaryDefaultValue = secondaryDefaultValue;
-            this.readOnly = readOnly;
-        }
-
-        static FeatureToggle createLinked(String primaryKey, boolean primaryDefaultValue,
-                String secondaryKey, boolean secondaryDefaultValue) {
-            return new FeatureToggle(primaryKey, primaryDefaultValue, secondaryKey, secondaryDefaultValue, false);
-        }
-
-        static FeatureToggle single(String primaryKey, boolean primaryDefaultValue) {
-            return new FeatureToggle(primaryKey, primaryDefaultValue, null, false, false);
-        }
-
-        static FeatureToggle readOnlyLinked(String primaryKey, boolean primaryDefaultValue,
-                String secondaryKey, boolean secondaryDefaultValue) {
-            return new FeatureToggle(primaryKey, primaryDefaultValue, secondaryKey, secondaryDefaultValue, true);
-        }
-    }
 }

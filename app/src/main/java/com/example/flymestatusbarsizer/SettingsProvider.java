@@ -79,7 +79,6 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_IOS_WIFI_HEIGHT, prefs.getInt(SettingsStore.KEY_IOS_WIFI_HEIGHT, SettingsStore.DEFAULT_IOS_WIFI_HEIGHT));
         add(cursor, SettingsStore.KEY_IOS_WIFI_OFFSET_X, prefs.getInt(SettingsStore.KEY_IOS_WIFI_OFFSET_X, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_X));
         add(cursor, SettingsStore.KEY_IOS_WIFI_OFFSET_Y, prefs.getInt(SettingsStore.KEY_IOS_WIFI_OFFSET_Y, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_Y));
-        add(cursor, SettingsStore.KEY_IOS_WIFI_MARGIN_END, prefs.getInt(SettingsStore.KEY_IOS_WIFI_MARGIN_END, SettingsStore.DEFAULT_IOS_WIFI_MARGIN_END));
         add(cursor, SettingsStore.KEY_ACTIVITY_ICON_FACTOR, prefs.getInt(SettingsStore.KEY_ACTIVITY_ICON_FACTOR, SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR));
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_OFFSET_X, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X));
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, prefs.getInt(SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y, SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y));

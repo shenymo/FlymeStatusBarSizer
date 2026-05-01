@@ -4471,7 +4471,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         int iosWifiHeight = SettingsStore.DEFAULT_IOS_WIFI_HEIGHT;
         int iosWifiOffsetX = SettingsStore.DEFAULT_IOS_WIFI_OFFSET_X;
         int iosWifiOffsetY = SettingsStore.DEFAULT_IOS_WIFI_OFFSET_Y;
-        int iosWifiMarginEnd = SettingsStore.DEFAULT_IOS_WIFI_MARGIN_END;
         int activityIconFactor = SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR;
         int connectionRateOffsetX = SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X;
         int connectionRateOffsetY = SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y;
@@ -4721,8 +4720,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                 iosWifiOffsetX = parseInt(value, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_X);
             } else if (SettingsStore.KEY_IOS_WIFI_OFFSET_Y.equals(key)) {
                 iosWifiOffsetY = parseInt(value, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_Y);
-            } else if (SettingsStore.KEY_IOS_WIFI_MARGIN_END.equals(key)) {
-                iosWifiMarginEnd = parseInt(value, SettingsStore.DEFAULT_IOS_WIFI_MARGIN_END);
             } else if (SettingsStore.KEY_ACTIVITY_ICON_FACTOR.equals(key)) {
                 activityIconFactor = parseInt(value, SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR);
             } else if (SettingsStore.KEY_CONNECTION_RATE_OFFSET_X.equals(key)) {

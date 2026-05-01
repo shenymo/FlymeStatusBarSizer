@@ -61,7 +61,6 @@ final class SettingsStore {
     static final String KEY_IOS_WIFI_HEIGHT = "ios_wifi_height";
     static final String KEY_IOS_WIFI_OFFSET_X = "ios_wifi_offset_x";
     static final String KEY_IOS_WIFI_OFFSET_Y = "ios_wifi_offset_y";
-    static final String KEY_IOS_WIFI_MARGIN_END = "ios_wifi_margin_end";
     static final String KEY_ACTIVITY_ICON_FACTOR = "activity_icon_factor";
     static final String KEY_CONNECTION_RATE_OFFSET_X = "connection_rate_offset_x";
     static final String KEY_CONNECTION_RATE_OFFSET_Y = "connection_rate_offset_y";
@@ -139,7 +138,6 @@ final class SettingsStore {
     static final int DEFAULT_IOS_WIFI_HEIGHT = 16;
     static final int DEFAULT_IOS_WIFI_OFFSET_X = 2;
     static final int DEFAULT_IOS_WIFI_OFFSET_Y = 1;
-    static final int DEFAULT_IOS_WIFI_MARGIN_END = 0;
     static final int DEFAULT_ACTIVITY_ICON_FACTOR = 75;
     static final int DEFAULT_CONNECTION_RATE_OFFSET_X = 0;
     static final int DEFAULT_CONNECTION_RATE_OFFSET_Y = -3;
@@ -210,7 +208,6 @@ final class SettingsStore {
             KEY_IOS_WIFI_HEIGHT,
             KEY_IOS_WIFI_OFFSET_X,
             KEY_IOS_WIFI_OFFSET_Y,
-            KEY_IOS_WIFI_MARGIN_END,
             KEY_ACTIVITY_ICON_FACTOR,
             KEY_CONNECTION_RATE_OFFSET_X,
             KEY_CONNECTION_RATE_OFFSET_Y,
@@ -365,8 +362,6 @@ final class SettingsStore {
                 return DEFAULT_IOS_WIFI_OFFSET_X;
             case KEY_IOS_WIFI_OFFSET_Y:
                 return DEFAULT_IOS_WIFI_OFFSET_Y;
-            case KEY_IOS_WIFI_MARGIN_END:
-                return DEFAULT_IOS_WIFI_MARGIN_END;
             case KEY_ACTIVITY_ICON_FACTOR:
                 return DEFAULT_ACTIVITY_ICON_FACTOR;
             case KEY_CONNECTION_RATE_OFFSET_X:
@@ -436,7 +431,6 @@ final class SettingsStore {
             case KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y:
             case KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X_OFF:
             case KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y_OFF:
-            case KEY_IOS_WIFI_MARGIN_END:
             case KEY_IOS_BATTERY_STYLE:
             case KEY_IOS_SIGNAL_STYLE:
             case KEY_IOS_NETWORK_TYPE_STYLE:
