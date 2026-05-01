@@ -12,26 +12,40 @@ final class SettingsStore {
     static final String KEY_ENABLED = "enabled";
     static final String KEY_GLOBAL_ICON_SCALE = "global_icon_scale";
     static final String KEY_MOBILE_SIGNAL_FACTOR = "mobile_signal_factor";
+    static final String KEY_MOBILE_SIGNAL_FACTOR_OFF = "mobile_signal_factor_off";
     static final String KEY_WIFI_SIGNAL_FACTOR = "wifi_signal_factor";
     static final String KEY_BATTERY_FACTOR = "battery_factor";
     static final String KEY_STATUS_ICON_FACTOR = "status_icon_factor";
     static final String KEY_NETWORK_TYPE_FACTOR = "network_type_factor";
+    static final String KEY_NETWORK_TYPE_FACTOR_OFF = "network_type_factor_off";
     static final String KEY_NETWORK_TYPE_OFFSET_X = "network_type_offset_x";
     static final String KEY_NETWORK_TYPE_OFFSET_Y = "network_type_offset_y";
     static final String KEY_NETWORK_TYPE_DESKTOP_OFFSET_X = "network_type_desktop_offset_x";
     static final String KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y = "network_type_desktop_offset_y";
+    static final String KEY_NETWORK_TYPE_DESKTOP_OFFSET_X_OFF = "network_type_desktop_offset_x_off";
+    static final String KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y_OFF = "network_type_desktop_offset_y_off";
     static final String KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X = "network_type_keyguard_offset_x";
     static final String KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y = "network_type_keyguard_offset_y";
+    static final String KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X_OFF = "network_type_keyguard_offset_x_off";
+    static final String KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y_OFF = "network_type_keyguard_offset_y_off";
     static final String KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X = "network_type_control_center_offset_x";
     static final String KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y = "network_type_control_center_offset_y";
+    static final String KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X_OFF = "network_type_control_center_offset_x_off";
+    static final String KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y_OFF = "network_type_control_center_offset_y_off";
     static final String KEY_IOS_SIGNAL_OFFSET_X = "ios_signal_offset_x";
     static final String KEY_IOS_SIGNAL_OFFSET_Y = "ios_signal_offset_y";
     static final String KEY_IOS_SIGNAL_DESKTOP_OFFSET_X = "ios_signal_desktop_offset_x";
     static final String KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y = "ios_signal_desktop_offset_y";
+    static final String KEY_IOS_SIGNAL_DESKTOP_OFFSET_X_OFF = "ios_signal_desktop_offset_x_off";
+    static final String KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y_OFF = "ios_signal_desktop_offset_y_off";
     static final String KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X = "ios_signal_keyguard_offset_x";
     static final String KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y = "ios_signal_keyguard_offset_y";
+    static final String KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X_OFF = "ios_signal_keyguard_offset_x_off";
+    static final String KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y_OFF = "ios_signal_keyguard_offset_y_off";
     static final String KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X = "ios_signal_control_center_offset_x";
     static final String KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y = "ios_signal_control_center_offset_y";
+    static final String KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X_OFF = "ios_signal_control_center_offset_x_off";
+    static final String KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y_OFF = "ios_signal_control_center_offset_y_off";
     static final String KEY_IOS_BATTERY_WIDTH = "ios_battery_width";
     static final String KEY_IOS_BATTERY_HEIGHT = "ios_battery_height";
     static final String KEY_IOS_BATTERY_OFFSET_X = "ios_battery_offset_x";
@@ -70,26 +84,40 @@ final class SettingsStore {
     static final boolean DEFAULT_ENABLED = true;
     static final int DEFAULT_GLOBAL_ICON_SCALE = 125;
     static final int DEFAULT_MOBILE_SIGNAL_FACTOR = 50;
+    static final int DEFAULT_MOBILE_SIGNAL_FACTOR_OFF = DEFAULT_MOBILE_SIGNAL_FACTOR;
     static final int DEFAULT_WIFI_SIGNAL_FACTOR = 70;
     static final int DEFAULT_BATTERY_FACTOR = 100;
     static final int DEFAULT_STATUS_ICON_FACTOR = 46;
     static final int DEFAULT_NETWORK_TYPE_FACTOR = 145;
+    static final int DEFAULT_NETWORK_TYPE_FACTOR_OFF = DEFAULT_NETWORK_TYPE_FACTOR;
     static final int DEFAULT_NETWORK_TYPE_OFFSET_X = 0;
     static final int DEFAULT_NETWORK_TYPE_OFFSET_Y = -6;
     static final int DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X = 0;
     static final int DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y = -3;
+    static final int DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X_OFF = DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X;
+    static final int DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y_OFF = DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y;
     static final int DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X = 0;
     static final int DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y = -3;
+    static final int DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X_OFF = DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X;
+    static final int DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y_OFF = DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y;
     static final int DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X = 0;
     static final int DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y = -3;
+    static final int DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X_OFF = DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X;
+    static final int DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y_OFF = DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y;
     static final int DEFAULT_IOS_SIGNAL_OFFSET_X = 6;
     static final int DEFAULT_IOS_SIGNAL_OFFSET_Y = 0;
     static final int DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X = 8;
     static final int DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y = 6;
+    static final int DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X_OFF = DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X;
+    static final int DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y_OFF = DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y;
     static final int DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X = 0;
     static final int DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y = 2;
+    static final int DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X_OFF = DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X;
+    static final int DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y_OFF = DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y;
     static final int DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X = 0;
     static final int DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y = 2;
+    static final int DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X_OFF = DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X;
+    static final int DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y_OFF = DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y;
     static final int DEFAULT_IOS_BATTERY_WIDTH = 20;
     static final int DEFAULT_IOS_BATTERY_HEIGHT = 16;
     static final int DEFAULT_IOS_BATTERY_OFFSET_X = 0;
@@ -121,26 +149,40 @@ final class SettingsStore {
     static final String[] INT_KEYS = {
             KEY_GLOBAL_ICON_SCALE,
             KEY_MOBILE_SIGNAL_FACTOR,
+            KEY_MOBILE_SIGNAL_FACTOR_OFF,
             KEY_WIFI_SIGNAL_FACTOR,
             KEY_BATTERY_FACTOR,
             KEY_STATUS_ICON_FACTOR,
             KEY_NETWORK_TYPE_FACTOR,
+            KEY_NETWORK_TYPE_FACTOR_OFF,
             KEY_NETWORK_TYPE_OFFSET_X,
             KEY_NETWORK_TYPE_OFFSET_Y,
             KEY_NETWORK_TYPE_DESKTOP_OFFSET_X,
             KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y,
+            KEY_NETWORK_TYPE_DESKTOP_OFFSET_X_OFF,
+            KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y_OFF,
             KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X,
             KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y,
+            KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X_OFF,
+            KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y_OFF,
             KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X,
             KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y,
+            KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X_OFF,
+            KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y_OFF,
             KEY_IOS_SIGNAL_OFFSET_X,
             KEY_IOS_SIGNAL_OFFSET_Y,
             KEY_IOS_SIGNAL_DESKTOP_OFFSET_X,
             KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y,
+            KEY_IOS_SIGNAL_DESKTOP_OFFSET_X_OFF,
+            KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y_OFF,
             KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X,
             KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y,
+            KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X_OFF,
+            KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y_OFF,
             KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X,
             KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y,
+            KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X_OFF,
+            KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y_OFF,
             KEY_IOS_BATTERY_WIDTH,
             KEY_IOS_BATTERY_HEIGHT,
             KEY_IOS_BATTERY_OFFSET_X,
@@ -207,6 +249,8 @@ final class SettingsStore {
                 return DEFAULT_GLOBAL_ICON_SCALE;
             case KEY_MOBILE_SIGNAL_FACTOR:
                 return DEFAULT_MOBILE_SIGNAL_FACTOR;
+            case KEY_MOBILE_SIGNAL_FACTOR_OFF:
+                return DEFAULT_MOBILE_SIGNAL_FACTOR_OFF;
             case KEY_WIFI_SIGNAL_FACTOR:
                 return DEFAULT_WIFI_SIGNAL_FACTOR;
             case KEY_BATTERY_FACTOR:
@@ -215,6 +259,8 @@ final class SettingsStore {
                 return DEFAULT_STATUS_ICON_FACTOR;
             case KEY_NETWORK_TYPE_FACTOR:
                 return DEFAULT_NETWORK_TYPE_FACTOR;
+            case KEY_NETWORK_TYPE_FACTOR_OFF:
+                return DEFAULT_NETWORK_TYPE_FACTOR_OFF;
             case KEY_NETWORK_TYPE_OFFSET_X:
                 return DEFAULT_NETWORK_TYPE_OFFSET_X;
             case KEY_NETWORK_TYPE_OFFSET_Y:
@@ -223,14 +269,26 @@ final class SettingsStore {
                 return DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X;
             case KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y:
                 return DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y;
+            case KEY_NETWORK_TYPE_DESKTOP_OFFSET_X_OFF:
+                return DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X_OFF;
+            case KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y_OFF:
+                return DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y_OFF;
             case KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X:
                 return DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X;
             case KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y:
                 return DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y;
+            case KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X_OFF:
+                return DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X_OFF;
+            case KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y_OFF:
+                return DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y_OFF;
             case KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X:
                 return DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X;
             case KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y:
                 return DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y;
+            case KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X_OFF:
+                return DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X_OFF;
+            case KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y_OFF:
+                return DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y_OFF;
             case KEY_IOS_SIGNAL_OFFSET_X:
                 return DEFAULT_IOS_SIGNAL_OFFSET_X;
             case KEY_IOS_SIGNAL_OFFSET_Y:
@@ -239,14 +297,26 @@ final class SettingsStore {
                 return DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X;
             case KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y:
                 return DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y;
+            case KEY_IOS_SIGNAL_DESKTOP_OFFSET_X_OFF:
+                return DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X_OFF;
+            case KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y_OFF:
+                return DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y_OFF;
             case KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X:
                 return DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X;
             case KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y:
                 return DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y;
+            case KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X_OFF:
+                return DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X_OFF;
+            case KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y_OFF:
+                return DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y_OFF;
             case KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X:
                 return DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X;
             case KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y:
                 return DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y;
+            case KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X_OFF:
+                return DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X_OFF;
+            case KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y_OFF:
+                return DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y_OFF;
             case KEY_IOS_BATTERY_WIDTH:
                 return DEFAULT_IOS_BATTERY_WIDTH;
             case KEY_IOS_BATTERY_HEIGHT:

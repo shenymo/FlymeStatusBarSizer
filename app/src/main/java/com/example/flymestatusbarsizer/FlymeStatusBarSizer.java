@@ -850,9 +850,11 @@ public class FlymeStatusBarSizer extends XposedModule {
                 if (signal instanceof ImageView) {
                     applyReferenceSignalImageSizing((ImageView) signal, config);
                 } else {
-                    scaleChild(root, "mobile_signal", config.scaled(config.mobileSignalFactor),
-                            config.scaled(config.mobileSignalFactor));
+                    float mobileSignalScale = config.scaled(config.getActiveMobileSignalFactor());
+                    scaleChild(root, "mobile_signal", mobileSignalScale, mobileSignalScale);
                     applyIosSignalStyle(root, config);
+                    offsetChild(root, "mobile_signal",
+                            getIosSignalOffsetX(root, config), getIosSignalOffsetY(root, config));
                 }
                 applyKnownNetworkTypeStyle(root, config);
                 View type = findSystemUiChild(root, "mobile_type");
@@ -860,18 +862,20 @@ public class FlymeStatusBarSizer extends XposedModule {
                     applyReferenceNetworkTypeSizing((ImageView) type, config);
                 }
             } else {
-                scaleChild(root, "mobile_signal", config.scaled(config.mobileSignalFactor),
-                        config.scaled(config.mobileSignalFactor));
+                float mobileSignalScale = config.scaled(config.getActiveMobileSignalFactor());
+                scaleChild(root, "mobile_signal", mobileSignalScale, mobileSignalScale);
                 applyIosSignalStyle(root, config);
+                offsetChild(root, "mobile_signal",
+                        getIosSignalOffsetX(root, config), getIosSignalOffsetY(root, config));
                 applyKnownNetworkTypeStyle(root, config);
             }
             scaleChild(root, "wifi_signal", config.scaled(config.wifiSignalFactor), config.scaled(config.wifiSignalFactor));
             applyIosWifiStyle(root, config);
             if (!shouldUseDesktopSignalReference(root)) {
-                float networkTypeScale = config.scaled(config.networkTypeFactor);
+                float networkTypeScale = config.scaled(config.getActiveNetworkTypeFactor());
                 scaleChild(root, "mobile_type", networkTypeScale, networkTypeScale);
             }
-            float networkTypeScale = config.scaled(config.networkTypeFactor);
+            float networkTypeScale = config.scaled(config.getActiveNetworkTypeFactor());
             scaleChild(root, "mobile_volte", networkTypeScale, networkTypeScale);
             offsetNetworkType(root, getNetworkTypeOffsetX(root, config), getNetworkTypeOffsetY(root, config));
             hideActivityArrows(root);
@@ -950,7 +954,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void applySignalImageSizing(ImageView imageView, Config config) {
-        scaleView(imageView, config.scaled(config.mobileSignalFactor), config.scaled(config.mobileSignalFactor));
+        float signalScale = config.scaled(config.getActiveMobileSignalFactor());
+        scaleView(imageView, signalScale, signalScale);
         applyIosSignalImageView(imageView, config);
     }
 
@@ -963,7 +968,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (width <= 0 || height <= 0) {
             int baseSize = getSystemUiDimen(imageView.getContext(), "status_bar_mobile_signal_size");
             if (baseSize > 0) {
-                width = Math.round(baseSize * config.scaled(config.mobileSignalFactor));
+                width = Math.round(baseSize * config.scaled(config.getActiveMobileSignalFactor()));
                 height = width;
             }
         }
@@ -979,16 +984,14 @@ public class FlymeStatusBarSizer extends XposedModule {
                 imageView.requestLayout();
             }
         } else {
-            scaleView(imageView, config.scaled(config.mobileSignalFactor), config.scaled(config.mobileSignalFactor));
+            float signalScale = config.scaled(config.getActiveMobileSignalFactor());
+            scaleView(imageView, signalScale, signalScale);
         }
         if (config.iosSignalStyle) {
             applyIosSignalImageView(imageView, config, offsetX, offsetY, false);
-            imageView.setTranslationX(dp(imageView, offsetX));
-            imageView.setTranslationY(dp(imageView, offsetY));
-        } else {
-            imageView.setTranslationX(0f);
-            imageView.setTranslationY(0f);
         }
+        imageView.setTranslationX(dp(imageView, offsetX));
+        imageView.setTranslationY(dp(imageView, offsetY));
     }
 
     private static void applyReferenceNetworkTypeSizing(ImageView imageView, Config config) {
@@ -1002,12 +1005,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (width <= 0 || height <= 0) {
             int baseHeight = getSystemUiDimen(imageView.getContext(), "status_bar_mobile_type_size");
             if (baseHeight <= 0) {
-                scaleView(imageView, config.scaled(config.networkTypeFactor), config.scaled(config.networkTypeFactor));
+                float networkTypeScale = config.scaled(config.getActiveNetworkTypeFactor());
+                scaleView(imageView, networkTypeScale, networkTypeScale);
                 imageView.setTranslationX(dp(imageView, offsetX));
                 imageView.setTranslationY(dp(imageView, offsetY));
                 return;
             }
-            float scale = config.scaled(config.networkTypeFactor);
+            float scale = config.scaled(config.getActiveNetworkTypeFactor());
             Drawable drawable = currentDrawable;
             if (drawable != null) {
                 int intrinsicWidth = Math.max(drawable.getIntrinsicWidth(), 1);
@@ -2423,7 +2427,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         Config config = Config.load(imageView.getContext());
-        float scale = config.enabled ? config.scaled(config.networkTypeFactor) : 1f;
+        float scale = config.enabled ? config.scaled(config.getActiveNetworkTypeFactor()) : 1f;
         int baseWidth = Math.max(1, drawable.getIntrinsicWidth());
         int baseHeight = Math.max(1, drawable.getIntrinsicHeight());
         ORIGINAL_SIZES.put(imageView, new int[]{baseWidth, baseHeight});
@@ -2703,46 +2707,22 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static int getIosSignalOffsetX(View view, Config config) {
         int scene = resolveSignalScene(view);
-        if (scene == SIGNAL_SCENE_KEYGUARD) {
-            return config.iosSignalKeyguardOffsetX;
-        }
-        if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
-            return config.iosSignalControlCenterOffsetX;
-        }
-        return config.iosSignalDesktopOffsetX;
+        return config.getActiveSignalOffsetX(scene);
     }
 
     private static int getIosSignalOffsetY(View view, Config config) {
         int scene = resolveSignalScene(view);
-        if (scene == SIGNAL_SCENE_KEYGUARD) {
-            return config.iosSignalKeyguardOffsetY;
-        }
-        if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
-            return config.iosSignalControlCenterOffsetY;
-        }
-        return config.iosSignalDesktopOffsetY;
+        return config.getActiveSignalOffsetY(scene);
     }
 
     private static int getNetworkTypeOffsetX(View view, Config config) {
         int scene = resolveSignalScene(view);
-        if (scene == SIGNAL_SCENE_KEYGUARD) {
-            return config.networkTypeKeyguardOffsetX;
-        }
-        if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
-            return config.networkTypeControlCenterOffsetX;
-        }
-        return config.networkTypeDesktopOffsetX;
+        return config.getActiveNetworkTypeOffsetX(scene);
     }
 
     private static int getNetworkTypeOffsetY(View view, Config config) {
         int scene = resolveSignalScene(view);
-        if (scene == SIGNAL_SCENE_KEYGUARD) {
-            return config.networkTypeKeyguardOffsetY;
-        }
-        if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
-            return config.networkTypeControlCenterOffsetY;
-        }
-        return config.networkTypeDesktopOffsetY;
+        return config.getActiveNetworkTypeOffsetY(scene);
     }
 
     private static int resolveSignalScene(View view) {
@@ -4047,25 +4027,41 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static final class Config {
+        private static final int UNSET_PROFILE_VALUE = Integer.MIN_VALUE;
+
         boolean enabled = SettingsStore.DEFAULT_ENABLED;
         float globalIconScale = SettingsStore.DEFAULT_GLOBAL_ICON_SCALE / 100f;
         int mobileSignalFactor = SettingsStore.DEFAULT_MOBILE_SIGNAL_FACTOR;
+        int mobileSignalFactorOff = UNSET_PROFILE_VALUE;
         int wifiSignalFactor = SettingsStore.DEFAULT_WIFI_SIGNAL_FACTOR;
         int batteryFactor = SettingsStore.DEFAULT_BATTERY_FACTOR;
         int statusIconFactor = SettingsStore.DEFAULT_STATUS_ICON_FACTOR;
         int networkTypeFactor = SettingsStore.DEFAULT_NETWORK_TYPE_FACTOR;
+        int networkTypeFactorOff = UNSET_PROFILE_VALUE;
         int networkTypeDesktopOffsetX = SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X;
         int networkTypeDesktopOffsetY = SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y;
+        int networkTypeDesktopOffsetXOff = UNSET_PROFILE_VALUE;
+        int networkTypeDesktopOffsetYOff = UNSET_PROFILE_VALUE;
         int networkTypeKeyguardOffsetX = SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X;
         int networkTypeKeyguardOffsetY = SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y;
+        int networkTypeKeyguardOffsetXOff = UNSET_PROFILE_VALUE;
+        int networkTypeKeyguardOffsetYOff = UNSET_PROFILE_VALUE;
         int networkTypeControlCenterOffsetX = SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X;
         int networkTypeControlCenterOffsetY = SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y;
+        int networkTypeControlCenterOffsetXOff = UNSET_PROFILE_VALUE;
+        int networkTypeControlCenterOffsetYOff = UNSET_PROFILE_VALUE;
         int iosSignalDesktopOffsetX = SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X;
         int iosSignalDesktopOffsetY = SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y;
+        int iosSignalDesktopOffsetXOff = UNSET_PROFILE_VALUE;
+        int iosSignalDesktopOffsetYOff = UNSET_PROFILE_VALUE;
         int iosSignalKeyguardOffsetX = SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X;
         int iosSignalKeyguardOffsetY = SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y;
+        int iosSignalKeyguardOffsetXOff = UNSET_PROFILE_VALUE;
+        int iosSignalKeyguardOffsetYOff = UNSET_PROFILE_VALUE;
         int iosSignalControlCenterOffsetX = SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X;
         int iosSignalControlCenterOffsetY = SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y;
+        int iosSignalControlCenterOffsetXOff = UNSET_PROFILE_VALUE;
+        int iosSignalControlCenterOffsetYOff = UNSET_PROFILE_VALUE;
         int iosBatteryWidth = SettingsStore.DEFAULT_IOS_BATTERY_WIDTH;
         int iosBatteryHeight = SettingsStore.DEFAULT_IOS_BATTERY_HEIGHT;
         int iosBatteryOffsetX = SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X;
@@ -4098,9 +4094,95 @@ public class FlymeStatusBarSizer extends XposedModule {
             return 1f + ((globalIconScale - 1f) * (factorPercent / 100f));
         }
 
+        int getActiveMobileSignalFactor() {
+            return iosSignalStyle ? mobileSignalFactor : mobileSignalFactorOff;
+        }
+
+        int getActiveNetworkTypeFactor() {
+            return iosNetworkTypeStyle ? networkTypeFactor : networkTypeFactorOff;
+        }
+
+        int getActiveSignalOffsetX(int scene) {
+            if (iosSignalStyle) {
+                if (scene == SIGNAL_SCENE_KEYGUARD) {
+                    return iosSignalKeyguardOffsetX;
+                }
+                if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
+                    return iosSignalControlCenterOffsetX;
+                }
+                return iosSignalDesktopOffsetX;
+            }
+            if (scene == SIGNAL_SCENE_KEYGUARD) {
+                return iosSignalKeyguardOffsetXOff;
+            }
+            if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
+                return iosSignalControlCenterOffsetXOff;
+            }
+            return iosSignalDesktopOffsetXOff;
+        }
+
+        int getActiveSignalOffsetY(int scene) {
+            if (iosSignalStyle) {
+                if (scene == SIGNAL_SCENE_KEYGUARD) {
+                    return iosSignalKeyguardOffsetY;
+                }
+                if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
+                    return iosSignalControlCenterOffsetY;
+                }
+                return iosSignalDesktopOffsetY;
+            }
+            if (scene == SIGNAL_SCENE_KEYGUARD) {
+                return iosSignalKeyguardOffsetYOff;
+            }
+            if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
+                return iosSignalControlCenterOffsetYOff;
+            }
+            return iosSignalDesktopOffsetYOff;
+        }
+
+        int getActiveNetworkTypeOffsetX(int scene) {
+            if (iosNetworkTypeStyle) {
+                if (scene == SIGNAL_SCENE_KEYGUARD) {
+                    return networkTypeKeyguardOffsetX;
+                }
+                if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
+                    return networkTypeControlCenterOffsetX;
+                }
+                return networkTypeDesktopOffsetX;
+            }
+            if (scene == SIGNAL_SCENE_KEYGUARD) {
+                return networkTypeKeyguardOffsetXOff;
+            }
+            if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
+                return networkTypeControlCenterOffsetXOff;
+            }
+            return networkTypeDesktopOffsetXOff;
+        }
+
+        int getActiveNetworkTypeOffsetY(int scene) {
+            if (iosNetworkTypeStyle) {
+                if (scene == SIGNAL_SCENE_KEYGUARD) {
+                    return networkTypeKeyguardOffsetY;
+                }
+                if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
+                    return networkTypeControlCenterOffsetY;
+                }
+                return networkTypeDesktopOffsetY;
+            }
+            if (scene == SIGNAL_SCENE_KEYGUARD) {
+                return networkTypeKeyguardOffsetYOff;
+            }
+            if (scene == SIGNAL_SCENE_CONTROL_CENTER) {
+                return networkTypeControlCenterOffsetYOff;
+            }
+            return networkTypeDesktopOffsetYOff;
+        }
+
         static Config load(Context context) {
             if (context == null) {
-                return new Config();
+                Config config = new Config();
+                config.resolveToggleProfiles();
+                return config;
             }
             rememberSystemUiContext(context);
             long now = SystemClock.uptimeMillis();
@@ -4111,6 +4193,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             Config config = new Config();
             try (Cursor cursor = context.getContentResolver().query(SETTINGS_URI, null, null, null, null)) {
                 if (cursor == null) {
+                    config.resolveToggleProfiles();
                     return config;
                 }
                 int keyColumn = cursor.getColumnIndex("key");
@@ -4120,8 +4203,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                     String value = cursor.getString(valueColumn);
                     config.apply(key, value);
                 }
+                config.resolveToggleProfiles();
             } catch (Throwable ignored) {
             }
+            config.resolveToggleProfiles();
             synchronized (CONFIG_CACHE_LOCK) {
                 CACHED_CONFIG = config;
                 CACHED_CONFIG_UPTIME = now;
@@ -4136,6 +4221,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                 globalIconScale = parseInt(value, SettingsStore.DEFAULT_GLOBAL_ICON_SCALE) / 100f;
             } else if (SettingsStore.KEY_MOBILE_SIGNAL_FACTOR.equals(key)) {
                 mobileSignalFactor = parseInt(value, SettingsStore.DEFAULT_MOBILE_SIGNAL_FACTOR);
+            } else if (SettingsStore.KEY_MOBILE_SIGNAL_FACTOR_OFF.equals(key)) {
+                mobileSignalFactorOff = parseInt(value, SettingsStore.DEFAULT_MOBILE_SIGNAL_FACTOR_OFF);
             } else if (SettingsStore.KEY_WIFI_SIGNAL_FACTOR.equals(key)) {
                 wifiSignalFactor = parseInt(value, SettingsStore.DEFAULT_WIFI_SIGNAL_FACTOR);
             } else if (SettingsStore.KEY_BATTERY_FACTOR.equals(key)) {
@@ -4144,6 +4231,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                 statusIconFactor = parseInt(value, SettingsStore.DEFAULT_STATUS_ICON_FACTOR);
             } else if (SettingsStore.KEY_NETWORK_TYPE_FACTOR.equals(key)) {
                 networkTypeFactor = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_FACTOR);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_FACTOR_OFF.equals(key)) {
+                networkTypeFactorOff = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_FACTOR_OFF);
             } else if (SettingsStore.KEY_NETWORK_TYPE_OFFSET_X.equals(key)) {
                 int legacyValue = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_OFFSET_X);
                 networkTypeDesktopOffsetX = legacyValue;
@@ -4158,26 +4247,50 @@ public class FlymeStatusBarSizer extends XposedModule {
                 networkTypeDesktopOffsetX = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X);
             } else if (SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y.equals(key)) {
                 networkTypeDesktopOffsetY = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_X_OFF.equals(key)) {
+                networkTypeDesktopOffsetXOff = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X_OFF);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_DESKTOP_OFFSET_Y_OFF.equals(key)) {
+                networkTypeDesktopOffsetYOff = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y_OFF);
             } else if (SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X.equals(key)) {
                 networkTypeKeyguardOffsetX = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X);
             } else if (SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y.equals(key)) {
                 networkTypeKeyguardOffsetY = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_X_OFF.equals(key)) {
+                networkTypeKeyguardOffsetXOff = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X_OFF);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_KEYGUARD_OFFSET_Y_OFF.equals(key)) {
+                networkTypeKeyguardOffsetYOff = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y_OFF);
             } else if (SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X.equals(key)) {
                 networkTypeControlCenterOffsetX = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X);
             } else if (SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y.equals(key)) {
                 networkTypeControlCenterOffsetY = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X_OFF.equals(key)) {
+                networkTypeControlCenterOffsetXOff = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X_OFF);
+            } else if (SettingsStore.KEY_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y_OFF.equals(key)) {
+                networkTypeControlCenterOffsetYOff = parseInt(value, SettingsStore.DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_Y_OFF);
             } else if (SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X.equals(key)) {
                 iosSignalDesktopOffsetX = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X);
             } else if (SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y.equals(key)) {
                 iosSignalDesktopOffsetY = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y);
+            } else if (SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X_OFF.equals(key)) {
+                iosSignalDesktopOffsetXOff = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X_OFF);
+            } else if (SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y_OFF.equals(key)) {
+                iosSignalDesktopOffsetYOff = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y_OFF);
             } else if (SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X.equals(key)) {
                 iosSignalKeyguardOffsetX = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X);
             } else if (SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y.equals(key)) {
                 iosSignalKeyguardOffsetY = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y);
+            } else if (SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X_OFF.equals(key)) {
+                iosSignalKeyguardOffsetXOff = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_X_OFF);
+            } else if (SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y_OFF.equals(key)) {
+                iosSignalKeyguardOffsetYOff = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_KEYGUARD_OFFSET_Y_OFF);
             } else if (SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X.equals(key)) {
                 iosSignalControlCenterOffsetX = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X);
             } else if (SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y.equals(key)) {
                 iosSignalControlCenterOffsetY = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y);
+            } else if (SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X_OFF.equals(key)) {
+                iosSignalControlCenterOffsetXOff = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X_OFF);
+            } else if (SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y_OFF.equals(key)) {
+                iosSignalControlCenterOffsetYOff = parseInt(value, SettingsStore.DEFAULT_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y_OFF);
             } else if (SettingsStore.KEY_IOS_BATTERY_WIDTH.equals(key)) {
                 iosBatteryWidth = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_WIDTH);
             } else if (SettingsStore.KEY_IOS_BATTERY_HEIGHT.equals(key)) {
@@ -4232,6 +4345,51 @@ public class FlymeStatusBarSizer extends XposedModule {
                 iosNetworkTypeStyle = "1".equals(value);
             } else if (SettingsStore.KEY_IOS_WIFI_STYLE.equals(key)) {
                 iosWifiStyle = "1".equals(value);
+            }
+        }
+
+        private void resolveToggleProfiles() {
+            if (mobileSignalFactorOff == UNSET_PROFILE_VALUE) {
+                mobileSignalFactorOff = mobileSignalFactor;
+            }
+            if (networkTypeFactorOff == UNSET_PROFILE_VALUE) {
+                networkTypeFactorOff = networkTypeFactor;
+            }
+            if (networkTypeDesktopOffsetXOff == UNSET_PROFILE_VALUE) {
+                networkTypeDesktopOffsetXOff = networkTypeDesktopOffsetX;
+            }
+            if (networkTypeDesktopOffsetYOff == UNSET_PROFILE_VALUE) {
+                networkTypeDesktopOffsetYOff = networkTypeDesktopOffsetY;
+            }
+            if (networkTypeKeyguardOffsetXOff == UNSET_PROFILE_VALUE) {
+                networkTypeKeyguardOffsetXOff = networkTypeKeyguardOffsetX;
+            }
+            if (networkTypeKeyguardOffsetYOff == UNSET_PROFILE_VALUE) {
+                networkTypeKeyguardOffsetYOff = networkTypeKeyguardOffsetY;
+            }
+            if (networkTypeControlCenterOffsetXOff == UNSET_PROFILE_VALUE) {
+                networkTypeControlCenterOffsetXOff = networkTypeControlCenterOffsetX;
+            }
+            if (networkTypeControlCenterOffsetYOff == UNSET_PROFILE_VALUE) {
+                networkTypeControlCenterOffsetYOff = networkTypeControlCenterOffsetY;
+            }
+            if (iosSignalDesktopOffsetXOff == UNSET_PROFILE_VALUE) {
+                iosSignalDesktopOffsetXOff = iosSignalDesktopOffsetX;
+            }
+            if (iosSignalDesktopOffsetYOff == UNSET_PROFILE_VALUE) {
+                iosSignalDesktopOffsetYOff = iosSignalDesktopOffsetY;
+            }
+            if (iosSignalKeyguardOffsetXOff == UNSET_PROFILE_VALUE) {
+                iosSignalKeyguardOffsetXOff = iosSignalKeyguardOffsetX;
+            }
+            if (iosSignalKeyguardOffsetYOff == UNSET_PROFILE_VALUE) {
+                iosSignalKeyguardOffsetYOff = iosSignalKeyguardOffsetY;
+            }
+            if (iosSignalControlCenterOffsetXOff == UNSET_PROFILE_VALUE) {
+                iosSignalControlCenterOffsetXOff = iosSignalControlCenterOffsetX;
+            }
+            if (iosSignalControlCenterOffsetYOff == UNSET_PROFILE_VALUE) {
+                iosSignalControlCenterOffsetYOff = iosSignalControlCenterOffsetY;
             }
         }
 
