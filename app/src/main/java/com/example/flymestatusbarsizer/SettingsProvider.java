@@ -111,6 +111,18 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI,
                 prefs.getString(SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI,
                         SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI));
+        add(cursor, SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,
+                prefs.getBoolean(SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,
+                        SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT));
+        add(cursor, SettingsStore.KEY_MBACK_HIDE_PILL,
+                prefs.getBoolean(SettingsStore.KEY_MBACK_HIDE_PILL,
+                        SettingsStore.DEFAULT_MBACK_HIDE_PILL));
+        add(cursor, SettingsStore.KEY_MBACK_INSET_SIZE,
+                prefs.getInt(SettingsStore.KEY_MBACK_INSET_SIZE,
+                        SettingsStore.DEFAULT_MBACK_INSET_SIZE));
+        add(cursor, SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT,
+                prefs.getInt(SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT,
+                        SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT));
         add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY,
                 prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY, ""));
         add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_LEVEL,

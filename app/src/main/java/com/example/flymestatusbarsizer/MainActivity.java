@@ -216,7 +216,7 @@ public class MainActivity extends Activity {
         page.setOrientation(LinearLayout.VERTICAL);
 
         addSectionLabel(page, "杂项");
-        page.addView(buildMBackLongTouchCard(), matchWrapWithTop(10));
+        page.addView(buildMBackSection(), matchWrapWithTop(10));
         page.addView(buildTimeCard(), matchWrapWithTop(10));
         return page;
     }
@@ -403,23 +403,107 @@ public class MainActivity extends Activity {
                 "网速", details);
     }
 
-    private View buildMBackLongTouchCard() {
-        LinearLayout card = card(colorSurface, 28);
-        addSwitchRow(card, "接管长触 mBack",
+    private View buildMBackSection() {
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+
+        TextView pageHint = new TextView(this);
+        pageHint.setText("分成 3 页来调，先定长触动作，再试沉浸/inset，最后单独压导航栏高度");
+        pageHint.setTextColor(colorSubtext);
+        pageHint.setTextSize(13);
+        details.addView(pageHint, matchWrap());
+
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+        tabs.setPadding(0, dp(14), 0, 0);
+        TextView actionTab = buildSettingsPageTab("长触动作");
+        TextView immersiveTab = buildSettingsPageTab("沉浸 / Inset");
+        TextView heightTab = buildSettingsPageTab("导航栏高度");
+        tabs.addView(actionTab, weightedWrap());
+        tabs.addView(immersiveTab, weightedWrapWithStart(10));
+        tabs.addView(heightTab, weightedWrapWithStart(10));
+        details.addView(tabs, matchWrap());
+
+        FrameLayout pageContainer = new FrameLayout(this);
+        pageContainer.setPadding(0, dp(16), 0, 0);
+        LinearLayout actionPage = buildMBackActionPage();
+        LinearLayout immersivePage = buildMBackImmersivePage();
+        LinearLayout heightPage = buildMBackHeightPage();
+        pageContainer.addView(actionPage, matchWrapFrame());
+        pageContainer.addView(immersivePage, matchWrapFrame());
+        pageContainer.addView(heightPage, matchWrapFrame());
+        details.addView(pageContainer, matchWrap());
+
+        View[] pages = new View[]{actionPage, immersivePage, heightPage};
+        TextView[] pageTabs = new TextView[]{actionTab, immersiveTab, heightTab};
+        bindSettingsPageTabs(pages, pageTabs, 0);
+        actionTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 0));
+        immersiveTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 1));
+        heightTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 2));
+
+        return buildExpandableInfoCard(
+                "MBack",
+                "把 mBack 长触、导航栏透明、底部 inset 和导航栏高度实验项收拢到一组，便于分阶段测试。",
+                "MBack", details);
+    }
+
+    private LinearLayout buildMBackActionPage() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        addProfileSectionHeader(page, "长触动作",
+                "只接管 mBack 长触分支，保留单击和系统其他来源。目标可以填 URL、自定义 scheme 或 intent://。");
+        addSwitchRow(page, "接管长触 mBack",
                 "拦截 Flyme SystemUI 里原本唤醒 AICY 的 mBack/Home 长触入口，改为发送模块配置的 Intent。",
                 SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
                 SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED);
-        addDivider(card);
-        addTextSettingRow(card, "目标 URL / Intent URI",
+        addDivider(page);
+        addTextSettingRow(page, "目标 URL / Intent URI",
                 "支持 https://、自定义 scheme 和 intent:// URI。点击右侧内容编辑，留空则回退原始 AICY 行为。",
                 SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI,
                 SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI,
                 "未设置");
-        addDivider(card);
-        addActionButtonRow(card, "测试启动",
+        addDivider(page);
+        addActionButtonRow(page, "测试启动",
                 "不需要长按 mBack，直接用当前配置尝试启动一次，方便先验证 URL / Intent URI 是否可用。",
                 "立即测试", this::testLaunchMBackIntent);
-        return card;
+        return page;
+    }
+
+    private LinearLayout buildMBackImmersivePage() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        addProfileSectionHeader(page, "沉浸 / Inset",
+                "优先用透明背景和底部 inset 去试应用能否绘制到 mBack 下方。透明只改背景层，inset 直接影响应用可用区域判断。");
+        addSwitchRow(page, "mBack 导航栏透明",
+                "把 mBack 所在导航栏背景压成透明，只动导航栏背景层，不改 mBack 本体绘制。用于测试底部白边问题。",
+                SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,
+                SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT);
+        addDivider(page);
+        addSwitchRow(page, "隐藏小白条",
+                "只隐藏 mBack 自己画出来的那条胶囊，不直接改长触逻辑和 inset。适合配合透明背景、inset=0 一起试。",
+                SettingsStore.KEY_MBACK_HIDE_PILL,
+                SettingsStore.DEFAULT_MBACK_HIDE_PILL);
+        addDivider(page);
+        addInsetSliderRow(page, "mBack inset 大小",
+                "控制 SystemUI 返回给应用的底部 inset。-1 表示保持系统默认，0 表示压成 0，其他数值按 dp 处理。实验项，可能影响部分应用底部点击区域。",
+                SettingsStore.KEY_MBACK_INSET_SIZE,
+                SettingsStore.DEFAULT_MBACK_INSET_SIZE, -1, 80);
+        return page;
+    }
+
+    private LinearLayout buildMBackHeightPage() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        addProfileSectionHeader(page, "导航栏高度",
+                "这个页直接压 mBack 导航栏窗口本身的高度，比单纯透明更能减少底部透明可触区域对应用按钮的遮挡。");
+        addInsetSliderRow(page, "mBack 导航栏高度",
+                "控制 mBack 导航栏窗口本身的高度。-1 表示保持系统默认，数值越小，底部透明可触区域越矮。这个项更直接影响应用底部按钮是否容易被挡住。",
+                SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT,
+                SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT, -1, 80);
+        return page;
     }
 
     private LinearLayout buildConnectionRateThresholdPage() {
@@ -914,6 +998,80 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
+    private void addInsetSliderRow(LinearLayout root, String titleText, String subtitleText,
+            String key, int defaultValue, int min, int max) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView title = new TextView(this);
+        title.setText(titleText);
+        title.setTextColor(colorText);
+        title.setTextSize(16);
+        header.addView(title, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView valueView = new TextView(this);
+        valueView.setTextColor(colorPrimary);
+        valueView.setTextSize(14);
+        valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 999));
+        int current = readIntSetting(key, defaultValue);
+        int clamped = Math.max(min, Math.min(max, current));
+        valueView.setText(formatInsetValue(clamped));
+        header.addView(valueView, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText(subtitleText);
+        subtitle.setTextColor(colorSubtext);
+        subtitle.setTextSize(13);
+        subtitle.setPadding(0, dp(4), 0, 0);
+
+        SeekBar seekBar = new SeekBar(this);
+        seekBar.setMax(max - min);
+        seekBar.setProgress(clamped - min);
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int value = min + progress;
+                valueView.setText(formatInsetValue(value));
+                if (fromUser) {
+                    putIntSetting(key, value);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                putIntSetting(key, min + seekBar.getProgress());
+            }
+        });
+        valueView.setOnClickListener(v -> showIntInputDialog(
+                titleText,
+                min + seekBar.getProgress(),
+                min,
+                max,
+                "",
+                value -> {
+                    valueView.setText(formatInsetValue(value));
+                    seekBar.setProgress(value - min);
+                    putIntSetting(key, value);
+                }));
+
+        row.addView(header, matchWrap());
+        row.addView(subtitle, matchWrap());
+        row.addView(seekBar, matchWrapWithTop(8));
+        root.addView(row, matchWrap());
+    }
+
     private void addSliderRowWithFallback(LinearLayout root, String titleText, String subtitleText, String key,
             int defaultValue, String fallbackKey, int fallbackDefaultValue, int min, int max, String suffix) {
         int initialValue = getIntValueWithFallback(key, defaultValue, fallbackKey, fallbackDefaultValue);
@@ -1184,6 +1342,10 @@ public class MainActivity extends Activity {
 
     private String formatValue(int value, String suffix) {
         return suffix == null || suffix.length() == 0 ? Integer.toString(value) : value + suffix;
+    }
+
+    private String formatInsetValue(int value) {
+        return value < 0 ? "系统默认" : value + "dp";
     }
 
     private void startExportConfig() {

@@ -59,6 +59,10 @@ final class SettingsStore {
     static final String KEY_IOS_WIFI_DEBUG_LEVEL = "ios_wifi_debug_level";
     static final String KEY_MBACK_LONG_TOUCH_URL_ENABLED = "mback_long_touch_url_enabled";
     static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
+    static final String KEY_MBACK_NAV_BAR_TRANSPARENT = "mback_nav_bar_transparent";
+    static final String KEY_MBACK_INSET_SIZE = "mback_inset_size";
+    static final String KEY_MBACK_NAV_BAR_HEIGHT = "mback_nav_bar_height";
+    static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY = "runtime_signal_debug_summary";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_LEVEL = "runtime_signal_debug_level";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_SLOT = "runtime_signal_debug_slot";
@@ -125,6 +129,10 @@ final class SettingsStore {
     static final int DEFAULT_IOS_WIFI_DEBUG_LEVEL = 4;
     static final boolean DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED = false;
     static final String DEFAULT_MBACK_LONG_TOUCH_INTENT_URI = "";
+    static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
+    static final int DEFAULT_MBACK_INSET_SIZE = -1;
+    static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
+    static final boolean DEFAULT_MBACK_HIDE_PILL = false;
 
     static final String[] INT_KEYS = {
             KEY_GLOBAL_ICON_SCALE,
@@ -164,7 +172,9 @@ final class SettingsStore {
             KEY_IOS_SIGNAL_DEBUG_SIM2_LEVEL,
             KEY_IOS_WIFI_DEBUG_LEVEL,
             KEY_TEXT_SCALE,
-            KEY_CLOCK_FONT_WEIGHT
+            KEY_CLOCK_FONT_WEIGHT,
+            KEY_MBACK_INSET_SIZE,
+            KEY_MBACK_NAV_BAR_HEIGHT
     };
 
     static final String[] BOOLEAN_KEYS = {
@@ -178,7 +188,9 @@ final class SettingsStore {
             KEY_IOS_SIGNAL_DEBUG_SIM2_ENABLED,
             KEY_IOS_WIFI_DEBUG_ENABLED,
             KEY_IOS_WIFI_DEBUG_VISIBLE,
-            KEY_MBACK_LONG_TOUCH_URL_ENABLED
+            KEY_MBACK_LONG_TOUCH_URL_ENABLED,
+            KEY_MBACK_NAV_BAR_TRANSPARENT,
+            KEY_MBACK_HIDE_PILL
     };
 
     static final String[] STRING_KEYS = {
@@ -290,6 +302,10 @@ final class SettingsStore {
                 return DEFAULT_TEXT_SCALE;
             case KEY_CLOCK_FONT_WEIGHT:
                 return DEFAULT_CLOCK_FONT_WEIGHT;
+            case KEY_MBACK_INSET_SIZE:
+                return DEFAULT_MBACK_INSET_SIZE;
+            case KEY_MBACK_NAV_BAR_HEIGHT:
+                return DEFAULT_MBACK_NAV_BAR_HEIGHT;
             default:
                 return 0;
         }
@@ -319,6 +335,10 @@ final class SettingsStore {
                 return DEFAULT_IOS_WIFI_DEBUG_VISIBLE;
             case KEY_MBACK_LONG_TOUCH_URL_ENABLED:
                 return DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
+            case KEY_MBACK_NAV_BAR_TRANSPARENT:
+                return DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
+            case KEY_MBACK_HIDE_PILL:
+                return DEFAULT_MBACK_HIDE_PILL;
             default:
                 return false;
         }
