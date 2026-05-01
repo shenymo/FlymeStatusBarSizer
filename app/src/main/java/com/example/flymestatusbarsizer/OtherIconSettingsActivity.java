@@ -36,7 +36,7 @@ public class OtherIconSettingsActivity extends Activity {
         root.addView(title, matchWrap());
 
         TextView summary = new TextView(this);
-        summary.setText("\u8fd9\u91cc\u653e\u666e\u901a\u72b6\u6001\u680f\u56fe\u6807\u3001\u4e0a\u4e0b\u884c\u7bad\u5934\u548c\u5f53\u524d\u7f51\u901f\u4f4d\u7f6e\u7b49\u8f85\u52a9\u9879\u3002");
+        summary.setText("\u8fd9\u91cc\u653e\u666e\u901a\u72b6\u6001\u680f\u56fe\u6807\u548c\u5f53\u524d\u7f51\u901f\u4f4d\u7f6e\u7b49\u8f85\u52a9\u9879\u3002");
         summary.setTextColor(Color.rgb(95, 99, 104));
         summary.setTextSize(14);
         summary.setPadding(0, dp(6), 0, dp(14));
@@ -44,8 +44,6 @@ public class OtherIconSettingsActivity extends Activity {
 
         addSlider(root, "\u666e\u901a\u72b6\u6001\u680f\u56fe\u6807\u7f29\u653e\u5f3a\u5ea6", "StatusBarIconView \u8ddf\u968f\u6574\u4f53\u7f29\u653e\u7684\u5f3a\u5ea6\u3002",
                 SettingsStore.KEY_STATUS_ICON_FACTOR, SettingsStore.DEFAULT_STATUS_ICON_FACTOR, 0, 160, "%");
-        addSlider(root, "\u4e0a\u4e0b\u884c\u7bad\u5934\u7f29\u653e\u5f3a\u5ea6", "mobile_in/out \u548c wifi_in/out \u8ddf\u968f\u6574\u4f53\u7f29\u653e\u7684\u5f3a\u5ea6\u3002",
-                SettingsStore.KEY_ACTIVITY_ICON_FACTOR, SettingsStore.DEFAULT_ACTIVITY_ICON_FACTOR, 0, 160, "%");
         addSectionTitle(root, "\u5f53\u524d\u7f51\u901f\u504f\u79fb");
         addSlider(root, "\u5f53\u524d\u7f51\u901f\u5de6\u53f3\u504f\u79fb",
                 "\u5728\u81ea\u52a8\u5bf9\u9f50\u7684\u57fa\u7840\u4e0a\u518d\u989d\u5916\u5de6\u53f3\u5fae\u8c03\uff0c\u6b63\u6570\u5411\u53f3\uff0c\u8d1f\u6570\u5411\u5de6\u3002",
@@ -60,7 +58,6 @@ public class OtherIconSettingsActivity extends Activity {
         reset.setOnClickListener(v -> {
             prefs.edit()
                     .remove(SettingsStore.KEY_STATUS_ICON_FACTOR)
-                    .remove(SettingsStore.KEY_ACTIVITY_ICON_FACTOR)
                     .remove(SettingsStore.KEY_CONNECTION_RATE_OFFSET_X)
                     .remove(SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y)
                     .apply();

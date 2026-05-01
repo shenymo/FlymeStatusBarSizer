@@ -11,20 +11,22 @@ import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 
 final class NetworkTypeDrawable extends Drawable {
+    private static final String BASE_LABEL = "5G";
+    private static final float INTRINSIC_HEIGHT_DP = 12f;
+    private static final float BASE_WIDTH_DP = 17f;
+    private static final float TEXT_SIZE_DP = INTRINSIC_HEIGHT_DP * 0.41f;
+
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Rect textBounds = new Rect();
     private final float density;
-    private final String label;
     private int alpha = 255;
     private int color = Color.WHITE;
     private ColorStateList tintList;
 
     NetworkTypeDrawable(String label, float density) {
-        this.label = label == null ? "5G" : label;
         this.density = density <= 0f ? 1f : density;
         paint.setStyle(Paint.Style.FILL);
         paint.setFakeBoldText(true);
-        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setTextAlign(Paint.Align.LEFT);
     }
 
     @Override
@@ -35,11 +37,14 @@ final class NetworkTypeDrawable extends Drawable {
         }
         paint.setColor(color);
         paint.setAlpha(alpha);
-        paint.setTextSize(bounds.height() * 0.41f);
-        paint.getTextBounds(label, 0, label.length(), textBounds);
-        float x = bounds.exactCenterX();
+        paint.setTextSize(TEXT_SIZE_DP * density);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setStrokeWidth(0f);
+        paint.setTextAlign(Paint.Align.LEFT);
+        float baseWidth = paint.measureText(BASE_LABEL);
+        float x = bounds.exactCenterX() - baseWidth / 2f;
         float y = bounds.exactCenterY() - (paint.descent() + paint.ascent()) / 2f;
-        canvas.drawText(label, x, y, paint);
+        canvas.drawText(BASE_LABEL, x, y, paint);
     }
 
     @Override
@@ -102,11 +107,11 @@ final class NetworkTypeDrawable extends Drawable {
 
     @Override
     public int getIntrinsicWidth() {
-        return Math.round(("5GA".equals(label) || "5G+".equals(label) ? 22f : 17f) * density);
+        return Math.round(BASE_WIDTH_DP * density);
     }
 
     @Override
     public int getIntrinsicHeight() {
-        return Math.round(12f * density);
+        return Math.round(INTRINSIC_HEIGHT_DP * density);
     }
 }

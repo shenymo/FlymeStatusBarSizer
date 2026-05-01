@@ -75,7 +75,7 @@ final class SettingsStore {
     static final int DEFAULT_NETWORK_TYPE_OFFSET_X = 0;
     static final int DEFAULT_NETWORK_TYPE_OFFSET_Y = -6;
     static final int DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_X = 0;
-    static final int DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y = -6;
+    static final int DEFAULT_NETWORK_TYPE_DESKTOP_OFFSET_Y = -3;
     static final int DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_X = 0;
     static final int DEFAULT_NETWORK_TYPE_KEYGUARD_OFFSET_Y = -3;
     static final int DEFAULT_NETWORK_TYPE_CONTROL_CENTER_OFFSET_X = 0;

@@ -66,7 +66,7 @@ public class MainActivity extends Activity {
                 SettingsStore.KEY_IOS_BATTERY_STYLE, SettingsStore.DEFAULT_IOS_BATTERY_STYLE);
         addSwitch(root, "iOS \u98ce\u683c\u79fb\u52a8\u4fe1\u53f7\u683c", "\u6839\u636e SystemUI \u4e0b\u53d1\u7684\u79fb\u52a8\u4fe1\u53f7\u72b6\u6001\u52a8\u6001\u7ed8\u5236\u4fe1\u53f7\u5f3a\u5ea6",
                 SettingsStore.KEY_IOS_SIGNAL_STYLE, SettingsStore.DEFAULT_IOS_SIGNAL_STYLE);
-        addSwitch(root, "iOS \u98ce\u683c 5G \u6807\u8bc6", "\u53ea\u663e\u793a 5G / 5GA / 5G+\uff0c\u5176\u4ed6\u7f51\u7edc\u7c7b\u578b\u6807\u8bc6\u81ea\u52a8\u9690\u85cf",
+        addSwitch(root, "iOS \u98ce\u683c 5G \u6807\u8bc6", "\u53ea\u8981\u662f 5G \u72b6\u6001\u5c31\u7edf\u4e00\u663e\u793a 5G\uff0c\u5176\u4ed6\u7f51\u7edc\u7c7b\u578b\u6807\u8bc6\u81ea\u52a8\u9690\u85cf",
                 SettingsStore.KEY_IOS_NETWORK_TYPE_STYLE, SettingsStore.DEFAULT_IOS_NETWORK_TYPE_STYLE);
         addSwitch(root, "iOS \u98ce\u683c Wi-Fi", "\u6839\u636e wifi_signal \u8d44\u6e90\u52a8\u6001\u7ed8\u5236 Wi-Fi \u5f3a\u5ea6",
                 SettingsStore.KEY_IOS_WIFI_STYLE, SettingsStore.DEFAULT_IOS_WIFI_STYLE);

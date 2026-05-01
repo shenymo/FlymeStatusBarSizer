@@ -491,10 +491,12 @@ public class FlymeStatusBarSizer extends XposedModule {
                     Object thisObject = chain.getThisObject();
                     if (thisObject instanceof ImageView) {
                         ImageView imageView = (ImageView) thisObject;
+                        rememberSystemUiContext(imageView.getContext());
                         String idName = getSystemUiIdName(imageView);
                         if ("setImageResource".equals(name) && "mobile_type".equals(idName)
                                 && chain.getArgs().size() == 1 && chain.getArg(0) instanceof Integer) {
-                            applyNetworkTypeResource(imageView, (Integer) chain.getArg(0));
+                            int resId = (Integer) chain.getArg(0);
+                            applyNetworkTypeResource(imageView, resId);
                             if (isReferenceSignalContextChild(imageView)) {
                                 Config config = Config.load(imageView.getContext());
                                 if (config.enabled) {
@@ -528,6 +530,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                         if ("setImageResource".equals(name) && "wifi_signal".equals(idName)
                                 && chain.getArgs().size() == 1 && chain.getArg(0) instanceof Integer) {
                             applyWifiSignalResource(imageView, (Integer) chain.getArg(0));
+                        }
+                        if (("setImageResource".equals(name) || "setImageDrawable".equals(name))
+                                && isActivityArrowId(idName)) {
+                            hideActivityArrowView(imageView);
                         }
                         if ("mobile_signal".equals(idName) && imageView.getDrawable() instanceof IosSignalDrawable) {
                             syncDrawableTint(imageView, (IosSignalDrawable) imageView.getDrawable());
@@ -864,10 +870,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             float networkTypeScale = config.scaled(config.networkTypeFactor);
             scaleChild(root, "mobile_volte", networkTypeScale, networkTypeScale);
             offsetNetworkType(root, getNetworkTypeOffsetX(root, config), getNetworkTypeOffsetY(root, config));
-            scaleChild(root, "mobile_in", 1f, config.scaled(config.activityIconFactor));
-            scaleChild(root, "mobile_out", 1f, config.scaled(config.activityIconFactor));
-            scaleChild(root, "wifi_in", 1f, config.scaled(config.activityIconFactor));
-            scaleChild(root, "wifi_out", 1f, config.scaled(config.activityIconFactor));
+            hideActivityArrows(root);
             if (shouldRecordDesktopReference(root)) {
                 root.post(() -> {
                     recordDesktopIconSize(root, "mobile_signal", DESKTOP_MOBILE_SIGNAL_SIZE);
@@ -893,6 +896,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 scaleView(wifiIcon, config.scaled(config.wifiSignalFactor), config.scaled(config.wifiSignalFactor));
             }
             applyIosWifiStyle(root, config);
+            hideActivityArrows(root);
         });
     }
 
@@ -986,7 +990,9 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static void applyReferenceNetworkTypeSizing(ImageView imageView, Config config) {
         int offsetX = getNetworkTypeOffsetX(imageView, config);
         int offsetY = getNetworkTypeOffsetY(imageView, config);
-        int[] desktopSize = getRecordedSize(DESKTOP_NETWORK_TYPE_SIZE);
+        Drawable currentDrawable = imageView.getDrawable();
+        int[] desktopSize = currentDrawable instanceof NetworkTypeDrawable
+                ? null : getRecordedSize(DESKTOP_NETWORK_TYPE_SIZE);
         int width = desktopSize == null ? 0 : desktopSize[0];
         int height = desktopSize == null ? 0 : desktopSize[1];
         if (width <= 0 || height <= 0) {
@@ -998,13 +1004,14 @@ public class FlymeStatusBarSizer extends XposedModule {
                 return;
             }
             float scale = config.scaled(config.networkTypeFactor);
-            height = Math.round(baseHeight * scale);
-            Drawable drawable = imageView.getDrawable();
+            Drawable drawable = currentDrawable;
             if (drawable != null) {
                 int intrinsicWidth = Math.max(drawable.getIntrinsicWidth(), 1);
                 int intrinsicHeight = Math.max(drawable.getIntrinsicHeight(), 1);
+                height = Math.round((drawable instanceof NetworkTypeDrawable ? intrinsicHeight : baseHeight) * scale);
                 width = Math.round(height * (intrinsicWidth / (float) intrinsicHeight));
             } else {
+                height = Math.round(baseHeight * scale);
                 width = height;
             }
         }
@@ -1163,7 +1170,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!config.iosSignalDebugEnabled) {
             rememberTelephonySignalLevel(info.subId, info.level);
         }
-        if (!config.iosSignalDebugEnabled || !MOBILE_SIGNAL_RAW_INFOS.containsKey(imageView)) {
+        if (!config.iosSignalDebugEnabled) {
             MOBILE_SIGNAL_RAW_INFOS.put(imageView, info);
         }
         MobileSignalInfo displayInfo = info;
@@ -1175,6 +1182,14 @@ public class FlymeStatusBarSizer extends XposedModule {
             setMobileSignalViewVisible(imageView, true);
             applyIosSignalImageView(imageView, displayInfo.level, getDrawableSecondaryLevel(imageView, config, displayInfo), config);
         } else if (displayInfo.slot == MOBILE_SLOT_SECONDARY) {
+            if (config.iosSignalDebugEnabled && !config.iosSignalDebugSim2Enabled) {
+                latestSecondarySignalLevel = IosSignalDrawable.NO_SECONDARY_LEVEL;
+                SECONDARY_SIGNAL_VIEWS.remove(imageView);
+                PRIMARY_SIGNAL_VIEWS.remove(imageView);
+                setMobileSignalViewVisible(imageView, false);
+                updatePrimarySignalDrawables();
+                return;
+            }
             latestSecondarySignalLevel = displayInfo.level;
             SECONDARY_SIGNAL_VIEWS.put(imageView, Boolean.TRUE);
             PRIMARY_SIGNAL_VIEWS.remove(imageView);
@@ -1392,6 +1407,64 @@ public class FlymeStatusBarSizer extends XposedModule {
         offsetView(imageView, config.iosWifiOffsetX, config.iosWifiOffsetY);
     }
 
+    private static void hideActivityArrows(View root) {
+        if (root == null) {
+            return;
+        }
+        hideActivityArrowChild(root, "mobile_in");
+        hideActivityArrowChild(root, "mobile_out");
+        hideActivityArrowChild(root, "wifi_in");
+        hideActivityArrowChild(root, "wifi_out");
+        hideActivityArrowChild(root, "mobile_inout");
+        View container = findSystemUiChild(root, "inout_container");
+        if (container != null) {
+            setViewCollapsed(container, true);
+        }
+    }
+
+    private static void hideActivityArrowChild(View root, String idName) {
+        View child = findSystemUiChild(root, idName);
+        if (child != null) {
+            hideActivityArrowView(child);
+        }
+    }
+
+    private static boolean isActivityArrowId(String idName) {
+        return "mobile_in".equals(idName) || "mobile_out".equals(idName)
+                || "wifi_in".equals(idName) || "wifi_out".equals(idName)
+                || "mobile_inout".equals(idName);
+    }
+
+    private static void hideActivityArrowView(View view) {
+        if (view == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp != null) {
+            int[] originalSize = ORIGINAL_SIZES.get(view);
+            if (originalSize == null) {
+                originalSize = new int[]{lp.width, lp.height};
+                ORIGINAL_SIZES.put(view, originalSize);
+            }
+            lp.width = 0;
+            lp.height = 0;
+            if (lp instanceof ViewGroup.MarginLayoutParams) {
+                ViewGroup.MarginLayoutParams marginLp = (ViewGroup.MarginLayoutParams) lp;
+                marginLp.leftMargin = 0;
+                marginLp.topMargin = 0;
+                marginLp.rightMargin = 0;
+                marginLp.bottomMargin = 0;
+                marginLp.setMarginStart(0);
+                marginLp.setMarginEnd(0);
+            }
+            view.setLayoutParams(lp);
+        }
+        view.setMinimumWidth(0);
+        view.setPadding(0, 0, 0, 0);
+        view.setVisibility(View.GONE);
+        view.requestLayout();
+    }
+
     private static void logToFramework(String message) {
         android.util.Log.w(TAG, message);
         FlymeStatusBarSizer module = MODULE;
@@ -1427,7 +1500,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                     + "\nslot=" + slotToDebugText(slot)
                     + "\nsubId=" + subId
                     + "\nstate=" + stateText
-                    + "\nlevel=" + levelText;
+                    + "\nlevel=" + levelText
+                    + networkTypeDebugSummary(targetContext);
             if (error != null && error.length() > 0) {
                 summary += "\nerror=" + error;
             }
@@ -1481,7 +1555,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                 + "\nlatestPrimary=" + latestPrimarySignalLevel
                 + "\nlatestSecondary=" + (latestSecondarySignalLevel == IosSignalDrawable.NO_SECONDARY_LEVEL
                         ? "unknown" : Integer.toString(latestSecondarySignalLevel))
-                + "\ntrackedViews=" + views.size();
+                + "\ntrackedViews=" + views.size()
+                + networkTypeDebugSummary(context);
         ContentValues values = new ContentValues();
         values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY, summary);
         values.put(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SOURCE, safeDebugText(source));
@@ -1514,6 +1589,34 @@ public class FlymeStatusBarSizer extends XposedModule {
                 + ", level=" + info.level
                 + ", state=0x" + Integer.toHexString(getTrackedSignalDrawableState(view))
                 + ", hasView=" + (view != null);
+    }
+
+    private static String networkTypeDebugSummary(Context context) {
+        Context targetContext = context != null ? context : SYSTEM_UI_CONTEXT;
+        if (targetContext == null) {
+            return "\nactiveDataSubId=unknown"
+                    + "\nhookedNetworkType=unknown";
+        }
+        int activeDataSubId = getActiveDataSubId();
+        String label = null;
+        if (isValidSubId(activeDataSubId)) {
+            label = getRememberedNetworkTypeLabelForSubId(activeDataSubId);
+            if (label == null) {
+                label = getActiveDataNetworkTypeLabel(targetContext, activeDataSubId, true);
+            }
+        }
+        return "\nactiveDataSubId=" + activeDataSubId
+                + "\nhookedNetworkType=" + networkTypeText(label);
+    }
+
+    private static String networkTypeText(String label) {
+        if (label == null) {
+            return "unknown";
+        }
+        if (label.length() == 0) {
+            return "none";
+        }
+        return label;
     }
 
     private static int getTrackedSignalDrawableState(ImageView imageView) {
@@ -2231,17 +2334,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         int viewSubId = getMobileSubId(imageView);
         int viewSlot = getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN);
         String resourceLabel = getNetworkTypeLabel(imageView.getResources(), resId);
+        if (resourceLabel == null) {
+            resourceLabel = "";
+        }
         rememberNetworkTypeLabelForSubId(viewSubId, resourceLabel);
-        String label = null;
+        String label = resourceLabel;
         if (config.iosSignalDualCombined && viewSlot == MOBILE_SLOT_SECONDARY) {
             label = "";
         } else if (!config.iosSignalDualCombined && isValidSubId(activeDataSubId)
                 && isValidSubId(viewSubId) && viewSubId != activeDataSubId) {
-            label = "";
-        } else {
-            label = getCachedOrRememberedActiveDataNetworkTypeLabel(activeDataSubId);
-        }
-        if (label == null) {
             label = "";
         }
         applyNetworkTypeLabel(imageView, label);
@@ -2259,20 +2360,24 @@ public class FlymeStatusBarSizer extends XposedModule {
         NETWORK_TYPE_LABELS.put(imageView, label);
         imageView.setVisibility(View.VISIBLE);
         setParentVisibility(imageView, true);
+        imageView.setPadding(0, 0, 0, 0);
         if (label.equals(oldLabel)
                 && imageView.getDrawable() instanceof NetworkTypeDrawable) {
             syncDrawableTint(imageView, imageView.getDrawable());
             imageView.setAdjustViewBounds(false);
+            applyNetworkTypeDrawableLayout(imageView, (NetworkTypeDrawable) imageView.getDrawable());
             return;
         }
         NetworkTypeDrawable drawable = new NetworkTypeDrawable(label, imageView.getResources().getDisplayMetrics().density);
         syncDrawableTint(imageView, drawable);
         imageView.setImageDrawable(drawable);
         imageView.setAdjustViewBounds(false);
+        applyNetworkTypeDrawableLayout(imageView, drawable);
     }
 
     private static void ensureNetworkTypePlaceholder(ImageView imageView) {
         if (imageView.getDrawable() instanceof NetworkTypeDrawable) {
+            applyNetworkTypeDrawableLayout(imageView, (NetworkTypeDrawable) imageView.getDrawable());
             return;
         }
         NetworkTypeDrawable drawable = new NetworkTypeDrawable("5G",
@@ -2280,6 +2385,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         syncDrawableTint(imageView, drawable);
         imageView.setImageDrawable(drawable);
         imageView.setAdjustViewBounds(false);
+        applyNetworkTypeDrawableLayout(imageView, drawable);
     }
 
     private static void applyKnownNetworkTypeStyle(View root, Config config) {
@@ -2297,11 +2403,39 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         imageView.setVisibility(View.VISIBLE);
         setParentVisibility(imageView, true);
+        imageView.setPadding(0, 0, 0, 0);
         if (!(imageView.getDrawable() instanceof NetworkTypeDrawable)) {
             NetworkTypeDrawable drawable = new NetworkTypeDrawable(label, imageView.getResources().getDisplayMetrics().density);
             syncDrawableTint(imageView, drawable);
             imageView.setImageDrawable(drawable);
         }
+        if (imageView.getDrawable() instanceof NetworkTypeDrawable) {
+            applyNetworkTypeDrawableLayout(imageView, (NetworkTypeDrawable) imageView.getDrawable());
+        }
+    }
+
+    private static void applyNetworkTypeDrawableLayout(ImageView imageView, NetworkTypeDrawable drawable) {
+        if (imageView == null || drawable == null) {
+            return;
+        }
+        Config config = Config.load(imageView.getContext());
+        float scale = config.enabled ? config.scaled(config.networkTypeFactor) : 1f;
+        int baseWidth = Math.max(1, drawable.getIntrinsicWidth());
+        int baseHeight = Math.max(1, drawable.getIntrinsicHeight());
+        ORIGINAL_SIZES.put(imageView, new int[]{baseWidth, baseHeight});
+        ViewGroup.LayoutParams lp = imageView.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        lp.width = Math.round(baseWidth * Math.max(scale, 0.01f));
+        lp.height = Math.round(baseHeight * Math.max(scale, 0.01f));
+        if (lp instanceof android.widget.FrameLayout.LayoutParams) {
+            ((android.widget.FrameLayout.LayoutParams) lp).gravity = Gravity.CENTER_VERTICAL;
+        }
+        imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        imageView.setAdjustViewBounds(false);
+        imageView.setLayoutParams(lp);
+        imageView.requestLayout();
     }
 
     private static String getNetworkTypeLabel(Resources resources, int resId) {
@@ -2314,13 +2448,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         } catch (Resources.NotFoundException ignored) {
             return null;
         }
-        if (name.contains("5ga") || name.contains("5g_a") || name.contains("5g_advanced")) {
-            return "5GA";
-        }
-        if (name.contains("5g_plus") || name.contains("5g_ca") || name.contains("5g_sa")
-                || name.contains("5g_uwb") || name.contains("fully_connected_5g_plus")) {
-            return "5G+";
-        }
         if (name.contains("5g") && !name.contains("5g_e") && !name.contains("5ge")) {
             return "5G";
         }
@@ -2332,7 +2459,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         synchronized (NETWORK_TYPE_LABELS_BY_SUB_ID) {
-            if (label == null || label.length() == 0) {
+            if (label == null) {
                 NETWORK_TYPE_LABELS_BY_SUB_ID.remove(subId);
             } else {
                 NETWORK_TYPE_LABELS_BY_SUB_ID.put(subId, label);
@@ -2477,13 +2604,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 getIntField(displayInfo, "mNetworkType", -1));
         int overrideNetworkType = invokeNoArgInt(displayInfo, "getOverrideNetworkType",
                 getIntField(displayInfo, "mOverrideNetworkType", 0));
-        if (overrideNetworkType == 5) {
-            return "5GA";
-        }
-        if (overrideNetworkType == 4) {
-            return "5G+";
-        }
-        if (overrideNetworkType == 3) {
+        if (overrideNetworkType == 5 || overrideNetworkType == 4 || overrideNetworkType == 3) {
             return "5G";
         }
         if (networkType == TelephonyManager.NETWORK_TYPE_NR) {
@@ -2805,8 +2926,12 @@ public class FlymeStatusBarSizer extends XposedModule {
                     Config config = Config.load(appContext);
                     refreshTrackedTextScaling();
                     if (config.iosSignalDebugEnabled) {
+                        normalizeDebugSignalState(config);
                         applyDebugSignalDrawableStates(config);
                     } else {
+                        if (LAST_SIGNAL_DEBUG_ENABLED) {
+                            clearDebugSignalState();
+                        }
                         refreshTrackedSignalViews(LAST_SIGNAL_DEBUG_ENABLED);
                     }
                     LAST_SIGNAL_DEBUG_ENABLED = config.iosSignalDebugEnabled;
@@ -2926,6 +3051,31 @@ public class FlymeStatusBarSizer extends XposedModule {
         SECONDARY_SIGNAL_VIEWS.clear();
     }
 
+    private static void normalizeDebugSignalState(Config config) {
+        if (config == null || !config.iosSignalDebugEnabled || config.iosSignalDebugSim2Enabled) {
+            return;
+        }
+        latestSecondarySignalLevel = IosSignalDrawable.NO_SECONDARY_LEVEL;
+        for (ImageView view : new ArrayList<>(SECONDARY_SIGNAL_VIEWS.keySet())) {
+            if (view != null) {
+                setMobileSignalViewVisible(view, false);
+            }
+        }
+        SECONDARY_SIGNAL_VIEWS.clear();
+        updatePrimarySignalDrawables();
+    }
+
+    private static void clearDebugSignalState() {
+        latestSecondarySignalLevel = IosSignalDrawable.NO_SECONDARY_LEVEL;
+        for (ImageView view : collectTrackedMobileSignalViews()) {
+            if (view != null) {
+                setMobileSignalViewVisible(view, true);
+            }
+        }
+        SECONDARY_SIGNAL_VIEWS.clear();
+        updatePrimarySignalDrawables();
+    }
+
     private static void refreshTrackedRuntimeViews() {
         refreshTrackedRuntimeViews(false);
     }
@@ -2984,6 +3134,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         handler.post(() -> {
+            normalizeDebugSignalState(config);
             ArrayList<Drawable> drawables = new ArrayList<>(MOBILE_SIGNAL_DRAWABLE_OWNERS.keySet());
             boolean injectedPrimary = false;
             boolean injectedSecondary = false;
@@ -3039,6 +3190,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                         buildSignalDrawableState(latestSecondarySignalLevel, 0),
                         latestSecondarySignalLevel,
                         "No secondary SystemUI signal view was found; using a virtual SIM 2 for combined debug");
+            } else if (!config.iosSignalDebugSim2Enabled) {
+                latestSecondarySignalLevel = IosSignalDrawable.NO_SECONDARY_LEVEL;
+                updatePrimarySignalDrawables();
             } else if (!injectedPrimary && !injectedSecondary) {
                 reportSignalDebug(SYSTEM_UI_CONTEXT, "debug SignalDrawable state",
                         MOBILE_SLOT_UNKNOWN, UNSET_SUB_ID, 0,
@@ -3054,7 +3208,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         handler.post(() -> {
-            ArrayList<ImageView> signalViews = new ArrayList<>(MOBILE_SIGNAL_RAW_INFOS.keySet());
+            ArrayList<ImageView> signalViews = forceRequery
+                    ? collectTrackedMobileSignalViews()
+                    : new ArrayList<>(MOBILE_SIGNAL_RAW_INFOS.keySet());
             for (ImageView imageView : signalViews) {
                 if (imageView == null) {
                     continue;
@@ -3107,6 +3263,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 if (!config.enabled || !config.iosNetworkTypeStyle) {
                     continue;
                 }
+                rememberSystemUiContext(imageView.getContext());
                 int viewSubId = getMobileSubId(imageView);
                 int viewSlot = getMobileSignalSlot(imageView, MOBILE_SLOT_UNKNOWN);
                 String label = null;
@@ -3116,7 +3273,13 @@ public class FlymeStatusBarSizer extends XposedModule {
                         && isValidSubId(viewSubId) && viewSubId != activeDataSubId) {
                     label = "";
                 } else {
-                    label = getCachedOrRememberedActiveDataNetworkTypeLabel(activeDataSubId);
+                    Integer resId = NETWORK_TYPE_RES_IDS.get(imageView);
+                    if (resId != null) {
+                        label = getNetworkTypeLabel(imageView.getResources(), resId);
+                    }
+                    if (label == null && isValidSubId(viewSubId)) {
+                        label = getRememberedNetworkTypeLabelForSubId(viewSubId);
+                    }
                 }
                 if (label == null) {
                     label = "";
@@ -3663,6 +3826,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         return Math.round(value * view.getResources().getDisplayMetrics().density);
     }
 
+    private static int dp(View view, float value) {
+        return Math.round(value * view.getResources().getDisplayMetrics().density);
+    }
+
     private static String memberCacheKey(Class<?> clazz, String name) {
         return clazz.getName() + "#" + name;
     }
@@ -3733,6 +3900,24 @@ public class FlymeStatusBarSizer extends XposedModule {
         return null;
     }
 
+    private static Object getStaticField(ClassLoader loader, String className, String name) {
+        if (loader == null || className == null || name == null) {
+            return null;
+        }
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            Field field = findCachedField(clazz, name);
+            return field == null ? null : field.get(null);
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static int getStaticIntField(ClassLoader loader, String className, String name) {
+        Object value = getStaticField(loader, className, name);
+        return value instanceof Integer ? (Integer) value : 0;
+    }
+
     private static void setIntField(Object target, String name, int value) {
         if (target == null || name == null) {
             return;
@@ -3759,6 +3944,11 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static String invokeNoArgString(Object target, String name) {
         Object value = invokeNoArg(target, name);
         return value instanceof String ? (String) value : null;
+    }
+
+    private static boolean invokeNoArgBoolean(Object target, String name, boolean fallback) {
+        Object value = invokeNoArg(target, name);
+        return value instanceof Boolean ? (Boolean) value : fallback;
     }
 
     private static Object invokeNoArg(Object target, String name) {

@@ -71,7 +71,9 @@ Important files:
   - Draws iOS-style Wi-Fi strength arcs.
 
 - `app/src/main/java/com/example/flymestatusbarsizer/NetworkTypeDrawable.java`
-  - Draws iOS-style network type labels such as 5G/5GA/5G+.
+  - Draws the iOS-style `5G` network type label.
+  - All 5G-family SystemUI resources are normalized to this one label; non-5G
+    resources are hidden.
 
 - `app/src/main/AndroidManifest.xml`
   - Registers settings activities and exported settings provider.
@@ -201,6 +203,11 @@ Main hook groups in `FlymeStatusBarSizer.java`:
 - `hookImageViewTintUpdates(...)`
   - Watches `ImageView` drawable/resource/tint changes.
   - Re-applies iOS signal and network type drawables after SystemUI changes resources.
+  - The final `mobile_type.setImageResource(...)` binding path is the authoritative
+    source for visible Flyme network type labels.
+  - The normal SystemUI path is:
+    `MobileIconInteractorImpl -> NetworkTypeIconModel -> Icon.Resource -> mobile_type`.
+  - The module no longer provides a virtual 5G-family network type override.
 
 - `hookBatteryDrawable(...)`
   - Hooks Flyme battery drawable drawing.
@@ -229,6 +236,15 @@ In `FlymeStatusBarSizer.java`:
 
 - `applyKnownNetworkTypeStyle(...)`
   - Applies iOS-style 5G/network type labels.
+
+- `applyNetworkTypeResource(ImageView imageView, int resId)`
+  - Converts the actual SystemUI `mobile_type` drawable resource into the module's
+    code-drawn label.
+  - Resource names such as `ic_5g_mobiledata`, `ic_5g_plus_mobiledata`, and
+    `ic_5g_a_mobiledata` all map to the same `5G` label.
+
+- `refreshTrackedNetworkTypeViews()`
+  - Re-applies tracked network type labels after setting changes.
 
 - `applyReferenceSignalSizing(...)`
   - Handles lockscreen/control-center/reference-size contexts.
@@ -360,6 +376,8 @@ The module targets:
 - Change 5G/network type labels:
   - `NetworkTypeDrawable.java`
   - `applyKnownNetworkTypeStyle(...)` and `applyNetworkTypeResource(...)` in `FlymeStatusBarSizer.java`
+  - Keep the resource binding path as the source of truth: 5G-family resources map
+    to `5G`, and non-5G resources are hidden.
   - `SignalNetworkSettingsActivity.java` for UI.
 
 - Change Wi-Fi icon sizing:
