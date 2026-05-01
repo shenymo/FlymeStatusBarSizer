@@ -155,6 +155,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookConnectionRateView(loader);
         hookImageViewTintUpdates(loader);
         hookSignalDrawableLevels(loader);
+        hookMBackLongTouchIntent(loader);
         hookConstructors(loader, "com.android.systemui.statusbar.StatusBarIconView", view -> {
             Config config = Config.load(view.getContext());
             if (!config.enabled) {
@@ -700,6 +701,85 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook FlymeBatteryMeterView.onMeasure", t);
+        }
+    }
+
+    private void hookMBackLongTouchIntent(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.navigationbar.actions.NavBarActionsConfig",
+                    false,
+                    loader);
+            Method cancelMethod = clazz.getDeclaredMethod("requestCancelTISSwipeUp", String.class);
+            cancelMethod.setAccessible(true);
+            for (Method method : clazz.getDeclaredMethods()) {
+                if (!"helpStartAI".equals(method.getName())) {
+                    continue;
+                }
+                Class<?>[] parameterTypes = method.getParameterTypes();
+                if (parameterTypes.length != 2
+                        || parameterTypes[0] != Context.class
+                        || parameterTypes[1] != String.class) {
+                    continue;
+                }
+                method.setAccessible(true);
+                hook(method).intercept(chain -> {
+                    Context context = (Context) chain.getArg(0);
+                    Config config = Config.load(context);
+                    if (!config.mbackLongTouchIntentEnabled) {
+                        return chain.proceed();
+                    }
+                    String intentUri = config.mbackLongTouchIntentUri;
+                    if (intentUri == null || intentUri.trim().isEmpty()) {
+                        return chain.proceed();
+                    }
+                    String fromWhere = (String) chain.getArg(1);
+                    if (!"press_navigation".equals(fromWhere)) {
+                        return chain.proceed();
+                    }
+                    try {
+                        cancelMethod.invoke(null, "launch mback long touch intent from " + fromWhere);
+                    } catch (Throwable ignored) {
+                    }
+                    if (launchConfiguredIntent(context, intentUri)) {
+                        return null;
+                    }
+                    return chain.proceed();
+                });
+                return;
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook mBack long touch intent", t);
+        }
+    }
+
+    private static boolean launchConfiguredIntent(Context context, String intentUri) {
+        if (context == null || intentUri == null) {
+            return false;
+        }
+        String raw = intentUri.trim();
+        if (raw.isEmpty()) {
+            return false;
+        }
+        try {
+            Intent intent;
+            if (raw.startsWith("intent:") || raw.contains("#Intent;")) {
+                intent = Intent.parseUri(raw, Intent.URI_INTENT_SCHEME);
+            } else {
+                intent = new Intent(Intent.ACTION_VIEW, Uri.parse(raw));
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            Context launchContext = context.getApplicationContext() != null
+                    ? context.getApplicationContext()
+                    : context;
+            launchContext.startActivity(intent);
+            return true;
+        } catch (Throwable t) {
+            if (MODULE != null) {
+                MODULE.log(android.util.Log.WARN, TAG,
+                        "Failed to launch mBack long touch intent: " + raw, t);
+            }
+            return false;
         }
     }
 
@@ -4690,6 +4770,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         boolean iosWifiDebugEnabled = SettingsStore.DEFAULT_IOS_WIFI_DEBUG_ENABLED;
         boolean iosWifiDebugVisible = SettingsStore.DEFAULT_IOS_WIFI_DEBUG_VISIBLE;
         int iosWifiDebugLevel = SettingsStore.DEFAULT_IOS_WIFI_DEBUG_LEVEL;
+        boolean mbackLongTouchIntentEnabled = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
+        String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
 
         float scaled(int factorPercent) {
             return 1f + ((globalIconScale - 1f) * (factorPercent / 100f));
@@ -4843,6 +4925,12 @@ public class FlymeStatusBarSizer extends XposedModule {
                 iosWifiDebugVisible = "1".equals(value);
             } else if (SettingsStore.KEY_IOS_WIFI_DEBUG_LEVEL.equals(key)) {
                 iosWifiDebugLevel = parseInt(value, SettingsStore.DEFAULT_IOS_WIFI_DEBUG_LEVEL);
+            } else if (SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED.equals(key)) {
+                mbackLongTouchIntentEnabled = "1".equals(value);
+            } else if (SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI.equals(key)) {
+                mbackLongTouchIntentUri = value == null
+                        ? SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI
+                        : value;
             }
         }
 

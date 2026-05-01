@@ -149,7 +149,7 @@ public class MainActivity extends Activity {
         left.addView(title, matchWrap());
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("\u4e3b\u9875\u8c03\u53c2\uff0c\u8c03\u8bd5\u9875\u67e5 hook \u72b6\u6001\uff0c\u5173\u4e8e\u9875\u67e5\u7248\u672c\u548c\u6784\u5efa\u4fe1\u606f");
+        subtitle.setText("\u4e3b\u9875\u8c03\u53c2\uff0c\u6742\u9879\u9875\u653e MBack \u548c\u65f6\u95f4\u76f8\u5173\u914d\u7f6e\uff0c\u5173\u4e8e\u9875\u67e5\u7248\u672c\u4e0e\u8c03\u8bd5\u5165\u53e3");
         subtitle.setTextColor(colorSubtext);
         subtitle.setTextSize(14);
         subtitle.setPadding(0, dp(4), 0, 0);
@@ -179,16 +179,16 @@ public class MainActivity extends Activity {
         shell.setElevation(dp(8));
 
         TextView homeTab = buildBottomNavTab("主页");
-        TextView debugTab = buildBottomNavTab("调试");
+        TextView miscTab = buildBottomNavTab("杂项");
         TextView aboutTab = buildBottomNavTab("关于");
         shell.addView(homeTab, weightedWrap());
-        shell.addView(debugTab, weightedWrapWithStart(10));
+        shell.addView(miscTab, weightedWrapWithStart(10));
         shell.addView(aboutTab, weightedWrapWithStart(10));
 
-        mainTabs = new TextView[]{homeTab, debugTab, aboutTab};
+        mainTabs = new TextView[]{homeTab, miscTab, aboutTab};
         bindMainTabs(0);
         homeTab.setOnClickListener(v -> bindMainTabs(0));
-        debugTab.setOnClickListener(v -> bindMainTabs(1));
+        miscTab.setOnClickListener(v -> bindMainTabs(1));
         aboutTab.setOnClickListener(v -> bindMainTabs(2));
         return shell;
     }
@@ -208,9 +208,6 @@ public class MainActivity extends Activity {
 
         addSectionLabel(page, "右上角图标组");
         page.addView(buildRightIconGroupSection(), matchWrapWithTop(10));
-
-        addSectionLabel(page, "时间文字");
-        page.addView(buildTimeCard(), matchWrapWithTop(10));
         return page;
     }
 
@@ -218,9 +215,9 @@ public class MainActivity extends Activity {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
 
-        addSectionLabel(page, "调试工具");
-        page.addView(buildSignalDebugEntryCard(), matchWrapWithTop(10));
-        page.addView(buildWifiDebugEntryCard(), matchWrapWithTop(10));
+        addSectionLabel(page, "杂项");
+        page.addView(buildMBackLongTouchCard(), matchWrapWithTop(10));
+        page.addView(buildTimeCard(), matchWrapWithTop(10));
         return page;
     }
 
@@ -292,6 +289,9 @@ public class MainActivity extends Activity {
         card.addView(buildDateValue, matchWrap());
 
         page.addView(card, matchWrapWithTop(10));
+        addSectionLabel(page, "调试工具");
+        page.addView(buildSignalDebugEntryCard(), matchWrapWithTop(10));
+        page.addView(buildWifiDebugEntryCard(), matchWrapWithTop(10));
         return page;
     }
 
@@ -401,6 +401,25 @@ public class MainActivity extends Activity {
                 "实时网速",
                 "保留系统原采样，只在显示层加双阈值和确认次数，减少低速时的视觉干扰。",
                 "网速", details);
+    }
+
+    private View buildMBackLongTouchCard() {
+        LinearLayout card = card(colorSurface, 28);
+        addSwitchRow(card, "接管长触 mBack",
+                "拦截 Flyme SystemUI 里原本唤醒 AICY 的 mBack/Home 长触入口，改为发送模块配置的 Intent。",
+                SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
+                SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED);
+        addDivider(card);
+        addTextSettingRow(card, "目标 URL / Intent URI",
+                "支持 https://、自定义 scheme 和 intent:// URI。点击右侧内容编辑，留空则回退原始 AICY 行为。",
+                SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI,
+                SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI,
+                "未设置");
+        addDivider(card);
+        addActionButtonRow(card, "测试启动",
+                "不需要长按 mBack，直接用当前配置尝试启动一次，方便先验证 URL / Intent URI 是否可用。",
+                "立即测试", this::testLaunchMBackIntent);
+        return card;
     }
 
     private LinearLayout buildConnectionRateThresholdPage() {
@@ -901,6 +920,86 @@ public class MainActivity extends Activity {
         addSliderRow(root, titleText, subtitleText, key, initialValue, min, max, suffix);
     }
 
+    private void addTextSettingRow(LinearLayout root, String titleText, String subtitleText,
+            String key, String defaultValue, String emptyLabel) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
+        LinearLayout textColumn = new LinearLayout(this);
+        textColumn.setOrientation(LinearLayout.VERTICAL);
+
+        TextView title = new TextView(this);
+        title.setText(titleText);
+        title.setTextColor(colorText);
+        title.setTextSize(16);
+        textColumn.addView(title, matchWrap());
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText(subtitleText);
+        subtitle.setTextColor(colorSubtext);
+        subtitle.setTextSize(13);
+        subtitle.setPadding(0, dp(4), dp(10), 0);
+        textColumn.addView(subtitle, matchWrap());
+
+        TextView valueView = new TextView(this);
+        valueView.setTextColor(colorPrimary);
+        valueView.setTextSize(13);
+        valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 999));
+        valueView.setMaxWidth(dp(180));
+        valueView.setSingleLine(false);
+        updateTextSettingLabel(valueView, readStringSetting(key, defaultValue), emptyLabel);
+        valueView.setOnClickListener(v -> showTextInputDialog(
+                titleText,
+                readStringSetting(key, defaultValue),
+                subtitleText,
+                value -> {
+                    putStringSetting(key, value);
+                    updateTextSettingLabel(valueView, value, emptyLabel);
+                }));
+
+        row.addView(textColumn, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(valueView, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        root.addView(row, matchWrap());
+    }
+
+    private void addActionButtonRow(LinearLayout root, String titleText, String subtitleText,
+            String buttonText, Runnable action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
+        LinearLayout textColumn = new LinearLayout(this);
+        textColumn.setOrientation(LinearLayout.VERTICAL);
+
+        TextView title = new TextView(this);
+        title.setText(titleText);
+        title.setTextColor(colorText);
+        title.setTextSize(16);
+        textColumn.addView(title, matchWrap());
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText(subtitleText);
+        subtitle.setTextColor(colorSubtext);
+        subtitle.setTextSize(13);
+        subtitle.setPadding(0, dp(4), dp(10), 0);
+        textColumn.addView(subtitle, matchWrap());
+
+        TextView button = filledButton(buttonText, colorPrimary, Color.WHITE);
+        button.setOnClickListener(v -> action.run());
+
+        row.addView(textColumn, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(button, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        root.addView(row, matchWrap());
+    }
+
     private void addOffsetSliderWithFallback(LinearLayout root, String titleText, String subtitleText,
             String key, int defaultValue, String fallbackKey, int fallbackDefaultValue) {
         addSliderRowWithFallback(root, titleText, subtitleText + "\u3002\u70b9\u51fb\u53f3\u4fa7\u6570\u503c\u53ef\u624b\u52a8\u8f93\u5165",
@@ -1001,6 +1100,10 @@ public class MainActivity extends Activity {
         return prefs.getInt(key, defaultValue);
     }
 
+    private String readStringSetting(String key, String defaultValue) {
+        return prefs.getString(key, defaultValue);
+    }
+
     private int getIntValueWithFallback(String key, int defaultValue, String fallbackKey, int fallbackDefaultValue) {
         if (prefs.contains(key)) {
             return prefs.getInt(key, defaultValue);
@@ -1018,6 +1121,36 @@ public class MainActivity extends Activity {
         prefs.edit().putInt(key, value).apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
+    }
+
+    private void putStringSetting(String key, String value) {
+        prefs.edit().putString(key, value == null ? "" : value).apply();
+        SettingsStore.notifyChanged(this);
+        invalidatePreview();
+    }
+
+    private void testLaunchMBackIntent() {
+        String raw = readStringSetting(
+                SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI,
+                SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI);
+        if (TextUtils.isEmpty(raw) || TextUtils.isEmpty(raw.trim())) {
+            showToast("请先填写目标 URL 或 Intent URI");
+            return;
+        }
+        try {
+            Intent intent;
+            String trimmed = raw.trim();
+            if (trimmed.startsWith("intent:") || trimmed.contains("#Intent;")) {
+                intent = Intent.parseUri(trimmed, Intent.URI_INTENT_SCHEME);
+            } else {
+                intent = new Intent(Intent.ACTION_VIEW, Uri.parse(trimmed));
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+            showToast("测试启动已发送");
+        } catch (Throwable t) {
+            showToast("测试启动失败：" + (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
+        }
     }
 
     private void invalidatePreview() {
@@ -1088,6 +1221,11 @@ public class MainActivity extends Activity {
                     settings.put(key, prefs.getInt(key, SettingsStore.defaultInt(key)));
                 }
             }
+            for (String key : SettingsStore.STRING_KEYS) {
+                if (SettingsStore.includeInBackup(key)) {
+                    settings.put(key, prefs.getString(key, SettingsStore.defaultString(key)));
+                }
+            }
             root.put("settings", settings);
             output.write(root.toString(2).getBytes(StandardCharsets.UTF_8));
             showToast("\u914d\u7f6e\u5df2\u5bfc\u51fa");
@@ -1125,6 +1263,12 @@ public class MainActivity extends Activity {
                     continue;
                 }
                 editor.putInt(key, settings.optInt(key, SettingsStore.defaultInt(key)));
+            }
+            for (String key : SettingsStore.STRING_KEYS) {
+                if (!SettingsStore.includeInBackup(key)) {
+                    continue;
+                }
+                editor.putString(key, settings.optString(key, SettingsStore.defaultString(key)));
             }
             editor.apply();
             SettingsStore.notifyChanged(this);
@@ -1178,6 +1322,37 @@ public class MainActivity extends Activity {
                     }
                 })
                 .show();
+    }
+
+    private void showTextInputDialog(String titleText, String currentValue, String message,
+            TextValueConsumer consumer) {
+        EditText input = new EditText(this);
+        input.setText(currentValue == null ? "" : currentValue);
+        input.setSelection(input.getText().length());
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        input.setHint("https://example.com or intent://...");
+        input.setMinLines(2);
+        input.setMaxLines(6);
+        int padding = dp(20);
+        input.setPadding(padding, padding, padding, padding);
+
+        new AlertDialog.Builder(this)
+                .setTitle(titleText)
+                .setMessage(message)
+                .setView(input)
+                .setNeutralButton("清空", (dialog, which) -> consumer.accept(""))
+                .setNegativeButton("\u53d6\u6d88", null)
+                .setPositiveButton("\u786e\u5b9a", (dialog, which) ->
+                        consumer.accept(input.getText() == null ? "" : input.getText().toString().trim()))
+                .show();
+    }
+
+    private void updateTextSettingLabel(TextView valueView, String value, String emptyLabel) {
+        if (TextUtils.isEmpty(value)) {
+            valueView.setText(emptyLabel);
+            return;
+        }
+        valueView.setText(value);
     }
 
     private void showToast(String message) {
@@ -1256,6 +1431,10 @@ public class MainActivity extends Activity {
                 new int[]{colorPrimaryContainer, colorPrimary, colorPrimaryDeep});
         drawable.setCornerRadius(dp(32));
         return drawable;
+    }
+
+    private interface TextValueConsumer {
+        void accept(String value);
     }
 
     private void initPalette() {

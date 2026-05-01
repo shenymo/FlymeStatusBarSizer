@@ -105,6 +105,12 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_IOS_WIFI_DEBUG_LEVEL,
                 prefs.getInt(SettingsStore.KEY_IOS_WIFI_DEBUG_LEVEL,
                         SettingsStore.DEFAULT_IOS_WIFI_DEBUG_LEVEL));
+        add(cursor, SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
+                prefs.getBoolean(SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
+                        SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED));
+        add(cursor, SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI,
+                prefs.getString(SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI,
+                        SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI));
         add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY,
                 prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY, ""));
         add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_LEVEL,

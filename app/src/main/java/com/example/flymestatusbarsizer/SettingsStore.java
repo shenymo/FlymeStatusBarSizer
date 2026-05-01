@@ -57,6 +57,8 @@ final class SettingsStore {
     static final String KEY_IOS_WIFI_DEBUG_ENABLED = "ios_wifi_debug_enabled";
     static final String KEY_IOS_WIFI_DEBUG_VISIBLE = "ios_wifi_debug_visible";
     static final String KEY_IOS_WIFI_DEBUG_LEVEL = "ios_wifi_debug_level";
+    static final String KEY_MBACK_LONG_TOUCH_URL_ENABLED = "mback_long_touch_url_enabled";
+    static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY = "runtime_signal_debug_summary";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_LEVEL = "runtime_signal_debug_level";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_SLOT = "runtime_signal_debug_slot";
@@ -121,6 +123,8 @@ final class SettingsStore {
     static final boolean DEFAULT_IOS_WIFI_DEBUG_ENABLED = false;
     static final boolean DEFAULT_IOS_WIFI_DEBUG_VISIBLE = true;
     static final int DEFAULT_IOS_WIFI_DEBUG_LEVEL = 4;
+    static final boolean DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED = false;
+    static final String DEFAULT_MBACK_LONG_TOUCH_INTENT_URI = "";
 
     static final String[] INT_KEYS = {
             KEY_GLOBAL_ICON_SCALE,
@@ -173,7 +177,12 @@ final class SettingsStore {
             KEY_IOS_SIGNAL_DEBUG_SIM1_ENABLED,
             KEY_IOS_SIGNAL_DEBUG_SIM2_ENABLED,
             KEY_IOS_WIFI_DEBUG_ENABLED,
-            KEY_IOS_WIFI_DEBUG_VISIBLE
+            KEY_IOS_WIFI_DEBUG_VISIBLE,
+            KEY_MBACK_LONG_TOUCH_URL_ENABLED
+    };
+
+    static final String[] STRING_KEYS = {
+            KEY_MBACK_LONG_TOUCH_INTENT_URI
     };
 
     private SettingsStore() {
@@ -308,9 +317,18 @@ final class SettingsStore {
                 return DEFAULT_IOS_WIFI_DEBUG_ENABLED;
             case KEY_IOS_WIFI_DEBUG_VISIBLE:
                 return DEFAULT_IOS_WIFI_DEBUG_VISIBLE;
+            case KEY_MBACK_LONG_TOUCH_URL_ENABLED:
+                return DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
             default:
                 return false;
         }
+    }
+
+    static String defaultString(String key) {
+        if (KEY_MBACK_LONG_TOUCH_INTENT_URI.equals(key)) {
+            return DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
+        }
+        return "";
     }
 
     static boolean includeInBackup(String key) {
