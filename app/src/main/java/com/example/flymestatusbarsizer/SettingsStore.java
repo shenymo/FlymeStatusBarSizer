@@ -26,6 +26,7 @@ final class SettingsStore {
     static final String KEY_IOS_BATTERY_OFFSET_X = "ios_battery_offset_x";
     static final String KEY_IOS_BATTERY_OFFSET_Y = "ios_battery_offset_y";
     static final String KEY_IOS_BATTERY_TEXT_SIZE = "ios_battery_text_size";
+    static final String KEY_IOS_BATTERY_TEXT_WEIGHT = "ios_battery_text_weight";
     static final String KEY_IOS_GROUP_BATTERY_SCALE = "ios_group_battery_scale";
     static final String KEY_IOS_GROUP_SIGNAL_SCALE = "ios_group_signal_scale";
     static final String KEY_IOS_GROUP_WIFI_SCALE = "ios_group_wifi_scale";
@@ -47,6 +48,7 @@ final class SettingsStore {
     static final String KEY_TEXT_SCALE = "text_scale";
     static final String KEY_SHOW_CLOCK_WEEKDAY = "show_clock_weekday";
     static final String KEY_CLOCK_WEEKDAY_HIDE_PREFIX = "clock_weekday_hide_prefix";
+    static final String KEY_SHOW_MOBILE_DATA_5G_BADGE = "show_mobile_data_5g_badge";
     static final String KEY_CLOCK_BOLD_ENABLED = "clock_bold_enabled";
     static final String KEY_CLOCK_FONT_WEIGHT = "clock_font_weight";
     static final String KEY_IOS_SIGNAL_DUAL_COMBINED = "ios_signal_dual_combined";
@@ -97,6 +99,7 @@ final class SettingsStore {
     static final int DEFAULT_IOS_BATTERY_OFFSET_X = 0;
     static final int DEFAULT_IOS_BATTERY_OFFSET_Y = 1;
     static final int DEFAULT_IOS_BATTERY_TEXT_SIZE = 75;
+    static final int DEFAULT_IOS_BATTERY_TEXT_WEIGHT = 100;
     static final int DEFAULT_IOS_GROUP_BATTERY_SCALE = 100;
     static final int DEFAULT_IOS_GROUP_SIGNAL_SCALE = 74;
     static final int DEFAULT_IOS_GROUP_WIFI_SCALE = 100;
@@ -118,6 +121,7 @@ final class SettingsStore {
     static final int DEFAULT_TEXT_SCALE = 120;
     static final boolean DEFAULT_SHOW_CLOCK_WEEKDAY = true;
     static final boolean DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX = false;
+    static final boolean DEFAULT_SHOW_MOBILE_DATA_5G_BADGE = false;
     static final boolean DEFAULT_CLOCK_BOLD_ENABLED = true;
     static final int DEFAULT_CLOCK_FONT_WEIGHT = 900;
     static final boolean DEFAULT_IOS_SIGNAL_DUAL_COMBINED = true;
@@ -152,6 +156,7 @@ final class SettingsStore {
             KEY_IOS_BATTERY_OFFSET_X,
             KEY_IOS_BATTERY_OFFSET_Y,
             KEY_IOS_BATTERY_TEXT_SIZE,
+            KEY_IOS_BATTERY_TEXT_WEIGHT,
             KEY_IOS_GROUP_BATTERY_SCALE,
             KEY_IOS_GROUP_SIGNAL_SCALE,
             KEY_IOS_GROUP_WIFI_SCALE,
@@ -183,6 +188,7 @@ final class SettingsStore {
             KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
             KEY_SHOW_CLOCK_WEEKDAY,
             KEY_CLOCK_WEEKDAY_HIDE_PREFIX,
+            KEY_SHOW_MOBILE_DATA_5G_BADGE,
             KEY_CLOCK_BOLD_ENABLED,
             KEY_IOS_SIGNAL_DUAL_COMBINED,
             KEY_IOS_SIGNAL_DEBUG_ENABLED,
@@ -260,6 +266,8 @@ final class SettingsStore {
                 return DEFAULT_IOS_BATTERY_OFFSET_Y;
             case KEY_IOS_BATTERY_TEXT_SIZE:
                 return DEFAULT_IOS_BATTERY_TEXT_SIZE;
+            case KEY_IOS_BATTERY_TEXT_WEIGHT:
+                return DEFAULT_IOS_BATTERY_TEXT_WEIGHT;
             case KEY_IOS_GROUP_BATTERY_SCALE:
                 return DEFAULT_IOS_GROUP_BATTERY_SCALE;
             case KEY_IOS_GROUP_SIGNAL_SCALE:
@@ -323,6 +331,8 @@ final class SettingsStore {
                 return DEFAULT_SHOW_CLOCK_WEEKDAY;
             case KEY_CLOCK_WEEKDAY_HIDE_PREFIX:
                 return DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX;
+            case KEY_SHOW_MOBILE_DATA_5G_BADGE:
+                return DEFAULT_SHOW_MOBILE_DATA_5G_BADGE;
             case KEY_CLOCK_BOLD_ENABLED:
                 return DEFAULT_CLOCK_BOLD_ENABLED;
             case KEY_IOS_SIGNAL_DUAL_COMBINED:

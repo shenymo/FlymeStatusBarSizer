@@ -639,6 +639,10 @@ public class MainActivity extends Activity {
         addSliderRow(page, "\u7535\u91cf\u6570\u5b57\u5927\u5c0f",
                 "\u7535\u91cf\u6570\u5b57\u5728\u7535\u6c60\u5185\u7684\u663e\u793a\u6bd4\u4f8b",
                 SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE, 40, 100, "%");
+        addDivider(page);
+        addSliderRow(page, "\u7535\u91cf\u6570\u5b57\u7c97\u7ec6",
+                "\u8c03\u6574\u7535\u6c60\u5185\u6570\u5b57\u7684\u7b14\u753b\u539a\u5ea6\uff0c100% \u4e3a\u9ed8\u8ba4",
+                SettingsStore.KEY_IOS_BATTERY_TEXT_WEIGHT, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_WEIGHT, 60, 180, "%");
         return page;
     }
 
@@ -683,6 +687,10 @@ public class MainActivity extends Activity {
         addSwitchRow(page, "\u53cc\u5361\u5408\u4e00\u4fe1\u53f7\u683c",
                 "\u5361 1 \u4f5c\u4e3a\u4e3b\u4fe1\u53f7\u683c\uff0c\u5361 2 \u5408\u5e76\u5230\u4e0b\u65b9\u56db\u4e2a\u5c0f\u70b9",
                 SettingsStore.KEY_IOS_SIGNAL_DUAL_COMBINED, SettingsStore.DEFAULT_IOS_SIGNAL_DUAL_COMBINED);
+        addDivider(page);
+        addSwitchRow(page, "\u6d41\u91cf\u4e0a\u7f51\u65f6\u663e\u793a 5G",
+                "\u5f53\u5f53\u524d\u9ed8\u8ba4\u4e0a\u7f51\u4f7f\u7528\u8702\u7a9d\u6570\u636e\u800c\u4e0d\u662f Wi-Fi \u65f6\uff0c\u5728\u4fe1\u53f7\u548c Wi-Fi \u4e4b\u95f4\u63d2\u5165\u4e00\u4e2a 5G \u6807\u8bc6",
+                SettingsStore.KEY_SHOW_MOBILE_DATA_5G_BADGE, SettingsStore.DEFAULT_SHOW_MOBILE_DATA_5G_BADGE);
         addDivider(page);
         addSliderRow(page, "\u56fe\u6807\u7ec4\u91cc\u4fe1\u53f7\u7f29\u653e",
                 "\u76f4\u63a5\u538b\u5c0f\u6216\u653e\u5927\u5408\u5e76\u7ed8\u5236\u540e\u7684\u79fb\u52a8\u4fe1\u53f7\u683c",
@@ -1843,6 +1851,8 @@ public class MainActivity extends Activity {
                     SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y));
             int batteryTextSize = readIntSetting(SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE,
                     SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE);
+            int batteryTextWeight = readIntSetting(SettingsStore.KEY_IOS_BATTERY_TEXT_WEIGHT,
+                    SettingsStore.DEFAULT_IOS_BATTERY_TEXT_WEIGHT);
             boolean batteryStyleEnabled = true;
             boolean combinedDualSignal = prefs.getBoolean(SettingsStore.KEY_IOS_SIGNAL_DUAL_COMBINED,
                     SettingsStore.DEFAULT_IOS_SIGNAL_DUAL_COMBINED);
@@ -1918,7 +1928,7 @@ public class MainActivity extends Activity {
             batteryRect.set(batteryLeft, batteryTop,
                     batteryLeft + scaledBatteryWidth, batteryTop + scaledBatteryHeight);
             IosBatteryPainter.draw(canvas, batteryRect, PREVIEW_BATTERY_LEVEL, false, false, true,
-                    batteryTextSize, colorText, Color.WHITE);
+                    batteryTextSize, batteryTextWeight, colorText, Color.WHITE);
             canvas.restore();
         }
 

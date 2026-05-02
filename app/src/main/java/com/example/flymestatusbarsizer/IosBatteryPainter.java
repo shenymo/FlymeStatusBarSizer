@@ -22,11 +22,12 @@ final class IosBatteryPainter {
     static void draw(Drawable drawable, Canvas canvas, int level, boolean pluggedIn, boolean charging,
             boolean showPercent) {
         draw(canvas, drawable.getBounds(), level, pluggedIn, charging, showPercent,
-                SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE, Color.BLACK, Color.WHITE);
+                SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE,
+                SettingsStore.DEFAULT_IOS_BATTERY_TEXT_WEIGHT, Color.BLACK, Color.WHITE);
     }
 
     static void draw(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
-            boolean showPercent, int textSizePercent, int fillColor, int textColor) {
+            boolean showPercent, int textSizePercent, int textWeightPercent, int fillColor, int textColor) {
         if (bounds.width() <= 0 || bounds.height() <= 0) {
             return;
         }
@@ -63,21 +64,51 @@ final class IosBatteryPainter {
         }
 
         if (charging) {
-            drawPercent(canvas, BODY, clampedLevel, textSizePercent, contrastTextColor(CHARGING_FILL_COLOR));
+            drawPercentSplit(canvas, BODY, FILL, fillRight > BODY.left, clampedLevel, textSizePercent,
+                    textWeightPercent, textColor, readableTintTextColor(CHARGING_FILL_COLOR),
+                    contrastTextColor(CHARGING_FILL_COLOR));
         } else {
-            drawPercent(canvas, BODY, clampedLevel, textSizePercent, textColor);
+            drawPercentSplit(canvas, BODY, FILL, fillRight > BODY.left, clampedLevel, textSizePercent,
+                    textWeightPercent, textColor, readableTintTextColor(fillColor),
+                    contrastTextColor(fillColor));
         }
     }
 
-    private static void drawPercent(Canvas canvas, RectF body, int level, int textSizePercent, int textColor) {
+    private static void drawPercentSplit(Canvas canvas, RectF body, RectF fill, boolean hasFill,
+            int level, int textSizePercent, int textWeightPercent,
+            int baseTextColor, int filledTextColor, int strokeColor) {
+        drawPercent(canvas, body, level, textSizePercent, textWeightPercent, baseTextColor, strokeColor);
+        if (!hasFill) {
+            return;
+        }
+        canvas.save();
+        canvas.clipRect(fill);
+        drawPercent(canvas, body, level, textSizePercent, textWeightPercent, filledTextColor, strokeColor);
+        canvas.restore();
+    }
+
+    private static void drawPercent(Canvas canvas, RectF body, int level, int textSizePercent,
+            int textWeightPercent, int textColor, int strokeColor) {
         String text = Integer.toString(level);
-        PAINT.setStyle(Paint.Style.FILL);
-        PAINT.setFakeBoldText(true);
+        float textSize = body.height() * Math.max(40, Math.min(100, textSizePercent)) / 100f;
+        float strokeWidth = textSize * Math.max(0f, Math.min(1.6f, (textWeightPercent - 100f) / 250f));
         PAINT.setTextAlign(Paint.Align.CENTER);
-        PAINT.setTextSize(body.height() * Math.max(40, Math.min(100, textSizePercent)) / 100f);
+        PAINT.setTextSize(textSize);
+        PAINT.setFakeBoldText(true);
         PAINT.setColor(textColor);
         PAINT.getTextBounds(text, 0, text.length(), TEXT_BOUNDS);
         float y = body.centerY() - (PAINT.descent() + PAINT.ascent()) / 2f;
+        if (strokeWidth > 0f) {
+            PAINT.setStyle(Paint.Style.STROKE);
+            PAINT.setStrokeWidth(strokeWidth);
+            PAINT.setStrokeJoin(Paint.Join.ROUND);
+            PAINT.setStrokeMiter(10f);
+            PAINT.setColor(applyAlpha(strokeColor, 215));
+            canvas.drawText(text, body.centerX(), y, PAINT);
+        }
+        PAINT.setStyle(Paint.Style.FILL);
+        PAINT.setStrokeWidth(0f);
+        PAINT.setColor(textColor);
         canvas.drawText(text, body.centerX(), y, PAINT);
         PAINT.setFakeBoldText(false);
     }
@@ -87,6 +118,26 @@ final class IosBatteryPainter {
         int g = Color.green(color);
         int b = Color.blue(color);
         return (r * 299 + g * 587 + b * 114) / 1000 < 128 ? Color.WHITE : Color.BLACK;
+    }
+
+    private static int readableTintTextColor(int color) {
+        int alpha = Color.alpha(color);
+        boolean dark = contrastTextColor(color) == Color.WHITE;
+        float mix = dark ? 0.78f : 0.72f;
+        int target = dark ? Color.WHITE : Color.BLACK;
+        return Color.argb(alpha == 0 ? 255 : alpha,
+                blendChannel(Color.red(color), Color.red(target), mix),
+                blendChannel(Color.green(color), Color.green(target), mix),
+                blendChannel(Color.blue(color), Color.blue(target), mix));
+    }
+
+    private static int blendChannel(int start, int end, float mix) {
+        return Math.max(0, Math.min(255, Math.round(start + (end - start) * mix)));
+    }
+
+    private static int applyAlpha(int color, int alpha) {
+        return Color.argb(Math.max(0, Math.min(255, alpha)),
+                Color.red(color), Color.green(color), Color.blue(color));
     }
 
 }

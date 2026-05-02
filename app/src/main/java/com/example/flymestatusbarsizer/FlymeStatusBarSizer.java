@@ -19,6 +19,9 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -70,6 +73,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<TextView, Typeface> ORIGINAL_TEXT_TYPEFACES = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Integer> ORIGINAL_TEXT_STYLES = new WeakHashMap<>();
     private static final WeakHashMap<View, Integer> ORIGINAL_CONNECTION_RATE_TEXT_SIZES = new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> TRACKED_STATUS_ICON_ROOT_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_WIFI_ROOT_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Object> LAST_REAL_WIFI_STATES = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, Boolean> TRACKED_WIFI_SIGNAL_VIEWS = new WeakHashMap<>();
@@ -116,6 +120,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static volatile boolean LAST_SIGNAL_DEBUG_ENABLED;
     private static volatile boolean LAST_WIFI_DEBUG_ENABLED;
     private static volatile boolean INTERNAL_WIFI_DEBUG_APPLY;
+    private static volatile boolean LAST_MOBILE_DATA_BADGE_VISIBLE;
     private static volatile long LAST_SIGNAL_DEBUG_REPORT_UPTIME;
     private static volatile long LAST_WIFI_DEBUG_REPORT_UPTIME;
     private static volatile String LAST_WIFI_DEBUG_SOURCE = "";
@@ -132,6 +137,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static volatile long CACHED_CONFIG_UPTIME;
     private static BroadcastReceiver USER_UNLOCKED_RECEIVER;
     private static BroadcastReceiver SUBSCRIPTION_CHANGED_RECEIVER;
+    private static BroadcastReceiver CONNECTIVITY_CHANGED_RECEIVER;
     private static ContentObserver SETTINGS_OBSERVER;
     private static int primaryMobileSubId = UNSET_SUB_ID;
     private static int secondaryMobileSubId = UNSET_SUB_ID;
@@ -246,6 +252,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                     Object result = chain.proceed();
                     if (result instanceof View) {
                         View view = (View) result;
+                        trackStatusIconRootView(view);
                         registerMobileViewSlot(view);
                         applyStatusBarSizing(view);
                     }
@@ -1086,7 +1093,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         boolean pluggedIn = getBooleanField(drawable, "mPluggedIn", false);
         boolean charging = getBooleanField(drawable, "mCharging", false);
         boolean showPercent = getBooleanField(drawable, "mShowPercent", false);
-        IosBatteryPainter.draw((Drawable) drawable, canvas, level, pluggedIn, charging, showPercent);
+        int tintColor = resolveBatteryTintColor(drawable, Color.BLACK);
+        IosBatteryPainter.draw(canvas, ((Drawable) drawable).getBounds(), level, pluggedIn, charging, showPercent,
+                SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_WEIGHT,
+                tintColor, tintColor);
         return true;
     }
 
@@ -1111,11 +1121,32 @@ public class FlymeStatusBarSizer extends XposedModule {
         int left = mergedIconsWidth + getMergedBatteryLeadingGap(batteryView, config)
                 + dp(batteryView, config.iosBatteryOffsetX);
         int top = Math.round((batteryView.getHeight() - height) / 2f) + dp(batteryView, config.iosBatteryOffsetY);
-        int fillColor = normalizeIconColor(getIntField(view, "mFilterColor", Color.BLACK));
+        int fillColor = resolveBatteryTintColor(view, Color.BLACK);
         IosBatteryPainter.draw(canvas, new Rect(left, top, left + width, top + height),
                 level, pluggedIn, charging, showPercent, config.iosBatteryTextSize,
-                fillColor, contrastTextColor(fillColor));
+                config.iosBatteryTextWeight,
+                fillColor, fillColor);
         return true;
+    }
+
+    private static int resolveBatteryTintColor(Object target, int fallback) {
+        int color = getIntField(target, "mFilterColor", 0);
+        if (Color.alpha(color) != 0) {
+            return color;
+        }
+        color = getIntField(target, "mIconTint", 0);
+        if (Color.alpha(color) != 0) {
+            return color;
+        }
+        color = getIntField(target, "mLightModeFillColor", 0);
+        if (Color.alpha(color) != 0) {
+            return color;
+        }
+        color = getIntField(target, "mDarkModeFillColor", 0);
+        if (Color.alpha(color) != 0) {
+            return color;
+        }
+        return normalizeIconColor(fallback);
     }
 
     private static boolean measureIosBatteryViewIfNeeded(Object view) {
@@ -1593,6 +1624,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
             scaleChild(root, "wifi_signal", config.scaled(config.wifiSignalFactor), config.scaled(config.wifiSignalFactor));
             applyIosWifiStyle(root, config);
+            updateMobileDataBadge(root, config);
             View type = findSystemUiChild(root, "mobile_type");
             if (type instanceof ImageView) {
                 hideNetworkTypeView((ImageView) type);
@@ -1621,6 +1653,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 scaleView(wifiIcon, config.scaled(config.wifiSignalFactor), config.scaled(config.wifiSignalFactor));
             }
             applyIosWifiStyle(root, config);
+            updateMobileDataBadge(root, config);
             hideActivityArrows(root);
             View child = findSystemUiChild(root, "wifi_signal");
             if (child instanceof ImageView) {
@@ -2033,6 +2066,14 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         TRACKED_WIFI_ROOT_VIEWS.put(view, Boolean.TRUE);
+        ensureConfigRefreshObserver(view.getContext());
+    }
+
+    private static void trackStatusIconRootView(View view) {
+        if (view == null) {
+            return;
+        }
+        TRACKED_STATUS_ICON_ROOT_VIEWS.put(view, Boolean.TRUE);
         ensureConfigRefreshObserver(view.getContext());
     }
 
@@ -3945,6 +3986,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                         restoreTrackedWifiStates();
                     }
                     LAST_WIFI_DEBUG_ENABLED = config.iosWifiDebugEnabled;
+                    refreshTrackedStatusIconRoots();
                     Handler handler = MAIN_HANDLER;
                     if (handler != null) {
                         handler.postDelayed(() -> {
@@ -3986,9 +4028,23 @@ public class FlymeStatusBarSizer extends XposedModule {
                 registerRuntimeReceiver(appContext, SUBSCRIPTION_CHANGED_RECEIVER, filter);
             } catch (Throwable ignored) {
             }
+            CONNECTIVITY_CHANGED_RECEIVER = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context receiverContext, Intent intent) {
+                    refreshTrackedStatusIconRoots();
+                }
+            };
+            try {
+                IntentFilter filter = new IntentFilter();
+                filter.addAction(ConnectivityManager.CONNECTIVITY_ACTION);
+                registerRuntimeReceiver(appContext, CONNECTIVITY_CHANGED_RECEIVER, filter);
+            } catch (Throwable ignored) {
+            }
             CONFIG_REFRESH_REGISTERED = true;
             LAST_SIGNAL_DEBUG_ENABLED = Config.load(appContext).iosSignalDebugEnabled;
             LAST_WIFI_DEBUG_ENABLED = Config.load(appContext).iosWifiDebugEnabled;
+            LAST_MOBILE_DATA_BADGE_VISIBLE = Config.load(appContext).showMobileData5gBadge
+                    && isDefaultNetworkUsingMobileData(appContext);
             scheduleInitialRuntimeRefreshes();
         }
     }
@@ -4091,6 +4147,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         refreshTrackedTextScaling();
         refreshTrackedBatteryViews();
         refreshTrackedSignalViews(forceSignalRequery);
+        refreshTrackedStatusIconRoots();
     }
 
     private static void invalidateConfigCache() {
@@ -4276,6 +4333,25 @@ public class FlymeStatusBarSizer extends XposedModule {
                 applyMobileSignalInfo(imageView, info, config);
                 imageView.requestLayout();
                 imageView.invalidate();
+            }
+        });
+    }
+
+    private static void refreshTrackedStatusIconRoots() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        handler.post(() -> {
+            ArrayList<View> roots = new ArrayList<>(TRACKED_STATUS_ICON_ROOT_VIEWS.keySet());
+            for (View root : roots) {
+                if (root == null) {
+                    continue;
+                }
+                Config config = Config.load(root.getContext());
+                updateMobileDataBadge(root, config);
+                root.requestLayout();
+                root.invalidate();
             }
         });
     }
@@ -4560,6 +4636,185 @@ public class FlymeStatusBarSizer extends XposedModule {
         View mobileGroup = findSystemUiChild(root, "mobile_group");
         if (mobileGroup != null && mobileGroup != root) {
             applyHorizontalMargins(mobileGroup, gapPx, 0);
+        }
+    }
+
+    private static void updateMobileDataBadge(View root, Config config) {
+        if (root == null || config == null || !config.enabled || !isStatusIconsChild(root)) {
+            removeMobileDataBadge(root);
+            return;
+        }
+        View hostRoot = root;
+        View ancestor = findAncestorByIdName(root, "system_icons");
+        if (ancestor == null) {
+            ancestor = findAncestorByIdName(root, "statusIcons");
+        }
+        if (ancestor != null) {
+            hostRoot = ancestor;
+        }
+        boolean visible = config.showMobileData5gBadge && isDefaultNetworkUsingMobileData(root.getContext());
+        LAST_MOBILE_DATA_BADGE_VISIBLE = visible;
+        if (!visible) {
+            removeMobileDataBadge(hostRoot);
+            return;
+        }
+        View wifiSignal = findSystemUiChild(hostRoot, "wifi_signal");
+        View mobileSignal = findSystemUiChild(hostRoot, "mobile_signal");
+        if (!(wifiSignal instanceof ImageView) || !(mobileSignal instanceof ImageView)) {
+            removeMobileDataBadge(hostRoot);
+            return;
+        }
+        ViewGroup host = findBadgeHostContainer((ImageView) wifiSignal, (ImageView) mobileSignal);
+        if (host == null) {
+            return;
+        }
+        TextView badge = ensureMobileDataBadge(host, hostRoot.getContext());
+        styleMobileDataBadge(badge, root.getContext());
+        placeMobileDataBadge(host, badge, wifiSignal, mobileSignal);
+        badge.setVisibility(View.VISIBLE);
+        badge.bringToFront();
+    }
+
+    private static void removeMobileDataBadge(View root) {
+        if (root == null) {
+            return;
+        }
+        ViewGroup host = root instanceof ViewGroup ? (ViewGroup) root : null;
+        if (host == null) {
+            host = (ViewGroup) findAncestorByIdName(root, "system_icons");
+        }
+        if (host == null) {
+            return;
+        }
+        View existing = host.findViewWithTag("mobile_data_5g_badge");
+        if (existing != null) {
+            existing.setVisibility(View.GONE);
+        }
+    }
+
+    private static ViewGroup findBadgeHostContainer(ImageView wifiSignal, ImageView mobileSignal) {
+        View wifiContainer = wifiSignal == null ? null : findWifiSignalContainer(wifiSignal);
+        View mobileContainer = mobileSignal == null ? null : findMobileSignalContainer(mobileSignal);
+        ViewGroup wifiParent = wifiContainer != null && wifiContainer.getParent() instanceof ViewGroup
+                ? (ViewGroup) wifiContainer.getParent() : null;
+        ViewGroup mobileParent = mobileContainer != null && mobileContainer.getParent() instanceof ViewGroup
+                ? (ViewGroup) mobileContainer.getParent() : null;
+        if (wifiParent != null && wifiParent == mobileParent) {
+            return wifiParent;
+        }
+        if (wifiParent != null) {
+            return wifiParent;
+        }
+        return mobileParent;
+    }
+
+    private static TextView ensureMobileDataBadge(ViewGroup host, Context context) {
+        View existing = host.findViewWithTag("mobile_data_5g_badge");
+        if (existing instanceof TextView) {
+            return (TextView) existing;
+        }
+        TextView badge = new TextView(context);
+        badge.setTag("mobile_data_5g_badge");
+        badge.setText("5G");
+        badge.setSingleLine(true);
+        badge.setIncludeFontPadding(false);
+        badge.setGravity(Gravity.CENTER);
+        host.addView(badge, buildMobileDataBadgeLayoutParams(host));
+        return badge;
+    }
+
+    private static ViewGroup.LayoutParams buildMobileDataBadgeLayoutParams(ViewGroup host) {
+        if (host instanceof android.widget.FrameLayout) {
+            android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.gravity = Gravity.START | Gravity.CENTER_VERTICAL;
+            return lp;
+        }
+        if (host instanceof android.widget.LinearLayout) {
+            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.gravity = Gravity.CENTER_VERTICAL;
+            return lp;
+        }
+        if (host instanceof android.widget.RelativeLayout) {
+            android.widget.RelativeLayout.LayoutParams lp = new android.widget.RelativeLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.addRule(android.widget.RelativeLayout.CENTER_VERTICAL);
+            return lp;
+        }
+        return new ViewGroup.MarginLayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+    }
+
+    private static void styleMobileDataBadge(TextView badge, Context context) {
+        float density = context.getResources().getDisplayMetrics().density;
+        badge.setText("5G");
+        badge.setTextColor(Color.WHITE);
+        badge.setTypeface(Typeface.DEFAULT_BOLD);
+        badge.setTextSize(0, 9f * density);
+        int horizontal = Math.max(1, Math.round(3f * density));
+        int vertical = Math.max(0, Math.round(0.5f * density));
+        badge.setPadding(horizontal, vertical, horizontal, vertical);
+        badge.setMinWidth(Math.max(1, Math.round(15f * density)));
+    }
+
+    private static void placeMobileDataBadge(ViewGroup host, TextView badge, View wifiSignal, View mobileSignal) {
+        int[] wifiBounds = getViewBoundsWithinHost(host, wifiSignal);
+        int[] mobileBounds = getViewBoundsWithinHost(host, mobileSignal);
+        if (wifiBounds == null || mobileBounds == null) {
+            return;
+        }
+        badge.measure(
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        int badgeWidth = badge.getMeasuredWidth();
+        int badgeHeight = badge.getMeasuredHeight();
+        int centerX = (wifiBounds[0] + wifiBounds[2] + mobileBounds[0]) / 2;
+        int left = centerX - badgeWidth / 2;
+        int top = ((Math.min(wifiBounds[1], mobileBounds[1]) + Math.max(wifiBounds[3], mobileBounds[3])) / 2)
+                - badgeHeight / 2;
+        badge.setX(left);
+        badge.setY(top);
+    }
+
+    private static int[] getViewBoundsWithinHost(ViewGroup host, View child) {
+        if (host == null || child == null) {
+            return null;
+        }
+        int[] hostLocation = new int[2];
+        int[] childLocation = new int[2];
+        host.getLocationOnScreen(hostLocation);
+        child.getLocationOnScreen(childLocation);
+        return new int[]{
+                childLocation[0] - hostLocation[0],
+                childLocation[1] - hostLocation[1],
+                childLocation[0] - hostLocation[0] + child.getWidth(),
+                childLocation[1] - hostLocation[1] + child.getHeight()
+        };
+    }
+
+    private static boolean isDefaultNetworkUsingMobileData(Context context) {
+        if (context == null) {
+            return false;
+        }
+        try {
+            ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (manager == null) {
+                return false;
+            }
+            Network activeNetwork = manager.getActiveNetwork();
+            if (activeNetwork == null) {
+                return false;
+            }
+            NetworkCapabilities capabilities = manager.getNetworkCapabilities(activeNetwork);
+            if (capabilities == null) {
+                return false;
+            }
+            return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                    && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 
@@ -5170,6 +5425,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         int iosBatteryOffsetX = SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X;
         int iosBatteryOffsetY = SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y;
         int iosBatteryTextSize = SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE;
+        int iosBatteryTextWeight = SettingsStore.DEFAULT_IOS_BATTERY_TEXT_WEIGHT;
         int iosGroupBatteryScale = SettingsStore.DEFAULT_IOS_GROUP_BATTERY_SCALE;
         int iosGroupSignalScale = SettingsStore.DEFAULT_IOS_GROUP_SIGNAL_SCALE;
         int iosGroupWifiScale = SettingsStore.DEFAULT_IOS_GROUP_WIFI_SCALE;
@@ -5191,6 +5447,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         float textScale = SettingsStore.DEFAULT_TEXT_SCALE / 100f;
         boolean showClockWeekday = SettingsStore.DEFAULT_SHOW_CLOCK_WEEKDAY;
         boolean clockWeekdayHidePrefix = SettingsStore.DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX;
+        boolean showMobileData5gBadge = SettingsStore.DEFAULT_SHOW_MOBILE_DATA_5G_BADGE;
         boolean clockBoldEnabled = SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED;
         int clockFontWeight = SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT;
         boolean iosSignalDualCombined = SettingsStore.DEFAULT_IOS_SIGNAL_DUAL_COMBINED;
@@ -5298,6 +5555,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                 iosBatteryOffsetY = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y);
             } else if (SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE.equals(key)) {
                 iosBatteryTextSize = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE);
+            } else if (SettingsStore.KEY_IOS_BATTERY_TEXT_WEIGHT.equals(key)) {
+                iosBatteryTextWeight = parseInt(value, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_WEIGHT);
             } else if (SettingsStore.KEY_IOS_GROUP_BATTERY_SCALE.equals(key)) {
                 iosGroupBatteryScale = parseInt(value, SettingsStore.DEFAULT_IOS_GROUP_BATTERY_SCALE);
             } else if (SettingsStore.KEY_IOS_GROUP_SIGNAL_SCALE.equals(key)) {
@@ -5340,6 +5599,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                 showClockWeekday = "1".equals(value);
             } else if (SettingsStore.KEY_CLOCK_WEEKDAY_HIDE_PREFIX.equals(key)) {
                 clockWeekdayHidePrefix = "1".equals(value);
+            } else if (SettingsStore.KEY_SHOW_MOBILE_DATA_5G_BADGE.equals(key)) {
+                showMobileData5gBadge = "1".equals(value);
             } else if (SettingsStore.KEY_CLOCK_BOLD_ENABLED.equals(key)) {
                 clockBoldEnabled = "1".equals(value);
             } else if (SettingsStore.KEY_CLOCK_FONT_WEIGHT.equals(key)) {

@@ -46,6 +46,7 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_IOS_BATTERY_OFFSET_X, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_OFFSET_X, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X));
         add(cursor, SettingsStore.KEY_IOS_BATTERY_OFFSET_Y, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_OFFSET_Y, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y));
         add(cursor, SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE));
+        add(cursor, SettingsStore.KEY_IOS_BATTERY_TEXT_WEIGHT, prefs.getInt(SettingsStore.KEY_IOS_BATTERY_TEXT_WEIGHT, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_WEIGHT));
         add(cursor, SettingsStore.KEY_IOS_GROUP_BATTERY_SCALE, prefs.getInt(SettingsStore.KEY_IOS_GROUP_BATTERY_SCALE, SettingsStore.DEFAULT_IOS_GROUP_BATTERY_SCALE));
         add(cursor, SettingsStore.KEY_IOS_GROUP_SIGNAL_SCALE, prefs.getInt(SettingsStore.KEY_IOS_GROUP_SIGNAL_SCALE, SettingsStore.DEFAULT_IOS_GROUP_SIGNAL_SCALE));
         add(cursor, SettingsStore.KEY_IOS_GROUP_WIFI_SCALE, prefs.getInt(SettingsStore.KEY_IOS_GROUP_WIFI_SCALE, SettingsStore.DEFAULT_IOS_GROUP_WIFI_SCALE));
@@ -79,6 +80,9 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_CLOCK_WEEKDAY_HIDE_PREFIX,
                 prefs.getBoolean(SettingsStore.KEY_CLOCK_WEEKDAY_HIDE_PREFIX,
                         SettingsStore.DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX));
+        add(cursor, SettingsStore.KEY_SHOW_MOBILE_DATA_5G_BADGE,
+                prefs.getBoolean(SettingsStore.KEY_SHOW_MOBILE_DATA_5G_BADGE,
+                        SettingsStore.DEFAULT_SHOW_MOBILE_DATA_5G_BADGE));
         add(cursor, SettingsStore.KEY_CLOCK_BOLD_ENABLED, prefs.getBoolean(SettingsStore.KEY_CLOCK_BOLD_ENABLED, SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED));
         add(cursor, SettingsStore.KEY_CLOCK_FONT_WEIGHT, prefs.getInt(SettingsStore.KEY_CLOCK_FONT_WEIGHT, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT));
         add(cursor, SettingsStore.KEY_IOS_SIGNAL_DUAL_COMBINED,
