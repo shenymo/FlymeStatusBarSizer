@@ -1617,11 +1617,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                                 || ("snapToDestination".equals(name) && parameterCount == 0)
                                 || ("snapToPageMz".equals(name) && parameterCount == 4)
                                 || ("snapToPageWithVelocity".equals(name) && parameterCount == 2)
-                                || ("getCurrentPage".equals(name) && parameterCount == 0)
-                                || ("getNextPage".equals(name) && parameterCount == 0)
                                 || ("getDestinationPage".equals(name) && parameterCount == 0)
                                 || ("getDestinationPage".equals(name) && parameterCount == 1)
-                                || ("getPageNearestToCenterOfScreen".equals(name) && parameterCount == 0)
                                 || ("computeScrollHelper".equals(name) && parameterCount == 0)
                                 || ("boundScrollRange".equals(name) && parameterCount == 0);
                 if (!shouldHook) {
@@ -1630,24 +1627,19 @@ public class FlymeStatusBarSizer extends XposedModule {
                 method.setAccessible(true);
                 hook(method).intercept(chain -> {
                     Object thisObject = chain.getThisObject();
-                    boolean useVisualCenterPaging = shouldUseRecentsVisualCenterPaging(thisObject);
+                    boolean useScrollTargetPaging = shouldUseRecentsScrollTargetPaging(thisObject);
                     boolean bypassPagingSnap = shouldBypassRecentsPagingSnap(thisObject);
-                    if (!useVisualCenterPaging && !bypassPagingSnap) {
+                    if (!useScrollTargetPaging && !bypassPagingSnap) {
                         return chain.proceed();
                     }
-                    if (useVisualCenterPaging
-                            && ("getCurrentPage".equals(name)
-                            || "getNextPage".equals(name)
-                            || "getPageNearestToCenterOfScreen".equals(name)
-                            || "getDestinationPage".equals(name))) {
+                    if (useScrollTargetPaging && "getDestinationPage".equals(name)) {
                         Integer scrollOverride = null;
-                        if ("getDestinationPage".equals(name)
-                                && parameterCount == 1
+                        if (parameterCount == 1
                                 && chain.getArg(0) instanceof Integer) {
                             scrollOverride = (Integer) chain.getArg(0);
                         }
                         int fallbackPage = getIntField(thisObject, "mCurrentPage", 0);
-                        return resolveVisualCenterTaskIndex(thisObject, scrollOverride, fallbackPage);
+                        return resolveScrollTargetTaskIndex(thisObject, scrollOverride, fallbackPage);
                     }
                     if (!bypassPagingSnap) {
                         return chain.proceed();
@@ -1735,11 +1727,8 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         stabilizeRecentsContentLayers(recentsViewObject, taskCount);
-        int fieldCurrentPage = getIntField(recentsViewObject, "mCurrentPage", 0);
-        int currentPage = resolveVisualCenterTaskIndex(recentsViewObject, null, fieldCurrentPage);
-        float pageProgress = resolveCurrentPageProgress(recentsViewObject, taskCount, currentPage);
-        int currentTaskIndex = resolveVisualCenterTaskIndex(recentsViewObject, null,
-                clamp(Math.round(pageProgress), 0, Math.max(0, taskCount - 1)));
+        float pageProgress = resolveScrollBasedPageProgress(recentsViewObject, taskCount);
+        int currentTaskIndex = clamp(Math.round(pageProgress), 0, Math.max(0, taskCount - 1));
         stabilizeRecentsVisibleTaskData(recentsViewObject, taskCount, currentTaskIndex);
         disableChildClipping(recentsView);
         disableAncestorClipping(recentsView, 3);
@@ -1768,7 +1757,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                     + (taskView.getTranslationX() - lastStackDeltaX)
                     + (taskView.getWidth() / 2f);
             baseTopsY[i] = taskView.getTop() + (taskView.getTranslationY() - lastStackDeltaY);
-            primaryOffsets[i] = getTaskBaseOffsetValue(taskView, true);
+            primaryOffsets[i] = getTaskOffsetPropertyValue(taskView, true, 0f);
             secondaryOffsets[i] = getTaskBaseOffsetValue(taskView, false);
             if (i == currentTaskIndex) {
                 currentTaskView = taskView;
@@ -1912,6 +1901,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         int defaultEnd = clamp(defaultCenter + 2, 0, taskCount - 1);
 
         SparseBooleanArray forcedNow = new SparseBooleanArray();
+        SparseBooleanArray forcedBefore = RECENTS_STACK_FORCED_VISIBLE_TASK_IDS.get(recentsView);
         SparseBooleanArray hasVisibleTaskData = getSparseBooleanArrayField(recentsViewObject, "mHasVisibleTaskData");
         ArrayList<Integer> visibleTaskIds = new ArrayList<>();
         HashMap<Integer, Integer> taskIndexById = new HashMap<>();
@@ -1933,15 +1923,18 @@ public class FlymeStatusBarSizer extends XposedModule {
             forcedNow.put(taskId, true);
             visibleTaskIds.add(taskId);
             if (i < defaultStart || i > defaultEnd) {
-                invokeMethod(taskView, "onTaskListVisibilityChanged",
-                        new Class<?>[]{boolean.class, int.class}, true, 15);
+                boolean alreadyForcedVisible = forcedBefore != null && forcedBefore.get(taskId);
+                boolean alreadyMarkedVisible = hasVisibleTaskData != null && hasVisibleTaskData.get(taskId);
+                if (!alreadyForcedVisible || !alreadyMarkedVisible) {
+                    invokeMethod(taskView, "onTaskListVisibilityChanged",
+                            new Class<?>[]{boolean.class, int.class}, true, 15);
+                }
                 if (hasVisibleTaskData != null) {
                     hasVisibleTaskData.put(taskId, true);
                 }
             }
         }
 
-        SparseBooleanArray forcedBefore = RECENTS_STACK_FORCED_VISIBLE_TASK_IDS.get(recentsView);
         if (forcedBefore != null) {
             for (int i = 0; i < forcedBefore.size(); i++) {
                 int taskId = forcedBefore.keyAt(i);
@@ -1974,7 +1967,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         RECENTS_STACK_FORCED_VISIBLE_TASK_IDS.put(recentsView, forcedNow);
 
         Object recentsViewModel = getField(recentsViewObject, "mRecentsViewModel");
-        if (recentsViewModel != null) {
+        if (recentsViewModel != null && !sparseBooleanArraysEqual(forcedBefore, forcedNow)) {
             invokeMethod(recentsViewModel, "updateVisibleTasks",
                     new Class<?>[]{java.util.List.class}, visibleTaskIds);
         }
@@ -1992,6 +1985,22 @@ public class FlymeStatusBarSizer extends XposedModule {
         return fieldValue instanceof SparseBooleanArray ? (SparseBooleanArray) fieldValue : null;
     }
 
+    private static boolean sparseBooleanArraysEqual(SparseBooleanArray first, SparseBooleanArray second) {
+        if (first == second) {
+            return true;
+        }
+        if (first == null || second == null || first.size() != second.size()) {
+            return false;
+        }
+        for (int i = 0; i < first.size(); i++) {
+            int key = first.keyAt(i);
+            if (key != second.keyAt(i) || first.valueAt(i) != second.valueAt(i)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static int getPrimaryTaskId(View taskView) {
         Object taskIdsObject = invokeNoArg(taskView, "getTaskIds");
         if (!(taskIdsObject instanceof int[])) {
@@ -2006,7 +2015,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         return Integer.MIN_VALUE;
     }
 
-    private static float resolveCurrentPageProgress(Object recentsViewObject, int taskCount, int currentPage) {
+    private static float resolveScrollBasedPageProgress(Object recentsViewObject, int taskCount) {
         if (taskCount <= 1) {
             return 0f;
         }
@@ -2014,7 +2023,20 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (scrollX == Integer.MIN_VALUE) {
             scrollX = ((View) recentsViewObject).getScrollX();
         }
-        int closestPage = clamp(currentPage, 0, taskCount - 1);
+        int closestPage = 0;
+        int closestDistance = Integer.MAX_VALUE;
+        for (int i = 0; i < taskCount; i++) {
+            int pageScroll = invokeMethodInt(recentsViewObject, "getScrollForPage",
+                    new Class<?>[]{int.class}, i, Integer.MIN_VALUE);
+            if (pageScroll == Integer.MIN_VALUE) {
+                continue;
+            }
+            int distance = Math.abs(pageScroll - scrollX);
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestPage = i;
+            }
+        }
         int closestScroll = invokeMethodInt(recentsViewObject, "getScrollForPage",
                 new Class<?>[]{int.class}, closestPage, Integer.MIN_VALUE);
         if (closestScroll == Integer.MIN_VALUE) {
@@ -2067,18 +2089,13 @@ public class FlymeStatusBarSizer extends XposedModule {
             rotation = -rotationStep * 0.03f * lift;
         }
 
-        if (Math.abs(delta) < 0.08f) {
-            targetPrimaryOffset = 0f;
-            rotation = 0f;
-        }
-
-        float desiredDeltaX = targetPrimaryOffset - basePrimaryOffset;
+        float desiredDeltaX = targetPrimaryOffset;
         cacheRecentsSurfaceStackSpec(taskView, scale, desiredDeltaX, desiredDeltaY, alpha);
         rememberTaskStackOffsets(taskView, desiredDeltaX, desiredDeltaY);
-        setTaskOffsetPropertyValue(taskView, true, targetPrimaryOffset);
+        setTaskOffsetPropertyValue(taskView, true, basePrimaryOffset);
         setTaskOffsetPropertyValue(taskView, false, baseSecondaryOffset + desiredDeltaY);
-        setTaskHorizontalOffsetPropertyValue(taskView, 0f);
-        rememberTaskHorizontalOffset(taskView, 0f);
+        setTaskHorizontalOffsetPropertyValue(taskView, desiredDeltaX);
+        rememberTaskHorizontalOffset(taskView, desiredDeltaX);
         setTaskNonGridScale(taskView, scale);
         invokeMethod(taskView, "setStableAlpha", new Class<?>[]{float.class}, alpha);
         float currentCenterX = baseCenterX + desiredDeltaX;
@@ -2370,7 +2387,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         return config.enabled && config.recentsStackEnabled && config.recentsStackFreeScroll;
     }
 
-    private static boolean shouldUseRecentsVisualCenterPaging(Object recentsViewObject) {
+    private static boolean shouldUseRecentsScrollTargetPaging(Object recentsViewObject) {
         if (!(recentsViewObject instanceof View) || !isRecentsPagedView(recentsViewObject)) {
             return false;
         }
@@ -2401,15 +2418,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                 scrollX = clampedScrollX;
             }
         }
-        int fallbackPage = getIntField(recentsViewObject, "mCurrentPage", 0);
-        int currentPage = resolveVisualCenterTaskIndex(recentsViewObject, scrollX, fallbackPage);
-        setIntField(recentsViewObject, "mCurrentPage", currentPage);
-        setIntField(recentsViewObject, "mNextPage", currentPage);
-        setIntField(recentsViewObject, "mCurrentScrollOverPage", currentPage);
         setIntField(recentsViewObject, "mCurrentScroll", scrollX);
     }
 
-    private static int resolveVisualCenterTaskIndex(Object recentsViewObject, Integer scrollOverride,
+    private static int resolveScrollTargetTaskIndex(Object recentsViewObject, Integer scrollOverride,
             int fallbackPage) {
         if (!(recentsViewObject instanceof View)) {
             return fallbackPage;
@@ -2419,24 +2431,31 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (taskCount <= 0 || recentsView.getWidth() <= 0) {
             return fallbackPage;
         }
-        float viewportCenterX = (scrollOverride != null ? scrollOverride : recentsView.getScrollX())
-                + (recentsView.getWidth() / 2f);
-        int bestIndex = clamp(fallbackPage, 0, Math.max(0, taskCount - 1));
-        float bestDistance = Float.MAX_VALUE;
+        int clampedFallback = clamp(fallbackPage, 0, Math.max(0, taskCount - 1));
+        int bestIndex = clampedFallback;
+        int scrollX = scrollOverride != null ? scrollOverride : getIntField(recentsViewObject, "mCurrentScroll",
+                recentsView.getScrollX());
+        int bestDistance = Integer.MAX_VALUE;
+        int fallbackDistance = Integer.MAX_VALUE;
         for (int i = 0; i < taskCount; i++) {
-            Object taskObject = invokeMethod(recentsViewObject, "getTaskViewAt", new Class<?>[]{int.class}, i);
-            if (!(taskObject instanceof View)) {
+            int pageScroll = invokeMethodInt(recentsViewObject, "getScrollForPage",
+                    new Class<?>[]{int.class}, i, Integer.MIN_VALUE);
+            if (pageScroll == Integer.MIN_VALUE) {
                 continue;
             }
-            View taskView = (View) taskObject;
-            if (!isEligibleRecentsTaskView(taskView) || taskView.getWidth() <= 0) {
-                continue;
+            int distance = Math.abs(pageScroll - scrollX);
+            if (i == clampedFallback) {
+                fallbackDistance = distance;
             }
-            float taskCenterX = taskView.getLeft() + taskView.getTranslationX() + (taskView.getWidth() / 2f);
-            float distance = Math.abs(taskCenterX - viewportCenterX);
             if (distance < bestDistance) {
                 bestDistance = distance;
                 bestIndex = i;
+            }
+        }
+        if (bestIndex != clampedFallback && fallbackDistance < Integer.MAX_VALUE) {
+            int switchThreshold = dp(recentsView, 18f);
+            if (bestDistance + switchThreshold >= fallbackDistance) {
+                return clampedFallback;
             }
         }
         return bestIndex;
@@ -2462,7 +2481,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (!isEligibleRecentsTaskView(taskView) || taskView.getWidth() <= 0) {
                 continue;
             }
-            float centerX = taskView.getLeft() + taskView.getTranslationX() + (taskView.getWidth() / 2f);
+            float centerX = getTaskBaseCenterX(taskView);
             if (firstCenterX == null) {
                 firstCenterX = centerX;
             }
@@ -2476,6 +2495,14 @@ public class FlymeStatusBarSizer extends XposedModule {
                 Math.round(firstCenterX - halfViewport),
                 Math.round(lastCenterX - halfViewport)
         };
+    }
+
+    private static float getTaskBaseCenterX(View taskView) {
+        float[] lastOffsets = RECENTS_STACK_LAST_OFFSETS.get(taskView);
+        float lastStackDeltaX = (lastOffsets != null && lastOffsets.length >= 2) ? lastOffsets[0] : 0f;
+        return taskView.getLeft()
+                + (taskView.getTranslationX() - lastStackDeltaX)
+                + (taskView.getWidth() / 2f);
     }
 
     private static int resolveAnchorTaskIndex(View[] taskViews, int preferredIndex, int fallbackIndex) {
