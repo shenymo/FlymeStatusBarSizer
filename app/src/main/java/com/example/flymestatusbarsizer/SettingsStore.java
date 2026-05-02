@@ -46,6 +46,7 @@ final class SettingsStore {
     static final String KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT = "connection_rate_hide_sample_count";
     static final String KEY_TEXT_SCALE = "text_scale";
     static final String KEY_SHOW_CLOCK_WEEKDAY = "show_clock_weekday";
+    static final String KEY_CLOCK_WEEKDAY_HIDE_PREFIX = "clock_weekday_hide_prefix";
     static final String KEY_CLOCK_BOLD_ENABLED = "clock_bold_enabled";
     static final String KEY_CLOCK_FONT_WEIGHT = "clock_font_weight";
     static final String KEY_IOS_SIGNAL_DUAL_COMBINED = "ios_signal_dual_combined";
@@ -63,15 +64,6 @@ final class SettingsStore {
     static final String KEY_MBACK_INSET_SIZE = "mback_inset_size";
     static final String KEY_MBACK_NAV_BAR_HEIGHT = "mback_nav_bar_height";
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
-    static final String KEY_RECENTS_STACK_ENABLED = "recents_stack_enabled";
-    static final String KEY_RECENTS_STACK_FREE_SCROLL = "recents_stack_free_scroll";
-    static final String KEY_RECENTS_STACK_VISIBLE_COUNT = "recents_stack_visible_count";
-    static final String KEY_RECENTS_STACK_SCALE_STEP = "recents_stack_scale_step";
-    static final String KEY_RECENTS_STACK_BACK_OFFSET_Y = "recents_stack_back_offset_y";
-    static final String KEY_RECENTS_STACK_FRONT_OFFSET_Y = "recents_stack_front_offset_y";
-    static final String KEY_RECENTS_STACK_ALPHA_STEP = "recents_stack_alpha_step";
-    static final String KEY_RECENTS_STACK_SIDE_OFFSET_X = "recents_stack_side_offset_x";
-    static final String KEY_RECENTS_STACK_ROTATION_DEG = "recents_stack_rotation_deg";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY = "runtime_signal_debug_summary";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_LEVEL = "runtime_signal_debug_level";
     static final String KEY_RUNTIME_SIGNAL_DEBUG_SLOT = "runtime_signal_debug_slot";
@@ -125,6 +117,7 @@ final class SettingsStore {
     static final int DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT = 3;
     static final int DEFAULT_TEXT_SCALE = 120;
     static final boolean DEFAULT_SHOW_CLOCK_WEEKDAY = true;
+    static final boolean DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX = false;
     static final boolean DEFAULT_CLOCK_BOLD_ENABLED = true;
     static final int DEFAULT_CLOCK_FONT_WEIGHT = 900;
     static final boolean DEFAULT_IOS_SIGNAL_DUAL_COMBINED = true;
@@ -142,16 +135,6 @@ final class SettingsStore {
     static final int DEFAULT_MBACK_INSET_SIZE = -1;
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
-    static final boolean DEFAULT_RECENTS_STACK_ENABLED = false;
-    static final boolean DEFAULT_RECENTS_STACK_FREE_SCROLL = true;
-    static final int DEFAULT_RECENTS_STACK_VISIBLE_COUNT = 4;
-    static final int DEFAULT_RECENTS_STACK_SCALE_STEP = 9;
-    static final int DEFAULT_RECENTS_STACK_BACK_OFFSET_Y = 52;
-    static final int DEFAULT_RECENTS_STACK_FRONT_OFFSET_Y = 34;
-    static final int DEFAULT_RECENTS_STACK_ALPHA_STEP = 15;
-    static final int DEFAULT_RECENTS_STACK_SIDE_OFFSET_X = 52;
-    static final int DEFAULT_RECENTS_STACK_ROTATION_DEG = 0;
-
     static final String[] INT_KEYS = {
             KEY_GLOBAL_ICON_SCALE,
             KEY_MOBILE_SIGNAL_FACTOR,
@@ -192,20 +175,14 @@ final class SettingsStore {
             KEY_TEXT_SCALE,
             KEY_CLOCK_FONT_WEIGHT,
             KEY_MBACK_INSET_SIZE,
-            KEY_MBACK_NAV_BAR_HEIGHT,
-            KEY_RECENTS_STACK_VISIBLE_COUNT,
-            KEY_RECENTS_STACK_SCALE_STEP,
-            KEY_RECENTS_STACK_BACK_OFFSET_Y,
-            KEY_RECENTS_STACK_FRONT_OFFSET_Y,
-            KEY_RECENTS_STACK_ALPHA_STEP,
-            KEY_RECENTS_STACK_SIDE_OFFSET_X,
-            KEY_RECENTS_STACK_ROTATION_DEG
+            KEY_MBACK_NAV_BAR_HEIGHT
     };
 
     static final String[] BOOLEAN_KEYS = {
             KEY_ENABLED,
             KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
             KEY_SHOW_CLOCK_WEEKDAY,
+            KEY_CLOCK_WEEKDAY_HIDE_PREFIX,
             KEY_CLOCK_BOLD_ENABLED,
             KEY_IOS_SIGNAL_DUAL_COMBINED,
             KEY_IOS_SIGNAL_DEBUG_ENABLED,
@@ -215,9 +192,7 @@ final class SettingsStore {
             KEY_IOS_WIFI_DEBUG_VISIBLE,
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
-            KEY_MBACK_HIDE_PILL,
-            KEY_RECENTS_STACK_ENABLED,
-            KEY_RECENTS_STACK_FREE_SCROLL
+            KEY_MBACK_HIDE_PILL
     };
 
     static final String[] STRING_KEYS = {
@@ -333,20 +308,6 @@ final class SettingsStore {
                 return DEFAULT_MBACK_INSET_SIZE;
             case KEY_MBACK_NAV_BAR_HEIGHT:
                 return DEFAULT_MBACK_NAV_BAR_HEIGHT;
-            case KEY_RECENTS_STACK_VISIBLE_COUNT:
-                return DEFAULT_RECENTS_STACK_VISIBLE_COUNT;
-            case KEY_RECENTS_STACK_SCALE_STEP:
-                return DEFAULT_RECENTS_STACK_SCALE_STEP;
-            case KEY_RECENTS_STACK_BACK_OFFSET_Y:
-                return DEFAULT_RECENTS_STACK_BACK_OFFSET_Y;
-            case KEY_RECENTS_STACK_FRONT_OFFSET_Y:
-                return DEFAULT_RECENTS_STACK_FRONT_OFFSET_Y;
-            case KEY_RECENTS_STACK_ALPHA_STEP:
-                return DEFAULT_RECENTS_STACK_ALPHA_STEP;
-            case KEY_RECENTS_STACK_SIDE_OFFSET_X:
-                return DEFAULT_RECENTS_STACK_SIDE_OFFSET_X;
-            case KEY_RECENTS_STACK_ROTATION_DEG:
-                return DEFAULT_RECENTS_STACK_ROTATION_DEG;
             default:
                 return 0;
         }
@@ -360,6 +321,8 @@ final class SettingsStore {
                 return DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED;
             case KEY_SHOW_CLOCK_WEEKDAY:
                 return DEFAULT_SHOW_CLOCK_WEEKDAY;
+            case KEY_CLOCK_WEEKDAY_HIDE_PREFIX:
+                return DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX;
             case KEY_CLOCK_BOLD_ENABLED:
                 return DEFAULT_CLOCK_BOLD_ENABLED;
             case KEY_IOS_SIGNAL_DUAL_COMBINED:
@@ -380,10 +343,6 @@ final class SettingsStore {
                 return DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
             case KEY_MBACK_HIDE_PILL:
                 return DEFAULT_MBACK_HIDE_PILL;
-            case KEY_RECENTS_STACK_ENABLED:
-                return DEFAULT_RECENTS_STACK_ENABLED;
-            case KEY_RECENTS_STACK_FREE_SCROLL:
-                return DEFAULT_RECENTS_STACK_FREE_SCROLL;
             default:
                 return false;
         }
