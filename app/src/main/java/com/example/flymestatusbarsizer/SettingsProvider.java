@@ -123,6 +123,33 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT,
                 prefs.getInt(SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT,
                         SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT));
+        add(cursor, SettingsStore.KEY_RECENTS_STACK_ENABLED,
+                prefs.getBoolean(SettingsStore.KEY_RECENTS_STACK_ENABLED,
+                        SettingsStore.DEFAULT_RECENTS_STACK_ENABLED));
+        add(cursor, SettingsStore.KEY_RECENTS_STACK_FREE_SCROLL,
+                prefs.getBoolean(SettingsStore.KEY_RECENTS_STACK_FREE_SCROLL,
+                        SettingsStore.DEFAULT_RECENTS_STACK_FREE_SCROLL));
+        add(cursor, SettingsStore.KEY_RECENTS_STACK_VISIBLE_COUNT,
+                prefs.getInt(SettingsStore.KEY_RECENTS_STACK_VISIBLE_COUNT,
+                        SettingsStore.DEFAULT_RECENTS_STACK_VISIBLE_COUNT));
+        add(cursor, SettingsStore.KEY_RECENTS_STACK_SCALE_STEP,
+                prefs.getInt(SettingsStore.KEY_RECENTS_STACK_SCALE_STEP,
+                        SettingsStore.DEFAULT_RECENTS_STACK_SCALE_STEP));
+        add(cursor, SettingsStore.KEY_RECENTS_STACK_BACK_OFFSET_Y,
+                prefs.getInt(SettingsStore.KEY_RECENTS_STACK_BACK_OFFSET_Y,
+                        SettingsStore.DEFAULT_RECENTS_STACK_BACK_OFFSET_Y));
+        add(cursor, SettingsStore.KEY_RECENTS_STACK_FRONT_OFFSET_Y,
+                prefs.getInt(SettingsStore.KEY_RECENTS_STACK_FRONT_OFFSET_Y,
+                        SettingsStore.DEFAULT_RECENTS_STACK_FRONT_OFFSET_Y));
+        add(cursor, SettingsStore.KEY_RECENTS_STACK_ALPHA_STEP,
+                prefs.getInt(SettingsStore.KEY_RECENTS_STACK_ALPHA_STEP,
+                        SettingsStore.DEFAULT_RECENTS_STACK_ALPHA_STEP));
+        add(cursor, SettingsStore.KEY_RECENTS_STACK_SIDE_OFFSET_X,
+                prefs.getInt(SettingsStore.KEY_RECENTS_STACK_SIDE_OFFSET_X,
+                        SettingsStore.DEFAULT_RECENTS_STACK_SIDE_OFFSET_X));
+        add(cursor, SettingsStore.KEY_RECENTS_STACK_ROTATION_DEG,
+                prefs.getInt(SettingsStore.KEY_RECENTS_STACK_ROTATION_DEG,
+                        SettingsStore.DEFAULT_RECENTS_STACK_ROTATION_DEG));
         add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY,
                 prefs.getString(SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_SUMMARY, ""));
         add(cursor, SettingsStore.KEY_RUNTIME_SIGNAL_DEBUG_LEVEL,

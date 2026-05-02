@@ -47,6 +47,10 @@ public class MainActivity extends Activity {
     private static final int MENU_EXPORT = 2;
     private static final int MENU_RESET = 3;
     private static final int MENU_RESTART = 4;
+    private static final int MENU_RESTART_LAUNCHER = 5;
+
+    private static final String PACKAGE_SYSTEM_UI = "com.android.systemui";
+    private static final String PACKAGE_FLYME_LAUNCHER = "com.meizu.flyme.launcher";
 
     private static final int FALLBACK_BACKGROUND = Color.rgb(253, 248, 253);
     private static final int FALLBACK_SURFACE = Color.WHITE;
@@ -216,6 +220,7 @@ public class MainActivity extends Activity {
         page.setOrientation(LinearLayout.VERTICAL);
 
         addSectionLabel(page, "杂项");
+        page.addView(buildRecentsStackSection(), matchWrapWithTop(10));
         page.addView(buildMBackSection(), matchWrapWithTop(10));
         page.addView(buildTimeCard(), matchWrapWithTop(10));
         return page;
@@ -445,6 +450,51 @@ public class MainActivity extends Activity {
                 "MBack",
                 "把 mBack 长触、导航栏透明、底部 inset 和导航栏高度实验项收拢到一组，便于分阶段测试。",
                 "MBack", details);
+    }
+
+    private View buildRecentsStackSection() {
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+
+        TextView pageHint = new TextView(this);
+        pageHint.setText("首版只覆盖 launcher 最近任务页的普通单卡视觉排布，不改任务数据、点击启动、关闭和系统手势链路。");
+        pageHint.setTextColor(colorSubtext);
+        pageHint.setTextSize(13);
+        details.addView(pageHint, matchWrap());
+
+        addDivider(details);
+        addSwitchRow(details, "启用堆叠后台",
+                "把 Flyme 最近任务的平铺卡片改成类 iOS 的纵向堆叠视觉。当前只在 com.meizu.flyme.launcher 进程生效，建议改完后重启桌面。",
+                SettingsStore.KEY_RECENTS_STACK_ENABLED,
+                SettingsStore.DEFAULT_RECENTS_STACK_ENABLED);
+        addDivider(details);
+        addSwitchRow(details, "自由停留",
+                "松手后不再强制吸附到下一张任务卡中心，尽量保留当前滑动停下来的位置，只让靠近中间的卡更突出。",
+                SettingsStore.KEY_RECENTS_STACK_FREE_SCROLL,
+                SettingsStore.DEFAULT_RECENTS_STACK_FREE_SCROLL);
+        addDivider(details);
+        addSliderRow(details, "卡片水平间距",
+                "控制堆叠密度。值越大，卡片越容易互相压住形成堆叠；值越小，越接近平铺。",
+                SettingsStore.KEY_RECENTS_STACK_SIDE_OFFSET_X,
+                SettingsStore.DEFAULT_RECENTS_STACK_SIDE_OFFSET_X, 8, 120, "dp");
+        addDivider(details);
+        addSliderRow(details, "轻微旋转",
+                "给后排卡加入一点倾斜，单位为度。建议保持很小，过大会像散开的扑克牌。",
+                SettingsStore.KEY_RECENTS_STACK_ROTATION_DEG,
+                SettingsStore.DEFAULT_RECENTS_STACK_ROTATION_DEG, 0, 6, "°");
+        addDivider(details);
+        addActionButtonRow(details, "恢复默认参数",
+                "只恢复堆叠后台这组开关和参数，不影响状态栏、MBack、时间等其他设置。恢复后建议再点一次重启桌面。",
+                "恢复默认", this::resetRecentsStackSettings);
+        addDivider(details);
+        addActionButtonRow(details, "重启桌面",
+                "直接重启 com.meizu.flyme.launcher 进程，确保最近任务页和 LSPosed Hook 都按最新代码重新进入。改完堆叠后台参数后优先点这个，不要只回桌面。",
+                "立即重启", this::restartFlymeLauncher);
+
+        return buildExpandableInfoCard(
+                "堆叠后台",
+                "运行时重写 Flyme 最近任务卡片的视觉变换，把平铺分页改成纵向堆叠；首版优先稳定性，只覆盖普通单卡和竖屏主流程。",
+                "最近任务", details);
     }
 
     private LinearLayout buildMBackActionPage() {
@@ -1231,6 +1281,7 @@ public class MainActivity extends Activity {
         popup.getMenu().add(0, MENU_EXPORT, 1, "\u5bfc\u51fa\u914d\u7f6e");
         popup.getMenu().add(0, MENU_RESET, 2, "\u6062\u590d\u9ed8\u8ba4");
         popup.getMenu().add(0, MENU_RESTART, 3, "\u91cd\u542f SystemUI");
+        popup.getMenu().add(0, MENU_RESTART_LAUNCHER, 4, "\u91cd\u542f\u684c\u9762");
         popup.setOnMenuItemClickListener(item -> {
             int id = item.getItemId();
             if (id == MENU_IMPORT) {
@@ -1247,6 +1298,10 @@ public class MainActivity extends Activity {
             }
             if (id == MENU_RESTART) {
                 restartSystemUi();
+                return true;
+            }
+            if (id == MENU_RESTART_LAUNCHER) {
+                restartFlymeLauncher();
                 return true;
             }
             return false;
@@ -1337,6 +1392,33 @@ public class MainActivity extends Activity {
         SettingsStore.notifyChanged(this);
         invalidatePreview();
         showToast("\u79fb\u52a8\u4fe1\u53f7\u504f\u79fb\u5df2\u6062\u590d\u4e3a 0");
+        recreate();
+    }
+
+    private void resetRecentsStackSettings() {
+        prefs.edit()
+                .putBoolean(SettingsStore.KEY_RECENTS_STACK_ENABLED,
+                        SettingsStore.DEFAULT_RECENTS_STACK_ENABLED)
+                .putBoolean(SettingsStore.KEY_RECENTS_STACK_FREE_SCROLL,
+                        SettingsStore.DEFAULT_RECENTS_STACK_FREE_SCROLL)
+                .putInt(SettingsStore.KEY_RECENTS_STACK_VISIBLE_COUNT,
+                        SettingsStore.DEFAULT_RECENTS_STACK_VISIBLE_COUNT)
+                .putInt(SettingsStore.KEY_RECENTS_STACK_SCALE_STEP,
+                        SettingsStore.DEFAULT_RECENTS_STACK_SCALE_STEP)
+                .putInt(SettingsStore.KEY_RECENTS_STACK_BACK_OFFSET_Y,
+                        SettingsStore.DEFAULT_RECENTS_STACK_BACK_OFFSET_Y)
+                .putInt(SettingsStore.KEY_RECENTS_STACK_FRONT_OFFSET_Y,
+                        SettingsStore.DEFAULT_RECENTS_STACK_FRONT_OFFSET_Y)
+                .putInt(SettingsStore.KEY_RECENTS_STACK_ALPHA_STEP,
+                        SettingsStore.DEFAULT_RECENTS_STACK_ALPHA_STEP)
+                .putInt(SettingsStore.KEY_RECENTS_STACK_SIDE_OFFSET_X,
+                        SettingsStore.DEFAULT_RECENTS_STACK_SIDE_OFFSET_X)
+                .putInt(SettingsStore.KEY_RECENTS_STACK_ROTATION_DEG,
+                        SettingsStore.DEFAULT_RECENTS_STACK_ROTATION_DEG)
+                .apply();
+        SettingsStore.notifyChanged(this);
+        invalidatePreview();
+        showToast("\u5806\u53e0\u540e\u53f0\u53c2\u6570\u5df2\u6062\u590d\u9ed8\u8ba4");
         recreate();
     }
 
@@ -1522,13 +1604,23 @@ public class MainActivity extends Activity {
     }
 
     private void restartSystemUi() {
-        showToast("\u6b63\u5728\u91cd\u542f SystemUI...");
+        restartPackageProcess(PACKAGE_SYSTEM_UI, "SystemUI");
+    }
+
+    private void restartFlymeLauncher() {
+        restartPackageProcess(PACKAGE_FLYME_LAUNCHER, "桌面");
+    }
+
+    private void restartPackageProcess(String packageName, String label) {
+        showToast("\u6b63\u5728\u91cd\u542f" + label + "...");
         new Thread(() -> {
             boolean success = false;
             String error = null;
             try {
-                Process process = new ProcessBuilder("su", "-c",
-                        "pkill -f com.android.systemui || killall com.android.systemui")
+                String command = "am force-stop " + packageName
+                        + " || pkill -f " + packageName
+                        + " || killall " + packageName;
+                Process process = new ProcessBuilder("su", "-c", command)
                         .redirectErrorStream(true)
                         .start();
                 success = process.waitFor() == 0;
@@ -1539,7 +1631,7 @@ public class MainActivity extends Activity {
             String finalError = error;
             new Handler(Looper.getMainLooper()).post(() -> {
                 if (finalSuccess) {
-                    showToast("SystemUI \u5df2\u91cd\u542f");
+                    showToast(label + "\u5df2\u91cd\u542f");
                 } else if (finalError == null || finalError.length() == 0) {
                     showToast("\u91cd\u542f\u5931\u8d25\uff0c\u8bf7\u786e\u8ba4\u5df2\u6388\u4e88 root \u6743\u9650");
                 } else {

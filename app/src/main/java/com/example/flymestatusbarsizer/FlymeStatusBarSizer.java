@@ -5,14 +5,18 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.database.ContentObserver;
 import android.database.Cursor;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Insets;
+import android.graphics.Matrix;
+import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
@@ -25,8 +29,10 @@ import android.telephony.PhoneStateListener;
 import android.telephony.SignalStrength;
 import android.telephony.TelephonyManager;
 import android.text.SpannableStringBuilder;
+import android.view.MotionEvent;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewOutlineProvider;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.WindowManager;
@@ -53,6 +59,7 @@ import io.github.libxposed.api.XposedModuleInterface;
 public class FlymeStatusBarSizer extends XposedModule {
     private static final String TAG = "FlymeStatusBarSizer";
     private static final String SYSTEM_UI = "com.android.systemui";
+    private static final String FLYME_LAUNCHER = "com.meizu.flyme.launcher";
     private static volatile FlymeStatusBarSizer MODULE;
 
     private static final Uri SETTINGS_URI = Uri.parse("content://" + SettingsStore.AUTHORITY + "/settings");
@@ -60,6 +67,10 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, int[]> ORIGINAL_MARGINS = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_PADDINGS = new WeakHashMap<>();
     private static final WeakHashMap<View, float[]> ORIGINAL_TRANSLATIONS = new WeakHashMap<>();
+    private static final WeakHashMap<View, float[]> RECENTS_STACK_LAST_OFFSETS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Float> RECENTS_STACK_LAST_HORIZONTAL_OFFSETS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Float> RECENTS_STACK_ORIGINAL_ELEVATIONS = new WeakHashMap<>();
+    private static final WeakHashMap<View, ViewOutlineProvider> RECENTS_STACK_ORIGINAL_OUTLINES = new WeakHashMap<>();
     private static final WeakHashMap<View, String> VIEW_ID_NAME_CACHE = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Typeface> ORIGINAL_TEXT_TYPEFACES = new WeakHashMap<>();
@@ -101,8 +112,10 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final int SIGNAL_SCENE_CONTROL_CENTER = 2;
     private static final Object CONFIG_REFRESH_LOCK = new Object();
     private static final Object CONFIG_CACHE_LOCK = new Object();
+    private static final Object RECENTS_SURFACE_STACK_LOCK = new Object();
     private static final Object RUNTIME_REFRESH_LOCK = new Object();
     private static final long CONFIG_CACHE_TTL_MS = 5000L;
+    private static final long RECENTS_SURFACE_STACK_TTL_MS = 2500L;
     private static final long TELEPHONY_CACHE_TTL_MS = 30000L;
     private static final long SIGNAL_DEBUG_REPORT_MIN_INTERVAL_MS = 200L;
     private static final long WIFI_DEBUG_REPORT_MIN_INTERVAL_MS = 120L;
@@ -112,6 +125,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static volatile boolean LAST_WIFI_DEBUG_ENABLED;
     private static volatile boolean INTERNAL_WIFI_DEBUG_APPLY;
     private static volatile long LAST_SIGNAL_DEBUG_REPORT_UPTIME;
+    private static volatile long LAST_RECENTS_SURFACE_STACK_UPTIME;
     private static volatile long LAST_WIFI_DEBUG_REPORT_UPTIME;
     private static volatile String LAST_WIFI_DEBUG_SOURCE = "";
     private static volatile String LAST_WIFI_DEBUG_VISIBLE = "";
@@ -135,18 +149,28 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final HashMap<Integer, Integer> TELEPHONY_SIGNAL_LEVELS_BY_SUB_ID = new HashMap<>();
     private static final HashMap<Integer, Long> TELEPHONY_SIGNAL_LEVEL_TIMES_BY_SUB_ID = new HashMap<>();
     private static final HashMap<String, Integer> SYSTEM_UI_ID_CACHE = new HashMap<>();
+    private static final HashMap<Integer, RecentsSurfaceStackSpec> RECENTS_SURFACE_STACK_SPECS = new HashMap<>();
     private static final HashMap<String, Field> FIELD_CACHE = new HashMap<>();
     private static final HashMap<String, Method> NO_ARG_METHOD_CACHE = new HashMap<>();
+    private static final HashMap<String, Method> METHOD_CACHE = new HashMap<>();
     private static volatile Method SET_MEASURED_DIMENSION_METHOD;
 
     @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
-        if (!SYSTEM_UI.equals(param.getPackageName()) || !param.isFirstPackage()) {
+        if (!param.isFirstPackage()) {
             return;
         }
         MODULE = this;
-
         ClassLoader loader = param.getDefaultClassLoader();
+        String packageName = param.getPackageName();
+        if (SYSTEM_UI.equals(packageName)) {
+            hookSystemUi(loader);
+        } else if (FLYME_LAUNCHER.equals(packageName)) {
+            hookFlymeLauncher(loader);
+        }
+    }
+
+    private void hookSystemUi(ClassLoader loader) {
         hookConstructAndBind(loader, "com.flyme.systemui.statusbar.net.mobile.ui.view.FlymeModernStatusBarMobileView");
         hookConstructAndBind(loader, "com.android.systemui.statusbar.pipeline.mobile.ui.view.ModernStatusBarMobileView");
         hookConstructAndBind(loader, "com.android.systemui.statusbar.pipeline.mobile.ui.view.ModernShadeCarrierGroupMobileView");
@@ -217,6 +241,10 @@ public class FlymeStatusBarSizer extends XposedModule {
             disableAncestorClipping(view, 3);
             applyReferenceSignalSizing(view);
         });
+    }
+
+    private void hookFlymeLauncher(ClassLoader loader) {
+        hookRecentsStack(loader);
     }
 
     private void hookConstructAndBind(ClassLoader loader, String className) {
@@ -1516,6 +1544,104 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private void hookRecentsStack(ClassLoader loader) {
+        hookRecentsViewStack(loader);
+        hookTaskViewSimulatorStack(loader);
+        hookLauncherRecentsFreeScroll(loader);
+    }
+
+    private void hookRecentsViewStack(ClassLoader loader) {
+        try {
+            Class<?> recentsViewClass = Class.forName("com.android.quickstep.views.RecentsView", false, loader);
+            for (Method method : recentsViewClass.getDeclaredMethods()) {
+                String name = method.getName();
+                boolean shouldHook =
+                        ("updatePageOffsetsForFlyme".equals(name) && method.getParameterTypes().length == 0)
+                                || ("updatePageOffsets".equals(name) && method.getParameterTypes().length == 0)
+                                || ("onPrepareGestureEndAnimation".equals(name) && method.getParameterTypes().length == 3)
+                                || ("onLayout".equals(name) && method.getParameterTypes().length == 5);
+                if (!shouldHook) {
+                    continue;
+                }
+                method.setAccessible(true);
+                hook(method).intercept(chain -> {
+                    Object result = chain.proceed();
+                    applyRecentsStackIfNeeded(chain.getThisObject());
+                    return result;
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook RecentsView for stack recents", t);
+        }
+    }
+
+    private void hookTaskViewSimulatorStack(ClassLoader loader) {
+        try {
+            Class<?> simulatorClass = Class.forName("com.android.quickstep.util.TaskViewSimulator", false, loader);
+            for (Method method : simulatorClass.getDeclaredMethods()) {
+                if (!"onBuildTargetParams".equals(method.getName())
+                        || method.getParameterTypes().length != 3) {
+                    continue;
+                }
+                method.setAccessible(true);
+                hook(method).intercept(chain -> {
+                    Object result = chain.proceed();
+                    applyRecentsSurfaceStackIfNeeded(chain.getThisObject(), chain.getArg(0), chain.getArg(1));
+                    return result;
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook TaskViewSimulator surface stack", t);
+        }
+    }
+
+    private void hookLauncherRecentsFreeScroll(ClassLoader loader) {
+        hookRecentsFreeScrollClass(loader, "com.android.quickstep.views.LauncherRecentsView");
+        hookRecentsFreeScrollClass(loader, "com.android.quickstep.views.RecentsView");
+        hookRecentsFreeScrollClass(loader, "com.android.launcher3.PagedView");
+    }
+
+    private void hookRecentsFreeScrollClass(ClassLoader loader, String className) {
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            for (Method method : clazz.getDeclaredMethods()) {
+                String name = method.getName();
+                int parameterCount = method.getParameterTypes().length;
+                boolean shouldHook =
+                        ("requestAbortScrollerAnim".equals(name) && parameterCount == 0)
+                                || ("snapToDestination".equals(name) && parameterCount == 0)
+                                || ("snapToPageMz".equals(name) && parameterCount == 4)
+                                || ("snapToPageWithVelocity".equals(name) && parameterCount == 2)
+                                || ("getDestinationPage".equals(name) && parameterCount == 0);
+                if (!shouldHook) {
+                    continue;
+                }
+                method.setAccessible(true);
+                hook(method).intercept(chain -> {
+                    Object thisObject = chain.getThisObject();
+                    if (!shouldBypassRecentsPagingSnap(thisObject)) {
+                        return chain.proceed();
+                    }
+                    if ("requestAbortScrollerAnim".equals(name)
+                            || "snapToDestination".equals(name)
+                            || "snapToPageMz".equals(name)) {
+                        return null;
+                    }
+                    if ("getDestinationPage".equals(name)) {
+                        return invokeNoArgInt(thisObject, "getCurrentPage", 0);
+                    }
+                    Class<?> returnType = method.getReturnType();
+                    if (returnType == boolean.class || returnType == Boolean.class) {
+                        return Boolean.TRUE;
+                    }
+                    return null;
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook free scroll class " + className, t);
+        }
+    }
+
     private static void applyStatusBarSizing(View root) {
         applyStatusBarSizingOnce(root);
         root.postDelayed(() -> applyStatusBarSizingOnce(root), 500);
@@ -1532,6 +1658,537 @@ public class FlymeStatusBarSizer extends XposedModule {
         applyWifiSizingOnce(root);
         root.postDelayed(() -> applyWifiSizingOnce(root), 300);
         root.postDelayed(() -> applyWifiSizingOnce(root), 1000);
+    }
+
+    private static void applyRecentsStackIfNeeded(Object recentsViewObject) {
+        if (!(recentsViewObject instanceof View)) {
+            return;
+        }
+        View recentsView = (View) recentsViewObject;
+        if (!recentsView.isAttachedToWindow() || recentsView.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        if (recentsView.getWidth() <= 0 || recentsView.getHeight() <= 0) {
+            return;
+        }
+        Context context = recentsView.getContext();
+        Config config = Config.load(context);
+        if (!config.enabled) {
+            resetRecentsStack(recentsViewObject);
+            syncRunningTaskViewSimulator(recentsViewObject);
+            clearRecentsSurfaceStackSpecs();
+            return;
+        }
+        if (!config.recentsStackEnabled) {
+            resetRecentsStack(recentsViewObject);
+            syncRunningTaskViewSimulator(recentsViewObject);
+            clearRecentsSurfaceStackSpecs();
+            return;
+        }
+        if (context != null) {
+            Resources resources = context.getResources();
+            if (resources != null && resources.getConfiguration() != null
+                    && resources.getConfiguration().orientation != Configuration.ORIENTATION_PORTRAIT) {
+                resetRecentsStack(recentsViewObject);
+                syncRunningTaskViewSimulator(recentsViewObject);
+                clearRecentsSurfaceStackSpecs();
+                return;
+            }
+        }
+        int taskCount = invokeNoArgInt(recentsViewObject, "getTaskViewCount", 0);
+        if (taskCount <= 0) {
+            return;
+        }
+        int currentPage = invokeNoArgInt(recentsViewObject, "getCurrentPage", 0);
+        float pageProgress = resolveCurrentPageProgress(recentsViewObject, taskCount, currentPage);
+        int currentTaskIndex = clamp(Math.round(pageProgress), 0, Math.max(0, taskCount - 1));
+        disableChildClipping(recentsView);
+        disableAncestorClipping(recentsView, 3);
+
+        View[] taskViews = new View[taskCount];
+        float[] baseCentersX = new float[taskCount];
+        float[] baseTopsY = new float[taskCount];
+        float[] primaryOffsets = new float[taskCount];
+        float[] secondaryOffsets = new float[taskCount];
+
+        View currentTaskView = null;
+        for (int i = 0; i < taskCount; i++) {
+            Object taskObject = invokeMethod(recentsViewObject, "getTaskViewAt", new Class<?>[]{int.class}, i);
+            if (!(taskObject instanceof View)) {
+                continue;
+            }
+            View taskView = (View) taskObject;
+            if (!isEligibleRecentsTaskView(taskView)) {
+                continue;
+            }
+            taskViews[i] = taskView;
+            float[] lastOffsets = RECENTS_STACK_LAST_OFFSETS.get(taskView);
+            float lastStackDeltaX = (lastOffsets != null && lastOffsets.length >= 2) ? lastOffsets[0] : 0f;
+            float lastStackDeltaY = (lastOffsets != null && lastOffsets.length >= 2) ? lastOffsets[1] : 0f;
+            baseCentersX[i] = taskView.getLeft()
+                    + (taskView.getTranslationX() - lastStackDeltaX)
+                    + (taskView.getWidth() / 2f);
+            baseTopsY[i] = taskView.getTop() + (taskView.getTranslationY() - lastStackDeltaY);
+            primaryOffsets[i] = getTaskBaseOffsetValue(taskView, true);
+            secondaryOffsets[i] = getTaskBaseOffsetValue(taskView, false);
+            if (i == currentTaskIndex) {
+                currentTaskView = taskView;
+            }
+        }
+        if (currentTaskView == null) {
+            Object currentTaskObject = invokeMethod(recentsViewObject, "getTaskViewAt",
+                    new Class<?>[]{int.class}, currentTaskIndex);
+            if (currentTaskObject instanceof View && isEligibleRecentsTaskView((View) currentTaskObject)) {
+                currentTaskView = (View) currentTaskObject;
+            }
+        }
+        if (currentTaskView == null) {
+            currentTaskView = (View) invokeNoArg(recentsViewObject, "getRunningTaskView");
+        }
+        if (currentTaskView == null || currentTaskView.getWidth() <= 0 || currentTaskView.getHeight() <= 0) {
+            syncRunningTaskViewSimulator(recentsViewObject);
+            return;
+        }
+
+        int anchorStartIndex = clamp((int) Math.floor(pageProgress), 0, taskCount - 1);
+        int anchorEndIndex = clamp(anchorStartIndex + 1, 0, taskCount - 1);
+        float anchorMix = clampFloat(pageProgress - anchorStartIndex, 0f, 1f);
+        int resolvedStartIndex = resolveAnchorTaskIndex(taskViews, anchorStartIndex, currentTaskIndex);
+        int resolvedEndIndex = resolveAnchorTaskIndex(taskViews, anchorEndIndex, resolvedStartIndex);
+
+        float frontCenterX = lerp(baseCentersX[resolvedStartIndex], baseCentersX[resolvedEndIndex], anchorMix);
+        float frontTopY = lerp(baseTopsY[resolvedStartIndex], baseTopsY[resolvedEndIndex], anchorMix);
+
+        clearRecentsSurfaceStackSpecs();
+
+        for (int i = 0; i < taskCount; i++) {
+            View taskView = taskViews[i];
+            if (taskView == null) {
+                continue;
+            }
+            applyTaskStackVisuals(taskView, config, i, pageProgress, currentTaskIndex, taskCount,
+                    baseCentersX[i], baseTopsY[i], primaryOffsets[i], secondaryOffsets[i],
+                    frontCenterX, frontTopY);
+        }
+        syncRunningTaskViewSimulator(recentsViewObject);
+    }
+
+    private static void resetRecentsStack(Object recentsViewObject) {
+        clearRecentsSurfaceStackSpecs();
+        int taskCount = invokeNoArgInt(recentsViewObject, "getTaskViewCount", 0);
+        for (int i = 0; i < taskCount; i++) {
+            Object taskObject = invokeMethod(recentsViewObject, "getTaskViewAt", new Class<?>[]{int.class}, i);
+            if (taskObject instanceof View) {
+                resetTaskStackVisuals((View) taskObject);
+            }
+        }
+    }
+
+    private static boolean isEligibleRecentsTaskView(View taskView) {
+        if (taskView == null) {
+            return false;
+        }
+        if (!taskView.isAttachedToWindow()) {
+            return false;
+        }
+        String className = taskView.getClass().getName();
+        if (!className.startsWith("com.android.quickstep.views.")) {
+            return false;
+        }
+        if (className.endsWith("ClearAllButton") || className.endsWith("DesktopTaskView")) {
+            return false;
+        }
+        return invokeNoArg(taskView, "getPrimaryTaskOffsetTranslationProperty") != null;
+    }
+
+    private static float resolveCurrentPageProgress(Object recentsViewObject, int taskCount, int currentPage) {
+        if (taskCount <= 1) {
+            return 0f;
+        }
+        int scrollX = getIntField(recentsViewObject, "mCurrentScroll", Integer.MIN_VALUE);
+        if (scrollX == Integer.MIN_VALUE) {
+            scrollX = ((View) recentsViewObject).getScrollX();
+        }
+        int closestPage = clamp(currentPage, 0, taskCount - 1);
+        int closestScroll = invokeMethodInt(recentsViewObject, "getScrollForPage",
+                new Class<?>[]{int.class}, closestPage, Integer.MIN_VALUE);
+        if (closestScroll == Integer.MIN_VALUE) {
+            return closestPage;
+        }
+        if (scrollX == closestScroll) {
+            return closestPage;
+        }
+        int direction = scrollX > closestScroll ? 1 : -1;
+        int targetPage = clamp(closestPage + direction, 0, taskCount - 1);
+        if (targetPage == closestPage) {
+            return closestPage;
+        }
+        int targetScroll = invokeMethodInt(recentsViewObject, "getScrollForPage",
+                new Class<?>[]{int.class}, targetPage, closestScroll);
+        int span = targetScroll - closestScroll;
+        if (span == 0) {
+            return closestPage;
+        }
+        float fraction = (scrollX - closestScroll) / (float) span;
+        return closestPage + fraction * (targetPage - closestPage);
+    }
+
+    private static void applyTaskStackVisuals(View taskView, Config config, int index,
+            float pageProgress, int currentTaskIndex, int taskCount,
+            float baseCenterX, float baseTopY, float basePrimaryOffset, float baseSecondaryOffset,
+            float frontCenterX, float frontTopY) {
+        float delta = index - pageProgress;
+        float absDelta = Math.abs(delta);
+        float stackSpacingSetting = clamp(config.recentsStackSideOffsetX, 8, 200);
+        float stackSpacing = dp(taskView, 208f - stackSpacingSetting);
+        float rotationStep = clamp(config.recentsStackRotationDeg, 0, 20);
+
+        float scale = 1f;
+        float alpha = 1f;
+        float rotation;
+        float targetPrimaryOffset;
+        float desiredDeltaY = 0f;
+
+        taskView.setPivotX(taskView.getWidth() / 2f);
+        taskView.setPivotY(0f);
+
+        if (delta >= 0f) {
+            float depth = clampFloat(delta, 0f, 5f);
+            targetPrimaryOffset = stackSpacing * depth;
+            rotation = rotationStep * depth * 0.04f;
+        } else {
+            float lift = clampFloat(absDelta, 0f, 1.35f);
+            targetPrimaryOffset = -stackSpacing * 0.72f * lift;
+            rotation = -rotationStep * 0.03f * lift;
+        }
+
+        if (Math.abs(delta) < 0.08f) {
+            targetPrimaryOffset = 0f;
+            rotation = 0f;
+        }
+
+        float desiredDeltaX = targetPrimaryOffset - basePrimaryOffset;
+        cacheRecentsSurfaceStackSpec(taskView, scale, desiredDeltaX, desiredDeltaY, alpha);
+        rememberTaskStackOffsets(taskView, desiredDeltaX, desiredDeltaY);
+        setTaskOffsetPropertyValue(taskView, true, targetPrimaryOffset);
+        setTaskOffsetPropertyValue(taskView, false, baseSecondaryOffset + desiredDeltaY);
+        setTaskHorizontalOffsetPropertyValue(taskView, 0f);
+        rememberTaskHorizontalOffset(taskView, 0f);
+        setTaskNonGridScale(taskView, scale);
+        invokeMethod(taskView, "setStableAlpha", new Class<?>[]{float.class}, alpha);
+        float currentCenterX = baseCenterX + desiredDeltaX;
+        float translationZ = 2000f + currentCenterX;
+        applyTaskStackShadow(taskView, scale, alpha);
+        taskView.setTranslationZ(translationZ);
+        taskView.setRotation(rotation);
+        taskView.setVisibility(View.VISIBLE);
+        disableChildClipping(taskView);
+        disableAncestorClipping(taskView, 2);
+        taskView.invalidate();
+    }
+
+    private static void resetTaskStackVisuals(View taskView) {
+        if (taskView == null) {
+            return;
+        }
+        float baseHorizontalOffset = getTaskHorizontalBaseOffsetValue(taskView);
+        setTaskHorizontalOffsetPropertyValue(taskView, baseHorizontalOffset);
+        clearTaskStackOffsets(taskView);
+        clearTaskHorizontalOffset(taskView);
+        resetTaskStackShadow(taskView);
+        invokeMethod(taskView, "resetViewTransforms", new Class<?>[0]);
+        setTaskNonGridScale(taskView, 1f);
+        invokeMethod(taskView, "setStableAlpha", new Class<?>[]{float.class}, 1f);
+        taskView.setTranslationZ(0f);
+        taskView.setRotation(0f);
+        taskView.setVisibility(View.VISIBLE);
+    }
+
+    private static float getTaskOffsetPropertyValue(View taskView, boolean primary, float fallback) {
+        Object propertyObject = invokeNoArg(taskView,
+                primary ? "getPrimaryTaskOffsetTranslationProperty" : "getSecondaryTaskOffsetTranslationProperty");
+        if (!(propertyObject instanceof android.util.Property)) {
+            return fallback;
+        }
+        try {
+            Object value = ((android.util.Property) propertyObject).get(taskView);
+            return value instanceof Number ? ((Number) value).floatValue() : fallback;
+        } catch (Throwable ignored) {
+            return fallback;
+        }
+    }
+
+    private static float getTaskBaseOffsetValue(View taskView, boolean primary) {
+        float currentValue = getTaskOffsetPropertyValue(taskView, primary, 0f);
+        float[] lastOffsets = RECENTS_STACK_LAST_OFFSETS.get(taskView);
+        if (lastOffsets == null || lastOffsets.length < 2) {
+            return currentValue;
+        }
+        return currentValue - (primary ? lastOffsets[0] : lastOffsets[1]);
+    }
+
+    private static void rememberTaskStackOffsets(View taskView, float translationX, float translationY) {
+        RECENTS_STACK_LAST_OFFSETS.put(taskView, new float[]{translationX, translationY});
+    }
+
+    private static void clearTaskStackOffsets(View taskView) {
+        RECENTS_STACK_LAST_OFFSETS.remove(taskView);
+    }
+
+    private static float getTaskHorizontalOffsetPropertyValue(View taskView, float fallback) {
+        Object propertyObject = invokeNoArg(taskView, "getHorizontalOffsetTranslationProperty");
+        if (!(propertyObject instanceof android.util.Property)) {
+            return fallback;
+        }
+        try {
+            Object value = ((android.util.Property) propertyObject).get(taskView);
+            return value instanceof Number ? ((Number) value).floatValue() : fallback;
+        } catch (Throwable ignored) {
+            return fallback;
+        }
+    }
+
+    private static void setTaskHorizontalOffsetPropertyValue(View taskView, float value) {
+        Object propertyObject = invokeNoArg(taskView, "getHorizontalOffsetTranslationProperty");
+        if (propertyObject instanceof android.util.FloatProperty) {
+            try {
+                ((android.util.FloatProperty) propertyObject).setValue(taskView, value);
+                return;
+            } catch (Throwable ignored) {
+            }
+        }
+        if (propertyObject instanceof android.util.Property) {
+            try {
+                ((android.util.Property) propertyObject).set(taskView, value);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private static float getTaskHorizontalBaseOffsetValue(View taskView) {
+        float currentValue = getTaskHorizontalOffsetPropertyValue(taskView, 0f);
+        Float lastValue = RECENTS_STACK_LAST_HORIZONTAL_OFFSETS.get(taskView);
+        if (lastValue == null) {
+            return currentValue;
+        }
+        return currentValue - lastValue;
+    }
+
+    private static void rememberTaskHorizontalOffset(View taskView, float value) {
+        RECENTS_STACK_LAST_HORIZONTAL_OFFSETS.put(taskView, value);
+    }
+
+    private static void clearTaskHorizontalOffset(View taskView) {
+        RECENTS_STACK_LAST_HORIZONTAL_OFFSETS.remove(taskView);
+    }
+
+    private static void applyTaskStackShadow(View taskView, float scale, float alpha) {
+        if (taskView == null || taskView.getWidth() <= 0 || taskView.getHeight() <= 0) {
+            return;
+        }
+        if (!RECENTS_STACK_ORIGINAL_ELEVATIONS.containsKey(taskView)) {
+            RECENTS_STACK_ORIGINAL_ELEVATIONS.put(taskView, taskView.getElevation());
+        }
+        if (!RECENTS_STACK_ORIGINAL_OUTLINES.containsKey(taskView)) {
+            RECENTS_STACK_ORIGINAL_OUTLINES.put(taskView, taskView.getOutlineProvider());
+        }
+        final float cornerRadius = dp(taskView, 26f);
+        taskView.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, Outline outline) {
+                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), cornerRadius);
+            }
+        });
+        taskView.setClipToOutline(false);
+        float shadowStrength = clampFloat(alpha, 0.55f, 1f);
+        taskView.setElevation(dp(taskView, 14f) * shadowStrength);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            int shadowColor = Color.argb((int) (shadowStrength * 90f), 0, 0, 0);
+            taskView.setOutlineAmbientShadowColor(shadowColor);
+            taskView.setOutlineSpotShadowColor(shadowColor);
+        }
+    }
+
+    private static void resetTaskStackShadow(View taskView) {
+        if (taskView == null) {
+            return;
+        }
+        Float originalElevation = RECENTS_STACK_ORIGINAL_ELEVATIONS.remove(taskView);
+        if (originalElevation != null) {
+            taskView.setElevation(originalElevation);
+        } else {
+            taskView.setElevation(0f);
+        }
+        ViewOutlineProvider originalOutline = RECENTS_STACK_ORIGINAL_OUTLINES.remove(taskView);
+        if (originalOutline != null) {
+            taskView.setOutlineProvider(originalOutline);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            taskView.setOutlineAmbientShadowColor(Color.BLACK);
+            taskView.setOutlineSpotShadowColor(Color.BLACK);
+        }
+    }
+
+    private static void setTaskOffsetPropertyValue(View taskView, boolean primary, float value) {
+        Object propertyObject = invokeNoArg(taskView,
+                primary ? "getPrimaryTaskOffsetTranslationProperty" : "getSecondaryTaskOffsetTranslationProperty");
+        if (propertyObject instanceof android.util.FloatProperty) {
+            try {
+                ((android.util.FloatProperty) propertyObject).setValue(taskView, value);
+                return;
+            } catch (Throwable ignored) {
+            }
+        }
+        if (propertyObject instanceof android.util.Property) {
+            try {
+                ((android.util.Property) propertyObject).set(taskView, value);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private static void setTaskNonGridScale(View taskView, float value) {
+        invokeMethod(taskView, "setNonGridScale", new Class<?>[]{float.class}, value);
+    }
+
+    private static void syncRunningTaskViewSimulator(Object recentsViewObject) {
+        Object runningTaskObject = invokeNoArg(recentsViewObject, "getRunningTaskView");
+        if (!(runningTaskObject instanceof View)) {
+            return;
+        }
+        View runningTaskView = (View) runningTaskObject;
+        float primaryOffset = getTaskOffsetPropertyValue(runningTaskView, true, 0f)
+                + getTaskHorizontalOffsetPropertyValue(runningTaskView, 0f);
+        float secondaryOffset = getTaskOffsetPropertyValue(runningTaskView, false, 0f);
+        float carouselScale = runningTaskView.getScaleX();
+        Object handlesObject = invokeNoArg(recentsViewObject, "getRemoteTargetHandles");
+        if (!(handlesObject instanceof Object[])) {
+            return;
+        }
+        Object[] handles = (Object[]) handlesObject;
+        for (Object handle : handles) {
+            Object simulator = invokeNoArg(handle, "getTaskViewSimulator");
+            if (simulator == null) {
+                continue;
+            }
+            setAnimatedFloatValue(getField(simulator, "taskPrimaryTranslation"), primaryOffset);
+            setAnimatedFloatValue(getField(simulator, "taskSecondaryTranslation"), secondaryOffset);
+            setAnimatedFloatValue(getField(simulator, "carouselScale"), carouselScale);
+        }
+        invokeNoArg(recentsViewObject, "redrawLiveTile");
+    }
+
+    private static void setAnimatedFloatValue(Object animatedFloatObject, float value) {
+        if (animatedFloatObject == null) {
+            return;
+        }
+        setFloatField(animatedFloatObject, "value", value);
+    }
+
+    private static void cacheRecentsSurfaceStackSpec(View taskView, float scale,
+            float translationX, float translationY, float alpha) {
+        if (taskView == null) {
+            return;
+        }
+        Object taskIdsObject = invokeNoArg(taskView, "getTaskIds");
+        if (!(taskIdsObject instanceof int[])) {
+            return;
+        }
+        int[] taskIds = (int[]) taskIdsObject;
+        if (taskIds.length == 0) {
+            return;
+        }
+        RecentsSurfaceStackSpec spec = new RecentsSurfaceStackSpec(
+                clampFloat(scale, 0.5f, 1.25f),
+                translationX,
+                translationY,
+                clampFloat(alpha, 0f, 1f));
+        synchronized (RECENTS_SURFACE_STACK_LOCK) {
+            for (int taskId : taskIds) {
+                if (taskId > 0) {
+                    RECENTS_SURFACE_STACK_SPECS.put(taskId, spec);
+                }
+            }
+            LAST_RECENTS_SURFACE_STACK_UPTIME = SystemClock.uptimeMillis();
+        }
+    }
+
+    private static void clearRecentsSurfaceStackSpecs() {
+        synchronized (RECENTS_SURFACE_STACK_LOCK) {
+            RECENTS_SURFACE_STACK_SPECS.clear();
+            LAST_RECENTS_SURFACE_STACK_UPTIME = 0L;
+        }
+    }
+
+    private static void applyRecentsSurfaceStackIfNeeded(Object simulatorObject,
+            Object surfacePropertiesObject, Object remoteAnimationTargetObject) {
+        if (simulatorObject == null || surfacePropertiesObject == null || remoteAnimationTargetObject == null) {
+            return;
+        }
+        RecentsSurfaceStackSpec spec;
+        int taskId = getIntField(remoteAnimationTargetObject, "taskId", Integer.MIN_VALUE);
+        synchronized (RECENTS_SURFACE_STACK_LOCK) {
+            long age = SystemClock.uptimeMillis() - LAST_RECENTS_SURFACE_STACK_UPTIME;
+            if (age < 0L || age > RECENTS_SURFACE_STACK_TTL_MS) {
+                return;
+            }
+            spec = RECENTS_SURFACE_STACK_SPECS.get(taskId);
+        }
+        if (spec == null || !spec.isMeaningful()) {
+            return;
+        }
+        Object matrixObject = invokeNoArg(simulatorObject, "getCurrentMatrix");
+        Object rectObject = invokeNoArg(simulatorObject, "getCurrentRect");
+        if (!(matrixObject instanceof Matrix) || !(rectObject instanceof RectF)) {
+            return;
+        }
+        Matrix updatedMatrix = new Matrix((Matrix) matrixObject);
+        RectF currentRect = (RectF) rectObject;
+        float pivotX = currentRect.centerX();
+        float pivotY = currentRect.top;
+        if (spec.scale != 1f) {
+            updatedMatrix.postScale(spec.scale, spec.scale, pivotX, pivotY);
+        }
+        if (spec.translationX != 0f || spec.translationY != 0f) {
+            updatedMatrix.postTranslate(spec.translationX, spec.translationY);
+        }
+        invokeMethod(surfacePropertiesObject, "setMatrix", new Class<?>[]{Matrix.class}, updatedMatrix);
+        invokeMethod(surfacePropertiesObject, "setAlpha", new Class<?>[]{float.class}, spec.alpha);
+    }
+
+    private static boolean shouldBypassRecentsPagingSnap(Object recentsViewObject) {
+        if (!(recentsViewObject instanceof View) || !isRecentsPagedView(recentsViewObject)) {
+            return false;
+        }
+        View recentsView = (View) recentsViewObject;
+        Config config = Config.load(recentsView.getContext());
+        return config.enabled && config.recentsStackEnabled && config.recentsStackFreeScroll;
+    }
+
+    private static boolean isRecentsPagedView(Object object) {
+        String className = object.getClass().getName();
+        return className.startsWith("com.android.quickstep.views.")
+                && className.contains("RecentsView");
+    }
+
+    private static int resolveAnchorTaskIndex(View[] taskViews, int preferredIndex, int fallbackIndex) {
+        if (taskViews == null || taskViews.length == 0) {
+            return 0;
+        }
+        int clampedPreferred = clamp(preferredIndex, 0, taskViews.length - 1);
+        if (taskViews[clampedPreferred] != null) {
+            return clampedPreferred;
+        }
+        int clampedFallback = clamp(fallbackIndex, 0, taskViews.length - 1);
+        if (taskViews[clampedFallback] != null) {
+            return clampedFallback;
+        }
+        for (int i = 0; i < taskViews.length; i++) {
+            if (taskViews[i] != null) {
+                return i;
+            }
+        }
+        return clampedPreferred;
     }
 
     private static void applyStatusBarSizingOnce(View root) {
@@ -4817,6 +5474,16 @@ public class FlymeStatusBarSizer extends XposedModule {
         return clazz.getName() + "#" + name;
     }
 
+    private static String methodCacheKey(Class<?> clazz, String name, Class<?>[] parameterTypes) {
+        StringBuilder builder = new StringBuilder(clazz.getName()).append('#').append(name).append('(');
+        if (parameterTypes != null) {
+            for (Class<?> parameterType : parameterTypes) {
+                builder.append(parameterType == null ? "null" : parameterType.getName()).append(',');
+            }
+        }
+        return builder.append(')').toString();
+    }
+
     private static Field findCachedField(Class<?> targetClass, String name) {
         String key = memberCacheKey(targetClass, name);
         synchronized (FIELD_CACHE) {
@@ -4858,6 +5525,32 @@ public class FlymeStatusBarSizer extends XposedModule {
                 method.setAccessible(true);
                 synchronized (NO_ARG_METHOD_CACHE) {
                     NO_ARG_METHOD_CACHE.put(key, method);
+                }
+                return method;
+            } catch (NoSuchMethodException ignored) {
+                clazz = clazz.getSuperclass();
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static Method findCachedMethod(Class<?> targetClass, String name, Class<?>... parameterTypes) {
+        String key = methodCacheKey(targetClass, name, parameterTypes);
+        synchronized (METHOD_CACHE) {
+            Method cached = METHOD_CACHE.get(key);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        Class<?> clazz = targetClass;
+        while (clazz != null) {
+            try {
+                Method method = clazz.getDeclaredMethod(name, parameterTypes);
+                method.setAccessible(true);
+                synchronized (METHOD_CACHE) {
+                    METHOD_CACHE.put(key, method);
                 }
                 return method;
             } catch (NoSuchMethodException ignored) {
@@ -4937,6 +5630,19 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private static void setFloatField(Object target, String name, float value) {
+        if (target == null || name == null) {
+            return;
+        }
+        try {
+            Field field = findCachedField(target.getClass(), name);
+            if (field != null) {
+                field.setFloat(target, value);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static int getIntField(Object target, String name, int fallback) {
         Object value = getField(target, name);
         return value instanceof Integer ? (Integer) value : fallback;
@@ -4971,6 +5677,26 @@ public class FlymeStatusBarSizer extends XposedModule {
         return null;
     }
 
+    private static Object invokeMethod(Object target, String name, Class<?>[] parameterTypes, Object... args) {
+        if (target == null || name == null) {
+            return null;
+        }
+        try {
+            Method method = findCachedMethod(target.getClass(), name, parameterTypes);
+            if (method != null) {
+                return method.invoke(target, args);
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static int invokeMethodInt(Object target, String name, Class<?>[] parameterTypes,
+            Object arg, int fallback) {
+        Object value = invokeMethod(target, name, parameterTypes, arg);
+        return value instanceof Integer ? (Integer) value : fallback;
+    }
+
     private static boolean getBooleanField(Object target, String name, boolean fallback) {
         Object value = getField(target, name);
         return value instanceof Boolean ? (Boolean) value : fallback;
@@ -4979,6 +5705,18 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static double getDoubleField(Object target, String name, double fallback) {
         Object value = getField(target, name);
         return value instanceof Double ? (Double) value : fallback;
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static float clampFloat(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static float lerp(float start, float end, float fraction) {
+        return start + (end - start) * fraction;
     }
 
     private static void setMeasuredDimension(View view, int width, int height) {
@@ -5042,6 +5780,27 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private static final class RecentsSurfaceStackSpec {
+        final float scale;
+        final float translationX;
+        final float translationY;
+        final float alpha;
+
+        RecentsSurfaceStackSpec(float scale, float translationX, float translationY, float alpha) {
+            this.scale = scale;
+            this.translationX = translationX;
+            this.translationY = translationY;
+            this.alpha = alpha;
+        }
+
+        boolean isMeaningful() {
+            return Math.abs(scale - 1f) > 0.001f
+                    || Math.abs(translationX) > 0.5f
+                    || Math.abs(translationY) > 0.5f
+                    || alpha < 0.999f;
+        }
+    }
+
     private static final class Config {
         boolean enabled = SettingsStore.DEFAULT_ENABLED;
         float globalIconScale = SettingsStore.DEFAULT_GLOBAL_ICON_SCALE / 100f;
@@ -5097,6 +5856,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         boolean mbackHidePill = SettingsStore.DEFAULT_MBACK_HIDE_PILL;
         int mbackInsetSize = SettingsStore.DEFAULT_MBACK_INSET_SIZE;
         int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
+        boolean recentsStackEnabled = SettingsStore.DEFAULT_RECENTS_STACK_ENABLED;
+        boolean recentsStackFreeScroll = SettingsStore.DEFAULT_RECENTS_STACK_FREE_SCROLL;
+        int recentsStackVisibleCount = SettingsStore.DEFAULT_RECENTS_STACK_VISIBLE_COUNT;
+        int recentsStackScaleStep = SettingsStore.DEFAULT_RECENTS_STACK_SCALE_STEP;
+        int recentsStackBackOffsetY = SettingsStore.DEFAULT_RECENTS_STACK_BACK_OFFSET_Y;
+        int recentsStackFrontOffsetY = SettingsStore.DEFAULT_RECENTS_STACK_FRONT_OFFSET_Y;
+        int recentsStackAlphaStep = SettingsStore.DEFAULT_RECENTS_STACK_ALPHA_STEP;
+        int recentsStackSideOffsetX = SettingsStore.DEFAULT_RECENTS_STACK_SIDE_OFFSET_X;
+        int recentsStackRotationDeg = SettingsStore.DEFAULT_RECENTS_STACK_ROTATION_DEG;
 
         float scaled(int factorPercent) {
             return 1f + ((globalIconScale - 1f) * (factorPercent / 100f));
@@ -5264,6 +6032,24 @@ public class FlymeStatusBarSizer extends XposedModule {
                 mbackInsetSize = parseInt(value, SettingsStore.DEFAULT_MBACK_INSET_SIZE);
             } else if (SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT.equals(key)) {
                 mbackNavBarHeight = parseInt(value, SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT);
+            } else if (SettingsStore.KEY_RECENTS_STACK_ENABLED.equals(key)) {
+                recentsStackEnabled = "1".equals(value);
+            } else if (SettingsStore.KEY_RECENTS_STACK_FREE_SCROLL.equals(key)) {
+                recentsStackFreeScroll = "1".equals(value);
+            } else if (SettingsStore.KEY_RECENTS_STACK_VISIBLE_COUNT.equals(key)) {
+                recentsStackVisibleCount = parseInt(value, SettingsStore.DEFAULT_RECENTS_STACK_VISIBLE_COUNT);
+            } else if (SettingsStore.KEY_RECENTS_STACK_SCALE_STEP.equals(key)) {
+                recentsStackScaleStep = parseInt(value, SettingsStore.DEFAULT_RECENTS_STACK_SCALE_STEP);
+            } else if (SettingsStore.KEY_RECENTS_STACK_BACK_OFFSET_Y.equals(key)) {
+                recentsStackBackOffsetY = parseInt(value, SettingsStore.DEFAULT_RECENTS_STACK_BACK_OFFSET_Y);
+            } else if (SettingsStore.KEY_RECENTS_STACK_FRONT_OFFSET_Y.equals(key)) {
+                recentsStackFrontOffsetY = parseInt(value, SettingsStore.DEFAULT_RECENTS_STACK_FRONT_OFFSET_Y);
+            } else if (SettingsStore.KEY_RECENTS_STACK_ALPHA_STEP.equals(key)) {
+                recentsStackAlphaStep = parseInt(value, SettingsStore.DEFAULT_RECENTS_STACK_ALPHA_STEP);
+            } else if (SettingsStore.KEY_RECENTS_STACK_SIDE_OFFSET_X.equals(key)) {
+                recentsStackSideOffsetX = parseInt(value, SettingsStore.DEFAULT_RECENTS_STACK_SIDE_OFFSET_X);
+            } else if (SettingsStore.KEY_RECENTS_STACK_ROTATION_DEG.equals(key)) {
+                recentsStackRotationDeg = parseInt(value, SettingsStore.DEFAULT_RECENTS_STACK_ROTATION_DEG);
             }
         }
 
