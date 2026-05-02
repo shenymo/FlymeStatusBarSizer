@@ -70,11 +70,18 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, float[]> ORIGINAL_TRANSLATIONS = new WeakHashMap<>();
     private static final WeakHashMap<View, float[]> RECENTS_STACK_LAST_OFFSETS = new WeakHashMap<>();
     private static final WeakHashMap<View, Float> RECENTS_STACK_LAST_HORIZONTAL_OFFSETS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> RECENTS_STACK_APPLY_PENDING = new WeakHashMap<>();
     private static final WeakHashMap<View, Float> RECENTS_STACK_ORIGINAL_ELEVATIONS = new WeakHashMap<>();
     private static final WeakHashMap<View, ViewOutlineProvider> RECENTS_STACK_ORIGINAL_OUTLINES = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> RECENTS_STACK_ORIGINAL_SCREENSHOT_FLAGS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> RECENTS_STACK_ORIGINAL_LIVE_TILE_FLAGS = new WeakHashMap<>();
     private static final WeakHashMap<View, SparseBooleanArray> RECENTS_STACK_FORCED_VISIBLE_TASK_IDS = new WeakHashMap<>();
+    private static final WeakHashMap<View, float[]> RECENTS_STACK_LAST_SIMULATOR_STATES = new WeakHashMap<>();
+    private static final WeakHashMap<View, Integer> RECENTS_STACK_LAST_VISIBLE_CENTER_INDEX = new WeakHashMap<>();
+    private static final WeakHashMap<View, Integer> RECENTS_STACK_LAST_SCROLL_X = new WeakHashMap<>();
+    private static final WeakHashMap<View, Long> RECENTS_STACK_LAST_VISIBILITY_REFRESH_UPTIME = new WeakHashMap<>();
+    private static final WeakHashMap<View, Integer> RECENTS_STACK_LAST_RUNNING_SCREENSHOT_TASK_ID = new WeakHashMap<>();
+    private static final WeakHashMap<View, Long> RECENTS_STACK_LAST_RUNNING_SCREENSHOT_UPTIME = new WeakHashMap<>();
     private static final WeakHashMap<View, String> VIEW_ID_NAME_CACHE = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Typeface> ORIGINAL_TEXT_TYPEFACES = new WeakHashMap<>();
@@ -120,6 +127,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final Object RUNTIME_REFRESH_LOCK = new Object();
     private static final long CONFIG_CACHE_TTL_MS = 5000L;
     private static final long RECENTS_SURFACE_STACK_TTL_MS = 2500L;
+    private static final long RECENTS_STACK_VISIBILITY_REFRESH_DEBOUNCE_MS = 120L;
+    private static final long RECENTS_STACK_RUNNING_SCREENSHOT_REFRESH_MS = 250L;
     private static final long TELEPHONY_CACHE_TTL_MS = 30000L;
     private static final long SIGNAL_DEBUG_REPORT_MIN_INTERVAL_MS = 200L;
     private static final long WIFI_DEBUG_REPORT_MIN_INTERVAL_MS = 120L;
@@ -1571,13 +1580,28 @@ public class FlymeStatusBarSizer extends XposedModule {
                 method.setAccessible(true);
                 hook(method).intercept(chain -> {
                     Object result = chain.proceed();
-                    applyRecentsStackIfNeeded(chain.getThisObject());
+                    scheduleRecentsStackApply(chain.getThisObject());
                     return result;
                 });
             }
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook RecentsView for stack recents", t);
         }
+    }
+
+    private static void scheduleRecentsStackApply(Object recentsViewObject) {
+        if (!(recentsViewObject instanceof View)) {
+            return;
+        }
+        View recentsView = (View) recentsViewObject;
+        if (Boolean.TRUE.equals(RECENTS_STACK_APPLY_PENDING.get(recentsView))) {
+            return;
+        }
+        RECENTS_STACK_APPLY_PENDING.put(recentsView, Boolean.TRUE);
+        recentsView.postOnAnimation(() -> {
+            RECENTS_STACK_APPLY_PENDING.remove(recentsView);
+            applyRecentsStackIfNeeded(recentsView);
+        });
     }
 
     private void hookTaskViewSimulatorStack(ClassLoader loader) {
@@ -1806,10 +1830,21 @@ public class FlymeStatusBarSizer extends XposedModule {
         int taskCount = invokeNoArgInt(recentsViewObject, "getTaskViewCount", 0);
         restoreRecentsContentLayers(recentsViewObject, taskCount);
         clearForcedRecentsVisibleTaskData(recentsViewObject);
+        if (recentsViewObject instanceof View) {
+            View recentsView = (View) recentsViewObject;
+            RECENTS_STACK_APPLY_PENDING.remove(recentsView);
+            RECENTS_STACK_LAST_SIMULATOR_STATES.remove(recentsView);
+            RECENTS_STACK_LAST_VISIBLE_CENTER_INDEX.remove(recentsView);
+            RECENTS_STACK_LAST_SCROLL_X.remove(recentsView);
+            RECENTS_STACK_LAST_RUNNING_SCREENSHOT_TASK_ID.remove(recentsView);
+            RECENTS_STACK_LAST_RUNNING_SCREENSHOT_UPTIME.remove(recentsView);
+        }
         for (int i = 0; i < taskCount; i++) {
             Object taskObject = invokeMethod(recentsViewObject, "getTaskViewAt", new Class<?>[]{int.class}, i);
             if (taskObject instanceof View) {
-                resetTaskStackVisuals((View) taskObject);
+                View taskView = (View) taskObject;
+                RECENTS_STACK_LAST_VISIBILITY_REFRESH_UPTIME.remove(taskView);
+                resetTaskStackVisuals(taskView);
             }
         }
     }
@@ -1843,6 +1878,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         invokeMethod(recentsViewObject, "setEnableDrawingLiveTile",
                 new Class<?>[]{boolean.class}, false);
+        forceRunningTaskScreenshot(recentsViewObject);
         for (int i = 0; i < taskCount; i++) {
             Object taskObject = invokeMethod(recentsViewObject, "getTaskViewAt",
                     new Class<?>[]{int.class}, i);
@@ -1860,6 +1896,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
             invokeMethod(taskView, "setShouldShowScreenshot",
                     new Class<?>[]{boolean.class}, true);
+            stabilizeTaskSnapshotContent(taskView);
         }
     }
 
@@ -1871,6 +1908,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                 invokeMethod(recentsViewObject, "setEnableDrawingLiveTile",
                         new Class<?>[]{boolean.class}, originalLiveTileEnabled);
             }
+            RECENTS_STACK_LAST_RUNNING_SCREENSHOT_TASK_ID.remove(recentsView);
+            RECENTS_STACK_LAST_RUNNING_SCREENSHOT_UPTIME.remove(recentsView);
         }
         for (int i = 0; i < taskCount; i++) {
             Object taskObject = invokeMethod(recentsViewObject, "getTaskViewAt",
@@ -1888,23 +1927,117 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private static void forceRunningTaskScreenshot(Object recentsViewObject) {
+        if (!(recentsViewObject instanceof View)) {
+            return;
+        }
+        View recentsView = (View) recentsViewObject;
+        Object runningTaskObject = invokeNoArg(recentsViewObject, "getRunningTaskView");
+        if (!(runningTaskObject instanceof View)) {
+            RECENTS_STACK_LAST_RUNNING_SCREENSHOT_TASK_ID.remove(recentsView);
+            RECENTS_STACK_LAST_RUNNING_SCREENSHOT_UPTIME.remove(recentsView);
+            return;
+        }
+        View runningTaskView = (View) runningTaskObject;
+        int runningTaskId = getPrimaryTaskId(runningTaskView);
+        long now = SystemClock.uptimeMillis();
+        Integer lastTaskId = RECENTS_STACK_LAST_RUNNING_SCREENSHOT_TASK_ID.get(recentsView);
+        Long lastRefreshUptime = RECENTS_STACK_LAST_RUNNING_SCREENSHOT_UPTIME.get(recentsView);
+        boolean shouldShowScreenshot = invokeNoArgBoolean(runningTaskView, "getShouldShowScreenshot", false);
+        boolean taskChanged = lastTaskId == null || lastTaskId != runningTaskId;
+        boolean refreshExpired = lastRefreshUptime == null
+                || now - lastRefreshUptime >= RECENTS_STACK_RUNNING_SCREENSHOT_REFRESH_MS;
+        if (!taskChanged && shouldShowScreenshot && !refreshExpired) {
+            return;
+        }
+        invokeMethod(recentsViewObject, "switchToScreenshot",
+                new Class<?>[]{Runnable.class}, (Runnable) () -> {
+                });
+        RECENTS_STACK_LAST_RUNNING_SCREENSHOT_TASK_ID.put(recentsView, runningTaskId);
+        RECENTS_STACK_LAST_RUNNING_SCREENSHOT_UPTIME.put(recentsView, now);
+    }
+
+    private static void stabilizeTaskSnapshotContent(View taskView) {
+        if (taskView == null) {
+            return;
+        }
+        invokeMethod(taskView, "setThumbnailVisibility",
+                new Class<?>[]{int.class, int.class}, View.VISIBLE, -1);
+        Object containersObject = invokeNoArg(taskView, "getTaskContainers");
+        if (!(containersObject instanceof Iterable)) {
+            return;
+        }
+        for (Object containerObject : (Iterable<?>) containersObject) {
+            if (containerObject == null) {
+                continue;
+            }
+            Object snapshotViewObject = invokeNoArg(containerObject, "getSnapshotView");
+            if (snapshotViewObject instanceof View) {
+                ((View) snapshotViewObject).setVisibility(View.VISIBLE);
+            }
+            Object thumbnailView = invokeNoArg(containerObject, "getThumbnailViewDeprecated");
+            if (thumbnailView == null) {
+                continue;
+            }
+            Object taskObject = invokeNoArg(containerObject, "getTask");
+            Object thumbnailData = getField(taskObject, "thumbnail");
+            Object bitmap = invokeNoArg(thumbnailData, "getThumbnail");
+            if (taskObject != null && thumbnailData != null && bitmap != null) {
+                invokeMethod(thumbnailView, "setThumbnail",
+                        new Class<?>[]{taskObject.getClass(), thumbnailData.getClass()},
+                        taskObject, thumbnailData);
+            } else {
+                invokeNoArg(thumbnailView, "refresh");
+            }
+        }
+    }
+
     private static void stabilizeRecentsVisibleTaskData(Object recentsViewObject, int taskCount,
             int currentTaskIndex) {
         if (!(recentsViewObject instanceof View) || taskCount <= 0) {
             return;
         }
         View recentsView = (View) recentsViewObject;
-        int desiredStart = clamp(currentTaskIndex - RECENTS_STACK_VISIBLE_TASK_PADDING, 0, taskCount - 1);
-        int desiredEnd = clamp(currentTaskIndex + RECENTS_STACK_VISIBLE_TASK_PADDING, 0, taskCount - 1);
-        int defaultCenter = invokeNoArgInt(recentsViewObject, "getPageNearestToCenterOfScreen", currentTaskIndex);
-        int defaultStart = clamp(defaultCenter - 2, 0, taskCount - 1);
-        int defaultEnd = clamp(defaultCenter + 2, 0, taskCount - 1);
+        int scrollX = getIntField(recentsViewObject, "mCurrentScroll", recentsView.getScrollX());
+        Integer lastScrollX = RECENTS_STACK_LAST_SCROLL_X.get(recentsView);
+        int scrollDelta = lastScrollX == null ? 0 : (scrollX - lastScrollX);
+        RECENTS_STACK_LAST_SCROLL_X.put(recentsView, scrollX);
 
-        SparseBooleanArray forcedNow = new SparseBooleanArray();
-        SparseBooleanArray forcedBefore = RECENTS_STACK_FORCED_VISIBLE_TASK_IDS.get(recentsView);
+        int lookAheadPadding = 0;
+        int absScrollDelta = Math.abs(scrollDelta);
+        if (absScrollDelta >= dp(recentsView, 96f)) {
+            lookAheadPadding = 8;
+        } else if (absScrollDelta >= dp(recentsView, 48f)) {
+            lookAheadPadding = 4;
+        }
+
+        int desiredStart = currentTaskIndex - RECENTS_STACK_VISIBLE_TASK_PADDING;
+        int desiredEnd = currentTaskIndex + RECENTS_STACK_VISIBLE_TASK_PADDING;
+        if (scrollDelta > 0) {
+            desiredEnd += lookAheadPadding;
+        } else if (scrollDelta < 0) {
+            desiredStart -= lookAheadPadding;
+        }
+
+        Integer lastVisibleCenter = RECENTS_STACK_LAST_VISIBLE_CENTER_INDEX.get(recentsView);
+        if (lastVisibleCenter != null && lastVisibleCenter != currentTaskIndex) {
+            int travelStart = Math.min(lastVisibleCenter, currentTaskIndex);
+            int travelEnd = Math.max(lastVisibleCenter, currentTaskIndex);
+            desiredStart = Math.min(desiredStart, travelStart - RECENTS_STACK_VISIBLE_TASK_PADDING);
+            desiredEnd = Math.max(desiredEnd, travelEnd + RECENTS_STACK_VISIBLE_TASK_PADDING);
+        }
+        RECENTS_STACK_LAST_VISIBLE_CENTER_INDEX.put(recentsView, currentTaskIndex);
+
+        desiredStart = clamp(desiredStart, 0, taskCount - 1);
+        desiredEnd = clamp(desiredEnd, 0, taskCount - 1);
+        SparseBooleanArray forcedVisible = RECENTS_STACK_FORCED_VISIBLE_TASK_IDS.get(recentsView);
+        if (forcedVisible == null) {
+            forcedVisible = new SparseBooleanArray();
+        }
         SparseBooleanArray hasVisibleTaskData = getSparseBooleanArrayField(recentsViewObject, "mHasVisibleTaskData");
-        ArrayList<Integer> visibleTaskIds = new ArrayList<>();
-        HashMap<Integer, Integer> taskIndexById = new HashMap<>();
+        boolean promotedAnyTask = false;
+        boolean refreshedVisibleTaskState = false;
+        long now = SystemClock.uptimeMillis();
 
         for (int i = desiredStart; i <= desiredEnd; i++) {
             Object taskObject = invokeMethod(recentsViewObject, "getTaskViewAt", new Class<?>[]{int.class}, i);
@@ -1919,55 +2052,35 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (taskId <= 0) {
                 continue;
             }
-            taskIndexById.put(taskId, i);
-            forcedNow.put(taskId, true);
-            visibleTaskIds.add(taskId);
-            if (i < defaultStart || i > defaultEnd) {
-                boolean alreadyForcedVisible = forcedBefore != null && forcedBefore.get(taskId);
-                boolean alreadyMarkedVisible = hasVisibleTaskData != null && hasVisibleTaskData.get(taskId);
-                if (!alreadyForcedVisible || !alreadyMarkedVisible) {
-                    invokeMethod(taskView, "onTaskListVisibilityChanged",
-                            new Class<?>[]{boolean.class, int.class}, true, 15);
-                }
-                if (hasVisibleTaskData != null) {
-                    hasVisibleTaskData.put(taskId, true);
-                }
+            boolean alreadyForcedVisible = forcedVisible.get(taskId);
+            boolean alreadyMarkedVisible = hasVisibleTaskData != null && hasVisibleTaskData.get(taskId);
+            boolean needsVisibilityRefresh = !alreadyMarkedVisible;
+            Long lastRefreshUptime = RECENTS_STACK_LAST_VISIBILITY_REFRESH_UPTIME.get(taskView);
+            boolean canRefreshNow = lastRefreshUptime == null
+                    || now - lastRefreshUptime >= RECENTS_STACK_VISIBILITY_REFRESH_DEBOUNCE_MS;
+            if (!alreadyForcedVisible || (needsVisibilityRefresh && canRefreshNow)) {
+                invokeMethod(taskView, "onTaskListVisibilityChanged",
+                        new Class<?>[]{boolean.class, int.class}, true, 15);
+                RECENTS_STACK_LAST_VISIBILITY_REFRESH_UPTIME.put(taskView, now);
+                promotedAnyTask = true;
+            }
+            forcedVisible.put(taskId, true);
+            if (hasVisibleTaskData != null && !alreadyMarkedVisible) {
+                hasVisibleTaskData.put(taskId, true);
+                refreshedVisibleTaskState = true;
             }
         }
-
-        if (forcedBefore != null) {
-            for (int i = 0; i < forcedBefore.size(); i++) {
-                int taskId = forcedBefore.keyAt(i);
-                if (forcedNow.get(taskId)) {
-                    continue;
-                }
-                Integer taskIndex = taskIndexById.get(taskId);
-                if (taskIndex == null) {
-                    Object taskObject = invokeMethod(recentsViewObject, "getTaskViewByTaskId",
-                            new Class<?>[]{int.class}, taskId);
-                    if (taskObject instanceof View) {
-                        taskIndex = invokeMethodInt(recentsViewObject, "indexOfChild",
-                                new Class<?>[]{View.class}, taskObject, Integer.MIN_VALUE);
-                    }
-                }
-                if (taskIndex != null && taskIndex >= defaultStart && taskIndex <= defaultEnd) {
-                    continue;
-                }
-                Object taskObject = invokeMethod(recentsViewObject, "getTaskViewByTaskId",
-                        new Class<?>[]{int.class}, taskId);
-                if (taskObject instanceof View) {
-                    invokeMethod(taskObject, "onTaskListVisibilityChanged",
-                            new Class<?>[]{boolean.class, int.class}, false, 15);
-                }
-                if (hasVisibleTaskData != null) {
-                    hasVisibleTaskData.delete(taskId);
-                }
-            }
-        }
-        RECENTS_STACK_FORCED_VISIBLE_TASK_IDS.put(recentsView, forcedNow);
+        RECENTS_STACK_FORCED_VISIBLE_TASK_IDS.put(recentsView, forcedVisible);
 
         Object recentsViewModel = getField(recentsViewObject, "mRecentsViewModel");
-        if (recentsViewModel != null && !sparseBooleanArraysEqual(forcedBefore, forcedNow)) {
+        if (recentsViewModel != null && (promotedAnyTask || refreshedVisibleTaskState)) {
+            ArrayList<Integer> visibleTaskIds = new ArrayList<>(forcedVisible.size());
+            for (int i = 0; i < forcedVisible.size(); i++) {
+                int taskId = forcedVisible.keyAt(i);
+                if (forcedVisible.valueAt(i)) {
+                    visibleTaskIds.add(taskId);
+                }
+            }
             invokeMethod(recentsViewModel, "updateVisibleTasks",
                     new Class<?>[]{java.util.List.class}, visibleTaskIds);
         }
@@ -1977,28 +2090,24 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!(recentsViewObject instanceof View)) {
             return;
         }
-        RECENTS_STACK_FORCED_VISIBLE_TASK_IDS.remove((View) recentsViewObject);
+        View recentsView = (View) recentsViewObject;
+        RECENTS_STACK_FORCED_VISIBLE_TASK_IDS.remove(recentsView);
+        RECENTS_STACK_LAST_VISIBLE_CENTER_INDEX.remove(recentsView);
+        RECENTS_STACK_LAST_SCROLL_X.remove(recentsView);
+        RECENTS_STACK_LAST_RUNNING_SCREENSHOT_TASK_ID.remove(recentsView);
+        RECENTS_STACK_LAST_RUNNING_SCREENSHOT_UPTIME.remove(recentsView);
+        int taskCount = invokeNoArgInt(recentsViewObject, "getTaskViewCount", 0);
+        for (int i = 0; i < taskCount; i++) {
+            Object taskObject = invokeMethod(recentsViewObject, "getTaskViewAt", new Class<?>[]{int.class}, i);
+            if (taskObject instanceof View) {
+                RECENTS_STACK_LAST_VISIBILITY_REFRESH_UPTIME.remove((View) taskObject);
+            }
+        }
     }
 
     private static SparseBooleanArray getSparseBooleanArrayField(Object object, String fieldName) {
         Object fieldValue = getField(object, fieldName);
         return fieldValue instanceof SparseBooleanArray ? (SparseBooleanArray) fieldValue : null;
-    }
-
-    private static boolean sparseBooleanArraysEqual(SparseBooleanArray first, SparseBooleanArray second) {
-        if (first == second) {
-            return true;
-        }
-        if (first == null || second == null || first.size() != second.size()) {
-            return false;
-        }
-        for (int i = 0; i < first.size(); i++) {
-            int key = first.keyAt(i);
-            if (key != second.keyAt(i) || first.valueAt(i) != second.valueAt(i)) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private static int getPrimaryTaskId(View taskView) {
@@ -2274,8 +2383,13 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void syncRunningTaskViewSimulator(Object recentsViewObject) {
+        if (!(recentsViewObject instanceof View)) {
+            return;
+        }
+        View recentsView = (View) recentsViewObject;
         Object runningTaskObject = invokeNoArg(recentsViewObject, "getRunningTaskView");
         if (!(runningTaskObject instanceof View)) {
+            RECENTS_STACK_LAST_SIMULATOR_STATES.remove(recentsView);
             return;
         }
         View runningTaskView = (View) runningTaskObject;
@@ -2283,6 +2397,18 @@ public class FlymeStatusBarSizer extends XposedModule {
                 + getTaskHorizontalOffsetPropertyValue(runningTaskView, 0f);
         float secondaryOffset = getTaskOffsetPropertyValue(runningTaskView, false, 0f);
         float carouselScale = runningTaskView.getScaleX();
+        int runningTaskId = getPrimaryTaskId(runningTaskView);
+        float[] lastState = RECENTS_STACK_LAST_SIMULATOR_STATES.get(recentsView);
+        if (lastState != null
+                && lastState.length >= 4
+                && (int) lastState[0] == runningTaskId
+                && Math.abs(lastState[1] - primaryOffset) < 0.5f
+                && Math.abs(lastState[2] - secondaryOffset) < 0.5f
+                && Math.abs(lastState[3] - carouselScale) < 0.001f) {
+            return;
+        }
+        RECENTS_STACK_LAST_SIMULATOR_STATES.put(recentsView,
+                new float[]{runningTaskId, primaryOffset, secondaryOffset, carouselScale});
         Object handlesObject = invokeNoArg(recentsViewObject, "getRemoteTargetHandles");
         if (!(handlesObject instanceof Object[])) {
             return;
@@ -2297,7 +2423,10 @@ public class FlymeStatusBarSizer extends XposedModule {
             setAnimatedFloatValue(getField(simulator, "taskSecondaryTranslation"), secondaryOffset);
             setAnimatedFloatValue(getField(simulator, "carouselScale"), carouselScale);
         }
-        invokeNoArg(recentsViewObject, "redrawLiveTile");
+        Object liveTileEnabled = invokeNoArg(recentsViewObject, "getEnableDrawingLiveTile");
+        if (!(liveTileEnabled instanceof Boolean) || (Boolean) liveTileEnabled) {
+            invokeNoArg(recentsViewObject, "redrawLiveTile");
+        }
     }
 
     private static void setAnimatedFloatValue(Object animatedFloatObject, float value) {
