@@ -54,12 +54,27 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_MBACK_HIDE_PILL,
                 prefs.getBoolean(SettingsStore.KEY_MBACK_HIDE_PILL,
                         SettingsStore.DEFAULT_MBACK_HIDE_PILL));
+        add(cursor, SettingsStore.KEY_SIGNAL_HOOK_DEBUG_ENABLED,
+                prefs.getBoolean(SettingsStore.KEY_SIGNAL_HOOK_DEBUG_ENABLED,
+                        SettingsStore.DEFAULT_SIGNAL_HOOK_DEBUG_ENABLED));
+        add(cursor, SettingsStore.KEY_SIGNAL_HOOK_LOGCAT_ENABLED,
+                prefs.getBoolean(SettingsStore.KEY_SIGNAL_HOOK_LOGCAT_ENABLED,
+                        SettingsStore.DEFAULT_SIGNAL_HOOK_LOGCAT_ENABLED));
         add(cursor, SettingsStore.KEY_MBACK_INSET_SIZE,
                 prefs.getInt(SettingsStore.KEY_MBACK_INSET_SIZE,
                         SettingsStore.DEFAULT_MBACK_INSET_SIZE));
         add(cursor, SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT,
                 prefs.getInt(SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT,
                         SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT));
+        add(cursor, SettingsStore.KEY_SIGNAL_DEBUG_RESET_SEQ,
+                prefs.getInt(SettingsStore.KEY_SIGNAL_DEBUG_RESET_SEQ,
+                        SettingsStore.DEFAULT_SIGNAL_DEBUG_RESET_SEQ));
+        add(cursor, SettingsStore.KEY_SIGNAL_DEBUG_STATUS,
+                prefs.getString(SettingsStore.KEY_SIGNAL_DEBUG_STATUS,
+                        SettingsStore.DEFAULT_SIGNAL_DEBUG_STATUS));
+        add(cursor, SettingsStore.KEY_SIGNAL_DEBUG_UPDATED_AT,
+                prefs.getString(SettingsStore.KEY_SIGNAL_DEBUG_UPDATED_AT,
+                        SettingsStore.DEFAULT_SIGNAL_DEBUG_UPDATED_AT));
         return cursor;
     }
 
@@ -104,6 +119,10 @@ public class SettingsProvider extends ContentProvider {
         }
         if (changed > 0) {
             editor.apply();
+            try {
+                getContext().getContentResolver().notifyChange(uri, null);
+            } catch (Throwable ignored) {
+            }
         }
         return changed;
     }

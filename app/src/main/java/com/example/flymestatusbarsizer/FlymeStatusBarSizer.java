@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer;
 
 import android.content.BroadcastReceiver;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -17,6 +18,9 @@ import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.telephony.SignalStrength;
+import android.telephony.SubscriptionManager;
+import android.telephony.TelephonyManager;
 import android.text.SpannableStringBuilder;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -42,6 +46,7 @@ import io.github.libxposed.api.XposedModuleInterface;
 
 public class FlymeStatusBarSizer extends XposedModule {
     private static final String TAG = "FlymeStatusBarSizer";
+    private static final String LOG_PREFIX = "FSBS";
     private static final String SYSTEM_UI = "com.android.systemui";
     private static volatile FlymeStatusBarSizer MODULE;
 
@@ -52,6 +57,10 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, Boolean> TRACKED_CONNECTION_RATE_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, ConnectionRateThresholdState> CONNECTION_RATE_THRESHOLD_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_BATTERY_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<View, SignalDebugInfo> TRACKED_SIGNAL_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<Drawable, View> SIGNAL_DRAWABLE_OWNERS = new WeakHashMap<>();
+    private static final WeakHashMap<TelephonyManager, Integer> TELEPHONY_MANAGER_SUB_IDS = new WeakHashMap<>();
+    private static final WeakHashMap<SignalStrength, Integer> SIGNAL_STRENGTH_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<View, NotificationLiquidGlassView> NOTIFICATION_GLASS_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, NotificationGlassDrawable> NOTIFICATION_GLASS_DRAWABLES = new WeakHashMap<>();
     private static final Object CONFIG_REFRESH_LOCK = new Object();
@@ -61,6 +70,11 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static BroadcastReceiver USER_UNLOCKED_RECEIVER;
     private static ContentObserver SETTINGS_OBSERVER;
     private static final HashMap<String, Integer> SYSTEM_UI_ID_CACHE = new HashMap<>();
+    private static volatile int LAST_SIGNAL_DEBUG_RESET_SEQ = Integer.MIN_VALUE;
+    private static volatile int LAST_SIGNAL_LEVEL = -1;
+    private static volatile int LAST_SIGNAL_SUB_ID = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    private static volatile int LAST_CELLULAR_LEVEL = -1;
+    private static volatile int LAST_ACTIVE_SUBSCRIPTION_COUNT = -1;
 
     @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
@@ -77,6 +91,7 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private void hookSystemUi(ClassLoader loader) {
         hookConnectionRateView(loader);
+        hookSignalDebugging(loader);
         hookMBackLongTouchIntent(loader);
         hookMBackNavBarExperiments(loader);
         hookMBackPillVisibility(loader);
@@ -104,6 +119,162 @@ public class FlymeStatusBarSizer extends XposedModule {
         });
         hookBatteryDrawable(loader);
         hookClockWeekday(loader);
+    }
+
+    private void hookSignalDebugging(ClassLoader loader) {
+        hookMobileSignalViewConstructors(loader);
+        hookSignalImageAssignments();
+        hookSignalViewLayout();
+        hookSignalDrawableLevelChanges(loader);
+        hookTelephonySignalDebug(loader);
+    }
+
+    private void hookMobileSignalViewConstructors(ClassLoader loader) {
+        hookConstructors(loader,
+                "com.flyme.systemui.statusbar.net.mobile.ui.view.FlymeModernStatusBarMobileView",
+                FlymeStatusBarSizer::recordMobileGroupView);
+        hookConstructors(loader,
+                "com.android.systemui.statusbar.pipeline.mobile.ui.view.ModernStatusBarMobileView",
+                FlymeStatusBarSizer::recordMobileGroupView);
+        hookConstructors(loader,
+                "com.android.systemui.statusbar.pipeline.mobile.ui.view.ModernShadeCarrierGroupMobileView",
+                FlymeStatusBarSizer::recordMobileGroupView);
+    }
+
+    private void hookSignalImageAssignments() {
+        try {
+            Method setImageResource = ImageView.class.getDeclaredMethod("setImageResource", int.class);
+            setImageResource.setAccessible(true);
+            hook(setImageResource).intercept(chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof ImageView) {
+                    onSignalImageResourceAssigned((ImageView) target, ((Integer) chain.getArg(0)).intValue());
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setImageResource", t);
+        }
+        try {
+            Method setImageDrawable = ImageView.class.getDeclaredMethod("setImageDrawable", Drawable.class);
+            setImageDrawable.setAccessible(true);
+            hook(setImageDrawable).intercept(chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof ImageView) {
+                    onSignalImageDrawableAssigned((ImageView) target, (Drawable) chain.getArg(0));
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setImageDrawable", t);
+        }
+    }
+
+    private void hookSignalViewLayout() {
+        try {
+            Method onLayout = View.class.getDeclaredMethod(
+                    "onLayout", boolean.class, int.class, int.class, int.class, int.class);
+            onLayout.setAccessible(true);
+            hook(onLayout).intercept(chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof View) {
+                    onSignalViewLayoutChanged((View) target);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook View.onLayout for signal debug", t);
+        }
+    }
+
+    private void hookSignalDrawableLevelChanges(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName("com.android.settingslib.graph.SignalDrawable", false, loader);
+            Method method = clazz.getDeclaredMethod("onLevelChange", int.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof Drawable) {
+                    Drawable drawable = (Drawable) target;
+                    int rawLevel = chain.getArg(0) instanceof Integer ? (Integer) chain.getArg(0) : drawable.getLevel();
+                    onSignalDrawableLevelChanged(drawable, rawLevel);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook SignalDrawable.onLevelChange", t);
+        }
+    }
+
+    private void hookTelephonySignalDebug(ClassLoader loader) {
+        hookTelephonyCreateForSubscriptionId();
+        hookTelephonyGetSignalStrength();
+        hookSignalStrengthGetLevel();
+    }
+
+    private void hookTelephonyCreateForSubscriptionId() {
+        try {
+            Method method = TelephonyManager.class.getDeclaredMethod("createForSubscriptionId", int.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                if (result instanceof TelephonyManager && chain.getArg(0) instanceof Integer) {
+                    TELEPHONY_MANAGER_SUB_IDS.put((TelephonyManager) result, (Integer) chain.getArg(0));
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook TelephonyManager.createForSubscriptionId", t);
+        }
+    }
+
+    private void hookTelephonyGetSignalStrength() {
+        try {
+            Method method = TelephonyManager.class.getDeclaredMethod("getSignalStrength");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof TelephonyManager && result instanceof SignalStrength) {
+                    Integer subId = TELEPHONY_MANAGER_SUB_IDS.get(target);
+                    if (subId != null) {
+                        SIGNAL_STRENGTH_SUB_IDS.put((SignalStrength) result, subId);
+                        LAST_SIGNAL_SUB_ID = subId;
+                    }
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook TelephonyManager.getSignalStrength", t);
+        }
+    }
+
+    private void hookSignalStrengthGetLevel() {
+        try {
+            Method method = SignalStrength.class.getDeclaredMethod("getLevel");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                if (result instanceof Integer) {
+                    int level = (Integer) result;
+                    LAST_CELLULAR_LEVEL = level;
+                    Object target = chain.getThisObject();
+                    if (target instanceof SignalStrength) {
+                        Integer subId = SIGNAL_STRENGTH_SUB_IDS.get(target);
+                        if (subId != null) {
+                            LAST_SIGNAL_SUB_ID = subId;
+                        }
+                    }
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook SignalStrength.getLevel", t);
+        }
     }
 
     private void hookConnectionRateView(ClassLoader loader) {
@@ -977,6 +1148,264 @@ public class FlymeStatusBarSizer extends XposedModule {
         rememberConnectionRateState(view);
     }
 
+    private static void recordMobileGroupView(View root) {
+        if (root == null) {
+            return;
+        }
+        reportSignalDebug(root, "mobile_group_bound", null, "group=" + root.getClass().getSimpleName());
+        View mobileSignal = findSystemUiChild(root, "mobile_signal");
+        if (mobileSignal != null) {
+            reportSignalDebug(mobileSignal, "mobile_signal_found", null,
+                    "group=" + root.getClass().getSimpleName());
+        }
+        View mobileType = findSystemUiChild(root, "mobile_type");
+        if (mobileType != null) {
+            reportSignalDebug(mobileType, "mobile_type_found", null,
+                    "group=" + root.getClass().getSimpleName());
+        }
+    }
+
+    private static void onSignalImageResourceAssigned(ImageView view, int resId) {
+        String idName = getSystemUiIdName(view);
+        if (!"mobile_signal".equals(idName) && !"mobile_type".equals(idName)) {
+            return;
+        }
+        String resName = resolveResourceName(view.getContext(), resId);
+        reportSignalDebug(view, "setImageResource", resName, "resId=" + resId);
+    }
+
+    private static void onSignalImageDrawableAssigned(ImageView view, Drawable drawable) {
+        String idName = getSystemUiIdName(view);
+        if (!"mobile_signal".equals(idName) && !"mobile_type".equals(idName)) {
+            return;
+        }
+        String drawableName = drawable == null ? "null" : drawable.getClass().getName();
+        int level = drawable == null ? -1 : drawable.getLevel();
+        if ("mobile_signal".equals(idName) && drawable != null) {
+            SIGNAL_DRAWABLE_OWNERS.put(drawable, view);
+        }
+        reportSignalDebug(view, "setImageDrawable", drawableName, "level=" + level);
+    }
+
+    private static void onSignalViewLayoutChanged(View view) {
+        String idName = getSystemUiIdName(view);
+        if (!"mobile_signal".equals(idName) && !"mobile_type".equals(idName)) {
+            return;
+        }
+        SignalDebugInfo info = TRACKED_SIGNAL_VIEWS.get(view);
+        if (info == null || view.getWidth() == info.lastWidth && view.getHeight() == info.lastHeight) {
+            return;
+        }
+        reportSignalDebug(view, "layout", info.resourceName,
+                "size=" + view.getWidth() + "x" + view.getHeight());
+    }
+
+    private static void onSignalDrawableLevelChanged(Drawable drawable, int rawLevel) {
+        if (drawable == null) {
+            return;
+        }
+        View owner = SIGNAL_DRAWABLE_OWNERS.get(drawable);
+        LAST_SIGNAL_LEVEL = normalizeSignalLevel(rawLevel);
+        if (owner != null) {
+            reportSignalDebug(owner, "signal_level_changed", drawable.getClass().getName(),
+                    "rawLevel=" + rawLevel + " bars=" + LAST_SIGNAL_LEVEL);
+        }
+    }
+
+    private static void reportSignalDebug(View view, String event, String resourceName, String extra) {
+        if (view == null) {
+            return;
+        }
+        Context context = view.getContext();
+        ModuleConfig config = ModuleConfig.load(context);
+        if (!config.enabled || !config.signalHookDebugEnabled) {
+            return;
+        }
+        handleSignalDebugReset(config);
+        String idName = getSystemUiIdName(view);
+        SignalDebugInfo info = rememberSignalDebugInfo(view);
+        info.event = safeText(event);
+        info.idName = safeText(idName);
+        if (resourceName != null) {
+            info.resourceName = safeText(resourceName);
+        }
+        info.viewClass = view.getClass().getName();
+        info.parentIdName = safeText(resolveParentIdName(view));
+        info.width = view.getWidth();
+        info.height = view.getHeight();
+        info.lastWidth = info.width;
+        info.lastHeight = info.height;
+        info.left = view.getLeft();
+        info.top = view.getTop();
+        info.right = view.getRight();
+        info.bottom = view.getBottom();
+        info.visibility = visibilityToString(view.getVisibility());
+        info.alpha = view.getAlpha();
+        info.signalBars = resolveSignalBars(info.idName, view);
+        info.activeSubscriptionCount = resolveActiveSubscriptionCount(context);
+        info.mergedDualSignal = info.activeSubscriptionCount >= 2;
+        info.hasSecondaryDots = info.mergedDualSignal;
+        info.subId = resolveBestSignalSubId();
+        info.timestamp = System.currentTimeMillis();
+        String debugText = buildSignalDebugText(info, extra);
+        persistSignalDebugStatus(context, debugText, info.timestamp);
+        if (config.signalHookLogcatEnabled) {
+            android.util.Log.i(TAG, LOG_PREFIX + " " + debugText);
+        }
+    }
+
+    private static void handleSignalDebugReset(ModuleConfig config) {
+        if (config == null) {
+            return;
+        }
+        int seq = config.signalDebugResetSeq;
+        if (LAST_SIGNAL_DEBUG_RESET_SEQ == seq) {
+            return;
+        }
+        LAST_SIGNAL_DEBUG_RESET_SEQ = seq;
+        TRACKED_SIGNAL_VIEWS.clear();
+    }
+
+    private static SignalDebugInfo rememberSignalDebugInfo(View view) {
+        SignalDebugInfo info = TRACKED_SIGNAL_VIEWS.get(view);
+        if (info == null) {
+            info = new SignalDebugInfo();
+            TRACKED_SIGNAL_VIEWS.put(view, info);
+        }
+        return info;
+    }
+
+    private static String buildSignalDebugText(SignalDebugInfo info, String extra) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("signal event=").append(safeText(info.event));
+        builder.append(" id=").append(safeText(info.idName));
+        builder.append(" res=").append(safeText(info.resourceName));
+        builder.append(" parent=").append(safeText(info.parentIdName));
+        builder.append(" view=").append(safeText(info.viewClass));
+        builder.append(" rect=").append(info.left).append(',').append(info.top)
+                .append(',').append(info.right).append(',').append(info.bottom);
+        builder.append(" size=").append(info.width).append('x').append(info.height);
+        builder.append(" visibility=").append(safeText(info.visibility));
+        builder.append(" alpha=").append(String.format(Locale.US, "%.2f", info.alpha));
+        builder.append(" bars=").append(info.signalBars);
+        builder.append(" subId=").append(info.subId);
+        builder.append(" simCount=").append(info.activeSubscriptionCount);
+        builder.append(" mergedDual=").append(info.mergedDualSignal ? "1" : "0");
+        builder.append(" dots=").append(info.hasSecondaryDots ? "1" : "0");
+        if (extra != null && extra.length() > 0) {
+            builder.append(' ').append(extra);
+        }
+        return builder.toString();
+    }
+
+    private static void persistSignalDebugStatus(Context context, String text, long timestamp) {
+        if (context == null) {
+            return;
+        }
+        try {
+            ContentValues values = new ContentValues();
+            values.put(SettingsStore.KEY_SIGNAL_DEBUG_STATUS, text);
+            values.put(SettingsStore.KEY_SIGNAL_DEBUG_UPDATED_AT, formatDebugTime(timestamp));
+            context.getContentResolver().update(SettingsStore.SETTINGS_URI, values, null, null);
+        } catch (Throwable t) {
+            if (MODULE != null) {
+                MODULE.log(android.util.Log.WARN, TAG, "Failed to persist signal debug status", t);
+            }
+        }
+    }
+
+    private static String formatDebugTime(long timestamp) {
+        return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
+                .format(new Date(timestamp));
+    }
+
+    private static String resolveResourceName(Context context, int resId) {
+        if (context == null || resId == 0) {
+            return "";
+        }
+        try {
+            return context.getResources().getResourceEntryName(resId);
+        } catch (Throwable ignored) {
+            return "resId:" + resId;
+        }
+    }
+
+    private static String resolveParentIdName(View view) {
+        ViewParent parent = view == null ? null : view.getParent();
+        if (parent instanceof View) {
+            return getSystemUiIdName((View) parent);
+        }
+        return "";
+    }
+
+    private static String visibilityToString(int visibility) {
+        if (visibility == View.VISIBLE) {
+            return "VISIBLE";
+        }
+        if (visibility == View.INVISIBLE) {
+            return "INVISIBLE";
+        }
+        if (visibility == View.GONE) {
+            return "GONE";
+        }
+        return Integer.toString(visibility);
+    }
+
+    private static String safeText(String text) {
+        return text == null || text.length() == 0 ? "-" : text;
+    }
+
+    private static int resolveSignalBars(String idName, View view) {
+        if ("mobile_signal".equals(idName)) {
+            if (LAST_SIGNAL_LEVEL >= 0) {
+                return LAST_SIGNAL_LEVEL;
+            }
+            Drawable drawable = view instanceof ImageView ? ((ImageView) view).getDrawable() : null;
+            if (drawable != null) {
+                return normalizeSignalLevel(drawable.getLevel());
+            }
+        }
+        return LAST_CELLULAR_LEVEL >= 0 ? LAST_CELLULAR_LEVEL : -1;
+    }
+
+    private static int normalizeSignalLevel(int rawLevel) {
+        if (rawLevel < 0) {
+            return -1;
+        }
+        int level = rawLevel & 0xff;
+        if (level > 4) {
+            level = rawLevel % 5;
+        }
+        if (level < 0) {
+            return -1;
+        }
+        return Math.min(level, 4);
+    }
+
+    private static int resolveActiveSubscriptionCount(Context context) {
+        if (context == null) {
+            return LAST_ACTIVE_SUBSCRIPTION_COUNT;
+        }
+        try {
+            SubscriptionManager manager = context.getSystemService(SubscriptionManager.class);
+            if (manager == null) {
+                return LAST_ACTIVE_SUBSCRIPTION_COUNT;
+            }
+            int count = manager.getActiveSubscriptionInfoCount();
+            LAST_ACTIVE_SUBSCRIPTION_COUNT = count;
+            return count;
+        } catch (Throwable ignored) {
+            return LAST_ACTIVE_SUBSCRIPTION_COUNT;
+        }
+    }
+
+    private static int resolveBestSignalSubId() {
+        if (LAST_SIGNAL_SUB_ID != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            return LAST_SIGNAL_SUB_ID;
+        }
+        return -1;
+    }
+
     private static ConnectionRateThresholdState rememberConnectionRateState(View view) {
         ConnectionRateThresholdState state = CONNECTION_RATE_THRESHOLD_STATES.get(view);
         if (state == null) {
@@ -1396,5 +1825,29 @@ public class FlymeStatusBarSizer extends XposedModule {
             aboveCount = 0;
             belowCount = 0;
         }
+    }
+
+    private static final class SignalDebugInfo {
+        String event = "";
+        String idName = "";
+        String resourceName = "";
+        String viewClass = "";
+        String parentIdName = "";
+        String visibility = "";
+        int width;
+        int height;
+        int left;
+        int top;
+        int right;
+        int bottom;
+        int lastWidth = -1;
+        int lastHeight = -1;
+        int signalBars = -1;
+        int subId = -1;
+        int activeSubscriptionCount = -1;
+        boolean mergedDualSignal;
+        boolean hasSecondaryDots;
+        float alpha;
+        long timestamp;
     }
 }

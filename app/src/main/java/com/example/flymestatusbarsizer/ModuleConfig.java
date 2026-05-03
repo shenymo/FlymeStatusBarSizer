@@ -29,6 +29,9 @@ final class ModuleConfig {
     boolean mbackHidePill = SettingsStore.DEFAULT_MBACK_HIDE_PILL;
     int mbackInsetSize = SettingsStore.DEFAULT_MBACK_INSET_SIZE;
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
+    boolean signalHookDebugEnabled = SettingsStore.DEFAULT_SIGNAL_HOOK_DEBUG_ENABLED;
+    boolean signalHookLogcatEnabled = SettingsStore.DEFAULT_SIGNAL_HOOK_LOGCAT_ENABLED;
+    int signalDebugResetSeq = SettingsStore.DEFAULT_SIGNAL_DEBUG_RESET_SEQ;
 
     static ModuleConfig load(Context context) {
         if (context == null) {
@@ -112,6 +115,12 @@ final class ModuleConfig {
             mbackInsetSize = parseInt(value, SettingsStore.DEFAULT_MBACK_INSET_SIZE);
         } else if (SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT.equals(key)) {
             mbackNavBarHeight = parseInt(value, SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT);
+        } else if (SettingsStore.KEY_SIGNAL_HOOK_DEBUG_ENABLED.equals(key)) {
+            signalHookDebugEnabled = "1".equals(value);
+        } else if (SettingsStore.KEY_SIGNAL_HOOK_LOGCAT_ENABLED.equals(key)) {
+            signalHookLogcatEnabled = "1".equals(value);
+        } else if (SettingsStore.KEY_SIGNAL_DEBUG_RESET_SEQ.equals(key)) {
+            signalDebugResetSeq = parseInt(value, SettingsStore.DEFAULT_SIGNAL_DEBUG_RESET_SEQ);
         }
     }
 

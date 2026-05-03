@@ -2,18 +2,17 @@ package com.example.flymestatusbarsizer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ContentResolver;
+import android.database.ContentObserver;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
-import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Rect;
-import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.HandlerThread;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
@@ -78,6 +77,10 @@ public class MainActivity extends Activity {
     private RightIconGroupPreviewView previewView;
     private View[] mainPages;
     private TextView[] mainTabs;
+    private TextView signalDebugStatusView;
+    private TextView signalDebugUpdatedAtView;
+    private HandlerThread signalDebugObserverThread;
+    private ContentObserver signalDebugObserver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -113,6 +116,14 @@ public class MainActivity extends Activity {
         page.addView(buildBottomNavigation(), bottomNavigationLayoutParams());
         page.addView(buildFloatingMenuButton(), floatingMenuLayoutParams(topInset));
         setContentView(page);
+        startSignalDebugObserver();
+        refreshSignalDebugPanel();
+    }
+
+    @Override
+    protected void onDestroy() {
+        stopSignalDebugObserver();
+        super.onDestroy();
     }
 
     @Override
@@ -213,11 +224,62 @@ public class MainActivity extends Activity {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
 
+        addSectionLabel(page, "移动信号调试");
+        page.addView(buildSignalHookDebugCard(), matchWrapWithTop(10));
         addSectionLabel(page, "杂项");
         page.addView(buildNotificationCard(), matchWrapWithTop(10));
         page.addView(buildMBackSection(), matchWrapWithTop(10));
         page.addView(buildTimeCard(), matchWrapWithTop(10));
         return page;
+    }
+
+    private View buildSignalHookDebugCard() {
+        LinearLayout card = card(colorSurface, 28);
+        addProfileSectionHeader(card, "移动信号 hook 调试",
+                "用来确认 SystemUI 里和 mobile_signal、mobile_type 有关的路径有没有命中，当前拿到的卡槽、等级、资源名和尺寸都会写在这里。");
+        addSwitchRow(card, "启用移动信号调试",
+                "开启后，SystemUI 会开始记录移动信号图标的关键路径，并把最近一次状态写回这里。",
+                SettingsStore.KEY_SIGNAL_HOOK_DEBUG_ENABLED,
+                SettingsStore.DEFAULT_SIGNAL_HOOK_DEBUG_ENABLED);
+        addDivider(card);
+        addSwitchRow(card, "输出到 SystemUI logcat",
+                "开启后会把同样的调试信息写到 SystemUI 的 logcat，统一用 FSBS 前缀，方便筛选。",
+                SettingsStore.KEY_SIGNAL_HOOK_LOGCAT_ENABLED,
+                SettingsStore.DEFAULT_SIGNAL_HOOK_LOGCAT_ENABLED);
+        addDivider(card);
+        addActionButtonRow(card, "清空当前状态",
+                "清掉界面上次记录，顺便让 SystemUI 下一次命中时重新写一条新的状态。",
+                "清空", this::resetSignalDebugState);
+        addDivider(card);
+
+        TextView updatedTitle = new TextView(this);
+        updatedTitle.setText("最近更新时间");
+        updatedTitle.setTextColor(colorPrimary);
+        updatedTitle.setTextSize(14);
+        card.addView(updatedTitle, matchWrap());
+
+        signalDebugUpdatedAtView = new TextView(this);
+        signalDebugUpdatedAtView.setTextColor(colorSubtext);
+        signalDebugUpdatedAtView.setTextSize(13);
+        signalDebugUpdatedAtView.setPadding(0, dp(6), 0, 0);
+        signalDebugUpdatedAtView.setText("暂无");
+        card.addView(signalDebugUpdatedAtView, matchWrap());
+
+        TextView statusTitle = new TextView(this);
+        statusTitle.setText("最近一次状态");
+        statusTitle.setTextColor(colorPrimary);
+        statusTitle.setTextSize(14);
+        statusTitle.setPadding(0, dp(16), 0, 0);
+        card.addView(statusTitle, matchWrap());
+
+        signalDebugStatusView = new TextView(this);
+        signalDebugStatusView.setTextColor(colorText);
+        signalDebugStatusView.setTextSize(13);
+        signalDebugStatusView.setPadding(dp(12), dp(12), dp(12), dp(12));
+        signalDebugStatusView.setBackground(roundRect(colorSurfaceSoft, 18));
+        signalDebugStatusView.setText("暂无");
+        card.addView(signalDebugStatusView, matchWrapWithTop(8));
+        return card;
     }
 
     private View buildNotificationCard() {
@@ -327,8 +389,9 @@ public class MainActivity extends Activity {
         card.setPadding(dp(24), dp(24), dp(24), dp(24));
         card.setBackground(gradientCard());
 
-        previewView = new RightIconGroupPreviewView();
+        previewView = new RightIconGroupPreviewView(this);
         previewView.setMinimumHeight(dp(220));
+        previewView.setPreviewTintColor(colorText);
         FrameLayout.LayoutParams previewLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 dp(220));
@@ -354,7 +417,7 @@ public class MainActivity extends Activity {
         card.addView(title, matchWrap());
 
         TextView summary = new TextView(this);
-        summary.setText("\u8bbe\u7f6e\u4f1a\u76f4\u63a5\u5199\u5165\u6a21\u5757\u914d\u7f6e\uff0cSystemUI \u91cd\u542f\u540e\u751f\u6548\u66f4\u7a33\u5b9a\u3002\u73b0\u5728\u53ea\u4fdd\u7559\u7535\u6c60\u56fe\u6807\u7684\u66ff\u6362\uff0cWi-Fi \u548c\u79fb\u52a8\u4fe1\u53f7\u90fd\u4fdd\u6301\u7cfb\u7edf\u539f\u6837\u3002");
+        summary.setText("\u8bbe\u7f6e\u4f1a\u76f4\u63a5\u5199\u5165\u6a21\u5757\u914d\u7f6e\uff0cSystemUI \u91cd\u542f\u540e\u751f\u6548\u66f4\u7a33\u5b9a\u3002\u73b0\u5728\u9884\u89c8\u533a\u5df2\u52a0\u4e0a\u5355\u5361\u548c\u53cc\u5361\u5408\u4e00\u4e24\u79cd\u4fe1\u53f7\u56fe\u6807\u8349\u56fe\uff0c\u4fbf\u4e8e\u5148\u770b\u6bd4\u4f8b\u3002");
         summary.setTextColor(colorSubtext);
         summary.setTextSize(14);
         summary.setPadding(0, dp(6), 0, 0);
@@ -984,6 +1047,10 @@ public class MainActivity extends Activity {
         prefs.edit().putBoolean(key, value).apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
+        if (SettingsStore.KEY_SIGNAL_HOOK_DEBUG_ENABLED.equals(key)
+                || SettingsStore.KEY_SIGNAL_HOOK_LOGCAT_ENABLED.equals(key)) {
+            refreshSignalDebugPanel();
+        }
     }
 
     private void putIntSetting(String key, int value) {
@@ -1034,6 +1101,65 @@ public class MainActivity extends Activity {
         invalidatePreview();
         showToast("\u5df2\u6062\u590d\u9ed8\u8ba4\u914d\u7f6e");
         recreate();
+    }
+
+    private void resetSignalDebugState() {
+        int nextSeq = prefs.getInt(
+                SettingsStore.KEY_SIGNAL_DEBUG_RESET_SEQ,
+                SettingsStore.DEFAULT_SIGNAL_DEBUG_RESET_SEQ) + 1;
+        prefs.edit()
+                .putString(SettingsStore.KEY_SIGNAL_DEBUG_STATUS, "")
+                .putString(SettingsStore.KEY_SIGNAL_DEBUG_UPDATED_AT, "")
+                .putInt(SettingsStore.KEY_SIGNAL_DEBUG_RESET_SEQ, nextSeq)
+                .apply();
+        SettingsStore.notifyChanged(this);
+        refreshSignalDebugPanel();
+        showToast("已清空移动信号调试状态");
+    }
+
+    private void startSignalDebugObserver() {
+        if (signalDebugObserverThread != null) {
+            return;
+        }
+        signalDebugObserverThread = new HandlerThread("fsbs-signal-debug");
+        signalDebugObserverThread.start();
+        Handler observerHandler = new Handler(signalDebugObserverThread.getLooper());
+        signalDebugObserver = new ContentObserver(observerHandler) {
+            @Override
+            public void onChange(boolean selfChange) {
+                runOnUiThread(MainActivity.this::refreshSignalDebugPanel);
+            }
+        };
+        ContentResolver resolver = getContentResolver();
+        resolver.registerContentObserver(SettingsStore.SETTINGS_URI, true, signalDebugObserver);
+    }
+
+    private void stopSignalDebugObserver() {
+        if (signalDebugObserver != null) {
+            try {
+                getContentResolver().unregisterContentObserver(signalDebugObserver);
+            } catch (Throwable ignored) {
+            }
+            signalDebugObserver = null;
+        }
+        if (signalDebugObserverThread != null) {
+            signalDebugObserverThread.quitSafely();
+            signalDebugObserverThread = null;
+        }
+    }
+
+    private void refreshSignalDebugPanel() {
+        if (signalDebugStatusView == null || signalDebugUpdatedAtView == null) {
+            return;
+        }
+        String status = prefs.getString(
+                SettingsStore.KEY_SIGNAL_DEBUG_STATUS,
+                SettingsStore.DEFAULT_SIGNAL_DEBUG_STATUS);
+        String updatedAt = prefs.getString(
+                SettingsStore.KEY_SIGNAL_DEBUG_UPDATED_AT,
+                SettingsStore.DEFAULT_SIGNAL_DEBUG_UPDATED_AT);
+        signalDebugStatusView.setText(TextUtils.isEmpty(status) ? "暂无" : status);
+        signalDebugUpdatedAtView.setText(TextUtils.isEmpty(updatedAt) ? "暂无" : updatedAt);
     }
 
     private String formatValue(int value, String suffix) {
@@ -1449,89 +1575,6 @@ public class MainActivity extends Activity {
 
     private interface IntValueConsumer {
         void accept(int value);
-    }
-
-    private final class RightIconGroupPreviewView extends View {
-        private static final int PREVIEW_BATTERY_LEVEL = 82;
-
-        private final Paint surfacePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint surfaceStrokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint hintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint dimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final RectF panelRect = new RectF();
-        private final RectF statusStripRect = new RectF();
-        private final Rect batteryRect = new Rect();
-
-        RightIconGroupPreviewView() {
-            super(MainActivity.this);
-            surfaceStrokePaint.setStyle(Paint.Style.STROKE);
-            hintPaint.setTextAlign(Paint.Align.CENTER);
-            textPaint.setFakeBoldText(true);
-        }
-
-        @Override
-        protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            if (getWidth() <= 0 || getHeight() <= 0) {
-                return;
-            }
-
-            panelRect.set(dp(2), dp(8), getWidth() - dp(2), getHeight() - dp(8));
-            surfacePaint.setColor(Color.argb(56, 255, 255, 255));
-            surfaceStrokePaint.setColor(Color.argb(78, 255, 255, 255));
-            surfaceStrokePaint.setStrokeWidth(dp(1));
-            canvas.drawRoundRect(panelRect, dp(24), dp(24), surfacePaint);
-            canvas.drawRoundRect(panelRect, dp(24), dp(24), surfaceStrokePaint);
-
-            statusStripRect.set(panelRect.left + dp(12), panelRect.top + dp(16),
-                    panelRect.right - dp(12), panelRect.top + dp(54));
-            surfacePaint.setColor(Color.argb(236, 255, 255, 255));
-            canvas.drawRoundRect(statusStripRect, dp(18), dp(18), surfacePaint);
-
-            textPaint.setColor(colorText);
-            textPaint.setTextSize(dp(15));
-            float timeBaseline = statusStripRect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2f;
-            canvas.drawText("09:41", statusStripRect.left + dp(16), timeBaseline, textPaint);
-
-            drawRightIconGroup(canvas);
-            drawPreviewNotes(canvas);
-        }
-
-        private void drawRightIconGroup(Canvas canvas) {
-            int iconSize = dp(24);
-            float anchorRight = statusStripRect.right - dp(16);
-            float centerY = statusStripRect.centerY();
-
-            canvas.save();
-
-            float currentLeft = anchorRight - iconSize;
-            float referenceRight = currentLeft - dp(6);
-            dimPaint.setColor(Color.argb(170, Color.red(colorText), Color.green(colorText), Color.blue(colorText)));
-            canvas.drawRoundRect(referenceRight - dp(28),
-                    centerY - dp(5),
-                    referenceRight,
-                    centerY + dp(5),
-                    dp(3),
-                    dp(3),
-                    dimPaint);
-            int iconTop = Math.round(centerY - iconSize / 2f);
-            int batteryLeft = Math.round(currentLeft);
-            int batteryTop = iconTop;
-            batteryRect.set(batteryLeft, batteryTop,
-                    batteryLeft + iconSize, batteryTop + iconSize);
-            IosBatteryPainter.draw(canvas, batteryRect, PREVIEW_BATTERY_LEVEL, false, false,
-                    colorText);
-            canvas.restore();
-        }
-
-        private void drawPreviewNotes(Canvas canvas) {
-            hintPaint.setColor(Color.argb(215, 255, 255, 255));
-            hintPaint.setTextSize(dp(13));
-            float firstLineY = panelRect.bottom - dp(28);
-            canvas.drawText("预览只显示替换后的电池图标", panelRect.centerX(), firstLineY, hintPaint);
-        }
-
     }
 
 }
