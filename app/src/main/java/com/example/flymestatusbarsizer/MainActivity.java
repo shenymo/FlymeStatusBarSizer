@@ -201,9 +201,6 @@ public class MainActivity extends Activity {
         page.addView(buildPreviewPlaceholder(), matchWrap());
         page.addView(buildIntroCard(), matchWrapWithTop(16));
 
-        addSectionLabel(page, "全局调整");
-        page.addView(buildGlobalCard(), matchWrapWithTop(10));
-
         addSectionLabel(page, "实时网速");
         page.addView(buildConnectionRateCard(), matchWrapWithTop(10));
 
@@ -217,9 +214,24 @@ public class MainActivity extends Activity {
         page.setOrientation(LinearLayout.VERTICAL);
 
         addSectionLabel(page, "杂项");
+        page.addView(buildNotificationCard(), matchWrapWithTop(10));
         page.addView(buildMBackSection(), matchWrapWithTop(10));
         page.addView(buildTimeCard(), matchWrapWithTop(10));
         return page;
+    }
+
+    private View buildNotificationCard() {
+        LinearLayout card = card(colorSurface, 28);
+        addProfileSectionHeader(card, "通知",
+                "只接管 SystemUI 通知卡片的背景层。Android 13 及以上叠加液态玻璃采样层，低版本回退为透明背景。");
+        addSwitchRow(card, "通知液态玻璃",
+                "开启后会把通知卡片背景替换成液态玻璃效果，并清掉原来的 tint。文字、图标和点击区域保持原来的 SystemUI 行为。",
+                SettingsStore.KEY_NOTIFICATION_BACKGROUND_TRANSPARENT,
+                SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT);
+        return buildExpandableInfoCard(
+                "通知卡片",
+                "给通知卡片补一个液态玻璃背景开关，Android 13+ 使用 shader 采样通知后方内容，低版本自动退回透明卡片。",
+                "通知", card);
     }
 
     private LinearLayout buildAboutPage() {
@@ -237,7 +249,7 @@ public class MainActivity extends Activity {
         card.addView(title, matchWrap());
 
         TextView summary = new TextView(this);
-        summary.setText("状态栏右上角图标组重绘与布局调节模块。");
+        summary.setText("Flyme 状态栏电池图标替换模块。");
         summary.setTextColor(colorSubtext);
         summary.setTextSize(14);
         summary.setPadding(0, dp(6), 0, 0);
@@ -290,9 +302,6 @@ public class MainActivity extends Activity {
         card.addView(buildDateValue, matchWrap());
 
         page.addView(card, matchWrapWithTop(10));
-        addSectionLabel(page, "调试工具");
-        page.addView(buildSignalDebugEntryCard(), matchWrapWithTop(10));
-        page.addView(buildWifiDebugEntryCard(), matchWrapWithTop(10));
         return page;
     }
 
@@ -345,7 +354,7 @@ public class MainActivity extends Activity {
         card.addView(title, matchWrap());
 
         TextView summary = new TextView(this);
-        summary.setText("\u8bbe\u7f6e\u4f1a\u76f4\u63a5\u5199\u5165\u6a21\u5757\u914d\u7f6e\uff0cSystemUI \u91cd\u542f\u540e\u751f\u6548\u66f4\u7a33\u5b9a\u3002\u8fd9\u4e2a\u7248\u672c\u5f00\u59cb\u628a Wi-Fi\u3001\u4fe1\u53f7\u683c\u3001\u7535\u6c60\u6536\u655b\u4e3a\u4e00\u7ec4\u89c6\u89c9\u56fe\u6807\uff0c\u540e\u9762\u4f18\u5148\u6309\u201c\u53f3\u4e0a\u89d2\u56fe\u6807\u7ec4\u201d\u7684\u601d\u8def\u6765\u8c03\u6574\u3002");
+        summary.setText("\u8bbe\u7f6e\u4f1a\u76f4\u63a5\u5199\u5165\u6a21\u5757\u914d\u7f6e\uff0cSystemUI \u91cd\u542f\u540e\u751f\u6548\u66f4\u7a33\u5b9a\u3002\u73b0\u5728\u53ea\u4fdd\u7559\u7535\u6c60\u56fe\u6807\u7684\u66ff\u6362\uff0cWi-Fi \u548c\u79fb\u52a8\u4fe1\u53f7\u90fd\u4fdd\u6301\u7cfb\u7edf\u539f\u6837\u3002");
         summary.setTextColor(colorSubtext);
         summary.setTextSize(14);
         summary.setPadding(0, dp(6), 0, 0);
@@ -353,54 +362,15 @@ public class MainActivity extends Activity {
         return card;
     }
 
-    private View buildGlobalCard() {
-        LinearLayout card = card(colorSurface, 28);
-        addSliderRow(card, "\u72b6\u6001\u680f\u6574\u4f53\u56fe\u6807\u7f29\u653e",
-                "\u79fb\u52a8\u4fe1\u53f7\u3001Wi-Fi\u3001\u7535\u6c60\u548c\u5176\u4ed6\u5c0f\u56fe\u6807\u4e00\u8d77\u8c03\u6574",
-                SettingsStore.KEY_GLOBAL_ICON_SCALE, SettingsStore.DEFAULT_GLOBAL_ICON_SCALE, 80, 160, "%");
-        addDivider(card);
-        addSliderRow(card, "\u6587\u5b57\u5927\u5c0f",
-                "\u65f6\u949f\u3001\u8fd0\u8425\u5546\u3001\u7535\u6c60\u767e\u5206\u6bd4\u7b49\u72b6\u6001\u680f\u6587\u5b57\u7edf\u4e00\u7f29\u653e",
-                SettingsStore.KEY_TEXT_SCALE, SettingsStore.DEFAULT_TEXT_SCALE, 80, 130, "%");
-        return card;
-    }
-
     private View buildConnectionRateCard() {
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
 
-        TextView pageHint = new TextView(this);
-        pageHint.setText("分成 2 页来调，先定阈值逻辑，再细调网速文字位置");
-        pageHint.setTextColor(colorSubtext);
-        pageHint.setTextSize(13);
-        details.addView(pageHint, matchWrap());
-
-        LinearLayout tabs = new LinearLayout(this);
-        tabs.setOrientation(LinearLayout.HORIZONTAL);
-        tabs.setPadding(0, dp(14), 0, 0);
-        TextView thresholdTab = buildSettingsPageTab("阈值逻辑");
-        TextView offsetTab = buildSettingsPageTab("文字偏移");
-        tabs.addView(thresholdTab, weightedWrap());
-        tabs.addView(offsetTab, weightedWrapWithStart(10));
-        details.addView(tabs, matchWrap());
-
-        FrameLayout pageContainer = new FrameLayout(this);
-        pageContainer.setPadding(0, dp(16), 0, 0);
-        LinearLayout thresholdPage = buildConnectionRateThresholdPage();
-        LinearLayout offsetPage = buildConnectionRateOffsetPage();
-        pageContainer.addView(thresholdPage, matchWrapFrame());
-        pageContainer.addView(offsetPage, matchWrapFrame());
-        details.addView(pageContainer, matchWrap());
-
-        View[] pages = new View[]{thresholdPage, offsetPage};
-        TextView[] pageTabs = new TextView[]{thresholdTab, offsetTab};
-        bindSettingsPageTabs(pages, pageTabs, 0);
-        thresholdTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 0));
-        offsetTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 1));
+        details.addView(buildConnectionRateThresholdPage(), matchWrap());
 
         return buildExpandableInfoCard(
                 "实时网速",
-                "保留系统原采样，只在显示层加双阈值和确认次数，减少低速时的视觉干扰。",
+                "保留系统原采样，只保留显隐阈值和确认次数。",
                 "网速", details);
     }
 
@@ -540,199 +510,17 @@ public class MainActivity extends Activity {
         return page;
     }
 
-    private LinearLayout buildConnectionRateOffsetPage() {
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-
-        addProfileSectionHeader(page, "文字偏移",
-                "保留原有网速数字和单位的微调入口，只动位置，不改阈值状态机。");
-        addSliderRow(page, "网速水平偏移",
-                "保留原有的连接速率文字横向微调",
-                SettingsStore.KEY_CONNECTION_RATE_OFFSET_X,
-                SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_X, -20, 20, "dp");
-        addDivider(page);
-        addSliderRow(page, "网速垂直偏移",
-                "保留原有的连接速率文字纵向微调",
-                SettingsStore.KEY_CONNECTION_RATE_OFFSET_Y,
-                SettingsStore.DEFAULT_CONNECTION_RATE_OFFSET_Y, -20, 20, "dp");
-        return page;
-    }
-
     private View buildRightIconGroupSection() {
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
-        TextView pageHint = new TextView(this);
-        pageHint.setText("\u5206\u6210 4 \u9875\u6765\u8c03\uff0c\u5148\u5207\u6362\u5230\u8981\u8c03\u7684\u90a3\u4e00\u7c7b");
-        pageHint.setTextColor(colorSubtext);
-        pageHint.setTextSize(13);
-        details.addView(pageHint, matchWrap());
 
-        LinearLayout tabs = new LinearLayout(this);
-        tabs.setOrientation(LinearLayout.HORIZONTAL);
-        tabs.setPadding(0, dp(14), 0, 0);
-        TextView batteryTab = buildSettingsPageTab("\u7535\u6c60");
-        TextView wifiTab = buildSettingsPageTab("Wi-Fi");
-        TextView signalTab = buildSettingsPageTab("\u79fb\u52a8\u4fe1\u53f7");
-        TextView layoutTab = buildSettingsPageTab("\u7ec4\u5185\u6392\u5e03");
-        tabs.addView(batteryTab, weightedWrap());
-        tabs.addView(wifiTab, weightedWrapWithStart(10));
-        tabs.addView(signalTab, weightedWrapWithStart(10));
-        tabs.addView(layoutTab, weightedWrapWithStart(10));
-        details.addView(tabs, matchWrap());
-
-        FrameLayout pageContainer = new FrameLayout(this);
-        pageContainer.setPadding(0, dp(16), 0, 0);
-        LinearLayout batteryPage = buildRightIconBatteryPage();
-        LinearLayout wifiPage = buildRightIconWifiPage();
-        LinearLayout signalPage = buildRightIconSignalPage();
-        LinearLayout layoutPage = buildRightIconLayoutPage();
-        pageContainer.addView(batteryPage, matchWrapFrame());
-        pageContainer.addView(wifiPage, matchWrapFrame());
-        pageContainer.addView(signalPage, matchWrapFrame());
-        pageContainer.addView(layoutPage, matchWrapFrame());
-        details.addView(pageContainer, matchWrap());
-
-        View[] pages = new View[]{batteryPage, wifiPage, signalPage, layoutPage};
-        TextView[] pageTabs = new TextView[]{batteryTab, wifiTab, signalTab, layoutTab};
-        bindSettingsPageTabs(pages, pageTabs, 0);
-        batteryTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 0));
-        wifiTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 1));
-        signalTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 2));
-        layoutTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 3));
+        addProfileSectionHeader(details, "固定绘制",
+                "这里只替换系统原来的电池图标，固定使用 24dp 画布绘制。Wi-Fi 和移动信号不再接管。");
 
         return buildExpandableInfoCard(
-                "\u53f3\u4e0a\u89d2\u56fe\u6807\u7ec4",
-                "\u628a Wi-Fi\u3001\u4fe1\u53f7\u683c\u3001\u7535\u6c60\u5f53\u6210\u4e00\u7ec4\u6765\u8c03\uff0c\u5148\u8ba9\u4e09\u4e2a\u56fe\u6807\u7684\u7ec4\u5408\u89c2\u611f\u7a33\u5b9a\uff0c\u518d\u53bb\u62c6\u7ec6\u8282",
-                "\u56fe\u6807\u7ec4", details);
-    }
-
-    private LinearLayout buildRightIconBatteryPage() {
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-
-        addProfileSectionHeader(page, "\u7535\u6c60\u4e3b\u4f53",
-                "\u7535\u6c60\u662f\u8fd9\u7ec4\u56fe\u6807\u7684\u4e3b\u4f53\uff0c\u5df2\u9ed8\u8ba4\u4ee5 iOS \u98ce\u683c\u5f00\u542f\uff0c\u8fd9\u4e00\u9875\u53ea\u8c03\u5b83\u672c\u4f53\u7684\u5c3a\u5bf8\u3001\u504f\u79fb\u548c\u7ec4\u5185\u6bd4\u4f8b");
-        addSliderRow(page, "\u72b6\u6001\u680f\u7535\u6c60\u5916\u5c42\u7f29\u653e",
-                "\u7535\u6c60 view \u8ddf\u968f\u5168\u5c40\u56fe\u6807\u7f29\u653e\u7684\u5f3a\u5ea6",
-                SettingsStore.KEY_BATTERY_FACTOR, SettingsStore.DEFAULT_BATTERY_FACTOR, 0, 160, "%");
-        addDivider(page);
-        addSliderRow(page, "\u56fe\u6807\u7ec4\u91cc\u7535\u6c60\u7f29\u653e",
-                "\u53ea\u8c03\u6574\u5408\u5e76\u540e\u8fd9\u7ec4\u91cc\u7684\u7535\u6c60\u672c\u4f53\uff0c\u4e0d\u6539\u7edf\u4e00\u9ad8\u5ea6\u57fa\u7ebf",
-                SettingsStore.KEY_IOS_GROUP_BATTERY_SCALE, SettingsStore.DEFAULT_IOS_GROUP_BATTERY_SCALE, 60, 160, "%");
-        addDivider(page);
-        addSliderRow(page, "\u7535\u6c60\u5bbd\u5ea6",
-                "\u5305\u542b\u7535\u6c60\u5934\u7684\u6574\u4f53\u5bbd\u5ea6",
-                SettingsStore.KEY_IOS_BATTERY_WIDTH, SettingsStore.DEFAULT_IOS_BATTERY_WIDTH, 16, 44, "dp");
-        addDivider(page);
-        addSliderRow(page, "\u7535\u6c60\u9ad8\u5ea6",
-                "\u7535\u6c60\u4e3b\u4f53\u7684\u9ad8\u5ea6",
-                SettingsStore.KEY_IOS_BATTERY_HEIGHT, SettingsStore.DEFAULT_IOS_BATTERY_HEIGHT, 8, 24, "dp");
-        addDivider(page);
-        addSliderRow(page, "\u7535\u6c60\u6c34\u5e73\u504f\u79fb",
-                "\u7535\u6c60\u5728\u53f3\u4e0a\u89d2\u56fe\u6807\u7ec4\u91cc\u7684\u5de6\u53f3\u4f4d\u7f6e",
-                SettingsStore.KEY_IOS_BATTERY_OFFSET_X, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X, -20, 20, "dp");
-        addDivider(page);
-        addSliderRow(page, "\u7535\u6c60\u5782\u76f4\u504f\u79fb",
-                "\u7535\u6c60\u5728\u53f3\u4e0a\u89d2\u56fe\u6807\u7ec4\u91cc\u7684\u4e0a\u4e0b\u4f4d\u7f6e",
-                SettingsStore.KEY_IOS_BATTERY_OFFSET_Y, SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y, -20, 20, "dp");
-        addDivider(page);
-        addSliderRow(page, "\u7535\u91cf\u6570\u5b57\u5927\u5c0f",
-                "\u7535\u91cf\u6570\u5b57\u5728\u7535\u6c60\u5185\u7684\u663e\u793a\u6bd4\u4f8b",
-                SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE, 40, 100, "%");
-        addDivider(page);
-        addSliderRow(page, "\u7535\u91cf\u6570\u5b57\u7c97\u7ec6",
-                "\u8c03\u6574\u7535\u6c60\u5185\u6570\u5b57\u7684\u7b14\u753b\u539a\u5ea6\uff0c100% \u4e3a\u9ed8\u8ba4",
-                SettingsStore.KEY_IOS_BATTERY_TEXT_WEIGHT, SettingsStore.DEFAULT_IOS_BATTERY_TEXT_WEIGHT, 60, 180, "%");
-        return page;
-    }
-
-    private LinearLayout buildRightIconWifiPage() {
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-
-        addProfileSectionHeader(page, "Wi-Fi",
-                "\u8fd9\u4e00\u9875\u96c6\u4e2d\u8c03 Wi-Fi \u7684\u7ec4\u5185\u89c6\u89c9\u5927\u5c0f\u548c\u8001\u7684\u517c\u5bb9\u53c2\u6570\uff0ciOS \u98ce\u683c Wi-Fi \u5df2\u9ed8\u8ba4\u5f00\u542f");
-        addSliderRow(page, "\u56fe\u6807\u7ec4\u91cc Wi-Fi \u7f29\u653e",
-                "\u76f4\u63a5\u538b\u5c0f\u6216\u653e\u5927\u5408\u5e76\u7ed8\u5236\u540e\u7684 Wi-Fi \u56fe\u6807",
-                SettingsStore.KEY_IOS_GROUP_WIFI_SCALE, SettingsStore.DEFAULT_IOS_GROUP_WIFI_SCALE, 60, 160, "%");
-        addDivider(page);
-        addSliderRow(page, "Wi-Fi \u5916\u5c42\u7f29\u653e",
-                "\u539f\u672c wifi_signal view \u8ddf\u968f\u5168\u5c40\u56fe\u6807\u7f29\u653e\u7684\u5f3a\u5ea6",
-                SettingsStore.KEY_WIFI_SIGNAL_FACTOR, SettingsStore.DEFAULT_WIFI_SIGNAL_FACTOR, 0, 160, "%");
-        addDivider(page);
-        addSliderRow(page, "Wi-Fi \u5bbd\u5ea6",
-                "\u81ea\u7ed8 Wi-Fi \u5728\u56fe\u6807\u7ec4\u91cc\u7684\u5e03\u5c40\u5bbd\u5ea6",
-                SettingsStore.KEY_IOS_WIFI_WIDTH, SettingsStore.DEFAULT_IOS_WIFI_WIDTH, 10, 60, "dp");
-        addDivider(page);
-        addSliderRow(page, "Wi-Fi \u9ad8\u5ea6",
-                "\u81ea\u7ed8 Wi-Fi \u5728\u56fe\u6807\u7ec4\u91cc\u7684\u5e03\u5c40\u9ad8\u5ea6",
-                SettingsStore.KEY_IOS_WIFI_HEIGHT, SettingsStore.DEFAULT_IOS_WIFI_HEIGHT, 8, 60, "dp");
-        addDivider(page);
-        addSliderRow(page, "Wi-Fi \u6c34\u5e73\u504f\u79fb",
-                "\u6b63\u6570\u5411\u53f3\uff0c\u8d1f\u6570\u5411\u5de6",
-                SettingsStore.KEY_IOS_WIFI_OFFSET_X, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_X, -80, 80, "dp");
-        addDivider(page);
-        addSliderRow(page, "Wi-Fi \u5782\u76f4\u504f\u79fb",
-                "\u6b63\u6570\u5411\u4e0b\uff0c\u8d1f\u6570\u5411\u4e0a",
-                SettingsStore.KEY_IOS_WIFI_OFFSET_Y, SettingsStore.DEFAULT_IOS_WIFI_OFFSET_Y, -80, 80, "dp");
-        return page;
-    }
-
-    private LinearLayout buildRightIconSignalPage() {
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-
-        addProfileSectionHeader(page, "\u79fb\u52a8\u4fe1\u53f7",
-                "\u8fd9\u4e00\u9875\u53ea\u96c6\u4e2d\u8c03\u4fe1\u53f7\u683c\u672c\u4f53\u548c\u53cc\u5361\u8868\u73b0\uff0c\u7ec4\u5185\u95f4\u8ddd\u5355\u72ec\u653e\u5230\u201c\u7ec4\u5185\u6392\u5e03\u201d\u9875\uff0ciOS \u4fe1\u53f7\u683c\u5df2\u9ed8\u8ba4\u5f00\u542f");
-        addSwitchRow(page, "\u53cc\u5361\u5408\u4e00\u4fe1\u53f7\u683c",
-                "\u5361 1 \u4f5c\u4e3a\u4e3b\u4fe1\u53f7\u683c\uff0c\u5361 2 \u5408\u5e76\u5230\u4e0b\u65b9\u56db\u4e2a\u5c0f\u70b9",
-                SettingsStore.KEY_IOS_SIGNAL_DUAL_COMBINED, SettingsStore.DEFAULT_IOS_SIGNAL_DUAL_COMBINED);
-        addDivider(page);
-        addSwitchRow(page, "\u6d41\u91cf\u4e0a\u7f51\u65f6\u663e\u793a 5G",
-                "\u5f53\u5f53\u524d\u9ed8\u8ba4\u4e0a\u7f51\u4f7f\u7528\u8702\u7a9d\u6570\u636e\u800c\u4e0d\u662f Wi-Fi \u65f6\uff0c\u5728\u4fe1\u53f7\u548c Wi-Fi \u4e4b\u95f4\u63d2\u5165\u4e00\u4e2a 5G \u6807\u8bc6",
-                SettingsStore.KEY_SHOW_MOBILE_DATA_5G_BADGE, SettingsStore.DEFAULT_SHOW_MOBILE_DATA_5G_BADGE);
-        addDivider(page);
-        addSliderRow(page, "\u56fe\u6807\u7ec4\u91cc\u4fe1\u53f7\u7f29\u653e",
-                "\u76f4\u63a5\u538b\u5c0f\u6216\u653e\u5927\u5408\u5e76\u7ed8\u5236\u540e\u7684\u79fb\u52a8\u4fe1\u53f7\u683c",
-                SettingsStore.KEY_IOS_GROUP_SIGNAL_SCALE, SettingsStore.DEFAULT_IOS_GROUP_SIGNAL_SCALE, 60, 160, "%");
-        addDivider(page);
-        addSliderRow(page, "\u4fe1\u53f7\u683c\u5916\u5c42\u7f29\u653e",
-                "\u539f\u672c mobile_signal view \u8ddf\u968f\u5168\u5c40\u56fe\u6807\u7f29\u653e\u7684\u5f3a\u5ea6",
-                SettingsStore.KEY_MOBILE_SIGNAL_FACTOR, SettingsStore.DEFAULT_MOBILE_SIGNAL_FACTOR, 0, 160, "%");
-        addDivider(page);
-        addSliderRow(page, "\u684c\u9762\u4fe1\u53f7\u6c34\u5e73\u504f\u79fb",
-                "\u684c\u9762\u72b6\u6001\u680f\u4e0b\uff0c\u4fe1\u53f7\u683c\u5728\u56fe\u6807\u7ec4\u91cc\u7684\u5de6\u53f3\u4f4d\u7f6e",
-                SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_X,
-                -80, 80, "dp");
-        addDivider(page);
-        addSliderRow(page, "\u684c\u9762\u4fe1\u53f7\u5782\u76f4\u504f\u79fb",
-                "\u684c\u9762\u72b6\u6001\u680f\u4e0b\uff0c\u4fe1\u53f7\u683c\u5728\u56fe\u6807\u7ec4\u91cc\u7684\u4e0a\u4e0b\u4f4d\u7f6e",
-                SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y, SettingsStore.DEFAULT_IOS_SIGNAL_DESKTOP_OFFSET_Y,
-                -80, 80, "dp");
-        addDivider(page);
-        addLongPressResetOffsetsRow(page, "\u6062\u590d\u4fe1\u53f7\u504f\u79fb",
-                "\u957f\u6309\u540e\u628a\u79fb\u52a8\u4fe1\u53f7\u7684\u684c\u9762\u3001\u9501\u5c4f\u3001\u63a7\u5236\u4e2d\u5fc3\u504f\u79fb\u5168\u90e8\u6062\u590d\u4e3a 0");
-        return page;
-    }
-
-    private LinearLayout buildRightIconLayoutPage() {
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-
-        addProfileSectionHeader(page, "\u7ec4\u5185\u6392\u5e03",
-                "\u7edf\u4e00\u9ad8\u5ea6\u4f1a\u4fdd\u7559\uff0c\u8fd9\u4e00\u9875\u53ea\u8c03 Wi-Fi\u3001\u4fe1\u53f7\u3001\u7535\u6c60 \u4e09\u8005\u4e4b\u95f4\u7684\u89c6\u89c9\u95f4\u8ddd\uff0c\u4ee5\u53ca\u6574\u4e2a\u56fe\u6807\u7ec4\u4e0e\u5de6\u4fa7\u56fe\u6807\u7684\u5916\u95f4\u8ddd");
-        addSliderRow(page, "\u56fe\u6807\u7ec4\u4e0e\u5de6\u4fa7\u56fe\u6807\u989d\u5916\u95f4\u8ddd",
-                "\u5728\u7cfb\u7edf\u539f\u6709\u95f4\u8ddd\u57fa\u7840\u4e0a\u989d\u5916\u589e\u51cf\uff0c\u6b63\u6570\u62c9\u5f00\uff0c\u8d1f\u6570\u8d34\u8fd1",
-                SettingsStore.KEY_IOS_GROUP_START_GAP_ADJUST, SettingsStore.DEFAULT_IOS_GROUP_START_GAP_ADJUST, -12, 20, "dp");
-        addDivider(page);
-        addSliderRow(page, "Wi-Fi \u4e0e\u4fe1\u53f7\u95f4\u8ddd",
-                "\u56fe\u6807\u7ec4\u91cc Wi-Fi \u548c\u7b2c\u4e00\u4e2a\u4fe1\u53f7\u56fe\u6807\u4e4b\u95f4\u7684\u95f4\u8ddd",
-                SettingsStore.KEY_IOS_GROUP_WIFI_SIGNAL_GAP, SettingsStore.DEFAULT_IOS_GROUP_WIFI_SIGNAL_GAP, -8, 16, "dp");
-        addDivider(page);
-        addSliderRow(page, "\u4fe1\u53f7\u4e0e\u7535\u6c60\u95f4\u8ddd",
-                "\u6700\u540e\u4e00\u4e2a\u4fe1\u53f7\u56fe\u6807\u4e0e\u7535\u6c60\u672c\u4f53\u4e4b\u95f4\u7684\u95f4\u8ddd",
-                SettingsStore.KEY_IOS_GROUP_SIGNAL_BATTERY_GAP, SettingsStore.DEFAULT_IOS_GROUP_SIGNAL_BATTERY_GAP, -8, 16, "dp");
-        return page;
+                "\u7535\u6c60\u56fe\u6807",
+                "\u53ea\u628a\u7cfb\u7edf\u539f\u6709\u7684\u7535\u6c60\u56fe\u6807\u6539\u4e3a\u4ee3\u7801\u7ed8\u5236\uff0c\u4e0d\u518d\u63a5\u7ba1 Wi-Fi \u548c\u79fb\u52a8\u4fe1\u53f7\u3002",
+                "\u7535\u6c60", details);
     }
 
     private TextView buildSettingsPageTab(String text) {
@@ -788,54 +576,6 @@ public class MainActivity extends Activity {
         addSliderRow(card, "\u65f6\u95f4/\u65e5\u671f\u7c97\u7ec6",
                 "\u53ea\u5bf9\u72b6\u6001\u680f\u65f6\u95f4\u6587\u5b57\u751f\u6548\uff0c\u8303\u56f4 100-900",
                 SettingsStore.KEY_CLOCK_FONT_WEIGHT, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT, 100, 900, "");
-        return card;
-    }
-
-    private View buildSignalDebugEntryCard() {
-        LinearLayout card = card(colorSurface, 28);
-
-        TextView title = new TextView(this);
-        title.setText("\u4fe1\u53f7\u683c\u8c03\u8bd5");
-        title.setTextColor(colorText);
-        title.setTextSize(18);
-        card.addView(title, matchWrap());
-
-        TextView summary = new TextView(this);
-        summary.setText("\u5355\u72ec\u8fdb\u5165\u4e00\u4e2a\u8c03\u8bd5\u9875\uff0c\u7ed9 SystemUI \u63d0\u4f9b\u5047\u7684\u4fe1\u53f7\u7b49\u7ea7\uff0c\u7528\u6765\u68c0\u67e5\u684c\u9762\u3001\u9501\u5c4f\u3001\u63a7\u5236\u4e2d\u5fc3\u7684\u4fe1\u53f7\u683c\u8ddf\u968f\u60c5\u51b5\u3002");
-        summary.setTextColor(colorSubtext);
-        summary.setTextSize(14);
-        summary.setPadding(0, dp(6), 0, 0);
-        card.addView(summary, matchWrap());
-
-        TextView action = chip("\u6253\u5f00\u8c03\u8bd5\u9875", colorPrimary, Color.WHITE);
-        action.setPadding(dp(16), dp(10), dp(16), dp(10));
-        action.setOnClickListener(v -> startActivity(new Intent(this, SignalDebugActivity.class)));
-        card.addView(action, matchWrapWithTop(16));
-
-        return card;
-    }
-
-    private View buildWifiDebugEntryCard() {
-        LinearLayout card = card(colorSurface, 28);
-
-        TextView title = new TextView(this);
-        title.setText("Wi-Fi 调试");
-        title.setTextColor(colorText);
-        title.setTextSize(18);
-        card.addView(title, matchWrap());
-
-        TextView summary = new TextView(this);
-        summary.setText("单独进入一个调试页，既可以查看模块当前拿到的 Wi-Fi hook 状态，也可以伪造 SystemUI 里的 Wi-Fi 显示状态和信号等级。");
-        summary.setTextColor(colorSubtext);
-        summary.setTextSize(14);
-        summary.setPadding(0, dp(6), 0, 0);
-        card.addView(summary, matchWrap());
-
-        TextView action = chip("打开调试页", colorPrimary, Color.WHITE);
-        action.setPadding(dp(16), dp(10), dp(16), dp(10));
-        action.setOnClickListener(v -> startActivity(new Intent(this, WifiDebugActivity.class)));
-        card.addView(action, matchWrapWithTop(16));
-
         return card;
     }
 
@@ -1171,13 +911,6 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
-    private void addOffsetSliderWithFallback(LinearLayout root, String titleText, String subtitleText,
-            String key, int defaultValue, String fallbackKey, int fallbackDefaultValue) {
-        addSliderRowWithFallback(root, titleText, subtitleText + "\u3002\u70b9\u51fb\u53f3\u4fa7\u6570\u503c\u53ef\u624b\u52a8\u8f93\u5165",
-                key, defaultValue,
-                fallbackKey, fallbackDefaultValue, -20, 20, "dp");
-    }
-
     private void addDivider(LinearLayout root) {
         View divider = new View(this);
         divider.setBackgroundColor(colorStroke);
@@ -1186,41 +919,6 @@ public class MainActivity extends Activity {
         lp.topMargin = dp(14);
         lp.bottomMargin = dp(14);
         root.addView(divider, lp);
-    }
-
-    private void addLongPressResetOffsetsRow(LinearLayout root, String titleText, String subtitleText) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-
-        LinearLayout textColumn = new LinearLayout(this);
-        textColumn.setOrientation(LinearLayout.VERTICAL);
-
-        TextView title = new TextView(this);
-        title.setText(titleText);
-        title.setTextColor(colorPrimary);
-        title.setTextSize(16);
-        textColumn.addView(title, matchWrap());
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(13);
-        subtitle.setPadding(0, dp(4), dp(10), 0);
-        textColumn.addView(subtitle, matchWrap());
-
-        TextView button = chip("\u957f\u6309", colorSurfaceStrong, colorPrimary);
-        button.setOnLongClickListener(v -> {
-            resetSignalAndNetworkOffsets();
-            return true;
-        });
-
-        row.addView(textColumn, new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        row.addView(button, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-        root.addView(row, matchWrap());
     }
 
     private void addProfileSectionHeader(LinearLayout root, String titleText, String subtitleText) {
@@ -1335,21 +1033,6 @@ public class MainActivity extends Activity {
         SettingsStore.notifyChanged(this);
         invalidatePreview();
         showToast("\u5df2\u6062\u590d\u9ed8\u8ba4\u914d\u7f6e");
-        recreate();
-    }
-
-    private void resetSignalAndNetworkOffsets() {
-        prefs.edit()
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_X, 0)
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_DESKTOP_OFFSET_Y, 0)
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_X, 0)
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_KEYGUARD_OFFSET_Y, 0)
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_X, 0)
-                .putInt(SettingsStore.KEY_IOS_SIGNAL_CONTROL_CENTER_OFFSET_Y, 0)
-                .apply();
-        SettingsStore.notifyChanged(this);
-        invalidatePreview();
-        showToast("\u79fb\u52a8\u4fe1\u53f7\u504f\u79fb\u5df2\u6062\u590d\u4e3a 0");
         recreate();
     }
 
@@ -1770,9 +1453,6 @@ public class MainActivity extends Activity {
 
     private final class RightIconGroupPreviewView extends View {
         private static final int PREVIEW_BATTERY_LEVEL = 82;
-        private static final int PREVIEW_WIFI_LEVEL = 4;
-        private static final int PREVIEW_PRIMARY_SIGNAL_LEVEL = 4;
-        private static final int PREVIEW_SECONDARY_SIGNAL_LEVEL = 3;
 
         private final Paint surfacePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint surfaceStrokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -1782,19 +1462,9 @@ public class MainActivity extends Activity {
         private final RectF panelRect = new RectF();
         private final RectF statusStripRect = new RectF();
         private final Rect batteryRect = new Rect();
-        private final float density;
-        private final IosWifiDrawable wifiDrawable;
-        private final IosSignalDrawable combinedSignalDrawable;
-        private final IosSignalDrawable primarySignalDrawable;
-        private final IosSignalDrawable secondarySignalDrawable;
 
         RightIconGroupPreviewView() {
             super(MainActivity.this);
-            density = getResources().getDisplayMetrics().density;
-            wifiDrawable = new IosWifiDrawable(PREVIEW_WIFI_LEVEL, density);
-            combinedSignalDrawable = new IosSignalDrawable(PREVIEW_PRIMARY_SIGNAL_LEVEL, density);
-            primarySignalDrawable = new IosSignalDrawable(PREVIEW_PRIMARY_SIGNAL_LEVEL, density);
-            secondarySignalDrawable = new IosSignalDrawable(PREVIEW_SECONDARY_SIGNAL_LEVEL, density);
             surfaceStrokePaint.setStyle(Paint.Style.STROKE);
             hintPaint.setTextAlign(Paint.Align.CENTER);
             textPaint.setFakeBoldText(true);
@@ -1829,106 +1499,29 @@ public class MainActivity extends Activity {
         }
 
         private void drawRightIconGroup(Canvas canvas) {
-            int batteryWidth = dp(readIntSetting(SettingsStore.KEY_IOS_BATTERY_WIDTH,
-                    SettingsStore.DEFAULT_IOS_BATTERY_WIDTH));
-            int batteryHeight = dp(readIntSetting(SettingsStore.KEY_IOS_BATTERY_HEIGHT,
-                    SettingsStore.DEFAULT_IOS_BATTERY_HEIGHT));
-            int batteryScale = readIntSetting(SettingsStore.KEY_IOS_GROUP_BATTERY_SCALE,
-                    SettingsStore.DEFAULT_IOS_GROUP_BATTERY_SCALE);
-            int signalScale = readIntSetting(SettingsStore.KEY_IOS_GROUP_SIGNAL_SCALE,
-                    SettingsStore.DEFAULT_IOS_GROUP_SIGNAL_SCALE);
-            int wifiScale = readIntSetting(SettingsStore.KEY_IOS_GROUP_WIFI_SCALE,
-                    SettingsStore.DEFAULT_IOS_GROUP_WIFI_SCALE);
-            int wifiSignalGap = dp(readIntSetting(SettingsStore.KEY_IOS_GROUP_WIFI_SIGNAL_GAP,
-                    SettingsStore.DEFAULT_IOS_GROUP_WIFI_SIGNAL_GAP));
-            int signalBatteryGap = dp(readIntSetting(SettingsStore.KEY_IOS_GROUP_SIGNAL_BATTERY_GAP,
-                    SettingsStore.DEFAULT_IOS_GROUP_SIGNAL_BATTERY_GAP));
-            int groupStartGapAdjust = dp(readIntSetting(SettingsStore.KEY_IOS_GROUP_START_GAP_ADJUST,
-                    SettingsStore.DEFAULT_IOS_GROUP_START_GAP_ADJUST));
-            int batteryOffsetX = dp(readIntSetting(SettingsStore.KEY_IOS_BATTERY_OFFSET_X,
-                    SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_X));
-            int batteryOffsetY = dp(readIntSetting(SettingsStore.KEY_IOS_BATTERY_OFFSET_Y,
-                    SettingsStore.DEFAULT_IOS_BATTERY_OFFSET_Y));
-            int batteryTextSize = readIntSetting(SettingsStore.KEY_IOS_BATTERY_TEXT_SIZE,
-                    SettingsStore.DEFAULT_IOS_BATTERY_TEXT_SIZE);
-            int batteryTextWeight = readIntSetting(SettingsStore.KEY_IOS_BATTERY_TEXT_WEIGHT,
-                    SettingsStore.DEFAULT_IOS_BATTERY_TEXT_WEIGHT);
-            boolean batteryStyleEnabled = true;
-            boolean combinedDualSignal = prefs.getBoolean(SettingsStore.KEY_IOS_SIGNAL_DUAL_COMBINED,
-                    SettingsStore.DEFAULT_IOS_SIGNAL_DUAL_COMBINED);
-            float outerScale = scaled(readIntSetting(SettingsStore.KEY_BATTERY_FACTOR,
-                    SettingsStore.DEFAULT_BATTERY_FACTOR));
-
-            int scaledBatteryWidth = Math.max(1, Math.round(batteryWidth * batteryScale / 100f));
-            int scaledBatteryHeight = Math.max(1, Math.round(batteryHeight * batteryScale / 100f));
-            int overlayTargetHeight = Math.max(batteryHeight, 1);
-
-            int wifiWidth = Math.max(1, Math.round(overlayTargetHeight * wifiScale / 100f
-                    * (wifiDrawable.getIntrinsicWidth() / (float) wifiDrawable.getIntrinsicHeight())));
-            int wifiHeight = Math.max(1, Math.round(overlayTargetHeight * wifiScale / 100f));
-
-            int signalHeight = Math.max(1, Math.round(overlayTargetHeight * signalScale / 100f));
-            int signalWidth = Math.max(1, Math.round(signalHeight
-                    * (combinedSignalDrawable.getIntrinsicWidth() / (float) combinedSignalDrawable.getIntrinsicHeight())));
-
-            int overlaysWidth = wifiWidth + signalWidth;
-            if (combinedDualSignal) {
-                overlaysWidth += wifiSignalGap;
-            } else {
-                overlaysWidth += wifiSignalGap * 2 + signalWidth;
-            }
-
-            int groupWidth = overlaysWidth + signalBatteryGap + scaledBatteryWidth;
+            int iconSize = dp(24);
             float anchorRight = statusStripRect.right - dp(16);
             float centerY = statusStripRect.centerY();
-            int previewBaseOuterGap = dp(6);
-            int previewOuterGap = Math.max(0, previewBaseOuterGap + groupStartGapAdjust);
-            int referenceIconWidth = dp(14);
-            int referenceIconHeight = dp(10);
-            float batteryCenterY = centerY + batteryOffsetY;
 
             canvas.save();
-            canvas.scale(outerScale, outerScale, anchorRight, centerY);
 
-            int iconAlpha = batteryStyleEnabled ? 255 : 160;
-            float currentLeft = anchorRight - groupWidth;
-            float referenceRight = currentLeft - previewOuterGap;
+            float currentLeft = anchorRight - iconSize;
+            float referenceRight = currentLeft - dp(6);
             dimPaint.setColor(Color.argb(170, Color.red(colorText), Color.green(colorText), Color.blue(colorText)));
-            canvas.drawRoundRect(referenceRight - referenceIconWidth,
-                    centerY - referenceIconHeight / 2f,
+            canvas.drawRoundRect(referenceRight - dp(28),
+                    centerY - dp(5),
                     referenceRight,
-                    centerY + referenceIconHeight / 2f,
+                    centerY + dp(5),
                     dp(3),
                     dp(3),
                     dimPaint);
-            int overlayTopWifi = Math.round(batteryCenterY - wifiHeight / 2f);
-            int overlayTopSignal = Math.round(batteryCenterY - signalHeight / 2f);
-            drawDrawable(canvas, wifiDrawable, Math.round(currentLeft), overlayTopWifi,
-                    wifiWidth, wifiHeight, colorText, iconAlpha);
-            currentLeft += wifiWidth + wifiSignalGap;
-
-            if (combinedDualSignal) {
-                combinedSignalDrawable.setLevels(PREVIEW_PRIMARY_SIGNAL_LEVEL, PREVIEW_SECONDARY_SIGNAL_LEVEL);
-                drawDrawable(canvas, combinedSignalDrawable, Math.round(currentLeft), overlayTopSignal,
-                        signalWidth, signalHeight, colorText, iconAlpha);
-                currentLeft += signalWidth;
-            } else {
-                primarySignalDrawable.setLevels(PREVIEW_PRIMARY_SIGNAL_LEVEL, IosSignalDrawable.NO_SECONDARY_LEVEL);
-                drawDrawable(canvas, primarySignalDrawable, Math.round(currentLeft), overlayTopSignal,
-                        signalWidth, signalHeight, colorText, iconAlpha);
-                currentLeft += signalWidth + wifiSignalGap;
-                secondarySignalDrawable.setLevels(PREVIEW_SECONDARY_SIGNAL_LEVEL, IosSignalDrawable.NO_SECONDARY_LEVEL);
-                drawDrawable(canvas, secondarySignalDrawable, Math.round(currentLeft), overlayTopSignal,
-                        signalWidth, signalHeight, colorText, iconAlpha);
-                currentLeft += signalWidth;
-            }
-
-            int batteryLeft = Math.round(currentLeft + signalBatteryGap + batteryOffsetX);
-            int batteryTop = Math.round(batteryCenterY - scaledBatteryHeight / 2f);
+            int iconTop = Math.round(centerY - iconSize / 2f);
+            int batteryLeft = Math.round(currentLeft);
+            int batteryTop = iconTop;
             batteryRect.set(batteryLeft, batteryTop,
-                    batteryLeft + scaledBatteryWidth, batteryTop + scaledBatteryHeight);
-            IosBatteryPainter.draw(canvas, batteryRect, PREVIEW_BATTERY_LEVEL, false, false, true,
-                    batteryTextSize, batteryTextWeight, colorText, Color.WHITE);
+                    batteryLeft + iconSize, batteryTop + iconSize);
+            IosBatteryPainter.draw(canvas, batteryRect, PREVIEW_BATTERY_LEVEL, false, false,
+                    colorText);
             canvas.restore();
         }
 
@@ -1936,23 +1529,9 @@ public class MainActivity extends Activity {
             hintPaint.setColor(Color.argb(215, 255, 255, 255));
             hintPaint.setTextSize(dp(13));
             float firstLineY = panelRect.bottom - dp(28);
-            canvas.drawText("\u62d6\u52a8\u4e0b\u65b9\u53c2\u6570\u4f1a\u7acb\u5373\u5237\u65b0\u8fd9\u91cc\u7684\u56fe\u6807\u7ec4", panelRect.centerX(), firstLineY, hintPaint);
-
+            canvas.drawText("预览只显示替换后的电池图标", panelRect.centerX(), firstLineY, hintPaint);
         }
 
-        private void drawDrawable(Canvas canvas, android.graphics.drawable.Drawable drawable,
-                int left, int top, int width, int height, int tintColor, int alpha) {
-            drawable.setTint(tintColor);
-            drawable.setAlpha(alpha);
-            drawable.setBounds(left, top, left + width, top + height);
-            drawable.draw(canvas);
-        }
-
-        private float scaled(int factorPercent) {
-            float globalScale = readIntSetting(SettingsStore.KEY_GLOBAL_ICON_SCALE,
-                    SettingsStore.DEFAULT_GLOBAL_ICON_SCALE) / 100f;
-            return 1f + ((globalScale - 1f) * (factorPercent / 100f));
-        }
     }
 
 }
