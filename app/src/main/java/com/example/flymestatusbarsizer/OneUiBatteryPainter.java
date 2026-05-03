@@ -52,21 +52,27 @@ final class OneUiBatteryPainter {
         boolean showBolt = charging || pluggedIn;
         float textCenterX = BODY.centerX();
         float normalizedTextScale = normalizeTextScale(textScale);
+        String levelText = Integer.toString(clampedLevel);
+        float textSize = BODY.height() * 0.62f * normalizedTextScale;
         if (showBolt) {
+            float textWidth = 0f;
+            if (showLevelText) {
+                TEXT_PAINT.setTextSize(textSize);
+                textWidth = TEXT_PAINT.measureText(levelText);
+            }
             textCenterX = BatteryBoltPainter.draw(
-                    canvas, BODY, textColor, showLevelText, BOLT_WIDTH_RATIO, normalizedTextScale);
+                    canvas, BODY, textColor, showLevelText, BOLT_WIDTH_RATIO, normalizedTextScale, textWidth);
         }
 
         if (showLevelText) {
-            float textSize = BODY.height() * 0.62f * normalizedTextScale;
             TEXT_EDGE_PAINT.setColor(resolveTextEdgeColor(textColor));
             TEXT_EDGE_PAINT.setTextSize(textSize);
             TEXT_EDGE_PAINT.setStrokeWidth(BODY.height() * 0.08f);
             TEXT_PAINT.setTextSize(textSize);
             float textBaseline = BODY.centerY() - (TEXT_PAINT.descent() + TEXT_PAINT.ascent()) / 2f;
-            canvas.drawText(Integer.toString(clampedLevel), textCenterX, textBaseline, TEXT_EDGE_PAINT);
+            canvas.drawText(levelText, textCenterX, textBaseline, TEXT_EDGE_PAINT);
             TEXT_PAINT.setColor(textColor);
-            canvas.drawText(Integer.toString(clampedLevel), textCenterX, textBaseline, TEXT_PAINT);
+            canvas.drawText(levelText, textCenterX, textBaseline, TEXT_PAINT);
         }
     }
 

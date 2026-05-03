@@ -8,6 +8,8 @@ import android.graphics.RectF;
 final class BatteryBoltPainter {
     private static final Paint PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Path PATH = new Path();
+    private static final float MIN_GROUP_GAP_RATIO = 0.04f;
+    private static final float MAX_GROUP_WIDTH_RATIO = 0.92f;
 
     static {
         PAINT.setStyle(Paint.Style.FILL);
@@ -17,19 +19,33 @@ final class BatteryBoltPainter {
     }
 
     static float draw(Canvas canvas, RectF body, int color, boolean showLevelText,
-            float widthRatio, float contentScale) {
+            float widthRatio, float contentScale, float textWidth) {
         if (canvas == null || body == null) {
             return 0f;
         }
         PAINT.setColor(color);
         float resolvedScale = normalizeContentScale(contentScale);
         float resolvedWidthRatio = Math.max(0.1f, widthRatio) * resolvedScale;
-        float iconLeft = showLevelText
-                ? body.left + body.width() * (0.16f + (1f - resolvedScale) * 0.08f)
-                : body.centerX() - body.width() * (resolvedWidthRatio * 0.41f);
-        float iconTop = body.top + body.height() * (0.22f + (1f - resolvedScale) * 0.08f);
         float iconWidth = body.width() * resolvedWidthRatio;
         float iconHeight = body.height() * 0.56f * resolvedScale;
+        float iconTop = body.centerY() - iconHeight / 2f;
+        float iconLeft;
+        float textCenterX;
+        if (showLevelText) {
+            float gap = Math.max(body.width(), body.height()) * MIN_GROUP_GAP_RATIO;
+            float contentWidth = iconWidth + gap + Math.max(0f, textWidth);
+            float maxContentWidth = body.width() * MAX_GROUP_WIDTH_RATIO;
+            if (contentWidth > maxContentWidth) {
+                gap = Math.max(0f, maxContentWidth - iconWidth - Math.max(0f, textWidth));
+                contentWidth = iconWidth + gap + Math.max(0f, textWidth);
+            }
+            float contentLeft = body.centerX() - contentWidth / 2f;
+            iconLeft = contentLeft;
+            textCenterX = iconLeft + iconWidth + gap + Math.max(0f, textWidth) / 2f;
+        } else {
+            iconLeft = body.centerX() - iconWidth / 2f;
+            textCenterX = body.centerX();
+        }
         PATH.reset();
         PATH.moveTo(iconLeft + iconWidth * 0.48f, iconTop);
         PATH.lineTo(iconLeft + iconWidth * 0.10f, iconTop + iconHeight * 0.52f);
@@ -39,9 +55,7 @@ final class BatteryBoltPainter {
         PATH.lineTo(iconLeft + iconWidth * 0.62f, iconTop + iconHeight * 0.34f);
         PATH.close();
         canvas.drawPath(PATH, PAINT);
-        return showLevelText
-                ? body.left + body.width() * (0.62f + (1f - resolvedScale) * 0.06f)
-                : body.centerX();
+        return textCenterX;
     }
 
     private static float normalizeContentScale(float contentScale) {
