@@ -1459,7 +1459,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         for (int i = 0; i < groups.size(); i++) {
             View group = groups.get(i);
-            int visibility = !mergedDual || i == 0 ? View.VISIBLE : View.GONE;
+            boolean shouldShow = !mergedDual || i == 0;
+            updateSignalSlotFootprint(group, shouldShow);
+            int visibility = shouldShow ? View.VISIBLE : View.GONE;
             if (group.getVisibility() != visibility) {
                 group.setVisibility(visibility);
             }
@@ -1488,7 +1490,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         for (int i = 0; i < parent.getChildCount(); i++) {
             View child = parent.getChildAt(i);
-            if (isMobileSignalGroupView(child)) {
+            if (isMobileSignalSlotView(child)) {
                 groups.add(child);
             }
         }
@@ -1499,15 +1501,30 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static View findMobileSignalGroup(View view) {
+        View comboAncestor = findAncestorByIdName(view, "mobile_combo");
+        if (comboAncestor != null) {
+            return comboAncestor;
+        }
         View current = view;
         while (current != null) {
-            if (isMobileSignalGroupView(current)) {
+            if (isMobileSignalSlotView(current)) {
                 return current;
             }
             ViewParent parent = current.getParent();
             current = parent instanceof View ? (View) parent : null;
         }
         return null;
+    }
+
+    private static boolean isMobileSignalSlotView(View view) {
+        if (view == null) {
+            return false;
+        }
+        String idName = getSystemUiIdName(view);
+        if ("mobile_combo".equals(idName)) {
+            return true;
+        }
+        return isMobileSignalGroupView(view);
     }
 
     private static boolean isMobileSignalGroupView(View view) {
@@ -1522,6 +1539,86 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static ViewGroup asViewGroup(ViewParent parent) {
         return parent instanceof ViewGroup ? (ViewGroup) parent : null;
+    }
+
+    private static void updateSignalSlotFootprint(View group, boolean shouldShow) {
+        if (group == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = group.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        rememberOriginalSignalSlotLayout(group, lp);
+        int[] originalSize = ORIGINAL_SIZES.get(group);
+        int[] originalMargins = ORIGINAL_MARGINS.get(group);
+        boolean changed = false;
+        if (shouldShow) {
+            if (originalSize != null) {
+                if (lp.width != originalSize[0]) {
+                    lp.width = originalSize[0];
+                    changed = true;
+                }
+                if (lp.height != originalSize[1]) {
+                    lp.height = originalSize[1];
+                    changed = true;
+                }
+            }
+            if (lp instanceof ViewGroup.MarginLayoutParams && originalMargins != null) {
+                ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) lp;
+                if (mlp.leftMargin != originalMargins[0]
+                        || mlp.topMargin != originalMargins[1]
+                        || mlp.rightMargin != originalMargins[2]
+                        || mlp.bottomMargin != originalMargins[3]) {
+                    mlp.setMargins(originalMargins[0], originalMargins[1],
+                            originalMargins[2], originalMargins[3]);
+                    changed = true;
+                }
+            }
+        } else {
+            if (lp.width != 0) {
+                lp.width = 0;
+                changed = true;
+            }
+            if (lp.height != 0) {
+                lp.height = 0;
+                changed = true;
+            }
+            if (lp instanceof ViewGroup.MarginLayoutParams) {
+                ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) lp;
+                if (mlp.leftMargin != 0 || mlp.topMargin != 0
+                        || mlp.rightMargin != 0 || mlp.bottomMargin != 0) {
+                    mlp.setMargins(0, 0, 0, 0);
+                    changed = true;
+                }
+            }
+        }
+        if (changed) {
+            group.setLayoutParams(lp);
+            ViewParent parent = group.getParent();
+            if (parent instanceof View) {
+                ((View) parent).requestLayout();
+            }
+            group.requestLayout();
+        }
+    }
+
+    private static void rememberOriginalSignalSlotLayout(View group, ViewGroup.LayoutParams lp) {
+        if (group == null || lp == null) {
+            return;
+        }
+        if (!ORIGINAL_SIZES.containsKey(group)) {
+            ORIGINAL_SIZES.put(group, new int[]{lp.width, lp.height});
+        }
+        if (lp instanceof ViewGroup.MarginLayoutParams && !ORIGINAL_MARGINS.containsKey(group)) {
+            ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) lp;
+            ORIGINAL_MARGINS.put(group, new int[]{
+                    mlp.leftMargin,
+                    mlp.topMargin,
+                    mlp.rightMargin,
+                    mlp.bottomMargin
+            });
+        }
     }
 
     private static void resizeSignalIconView(ImageView view) {
