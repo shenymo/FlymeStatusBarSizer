@@ -2,8 +2,6 @@ package com.example.flymestatusbarsizer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.ContentResolver;
-import android.database.ContentObserver;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
@@ -12,7 +10,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.HandlerThread;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
@@ -77,11 +74,6 @@ public class MainActivity extends Activity {
     private RightIconGroupPreviewView previewView;
     private View[] mainPages;
     private TextView[] mainTabs;
-    private TextView signalDebugStatusView;
-    private TextView signalDebugUpdatedAtView;
-    private HandlerThread signalDebugObserverThread;
-    private ContentObserver signalDebugObserver;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -116,14 +108,6 @@ public class MainActivity extends Activity {
         page.addView(buildBottomNavigation(), bottomNavigationLayoutParams());
         page.addView(buildFloatingMenuButton(), floatingMenuLayoutParams(topInset));
         setContentView(page);
-        startSignalDebugObserver();
-        refreshSignalDebugPanel();
-    }
-
-    @Override
-    protected void onDestroy() {
-        stopSignalDebugObserver();
-        super.onDestroy();
     }
 
     @Override
@@ -224,62 +208,11 @@ public class MainActivity extends Activity {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
 
-        addSectionLabel(page, "移动信号调试");
-        page.addView(buildSignalHookDebugCard(), matchWrapWithTop(10));
         addSectionLabel(page, "杂项");
         page.addView(buildNotificationCard(), matchWrapWithTop(10));
         page.addView(buildMBackSection(), matchWrapWithTop(10));
         page.addView(buildTimeCard(), matchWrapWithTop(10));
         return page;
-    }
-
-    private View buildSignalHookDebugCard() {
-        LinearLayout card = card(colorSurface, 28);
-        addProfileSectionHeader(card, "移动信号 hook 调试",
-                "用来确认 SystemUI 里和 mobile_signal、mobile_type 有关的路径有没有命中，当前拿到的卡槽、等级、资源名和尺寸都会写在这里。");
-        addSwitchRow(card, "启用移动信号调试",
-                "开启后，SystemUI 会开始记录移动信号图标的关键路径，并把最近一次状态写回这里。",
-                SettingsStore.KEY_SIGNAL_HOOK_DEBUG_ENABLED,
-                SettingsStore.DEFAULT_SIGNAL_HOOK_DEBUG_ENABLED);
-        addDivider(card);
-        addSwitchRow(card, "输出到 SystemUI logcat",
-                "开启后会把同样的调试信息写到 SystemUI 的 logcat，统一用 FSBS 前缀，方便筛选。",
-                SettingsStore.KEY_SIGNAL_HOOK_LOGCAT_ENABLED,
-                SettingsStore.DEFAULT_SIGNAL_HOOK_LOGCAT_ENABLED);
-        addDivider(card);
-        addActionButtonRow(card, "清空当前状态",
-                "清掉界面上次记录，顺便让 SystemUI 下一次命中时重新写一条新的状态。",
-                "清空", this::resetSignalDebugState);
-        addDivider(card);
-
-        TextView updatedTitle = new TextView(this);
-        updatedTitle.setText("最近更新时间");
-        updatedTitle.setTextColor(colorPrimary);
-        updatedTitle.setTextSize(14);
-        card.addView(updatedTitle, matchWrap());
-
-        signalDebugUpdatedAtView = new TextView(this);
-        signalDebugUpdatedAtView.setTextColor(colorSubtext);
-        signalDebugUpdatedAtView.setTextSize(13);
-        signalDebugUpdatedAtView.setPadding(0, dp(6), 0, 0);
-        signalDebugUpdatedAtView.setText("暂无");
-        card.addView(signalDebugUpdatedAtView, matchWrap());
-
-        TextView statusTitle = new TextView(this);
-        statusTitle.setText("最近一次状态");
-        statusTitle.setTextColor(colorPrimary);
-        statusTitle.setTextSize(14);
-        statusTitle.setPadding(0, dp(16), 0, 0);
-        card.addView(statusTitle, matchWrap());
-
-        signalDebugStatusView = new TextView(this);
-        signalDebugStatusView.setTextColor(colorText);
-        signalDebugStatusView.setTextSize(13);
-        signalDebugStatusView.setPadding(dp(12), dp(12), dp(12), dp(12));
-        signalDebugStatusView.setBackground(roundRect(colorSurfaceSoft, 18));
-        signalDebugStatusView.setText("暂无");
-        card.addView(signalDebugStatusView, matchWrapWithTop(8));
-        return card;
     }
 
     private View buildNotificationCard() {
@@ -392,6 +325,12 @@ public class MainActivity extends Activity {
         previewView = new RightIconGroupPreviewView(this);
         previewView.setMinimumHeight(dp(220));
         previewView.setPreviewTintColor(colorText);
+        previewView.setBatteryStyle(readIntSetting(
+                SettingsStore.KEY_BATTERY_ICON_STYLE,
+                SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
+        previewView.setBatteryLevelTextEnabled(prefs.getBoolean(
+                SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
+                SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED));
         FrameLayout.LayoutParams previewLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 dp(220));
@@ -577,13 +516,52 @@ public class MainActivity extends Activity {
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
 
+        addSwitchRow(details, "代码绘制电池图标",
+                "关闭后恢复系统原来的电池图标，不再接管这一项的绘制和尺寸。",
+                SettingsStore.KEY_BATTERY_CODE_DRAW_ENABLED,
+                SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED);
+        addDivider(details);
+        addChoiceRow(details, "电池图标样式",
+                "当前有两套代码绘制样式：类IOS 和类ONEUI。",
+                SettingsStore.KEY_BATTERY_ICON_STYLE,
+                SettingsStore.DEFAULT_BATTERY_ICON_STYLE,
+                new int[]{SettingsStore.BATTERY_STYLE_IOS, SettingsStore.BATTERY_STYLE_ONEUI},
+                new String[]{"类IOS", "类ONEUI"});
+        addDivider(details);
+        addSwitchRow(details, "电池内显示电量数字",
+                "关闭后只保留图形电池，不在电池内部绘制剩余电量数字。",
+                SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
+                SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED);
+        addDivider(details);
         addProfileSectionHeader(details, "固定绘制",
                 "这里只替换系统原来的电池图标，固定使用 24dp 画布绘制。Wi-Fi 和移动信号不再接管。");
 
-        return buildExpandableInfoCard(
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.addView(buildExpandableInfoCard(
                 "\u7535\u6c60\u56fe\u6807",
-                "\u53ea\u628a\u7cfb\u7edf\u539f\u6709\u7684\u7535\u6c60\u56fe\u6807\u6539\u4e3a\u4ee3\u7801\u7ed8\u5236\uff0c\u4e0d\u518d\u63a5\u7ba1 Wi-Fi \u548c\u79fb\u52a8\u4fe1\u53f7\u3002",
-                "\u7535\u6c60", details);
+                "\u53ea\u628a\u7cfb\u7edf\u539f\u6709\u7684\u7535\u6c60\u56fe\u6807\u6539\u4e3a\u4ee3\u7801\u7ed8\u5236\uff0c\u53ef\u4ee5\u5355\u72ec\u5f00\u5173\uff0c\u4e0d\u518d\u63a5\u7ba1 Wi-Fi \u548c\u79fb\u52a8\u4fe1\u53f7\u3002",
+                "\u7535\u6c60", details), matchWrap());
+        container.addView(buildSignalIconSection(), matchWrapWithTop(12));
+        return container;
+    }
+
+    private View buildSignalIconSection() {
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+
+        addSwitchRow(details, "代码绘制信号图标",
+                "关闭后恢复系统原来的信号图标，不再替换 mobile_signal，也不再改双卡槽位和图标尺寸。",
+                SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
+                SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED);
+        addDivider(details);
+        addProfileSectionHeader(details, "恢复方式",
+                "这个开关只决定模块还要不要接管信号图标。关闭后信号相关逻辑会停用，SystemUI 下次重启会回到系统原图标。");
+
+        return buildExpandableInfoCard(
+                "信号图标",
+                "单独控制移动信号图标这一组逻辑，关闭后不再替换系统原图标。",
+                "信号", details);
     }
 
     private TextView buildSettingsPageTab(String text) {
@@ -941,6 +919,45 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
+    private void addChoiceRow(LinearLayout root, String titleText, String subtitleText,
+            String key, int defaultValue, int[] values, String[] labels) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
+        LinearLayout textColumn = new LinearLayout(this);
+        textColumn.setOrientation(LinearLayout.VERTICAL);
+
+        TextView title = new TextView(this);
+        title.setText(titleText);
+        title.setTextColor(colorText);
+        title.setTextSize(16);
+        textColumn.addView(title, matchWrap());
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText(subtitleText);
+        subtitle.setTextColor(colorSubtext);
+        subtitle.setTextSize(13);
+        subtitle.setPadding(0, dp(4), dp(10), 0);
+        textColumn.addView(subtitle, matchWrap());
+
+        TextView valueView = new TextView(this);
+        valueView.setTextColor(colorPrimary);
+        valueView.setTextSize(13);
+        valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 999));
+        int currentValue = readIntSetting(key, defaultValue);
+        valueView.setText(resolveChoiceLabel(currentValue, values, labels));
+        valueView.setOnClickListener(v -> showChoiceMenu(v, key, defaultValue, values, labels, valueView));
+
+        row.addView(textColumn, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(valueView, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        root.addView(row, matchWrap());
+    }
+
     private void addActionButtonRow(LinearLayout root, String titleText, String subtitleText,
             String buttonText, Runnable action) {
         LinearLayout row = new LinearLayout(this);
@@ -1028,8 +1045,34 @@ public class MainActivity extends Activity {
         popup.show();
     }
 
+    private void showChoiceMenu(View anchor, String key, int defaultValue,
+            int[] values, String[] labels, TextView valueView) {
+        PopupMenu popup = new PopupMenu(this, anchor);
+        int currentValue = readIntSetting(key, defaultValue);
+        for (int i = 0; i < values.length && i < labels.length; i++) {
+            popup.getMenu().add(0, values[i], i, labels[i]);
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            int selectedValue = item.getItemId();
+            putIntSetting(key, selectedValue);
+            valueView.setText(resolveChoiceLabel(selectedValue, values, labels));
+            return true;
+        });
+        popup.show();
+        valueView.setText(resolveChoiceLabel(currentValue, values, labels));
+    }
+
     private int readIntSetting(String key, int defaultValue) {
         return prefs.getInt(key, defaultValue);
+    }
+
+    private String resolveChoiceLabel(int value, int[] values, String[] labels) {
+        for (int i = 0; i < values.length && i < labels.length; i++) {
+            if (values[i] == value) {
+                return labels[i];
+            }
+        }
+        return labels.length > 0 ? labels[0] : "";
     }
 
     private String readStringSetting(String key, String defaultValue) {
@@ -1047,10 +1090,6 @@ public class MainActivity extends Activity {
         prefs.edit().putBoolean(key, value).apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
-        if (SettingsStore.KEY_SIGNAL_HOOK_DEBUG_ENABLED.equals(key)
-                || SettingsStore.KEY_SIGNAL_HOOK_LOGCAT_ENABLED.equals(key)) {
-            refreshSignalDebugPanel();
-        }
     }
 
     private void putIntSetting(String key, int value) {
@@ -1091,6 +1130,12 @@ public class MainActivity extends Activity {
 
     private void invalidatePreview() {
         if (previewView != null) {
+            previewView.setBatteryStyle(readIntSetting(
+                    SettingsStore.KEY_BATTERY_ICON_STYLE,
+                    SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
+            previewView.setBatteryLevelTextEnabled(prefs.getBoolean(
+                    SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
+                    SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED));
             previewView.invalidate();
         }
     }
@@ -1101,65 +1146,6 @@ public class MainActivity extends Activity {
         invalidatePreview();
         showToast("\u5df2\u6062\u590d\u9ed8\u8ba4\u914d\u7f6e");
         recreate();
-    }
-
-    private void resetSignalDebugState() {
-        int nextSeq = prefs.getInt(
-                SettingsStore.KEY_SIGNAL_DEBUG_RESET_SEQ,
-                SettingsStore.DEFAULT_SIGNAL_DEBUG_RESET_SEQ) + 1;
-        prefs.edit()
-                .putString(SettingsStore.KEY_SIGNAL_DEBUG_STATUS, "")
-                .putString(SettingsStore.KEY_SIGNAL_DEBUG_UPDATED_AT, "")
-                .putInt(SettingsStore.KEY_SIGNAL_DEBUG_RESET_SEQ, nextSeq)
-                .apply();
-        SettingsStore.notifyChanged(this);
-        refreshSignalDebugPanel();
-        showToast("已清空移动信号调试状态");
-    }
-
-    private void startSignalDebugObserver() {
-        if (signalDebugObserverThread != null) {
-            return;
-        }
-        signalDebugObserverThread = new HandlerThread("fsbs-signal-debug");
-        signalDebugObserverThread.start();
-        Handler observerHandler = new Handler(signalDebugObserverThread.getLooper());
-        signalDebugObserver = new ContentObserver(observerHandler) {
-            @Override
-            public void onChange(boolean selfChange) {
-                runOnUiThread(MainActivity.this::refreshSignalDebugPanel);
-            }
-        };
-        ContentResolver resolver = getContentResolver();
-        resolver.registerContentObserver(SettingsStore.SETTINGS_URI, true, signalDebugObserver);
-    }
-
-    private void stopSignalDebugObserver() {
-        if (signalDebugObserver != null) {
-            try {
-                getContentResolver().unregisterContentObserver(signalDebugObserver);
-            } catch (Throwable ignored) {
-            }
-            signalDebugObserver = null;
-        }
-        if (signalDebugObserverThread != null) {
-            signalDebugObserverThread.quitSafely();
-            signalDebugObserverThread = null;
-        }
-    }
-
-    private void refreshSignalDebugPanel() {
-        if (signalDebugStatusView == null || signalDebugUpdatedAtView == null) {
-            return;
-        }
-        String status = prefs.getString(
-                SettingsStore.KEY_SIGNAL_DEBUG_STATUS,
-                SettingsStore.DEFAULT_SIGNAL_DEBUG_STATUS);
-        String updatedAt = prefs.getString(
-                SettingsStore.KEY_SIGNAL_DEBUG_UPDATED_AT,
-                SettingsStore.DEFAULT_SIGNAL_DEBUG_UPDATED_AT);
-        signalDebugStatusView.setText(TextUtils.isEmpty(status) ? "暂无" : status);
-        signalDebugUpdatedAtView.setText(TextUtils.isEmpty(updatedAt) ? "暂无" : updatedAt);
     }
 
     private String formatValue(int value, String suffix) {

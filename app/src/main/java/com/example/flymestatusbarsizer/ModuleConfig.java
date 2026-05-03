@@ -15,6 +15,10 @@ final class ModuleConfig {
     private static volatile long cachedConfigUptime;
 
     boolean enabled = SettingsStore.DEFAULT_ENABLED;
+    boolean batteryCodeDrawEnabled = SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED;
+    boolean signalCodeDrawEnabled = SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED;
+    int batteryIconStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
+    boolean batteryLevelTextEnabled = SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED;
     boolean connectionRateThresholdEnabled = SettingsStore.DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED;
     int connectionRateShowThresholdKb = SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB;
     int connectionRateHideThresholdKb = SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB;
@@ -29,10 +33,6 @@ final class ModuleConfig {
     boolean mbackHidePill = SettingsStore.DEFAULT_MBACK_HIDE_PILL;
     int mbackInsetSize = SettingsStore.DEFAULT_MBACK_INSET_SIZE;
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
-    boolean signalHookDebugEnabled = SettingsStore.DEFAULT_SIGNAL_HOOK_DEBUG_ENABLED;
-    boolean signalHookLogcatEnabled = SettingsStore.DEFAULT_SIGNAL_HOOK_LOGCAT_ENABLED;
-    int signalDebugResetSeq = SettingsStore.DEFAULT_SIGNAL_DEBUG_RESET_SEQ;
-
     static ModuleConfig load(Context context) {
         if (context == null) {
             return new ModuleConfig();
@@ -85,6 +85,15 @@ final class ModuleConfig {
     private void apply(String key, String value) {
         if (SettingsStore.KEY_ENABLED.equals(key)) {
             enabled = "1".equals(value);
+        } else if (SettingsStore.KEY_BATTERY_CODE_DRAW_ENABLED.equals(key)) {
+            batteryCodeDrawEnabled = "1".equals(value);
+        } else if (SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED.equals(key)) {
+            signalCodeDrawEnabled = "1".equals(value);
+        } else if (SettingsStore.KEY_BATTERY_ICON_STYLE.equals(key)) {
+            batteryIconStyle = SettingsStore.normalizeBatteryStyle(
+                    parseInt(value, SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
+        } else if (SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED.equals(key)) {
+            batteryLevelTextEnabled = "1".equals(value);
         } else if (SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED.equals(key)) {
             connectionRateThresholdEnabled = "1".equals(value);
         } else if (SettingsStore.KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB.equals(key)) {
@@ -115,12 +124,6 @@ final class ModuleConfig {
             mbackInsetSize = parseInt(value, SettingsStore.DEFAULT_MBACK_INSET_SIZE);
         } else if (SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT.equals(key)) {
             mbackNavBarHeight = parseInt(value, SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT);
-        } else if (SettingsStore.KEY_SIGNAL_HOOK_DEBUG_ENABLED.equals(key)) {
-            signalHookDebugEnabled = "1".equals(value);
-        } else if (SettingsStore.KEY_SIGNAL_HOOK_LOGCAT_ENABLED.equals(key)) {
-            signalHookLogcatEnabled = "1".equals(value);
-        } else if (SettingsStore.KEY_SIGNAL_DEBUG_RESET_SEQ.equals(key)) {
-            signalDebugResetSeq = parseInt(value, SettingsStore.DEFAULT_SIGNAL_DEBUG_RESET_SEQ);
         }
     }
 

@@ -1,7 +1,6 @@
 package com.example.flymestatusbarsizer;
 
 import android.content.BroadcastReceiver;
-import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -46,7 +45,6 @@ import io.github.libxposed.api.XposedModuleInterface;
 
 public class FlymeStatusBarSizer extends XposedModule {
     private static final String TAG = "FlymeStatusBarSizer";
-    private static final String LOG_PREFIX = "FSBS";
     private static final String SYSTEM_UI = "com.android.systemui";
     private static volatile FlymeStatusBarSizer MODULE;
 
@@ -57,7 +55,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, Boolean> TRACKED_CONNECTION_RATE_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, ConnectionRateThresholdState> CONNECTION_RATE_THRESHOLD_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_BATTERY_VIEWS = new WeakHashMap<>();
-    private static final WeakHashMap<View, SignalDebugInfo> TRACKED_SIGNAL_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<Drawable, View> SIGNAL_DRAWABLE_OWNERS = new WeakHashMap<>();
     private static final WeakHashMap<TelephonyManager, Integer> TELEPHONY_MANAGER_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<SignalStrength, Integer> SIGNAL_STRENGTH_SUB_IDS = new WeakHashMap<>();
@@ -70,7 +67,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static BroadcastReceiver USER_UNLOCKED_RECEIVER;
     private static ContentObserver SETTINGS_OBSERVER;
     private static final HashMap<String, Integer> SYSTEM_UI_ID_CACHE = new HashMap<>();
-    private static volatile int LAST_SIGNAL_DEBUG_RESET_SEQ = Integer.MIN_VALUE;
     private static volatile int LAST_SIGNAL_LEVEL = -1;
     private static volatile int LAST_SIGNAL_SUB_ID = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
     private static volatile int LAST_CELLULAR_LEVEL = -1;
@@ -91,7 +87,12 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private void hookSystemUi(ClassLoader loader) {
         hookConnectionRateView(loader);
-        hookSignalDebugging(loader);
+        hookSignalImageAssignments();
+        hookSignalViewLayout();
+        hookSignalDrawableLevelChanges(loader);
+        hookTelephonyCreateForSubscriptionId();
+        hookTelephonyGetSignalStrength();
+        hookSignalStrengthGetLevel();
         hookMBackLongTouchIntent(loader);
         hookMBackNavBarExperiments(loader);
         hookMBackPillVisibility(loader);
@@ -102,14 +103,16 @@ public class FlymeStatusBarSizer extends XposedModule {
                 return;
             }
             TRACKED_BATTERY_VIEWS.put(view, Boolean.TRUE);
-            disableAncestorClipping(view, 6);
-            resizeIosBatteryView(view, config, ReflectUtils.getBooleanField(view, "mCharging", false));
+            if (isBatteryCodeDrawEnabled(config)) {
+                disableAncestorClipping(view, 6);
+                resizeIosBatteryView(view, config, ReflectUtils.getBooleanField(view, "mCharging", false));
+            }
         });
         hookFlymeBatteryMeterViewDraw(loader);
         hookFlymeBatteryMeterViewMeasure(loader);
         hookConstructors(loader, "com.flyme.statusbar.battery.FlymeBatteryTextView", view -> {
             ModuleConfig config = ModuleConfig.load(view.getContext());
-            if (!config.enabled || !(view instanceof TextView)) {
+            if (!isBatteryCodeDrawEnabled(config) || !(view instanceof TextView)) {
                 return;
             }
             TextView textView = (TextView) view;
@@ -119,26 +122,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         });
         hookBatteryDrawable(loader);
         hookClockWeekday(loader);
-    }
-
-    private void hookSignalDebugging(ClassLoader loader) {
-        hookMobileSignalViewConstructors(loader);
-        hookSignalImageAssignments();
-        hookSignalViewLayout();
-        hookSignalDrawableLevelChanges(loader);
-        hookTelephonySignalDebug(loader);
-    }
-
-    private void hookMobileSignalViewConstructors(ClassLoader loader) {
-        hookConstructors(loader,
-                "com.flyme.systemui.statusbar.net.mobile.ui.view.FlymeModernStatusBarMobileView",
-                FlymeStatusBarSizer::recordMobileGroupView);
-        hookConstructors(loader,
-                "com.android.systemui.statusbar.pipeline.mobile.ui.view.ModernStatusBarMobileView",
-                FlymeStatusBarSizer::recordMobileGroupView);
-        hookConstructors(loader,
-                "com.android.systemui.statusbar.pipeline.mobile.ui.view.ModernShadeCarrierGroupMobileView",
-                FlymeStatusBarSizer::recordMobileGroupView);
     }
 
     private void hookSignalImageAssignments() {
@@ -210,18 +193,16 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private void hookTelephonySignalDebug(ClassLoader loader) {
-        hookTelephonyCreateForSubscriptionId();
-        hookTelephonyGetSignalStrength();
-        hookSignalStrengthGetLevel();
-    }
-
     private void hookTelephonyCreateForSubscriptionId() {
         try {
             Method method = TelephonyManager.class.getDeclaredMethod("createForSubscriptionId", int.class);
             method.setAccessible(true);
             hook(method).intercept(chain -> {
                 Object result = chain.proceed();
+                ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                if (!isSignalCodeDrawEnabled(config)) {
+                    return result;
+                }
                 if (result instanceof TelephonyManager && chain.getArg(0) instanceof Integer) {
                     TELEPHONY_MANAGER_SUB_IDS.put((TelephonyManager) result, (Integer) chain.getArg(0));
                 }
@@ -239,6 +220,10 @@ public class FlymeStatusBarSizer extends XposedModule {
             hook(method).intercept(chain -> {
                 Object result = chain.proceed();
                 Object target = chain.getThisObject();
+                ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                if (!isSignalCodeDrawEnabled(config)) {
+                    return result;
+                }
                 if (target instanceof TelephonyManager && result instanceof SignalStrength) {
                     Integer subId = TELEPHONY_MANAGER_SUB_IDS.get(target);
                     if (subId != null) {
@@ -259,6 +244,10 @@ public class FlymeStatusBarSizer extends XposedModule {
             method.setAccessible(true);
             hook(method).intercept(chain -> {
                 Object result = chain.proceed();
+                ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                if (!isSignalCodeDrawEnabled(config)) {
+                    return result;
+                }
                 if (result instanceof Integer) {
                     int level = (Integer) result;
                     LAST_CELLULAR_LEVEL = level;
@@ -930,15 +919,17 @@ public class FlymeStatusBarSizer extends XposedModule {
             return false;
         }
         ModuleConfig config = ModuleConfig.load(context);
-        if (!config.enabled) {
+        if (!isBatteryCodeDrawEnabled(config)) {
             return false;
         }
         int level = ReflectUtils.getIntField(drawable, "mLevel", 0);
         boolean pluggedIn = ReflectUtils.getBooleanField(drawable, "mPluggedIn", false);
         boolean charging = ReflectUtils.getBooleanField(drawable, "mCharging", false);
         int tintColor = resolveBatteryTintColor(drawable, Color.BLACK);
-        IosBatteryPainter.draw(canvas, ((Drawable) drawable).getBounds(), level, pluggedIn, charging,
-                tintColor);
+        int textColor = resolveBatteryTextColor(tintColor);
+        boolean showLevelText = config.batteryLevelTextEnabled;
+        drawBatteryByStyle(config, canvas, ((Drawable) drawable).getBounds(), level, pluggedIn, charging,
+                tintColor, textColor, showLevelText);
         return true;
     }
 
@@ -948,7 +939,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         View batteryView = (View) view;
         ModuleConfig config = ModuleConfig.load(batteryView.getContext());
-        if (!config.enabled) {
+        if (!isBatteryCodeDrawEnabled(config)) {
             return false;
         }
         int level = ReflectUtils.getIntField(view, "mLastLevel", 0);
@@ -961,9 +952,33 @@ public class FlymeStatusBarSizer extends XposedModule {
         int left = 0;
         int top = Math.round((batteryView.getHeight() - height) / 2f);
         int fillColor = resolveBatteryTintColor(view, Color.BLACK);
-        IosBatteryPainter.draw(canvas, new Rect(left, top, left + width, top + height),
-                level, pluggedIn, charging, fillColor);
+        int textColor = resolveBatteryTextColor(fillColor);
+        boolean showLevelText = config.batteryLevelTextEnabled;
+        drawBatteryByStyle(config, canvas, new Rect(left, top, left + width, top + height),
+                level, pluggedIn, charging, fillColor, textColor, showLevelText);
         return true;
+    }
+
+    private static int resolveBatteryTextColor(int tintColor) {
+        int color = normalizeIconColor(tintColor);
+        double luminance = (0.299d * Color.red(color)
+                + 0.587d * Color.green(color)
+                + 0.114d * Color.blue(color)) / 255d;
+        return luminance >= 0.5d ? Color.BLACK : Color.WHITE;
+    }
+
+    private static void drawBatteryByStyle(ModuleConfig config, Canvas canvas, Rect bounds, int level,
+            boolean pluggedIn, boolean charging, int fillColor, int textColor, boolean showLevelText) {
+        int style = config == null
+                ? SettingsStore.DEFAULT_BATTERY_ICON_STYLE
+                : SettingsStore.normalizeBatteryStyle(config.batteryIconStyle);
+        if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
+            OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
+                    fillColor, textColor, showLevelText);
+            return;
+        }
+        IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
+                fillColor, textColor, showLevelText);
     }
 
     private static int resolveBatteryTintColor(Object target, int fallback) {
@@ -992,13 +1007,21 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         View batteryView = (View) view;
         ModuleConfig config = ModuleConfig.load(batteryView.getContext());
-        if (!config.enabled) {
+        if (!isBatteryCodeDrawEnabled(config)) {
             return false;
         }
         boolean charging = ReflectUtils.getBooleanField(view, "mCharging", false);
         ReflectUtils.setMeasuredDimension(batteryView, iosBatteryMeasuredWidthWithMergedIcons(batteryView, config, charging),
                 iosBatteryMeasuredHeightWithMergedIcons(batteryView, config));
         return true;
+    }
+
+    private static boolean isBatteryCodeDrawEnabled(ModuleConfig config) {
+        return config != null && config.enabled && config.batteryCodeDrawEnabled;
+    }
+
+    private static boolean isSignalCodeDrawEnabled(ModuleConfig config) {
+        return config != null && config.enabled && config.signalCodeDrawEnabled;
     }
 
     private static int normalizeIconColor(int color) {
@@ -1054,7 +1077,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         ModuleConfig config = ModuleConfig.load(context);
-        if (!config.enabled) {
+        if (!isBatteryCodeDrawEnabled(config)) {
             return;
         }
         ReflectUtils.setIntField(drawable, "mDarkModeBackgroundColor", Color.BLACK);
@@ -1148,30 +1171,19 @@ public class FlymeStatusBarSizer extends XposedModule {
         rememberConnectionRateState(view);
     }
 
-    private static void recordMobileGroupView(View root) {
-        if (root == null) {
-            return;
-        }
-        reportSignalDebug(root, "mobile_group_bound", null, "group=" + root.getClass().getSimpleName());
-        View mobileSignal = findSystemUiChild(root, "mobile_signal");
-        if (mobileSignal != null) {
-            reportSignalDebug(mobileSignal, "mobile_signal_found", null,
-                    "group=" + root.getClass().getSimpleName());
-        }
-        View mobileType = findSystemUiChild(root, "mobile_type");
-        if (mobileType != null) {
-            reportSignalDebug(mobileType, "mobile_type_found", null,
-                    "group=" + root.getClass().getSimpleName());
-        }
-    }
-
     private static void onSignalImageResourceAssigned(ImageView view, int resId) {
         String idName = getSystemUiIdName(view);
         if (!"mobile_signal".equals(idName) && !"mobile_type".equals(idName)) {
             return;
         }
-        String resName = resolveResourceName(view.getContext(), resId);
-        reportSignalDebug(view, "setImageResource", resName, "resId=" + resId);
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        if (!isSignalCodeDrawEnabled(config)) {
+            return;
+        }
+        if ("mobile_type".equals(idName)) {
+            hideMobileTypeView(view);
+            return;
+        }
         if ("mobile_signal".equals(idName)) {
             applySignalIconOverride(view);
         }
@@ -1182,12 +1194,19 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!"mobile_signal".equals(idName) && !"mobile_type".equals(idName)) {
             return;
         }
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        if (!isSignalCodeDrawEnabled(config)) {
+            return;
+        }
+        if ("mobile_type".equals(idName)) {
+            hideMobileTypeView(view);
+            return;
+        }
         String drawableName = drawable == null ? "null" : drawable.getClass().getName();
         int level = drawable == null ? -1 : drawable.getLevel();
         if ("mobile_signal".equals(idName) && drawable != null) {
             SIGNAL_DRAWABLE_OWNERS.put(drawable, view);
         }
-        reportSignalDebug(view, "setImageDrawable", drawableName, "level=" + level);
         if ("mobile_signal".equals(idName) && !(drawable instanceof SignalIconDrawable)) {
             applySignalIconOverride(view);
         }
@@ -1198,15 +1217,17 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!"mobile_signal".equals(idName) && !"mobile_type".equals(idName)) {
             return;
         }
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        if (!isSignalCodeDrawEnabled(config)) {
+            return;
+        }
+        if ("mobile_type".equals(idName)) {
+            hideMobileTypeView(view);
+            return;
+        }
         if ("mobile_signal".equals(idName) && view instanceof ImageView) {
             applySignalIconOverride((ImageView) view);
         }
-        SignalDebugInfo info = TRACKED_SIGNAL_VIEWS.get(view);
-        if (info == null || view.getWidth() == info.lastWidth && view.getHeight() == info.lastHeight) {
-            return;
-        }
-        reportSignalDebug(view, "layout", info.resourceName,
-                "size=" + view.getWidth() + "x" + view.getHeight());
     }
 
     private static void onSignalDrawableLevelChanged(Drawable drawable, int rawLevel) {
@@ -1214,154 +1235,12 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         View owner = SIGNAL_DRAWABLE_OWNERS.get(drawable);
+        ModuleConfig config = owner == null ? ModuleConfig.load(ModuleConfig.getSystemUiContext())
+                : ModuleConfig.load(owner.getContext());
+        if (!isSignalCodeDrawEnabled(config)) {
+            return;
+        }
         LAST_SIGNAL_LEVEL = normalizeSignalLevel(rawLevel);
-        if (owner != null) {
-            reportSignalDebug(owner, "signal_level_changed", drawable.getClass().getName(),
-                    "rawLevel=" + rawLevel + " bars=" + LAST_SIGNAL_LEVEL);
-        }
-    }
-
-    private static void reportSignalDebug(View view, String event, String resourceName, String extra) {
-        if (view == null) {
-            return;
-        }
-        Context context = view.getContext();
-        ModuleConfig config = ModuleConfig.load(context);
-        if (!config.enabled || !config.signalHookDebugEnabled) {
-            return;
-        }
-        handleSignalDebugReset(config);
-        String idName = getSystemUiIdName(view);
-        SignalDebugInfo info = rememberSignalDebugInfo(view);
-        info.event = safeText(event);
-        info.idName = safeText(idName);
-        if (resourceName != null) {
-            info.resourceName = safeText(resourceName);
-        }
-        info.viewClass = view.getClass().getName();
-        info.parentIdName = safeText(resolveParentIdName(view));
-        info.width = view.getWidth();
-        info.height = view.getHeight();
-        info.lastWidth = info.width;
-        info.lastHeight = info.height;
-        info.left = view.getLeft();
-        info.top = view.getTop();
-        info.right = view.getRight();
-        info.bottom = view.getBottom();
-        info.visibility = visibilityToString(view.getVisibility());
-        info.alpha = view.getAlpha();
-        info.signalBars = resolveSignalBars(info.idName, view);
-        info.activeSubscriptionCount = resolveActiveSubscriptionCount(context);
-        info.mergedDualSignal = info.activeSubscriptionCount >= 2;
-        info.hasSecondaryDots = info.mergedDualSignal;
-        info.subId = resolveBestSignalSubId();
-        info.timestamp = System.currentTimeMillis();
-        String debugText = buildSignalDebugText(info, extra);
-        persistSignalDebugStatus(context, debugText, info.timestamp);
-        if (config.signalHookLogcatEnabled) {
-            android.util.Log.i(TAG, LOG_PREFIX + " " + debugText);
-        }
-    }
-
-    private static void handleSignalDebugReset(ModuleConfig config) {
-        if (config == null) {
-            return;
-        }
-        int seq = config.signalDebugResetSeq;
-        if (LAST_SIGNAL_DEBUG_RESET_SEQ == seq) {
-            return;
-        }
-        LAST_SIGNAL_DEBUG_RESET_SEQ = seq;
-        TRACKED_SIGNAL_VIEWS.clear();
-    }
-
-    private static SignalDebugInfo rememberSignalDebugInfo(View view) {
-        SignalDebugInfo info = TRACKED_SIGNAL_VIEWS.get(view);
-        if (info == null) {
-            info = new SignalDebugInfo();
-            TRACKED_SIGNAL_VIEWS.put(view, info);
-        }
-        return info;
-    }
-
-    private static String buildSignalDebugText(SignalDebugInfo info, String extra) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("signal event=").append(safeText(info.event));
-        builder.append(" id=").append(safeText(info.idName));
-        builder.append(" res=").append(safeText(info.resourceName));
-        builder.append(" parent=").append(safeText(info.parentIdName));
-        builder.append(" view=").append(safeText(info.viewClass));
-        builder.append(" rect=").append(info.left).append(',').append(info.top)
-                .append(',').append(info.right).append(',').append(info.bottom);
-        builder.append(" size=").append(info.width).append('x').append(info.height);
-        builder.append(" visibility=").append(safeText(info.visibility));
-        builder.append(" alpha=").append(String.format(Locale.US, "%.2f", info.alpha));
-        builder.append(" bars=").append(info.signalBars);
-        builder.append(" subId=").append(info.subId);
-        builder.append(" simCount=").append(info.activeSubscriptionCount);
-        builder.append(" mergedDual=").append(info.mergedDualSignal ? "1" : "0");
-        builder.append(" dots=").append(info.hasSecondaryDots ? "1" : "0");
-        if (extra != null && extra.length() > 0) {
-            builder.append(' ').append(extra);
-        }
-        return builder.toString();
-    }
-
-    private static void persistSignalDebugStatus(Context context, String text, long timestamp) {
-        if (context == null) {
-            return;
-        }
-        try {
-            ContentValues values = new ContentValues();
-            values.put(SettingsStore.KEY_SIGNAL_DEBUG_STATUS, text);
-            values.put(SettingsStore.KEY_SIGNAL_DEBUG_UPDATED_AT, formatDebugTime(timestamp));
-            context.getContentResolver().update(SettingsStore.SETTINGS_URI, values, null, null);
-        } catch (Throwable t) {
-            if (MODULE != null) {
-                MODULE.log(android.util.Log.WARN, TAG, "Failed to persist signal debug status", t);
-            }
-        }
-    }
-
-    private static String formatDebugTime(long timestamp) {
-        return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
-                .format(new Date(timestamp));
-    }
-
-    private static String resolveResourceName(Context context, int resId) {
-        if (context == null || resId == 0) {
-            return "";
-        }
-        try {
-            return context.getResources().getResourceEntryName(resId);
-        } catch (Throwable ignored) {
-            return "resId:" + resId;
-        }
-    }
-
-    private static String resolveParentIdName(View view) {
-        ViewParent parent = view == null ? null : view.getParent();
-        if (parent instanceof View) {
-            return getSystemUiIdName((View) parent);
-        }
-        return "";
-    }
-
-    private static String visibilityToString(int visibility) {
-        if (visibility == View.VISIBLE) {
-            return "VISIBLE";
-        }
-        if (visibility == View.INVISIBLE) {
-            return "INVISIBLE";
-        }
-        if (visibility == View.GONE) {
-            return "GONE";
-        }
-        return Integer.toString(visibility);
-    }
-
-    private static String safeText(String text) {
-        return text == null || text.length() == 0 ? "-" : text;
     }
 
     private static int resolveSignalBars(String idName, View view) {
@@ -1408,20 +1287,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private static int resolveBestSignalSubId() {
-        if (LAST_SIGNAL_SUB_ID != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-            return LAST_SIGNAL_SUB_ID;
-        }
-        return -1;
-    }
-
     private static void applySignalIconOverride(ImageView view) {
         if (view == null) {
             return;
         }
         Context context = view.getContext();
         ModuleConfig config = ModuleConfig.load(context);
-        if (config == null || !config.enabled) {
+        if (!isSignalCodeDrawEnabled(config)) {
             return;
         }
         int simCount = resolveActiveSubscriptionCount(context);
@@ -1450,6 +1322,18 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         view.setImageDrawable(drawable);
         SIGNAL_DRAWABLE_OWNERS.put(drawable, view);
+    }
+
+    private static void hideMobileTypeView(View view) {
+        if (view == null || view.getVisibility() == View.GONE) {
+            return;
+        }
+        view.setVisibility(View.GONE);
+        ViewParent parent = view.getParent();
+        if (parent instanceof View) {
+            ((View) parent).requestLayout();
+        }
+        view.requestLayout();
     }
 
     private static void updateSignalSlotVisibility(View mobileGroup, boolean mergedDual) {
@@ -1938,7 +1822,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                 if (!config.enabled) {
                     continue;
                 }
-                resizeIosBatteryView(batteryView, config, ReflectUtils.getBooleanField(batteryView, "mCharging", false));
+                if (isBatteryCodeDrawEnabled(config)) {
+                    resizeIosBatteryView(batteryView, config, ReflectUtils.getBooleanField(batteryView, "mCharging", false));
+                }
+                ReflectUtils.invokeMethod(batteryView, "apply", new Class[]{boolean.class}, true);
                 batteryView.requestLayout();
                 batteryView.invalidate();
             }
@@ -2094,27 +1981,4 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private static final class SignalDebugInfo {
-        String event = "";
-        String idName = "";
-        String resourceName = "";
-        String viewClass = "";
-        String parentIdName = "";
-        String visibility = "";
-        int width;
-        int height;
-        int left;
-        int top;
-        int right;
-        int bottom;
-        int lastWidth = -1;
-        int lastHeight = -1;
-        int signalBars = -1;
-        int subId = -1;
-        int activeSubscriptionCount = -1;
-        boolean mergedDualSignal;
-        boolean hasSecondaryDots;
-        float alpha;
-        long timestamp;
-    }
 }

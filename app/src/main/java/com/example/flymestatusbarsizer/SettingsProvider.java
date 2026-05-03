@@ -18,6 +18,18 @@ public class SettingsProvider extends ContentProvider {
         SharedPreferences prefs = SettingsStore.prefs(getContext());
         MatrixCursor cursor = new MatrixCursor(new String[]{"key", "value"});
         add(cursor, SettingsStore.KEY_ENABLED, prefs.getBoolean(SettingsStore.KEY_ENABLED, SettingsStore.DEFAULT_ENABLED));
+        add(cursor, SettingsStore.KEY_BATTERY_CODE_DRAW_ENABLED,
+                prefs.getBoolean(SettingsStore.KEY_BATTERY_CODE_DRAW_ENABLED,
+                        SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED));
+        add(cursor, SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
+                prefs.getBoolean(SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
+                        SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED));
+        add(cursor, SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
+                prefs.getBoolean(SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
+                        SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED));
+        add(cursor, SettingsStore.KEY_BATTERY_ICON_STYLE,
+                prefs.getInt(SettingsStore.KEY_BATTERY_ICON_STYLE,
+                        SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
                 prefs.getBoolean(SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
                         SettingsStore.DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED));
@@ -54,27 +66,12 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_MBACK_HIDE_PILL,
                 prefs.getBoolean(SettingsStore.KEY_MBACK_HIDE_PILL,
                         SettingsStore.DEFAULT_MBACK_HIDE_PILL));
-        add(cursor, SettingsStore.KEY_SIGNAL_HOOK_DEBUG_ENABLED,
-                prefs.getBoolean(SettingsStore.KEY_SIGNAL_HOOK_DEBUG_ENABLED,
-                        SettingsStore.DEFAULT_SIGNAL_HOOK_DEBUG_ENABLED));
-        add(cursor, SettingsStore.KEY_SIGNAL_HOOK_LOGCAT_ENABLED,
-                prefs.getBoolean(SettingsStore.KEY_SIGNAL_HOOK_LOGCAT_ENABLED,
-                        SettingsStore.DEFAULT_SIGNAL_HOOK_LOGCAT_ENABLED));
         add(cursor, SettingsStore.KEY_MBACK_INSET_SIZE,
                 prefs.getInt(SettingsStore.KEY_MBACK_INSET_SIZE,
                         SettingsStore.DEFAULT_MBACK_INSET_SIZE));
         add(cursor, SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT,
                 prefs.getInt(SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT,
                         SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT));
-        add(cursor, SettingsStore.KEY_SIGNAL_DEBUG_RESET_SEQ,
-                prefs.getInt(SettingsStore.KEY_SIGNAL_DEBUG_RESET_SEQ,
-                        SettingsStore.DEFAULT_SIGNAL_DEBUG_RESET_SEQ));
-        add(cursor, SettingsStore.KEY_SIGNAL_DEBUG_STATUS,
-                prefs.getString(SettingsStore.KEY_SIGNAL_DEBUG_STATUS,
-                        SettingsStore.DEFAULT_SIGNAL_DEBUG_STATUS));
-        add(cursor, SettingsStore.KEY_SIGNAL_DEBUG_UPDATED_AT,
-                prefs.getString(SettingsStore.KEY_SIGNAL_DEBUG_UPDATED_AT,
-                        SettingsStore.DEFAULT_SIGNAL_DEBUG_UPDATED_AT));
         return cursor;
     }
 

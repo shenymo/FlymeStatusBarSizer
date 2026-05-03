@@ -10,6 +10,10 @@ final class SettingsStore {
     static final Uri SETTINGS_URI = Uri.parse("content://" + AUTHORITY + "/settings");
 
     static final String KEY_ENABLED = "enabled";
+    static final String KEY_BATTERY_CODE_DRAW_ENABLED = "battery_code_draw_enabled";
+    static final String KEY_SIGNAL_CODE_DRAW_ENABLED = "signal_code_draw_enabled";
+    static final String KEY_BATTERY_ICON_STYLE = "battery_icon_style";
+    static final String KEY_BATTERY_LEVEL_TEXT_ENABLED = "battery_level_text_enabled";
     static final String KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED = "connection_rate_auto_visibility_enabled";
     static final String KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB = "connection_rate_show_threshold_kb";
     static final String KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB = "connection_rate_hide_threshold_kb";
@@ -26,12 +30,13 @@ final class SettingsStore {
     static final String KEY_MBACK_INSET_SIZE = "mback_inset_size";
     static final String KEY_MBACK_NAV_BAR_HEIGHT = "mback_nav_bar_height";
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
-    static final String KEY_SIGNAL_HOOK_DEBUG_ENABLED = "signal_hook_debug_enabled";
-    static final String KEY_SIGNAL_HOOK_LOGCAT_ENABLED = "signal_hook_logcat_enabled";
-    static final String KEY_SIGNAL_DEBUG_STATUS = "signal_debug_status";
-    static final String KEY_SIGNAL_DEBUG_UPDATED_AT = "signal_debug_updated_at";
-    static final String KEY_SIGNAL_DEBUG_RESET_SEQ = "signal_debug_reset_seq";
     static final boolean DEFAULT_ENABLED = true;
+    static final boolean DEFAULT_BATTERY_CODE_DRAW_ENABLED = true;
+    static final boolean DEFAULT_SIGNAL_CODE_DRAW_ENABLED = true;
+    static final int BATTERY_STYLE_IOS = 0;
+    static final int BATTERY_STYLE_ONEUI = 1;
+    static final int DEFAULT_BATTERY_ICON_STYLE = BATTERY_STYLE_IOS;
+    static final boolean DEFAULT_BATTERY_LEVEL_TEXT_ENABLED = true;
     static final boolean DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED = false;
     static final int DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB = 100;
     static final int DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB = 32;
@@ -48,24 +53,22 @@ final class SettingsStore {
     static final int DEFAULT_MBACK_INSET_SIZE = -1;
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
-    static final boolean DEFAULT_SIGNAL_HOOK_DEBUG_ENABLED = false;
-    static final boolean DEFAULT_SIGNAL_HOOK_LOGCAT_ENABLED = true;
-    static final String DEFAULT_SIGNAL_DEBUG_STATUS = "";
-    static final String DEFAULT_SIGNAL_DEBUG_UPDATED_AT = "";
-    static final int DEFAULT_SIGNAL_DEBUG_RESET_SEQ = 0;
     static final String[] INT_KEYS = {
+            KEY_BATTERY_ICON_STYLE,
             KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB,
             KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB,
             KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT,
             KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT,
             KEY_CLOCK_FONT_WEIGHT,
             KEY_MBACK_INSET_SIZE,
-            KEY_MBACK_NAV_BAR_HEIGHT,
-            KEY_SIGNAL_DEBUG_RESET_SEQ
+            KEY_MBACK_NAV_BAR_HEIGHT
     };
 
     static final String[] BOOLEAN_KEYS = {
             KEY_ENABLED,
+            KEY_BATTERY_CODE_DRAW_ENABLED,
+            KEY_SIGNAL_CODE_DRAW_ENABLED,
+            KEY_BATTERY_LEVEL_TEXT_ENABLED,
             KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
             KEY_SHOW_CLOCK_WEEKDAY,
             KEY_CLOCK_WEEKDAY_HIDE_PREFIX,
@@ -73,15 +76,11 @@ final class SettingsStore {
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_BACKGROUND_TRANSPARENT,
-            KEY_MBACK_HIDE_PILL,
-            KEY_SIGNAL_HOOK_DEBUG_ENABLED,
-            KEY_SIGNAL_HOOK_LOGCAT_ENABLED
+            KEY_MBACK_HIDE_PILL
     };
 
     static final String[] STRING_KEYS = {
-            KEY_MBACK_LONG_TOUCH_INTENT_URI,
-            KEY_SIGNAL_DEBUG_STATUS,
-            KEY_SIGNAL_DEBUG_UPDATED_AT
+            KEY_MBACK_LONG_TOUCH_INTENT_URI
     };
 
     private SettingsStore() {
@@ -113,6 +112,8 @@ final class SettingsStore {
 
     static int defaultInt(String key) {
         switch (key) {
+            case KEY_BATTERY_ICON_STYLE:
+                return DEFAULT_BATTERY_ICON_STYLE;
             case KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB:
                 return DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB;
             case KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB:
@@ -127,8 +128,6 @@ final class SettingsStore {
                 return DEFAULT_MBACK_INSET_SIZE;
             case KEY_MBACK_NAV_BAR_HEIGHT:
                 return DEFAULT_MBACK_NAV_BAR_HEIGHT;
-            case KEY_SIGNAL_DEBUG_RESET_SEQ:
-                return DEFAULT_SIGNAL_DEBUG_RESET_SEQ;
             default:
                 return 0;
         }
@@ -138,6 +137,12 @@ final class SettingsStore {
         switch (key) {
             case KEY_ENABLED:
                 return DEFAULT_ENABLED;
+            case KEY_BATTERY_CODE_DRAW_ENABLED:
+                return DEFAULT_BATTERY_CODE_DRAW_ENABLED;
+            case KEY_SIGNAL_CODE_DRAW_ENABLED:
+                return DEFAULT_SIGNAL_CODE_DRAW_ENABLED;
+            case KEY_BATTERY_LEVEL_TEXT_ENABLED:
+                return DEFAULT_BATTERY_LEVEL_TEXT_ENABLED;
             case KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED:
                 return DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED;
             case KEY_SHOW_CLOCK_WEEKDAY:
@@ -154,10 +159,6 @@ final class SettingsStore {
                 return DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT;
             case KEY_MBACK_HIDE_PILL:
                 return DEFAULT_MBACK_HIDE_PILL;
-            case KEY_SIGNAL_HOOK_DEBUG_ENABLED:
-                return DEFAULT_SIGNAL_HOOK_DEBUG_ENABLED;
-            case KEY_SIGNAL_HOOK_LOGCAT_ENABLED:
-                return DEFAULT_SIGNAL_HOOK_LOGCAT_ENABLED;
             default:
                 return false;
         }
@@ -167,19 +168,14 @@ final class SettingsStore {
         if (KEY_MBACK_LONG_TOUCH_INTENT_URI.equals(key)) {
             return DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
         }
-        if (KEY_SIGNAL_DEBUG_STATUS.equals(key)) {
-            return DEFAULT_SIGNAL_DEBUG_STATUS;
-        }
-        if (KEY_SIGNAL_DEBUG_UPDATED_AT.equals(key)) {
-            return DEFAULT_SIGNAL_DEBUG_UPDATED_AT;
-        }
         return "";
     }
 
+    static int normalizeBatteryStyle(int value) {
+        return value == BATTERY_STYLE_ONEUI ? BATTERY_STYLE_ONEUI : BATTERY_STYLE_IOS;
+    }
+
     static boolean includeInBackup(String key) {
-        return key != null
-                && !KEY_SIGNAL_DEBUG_STATUS.equals(key)
-                && !KEY_SIGNAL_DEBUG_UPDATED_AT.equals(key)
-                && !KEY_SIGNAL_DEBUG_RESET_SEQ.equals(key);
+        return key != null;
     }
 }

@@ -27,6 +27,8 @@ public final class RightIconGroupPreviewView extends View {
     private final Rect mergedSignalRect = new Rect();
 
     private int previewTintColor = DEFAULT_TEXT_COLOR;
+    private int batteryStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
+    private boolean batteryLevelTextEnabled = true;
 
     public RightIconGroupPreviewView(Context context) {
         super(context);
@@ -57,6 +59,23 @@ public final class RightIconGroupPreviewView extends View {
             return;
         }
         previewTintColor = resolved;
+        invalidate();
+    }
+
+    public void setBatteryLevelTextEnabled(boolean enabled) {
+        if (batteryLevelTextEnabled == enabled) {
+            return;
+        }
+        batteryLevelTextEnabled = enabled;
+        invalidate();
+    }
+
+    public void setBatteryStyle(int style) {
+        int normalized = SettingsStore.normalizeBatteryStyle(style);
+        if (batteryStyle == normalized) {
+            return;
+        }
+        batteryStyle = normalized;
         invalidate();
     }
 
@@ -113,7 +132,8 @@ public final class RightIconGroupPreviewView extends View {
         int iconTop = Math.round(centerY - iconSize / 2f);
         int batteryLeft = Math.round(anchorRight - iconSize);
         batteryRect.set(batteryLeft, iconTop, batteryLeft + iconSize, iconTop + iconSize);
-        IosBatteryPainter.draw(canvas, batteryRect, PREVIEW_BATTERY_LEVEL, false, false, previewTintColor);
+        drawBattery(canvas, batteryRect, PREVIEW_BATTERY_LEVEL, false, false,
+                previewTintColor, resolveBatteryTextColor(previewTintColor), batteryLevelTextEnabled);
 
         float currentRight = batteryLeft - dp(10);
         Rect target = mergedDual ? mergedSignalRect : singleSignalRect;
@@ -150,6 +170,25 @@ public final class RightIconGroupPreviewView extends View {
         hintPaint.setTextSize(dp(13));
         float firstLineY = panelRect.bottom - dp(28);
         canvas.drawText("两条状态栏都会按实际位置直接画图标，便于调比例", panelRect.centerX(), firstLineY, hintPaint);
+    }
+
+    private static int resolveBatteryTextColor(int tintColor) {
+        int color = Color.alpha(tintColor) == 0 ? DEFAULT_TEXT_COLOR : tintColor;
+        double luminance = (0.299d * Color.red(color)
+                + 0.587d * Color.green(color)
+                + 0.114d * Color.blue(color)) / 255d;
+        return luminance >= 0.5d ? Color.BLACK : Color.WHITE;
+    }
+
+    private void drawBattery(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
+            int fillColor, int textColor, boolean showLevelText) {
+        if (SettingsStore.normalizeBatteryStyle(batteryStyle) == SettingsStore.BATTERY_STYLE_ONEUI) {
+            OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
+                    fillColor, textColor, showLevelText);
+            return;
+        }
+        IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
+                fillColor, textColor, showLevelText);
     }
 
     private int dp(int value) {
