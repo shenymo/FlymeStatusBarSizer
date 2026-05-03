@@ -1172,6 +1172,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         String resName = resolveResourceName(view.getContext(), resId);
         reportSignalDebug(view, "setImageResource", resName, "resId=" + resId);
+        if ("mobile_signal".equals(idName)) {
+            applySignalIconOverride(view);
+        }
     }
 
     private static void onSignalImageDrawableAssigned(ImageView view, Drawable drawable) {
@@ -1185,12 +1188,18 @@ public class FlymeStatusBarSizer extends XposedModule {
             SIGNAL_DRAWABLE_OWNERS.put(drawable, view);
         }
         reportSignalDebug(view, "setImageDrawable", drawableName, "level=" + level);
+        if ("mobile_signal".equals(idName) && !(drawable instanceof SignalIconDrawable)) {
+            applySignalIconOverride(view);
+        }
     }
 
     private static void onSignalViewLayoutChanged(View view) {
         String idName = getSystemUiIdName(view);
         if (!"mobile_signal".equals(idName) && !"mobile_type".equals(idName)) {
             return;
+        }
+        if ("mobile_signal".equals(idName) && view instanceof ImageView) {
+            applySignalIconOverride((ImageView) view);
         }
         SignalDebugInfo info = TRACKED_SIGNAL_VIEWS.get(view);
         if (info == null || view.getWidth() == info.lastWidth && view.getHeight() == info.lastHeight) {
@@ -1404,6 +1413,167 @@ public class FlymeStatusBarSizer extends XposedModule {
             return LAST_SIGNAL_SUB_ID;
         }
         return -1;
+    }
+
+    private static void applySignalIconOverride(ImageView view) {
+        if (view == null) {
+            return;
+        }
+        Context context = view.getContext();
+        ModuleConfig config = ModuleConfig.load(context);
+        if (config == null || !config.enabled) {
+            return;
+        }
+        int simCount = resolveActiveSubscriptionCount(context);
+        boolean mergedDual = simCount >= 2;
+        View mobileGroup = findMobileSignalGroup(view);
+        updateSignalSlotVisibility(mobileGroup, mergedDual);
+        if (mergedDual && !isPrimarySignalView(view, mobileGroup)) {
+            return;
+        }
+        resizeSignalIconView(view);
+        disableAncestorClipping(view, 6);
+        int intrinsicHeight = resolveSignalIconIntrinsicHeight(view);
+        int intrinsicWidth = SignalPreviewPainter.resolveIntrinsicWidth(intrinsicHeight);
+        Drawable current = view.getDrawable();
+        if (current instanceof SignalIconDrawable
+                && ((SignalIconDrawable) current).matchesGeometry(mergedDual, intrinsicWidth, intrinsicHeight)) {
+            view.invalidate();
+            return;
+        }
+        SignalIconDrawable drawable = new SignalIconDrawable(mergedDual, intrinsicWidth, intrinsicHeight);
+        drawable.setAlpha(view.getImageAlpha());
+        drawable.setState(view.getDrawableState());
+        drawable.setTintList(view.getImageTintList());
+        if (current != null) {
+            drawable.setColorFilter(current.getColorFilter());
+        }
+        view.setImageDrawable(drawable);
+        SIGNAL_DRAWABLE_OWNERS.put(drawable, view);
+    }
+
+    private static void updateSignalSlotVisibility(View mobileGroup, boolean mergedDual) {
+        ArrayList<View> groups = collectSiblingMobileSignalGroups(mobileGroup);
+        if (groups.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < groups.size(); i++) {
+            View group = groups.get(i);
+            int visibility = !mergedDual || i == 0 ? View.VISIBLE : View.GONE;
+            if (group.getVisibility() != visibility) {
+                group.setVisibility(visibility);
+            }
+        }
+    }
+
+    private static boolean isPrimarySignalView(ImageView view, View mobileGroup) {
+        ArrayList<View> groups = collectSiblingMobileSignalGroups(mobileGroup);
+        if (groups.isEmpty()) {
+            return true;
+        }
+        View primaryGroup = groups.get(0);
+        View primarySignalView = findSystemUiChild(primaryGroup, "mobile_signal");
+        return primarySignalView == view;
+    }
+
+    private static ArrayList<View> collectSiblingMobileSignalGroups(View mobileGroup) {
+        ArrayList<View> groups = new ArrayList<>();
+        if (mobileGroup == null) {
+            return groups;
+        }
+        ViewGroup parent = asViewGroup(mobileGroup.getParent());
+        if (parent == null) {
+            groups.add(mobileGroup);
+            return groups;
+        }
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            View child = parent.getChildAt(i);
+            if (isMobileSignalGroupView(child)) {
+                groups.add(child);
+            }
+        }
+        if (groups.isEmpty()) {
+            groups.add(mobileGroup);
+        }
+        return groups;
+    }
+
+    private static View findMobileSignalGroup(View view) {
+        View current = view;
+        while (current != null) {
+            if (isMobileSignalGroupView(current)) {
+                return current;
+            }
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return null;
+    }
+
+    private static boolean isMobileSignalGroupView(View view) {
+        if (view == null) {
+            return false;
+        }
+        String name = view.getClass().getName();
+        return "com.flyme.systemui.statusbar.net.mobile.ui.view.FlymeModernStatusBarMobileView".equals(name)
+                || "com.android.systemui.statusbar.pipeline.mobile.ui.view.ModernStatusBarMobileView".equals(name)
+                || "com.android.systemui.statusbar.pipeline.mobile.ui.view.ModernShadeCarrierGroupMobileView".equals(name);
+    }
+
+    private static ViewGroup asViewGroup(ViewParent parent) {
+        return parent instanceof ViewGroup ? (ViewGroup) parent : null;
+    }
+
+    private static void resizeSignalIconView(ImageView view) {
+        if (view == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        int targetHeight = resolveTargetSignalIconBoxSize(view);
+        int targetWidth = SignalPreviewPainter.resolveIntrinsicWidth(targetHeight);
+        boolean changed = false;
+        if (lp.width != targetWidth) {
+            lp.width = targetWidth;
+            changed = true;
+        }
+        if (lp.height != targetHeight) {
+            lp.height = targetHeight;
+            changed = true;
+        }
+        if (changed) {
+            view.setLayoutParams(lp);
+            view.requestLayout();
+        }
+    }
+
+    private static int resolveTargetSignalIconBoxSize(ImageView view) {
+        return Math.max(1, dp(view, 24));
+    }
+
+    private static int resolveSignalIconIntrinsicHeight(ImageView view) {
+        if (view == null) {
+            return 1;
+        }
+        if (view.getHeight() > 0) {
+            return SignalPreviewPainter.resolveIntrinsicHeight(view.getHeight());
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp != null && lp.height > 0) {
+            return SignalPreviewPainter.resolveIntrinsicHeight(lp.height);
+        }
+        int resId = view.getResources().getIdentifier("status_bar_mobile_signal_size",
+                "dimen", view.getContext().getPackageName());
+        if (resId != 0) {
+            try {
+                return SignalPreviewPainter.resolveIntrinsicHeight(
+                        view.getResources().getDimensionPixelSize(resId));
+            } catch (Resources.NotFoundException ignored) {
+            }
+        }
+        return SignalPreviewPainter.resolveIntrinsicHeight(dp(view, 15));
     }
 
     private static ConnectionRateThresholdState rememberConnectionRateState(View view) {
