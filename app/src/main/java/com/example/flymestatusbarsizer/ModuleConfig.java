@@ -19,6 +19,7 @@ final class ModuleConfig {
     boolean signalCodeDrawEnabled = SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED;
     int batteryIconStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
     boolean batteryLevelTextEnabled = SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED;
+    int batteryTextFont = SettingsStore.DEFAULT_BATTERY_TEXT_FONT;
     int statusBarIconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
     int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
     boolean connectionRateThresholdEnabled = SettingsStore.DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED;
@@ -99,6 +100,9 @@ final class ModuleConfig {
                     parseInt(value, SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
         } else if (SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED.equals(key)) {
             batteryLevelTextEnabled = "1".equals(value);
+        } else if (SettingsStore.KEY_BATTERY_TEXT_FONT.equals(key)) {
+            batteryTextFont = SettingsStore.normalizeBatteryTextFont(
+                    parseInt(value, SettingsStore.DEFAULT_BATTERY_TEXT_FONT));
         } else if (SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT.equals(key)) {
             statusBarIconScalePercent = SettingsStore.normalizeScalePercent(
                     parseInt(value, SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT));

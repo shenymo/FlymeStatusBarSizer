@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.util.AttributeSet;
 import android.view.View;
 
@@ -29,6 +30,7 @@ public final class RightIconGroupPreviewView extends View {
     private int previewTintColor = DEFAULT_TEXT_COLOR;
     private int batteryStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
     private boolean batteryLevelTextEnabled = true;
+    private int batteryTextFont = SettingsStore.DEFAULT_BATTERY_TEXT_FONT;
     private int iconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
     private int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
 
@@ -78,6 +80,15 @@ public final class RightIconGroupPreviewView extends View {
             return;
         }
         batteryStyle = normalized;
+        invalidate();
+    }
+
+    public void setBatteryTextFont(int font) {
+        int normalized = SettingsStore.normalizeBatteryTextFont(font);
+        if (batteryTextFont == normalized) {
+            return;
+        }
+        batteryTextFont = normalized;
         invalidate();
     }
 
@@ -202,13 +213,14 @@ public final class RightIconGroupPreviewView extends View {
 
     private void drawBattery(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
             int fillColor, int textColor, boolean showLevelText) {
+        Typeface typeface = BatteryTextFontHelper.resolveTypeface(getContext(), batteryTextFont);
         if (SettingsStore.normalizeBatteryStyle(batteryStyle) == SettingsStore.BATTERY_STYLE_ONEUI) {
             OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
-                    fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f);
+                    fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface);
             return;
         }
         IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
-                fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f);
+                fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface);
     }
 
     private int dp(int value) {

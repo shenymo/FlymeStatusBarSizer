@@ -14,6 +14,7 @@ final class SettingsStore {
     static final String KEY_SIGNAL_CODE_DRAW_ENABLED = "signal_code_draw_enabled";
     static final String KEY_BATTERY_ICON_STYLE = "battery_icon_style";
     static final String KEY_BATTERY_LEVEL_TEXT_ENABLED = "battery_level_text_enabled";
+    static final String KEY_BATTERY_TEXT_FONT = "battery_text_font";
     static final String KEY_STATUS_BAR_ICON_SCALE_PERCENT = "status_bar_icon_scale_percent";
     static final String KEY_BATTERY_INNER_TEXT_SCALE_PERCENT = "battery_inner_text_scale_percent";
     static final String KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED = "connection_rate_auto_visibility_enabled";
@@ -38,8 +39,16 @@ final class SettingsStore {
     static final boolean DEFAULT_SIGNAL_CODE_DRAW_ENABLED = true;
     static final int BATTERY_STYLE_IOS = 0;
     static final int BATTERY_STYLE_ONEUI = 1;
+    static final int BATTERY_TEXT_FONT_SYSTEM_DEFAULT = 0;
+    static final int BATTERY_TEXT_FONT_SERIF = 1;
+    static final int BATTERY_TEXT_FONT_MONOSPACE = 2;
+    static final int BATTERY_TEXT_FONT_SANS_SERIF = 3;
+    static final int BATTERY_TEXT_FONT_SANS_SERIF_MEDIUM = 4;
+    static final int BATTERY_TEXT_FONT_SANS_SERIF_CONDENSED = 5;
+    static final int BATTERY_TEXT_FONT_MI_SANS_LATIN_VF_NUMBER = 6;
     static final int DEFAULT_BATTERY_ICON_STYLE = BATTERY_STYLE_IOS;
     static final boolean DEFAULT_BATTERY_LEVEL_TEXT_ENABLED = true;
+    static final int DEFAULT_BATTERY_TEXT_FONT = BATTERY_TEXT_FONT_SYSTEM_DEFAULT;
     static final int DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT = 100;
     static final int DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT = 100;
     static final boolean DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED = false;
@@ -61,6 +70,7 @@ final class SettingsStore {
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
     static final String[] INT_KEYS = {
             KEY_BATTERY_ICON_STYLE,
+            KEY_BATTERY_TEXT_FONT,
             KEY_STATUS_BAR_ICON_SCALE_PERCENT,
             KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
             KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB,
@@ -123,6 +133,8 @@ final class SettingsStore {
         switch (key) {
             case KEY_BATTERY_ICON_STYLE:
                 return DEFAULT_BATTERY_ICON_STYLE;
+            case KEY_BATTERY_TEXT_FONT:
+                return DEFAULT_BATTERY_TEXT_FONT;
             case KEY_STATUS_BAR_ICON_SCALE_PERCENT:
                 return DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
             case KEY_BATTERY_INNER_TEXT_SCALE_PERCENT:
@@ -188,6 +200,20 @@ final class SettingsStore {
 
     static int normalizeBatteryStyle(int value) {
         return value == BATTERY_STYLE_ONEUI ? BATTERY_STYLE_ONEUI : BATTERY_STYLE_IOS;
+    }
+
+    static int normalizeBatteryTextFont(int value) {
+        switch (value) {
+            case BATTERY_TEXT_FONT_SERIF:
+            case BATTERY_TEXT_FONT_MONOSPACE:
+            case BATTERY_TEXT_FONT_SANS_SERIF:
+            case BATTERY_TEXT_FONT_SANS_SERIF_MEDIUM:
+            case BATTERY_TEXT_FONT_SANS_SERIF_CONDENSED:
+            case BATTERY_TEXT_FONT_MI_SANS_LATIN_VF_NUMBER:
+                return value;
+            default:
+                return BATTERY_TEXT_FONT_SYSTEM_DEFAULT;
+        }
     }
 
     static int normalizeScalePercent(int value) {

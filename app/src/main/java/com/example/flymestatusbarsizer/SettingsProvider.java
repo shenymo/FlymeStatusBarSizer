@@ -30,6 +30,10 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_BATTERY_ICON_STYLE,
                 prefs.getInt(SettingsStore.KEY_BATTERY_ICON_STYLE,
                         SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
+        add(cursor, SettingsStore.KEY_BATTERY_TEXT_FONT,
+                SettingsStore.normalizeBatteryTextFont(
+                        prefs.getInt(SettingsStore.KEY_BATTERY_TEXT_FONT,
+                                SettingsStore.DEFAULT_BATTERY_TEXT_FONT)));
         add(cursor, SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,
                 SettingsStore.normalizeScalePercent(
                         prefs.getInt(SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,

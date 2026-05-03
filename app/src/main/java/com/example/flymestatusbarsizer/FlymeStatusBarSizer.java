@@ -977,16 +977,19 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static void drawBatteryByStyle(ModuleConfig config, Canvas canvas, Rect bounds, int level,
             boolean pluggedIn, boolean charging, int fillColor, int textColor, boolean showLevelText) {
         float textScale = resolveBatteryInnerTextScale(config);
+        Typeface typeface = BatteryTextFontHelper.resolveTypeface(ModuleConfig.getSystemUiContext(), config == null
+                ? SettingsStore.DEFAULT_BATTERY_TEXT_FONT
+                : config.batteryTextFont);
         int style = config == null
                 ? SettingsStore.DEFAULT_BATTERY_ICON_STYLE
                 : SettingsStore.normalizeBatteryStyle(config.batteryIconStyle);
         if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
             OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
-                    fillColor, textColor, showLevelText, textScale);
+                    fillColor, textColor, showLevelText, textScale, typeface);
             return;
         }
         IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
-                fillColor, textColor, showLevelText, textScale);
+                fillColor, textColor, showLevelText, textScale, typeface);
     }
 
     private static int resolveBatteryTintColor(Object target, int fallback) {

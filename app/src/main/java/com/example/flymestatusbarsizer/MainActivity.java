@@ -329,6 +329,9 @@ public class MainActivity extends Activity {
         previewView.setBatteryStyle(readIntSetting(
                 SettingsStore.KEY_BATTERY_ICON_STYLE,
                 SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
+        previewView.setBatteryTextFont(readIntSetting(
+                SettingsStore.KEY_BATTERY_TEXT_FONT,
+                SettingsStore.DEFAULT_BATTERY_TEXT_FONT));
         previewView.setIconScalePercent(readIntSetting(
                 SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,
                 SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT));
@@ -568,6 +571,14 @@ public class MainActivity extends Activity {
                 "关闭后只保留图形电池，不在电池内部绘制剩余电量数字。",
                 SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED);
+        addDivider(details);
+        int[] batteryTextFontOptions = BatteryTextFontHelper.getAvailableFontOptions(this);
+        addChoiceRow(details, "电池数字字体",
+                "这里会列出系统可用字体，也包含模块自带的 MiSansLatinVFNumber。选择后预览会马上更新。",
+                SettingsStore.KEY_BATTERY_TEXT_FONT,
+                SettingsStore.DEFAULT_BATTERY_TEXT_FONT,
+                batteryTextFontOptions,
+                BatteryTextFontHelper.getFontLabels(batteryTextFontOptions));
         addDivider(details);
         addProfileSectionHeader(details, "固定绘制",
                 "这里只替换系统原来的电池图标，固定使用 24dp 画布绘制。Wi-Fi 和移动信号不再接管。");
@@ -1174,6 +1185,9 @@ public class MainActivity extends Activity {
             previewView.setBatteryStyle(readIntSetting(
                     SettingsStore.KEY_BATTERY_ICON_STYLE,
                     SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
+            previewView.setBatteryTextFont(readIntSetting(
+                    SettingsStore.KEY_BATTERY_TEXT_FONT,
+                    SettingsStore.DEFAULT_BATTERY_TEXT_FONT));
             previewView.setIconScalePercent(readIntSetting(
                     SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,
                     SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT));
