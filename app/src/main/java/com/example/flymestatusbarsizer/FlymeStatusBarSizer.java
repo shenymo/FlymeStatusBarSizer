@@ -21,6 +21,7 @@ import android.telephony.SignalStrength;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.SpannableStringBuilder;
+import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -51,10 +52,14 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, int[]> ORIGINAL_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_MARGINS = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_PADDINGS = new WeakHashMap<>();
+    private static final WeakHashMap<View, int[]> ORIGINAL_RUNTIME_SIZES = new WeakHashMap<>();
+    private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_SIZES = new WeakHashMap<>();
+    private static final WeakHashMap<TextView, Boolean> TRACKED_CLOCK_AND_CARRIER_TEXT_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, String> VIEW_ID_NAME_CACHE = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_CONNECTION_RATE_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, ConnectionRateThresholdState> CONNECTION_RATE_THRESHOLD_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_BATTERY_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> TRACKED_STATUS_BAR_ICON_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<Drawable, View> SIGNAL_DRAWABLE_OWNERS = new WeakHashMap<>();
     private static final WeakHashMap<TelephonyManager, Integer> TELEPHONY_MANAGER_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<SignalStrength, Integer> SIGNAL_STRENGTH_SUB_IDS = new WeakHashMap<>();
@@ -93,6 +98,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookTelephonyCreateForSubscriptionId();
         hookTelephonyGetSignalStrength();
         hookSignalStrengthGetLevel();
+        hookStatusBarIconConstructors(loader);
         hookMBackLongTouchIntent(loader);
         hookMBackNavBarExperiments(loader);
         hookMBackPillVisibility(loader);
@@ -122,6 +128,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         });
         hookBatteryDrawable(loader);
         hookClockWeekday(loader);
+        hookClockAndCarrierTextSize(loader);
     }
 
     private void hookSignalImageAssignments() {
@@ -969,16 +976,17 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void drawBatteryByStyle(ModuleConfig config, Canvas canvas, Rect bounds, int level,
             boolean pluggedIn, boolean charging, int fillColor, int textColor, boolean showLevelText) {
+        float textScale = resolveBatteryInnerTextScale(config);
         int style = config == null
                 ? SettingsStore.DEFAULT_BATTERY_ICON_STYLE
                 : SettingsStore.normalizeBatteryStyle(config.batteryIconStyle);
         if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
             OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
-                    fillColor, textColor, showLevelText);
+                    fillColor, textColor, showLevelText, textScale);
             return;
         }
         IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
-                fillColor, textColor, showLevelText);
+                fillColor, textColor, showLevelText, textScale);
     }
 
     private static int resolveBatteryTintColor(Object target, int fallback) {
@@ -1024,6 +1032,34 @@ public class FlymeStatusBarSizer extends XposedModule {
         return config != null && config.enabled && config.signalCodeDrawEnabled;
     }
 
+    private static float resolveStatusBarIconScale(ModuleConfig config) {
+        int percent = config == null
+                ? SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT
+                : SettingsStore.normalizeScalePercent(config.statusBarIconScalePercent);
+        return percent / 100f;
+    }
+
+    private static float resolveBatteryInnerTextScale(ModuleConfig config) {
+        int percent = config == null
+                ? SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT
+                : SettingsStore.normalizeScalePercent(config.batteryInnerTextScalePercent);
+        return percent / 100f;
+    }
+
+    private static float resolveClockAndCarrierTextScale(ModuleConfig config) {
+        int percent = config == null
+                ? SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT
+                : SettingsStore.normalizeScalePercent(config.clockAndCarrierTextSizePercent);
+        return percent / 100f;
+    }
+
+    private static int resolveClockFontWeight(ModuleConfig config) {
+        if (config == null || !config.clockBoldEnabled) {
+            return 400;
+        }
+        return Math.max(100, Math.min(900, config.clockFontWeight));
+    }
+
     private static int normalizeIconColor(int color) {
         return Color.alpha(color) == 0 ? Color.BLACK : color;
     }
@@ -1067,7 +1103,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int[] getMergedBatteryRenderSize(View batteryView, ModuleConfig config, boolean charging) {
-        int size = Math.max(1, dp(batteryView, 24));
+        int size = scaleSize(dp(batteryView, 24), resolveStatusBarIconScale(config));
         return new int[]{size, size};
     }
 
@@ -1171,13 +1207,88 @@ public class FlymeStatusBarSizer extends XposedModule {
         rememberConnectionRateState(view);
     }
 
-    private static void onSignalImageResourceAssigned(ImageView view, int resId) {
+    private static void trackStatusBarIconView(View view) {
+        if (view == null) {
+            return;
+        }
+        TRACKED_STATUS_BAR_ICON_VIEWS.put(view, Boolean.TRUE);
+        ensureConfigRefreshObserver(view.getContext());
+    }
+
+    private static void applyStatusBarScaleIfNeeded(View view) {
+        if (view == null) {
+            return;
+        }
+        if (isNotificationIconView(view)) {
+            return;
+        }
+        if (isPrivacyChipView(view)) {
+            return;
+        }
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        if (!config.enabled) {
+            return;
+        }
         String idName = getSystemUiIdName(view);
-        if (!"mobile_signal".equals(idName) && !"mobile_type".equals(idName)) {
+        if ("mobile_signal".equals(idName) && view instanceof ImageView) {
+            if (isSignalCodeDrawEnabled(config)) {
+                resetStandaloneImageScale((ImageView) view);
+                applySignalIconOverride((ImageView) view);
+            } else {
+                applyOriginalMobileSignalScale((ImageView) view, config);
+            }
+            return;
+        }
+        String className = view.getClass().getName();
+        if ("com.android.systemui.statusbar.StatusBarIconView".equals(className)) {
+            applyStatusBarIconViewScale(view, config);
+            return;
+        }
+        if ("com.android.systemui.statusbar.pipeline.shared.ui.view.SingleBindableStatusBarIconView".equals(className)) {
+            applyBindableStatusBarIconScale(view, config);
+            return;
+        }
+        if (isStandaloneStatusBarImageView(view)) {
+            applyStandaloneStatusBarImageScale(view, config);
+            return;
+        }
+        if (isStatusBarContainerView(view)) {
+            applyStatusBarContainerScale(view, config);
+            return;
+        }
+    }
+
+    private void hookClockAndCarrierTextSize(ClassLoader loader) {
+        hookConstructors(loader, "com.android.systemui.statusbar.policy.Clock", view -> {
+            if (view instanceof TextView) {
+                trackClockAndCarrierTextView((TextView) view);
+                scheduleClockAndCarrierTextRelayout((TextView) view);
+                applyClockFontWeight((TextView) view);
+                applyClockAndCarrierTextSize((TextView) view);
+            }
+        });
+        hookConstructors(loader, "com.android.keyguard.CarrierText", view -> {
+            if (view instanceof TextView) {
+                trackClockAndCarrierTextView((TextView) view);
+                scheduleClockAndCarrierTextRelayout((TextView) view);
+                applyClockAndCarrierTextSize((TextView) view);
+            }
+        });
+    }
+
+    private static void onSignalImageResourceAssigned(ImageView view, int resId) {
+        trackStatusBarIconView(view);
+        String idName = getSystemUiIdName(view);
+        if (!isMobileSignalRelatedId(idName)) {
+            applyStatusBarScaleIfNeeded(view);
             return;
         }
         ModuleConfig config = ModuleConfig.load(view.getContext());
         if (!isSignalCodeDrawEnabled(config)) {
+            if ("mobile_type".equals(idName)) {
+                restoreMobileTypeView(view);
+            }
+            applyStatusBarScaleIfNeeded(view);
             return;
         }
         if ("mobile_type".equals(idName)) {
@@ -1187,15 +1298,41 @@ public class FlymeStatusBarSizer extends XposedModule {
         if ("mobile_signal".equals(idName)) {
             applySignalIconOverride(view);
         }
+        applyStatusBarScaleIfNeeded(view);
+    }
+
+    private void hookStatusBarIconConstructors(ClassLoader loader) {
+        hookConstructors(loader, "com.android.systemui.statusbar.StatusBarIconView", view -> {
+            trackStatusBarIconView(view);
+            applyStatusBarScaleIfNeeded(view);
+        });
+        hookConstructors(loader, "com.android.systemui.statusbar.pipeline.shared.ui.view.SingleBindableStatusBarIconView", view -> {
+            trackStatusBarIconView(view);
+            applyStatusBarScaleIfNeeded(view);
+        });
+        hookConstructors(loader, "com.android.systemui.privacy.OngoingPrivacyChip", view -> {
+            trackStatusBarIconView(view);
+            applyStatusBarScaleIfNeeded(view);
+        });
+        hookConstructors(loader, "com.flyme.systemui.privacy.FlymeOngoingPrivacyChip", view -> {
+            trackStatusBarIconView(view);
+            applyStatusBarScaleIfNeeded(view);
+        });
     }
 
     private static void onSignalImageDrawableAssigned(ImageView view, Drawable drawable) {
+        trackStatusBarIconView(view);
         String idName = getSystemUiIdName(view);
-        if (!"mobile_signal".equals(idName) && !"mobile_type".equals(idName)) {
+        if (!isMobileSignalRelatedId(idName)) {
+            applyStatusBarScaleIfNeeded(view);
             return;
         }
         ModuleConfig config = ModuleConfig.load(view.getContext());
         if (!isSignalCodeDrawEnabled(config)) {
+            if ("mobile_type".equals(idName)) {
+                restoreMobileTypeView(view);
+            }
+            applyStatusBarScaleIfNeeded(view);
             return;
         }
         if ("mobile_type".equals(idName)) {
@@ -1210,15 +1347,24 @@ public class FlymeStatusBarSizer extends XposedModule {
         if ("mobile_signal".equals(idName) && !(drawable instanceof SignalIconDrawable)) {
             applySignalIconOverride(view);
         }
+        applyStatusBarScaleIfNeeded(view);
     }
 
     private static void onSignalViewLayoutChanged(View view) {
+        trackStatusBarIconView(view);
         String idName = getSystemUiIdName(view);
-        if (!"mobile_signal".equals(idName) && !"mobile_type".equals(idName)) {
+        if (!isMobileSignalRelatedId(idName)) {
+            if (isStatusBarIconCandidate(view)) {
+                applyStatusBarScaleIfNeeded(view);
+            }
             return;
         }
         ModuleConfig config = ModuleConfig.load(view.getContext());
         if (!isSignalCodeDrawEnabled(config)) {
+            if ("mobile_type".equals(idName)) {
+                restoreMobileTypeView(view);
+            }
+            applyStatusBarScaleIfNeeded(view);
             return;
         }
         if ("mobile_type".equals(idName)) {
@@ -1228,6 +1374,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if ("mobile_signal".equals(idName) && view instanceof ImageView) {
             applySignalIconOverride((ImageView) view);
         }
+        applyStatusBarScaleIfNeeded(view);
     }
 
     private static void onSignalDrawableLevelChanged(Drawable drawable, int rawLevel) {
@@ -1329,6 +1476,18 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         view.setVisibility(View.GONE);
+        ViewParent parent = view.getParent();
+        if (parent instanceof View) {
+            ((View) parent).requestLayout();
+        }
+        view.requestLayout();
+    }
+
+    private static void restoreMobileTypeView(View view) {
+        if (view == null || view.getVisibility() == View.VISIBLE) {
+            return;
+        }
+        view.setVisibility(View.VISIBLE);
         ViewParent parent = view.getParent();
         if (parent instanceof View) {
             ((View) parent).requestLayout();
@@ -1530,8 +1689,388 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private static void rememberOriginalLayout(View view, ViewGroup.LayoutParams lp) {
+        if (view == null || lp == null || ORIGINAL_SIZES.containsKey(view)) {
+            return;
+        }
+        ORIGINAL_SIZES.put(view, new int[]{lp.width, lp.height});
+    }
+
+    private static void rememberOriginalMargins(View view, ViewGroup.MarginLayoutParams lp) {
+        if (view == null || lp == null || ORIGINAL_MARGINS.containsKey(view)) {
+            return;
+        }
+        ORIGINAL_MARGINS.put(view, new int[]{lp.leftMargin, lp.topMargin, lp.rightMargin, lp.bottomMargin});
+    }
+
+    private static void rememberOriginalPadding(View view) {
+        if (view == null || ORIGINAL_PADDINGS.containsKey(view)) {
+            return;
+        }
+        ORIGINAL_PADDINGS.put(view, new int[]{
+                view.getPaddingLeft(),
+                view.getPaddingTop(),
+                view.getPaddingRight(),
+                view.getPaddingBottom()
+        });
+    }
+
+    private static void rememberOriginalTextSize(TextView view) {
+        if (view == null || ORIGINAL_TEXT_SIZES.containsKey(view)) {
+            return;
+        }
+        ORIGINAL_TEXT_SIZES.put(view, view.getTextSize());
+    }
+
+    private static void applyClockAndCarrierTextSize(TextView view) {
+        if (view == null) {
+            return;
+        }
+        if (!isClockOrLockscreenCarrierText(view)) {
+            return;
+        }
+        rememberOriginalTextSize(view);
+        Float originalSize = ORIGINAL_TEXT_SIZES.get(view);
+        if (originalSize == null || originalSize <= 0f) {
+            return;
+        }
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        float scale = config.enabled ? resolveClockAndCarrierTextScale(config) : 1f;
+        boolean changed = false;
+        if (Math.abs(view.getTextSize() - originalSize) > 0.5f) {
+            view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, originalSize);
+            changed = true;
+        }
+        if (applyClockAndCarrierTextViewScale(view, scale)) {
+            changed = true;
+        }
+        if (isStatusBarClockView(view)) {
+            if (applyClockAndCarrierTextLayoutWidth(view, scale)) {
+                changed = true;
+            }
+        } else {
+            if (restoreOriginalTextLayoutWidth(view)) {
+                changed = true;
+            }
+        }
+        if (changed) {
+            view.requestLayout();
+        }
+        view.invalidate();
+    }
+
+    private static boolean applyClockAndCarrierTextViewScale(TextView view, float scale) {
+        if (view == null) {
+            return false;
+        }
+        disableAncestorClipping(view, 4);
+        int width = view.getWidth() > 0 ? view.getWidth() : view.getMeasuredWidth();
+        int height = view.getHeight() > 0 ? view.getHeight() : view.getMeasuredHeight();
+        float pivotX = resolveTextPivotX(view, width);
+        float pivotY = height > 0 ? height / 2f : 0f;
+        boolean changed = false;
+        if (Math.abs(view.getPivotX() - pivotX) > 0.5f) {
+            view.setPivotX(pivotX);
+            changed = true;
+        }
+        if (Math.abs(view.getPivotY() - pivotY) > 0.5f) {
+            view.setPivotY(pivotY);
+            changed = true;
+        }
+        if (Math.abs(view.getScaleX() - scale) > 0.001f) {
+            view.setScaleX(scale);
+            changed = true;
+        }
+        if (Math.abs(view.getScaleY() - scale) > 0.001f) {
+            view.setScaleY(scale);
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static void scheduleClockAndCarrierTextRelayout(TextView view) {
+        if (view == null) {
+            return;
+        }
+        view.post(() -> {
+            applyClockFontWeight(view);
+            applyClockAndCarrierTextSize(view);
+        });
+        view.postDelayed(() -> {
+            applyClockFontWeight(view);
+            applyClockAndCarrierTextSize(view);
+        }, 32L);
+    }
+
+    private static void trackClockAndCarrierTextView(TextView view) {
+        if (view == null || TRACKED_CLOCK_AND_CARRIER_TEXT_VIEWS.containsKey(view)) {
+            return;
+        }
+        TRACKED_CLOCK_AND_CARRIER_TEXT_VIEWS.put(view, Boolean.TRUE);
+        view.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (!(v instanceof TextView)) {
+                return;
+            }
+            if (left == oldLeft && top == oldTop && right == oldRight && bottom == oldBottom) {
+                return;
+            }
+            v.post(() -> applyClockAndCarrierTextSize((TextView) v));
+        });
+    }
+
+    private static boolean applyClockAndCarrierTextLayoutWidth(TextView view, float scale) {
+        if (view == null) {
+            return false;
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp == null) {
+            return false;
+        }
+        rememberOriginalLayout(view, lp);
+        int[] originalSize = ORIGINAL_SIZES.get(view);
+        if (originalSize == null) {
+            return false;
+        }
+        rememberOriginalPadding(view);
+        int[] originalPadding = ORIGINAL_PADDINGS.get(view);
+        int horizontalPadding = 0;
+        if (originalPadding != null) {
+            horizontalPadding = originalPadding[0] + originalPadding[2];
+        }
+        float contentWidth = resolveClockAndCarrierTextContentWidth(view);
+        if (contentWidth <= 0f) {
+            int originalWidth = originalSize[0];
+            int measuredWidth = view.getMeasuredWidth();
+            int currentWidth = view.getWidth();
+            int baseWidth = originalWidth > 0 ? originalWidth
+                    : (measuredWidth > 0 ? measuredWidth : currentWidth);
+            if (baseWidth <= 0) {
+                return false;
+            }
+            int targetWidth = Math.max(1, Math.round(baseWidth * scale));
+            if (lp.width != targetWidth) {
+                lp.width = targetWidth;
+                view.setLayoutParams(lp);
+                return true;
+            }
+            return false;
+        }
+        int targetWidth = Math.max(1, Math.round(contentWidth * scale) + horizontalPadding);
+        if (lp.width != targetWidth) {
+            lp.width = targetWidth;
+            view.setLayoutParams(lp);
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean restoreOriginalTextLayoutWidth(TextView view) {
+        if (view == null) {
+            return false;
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        int[] originalSize = ORIGINAL_SIZES.get(view);
+        if (lp == null || originalSize == null) {
+            return false;
+        }
+        int originalWidth = originalSize[0];
+        if (lp.width != originalWidth) {
+            lp.width = originalWidth;
+            view.setLayoutParams(lp);
+            return true;
+        }
+        return false;
+    }
+
+    private static float resolveClockAndCarrierTextContentWidth(TextView view) {
+        if (view == null) {
+            return 0f;
+        }
+        CharSequence text = view.getText();
+        if (text == null || text.length() == 0) {
+            return 0f;
+        }
+        return view.getPaint().measureText(text.toString());
+    }
+
+    private static float resolveTextPivotX(TextView view, int width) {
+        if (view == null || width <= 0) {
+            return 0f;
+        }
+        int gravity = Gravity.getAbsoluteGravity(view.getGravity(), view.getLayoutDirection())
+                & Gravity.HORIZONTAL_GRAVITY_MASK;
+        if (gravity == Gravity.RIGHT) {
+            return width;
+        }
+        if (gravity == Gravity.CENTER_HORIZONTAL) {
+            return width / 2f;
+        }
+        return 0f;
+    }
+
+    private static void applyClockFontWeight(TextView view) {
+        if (view == null || !isStatusBarClockView(view)) {
+            return;
+        }
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        int fontWeight = config.enabled ? resolveClockFontWeight(config) : 400;
+        Typeface baseTypeface = view.getTypeface();
+        boolean italic = baseTypeface != null && baseTypeface.isItalic();
+        Typeface newTypeface;
+        try {
+            newTypeface = Typeface.create(baseTypeface, fontWeight, italic);
+        } catch (Throwable ignored) {
+            newTypeface = Typeface.defaultFromStyle(fontWeight >= 600 ? Typeface.BOLD : Typeface.NORMAL);
+        }
+        if (newTypeface != null) {
+            view.setTypeface(newTypeface);
+        }
+        view.getPaint().setFakeBoldText(fontWeight >= 600);
+        view.requestLayout();
+        view.invalidate();
+    }
+
+    private static boolean isStatusBarClockView(TextView view) {
+        if (view == null) {
+            return false;
+        }
+        if (!"com.android.systemui.statusbar.policy.Clock".equals(view.getClass().getName())) {
+            return false;
+        }
+        String idName = getSystemUiIdName(view);
+        return "clock".equals(idName) || "keyguard_clock".equals(idName) || "mz_clock".equals(idName);
+    }
+
+    private static boolean isClockOrLockscreenCarrierText(TextView view) {
+        if (view == null) {
+            return false;
+        }
+        String className = view.getClass().getName();
+        String idName = getSystemUiIdName(view);
+        if ("com.android.systemui.statusbar.policy.Clock".equals(className)) {
+            return "clock".equals(idName) || "keyguard_clock".equals(idName) || "mz_clock".equals(idName);
+        }
+        if ("com.android.keyguard.CarrierText".equals(className)) {
+            return "keyguard_carrier_text".equals(idName) || "carrier_text".equals(idName);
+        }
+        return false;
+    }
+
+    private static boolean isPrivacyChipView(View view) {
+        if (view == null) {
+            return false;
+        }
+        String className = view.getClass().getName();
+        return "com.android.systemui.privacy.OngoingPrivacyChip".equals(className)
+                || "com.flyme.systemui.privacy.FlymeOngoingPrivacyChip".equals(className);
+    }
+
+    private static boolean isNotificationIconView(View view) {
+        if (view == null) {
+            return false;
+        }
+        return findAncestorByIdName(view, "notificationIcons") != null;
+    }
+
+    private static boolean isStatusBarIconCandidate(View view) {
+        if (view == null) {
+            return false;
+        }
+        String className = view.getClass().getName();
+        if ("com.android.systemui.statusbar.StatusBarIconView".equals(className)
+                || "com.android.systemui.statusbar.pipeline.shared.ui.view.SingleBindableStatusBarIconView".equals(className)
+                || isPrivacyChipView(view)) {
+            return true;
+        }
+        String idName = getSystemUiIdName(view);
+        return "wifi_signal".equals(idName)
+                || "wifi_in".equals(idName)
+                || "wifi_out".equals(idName)
+                || "inout_container".equals(idName)
+                || "mobile_signal".equals(idName)
+                || "mobile_type".equals(idName)
+                || "mobile_in".equals(idName)
+                || "mobile_out".equals(idName)
+                || "mobile_inout".equals(idName)
+                || "mobile_type_container".equals(idName)
+                || "mobile_roaming".equals(idName)
+                || "mobile_roaming_space".equals(idName)
+                || "mobile_group".equals(idName)
+                || "wifi_group".equals(idName)
+                || "battery".equals(idName)
+                || "notificationIcons".equals(idName)
+                || "statusIcons".equals(idName)
+                || "privacy_chip".equals(idName)
+                || "icons_container".equals(idName);
+    }
+
+    private static boolean isStandaloneStatusBarImageView(View view) {
+        if (!(view instanceof ImageView)) {
+            return false;
+        }
+        String idName = getSystemUiIdName(view);
+        return "wifi_signal".equals(idName)
+                || "wifi_in".equals(idName)
+                || "wifi_out".equals(idName)
+                || "mobile_type".equals(idName)
+                || "mobile_in".equals(idName)
+                || "mobile_out".equals(idName)
+                || "mobile_inout".equals(idName)
+                || "mobile_roaming".equals(idName);
+    }
+
+    private static boolean isStatusBarContainerView(View view) {
+        if (view == null) {
+            return false;
+        }
+        String idName = getSystemUiIdName(view);
+        return "wifi_group".equals(idName)
+                || "inout_container".equals(idName)
+                || "mobile_group".equals(idName)
+                || "mobile_type_container".equals(idName)
+                || "mobile_roaming_space".equals(idName);
+    }
+
+    private static boolean isMobileSignalRelatedId(String idName) {
+        return "mobile_signal".equals(idName)
+                || "mobile_type".equals(idName)
+                || "mobile_in".equals(idName)
+                || "mobile_out".equals(idName)
+                || "mobile_inout".equals(idName)
+                || "mobile_type_container".equals(idName)
+                || "mobile_roaming".equals(idName)
+                || "mobile_roaming_space".equals(idName)
+                || "mobile_group".equals(idName)
+                || "inout_container".equals(idName);
+    }
+
+    private static int scaleSize(int original, float scale) {
+        if (original == 0) {
+            return 0;
+        }
+        if (original < 0) {
+            return original;
+        }
+        return Math.max(1, Math.round(original * scale));
+    }
+
+    private static int scaleInsetSize(int original, float scale) {
+        if (original == 0) {
+            return 0;
+        }
+        return Math.round(original * scale);
+    }
+
+    private static int scaleLayoutSize(int original, float scale) {
+        if (original == ViewGroup.LayoutParams.WRAP_CONTENT || original == ViewGroup.LayoutParams.MATCH_PARENT) {
+            return Integer.MIN_VALUE;
+        }
+        return scaleSize(original, scale);
+    }
+
     private static int resolveTargetSignalIconBoxSize(ImageView view) {
-        return Math.max(1, dp(view, 24));
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        return scaleSize(dp(view, 24), resolveStatusBarIconScale(config));
     }
 
     private static int resolveSignalIconIntrinsicHeight(ImageView view) {
@@ -1555,6 +2094,246 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
         }
         return SignalPreviewPainter.resolveIntrinsicHeight(dp(view, 15));
+    }
+
+    private static void applyStatusBarIconViewScale(View view, ModuleConfig config) {
+        if (!(view instanceof ImageView)) {
+            return;
+        }
+        ImageView imageView = (ImageView) view;
+        float scale = resolveStatusBarIconScale(config);
+        ViewGroup.LayoutParams lp = imageView.getLayoutParams();
+        if (lp != null) {
+            rememberOriginalLayout(imageView, lp);
+            int[] original = ORIGINAL_SIZES.get(imageView);
+            if (original != null) {
+                boolean changed = false;
+                int width = scaleLayoutSize(original[0], scale);
+                int height = scaleLayoutSize(original[1], scale);
+                if (width != Integer.MIN_VALUE && lp.width != width) {
+                    lp.width = width;
+                    changed = true;
+                }
+                if (height != Integer.MIN_VALUE && lp.height != height) {
+                    lp.height = height;
+                    changed = true;
+                }
+                if (changed) {
+                    imageView.setLayoutParams(lp);
+                }
+            }
+        }
+        imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        imageView.setAdjustViewBounds(true);
+        imageView.requestLayout();
+        imageView.invalidate();
+    }
+
+    private static void applyBindableStatusBarIconScale(View view, ModuleConfig config) {
+        if (!(view instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) view;
+        applyScaleToLayoutParams(group, resolveStatusBarIconScale(config));
+        View iconView = findSystemUiChild(group, "icon_view");
+        if (iconView != null) {
+            applyScaleToLayoutParams(iconView, resolveStatusBarIconScale(config));
+            if (iconView instanceof ImageView) {
+                ((ImageView) iconView).setScaleType(ImageView.ScaleType.FIT_CENTER);
+                ((ImageView) iconView).setAdjustViewBounds(true);
+            }
+        }
+    }
+
+    private static void applyStandaloneStatusBarImageScale(View view, ModuleConfig config) {
+        if (!(view instanceof ImageView)) {
+            return;
+        }
+        ImageView imageView = (ImageView) view;
+        float scale = resolveStatusBarIconScale(config);
+        applyScaleToLayoutParams(imageView, scale);
+        String idName = getSystemUiIdName(imageView);
+        if ("wifi_signal".equals(idName)) {
+            setImageViewRuntimeScale(imageView, scale);
+        } else {
+            resetStandaloneImageScale(imageView);
+        }
+        imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        imageView.setAdjustViewBounds(true);
+        imageView.requestLayout();
+        imageView.invalidate();
+    }
+
+    private static void applyOriginalMobileSignalScale(ImageView imageView, ModuleConfig config) {
+        if (imageView == null) {
+            return;
+        }
+        float scale = resolveStatusBarIconScale(config);
+        ViewGroup.LayoutParams lp = imageView.getLayoutParams();
+        int[] baseSize = rememberOriginalRuntimeSize(imageView);
+        if (lp != null && baseSize != null && baseSize[0] > 0 && baseSize[1] > 0) {
+            int targetWidth = scaleSize(baseSize[0], scale);
+            int targetHeight = scaleSize(baseSize[1], scale);
+            boolean changed = false;
+            if (lp.width != targetWidth) {
+                lp.width = targetWidth;
+                changed = true;
+            }
+            if (lp.height != targetHeight) {
+                lp.height = targetHeight;
+                changed = true;
+            }
+            if (changed) {
+                imageView.setLayoutParams(lp);
+            }
+        } else {
+            applyScaleToLayoutParams(imageView, scale);
+        }
+        resetStandaloneImageScale(imageView);
+        imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        imageView.setAdjustViewBounds(true);
+        imageView.requestLayout();
+        imageView.invalidate();
+    }
+
+    private static int[] rememberOriginalRuntimeSize(View view) {
+        if (view == null) {
+            return null;
+        }
+        int[] cached = ORIGINAL_RUNTIME_SIZES.get(view);
+        if (cached != null && cached[0] > 0 && cached[1] > 0) {
+            return cached;
+        }
+        int width = view.getWidth();
+        int height = view.getHeight();
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (width <= 0 && lp != null && lp.width > 0) {
+            width = lp.width;
+        }
+        if (height <= 0 && lp != null && lp.height > 0) {
+            height = lp.height;
+        }
+        if (width <= 0 || height <= 0) {
+            return null;
+        }
+        int[] recorded = new int[]{width, height};
+        ORIGINAL_RUNTIME_SIZES.put(view, recorded);
+        return recorded;
+    }
+
+    private static void setImageViewRuntimeScale(ImageView imageView, float scale) {
+        if (imageView == null) {
+            return;
+        }
+        imageView.setScaleX(scale);
+        imageView.setScaleY(scale);
+    }
+
+    private static void resetStandaloneImageScale(ImageView imageView) {
+        setImageViewRuntimeScale(imageView, 1f);
+    }
+
+    private static void applyStatusBarContainerScale(View view, ModuleConfig config) {
+        float scale = resolveStatusBarIconScale(config);
+        applyScaleToLayoutParams(view, scale);
+        if (view instanceof ViewGroup) {
+            applyScaleToChildren(view, scale);
+        }
+    }
+
+    private static void applyPrivacyChipScale(View view, ModuleConfig config) {
+        float scale = resolveStatusBarIconScale(config);
+        View iconsContainer = findSystemUiChild(view, "icons_container");
+        if (iconsContainer != null) {
+            applyScaleToLayoutParams(iconsContainer, scale);
+            applyScaleToChildren(iconsContainer, scale);
+        }
+        View textView = findSystemUiChild(view, "text");
+        if (textView instanceof TextView) {
+            TextView text = (TextView) textView;
+            rememberOriginalTextSize(text);
+            Float originalSize = ORIGINAL_TEXT_SIZES.get(text);
+            if (originalSize != null) {
+                text.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, originalSize * scale);
+            }
+        }
+        view.requestLayout();
+        view.invalidate();
+    }
+
+    private static void applyScaleToChildren(View view, float scale) {
+        if (!(view instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            applyScaleToLayoutParams(child, scale);
+            if (child instanceof ImageView) {
+                ((ImageView) child).setScaleType(ImageView.ScaleType.FIT_CENTER);
+                ((ImageView) child).setAdjustViewBounds(true);
+            }
+            applyScaleToChildren(child, scale);
+        }
+    }
+
+    private static void applyScaleToLayoutParams(View view, float scale) {
+        if (view == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        rememberOriginalLayout(view, lp);
+        int[] original = ORIGINAL_SIZES.get(view);
+        boolean changed = false;
+        if (original != null) {
+            int width = scaleLayoutSize(original[0], scale);
+            int height = scaleLayoutSize(original[1], scale);
+            if (width != Integer.MIN_VALUE && lp.width != width) {
+                lp.width = width;
+                changed = true;
+            }
+            if (height != Integer.MIN_VALUE && lp.height != height) {
+                lp.height = height;
+                changed = true;
+            }
+        }
+        if (lp instanceof ViewGroup.MarginLayoutParams) {
+            rememberOriginalMargins(view, (ViewGroup.MarginLayoutParams) lp);
+            int[] margins = ORIGINAL_MARGINS.get(view);
+            if (margins != null) {
+                ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) lp;
+                int left = scaleInsetSize(margins[0], scale);
+                int top = scaleInsetSize(margins[1], scale);
+                int right = scaleInsetSize(margins[2], scale);
+                int bottom = scaleInsetSize(margins[3], scale);
+                if (mlp.leftMargin != left || mlp.topMargin != top
+                        || mlp.rightMargin != right || mlp.bottomMargin != bottom) {
+                    mlp.setMargins(left, top, right, bottom);
+                    changed = true;
+                }
+            }
+        }
+        rememberOriginalPadding(view);
+        int[] paddings = ORIGINAL_PADDINGS.get(view);
+        if (paddings != null) {
+            int left = scaleInsetSize(paddings[0], scale);
+            int top = scaleInsetSize(paddings[1], scale);
+            int right = scaleInsetSize(paddings[2], scale);
+            int bottom = scaleInsetSize(paddings[3], scale);
+            if (view.getPaddingLeft() != left || view.getPaddingTop() != top
+                    || view.getPaddingRight() != right || view.getPaddingBottom() != bottom) {
+                view.setPadding(left, top, right, bottom);
+                changed = true;
+            }
+        }
+        if (changed) {
+            view.setLayoutParams(lp);
+        }
+        view.requestLayout();
+        view.invalidate();
     }
 
     private static ConnectionRateThresholdState rememberConnectionRateState(View view) {
@@ -1731,7 +2510,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 @Override
                 public void onChange(boolean selfChange) {
                     ModuleConfig.invalidateCache();
-                    refreshTrackedConnectionRateViews();
+                    refreshTrackedRuntimeViews();
                 }
             };
             try {
@@ -1787,6 +2566,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static void refreshTrackedRuntimeViews(boolean forceSignalRequery) {
         refreshTrackedConnectionRateViews();
         refreshTrackedBatteryViews();
+        refreshTrackedStatusBarIconViews();
+        refreshClockAndCarrierTextViews();
     }
 
     private static void refreshTrackedConnectionRateViews() {
@@ -1828,6 +2609,43 @@ public class FlymeStatusBarSizer extends XposedModule {
                 ReflectUtils.invokeMethod(batteryView, "apply", new Class[]{boolean.class}, true);
                 batteryView.requestLayout();
                 batteryView.invalidate();
+            }
+        });
+    }
+
+    private static void refreshTrackedStatusBarIconViews() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        handler.post(() -> {
+            ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
+            for (View view : views) {
+                if (view == null) {
+                    continue;
+                }
+                ModuleConfig config = ModuleConfig.load(view.getContext());
+                if (!config.enabled) {
+                    continue;
+                }
+                applyStatusBarScaleIfNeeded(view);
+            }
+        });
+    }
+
+    private static void refreshClockAndCarrierTextViews() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        handler.post(() -> {
+            ArrayList<TextView> textViews = new ArrayList<>(ORIGINAL_TEXT_SIZES.keySet());
+            for (TextView textView : textViews) {
+                if (textView == null) {
+                    continue;
+                }
+                applyClockFontWeight(textView);
+                applyClockAndCarrierTextSize(textView);
             }
         });
     }

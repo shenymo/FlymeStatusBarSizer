@@ -19,6 +19,8 @@ final class ModuleConfig {
     boolean signalCodeDrawEnabled = SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED;
     int batteryIconStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
     boolean batteryLevelTextEnabled = SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED;
+    int statusBarIconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
+    int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
     boolean connectionRateThresholdEnabled = SettingsStore.DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED;
     int connectionRateShowThresholdKb = SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB;
     int connectionRateHideThresholdKb = SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB;
@@ -26,6 +28,9 @@ final class ModuleConfig {
     int connectionRateHideSampleCount = SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT;
     boolean showClockWeekday = SettingsStore.DEFAULT_SHOW_CLOCK_WEEKDAY;
     boolean clockWeekdayHidePrefix = SettingsStore.DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX;
+    boolean clockBoldEnabled = SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED;
+    int clockFontWeight = SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT;
+    int clockAndCarrierTextSizePercent = SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT;
     boolean mbackLongTouchIntentEnabled = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
     String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
     boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
@@ -94,6 +99,12 @@ final class ModuleConfig {
                     parseInt(value, SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
         } else if (SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED.equals(key)) {
             batteryLevelTextEnabled = "1".equals(value);
+        } else if (SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT.equals(key)) {
+            statusBarIconScalePercent = SettingsStore.normalizeScalePercent(
+                    parseInt(value, SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT));
+        } else if (SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT.equals(key)) {
+            batteryInnerTextScalePercent = SettingsStore.normalizeScalePercent(
+                    parseInt(value, SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT));
         } else if (SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED.equals(key)) {
             connectionRateThresholdEnabled = "1".equals(value);
         } else if (SettingsStore.KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB.equals(key)) {
@@ -108,6 +119,14 @@ final class ModuleConfig {
             showClockWeekday = "1".equals(value);
         } else if (SettingsStore.KEY_CLOCK_WEEKDAY_HIDE_PREFIX.equals(key)) {
             clockWeekdayHidePrefix = "1".equals(value);
+        } else if (SettingsStore.KEY_CLOCK_BOLD_ENABLED.equals(key)) {
+            clockBoldEnabled = "1".equals(value);
+        } else if (SettingsStore.KEY_CLOCK_FONT_WEIGHT.equals(key)) {
+            clockFontWeight = Math.max(100, Math.min(900,
+                    parseInt(value, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT)));
+        } else if (SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT.equals(key)) {
+            clockAndCarrierTextSizePercent = SettingsStore.normalizeScalePercent(
+                    parseInt(value, SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT));
         } else if (SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED.equals(key)) {
             mbackLongTouchIntentEnabled = "1".equals(value);
         } else if (SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI.equals(key)) {

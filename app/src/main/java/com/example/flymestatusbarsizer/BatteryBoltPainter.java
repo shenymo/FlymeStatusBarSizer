@@ -17,18 +17,19 @@ final class BatteryBoltPainter {
     }
 
     static float draw(Canvas canvas, RectF body, int color, boolean showLevelText,
-            float widthRatio) {
+            float widthRatio, float contentScale) {
         if (canvas == null || body == null) {
             return 0f;
         }
         PAINT.setColor(color);
-        float resolvedWidthRatio = Math.max(0.1f, widthRatio);
+        float resolvedScale = normalizeContentScale(contentScale);
+        float resolvedWidthRatio = Math.max(0.1f, widthRatio) * resolvedScale;
         float iconLeft = showLevelText
-                ? body.left + body.width() * 0.16f
+                ? body.left + body.width() * (0.16f + (1f - resolvedScale) * 0.08f)
                 : body.centerX() - body.width() * (resolvedWidthRatio * 0.41f);
-        float iconTop = body.top + body.height() * 0.22f;
+        float iconTop = body.top + body.height() * (0.22f + (1f - resolvedScale) * 0.08f);
         float iconWidth = body.width() * resolvedWidthRatio;
-        float iconHeight = body.height() * 0.56f;
+        float iconHeight = body.height() * 0.56f * resolvedScale;
         PATH.reset();
         PATH.moveTo(iconLeft + iconWidth * 0.48f, iconTop);
         PATH.lineTo(iconLeft + iconWidth * 0.10f, iconTop + iconHeight * 0.52f);
@@ -38,6 +39,15 @@ final class BatteryBoltPainter {
         PATH.lineTo(iconLeft + iconWidth * 0.62f, iconTop + iconHeight * 0.34f);
         PATH.close();
         canvas.drawPath(PATH, PAINT);
-        return showLevelText ? body.left + body.width() * 0.62f : body.centerX();
+        return showLevelText
+                ? body.left + body.width() * (0.62f + (1f - resolvedScale) * 0.06f)
+                : body.centerX();
+    }
+
+    private static float normalizeContentScale(float contentScale) {
+        if (contentScale <= 0f) {
+            return 1f;
+        }
+        return Math.max(0.5f, Math.min(2f, contentScale));
     }
 }

@@ -14,6 +14,8 @@ final class SettingsStore {
     static final String KEY_SIGNAL_CODE_DRAW_ENABLED = "signal_code_draw_enabled";
     static final String KEY_BATTERY_ICON_STYLE = "battery_icon_style";
     static final String KEY_BATTERY_LEVEL_TEXT_ENABLED = "battery_level_text_enabled";
+    static final String KEY_STATUS_BAR_ICON_SCALE_PERCENT = "status_bar_icon_scale_percent";
+    static final String KEY_BATTERY_INNER_TEXT_SCALE_PERCENT = "battery_inner_text_scale_percent";
     static final String KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED = "connection_rate_auto_visibility_enabled";
     static final String KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB = "connection_rate_show_threshold_kb";
     static final String KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB = "connection_rate_hide_threshold_kb";
@@ -23,6 +25,7 @@ final class SettingsStore {
     static final String KEY_CLOCK_WEEKDAY_HIDE_PREFIX = "clock_weekday_hide_prefix";
     static final String KEY_CLOCK_BOLD_ENABLED = "clock_bold_enabled";
     static final String KEY_CLOCK_FONT_WEIGHT = "clock_font_weight";
+    static final String KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = "clock_and_carrier_text_size_percent";
     static final String KEY_MBACK_LONG_TOUCH_URL_ENABLED = "mback_long_touch_url_enabled";
     static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
     static final String KEY_MBACK_NAV_BAR_TRANSPARENT = "mback_nav_bar_transparent";
@@ -37,6 +40,8 @@ final class SettingsStore {
     static final int BATTERY_STYLE_ONEUI = 1;
     static final int DEFAULT_BATTERY_ICON_STYLE = BATTERY_STYLE_IOS;
     static final boolean DEFAULT_BATTERY_LEVEL_TEXT_ENABLED = true;
+    static final int DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT = 100;
+    static final int DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT = 100;
     static final boolean DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED = false;
     static final int DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB = 100;
     static final int DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB = 32;
@@ -46,6 +51,7 @@ final class SettingsStore {
     static final boolean DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX = false;
     static final boolean DEFAULT_CLOCK_BOLD_ENABLED = true;
     static final int DEFAULT_CLOCK_FONT_WEIGHT = 900;
+    static final int DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = 100;
     static final boolean DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED = false;
     static final String DEFAULT_MBACK_LONG_TOUCH_INTENT_URI = "";
     static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
@@ -55,11 +61,14 @@ final class SettingsStore {
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
     static final String[] INT_KEYS = {
             KEY_BATTERY_ICON_STYLE,
+            KEY_STATUS_BAR_ICON_SCALE_PERCENT,
+            KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
             KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB,
             KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB,
             KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT,
             KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT,
             KEY_CLOCK_FONT_WEIGHT,
+            KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
             KEY_MBACK_INSET_SIZE,
             KEY_MBACK_NAV_BAR_HEIGHT
     };
@@ -114,6 +123,10 @@ final class SettingsStore {
         switch (key) {
             case KEY_BATTERY_ICON_STYLE:
                 return DEFAULT_BATTERY_ICON_STYLE;
+            case KEY_STATUS_BAR_ICON_SCALE_PERCENT:
+                return DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
+            case KEY_BATTERY_INNER_TEXT_SCALE_PERCENT:
+                return DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
             case KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB:
                 return DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB;
             case KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB:
@@ -124,6 +137,8 @@ final class SettingsStore {
                 return DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT;
             case KEY_CLOCK_FONT_WEIGHT:
                 return DEFAULT_CLOCK_FONT_WEIGHT;
+            case KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT:
+                return DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT;
             case KEY_MBACK_INSET_SIZE:
                 return DEFAULT_MBACK_INSET_SIZE;
             case KEY_MBACK_NAV_BAR_HEIGHT:
@@ -173,6 +188,10 @@ final class SettingsStore {
 
     static int normalizeBatteryStyle(int value) {
         return value == BATTERY_STYLE_ONEUI ? BATTERY_STYLE_ONEUI : BATTERY_STYLE_IOS;
+    }
+
+    static int normalizeScalePercent(int value) {
+        return Math.max(50, Math.min(200, value));
     }
 
     static boolean includeInBackup(String key) {

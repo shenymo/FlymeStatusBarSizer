@@ -30,6 +30,14 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_BATTERY_ICON_STYLE,
                 prefs.getInt(SettingsStore.KEY_BATTERY_ICON_STYLE,
                         SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
+        add(cursor, SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,
+                SettingsStore.normalizeScalePercent(
+                        prefs.getInt(SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,
+                                SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT)));
+        add(cursor, SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
+                SettingsStore.normalizeScalePercent(
+                        prefs.getInt(SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
+                                SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT)));
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
                 prefs.getBoolean(SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
                         SettingsStore.DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED));
@@ -51,6 +59,10 @@ public class SettingsProvider extends ContentProvider {
                         SettingsStore.DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX));
         add(cursor, SettingsStore.KEY_CLOCK_BOLD_ENABLED, prefs.getBoolean(SettingsStore.KEY_CLOCK_BOLD_ENABLED, SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED));
         add(cursor, SettingsStore.KEY_CLOCK_FONT_WEIGHT, prefs.getInt(SettingsStore.KEY_CLOCK_FONT_WEIGHT, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT));
+        add(cursor, SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
+                SettingsStore.normalizeScalePercent(
+                        prefs.getInt(SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
+                                SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT)));
         add(cursor, SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
                 prefs.getBoolean(SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
                         SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED));

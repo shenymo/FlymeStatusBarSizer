@@ -195,6 +195,7 @@ public class MainActivity extends Activity {
 
         page.addView(buildPreviewPlaceholder(), matchWrap());
         page.addView(buildIntroCard(), matchWrapWithTop(16));
+        page.addView(buildStatusBarIconScaleCard(), matchWrapWithTop(16));
 
         addSectionLabel(page, "实时网速");
         page.addView(buildConnectionRateCard(), matchWrapWithTop(10));
@@ -328,6 +329,12 @@ public class MainActivity extends Activity {
         previewView.setBatteryStyle(readIntSetting(
                 SettingsStore.KEY_BATTERY_ICON_STYLE,
                 SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
+        previewView.setIconScalePercent(readIntSetting(
+                SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,
+                SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT));
+        previewView.setBatteryInnerTextScalePercent(readIntSetting(
+                SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
+                SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT));
         previewView.setBatteryLevelTextEnabled(prefs.getBoolean(
                 SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED));
@@ -361,6 +368,35 @@ public class MainActivity extends Activity {
         summary.setTextSize(14);
         summary.setPadding(0, dp(6), 0, 0);
         card.addView(summary, matchWrap());
+        return card;
+    }
+
+    private View buildStatusBarIconScaleCard() {
+        LinearLayout card = card(colorSurface, 24);
+
+        TextView title = new TextView(this);
+        title.setText("状态栏图标大小");
+        title.setTextColor(colorText);
+        title.setTextSize(18);
+        card.addView(title, matchWrap());
+
+        TextView summary = new TextView(this);
+        summary.setText("统一控制右上角系统状态图标，以及代码绘制开启后的电池图标和信号图标。通知图标、隐私权限标识和隐私圆点不在这里面。");
+        summary.setTextColor(colorSubtext);
+        summary.setTextSize(14);
+        summary.setPadding(0, dp(6), 0, 0);
+        card.addView(summary, matchWrap());
+
+        addDivider(card);
+        addSliderRow(card, "全部状态栏图标大小",
+                "默认 100%。统一调右上角系统状态图标，还有代码绘制的电池和信号图标。",
+                SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,
+                SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT, 50, 200, "%");
+        addDivider(card);
+        addSliderRow(card, "电池内部数字大小",
+                "只改电池图标内部的电量数字。默认 100%。",
+                SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
+                SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT, 50, 200, "%");
         return card;
     }
 
@@ -617,6 +653,11 @@ public class MainActivity extends Activity {
         addSliderRow(card, "\u65f6\u95f4/\u65e5\u671f\u7c97\u7ec6",
                 "\u53ea\u5bf9\u72b6\u6001\u680f\u65f6\u95f4\u6587\u5b57\u751f\u6548\uff0c\u8303\u56f4 100-900",
                 SettingsStore.KEY_CLOCK_FONT_WEIGHT, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT, 100, 900, "");
+        addDivider(card);
+        addSliderRow(card, "时间和锁屏运营商字体大小",
+                "同时控制左上角时间，以及锁屏界面运营商那行字。默认 100%。",
+                SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
+                SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT, 50, 200, "%");
         return card;
     }
 
@@ -1133,6 +1174,12 @@ public class MainActivity extends Activity {
             previewView.setBatteryStyle(readIntSetting(
                     SettingsStore.KEY_BATTERY_ICON_STYLE,
                     SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
+            previewView.setIconScalePercent(readIntSetting(
+                    SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,
+                    SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT));
+            previewView.setBatteryInnerTextScalePercent(readIntSetting(
+                    SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
+                    SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT));
             previewView.setBatteryLevelTextEnabled(prefs.getBoolean(
                     SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
                     SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED));

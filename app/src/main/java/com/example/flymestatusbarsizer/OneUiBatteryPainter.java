@@ -29,14 +29,14 @@ final class OneUiBatteryPainter {
     }
 
     static void draw(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
-            int fillColor, int textColor, boolean showLevelText) {
+            int fillColor, int textColor, boolean showLevelText, float textScale) {
         if (bounds.width() <= 0 || bounds.height() <= 0) {
             return;
         }
 
         int clampedLevel = Math.max(0, Math.min(100, level));
         float side = Math.min(bounds.width(), bounds.height());
-        float visualWidth = side * (20f / 24f);
+        float visualWidth = side * (24f / 24f);
         float visualHeight = visualWidth / 1.72f;
         float left = bounds.left + (bounds.width() - visualWidth) / 2f;
         float top = bounds.top + (bounds.height() - visualHeight) / 2f;
@@ -51,13 +51,14 @@ final class OneUiBatteryPainter {
 
         boolean showBolt = charging || pluggedIn;
         float textCenterX = BODY.centerX();
+        float normalizedTextScale = normalizeTextScale(textScale);
         if (showBolt) {
             textCenterX = BatteryBoltPainter.draw(
-                    canvas, BODY, textColor, showLevelText, BOLT_WIDTH_RATIO);
+                    canvas, BODY, textColor, showLevelText, BOLT_WIDTH_RATIO, normalizedTextScale);
         }
 
         if (showLevelText) {
-            float textSize = BODY.height() * 0.62f;
+            float textSize = BODY.height() * 0.62f * normalizedTextScale;
             TEXT_EDGE_PAINT.setColor(resolveTextEdgeColor(textColor));
             TEXT_EDGE_PAINT.setTextSize(textSize);
             TEXT_EDGE_PAINT.setStrokeWidth(BODY.height() * 0.08f);
@@ -81,5 +82,12 @@ final class OneUiBatteryPainter {
         return Color.red(textColor) + Color.green(textColor) + Color.blue(textColor) >= 384
                 ? Color.argb(92, 0, 0, 0)
                 : Color.argb(88, 255, 255, 255);
+    }
+
+    private static float normalizeTextScale(float textScale) {
+        if (textScale <= 0f) {
+            return 1f;
+        }
+        return Math.max(0.5f, Math.min(2f, textScale));
     }
 }

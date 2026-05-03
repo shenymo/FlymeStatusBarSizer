@@ -29,6 +29,8 @@ public final class RightIconGroupPreviewView extends View {
     private int previewTintColor = DEFAULT_TEXT_COLOR;
     private int batteryStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
     private boolean batteryLevelTextEnabled = true;
+    private int iconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
+    private int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
 
     public RightIconGroupPreviewView(Context context) {
         super(context);
@@ -79,6 +81,24 @@ public final class RightIconGroupPreviewView extends View {
         invalidate();
     }
 
+    public void setIconScalePercent(int percent) {
+        int normalized = SettingsStore.normalizeScalePercent(percent);
+        if (iconScalePercent == normalized) {
+            return;
+        }
+        iconScalePercent = normalized;
+        invalidate();
+    }
+
+    public void setBatteryInnerTextScalePercent(int percent) {
+        int normalized = SettingsStore.normalizeScalePercent(percent);
+        if (batteryInnerTextScalePercent == normalized) {
+            return;
+        }
+        batteryInnerTextScalePercent = normalized;
+        invalidate();
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -125,7 +145,7 @@ public final class RightIconGroupPreviewView extends View {
     }
 
     private void drawRightIconGroup(Canvas canvas, RectF stripRect, boolean mergedDual) {
-        int iconSize = dp(24);
+        int iconSize = scalePx(dp(24));
         float centerY = stripRect.centerY();
         float anchorRight = stripRect.right - dp(14);
 
@@ -184,14 +204,18 @@ public final class RightIconGroupPreviewView extends View {
             int fillColor, int textColor, boolean showLevelText) {
         if (SettingsStore.normalizeBatteryStyle(batteryStyle) == SettingsStore.BATTERY_STYLE_ONEUI) {
             OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
-                    fillColor, textColor, showLevelText);
+                    fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f);
             return;
         }
         IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
-                fillColor, textColor, showLevelText);
+                fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f);
     }
 
     private int dp(int value) {
         return Math.round(getResources().getDisplayMetrics().density * value);
+    }
+
+    private int scalePx(int px) {
+        return Math.max(1, Math.round(px * (iconScalePercent / 100f)));
     }
 }
