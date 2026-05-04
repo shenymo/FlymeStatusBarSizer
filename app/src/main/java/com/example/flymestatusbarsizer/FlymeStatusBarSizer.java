@@ -1238,7 +1238,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 resetStandaloneImageScale((ImageView) view);
                 applySignalIconOverride((ImageView) view);
             } else {
-                applyOriginalMobileSignalScale((ImageView) view, config);
+                applyStandaloneStatusBarImageScale(view, config);
             }
             return;
         }
@@ -2154,11 +2154,16 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         ImageView imageView = (ImageView) view;
         float scale = resolveStatusBarIconScale(config);
-        applyScaleToLayoutParams(imageView, scale);
         String idName = getSystemUiIdName(imageView);
         if ("wifi_signal".equals(idName)) {
+            applyScaleToLayoutParams(imageView, 1f);
+            applySignalWrapperScaleIfNeeded(imageView, scale);
             setImageViewRuntimeScale(imageView, scale);
+        } else if ("mobile_signal".equals(idName)) {
+            applyMeasuredMobileSignalScale(imageView, scale);
+            resetStandaloneImageScale(imageView);
         } else {
+            applyScaleToLayoutParams(imageView, scale);
             resetStandaloneImageScale(imageView);
         }
         imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -2167,36 +2172,186 @@ public class FlymeStatusBarSizer extends XposedModule {
         imageView.invalidate();
     }
 
-    private static void applyOriginalMobileSignalScale(ImageView imageView, ModuleConfig config) {
+    private static void applySignalWrapperScaleIfNeeded(ImageView imageView, float scale) {
         if (imageView == null) {
             return;
         }
-        float scale = resolveStatusBarIconScale(config);
-        ViewGroup.LayoutParams lp = imageView.getLayoutParams();
-        int[] baseSize = rememberOriginalRuntimeSize(imageView);
-        if (lp != null && baseSize != null && baseSize[0] > 0 && baseSize[1] > 0) {
-            int targetWidth = scaleSize(baseSize[0], scale);
-            int targetHeight = scaleSize(baseSize[1], scale);
-            boolean changed = false;
-            if (lp.width != targetWidth) {
-                lp.width = targetWidth;
-                changed = true;
-            }
-            if (lp.height != targetHeight) {
-                lp.height = targetHeight;
-                changed = true;
-            }
-            if (changed) {
-                imageView.setLayoutParams(lp);
-            }
-        } else {
-            applyScaleToLayoutParams(imageView, scale);
+        View wrapper = resolveSignalWrapperView(imageView);
+        if (wrapper == null) {
+            return;
         }
-        resetStandaloneImageScale(imageView);
-        imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        imageView.setAdjustViewBounds(true);
+        applyRuntimeSizedViewScale(wrapper, scale);
+    }
+
+    private static View resolveSignalWrapperView(ImageView imageView) {
+        if (imageView == null) {
+            return null;
+        }
+        String idName = getSystemUiIdName(imageView);
+        ViewParent parent = imageView.getParent();
+        if (!(parent instanceof View)) {
+            return null;
+        }
+        View wrapper = (View) parent;
+        if ("wifi_signal".equals(idName)) {
+            return "wifi_combo".equals(getSystemUiIdName(wrapper)) ? wrapper : null;
+        }
+        if ("mobile_signal".equals(idName)) {
+            return wrapper;
+        }
+        return null;
+    }
+
+    private static void applyMeasuredMobileSignalScale(ImageView imageView, float scale) {
+        if (imageView == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = imageView.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        int baseHeight = resolveMobileSignalBaseHeight(imageView);
+        if (baseHeight <= 0) {
+            return;
+        }
+        float aspectRatio = resolveMobileSignalAspectRatio(imageView);
+        int targetHeight = scaleSize(baseHeight, scale);
+        int targetWidth = Math.max(1, Math.round(targetHeight * aspectRatio));
+        boolean changed = false;
+        if (lp.width != targetWidth) {
+            lp.width = targetWidth;
+            changed = true;
+        }
+        if (lp.height != targetHeight) {
+            lp.height = targetHeight;
+            changed = true;
+        }
+        if (changed) {
+            imageView.setLayoutParams(lp);
+        }
+        View wrapper = resolveSignalWrapperView(imageView);
+        if (wrapper != null) {
+            applyMeasuredMobileSignalWrapperScale(wrapper, targetWidth, targetHeight);
+        }
         imageView.requestLayout();
         imageView.invalidate();
+    }
+
+    private static void applyMeasuredMobileSignalWrapperScale(View wrapper, int targetWidth, int targetHeight) {
+        if (wrapper == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = wrapper.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        boolean changed = false;
+        if (lp.width > 0 && lp.width != targetWidth) {
+            lp.width = targetWidth;
+            changed = true;
+        }
+        if (lp.height > 0 && lp.height != targetHeight) {
+            lp.height = targetHeight;
+            changed = true;
+        }
+        if (changed) {
+            wrapper.setLayoutParams(lp);
+        }
+        wrapper.requestLayout();
+        wrapper.invalidate();
+    }
+
+    private static int resolveMobileSignalBaseHeight(ImageView imageView) {
+        if (imageView == null) {
+            return 0;
+        }
+        int size = getSystemUiDimen(imageView.getContext(), "status_bar_bindable_icon_size");
+        if (size > 0) {
+            return size;
+        }
+        size = getSystemUiDimen(imageView.getContext(), "status_bar_icon_size_sp");
+        if (size > 0) {
+            return size;
+        }
+        size = getSystemUiDimen(imageView.getContext(), "status_bar_mobile_signal_size");
+        if (size > 0) {
+            return size;
+        }
+        int[] currentSize = resolveCurrentViewSize(imageView);
+        if (currentSize != null && currentSize[1] > 0) {
+            return currentSize[1];
+        }
+        return dp(imageView, 20);
+    }
+
+    private static float resolveMobileSignalAspectRatio(ImageView imageView) {
+        if (imageView == null) {
+            return 1f;
+        }
+        int[] currentSize = resolveCurrentViewSize(imageView);
+        if (currentSize != null && currentSize[0] > 0 && currentSize[1] > 0) {
+            return currentSize[0] / (float) currentSize[1];
+        }
+        Drawable drawable = imageView.getDrawable();
+        if (drawable != null && drawable.getIntrinsicWidth() > 0 && drawable.getIntrinsicHeight() > 0) {
+            return drawable.getIntrinsicWidth() / (float) drawable.getIntrinsicHeight();
+        }
+        return 1f;
+    }
+
+    private static void applyRuntimeSizedViewScale(View view, float scale) {
+        if (view == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        int[] runtimeSize = rememberOriginalRuntimeSize(view);
+        if (runtimeSize == null || runtimeSize[0] <= 0 || runtimeSize[1] <= 0) {
+            return;
+        }
+        int targetWidth = scaleSize(runtimeSize[0], scale);
+        int targetHeight = scaleSize(runtimeSize[1], scale);
+        boolean changed = false;
+        if (lp.width != targetWidth) {
+            lp.width = targetWidth;
+            changed = true;
+        }
+        if (lp.height != targetHeight) {
+            lp.height = targetHeight;
+            changed = true;
+        }
+        if (changed) {
+            view.setLayoutParams(lp);
+        }
+        view.requestLayout();
+        view.invalidate();
+    }
+
+    private static int[] resolveCurrentViewSize(View view) {
+        if (view == null) {
+            return null;
+        }
+        int width = view.getWidth();
+        int height = view.getHeight();
+        if (width <= 0) {
+            width = view.getMeasuredWidth();
+        }
+        if (height <= 0) {
+            height = view.getMeasuredHeight();
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (width <= 0 && lp != null && lp.width > 0) {
+            width = lp.width;
+        }
+        if (height <= 0 && lp != null && lp.height > 0) {
+            height = lp.height;
+        }
+        if (width <= 0 || height <= 0) {
+            return null;
+        }
+        return new int[]{width, height};
     }
 
     private static int[] rememberOriginalRuntimeSize(View view) {
@@ -2209,6 +2364,12 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         int width = view.getWidth();
         int height = view.getHeight();
+        if (width <= 0) {
+            width = view.getMeasuredWidth();
+        }
+        if (height <= 0) {
+            height = view.getMeasuredHeight();
+        }
         ViewGroup.LayoutParams lp = view.getLayoutParams();
         if (width <= 0 && lp != null && lp.width > 0) {
             width = lp.width;
