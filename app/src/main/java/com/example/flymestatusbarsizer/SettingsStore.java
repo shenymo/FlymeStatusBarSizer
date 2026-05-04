@@ -35,6 +35,7 @@ final class SettingsStore {
     static final String KEY_MBACK_NAV_BAR_HEIGHT = "mback_nav_bar_height";
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
     static final String KEY_IME_TOOLBAR_ENABLED = "ime_toolbar_enabled";
+    static final String KEY_IME_TOOLBAR_ORDER = "ime_toolbar_order";
     static final boolean DEFAULT_ENABLED = true;
     static final boolean DEFAULT_BATTERY_CODE_DRAW_ENABLED = true;
     static final boolean DEFAULT_SIGNAL_CODE_DRAW_ENABLED = true;
@@ -70,6 +71,7 @@ final class SettingsStore {
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
     static final boolean DEFAULT_IME_TOOLBAR_ENABLED = true;
+    static final String DEFAULT_IME_TOOLBAR_ORDER = "paste,delete,select_all,copy,switch_ime";
     static final String[] INT_KEYS = {
             KEY_BATTERY_ICON_STYLE,
             KEY_BATTERY_TEXT_FONT,
@@ -102,7 +104,8 @@ final class SettingsStore {
     };
 
     static final String[] STRING_KEYS = {
-            KEY_MBACK_LONG_TOUCH_INTENT_URI
+            KEY_MBACK_LONG_TOUCH_INTENT_URI,
+            KEY_IME_TOOLBAR_ORDER
     };
 
     private SettingsStore() {
@@ -199,6 +202,9 @@ final class SettingsStore {
     static String defaultString(String key) {
         if (KEY_MBACK_LONG_TOUCH_INTENT_URI.equals(key)) {
             return DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
+        }
+        if (KEY_IME_TOOLBAR_ORDER.equals(key)) {
+            return DEFAULT_IME_TOOLBAR_ORDER;
         }
         return "";
     }

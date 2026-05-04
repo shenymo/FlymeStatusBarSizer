@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
@@ -14,6 +15,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.view.DragEvent;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
@@ -34,6 +36,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_EXPORT_CONFIG = 1001;
@@ -74,6 +77,8 @@ public class MainActivity extends Activity {
     private RightIconGroupPreviewView previewView;
     private View[] mainPages;
     private TextView[] mainTabs;
+    private final ArrayList<String> imeToolbarDraftOrder = new ArrayList<>();
+    private LinearLayout imeToolbarOrderContainer;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -211,6 +216,7 @@ public class MainActivity extends Activity {
 
         addSectionLabel(page, "杂项");
         page.addView(buildNotificationCard(), matchWrapWithTop(10));
+        page.addView(buildImeToolbarCard(), matchWrapWithTop(10));
         page.addView(buildMBackSection(), matchWrapWithTop(10));
         page.addView(buildTimeCard(), matchWrapWithTop(10));
         return page;
@@ -228,6 +234,42 @@ public class MainActivity extends Activity {
                 "通知卡片",
                 "给通知卡片补一个液态玻璃背景开关，Android 13+ 使用 shader 采样通知后方内容，低版本自动退回透明卡片。",
                 "通知", card);
+    }
+
+    private View buildImeToolbarCard() {
+        LinearLayout card = card(colorSurface, 28);
+        addProfileSectionHeader(card, "输入法工具栏",
+                "在输入法内容区下方补一排常用按钮，包含粘贴、删除、全选、复制和切换输入法。");
+        addSwitchRow(card, "启用输入法工具栏",
+                "开启后会在输入法界面加一排工具按钮。关闭后恢复原来的输入法视图，不再显示这排按钮。",
+                SettingsStore.KEY_IME_TOOLBAR_ENABLED,
+                SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED);
+        addDivider(card);
+        addProfileSectionHeader(card, "按钮顺序",
+                "长按某个按钮项后拖到目标位置，再点应用。这里只改五个按钮的左右顺序，不改按钮功能。");
+
+        TextView hint = new TextView(this);
+        hint.setText("按住列表项拖动，松手后会插到对应位置。");
+        hint.setTextColor(colorSubtext);
+        hint.setTextSize(13);
+        hint.setPadding(0, dp(10), 0, 0);
+        card.addView(hint, matchWrap());
+
+        imeToolbarOrderContainer = new LinearLayout(this);
+        imeToolbarOrderContainer.setOrientation(LinearLayout.VERTICAL);
+        imeToolbarOrderContainer.setPadding(0, dp(12), 0, 0);
+        card.addView(imeToolbarOrderContainer, matchWrap());
+        loadImeToolbarDraftOrder();
+        renderImeToolbarOrderEditor();
+
+        addDivider(card);
+        addActionButtonRow(card, "应用当前顺序",
+                "保存这五个按钮的新顺序，并通知当前输入法界面马上刷新。",
+                "应用", this::applyImeToolbarOrder);
+        return buildExpandableInfoCard(
+                "输入法工具栏",
+                "可以控制输入法工具栏开关，也可以拖动调整这五个按钮的顺序。",
+                "工具栏", card);
     }
 
     private LinearLayout buildAboutPage() {
@@ -1384,6 +1426,207 @@ public class MainActivity extends Activity {
             return;
         }
         valueView.setText(value);
+    }
+
+    private void loadImeToolbarDraftOrder() {
+        imeToolbarDraftOrder.clear();
+        String raw = readStringSetting(
+                SettingsStore.KEY_IME_TOOLBAR_ORDER,
+                SettingsStore.DEFAULT_IME_TOOLBAR_ORDER);
+        if (!TextUtils.isEmpty(raw)) {
+            String[] parts = raw.split(",");
+            for (String part : parts) {
+                String action = part == null ? "" : part.trim();
+                if (isValidImeToolbarAction(action) && !imeToolbarDraftOrder.contains(action)) {
+                    imeToolbarDraftOrder.add(action);
+                }
+            }
+        }
+        addMissingImeToolbarActions(imeToolbarDraftOrder);
+    }
+
+    private void addMissingImeToolbarActions(ArrayList<String> target) {
+        String[] defaults = new String[]{"paste", "delete", "select_all", "copy", "switch_ime"};
+        for (String action : defaults) {
+            if (!target.contains(action)) {
+                target.add(action);
+            }
+        }
+    }
+
+    private boolean isValidImeToolbarAction(String action) {
+        return "paste".equals(action)
+                || "delete".equals(action)
+                || "select_all".equals(action)
+                || "copy".equals(action)
+                || "switch_ime".equals(action);
+    }
+
+    private void renderImeToolbarOrderEditor() {
+        if (imeToolbarOrderContainer == null) {
+            return;
+        }
+        imeToolbarOrderContainer.removeAllViews();
+        for (int i = 0; i < imeToolbarDraftOrder.size(); i++) {
+            String action = imeToolbarDraftOrder.get(i);
+            imeToolbarOrderContainer.addView(buildImeToolbarOrderRow(action), matchWrap());
+            if (i < imeToolbarDraftOrder.size() - 1) {
+                View divider = new View(this);
+                divider.setBackgroundColor(colorStroke);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
+                lp.topMargin = dp(8);
+                lp.bottomMargin = dp(8);
+                imeToolbarOrderContainer.addView(divider, lp);
+            }
+        }
+    }
+
+    private View buildImeToolbarOrderRow(String action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(14), dp(12), dp(14), dp(12));
+        row.setBackground(roundRect(colorSurfaceSoft, 20));
+        row.setTag(action);
+
+        TextView drag = new TextView(this);
+        drag.setText("≡");
+        drag.setTextColor(colorPrimary);
+        drag.setTextSize(18);
+        row.addView(drag, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView title = new TextView(this);
+        title.setText(getImeToolbarActionLabel(action));
+        title.setTextColor(colorText);
+        title.setTextSize(15);
+        title.setPadding(dp(12), 0, 0, 0);
+        row.addView(title, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView summary = chip("长按拖动", colorSurfaceStrong, colorPrimary);
+        row.addView(summary, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        row.setOnLongClickListener(v -> {
+            String currentAction = v.getTag() instanceof String ? (String) v.getTag() : "";
+            ClipData data = ClipData.newPlainText("ime_toolbar_action", currentAction);
+            View.DragShadowBuilder shadow = new View.DragShadowBuilder(v);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                v.startDragAndDrop(data, shadow, v, 0);
+            } else {
+                v.startDrag(data, shadow, v, 0);
+            }
+            v.setAlpha(0.55f);
+            return true;
+        });
+        row.setOnDragListener((v, event) -> handleImeToolbarRowDrag(v, event));
+        return row;
+    }
+
+    private boolean handleImeToolbarRowDrag(View target, DragEvent event) {
+        if (!(target.getTag() instanceof String)) {
+            return false;
+        }
+        switch (event.getAction()) {
+            case DragEvent.ACTION_DRAG_STARTED:
+                return event.getLocalState() instanceof View
+                        && ((View) event.getLocalState()).getTag() instanceof String;
+            case DragEvent.ACTION_DRAG_ENTERED:
+                target.setBackground(roundRect(colorFeatureSurface, 20));
+                return true;
+            case DragEvent.ACTION_DRAG_EXITED:
+                target.setBackground(roundRect(colorSurfaceSoft, 20));
+                return true;
+            case DragEvent.ACTION_DROP:
+                target.setBackground(roundRect(colorSurfaceSoft, 20));
+                Object localState = event.getLocalState();
+                if (!(localState instanceof View) || !((((View) localState).getTag()) instanceof String)) {
+                    return false;
+                }
+                moveImeToolbarAction((String) ((View) localState).getTag(), (String) target.getTag());
+                syncImeToolbarOrderEditorRows();
+                return true;
+            case DragEvent.ACTION_DRAG_ENDED:
+                target.setBackground(roundRect(colorSurfaceSoft, 20));
+                Object draggedView = event.getLocalState();
+                if (draggedView instanceof View) {
+                    ((View) draggedView).setAlpha(1f);
+                }
+                syncImeToolbarOrderEditorRows();
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private void moveImeToolbarAction(String fromAction, String toAction) {
+        if (TextUtils.isEmpty(fromAction) || TextUtils.isEmpty(toAction) || fromAction.equals(toAction)) {
+            return;
+        }
+        int fromIndex = imeToolbarDraftOrder.indexOf(fromAction);
+        int toIndex = imeToolbarDraftOrder.indexOf(toAction);
+        if (fromIndex < 0 || toIndex < 0) {
+            return;
+        }
+        imeToolbarDraftOrder.remove(fromIndex);
+        if (fromIndex < toIndex) {
+            toIndex--;
+        }
+        imeToolbarDraftOrder.add(toIndex, fromAction);
+    }
+
+    private String getImeToolbarActionLabel(String action) {
+        if ("paste".equals(action)) {
+            return "粘贴";
+        }
+        if ("delete".equals(action)) {
+            return "删除";
+        }
+        if ("select_all".equals(action)) {
+            return "全选";
+        }
+        if ("copy".equals(action)) {
+            return "复制";
+        }
+        if ("switch_ime".equals(action)) {
+            return "切换输入法";
+        }
+        return action;
+    }
+
+    private void applyImeToolbarOrder() {
+        if (imeToolbarDraftOrder.size() != 5) {
+            showToast("按钮顺序数据不完整");
+            return;
+        }
+        putStringSetting(SettingsStore.KEY_IME_TOOLBAR_ORDER, TextUtils.join(",", imeToolbarDraftOrder));
+        showToast("输入法工具栏顺序已应用");
+    }
+
+    private void syncImeToolbarOrderEditorRows() {
+        if (imeToolbarOrderContainer == null) {
+            return;
+        }
+        int orderIndex = 0;
+        for (int i = 0; i < imeToolbarOrderContainer.getChildCount(); i++) {
+            View child = imeToolbarOrderContainer.getChildAt(i);
+            if (!(child instanceof LinearLayout) || orderIndex >= imeToolbarDraftOrder.size()) {
+                continue;
+            }
+            LinearLayout row = (LinearLayout) child;
+            String action = imeToolbarDraftOrder.get(orderIndex++);
+            row.setTag(action);
+            row.setAlpha(1f);
+            row.setBackground(roundRect(colorSurfaceSoft, 20));
+            View titleView = row.getChildCount() > 1 ? row.getChildAt(1) : null;
+            if (titleView instanceof TextView) {
+                ((TextView) titleView).setText(getImeToolbarActionLabel(action));
+            }
+        }
     }
 
     private void showToast(String message) {

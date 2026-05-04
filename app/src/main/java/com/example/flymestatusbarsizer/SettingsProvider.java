@@ -85,6 +85,9 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_IME_TOOLBAR_ENABLED,
                 prefs.getBoolean(SettingsStore.KEY_IME_TOOLBAR_ENABLED,
                         SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED));
+        add(cursor, SettingsStore.KEY_IME_TOOLBAR_ORDER,
+                prefs.getString(SettingsStore.KEY_IME_TOOLBAR_ORDER,
+                        SettingsStore.DEFAULT_IME_TOOLBAR_ORDER));
         add(cursor, SettingsStore.KEY_MBACK_INSET_SIZE,
                 prefs.getInt(SettingsStore.KEY_MBACK_INSET_SIZE,
                         SettingsStore.DEFAULT_MBACK_INSET_SIZE));

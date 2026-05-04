@@ -73,6 +73,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, ConnectionRateThresholdState> CONNECTION_RATE_THRESHOLD_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_BATTERY_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_STATUS_BAR_ICON_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<Object, View> TRACKED_INPUT_METHOD_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<Drawable, View> SIGNAL_DRAWABLE_OWNERS = new WeakHashMap<>();
     private static final WeakHashMap<TelephonyManager, Integer> TELEPHONY_MANAGER_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<SignalStrength, Integer> SIGNAL_STRENGTH_SUB_IDS = new WeakHashMap<>();
@@ -90,6 +91,9 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static volatile int LAST_CELLULAR_LEVEL = -1;
     private static volatile int LAST_ACTIVE_SUBSCRIPTION_COUNT = -1;
     private static final float IME_TOOLBAR_ICON_VIEWPORT = 960f;
+    private static final String[] IME_TOOLBAR_ACTIONS = {
+            "paste", "delete", "select_all", "copy", "switch_ime"
+    };
 
     @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
@@ -162,7 +166,33 @@ public class FlymeStatusBarSizer extends XposedModule {
                 View inputView = (View) arg;
                 ModuleConfig.rememberSystemUiContext(context);
                 ensureConfigRefreshObserver(context);
+                TRACKED_INPUT_METHOD_VIEWS.put(thisObject, inputView);
                 inputView.post(() -> attachImeToolbarIfNeeded(thisObject, inputView));
+                return result;
+            });
+
+            Class<?> editorInfoClass = Class.forName("android.view.inputmethod.EditorInfo", false, loader);
+            Method onStartInputView = clazz.getDeclaredMethod("onStartInputView", editorInfoClass, boolean.class);
+            onStartInputView.setAccessible(true);
+            hook(onStartInputView).intercept(chain -> {
+                Object result = chain.proceed();
+                Object thisObject = chain.getThisObject();
+                View inputView = TRACKED_INPUT_METHOD_VIEWS.get(thisObject);
+                if (inputView != null) {
+                    inputView.post(() -> attachImeToolbarIfNeeded(thisObject, inputView));
+                }
+                return result;
+            });
+
+            Method showWindow = clazz.getDeclaredMethod("showWindow", boolean.class);
+            showWindow.setAccessible(true);
+            hook(showWindow).intercept(chain -> {
+                Object result = chain.proceed();
+                Object thisObject = chain.getThisObject();
+                View inputView = TRACKED_INPUT_METHOD_VIEWS.get(thisObject);
+                if (inputView != null) {
+                    inputView.post(() -> attachImeToolbarIfNeeded(thisObject, inputView));
+                }
                 return result;
             });
         } catch (Throwable t) {
@@ -1273,20 +1303,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!(toolbar instanceof LinearLayout)) {
             return;
         }
-        LinearLayout bar = (LinearLayout) toolbar;
-        if (bar.getChildCount() < 5) {
-            return;
-        }
-        View pasteButton = bar.getChildAt(0);
-        View deleteButton = bar.getChildAt(1);
-        View selectAllButton = bar.getChildAt(2);
-        View copyButton = bar.getChildAt(3);
-        View switchButton = bar.getChildAt(4);
         View originalInputView = group.getChildAt(0);
-        applyImeToolbarBackground(bar, originalInputView);
-        applyImeToolbarIconTint(bar, resolveImeToolbarIconColor(bar.getContext()));
-        bindImeToolbarButtonActions(inputMethodService, pasteButton, deleteButton, selectAllButton, copyButton, switchButton);
-        updatePasteButtonEnabled(inputMethodService, pasteButton);
+        ViewGroup.LayoutParams layoutParams = toolbar.getLayoutParams();
+        group.removeView(toolbar);
+        LinearLayout rebuiltBar = createImeToolbarView(group.getContext(), inputMethodService, originalInputView);
+        group.addView(rebuiltBar, new LinearLayout.LayoutParams(
+                layoutParams != null ? layoutParams.width : ViewGroup.LayoutParams.MATCH_PARENT,
+                layoutParams != null ? layoutParams.height : ViewGroup.LayoutParams.WRAP_CONTENT));
+        group.requestLayout();
+        group.invalidate();
     }
 
     private static LinearLayout createImeToolbarView(Context context, Object inputMethodService, View inputView) {
@@ -1297,32 +1322,88 @@ public class FlymeStatusBarSizer extends XposedModule {
         int vertical = dp(context, 6);
         bar.setPadding(horizontal, vertical, horizontal, vertical);
         applyImeToolbarBackground(bar, inputView);
-
-        ImageButton pasteButton = new ImageButton(context);
-        ImageButton deleteButton = new ImageButton(context);
-        ImageButton selectAllButton = new ImageButton(context);
-        ImageButton copyButton = new ImageButton(context);
-        ImageButton switchButton = new ImageButton(context);
-
-        configureImeToolbarButton(context, pasteButton, "paste", "粘贴");
-        configureImeToolbarButton(context, deleteButton, "delete", "删除");
-        configureImeToolbarButton(context, selectAllButton, "select_all", "全选");
-        configureImeToolbarButton(context, copyButton, "copy", "复制");
-        configureImeToolbarButton(context, switchButton, "switch_ime", "切换输入法");
-
         LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(0, dp(context, 40), 1f);
         buttonParams.leftMargin = dp(context, 4);
         buttonParams.rightMargin = dp(context, 4);
-        bar.addView(pasteButton, buttonParams);
-        bar.addView(deleteButton, new LinearLayout.LayoutParams(buttonParams));
-        bar.addView(selectAllButton, new LinearLayout.LayoutParams(buttonParams));
-        bar.addView(copyButton, new LinearLayout.LayoutParams(buttonParams));
-        bar.addView(switchButton, buttonParams);
+        ArrayList<String> orderedActions = resolveImeToolbarOrder(ModuleConfig.load(context));
+        for (String action : orderedActions) {
+            ImageButton button = new ImageButton(context);
+            configureImeToolbarButton(context, button, action, getImeToolbarActionLabel(action));
+            button.setTag(action);
+            bar.addView(button, new LinearLayout.LayoutParams(buttonParams));
+        }
 
         applyImeToolbarIconTint(bar, resolveImeToolbarIconColor(context));
-        bindImeToolbarButtonActions(inputMethodService, pasteButton, deleteButton, selectAllButton, copyButton, switchButton);
-        updatePasteButtonEnabled(inputMethodService, pasteButton);
+        bindImeToolbarButtonActions(inputMethodService, bar);
+        updateImeToolbarStateForButtons(inputMethodService, bar);
         return bar;
+    }
+
+    private static void updateImeToolbarStateForButtons(Object inputMethodService, LinearLayout bar) {
+        updatePasteButtonEnabled(inputMethodService, findImeToolbarButton(bar, "paste"));
+    }
+
+    private static View findImeToolbarButton(LinearLayout bar, String action) {
+        if (bar == null || TextUtils.isEmpty(action)) {
+            return null;
+        }
+        for (int i = 0; i < bar.getChildCount(); i++) {
+            View child = bar.getChildAt(i);
+            if (child != null && action.equals(child.getTag())) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    private static ArrayList<String> resolveImeToolbarOrder(ModuleConfig config) {
+        ArrayList<String> result = new ArrayList<>();
+        if (config != null && !TextUtils.isEmpty(config.imeToolbarOrder)) {
+            String[] parts = config.imeToolbarOrder.split(",");
+            for (String part : parts) {
+                String action = part == null ? "" : part.trim();
+                if (isValidImeToolbarAction(action) && !result.contains(action)) {
+                    result.add(action);
+                }
+            }
+        }
+        for (String action : IME_TOOLBAR_ACTIONS) {
+            if (!result.contains(action)) {
+                result.add(action);
+            }
+        }
+        return result;
+    }
+
+    private static boolean isValidImeToolbarAction(String action) {
+        if (TextUtils.isEmpty(action)) {
+            return false;
+        }
+        for (String candidate : IME_TOOLBAR_ACTIONS) {
+            if (candidate.equals(action)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String getImeToolbarActionLabel(String action) {
+        if ("paste".equals(action)) {
+            return "粘贴";
+        }
+        if ("delete".equals(action)) {
+            return "删除";
+        }
+        if ("select_all".equals(action)) {
+            return "全选";
+        }
+        if ("copy".equals(action)) {
+            return "复制";
+        }
+        if ("switch_ime".equals(action)) {
+            return "切换输入法";
+        }
+        return action;
     }
 
     private static void applyImeToolbarBackground(LinearLayout bar, View inputView) {
@@ -1675,35 +1756,40 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private static void bindImeToolbarButtonActions(Object inputMethodService, View pasteButton,
-            View deleteButton, View selectAllButton, View copyButton, View switchButton) {
-        if (pasteButton != null) {
-            pasteButton.setOnClickListener(v -> performPasteAction(inputMethodService, v.getContext()));
+    private static void bindImeToolbarButtonActions(Object inputMethodService, LinearLayout bar) {
+        if (bar == null) {
+            return;
         }
-        if (deleteButton != null) {
-            deleteButton.setOnClickListener(v -> performDeleteAction(inputMethodService));
-        }
-        if (selectAllButton != null) {
-            selectAllButton.setOnClickListener(v ->
-                    performEditorAction(inputMethodService, android.R.id.selectAll));
-        }
-        if (copyButton != null) {
-            copyButton.setOnClickListener(v ->
-                    performEditorAction(inputMethodService, android.R.id.copy));
-        }
-        if (switchButton != null) {
-            switchButton.setOnClickListener(v -> {
-                Context context = v.getContext();
-                try {
-                    InputMethodManager imm =
-                            (InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
-                    if (imm != null) {
-                        imm.showInputMethodPicker();
+        for (int i = 0; i < bar.getChildCount(); i++) {
+            View button = bar.getChildAt(i);
+            if (button == null || !(button.getTag() instanceof String)) {
+                continue;
+            }
+            String action = (String) button.getTag();
+            if ("paste".equals(action)) {
+                button.setOnClickListener(v -> performPasteAction(inputMethodService, v.getContext()));
+            } else if ("delete".equals(action)) {
+                button.setOnClickListener(v -> performDeleteAction(inputMethodService));
+            } else if ("select_all".equals(action)) {
+                button.setOnClickListener(v ->
+                        performEditorAction(inputMethodService, android.R.id.selectAll));
+            } else if ("copy".equals(action)) {
+                button.setOnClickListener(v ->
+                        performEditorAction(inputMethodService, android.R.id.copy));
+            } else if ("switch_ime".equals(action)) {
+                button.setOnClickListener(v -> {
+                    Context context = v.getContext();
+                    try {
+                        InputMethodManager imm =
+                                (InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
+                        if (imm != null) {
+                            imm.showInputMethodPicker();
+                        }
+                    } catch (Throwable t) {
+                        android.util.Log.w(TAG, "Failed to show input method picker", t);
                     }
-                } catch (Throwable t) {
-                    android.util.Log.w(TAG, "Failed to show input method picker", t);
-                }
-            });
+                });
+            }
         }
     }
 
@@ -3405,6 +3491,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         refreshTrackedBatteryViews();
         refreshTrackedStatusBarIconViews();
         refreshClockAndCarrierTextViews();
+        refreshTrackedInputMethodViews();
     }
 
     private static void refreshTrackedConnectionRateViews() {
@@ -3485,6 +3572,34 @@ public class FlymeStatusBarSizer extends XposedModule {
                 applyClockAndCarrierTextSize(textView);
             }
         });
+    }
+
+    private static void refreshTrackedInputMethodViews() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        handler.post(() -> {
+            ArrayList<Object> services = new ArrayList<>(TRACKED_INPUT_METHOD_VIEWS.keySet());
+            for (Object inputMethodService : services) {
+                if (inputMethodService == null) {
+                    continue;
+                }
+                View inputView = TRACKED_INPUT_METHOD_VIEWS.get(inputMethodService);
+                if (inputView == null) {
+                    continue;
+                }
+                refreshImeToolbarNow(inputMethodService, inputView);
+            }
+        });
+    }
+
+    private static void refreshImeToolbarNow(Object inputMethodService, View inputView) {
+        if (inputMethodService == null || inputView == null) {
+            return;
+        }
+        detachImeToolbarIfPresent(inputMethodService);
+        attachImeToolbarIfNeeded(inputMethodService, inputView);
     }
 
     private static void disableAncestorClipping(View view, int maxDepth) {

@@ -40,6 +40,7 @@ final class ModuleConfig {
     int mbackInsetSize = SettingsStore.DEFAULT_MBACK_INSET_SIZE;
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
     boolean imeToolbarEnabled = SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED;
+    String imeToolbarOrder = SettingsStore.DEFAULT_IME_TOOLBAR_ORDER;
     static ModuleConfig load(Context context) {
         if (context == null) {
             return new ModuleConfig();
@@ -150,6 +151,10 @@ final class ModuleConfig {
             mbackNavBarHeight = parseInt(value, SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT);
         } else if (SettingsStore.KEY_IME_TOOLBAR_ENABLED.equals(key)) {
             imeToolbarEnabled = "1".equals(value);
+        } else if (SettingsStore.KEY_IME_TOOLBAR_ORDER.equals(key)) {
+            imeToolbarOrder = value == null
+                    ? SettingsStore.DEFAULT_IME_TOOLBAR_ORDER
+                    : value;
         }
     }
 
