@@ -82,6 +82,9 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_MBACK_HIDE_PILL,
                 prefs.getBoolean(SettingsStore.KEY_MBACK_HIDE_PILL,
                         SettingsStore.DEFAULT_MBACK_HIDE_PILL));
+        add(cursor, SettingsStore.KEY_IME_TOOLBAR_ENABLED,
+                prefs.getBoolean(SettingsStore.KEY_IME_TOOLBAR_ENABLED,
+                        SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED));
         add(cursor, SettingsStore.KEY_MBACK_INSET_SIZE,
                 prefs.getInt(SettingsStore.KEY_MBACK_INSET_SIZE,
                         SettingsStore.DEFAULT_MBACK_INSET_SIZE));

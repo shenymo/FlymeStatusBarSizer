@@ -34,6 +34,7 @@ final class SettingsStore {
     static final String KEY_MBACK_INSET_SIZE = "mback_inset_size";
     static final String KEY_MBACK_NAV_BAR_HEIGHT = "mback_nav_bar_height";
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
+    static final String KEY_IME_TOOLBAR_ENABLED = "ime_toolbar_enabled";
     static final boolean DEFAULT_ENABLED = true;
     static final boolean DEFAULT_BATTERY_CODE_DRAW_ENABLED = true;
     static final boolean DEFAULT_SIGNAL_CODE_DRAW_ENABLED = true;
@@ -68,6 +69,7 @@ final class SettingsStore {
     static final int DEFAULT_MBACK_INSET_SIZE = -1;
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
+    static final boolean DEFAULT_IME_TOOLBAR_ENABLED = true;
     static final String[] INT_KEYS = {
             KEY_BATTERY_ICON_STYLE,
             KEY_BATTERY_TEXT_FONT,
@@ -95,7 +97,8 @@ final class SettingsStore {
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_BACKGROUND_TRANSPARENT,
-            KEY_MBACK_HIDE_PILL
+            KEY_MBACK_HIDE_PILL,
+            KEY_IME_TOOLBAR_ENABLED
     };
 
     static final String[] STRING_KEYS = {
@@ -186,6 +189,8 @@ final class SettingsStore {
                 return DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT;
             case KEY_MBACK_HIDE_PILL:
                 return DEFAULT_MBACK_HIDE_PILL;
+            case KEY_IME_TOOLBAR_ENABLED:
+                return DEFAULT_IME_TOOLBAR_ENABLED;
             default:
                 return false;
         }

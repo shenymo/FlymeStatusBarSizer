@@ -1,6 +1,8 @@
 package com.example.flymestatusbarsizer;
 
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -20,6 +22,7 @@ import android.os.SystemClock;
 import android.telephony.SignalStrength;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
+import android.text.TextUtils;
 import android.text.SpannableStringBuilder;
 import android.graphics.Typeface;
 import android.view.Gravity;
@@ -28,7 +31,11 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.WindowManager;
+import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -48,6 +55,8 @@ import io.github.libxposed.api.XposedModuleInterface;
 public class FlymeStatusBarSizer extends XposedModule {
     private static final String TAG = "FlymeStatusBarSizer";
     private static final String SYSTEM_UI = "com.android.systemui";
+    private static final String TAG_IME_TOOLBAR_ROOT = "flyme_status_bar_sizer_ime_toolbar_root";
+    private static final String TAG_IME_TOOLBAR_ORIGINAL = "flyme_status_bar_sizer_ime_toolbar_original";
     private static volatile FlymeStatusBarSizer MODULE;
 
     private static final WeakHashMap<View, int[]> ORIGINAL_SIZES = new WeakHashMap<>();
@@ -89,6 +98,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (SYSTEM_UI.equals(packageName)) {
             hookSystemUi(loader);
         }
+        hookInputMethodService(loader);
     }
 
     private void hookSystemUi(ClassLoader loader) {
@@ -130,6 +140,30 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookBatteryDrawable(loader);
         hookClockWeekday(loader);
         hookClockAndCarrierTextSize(loader);
+    }
+
+    private void hookInputMethodService(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName("android.inputmethodservice.InputMethodService", false, loader);
+            Method method = clazz.getDeclaredMethod("setInputView", View.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                Object thisObject = chain.getThisObject();
+                Object arg = chain.getArg(0);
+                if (!(thisObject instanceof Context) || !(arg instanceof View)) {
+                    return result;
+                }
+                Context context = (Context) thisObject;
+                View inputView = (View) arg;
+                ModuleConfig.rememberSystemUiContext(context);
+                ensureConfigRefreshObserver(context);
+                inputView.post(() -> attachImeToolbarIfNeeded(thisObject, inputView));
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook InputMethodService.setInputView", t);
+        }
     }
 
     private void hookSignalImageAssignments() {
@@ -1131,6 +1165,243 @@ public class FlymeStatusBarSizer extends XposedModule {
         ReflectUtils.setPaintColor(drawable, "mWarningTextPaint", Color.WHITE);
         ReflectUtils.setPaintColor(drawable, "mBoltPaint", Color.WHITE);
         ReflectUtils.setPaintColor(drawable, "mPlusPaint", Color.WHITE);
+    }
+
+    private static void attachImeToolbarIfNeeded(Object inputMethodService, View inputView) {
+        if (inputMethodService == null || inputView == null) {
+            return;
+        }
+        Context context = inputView.getContext();
+        if (context == null) {
+            return;
+        }
+        ModuleConfig config = ModuleConfig.load(context);
+        if (!config.enabled || !config.imeToolbarEnabled) {
+            detachImeToolbarIfPresent(inputMethodService);
+            return;
+        }
+        ViewGroup inputFrame = asViewGroup(ReflectUtils.getField(inputMethodService, "mInputFrame"));
+        if (inputFrame == null) {
+            return;
+        }
+        View current = inputFrame.getChildCount() > 0 ? inputFrame.getChildAt(0) : null;
+        if (current != null && TAG_IME_TOOLBAR_ROOT.equals(current.getTag())) {
+            updateImeToolbarState(inputMethodService, current);
+            return;
+        }
+        if (current != inputView) {
+            return;
+        }
+        if (current == null) {
+            return;
+        }
+        if (current.getParent() != inputFrame) {
+            return;
+        }
+        inputFrame.removeAllViews();
+        LinearLayout container = new LinearLayout(context);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        container.setTag(TAG_IME_TOOLBAR_ROOT);
+        disableAncestorClipping(container, 2);
+
+        ViewGroup currentParent = asViewGroup(current.getParent());
+        if (currentParent != null) {
+            currentParent.removeView(current);
+        }
+        current.setTag(TAG_IME_TOOLBAR_ORIGINAL);
+        container.addView(current, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        container.addView(createImeToolbarView(context, inputMethodService),
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT));
+        inputFrame.addView(container, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        inputFrame.requestLayout();
+        inputFrame.invalidate();
+    }
+
+    private static void detachImeToolbarIfPresent(Object inputMethodService) {
+        ViewGroup inputFrame = asViewGroup(ReflectUtils.getField(inputMethodService, "mInputFrame"));
+        if (inputFrame == null || inputFrame.getChildCount() == 0) {
+            return;
+        }
+        View current = inputFrame.getChildAt(0);
+        if (current == null || !TAG_IME_TOOLBAR_ROOT.equals(current.getTag()) || !(current instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup container = (ViewGroup) current;
+        View original = null;
+        for (int i = 0; i < container.getChildCount(); i++) {
+            View child = container.getChildAt(i);
+            if (TAG_IME_TOOLBAR_ORIGINAL.equals(child.getTag())) {
+                original = child;
+                break;
+            }
+        }
+        if (original == null) {
+            return;
+        }
+        container.removeView(original);
+        original.setTag(null);
+        inputFrame.removeAllViews();
+        inputFrame.addView(original, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        inputFrame.requestLayout();
+        inputFrame.invalidate();
+    }
+
+    private static void updateImeToolbarState(Object inputMethodService, View toolbarRoot) {
+        if (!(toolbarRoot instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) toolbarRoot;
+        if (group.getChildCount() < 2) {
+            return;
+        }
+        View toolbar = group.getChildAt(group.getChildCount() - 1);
+        if (!(toolbar instanceof LinearLayout)) {
+            return;
+        }
+        LinearLayout bar = (LinearLayout) toolbar;
+        if (bar.getChildCount() < 2) {
+            return;
+        }
+        View pasteButton = bar.getChildAt(0);
+        View switchButton = bar.getChildAt(1);
+        bindImeToolbarButtonActions(inputMethodService, pasteButton, switchButton);
+        updatePasteButtonEnabled(inputMethodService, pasteButton);
+    }
+
+    private static LinearLayout createImeToolbarView(Context context, Object inputMethodService) {
+        LinearLayout bar = new LinearLayout(context);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        int horizontal = dp(context, 18);
+        int vertical = dp(context, 6);
+        bar.setPadding(horizontal, vertical, horizontal, vertical);
+        bar.setBackground(new ColorDrawable(0xF2191919));
+
+        ImageButton pasteButton = new ImageButton(context);
+        ImageButton switchButton = new ImageButton(context);
+
+        configureImeToolbarButton(context, pasteButton, android.R.drawable.ic_menu_edit, "粘贴");
+        configureImeToolbarButton(context, switchButton, android.R.drawable.ic_menu_manage, "切换输入法");
+
+        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(0, dp(context, 40), 1f);
+        buttonParams.leftMargin = dp(context, 4);
+        buttonParams.rightMargin = dp(context, 4);
+        bar.addView(pasteButton, buttonParams);
+        bar.addView(switchButton, buttonParams);
+
+        bindImeToolbarButtonActions(inputMethodService, pasteButton, switchButton);
+        updatePasteButtonEnabled(inputMethodService, pasteButton);
+        return bar;
+    }
+
+    private static void configureImeToolbarButton(Context context, ImageButton button, int iconRes, String desc) {
+        button.setImageResource(iconRes);
+        button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        button.setContentDescription(desc);
+        button.setBackground(new ColorDrawable(Color.TRANSPARENT));
+        button.setPadding(dp(context, 8), dp(context, 8), dp(context, 8), dp(context, 8));
+        button.setColorFilter(Color.WHITE);
+    }
+
+    private static void bindImeToolbarButtonActions(Object inputMethodService, View pasteButton, View switchButton) {
+        if (pasteButton != null) {
+            pasteButton.setOnClickListener(v -> performPasteAction(inputMethodService, v.getContext()));
+        }
+        if (switchButton != null) {
+            switchButton.setOnClickListener(v -> {
+                Context context = v.getContext();
+                try {
+                    InputMethodManager imm =
+                            (InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.showInputMethodPicker();
+                    }
+                } catch (Throwable t) {
+                    android.util.Log.w(TAG, "Failed to show input method picker", t);
+                }
+            });
+        }
+    }
+
+    private static void performPasteAction(Object inputMethodService, Context context) {
+        InputConnection connection = getCurrentInputConnectionCompat(inputMethodService);
+        if (connection == null || context == null) {
+            return;
+        }
+        try {
+            if (connection.performContextMenuAction(android.R.id.paste)) {
+                return;
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            ClipboardManager clipboard =
+                    (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard == null || !clipboard.hasPrimaryClip()) {
+                return;
+            }
+            ClipData clipData = clipboard.getPrimaryClip();
+            if (clipData == null || clipData.getItemCount() <= 0) {
+                return;
+            }
+            CharSequence text = clipData.getItemAt(0).coerceToText(context);
+            if (!TextUtils.isEmpty(text)) {
+                connection.commitText(text, 1);
+            }
+        } catch (Throwable t) {
+            android.util.Log.w(TAG, "Failed to paste clipboard text", t);
+        }
+    }
+
+    private static void updatePasteButtonEnabled(Object inputMethodService, View pasteButton) {
+        if (pasteButton == null) {
+            return;
+        }
+        Context context = pasteButton.getContext();
+        boolean enabled = getCurrentInputConnectionCompat(inputMethodService) != null && hasClipboardText(context);
+        pasteButton.setEnabled(enabled);
+        pasteButton.setAlpha(enabled ? 1f : 0.45f);
+    }
+
+    private static boolean hasClipboardText(Context context) {
+        if (context == null) {
+            return false;
+        }
+        try {
+            ClipboardManager clipboard =
+                    (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard == null || !clipboard.hasPrimaryClip()) {
+                return false;
+            }
+            ClipData clipData = clipboard.getPrimaryClip();
+            if (clipData == null || clipData.getItemCount() <= 0) {
+                return false;
+            }
+            CharSequence text = clipData.getItemAt(0).coerceToText(context);
+            return !TextUtils.isEmpty(text);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static InputConnection getCurrentInputConnectionCompat(Object inputMethodService) {
+        Object value = ReflectUtils.invokeNoArg(inputMethodService, "getCurrentInputConnection");
+        return value instanceof InputConnection ? (InputConnection) value : null;
+    }
+
+    private static ViewGroup asViewGroup(Object object) {
+        return object instanceof ViewGroup ? (ViewGroup) object : null;
     }
 
     private void hookConstructors(ClassLoader loader, String className, ViewAction action) {
