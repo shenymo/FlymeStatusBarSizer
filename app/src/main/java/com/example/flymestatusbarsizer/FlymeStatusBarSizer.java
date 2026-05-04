@@ -28,6 +28,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -1453,6 +1454,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (mergedDual && !isPrimarySignalView(view, mobileGroup)) {
             return;
         }
+        alignSignalIconVertically(view);
         resizeSignalIconView(view);
         disableAncestorClipping(view, 6);
         int intrinsicHeight = resolveSignalIconIntrinsicHeight(view);
@@ -1472,6 +1474,23 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         view.setImageDrawable(drawable);
         SIGNAL_DRAWABLE_OWNERS.put(drawable, view);
+    }
+
+    private static void alignSignalIconVertically(ImageView view) {
+        if (view == null) {
+            return;
+        }
+        ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
+        if (!(layoutParams instanceof FrameLayout.LayoutParams)) {
+            return;
+        }
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) layoutParams;
+        int targetGravity = Gravity.START | Gravity.CENTER_VERTICAL;
+        if (lp.gravity == targetGravity) {
+            return;
+        }
+        lp.gravity = targetGravity;
+        view.setLayoutParams(lp);
     }
 
     private static void hideMobileTypeView(View view) {
