@@ -155,6 +155,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private void hookLauncher(ClassLoader loader) {
+        new LauncherRecentsTaskAnchorHook(this, TAG).install(loader);
         new LauncherRecentsFreeScrollHook(this, TAG).install(loader);
     }
 
