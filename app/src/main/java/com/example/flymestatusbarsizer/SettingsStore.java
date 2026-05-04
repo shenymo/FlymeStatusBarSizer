@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
 
+import java.util.Map;
+
 final class SettingsStore {
     static final String AUTHORITY = "com.fiyme.statusbarsizer.settings";
     static final String PREFS = "status_bar_sizer";
@@ -58,7 +60,7 @@ final class SettingsStore {
     static final int DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB = 32;
     static final int DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT = 2;
     static final int DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT = 3;
-    static final boolean DEFAULT_SHOW_CLOCK_WEEKDAY = true;
+    static final boolean DEFAULT_SHOW_CLOCK_WEEKDAY = false;
     static final boolean DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX = false;
     static final boolean DEFAULT_CLOCK_BOLD_ENABLED = true;
     static final int DEFAULT_CLOCK_FONT_WEIGHT = 900;
@@ -133,6 +135,81 @@ final class SettingsStore {
             context.getContentResolver().notifyChange(SETTINGS_URI, null);
         } catch (Throwable ignored) {
         }
+    }
+
+    static boolean readBoolean(SharedPreferences prefs, String key, boolean defaultValue) {
+        Object raw = getRawValue(prefs, key);
+        if (raw == null) {
+            return defaultValue;
+        }
+        if (raw instanceof Boolean) {
+            return (Boolean) raw;
+        }
+        if (raw instanceof Number) {
+            return ((Number) raw).intValue() != 0;
+        }
+        if (raw instanceof String) {
+            String text = ((String) raw).trim();
+            if ("1".equals(text) || "true".equalsIgnoreCase(text)) {
+                return true;
+            }
+            if ("0".equals(text) || "false".equalsIgnoreCase(text)) {
+                return false;
+            }
+        }
+        return defaultValue;
+    }
+
+    static int readInt(SharedPreferences prefs, String key, int defaultValue) {
+        Object raw = getRawValue(prefs, key);
+        if (raw == null) {
+            return defaultValue;
+        }
+        if (raw instanceof Number) {
+            return ((Number) raw).intValue();
+        }
+        if (raw instanceof String) {
+            try {
+                return Integer.parseInt(((String) raw).trim());
+            } catch (NumberFormatException ignored) {
+                return defaultValue;
+            }
+        }
+        return defaultValue;
+    }
+
+    static String readString(SharedPreferences prefs, String key, String defaultValue) {
+        Object raw = getRawValue(prefs, key);
+        if (raw == null) {
+            return defaultValue;
+        }
+        return String.valueOf(raw);
+    }
+
+    static boolean hasExplicitBooleanTrue(SharedPreferences prefs, String key) {
+        Object raw = getRawValue(prefs, key);
+        if (raw == null) {
+            return false;
+        }
+        if (raw instanceof Boolean) {
+            return (Boolean) raw;
+        }
+        if (raw instanceof Number) {
+            return ((Number) raw).intValue() != 0;
+        }
+        if (raw instanceof String) {
+            String text = ((String) raw).trim();
+            return "1".equals(text) || "true".equalsIgnoreCase(text);
+        }
+        return false;
+    }
+
+    private static Object getRawValue(SharedPreferences prefs, String key) {
+        if (prefs == null || key == null) {
+            return null;
+        }
+        Map<String, ?> all = prefs.getAll();
+        return all != null ? all.get(key) : null;
     }
 
     static int defaultInt(String key) {

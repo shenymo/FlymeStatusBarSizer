@@ -382,7 +382,8 @@ public class MainActivity extends Activity {
         previewView.setBatteryInnerTextScalePercent(readIntSetting(
                 SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
                 SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT));
-        previewView.setBatteryLevelTextEnabled(prefs.getBoolean(
+        previewView.setBatteryLevelTextEnabled(SettingsStore.readBoolean(
+                prefs,
                 SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED));
         FrameLayout.LayoutParams previewLp = new FrameLayout.LayoutParams(
@@ -801,7 +802,7 @@ public class MainActivity extends Activity {
         textColumn.addView(subtitle, matchWrap());
 
         Switch toggle = new Switch(this);
-        toggle.setChecked(prefs.getBoolean(key, defaultValue));
+        toggle.setChecked(SettingsStore.readBoolean(prefs, key, defaultValue));
         toggle.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) ->
                 putBooleanSetting(key, isChecked));
 
@@ -1159,7 +1160,7 @@ public class MainActivity extends Activity {
     }
 
     private int readIntSetting(String key, int defaultValue) {
-        return prefs.getInt(key, defaultValue);
+        return SettingsStore.readInt(prefs, key, defaultValue);
     }
 
     private String resolveChoiceLabel(int value, int[] values, String[] labels) {
@@ -1172,14 +1173,14 @@ public class MainActivity extends Activity {
     }
 
     private String readStringSetting(String key, String defaultValue) {
-        return prefs.getString(key, defaultValue);
+        return SettingsStore.readString(prefs, key, defaultValue);
     }
 
     private int getIntValueWithFallback(String key, int defaultValue, String fallbackKey, int fallbackDefaultValue) {
         if (prefs.contains(key)) {
-            return prefs.getInt(key, defaultValue);
+            return SettingsStore.readInt(prefs, key, defaultValue);
         }
-        return prefs.getInt(fallbackKey, fallbackDefaultValue);
+        return SettingsStore.readInt(prefs, fallbackKey, fallbackDefaultValue);
     }
 
     private void putBooleanSetting(String key, boolean value) {
@@ -1238,7 +1239,8 @@ public class MainActivity extends Activity {
             previewView.setBatteryInnerTextScalePercent(readIntSetting(
                     SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
                     SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT));
-            previewView.setBatteryLevelTextEnabled(prefs.getBoolean(
+            previewView.setBatteryLevelTextEnabled(SettingsStore.readBoolean(
+                    prefs,
                     SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
                     SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED));
             previewView.invalidate();
@@ -1288,17 +1290,20 @@ public class MainActivity extends Activity {
             root.put("version", 2);
             for (String key : SettingsStore.BOOLEAN_KEYS) {
                 if (SettingsStore.includeInBackup(key)) {
-                    settings.put(key, prefs.getBoolean(key, SettingsStore.defaultBoolean(key)));
+                    settings.put(key, SettingsStore.readBoolean(
+                            prefs, key, SettingsStore.defaultBoolean(key)));
                 }
             }
             for (String key : SettingsStore.INT_KEYS) {
                 if (SettingsStore.includeInBackup(key)) {
-                    settings.put(key, prefs.getInt(key, SettingsStore.defaultInt(key)));
+                    settings.put(key, SettingsStore.readInt(
+                            prefs, key, SettingsStore.defaultInt(key)));
                 }
             }
             for (String key : SettingsStore.STRING_KEYS) {
                 if (SettingsStore.includeInBackup(key)) {
-                    settings.put(key, prefs.getString(key, SettingsStore.defaultString(key)));
+                    settings.put(key, SettingsStore.readString(
+                            prefs, key, SettingsStore.defaultString(key)));
                 }
             }
             root.put("settings", settings);

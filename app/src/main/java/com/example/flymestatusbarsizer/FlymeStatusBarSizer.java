@@ -1920,6 +1920,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (timeText == null || timeText.length() == 0) {
             return timeText;
         }
+        if (!shouldAppendWeekday(timeText)) {
+            return timeText;
+        }
         String weekday = new SimpleDateFormat("EEE", Locale.getDefault()).format(new Date());
         if (config != null && config.clockWeekdayHidePrefix) {
             weekday = normalizeWeekdayLabel(weekday);
@@ -1944,6 +1947,32 @@ public class FlymeStatusBarSizer extends XposedModule {
             return "日";
         }
         return normalized;
+    }
+
+    private static boolean shouldAppendWeekday(CharSequence timeText) {
+        String text = timeText.toString().trim();
+        if (text.isEmpty()) {
+            return false;
+        }
+        if (text.contains("星期") || text.contains("周") || text.contains("週")
+                || text.contains("月") || text.contains("日")) {
+            return false;
+        }
+        int colonIndex = text.indexOf(':');
+        if (colonIndex < 0) {
+            colonIndex = text.indexOf('：');
+        }
+        if (colonIndex < 0) {
+            return false;
+        }
+        boolean hasDigit = false;
+        for (int i = 0; i < text.length(); i++) {
+            if (Character.isDigit(text.charAt(i))) {
+                hasDigit = true;
+                break;
+            }
+        }
+        return hasDigit;
     }
 
     private static void trackConnectionRateView(View view) {
