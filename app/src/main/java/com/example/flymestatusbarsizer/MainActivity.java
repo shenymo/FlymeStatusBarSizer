@@ -237,15 +237,17 @@ public class MainActivity extends Activity {
     }
 
     private View buildImeToolbarCard() {
-        LinearLayout card = card(colorSurface, 28);
-        addProfileSectionHeader(card, "输入法工具栏",
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+
+        addProfileSectionHeader(details, "输入法工具栏",
                 "在输入法内容区下方补一排常用按钮，包含粘贴、删除、全选、复制和切换输入法。");
-        addSwitchRow(card, "启用输入法工具栏",
+        addSwitchRow(details, "启用输入法工具栏",
                 "开启后会在输入法界面加一排工具按钮。关闭后恢复原来的输入法视图，不再显示这排按钮。",
                 SettingsStore.KEY_IME_TOOLBAR_ENABLED,
                 SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED);
-        addDivider(card);
-        addProfileSectionHeader(card, "按钮顺序",
+        addDivider(details);
+        addProfileSectionHeader(details, "按钮顺序",
                 "长按某个按钮项后拖到目标位置，再点应用。这里只改五个按钮的左右顺序，不改按钮功能。");
 
         TextView hint = new TextView(this);
@@ -253,23 +255,23 @@ public class MainActivity extends Activity {
         hint.setTextColor(colorSubtext);
         hint.setTextSize(13);
         hint.setPadding(0, dp(10), 0, 0);
-        card.addView(hint, matchWrap());
+        details.addView(hint, matchWrap());
 
         imeToolbarOrderContainer = new LinearLayout(this);
         imeToolbarOrderContainer.setOrientation(LinearLayout.VERTICAL);
         imeToolbarOrderContainer.setPadding(0, dp(12), 0, 0);
-        card.addView(imeToolbarOrderContainer, matchWrap());
+        details.addView(imeToolbarOrderContainer, matchWrap());
         loadImeToolbarDraftOrder();
         renderImeToolbarOrderEditor();
 
-        addDivider(card);
-        addActionButtonRow(card, "应用当前顺序",
+        addDivider(details);
+        addActionButtonRow(details, "应用当前顺序",
                 "保存这五个按钮的新顺序，并通知当前输入法界面马上刷新。",
                 "应用", this::applyImeToolbarOrder);
         return buildExpandableInfoCard(
                 "输入法工具栏",
                 "可以控制输入法工具栏开关，也可以拖动调整这五个按钮的顺序。",
-                "工具栏", card);
+                "工具栏", details);
     }
 
     private LinearLayout buildAboutPage() {
@@ -1487,7 +1489,7 @@ public class MainActivity extends Activity {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(14), dp(12), dp(14), dp(12));
-        row.setBackground(roundRect(colorSurfaceSoft, 20));
+        row.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
         row.setTag(action);
 
         TextView drag = new TextView(this);
@@ -1536,13 +1538,13 @@ public class MainActivity extends Activity {
                 return event.getLocalState() instanceof View
                         && ((View) event.getLocalState()).getTag() instanceof String;
             case DragEvent.ACTION_DRAG_ENTERED:
-                target.setBackground(roundRect(colorFeatureSurface, 20));
+                target.setBackground(outlinedRect(colorSurfaceStrong, colorFeatureStroke, 1, 20));
                 return true;
             case DragEvent.ACTION_DRAG_EXITED:
-                target.setBackground(roundRect(colorSurfaceSoft, 20));
+                target.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
                 return true;
             case DragEvent.ACTION_DROP:
-                target.setBackground(roundRect(colorSurfaceSoft, 20));
+                target.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
                 Object localState = event.getLocalState();
                 if (!(localState instanceof View) || !((((View) localState).getTag()) instanceof String)) {
                     return false;
@@ -1551,7 +1553,7 @@ public class MainActivity extends Activity {
                 syncImeToolbarOrderEditorRows();
                 return true;
             case DragEvent.ACTION_DRAG_ENDED:
-                target.setBackground(roundRect(colorSurfaceSoft, 20));
+                target.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
                 Object draggedView = event.getLocalState();
                 if (draggedView instanceof View) {
                     ((View) draggedView).setAlpha(1f);
@@ -1621,7 +1623,7 @@ public class MainActivity extends Activity {
             String action = imeToolbarDraftOrder.get(orderIndex++);
             row.setTag(action);
             row.setAlpha(1f);
-            row.setBackground(roundRect(colorSurfaceSoft, 20));
+            row.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
             View titleView = row.getChildCount() > 1 ? row.getChildAt(1) : null;
             if (titleView instanceof TextView) {
                 ((TextView) titleView).setText(getImeToolbarActionLabel(action));
