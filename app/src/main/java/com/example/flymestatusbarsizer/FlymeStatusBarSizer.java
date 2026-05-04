@@ -1713,6 +1713,14 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         try {
+            CharSequence selectedText = connection.getSelectedText(0);
+            if (!TextUtils.isEmpty(selectedText)) {
+                connection.commitText("", 1);
+                return;
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
             connection.deleteSurroundingText(1, 0);
         } catch (Throwable t) {
             android.util.Log.w(TAG, "Failed to delete surrounding text", t);
@@ -1765,31 +1773,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (pasteButton == null) {
             return;
         }
-        Context context = pasteButton.getContext();
-        boolean enabled = getCurrentInputConnectionCompat(inputMethodService) != null && hasClipboardText(context);
+        boolean enabled = getCurrentInputConnectionCompat(inputMethodService) != null;
         pasteButton.setEnabled(enabled);
-        pasteButton.setAlpha(enabled ? 1f : 0.45f);
-    }
-
-    private static boolean hasClipboardText(Context context) {
-        if (context == null) {
-            return false;
-        }
-        try {
-            ClipboardManager clipboard =
-                    (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
-            if (clipboard == null || !clipboard.hasPrimaryClip()) {
-                return false;
-            }
-            ClipData clipData = clipboard.getPrimaryClip();
-            if (clipData == null || clipData.getItemCount() <= 0) {
-                return false;
-            }
-            CharSequence text = clipData.getItemAt(0).coerceToText(context);
-            return !TextUtils.isEmpty(text);
-        } catch (Throwable ignored) {
-            return false;
-        }
+        pasteButton.setAlpha(enabled ? 1f : 0.55f);
     }
 
     private static InputConnection getCurrentInputConnectionCompat(Object inputMethodService) {
