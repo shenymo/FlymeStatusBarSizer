@@ -63,6 +63,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, int[]> ORIGINAL_PADDINGS = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_RUNTIME_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_SIZES = new WeakHashMap<>();
+    private static final WeakHashMap<TextView, Boolean> ORIGINAL_INCLUDE_FONT_PADDING = new WeakHashMap<>();
+    private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_TRANSLATION_Y = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> TRACKED_CLOCK_AND_CARRIER_TEXT_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, String> VIEW_ID_NAME_CACHE = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_CONNECTION_RATE_VIEWS = new WeakHashMap<>();
@@ -2698,6 +2700,22 @@ public class FlymeStatusBarSizer extends XposedModule {
         ORIGINAL_TEXT_SIZES.put(view, view.getTextSize());
     }
 
+    private static void rememberOriginalIncludeFontPadding(TextView view) {
+        if (view == null || ORIGINAL_INCLUDE_FONT_PADDING.containsKey(view)) {
+            return;
+        }
+        ORIGINAL_INCLUDE_FONT_PADDING.put(view, view.getIncludeFontPadding());
+    }
+
+    private static void rememberOriginalTextVerticalAnchor(TextView view) {
+        if (view == null) {
+            return;
+        }
+        if (!ORIGINAL_TEXT_TRANSLATION_Y.containsKey(view)) {
+            ORIGINAL_TEXT_TRANSLATION_Y.put(view, view.getTranslationY());
+        }
+    }
+
     private static void applyClockAndCarrierTextSize(TextView view) {
         if (view == null) {
             return;
@@ -2706,6 +2724,8 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         rememberOriginalTextSize(view);
+        rememberOriginalIncludeFontPadding(view);
+        rememberOriginalTextVerticalAnchor(view);
         Float originalSize = ORIGINAL_TEXT_SIZES.get(view);
         if (originalSize == null || originalSize <= 0f) {
             return;
@@ -2713,21 +2733,25 @@ public class FlymeStatusBarSizer extends XposedModule {
         ModuleConfig config = ModuleConfig.load(view.getContext());
         float scale = config.enabled ? resolveClockAndCarrierTextScale(config) : 1f;
         boolean changed = false;
-        if (Math.abs(view.getTextSize() - originalSize) > 0.5f) {
-            view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, originalSize);
+        float targetSize = originalSize * scale;
+        if (Math.abs(view.getTextSize() - targetSize) > 0.5f) {
+            view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, targetSize);
             changed = true;
         }
-        if (applyClockAndCarrierTextViewScale(view, scale)) {
+        if (resetClockAndCarrierTextViewScale(view)) {
             changed = true;
         }
-        if (isStatusBarClockView(view)) {
-            if (applyClockAndCarrierTextLayoutWidth(view, scale)) {
-                changed = true;
-            }
-        } else {
-            if (restoreOriginalTextLayoutWidth(view)) {
-                changed = true;
-            }
+        if (restoreOriginalTextLayoutWidth(view)) {
+            changed = true;
+        }
+        if (restoreOriginalClockAndCarrierFontPadding(view)) {
+            changed = true;
+        }
+        if (applyClockAndCarrierTextMetrics(view)) {
+            changed = true;
+        }
+        if (applyClockAndCarrierVerticalAnchor(view)) {
+            changed = true;
         }
         if (changed) {
             view.requestLayout();
@@ -2735,33 +2759,34 @@ public class FlymeStatusBarSizer extends XposedModule {
         view.invalidate();
     }
 
-    private static boolean applyClockAndCarrierTextViewScale(TextView view, float scale) {
+    private static boolean resetClockAndCarrierTextViewScale(TextView view) {
         if (view == null) {
             return false;
         }
         disableAncestorClipping(view, 4);
-        int width = view.getWidth() > 0 ? view.getWidth() : view.getMeasuredWidth();
-        int height = view.getHeight() > 0 ? view.getHeight() : view.getMeasuredHeight();
-        float pivotX = resolveTextPivotX(view, width);
-        float pivotY = height > 0 ? height / 2f : 0f;
         boolean changed = false;
-        if (Math.abs(view.getPivotX() - pivotX) > 0.5f) {
-            view.setPivotX(pivotX);
+        if (Math.abs(view.getScaleX() - 1f) > 0.001f) {
+            view.setScaleX(1f);
             changed = true;
         }
-        if (Math.abs(view.getPivotY() - pivotY) > 0.5f) {
-            view.setPivotY(pivotY);
-            changed = true;
-        }
-        if (Math.abs(view.getScaleX() - scale) > 0.001f) {
-            view.setScaleX(scale);
-            changed = true;
-        }
-        if (Math.abs(view.getScaleY() - scale) > 0.001f) {
-            view.setScaleY(scale);
+        if (Math.abs(view.getScaleY() - 1f) > 0.001f) {
+            view.setScaleY(1f);
             changed = true;
         }
         return changed;
+    }
+
+    private static boolean restoreOriginalClockAndCarrierFontPadding(TextView view) {
+        if (view == null) {
+            return false;
+        }
+        Boolean original = ORIGINAL_INCLUDE_FONT_PADDING.get(view);
+        boolean targetValue = original != null && original;
+        if (view.getIncludeFontPadding() == targetValue) {
+            return false;
+        }
+        view.setIncludeFontPadding(targetValue);
+        return true;
     }
 
     private static void scheduleClockAndCarrierTextRelayout(TextView view) {
@@ -2812,52 +2837,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         });
     }
 
-    private static boolean applyClockAndCarrierTextLayoutWidth(TextView view, float scale) {
-        if (view == null) {
-            return false;
-        }
-        ViewGroup.LayoutParams lp = view.getLayoutParams();
-        if (lp == null) {
-            return false;
-        }
-        rememberOriginalLayout(view, lp);
-        int[] originalSize = ORIGINAL_SIZES.get(view);
-        if (originalSize == null) {
-            return false;
-        }
-        rememberOriginalPadding(view);
-        int[] originalPadding = ORIGINAL_PADDINGS.get(view);
-        int horizontalPadding = 0;
-        if (originalPadding != null) {
-            horizontalPadding = originalPadding[0] + originalPadding[2];
-        }
-        float contentWidth = resolveClockAndCarrierTextContentWidth(view);
-        if (contentWidth <= 0f) {
-            int originalWidth = originalSize[0];
-            int measuredWidth = view.getMeasuredWidth();
-            int currentWidth = view.getWidth();
-            int baseWidth = originalWidth > 0 ? originalWidth
-                    : (measuredWidth > 0 ? measuredWidth : currentWidth);
-            if (baseWidth <= 0) {
-                return false;
-            }
-            int targetWidth = Math.max(1, Math.round(baseWidth * scale));
-            if (lp.width != targetWidth) {
-                lp.width = targetWidth;
-                view.setLayoutParams(lp);
-                return true;
-            }
-            return false;
-        }
-        int targetWidth = Math.max(1, Math.round(contentWidth * scale) + horizontalPadding);
-        if (lp.width != targetWidth) {
-            lp.width = targetWidth;
-            view.setLayoutParams(lp);
-            return true;
-        }
-        return false;
-    }
-
     private static boolean restoreOriginalTextLayoutWidth(TextView view) {
         if (view == null) {
             return false;
@@ -2876,15 +2855,81 @@ public class FlymeStatusBarSizer extends XposedModule {
         return false;
     }
 
-    private static float resolveClockAndCarrierTextContentWidth(TextView view) {
+    private static boolean applyClockAndCarrierTextMetrics(TextView view) {
         if (view == null) {
-            return 0f;
+            return false;
         }
-        CharSequence text = view.getText();
-        if (text == null || text.length() == 0) {
-            return 0f;
+        boolean changed = false;
+        Paint.FontMetricsInt fontMetrics = view.getPaint().getFontMetricsInt();
+        int targetTextBoundsHeight = fontMetrics == null
+                ? Math.max(1, Math.round(view.getTextSize()))
+                : Math.max(1, fontMetrics.bottom - fontMetrics.top);
+        int targetLineHeight = fontMetrics == null
+                ? targetTextBoundsHeight
+                : Math.max(targetTextBoundsHeight,
+                fontMetrics.descent - fontMetrics.ascent + fontMetrics.leading);
+        if (applyTextViewLineHeight(view, targetLineHeight)) {
+            changed = true;
         }
-        return view.getPaint().measureText(text.toString());
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        int[] originalSize = ORIGINAL_SIZES.get(view);
+        if (lp == null || originalSize == null) {
+            return changed;
+        }
+        rememberOriginalPadding(view);
+        int[] originalPadding = ORIGINAL_PADDINGS.get(view);
+        int verticalPadding = 0;
+        if (originalPadding != null) {
+            verticalPadding = originalPadding[1] + originalPadding[3];
+        }
+        int originalHeight = originalSize[1];
+        if (originalHeight > 0) {
+            int targetHeight = Math.max(originalHeight, targetTextBoundsHeight + verticalPadding);
+            if (lp.height != targetHeight) {
+                lp.height = targetHeight;
+                view.setLayoutParams(lp);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    private static boolean applyClockAndCarrierVerticalAnchor(TextView view) {
+        if (view == null) {
+            return false;
+        }
+        Float originalTranslationY = ORIGINAL_TEXT_TRANSLATION_Y.get(view);
+        if (originalTranslationY == null) {
+            return false;
+        }
+        float targetTranslationY = originalTranslationY;
+        if (Math.abs(view.getTranslationY() - targetTranslationY) <= 0.5f) {
+            return false;
+        }
+        view.setTranslationY(targetTranslationY);
+        return true;
+    }
+
+    private static boolean applyTextViewLineHeight(TextView view, int targetLineHeight) {
+        if (view == null) {
+            return false;
+        }
+        int normalizedLineHeight = Math.max(1, targetLineHeight);
+        int currentLineHeight = view.getLineHeight();
+        if (Math.abs(currentLineHeight - normalizedLineHeight) <= 1) {
+            return false;
+        }
+        Object result = ReflectUtils.invokeMethod(
+                view,
+                "setLineHeight",
+                new Class[]{int.class, float.class},
+                android.util.TypedValue.COMPLEX_UNIT_PX,
+                (float) normalizedLineHeight);
+        if (result != null || Math.abs(view.getLineHeight() - normalizedLineHeight) <= 1) {
+            return true;
+        }
+        ReflectUtils.invokeMethod(view, "setLineHeight", new Class[]{int.class}, normalizedLineHeight);
+        return Math.abs(view.getLineHeight() - normalizedLineHeight) <= 1;
     }
 
     private static float resolveTextPivotX(TextView view, int width) {
