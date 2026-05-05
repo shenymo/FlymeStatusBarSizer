@@ -18,10 +18,10 @@
 ## 实现方式
 
 - 设置界面在 `MainActivity`，配置写入设备保护存储里的 `SharedPreferences`
-- `SettingsProvider` 把配置以 `content://com.fiyme.statusbarsizer.settings/settings` 提供给 `SystemUI`
-- `ModuleConfig` 在运行时读取并缓存配置
+- `RemoteSettingsSync` 会把本地配置同步到 LSPosed 的 `Remote Preferences`
+- `ModuleConfig` 在运行时读取远程配置，并保留最近一次成功配置作为兜底
 - `FlymeStatusBarSizer.java` 是 Xposed 入口，主要 Hook `com.android.systemui`，少量功能还会 Hook `InputMethodService`
 - 状态栏部分会接管电池绘制、移动信号图标、时间文字、网速视图和部分 `mBack` 相关类
 - 通知卡片的背景层会按系统版本切成透明或液态玻璃视图
 - 输入法工具栏是在输入法输入视图下方补一层自定义按钮栏
-- 配置变化后通过 `ContentObserver` 通知运行中的 `SystemUI` 和输入法刷新
+- 配置变化后通过 `Remote Preferences` 的变更监听刷新运行中的 `SystemUI` 和输入法

@@ -1,18 +1,21 @@
 package com.example.flymestatusbarsizer;
 
 import android.content.Context;
-import android.database.Cursor;
-import android.net.Uri;
-import android.os.SystemClock;
+import android.content.SharedPreferences;
+import android.util.Log;
+
+import io.github.libxposed.api.XposedModule;
 
 final class ModuleConfig {
-    private static final Uri SETTINGS_URI = Uri.parse("content://" + SettingsStore.AUTHORITY + "/settings");
+    private static final String TAG = "FlymeStatusBarSizer";
     private static final Object CACHE_LOCK = new Object();
-    private static final long CACHE_TTL_MS = 5000L;
 
     private static volatile Context systemUiContext;
-    private static volatile ModuleConfig cachedConfig;
-    private static volatile long cachedConfigUptime;
+    private static volatile SharedPreferences remotePrefs;
+    private static volatile SharedPreferences.OnSharedPreferenceChangeListener remotePrefsListener;
+    private static volatile Runnable configChangedCallback;
+    private static volatile ModuleConfig activeConfig;
+    private static volatile ModuleConfig lastGoodConfig;
 
     boolean enabled = SettingsStore.DEFAULT_ENABLED;
     boolean batteryCodeDrawEnabled = SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED;
@@ -40,41 +43,101 @@ final class ModuleConfig {
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
     boolean imeToolbarEnabled = SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED;
     String imeToolbarOrder = SettingsStore.DEFAULT_IME_TOOLBAR_ORDER;
+
     static ModuleConfig load(Context context) {
-        if (context == null) {
-            return new ModuleConfig();
+        if (context != null) {
+            rememberSystemUiContext(context);
         }
-        rememberSystemUiContext(context);
-        long now = SystemClock.uptimeMillis();
-        ModuleConfig cached = cachedConfig;
-        if (cached != null && now - cachedConfigUptime <= CACHE_TTL_MS) {
+        ModuleConfig cached = activeConfig;
+        if (cached != null) {
             return cached;
         }
-        ModuleConfig config = new ModuleConfig();
-        try (Cursor cursor = context.getContentResolver().query(SETTINGS_URI, null, null, null, null)) {
-            if (cursor == null) {
-                return config;
-            }
-            int keyColumn = cursor.getColumnIndex("key");
-            int valueColumn = cursor.getColumnIndex("value");
-            while (cursor.moveToNext()) {
-                String key = cursor.getString(keyColumn);
-                String value = cursor.getString(valueColumn);
-                config.apply(key, value);
-            }
-        } catch (Throwable ignored) {
-        }
         synchronized (CACHE_LOCK) {
-            cachedConfig = config;
-            cachedConfigUptime = now;
+            if (activeConfig != null) {
+                return activeConfig;
+            }
+            SharedPreferences prefs = remotePrefs;
+            ModuleConfig config = null;
+            if (prefs != null) {
+                config = fromSharedPreferences(prefs);
+                if (config != null) {
+                    lastGoodConfig = config;
+                    activeConfig = config;
+                    return config;
+                }
+            }
+            if (lastGoodConfig != null) {
+                activeConfig = lastGoodConfig;
+                return lastGoodConfig;
+            }
+            config = new ModuleConfig();
+            activeConfig = config;
+            return config;
         }
-        return config;
     }
 
     static void invalidateCache() {
         synchronized (CACHE_LOCK) {
-            cachedConfig = null;
-            cachedConfigUptime = 0L;
+            activeConfig = null;
+        }
+    }
+
+    static void setConfigChangedCallback(Runnable callback) {
+        configChangedCallback = callback;
+    }
+
+    static void attachToModule(XposedModule module) {
+        if (module == null) {
+            return;
+        }
+        try {
+            updateRemotePreferences(module.getRemotePreferences(SettingsStore.PREFS));
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to obtain remote preferences from Xposed runtime", t);
+        }
+    }
+
+    private static void updateRemotePreferences(SharedPreferences prefs) {
+        SharedPreferences previous = remotePrefs;
+        SharedPreferences.OnSharedPreferenceChangeListener listener = remotePrefsListener;
+        if (previous != null && listener != null) {
+            try {
+                previous.unregisterOnSharedPreferenceChangeListener(listener);
+            } catch (Throwable ignored) {
+            }
+        }
+        remotePrefs = prefs;
+        if (prefs == null) {
+            invalidateCache();
+            return;
+        }
+        SharedPreferences.OnSharedPreferenceChangeListener newListener = (sharedPreferences, key) -> {
+            invalidateCache();
+            ModuleConfig refreshed = fromSharedPreferences(sharedPreferences);
+            if (refreshed != null) {
+                synchronized (CACHE_LOCK) {
+                    activeConfig = refreshed;
+                    lastGoodConfig = refreshed;
+                }
+                notifyConfigChanged();
+            }
+        };
+        remotePrefsListener = newListener;
+        try {
+            prefs.registerOnSharedPreferenceChangeListener(newListener);
+        } catch (Throwable ignored) {
+        }
+        ModuleConfig refreshed = fromSharedPreferences(prefs);
+        synchronized (CACHE_LOCK) {
+            if (refreshed != null) {
+                activeConfig = refreshed;
+                lastGoodConfig = refreshed;
+            } else {
+                activeConfig = null;
+            }
+        }
+        if (refreshed != null) {
+            notifyConfigChanged();
         }
     }
 
@@ -89,79 +152,135 @@ final class ModuleConfig {
         return systemUiContext;
     }
 
-    private void apply(String key, String value) {
-        if (SettingsStore.KEY_ENABLED.equals(key)) {
-            enabled = "1".equals(value);
-        } else if (SettingsStore.KEY_BATTERY_CODE_DRAW_ENABLED.equals(key)) {
-            batteryCodeDrawEnabled = "1".equals(value);
-        } else if (SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED.equals(key)) {
-            signalCodeDrawEnabled = "1".equals(value);
-        } else if (SettingsStore.KEY_BATTERY_ICON_STYLE.equals(key)) {
-            batteryIconStyle = SettingsStore.normalizeBatteryStyle(
-                    parseInt(value, SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
-        } else if (SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED.equals(key)) {
-            batteryLevelTextEnabled = "1".equals(value);
-        } else if (SettingsStore.KEY_BATTERY_TEXT_FONT.equals(key)) {
-            batteryTextFont = SettingsStore.normalizeBatteryTextFont(
-                    parseInt(value, SettingsStore.DEFAULT_BATTERY_TEXT_FONT));
-        } else if (SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT.equals(key)) {
-            statusBarIconScalePercent = SettingsStore.normalizeScalePercent(
-                    parseInt(value, SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT));
-        } else if (SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT.equals(key)) {
-            batteryInnerTextScalePercent = SettingsStore.normalizeScalePercent(
-                    parseInt(value, SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT));
-        } else if (SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED.equals(key)) {
-            connectionRateThresholdEnabled = "1".equals(value);
-        } else if (SettingsStore.KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB.equals(key)) {
-            connectionRateShowThresholdKb = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB);
-        } else if (SettingsStore.KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB.equals(key)) {
-            connectionRateHideThresholdKb = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB);
-        } else if (SettingsStore.KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT.equals(key)) {
-            connectionRateShowSampleCount = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT);
-        } else if (SettingsStore.KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT.equals(key)) {
-            connectionRateHideSampleCount = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT);
-        } else if (SettingsStore.KEY_CLOCK_CUSTOM_FORMAT.equals(key)) {
-            clockCustomFormat = value == null
-                    ? SettingsStore.DEFAULT_CLOCK_CUSTOM_FORMAT
-                    : value;
-        } else if (SettingsStore.KEY_CLOCK_BOLD_ENABLED.equals(key)) {
-            clockBoldEnabled = "1".equals(value);
-        } else if (SettingsStore.KEY_CLOCK_FONT_WEIGHT.equals(key)) {
-            clockFontWeight = Math.max(100, Math.min(900,
-                    parseInt(value, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT)));
-        } else if (SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT.equals(key)) {
-            clockAndCarrierTextSizePercent = SettingsStore.normalizeScalePercent(
-                    parseInt(value, SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT));
-        } else if (SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED.equals(key)) {
-            mbackLongTouchIntentEnabled = "1".equals(value);
-        } else if (SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI.equals(key)) {
-            mbackLongTouchIntentUri = value == null
-                    ? SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI
-                    : value;
-        } else if (SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT.equals(key)) {
-            mbackNavBarTransparent = "1".equals(value);
-        } else if (SettingsStore.KEY_NOTIFICATION_BACKGROUND_TRANSPARENT.equals(key)) {
-            notificationBackgroundTransparent = "1".equals(value);
-        } else if (SettingsStore.KEY_MBACK_HIDE_PILL.equals(key)) {
-            mbackHidePill = "1".equals(value);
-        } else if (SettingsStore.KEY_MBACK_INSET_SIZE.equals(key)) {
-            mbackInsetSize = parseInt(value, SettingsStore.DEFAULT_MBACK_INSET_SIZE);
-        } else if (SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT.equals(key)) {
-            mbackNavBarHeight = parseInt(value, SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT);
-        } else if (SettingsStore.KEY_IME_TOOLBAR_ENABLED.equals(key)) {
-            imeToolbarEnabled = "1".equals(value);
-        } else if (SettingsStore.KEY_IME_TOOLBAR_ORDER.equals(key)) {
-            imeToolbarOrder = value == null
-                    ? SettingsStore.DEFAULT_IME_TOOLBAR_ORDER
-                    : value;
+    private static ModuleConfig fromSharedPreferences(SharedPreferences prefs) {
+        if (prefs == null) {
+            return null;
+        }
+        try {
+            ModuleConfig config = new ModuleConfig();
+            config.enabled = SettingsStore.readBoolean(prefs, SettingsStore.KEY_ENABLED, SettingsStore.DEFAULT_ENABLED);
+            config.batteryCodeDrawEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_BATTERY_CODE_DRAW_ENABLED,
+                    SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED);
+            config.signalCodeDrawEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
+                    SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED);
+            config.batteryLevelTextEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
+                    SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED);
+            config.batteryIconStyle = SettingsStore.normalizeBatteryStyle(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_BATTERY_ICON_STYLE,
+                            SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
+            config.batteryTextFont = SettingsStore.normalizeBatteryTextFont(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_BATTERY_TEXT_FONT,
+                            SettingsStore.DEFAULT_BATTERY_TEXT_FONT));
+            config.statusBarIconScalePercent = SettingsStore.normalizeScalePercent(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,
+                            SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT));
+            config.batteryInnerTextScalePercent = SettingsStore.normalizeScalePercent(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
+                            SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT));
+            config.connectionRateThresholdEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
+                    SettingsStore.DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED);
+            config.connectionRateShowThresholdKb = SettingsStore.readInt(
+                    prefs,
+                    SettingsStore.KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB,
+                    SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB);
+            config.connectionRateHideThresholdKb = SettingsStore.readInt(
+                    prefs,
+                    SettingsStore.KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB,
+                    SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB);
+            config.connectionRateShowSampleCount = SettingsStore.readInt(
+                    prefs,
+                    SettingsStore.KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT,
+                    SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT);
+            config.connectionRateHideSampleCount = SettingsStore.readInt(
+                    prefs,
+                    SettingsStore.KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT,
+                    SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT);
+            config.clockCustomFormat = SettingsStore.readString(
+                    prefs,
+                    SettingsStore.KEY_CLOCK_CUSTOM_FORMAT,
+                    SettingsStore.DEFAULT_CLOCK_CUSTOM_FORMAT);
+            config.clockBoldEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_CLOCK_BOLD_ENABLED,
+                    SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED);
+            config.clockFontWeight = Math.max(100, Math.min(900,
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_CLOCK_FONT_WEIGHT,
+                            SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT)));
+            config.clockAndCarrierTextSizePercent = SettingsStore.normalizeScalePercent(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
+                            SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT));
+            config.mbackLongTouchIntentEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
+                    SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED);
+            config.mbackLongTouchIntentUri = SettingsStore.readString(
+                    prefs,
+                    SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI,
+                    SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI);
+            config.mbackNavBarTransparent = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,
+                    SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT);
+            config.notificationBackgroundTransparent = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_NOTIFICATION_BACKGROUND_TRANSPARENT,
+                    SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT);
+            config.mbackHidePill = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_MBACK_HIDE_PILL,
+                    SettingsStore.DEFAULT_MBACK_HIDE_PILL);
+            config.mbackInsetSize = SettingsStore.readInt(
+                    prefs,
+                    SettingsStore.KEY_MBACK_INSET_SIZE,
+                    SettingsStore.DEFAULT_MBACK_INSET_SIZE);
+            config.mbackNavBarHeight = SettingsStore.readInt(
+                    prefs,
+                    SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT,
+                    SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT);
+            config.imeToolbarEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_IME_TOOLBAR_ENABLED,
+                    SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED);
+            config.imeToolbarOrder = SettingsStore.readString(
+                    prefs,
+                    SettingsStore.KEY_IME_TOOLBAR_ORDER,
+                    SettingsStore.DEFAULT_IME_TOOLBAR_ORDER);
+            return config;
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to load remote module config", t);
+            return null;
         }
     }
 
-    private static int parseInt(String value, int fallback) {
+    private static void notifyConfigChanged() {
+        Runnable callback = configChangedCallback;
+        if (callback == null) {
+            return;
+        }
         try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException ignored) {
-            return fallback;
+            callback.run();
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to dispatch config change callback", t);
         }
     }
 }

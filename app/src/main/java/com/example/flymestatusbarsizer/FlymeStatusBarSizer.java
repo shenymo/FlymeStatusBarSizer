@@ -1,14 +1,12 @@
 package com.example.flymestatusbarsizer;
 
-import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
+import android.net.Uri;
 import android.content.res.Resources;
 import android.content.res.Configuration;
-import android.database.ContentObserver;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Insets;
@@ -18,7 +16,6 @@ import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
-import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -83,8 +80,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
     private static Handler MAIN_HANDLER;
-    private static BroadcastReceiver USER_UNLOCKED_RECEIVER;
-    private static ContentObserver SETTINGS_OBSERVER;
     private static final Runnable CLOCK_SECOND_REFRESH_RUNNABLE = FlymeStatusBarSizer::refreshClockViewsForSecondTick;
     private static final HashMap<String, Integer> SYSTEM_UI_ID_CACHE = new HashMap<>();
     private static volatile int LAST_SIGNAL_LEVEL = -1;
@@ -102,6 +97,15 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         MODULE = this;
+        ModuleConfig.setConfigChangedCallback(() -> {
+            Handler handler = MAIN_HANDLER;
+            if (handler != null) {
+                handler.post(FlymeStatusBarSizer::refreshTrackedRuntimeViews);
+            } else {
+                refreshTrackedRuntimeViews();
+            }
+        });
+        ModuleConfig.attachToModule(this);
         ClassLoader loader = param.getDefaultClassLoader();
         String packageName = param.getPackageName();
         if (SYSTEM_UI.equals(packageName)) {
@@ -3660,33 +3664,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (CONFIG_REFRESH_REGISTERED) {
                 return;
             }
-            Context appContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
-            ModuleConfig.rememberSystemUiContext(appContext);
             MAIN_HANDLER = new Handler(Looper.getMainLooper());
-            SETTINGS_OBSERVER = new ContentObserver(MAIN_HANDLER) {
-                @Override
-                public void onChange(boolean selfChange) {
-                    ModuleConfig.invalidateCache();
-                    refreshTrackedRuntimeViews();
-                }
-            };
-            try {
-                appContext.getContentResolver().registerContentObserver(
-                        Uri.parse("content://" + SettingsStore.AUTHORITY + "/settings"),
-                        true,
-                        SETTINGS_OBSERVER);
-            } catch (Throwable ignored) {
-            }
-            USER_UNLOCKED_RECEIVER = new BroadcastReceiver() {
-                @Override
-                public void onReceive(Context receiverContext, Intent intent) {
-                    refreshTrackedRuntimeViews();
-                }
-            };
-            try {
-                appContext.registerReceiver(USER_UNLOCKED_RECEIVER, new IntentFilter(Intent.ACTION_USER_UNLOCKED));
-            } catch (Throwable ignored) {
-            }
             CONFIG_REFRESH_REGISTERED = true;
             scheduleInitialRuntimeRefreshes();
         }
@@ -3699,20 +3677,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         for (long delay : INITIAL_RUNTIME_REFRESH_DELAYS_MS) {
             handler.postDelayed(FlymeStatusBarSizer::refreshTrackedRuntimeViews, delay);
-        }
-    }
-
-    private static void registerRuntimeReceiver(Context context, BroadcastReceiver receiver, IntentFilter filter) {
-        try {
-            Method method = Context.class.getDeclaredMethod("registerReceiver",
-                    BroadcastReceiver.class, IntentFilter.class, int.class);
-            method.invoke(context, receiver, filter, Context.RECEIVER_NOT_EXPORTED);
-            return;
-        } catch (Throwable ignored) {
-        }
-        try {
-            context.registerReceiver(receiver, filter);
-        } catch (Throwable ignored) {
         }
     }
 

@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace "com.example.flymestatusbarsizer"
-    compileSdk 35
+    compileSdk 36
 
     def buildDate = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())
 
@@ -15,7 +15,7 @@ android {
     defaultConfig {
         applicationId "com.fiyme.statusbarsizer"
         minSdk 26
-        targetSdk 35
+        targetSdk 36
         versionCode 1
         versionName "1.5"
         buildConfigField "String", "BUILD_DATE", "\"${buildDate}\""
@@ -33,5 +33,6 @@ android {
 }
 
 dependencies {
+    implementation "io.github.libxposed:service:101.0.0"
     compileOnly "io.github.libxposed:api:101.0.1"
 }

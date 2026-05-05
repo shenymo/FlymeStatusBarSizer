@@ -97,6 +97,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = SettingsStore.prefs(this);
+        SettingsStore.prepareRemoteSync(this);
         initPalette();
         configureSystemBars();
         int topInset = getStatusBarInset();

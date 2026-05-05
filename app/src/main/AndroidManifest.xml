@@ -20,11 +20,5 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <provider
-            android:name=".SettingsProvider"
-            android:authorities="com.fiyme.statusbarsizer.settings"
-            android:directBootAware="true"
-            android:exported="true" />
     </application>
 </manifest>

@@ -2,14 +2,11 @@ package com.example.flymestatusbarsizer;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.net.Uri;
 
 import java.util.Map;
 
 final class SettingsStore {
-    static final String AUTHORITY = "com.fiyme.statusbarsizer.settings";
     static final String PREFS = "status_bar_sizer";
-    static final Uri SETTINGS_URI = Uri.parse("content://" + AUTHORITY + "/settings");
 
     static final String KEY_ENABLED = "enabled";
     static final String KEY_BATTERY_CODE_DRAW_ENABLED = "battery_code_draw_enabled";
@@ -127,11 +124,12 @@ final class SettingsStore {
         return appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
+    static void prepareRemoteSync(Context context) {
+        RemoteSettingsSync.prepare(context);
+    }
+
     static void notifyChanged(Context context) {
-        try {
-            context.getContentResolver().notifyChange(SETTINGS_URI, null);
-        } catch (Throwable ignored) {
-        }
+        RemoteSettingsSync.syncFromLocal(context);
     }
 
     static boolean readBoolean(SharedPreferences prefs, String key, boolean defaultValue) {
