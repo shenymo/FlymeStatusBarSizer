@@ -68,6 +68,7 @@ final class LauncherRecentsTaskAnchorHook {
                 Object recentsViewObject = chain.getThisObject();
                 MotionEvent event = chain.getArg(0) instanceof MotionEvent ? (MotionEvent) chain.getArg(0) : null;
                 if (event != null && event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    LauncherRecentsCurrentPageHelper.allowRealtimeSync(recentsViewObject);
                     markUserInteractionStarted(recentsViewObject);
                 }
                 return chain.proceed();
@@ -81,6 +82,7 @@ final class LauncherRecentsTaskAnchorHook {
                 try {
                     Object enabledArg = chain.getArg(0);
                     if (!(enabledArg instanceof Boolean) || !((Boolean) enabledArg)) {
+                        LauncherRecentsCurrentPageHelper.clearRealtimeSyncSuppression(chain.getThisObject());
                         clearShiftState(chain.getThisObject(), true);
                     }
                 } catch (Throwable t) {
@@ -96,10 +98,28 @@ final class LauncherRecentsTaskAnchorHook {
                 Object recentsViewObject = chain.getThisObject();
                 Object result = chain.proceed();
                 try {
+                    LauncherRecentsCurrentPageHelper.clearRealtimeSyncSuppression(recentsViewObject);
                     clearShiftState(recentsViewObject, false);
                 } catch (Throwable t) {
                     module.log(android.util.Log.WARN, tag,
                             "Failed to reset launcher recents task translation state", t);
+                }
+                return result;
+            });
+
+            Method showCurrentTask = recentsViewClass.getDeclaredMethod(
+                    "showCurrentTask",
+                    Class.forName("com.android.wm.shell.shared.GroupedTaskInfo", false, loader),
+                    String.class);
+            showCurrentTask.setAccessible(true);
+            module.hook(showCurrentTask).intercept(chain -> {
+                Object recentsViewObject = chain.getThisObject();
+                Object result = chain.proceed();
+                try {
+                    scheduleForceRunningTaskCurrentPage(recentsViewObject);
+                } catch (Throwable t) {
+                    module.log(android.util.Log.WARN, tag,
+                            "Failed to force running task as current page", t);
                 }
                 return result;
             });
@@ -398,6 +418,24 @@ final class LauncherRecentsTaskAnchorHook {
             }
             applyScrollDiff(recentsViewObject, targetDiff);
         };
+        ReflectUtils.invokeMethod(
+                recentsViewObject,
+                "runOnPageScrollsInitialized",
+                new Class[]{Runnable.class},
+                applyRunnable);
+        if (recentsViewObject instanceof View) {
+            ((View) recentsViewObject).post(applyRunnable);
+        } else {
+            applyRunnable.run();
+        }
+    }
+
+    private static void scheduleForceRunningTaskCurrentPage(Object recentsViewObject) {
+        if (recentsViewObject == null) {
+            return;
+        }
+        LauncherRecentsCurrentPageHelper.suppressRealtimeSyncUntilInteraction(recentsViewObject);
+        Runnable applyRunnable = () -> LauncherRecentsCurrentPageHelper.syncCurrentPageToRunningTask(recentsViewObject);
         ReflectUtils.invokeMethod(
                 recentsViewObject,
                 "runOnPageScrollsInitialized",

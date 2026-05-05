@@ -80,6 +80,9 @@ final class LauncherRecentsFreeScrollHook {
                 ReflectUtils.setBooleanField(target, "mFreeScroll", true);
                 if (event != null) {
                     int action = event.getActionMasked();
+                    if (action == MotionEvent.ACTION_DOWN) {
+                        LauncherRecentsCurrentPageHelper.allowRealtimeSync(target);
+                    }
                     if (action == MotionEvent.ACTION_DOWN
                             || action == MotionEvent.ACTION_UP
                             || action == MotionEvent.ACTION_CANCEL) {
@@ -94,6 +97,21 @@ final class LauncherRecentsFreeScrollHook {
                         clearRecentsPendingSnap(target);
                     }
                 }
+                return result;
+            });
+
+            Method onScrollChanged = recentsViewClass.getDeclaredMethod(
+                    "onScrollChanged", int.class, int.class, int.class, int.class);
+            onScrollChanged.setAccessible(true);
+            module.hook(onScrollChanged).intercept(chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (!isLauncherRecentsView(target)
+                        || !ReflectUtils.getBooleanField(target, "mFreeScroll", false)
+                        || LauncherRecentsCurrentPageHelper.isRealtimeSyncSuppressed(target)) {
+                    return result;
+                }
+                LauncherRecentsCurrentPageHelper.syncCurrentPageToNearestTask(target);
                 return result;
             });
 
