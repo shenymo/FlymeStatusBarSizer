@@ -26,7 +26,6 @@ import android.telephony.SignalStrength;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
-import android.text.SpannableStringBuilder;
 import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -45,9 +44,9 @@ import android.widget.TextView;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
-import java.text.SimpleDateFormat;
+import java.text.DateFormatSymbols;
 import java.util.ArrayList;
-import java.util.Date;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.WeakHashMap;
@@ -79,12 +78,14 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<SignalStrength, Integer> SIGNAL_STRENGTH_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<View, NotificationLiquidGlassView> NOTIFICATION_GLASS_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, NotificationGlassDrawable> NOTIFICATION_GLASS_DRAWABLES = new WeakHashMap<>();
+    private static final WeakHashMap<TextView, Boolean> CLOCK_SECOND_REFRESH_VIEWS = new WeakHashMap<>();
     private static final Object CONFIG_REFRESH_LOCK = new Object();
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
     private static Handler MAIN_HANDLER;
     private static BroadcastReceiver USER_UNLOCKED_RECEIVER;
     private static ContentObserver SETTINGS_OBSERVER;
+    private static final Runnable CLOCK_SECOND_REFRESH_RUNNABLE = FlymeStatusBarSizer::refreshClockViewsForSecondTick;
     private static final HashMap<String, Integer> SYSTEM_UI_ID_CACHE = new HashMap<>();
     private static volatile int LAST_SIGNAL_LEVEL = -1;
     private static volatile int LAST_SIGNAL_SUB_ID = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
@@ -1906,34 +1907,146 @@ public class FlymeStatusBarSizer extends XposedModule {
                 }
                 TextView clock = (TextView) thisObject;
                 ModuleConfig config = ModuleConfig.load(clock.getContext());
-                if (!config.enabled || !config.showClockWeekday || !"clock".equals(getSystemUiIdName(clock))) {
+                if (!config.enabled || !isPrimaryStatusBarClockView(clock)) {
                     return result;
                 }
-                return appendWeekday((CharSequence) result, config);
+                Calendar calendar = resolveClockCalendar(clock);
+                CharSequence customText = buildCustomClockText(clock, config, calendar);
+                if (customText != null) {
+                    return customText;
+                }
+                return result;
             });
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook Clock weekday", t);
         }
     }
 
-    private static CharSequence appendWeekday(CharSequence timeText, ModuleConfig config) {
-        if (timeText == null || timeText.length() == 0) {
-            return timeText;
+    private static CharSequence buildCustomClockText(
+            TextView clock, ModuleConfig config, Calendar calendar) {
+        if (clock == null || config == null) {
+            return null;
         }
-        if (!shouldAppendWeekday(timeText)) {
-            return timeText;
+        String format = config.clockCustomFormat;
+        if (format == null || format.trim().isEmpty()) {
+            return null;
         }
-        String weekday = new SimpleDateFormat("EEE", Locale.getDefault()).format(new Date());
-        if (config != null && config.clockWeekdayHidePrefix) {
-            weekday = normalizeWeekdayLabel(weekday);
-        }
-        SpannableStringBuilder builder = new SpannableStringBuilder(timeText);
-        builder.append(' ');
-        builder.append(weekday);
-        return builder;
+        Locale locale = resolveClockLocale(clock);
+        return renderClockExpression(format, calendar, locale);
     }
 
-    private static String normalizeWeekdayLabel(String weekday) {
+    private static CharSequence renderClockExpression(String format, Calendar calendar, Locale locale) {
+        if (format == null || format.isEmpty()) {
+            return "";
+        }
+        Calendar safeCalendar = calendar != null ? calendar : Calendar.getInstance();
+        Locale safeLocale = locale != null ? locale : Locale.getDefault();
+        String result = format;
+        result = result.replace("{HH}", pad2(safeCalendar.get(Calendar.HOUR_OF_DAY)));
+        result = result.replace("{H}", Integer.toString(safeCalendar.get(Calendar.HOUR_OF_DAY)));
+        result = result.replace("{hh}", pad2(resolveHour12(safeCalendar)));
+        result = result.replace("{h}", Integer.toString(resolveHour12(safeCalendar)));
+        result = result.replace("{mm}", pad2(safeCalendar.get(Calendar.MINUTE)));
+        result = result.replace("{ss}", pad2(safeCalendar.get(Calendar.SECOND)));
+        result = result.replace("{week}", resolveWeekdayLabel(safeCalendar, safeLocale, true));
+        result = result.replace("{week_short}", resolveWeekdayLabel(safeCalendar, safeLocale, false));
+        result = result.replace("{week_1}", resolveWeekdaySingleLabel(safeCalendar, safeLocale));
+        result = result.replace("{ampm}", resolveAmPmLabel(safeCalendar, safeLocale));
+        result = result.replace("{period}", resolveTraditionalPeriod(safeCalendar));
+        result = result.replace("{branch}", resolveEarthlyBranch(safeCalendar));
+        result = result.replace("{branch_alias}", resolveEarthlyBranchAlias(safeCalendar));
+        return result;
+    }
+
+
+    private static Calendar resolveClockCalendar(TextView clock) {
+        if (clock == null) {
+            return Calendar.getInstance();
+        }
+        Object calendar = ReflectUtils.getField(clock, "mCalendar");
+        if (calendar instanceof Calendar) {
+            return (Calendar) calendar;
+        }
+        return Calendar.getInstance();
+    }
+
+    private static Locale resolveClockLocale(TextView clock) {
+        if (clock == null) {
+            return Locale.getDefault();
+        }
+        Object locale = ReflectUtils.getField(clock, "mLocale");
+        if (locale instanceof Locale) {
+            return (Locale) locale;
+        }
+        Configuration configuration = clock.getContext() != null
+                ? clock.getContext().getResources().getConfiguration()
+                : null;
+        if (configuration != null && configuration.locale != null) {
+            return configuration.locale;
+        }
+        return Locale.getDefault();
+    }
+
+    private static int resolveHour12(Calendar calendar) {
+        int hour = calendar == null ? 0 : calendar.get(Calendar.HOUR);
+        return hour == 0 ? 12 : hour;
+    }
+
+    private static String pad2(int value) {
+        return value < 10 ? "0" + value : Integer.toString(value);
+    }
+
+    private static String resolveWeekdayLabel(Calendar calendar, Locale locale, boolean full) {
+        DateFormatSymbols symbols = new DateFormatSymbols(locale != null ? locale : Locale.getDefault());
+        String[] labels = full ? symbols.getWeekdays() : symbols.getShortWeekdays();
+        int dayOfWeek = calendar == null ? Calendar.SUNDAY : calendar.get(Calendar.DAY_OF_WEEK);
+        if (labels == null || dayOfWeek < 0 || dayOfWeek >= labels.length) {
+            return "";
+        }
+        String label = labels[dayOfWeek];
+        if (label == null) {
+            return "";
+        }
+        String trimmed = label.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        if (full && !trimmed.startsWith("星期") && !trimmed.startsWith("周") && !trimmed.startsWith("週")
+                && isChineseLocale(locale)) {
+            return "星期" + resolveWeekdaySingleLabel(calendar, locale);
+        }
+        return trimmed;
+    }
+
+    private static String resolveWeekdaySingleLabel(Calendar calendar, Locale locale) {
+        String shortLabel = trimWeekdayLabel(resolveWeekdayLabel(calendar, locale, false));
+        if (!shortLabel.isEmpty()) {
+            return shortLabel;
+        }
+        switch (calendar == null ? Calendar.SUNDAY : calendar.get(Calendar.DAY_OF_WEEK)) {
+            case Calendar.MONDAY:
+                return "一";
+            case Calendar.TUESDAY:
+                return "二";
+            case Calendar.WEDNESDAY:
+                return "三";
+            case Calendar.THURSDAY:
+                return "四";
+            case Calendar.FRIDAY:
+                return "五";
+            case Calendar.SATURDAY:
+                return "六";
+            case Calendar.SUNDAY:
+            default:
+                return "日";
+        }
+    }
+
+    private static boolean isChineseLocale(Locale locale) {
+        return locale != null && "zh".equalsIgnoreCase(locale.getLanguage());
+    }
+
+    private static String trimWeekdayLabel(String weekday) {
         if (weekday == null) {
             return "";
         }
@@ -1949,30 +2062,98 @@ public class FlymeStatusBarSizer extends XposedModule {
         return normalized;
     }
 
-    private static boolean shouldAppendWeekday(CharSequence timeText) {
-        String text = timeText.toString().trim();
-        if (text.isEmpty()) {
-            return false;
+    private static String resolveAmPmLabel(Calendar calendar, Locale locale) {
+        int index = calendar == null ? 0 : calendar.get(Calendar.AM_PM);
+        return index == Calendar.AM ? "AM" : "PM";
+    }
+
+    private static String resolveTraditionalPeriod(Calendar calendar) {
+        int hour = calendar == null ? 0 : calendar.get(Calendar.HOUR_OF_DAY);
+        if (hour <= 4) {
+            return "凌晨";
         }
-        if (text.contains("星期") || text.contains("周") || text.contains("週")
-                || text.contains("月") || text.contains("日")) {
-            return false;
+        if (hour <= 7) {
+            return "早晨";
         }
-        int colonIndex = text.indexOf(':');
-        if (colonIndex < 0) {
-            colonIndex = text.indexOf('：');
+        if (hour <= 11) {
+            return "上午";
         }
-        if (colonIndex < 0) {
-            return false;
+        if (hour == 12) {
+            return "中午";
         }
-        boolean hasDigit = false;
-        for (int i = 0; i < text.length(); i++) {
-            if (Character.isDigit(text.charAt(i))) {
-                hasDigit = true;
-                break;
-            }
+        if (hour <= 17) {
+            return "下午";
         }
-        return hasDigit;
+        if (hour == 18) {
+            return "傍晚";
+        }
+        return "晚上";
+    }
+
+    private static String resolveEarthlyBranch(Calendar calendar) {
+        switch (resolveEarthlyBranchIndex(calendar)) {
+            case 0:
+                return "子";
+            case 1:
+                return "丑";
+            case 2:
+                return "寅";
+            case 3:
+                return "卯";
+            case 4:
+                return "辰";
+            case 5:
+                return "巳";
+            case 6:
+                return "午";
+            case 7:
+                return "未";
+            case 8:
+                return "申";
+            case 9:
+                return "酉";
+            case 10:
+                return "戌";
+            default:
+                return "亥";
+        }
+    }
+
+    private static String resolveEarthlyBranchAlias(Calendar calendar) {
+        switch (resolveEarthlyBranchIndex(calendar)) {
+            case 0:
+                return "夜半";
+            case 1:
+                return "鸡鸣";
+            case 2:
+                return "平旦";
+            case 3:
+                return "日出";
+            case 4:
+                return "食时";
+            case 5:
+                return "隅中";
+            case 6:
+                return "日中";
+            case 7:
+                return "日昳";
+            case 8:
+                return "哺时";
+            case 9:
+                return "日入";
+            case 10:
+                return "黄昏";
+            default:
+                return "人定";
+        }
+    }
+
+    private static int resolveEarthlyBranchIndex(Calendar calendar) {
+        int hour = calendar == null ? 0 : calendar.get(Calendar.HOUR_OF_DAY);
+        if (hour == 23 || hour == 0) {
+            return 0;
+        }
+        return Math.min(11, Math.max(0, (hour + 1) / 2));
     }
 
     private static void trackConnectionRateView(View view) {
@@ -2598,6 +2779,8 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         TRACKED_CLOCK_AND_CARRIER_TEXT_VIEWS.put(view, Boolean.TRUE);
+        ensureConfigRefreshObserver(view.getContext());
+        updateClockSecondRefreshTracking(view);
         view.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             if (!(v instanceof TextView)) {
                 return;
@@ -2606,6 +2789,22 @@ public class FlymeStatusBarSizer extends XposedModule {
                 return;
             }
             v.post(() -> applyClockAndCarrierTextSize((TextView) v));
+        });
+        view.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View v) {
+                if (v instanceof TextView) {
+                    updateClockSecondRefreshTracking((TextView) v);
+                }
+            }
+
+            @Override
+            public void onViewDetachedFromWindow(View v) {
+                if (v instanceof TextView) {
+                    CLOCK_SECOND_REFRESH_VIEWS.remove((TextView) v);
+                    scheduleNextClockSecondRefresh();
+                }
+            }
         });
     }
 
@@ -2730,6 +2929,12 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         String idName = getSystemUiIdName(view);
         return "clock".equals(idName) || "keyguard_clock".equals(idName) || "mz_clock".equals(idName);
+    }
+
+    private static boolean isPrimaryStatusBarClockView(TextView view) {
+        return view != null
+                && "com.android.systemui.statusbar.policy.Clock".equals(view.getClass().getName())
+                && "clock".equals(getSystemUiIdName(view));
     }
 
     private static boolean isClockOrLockscreenCarrierText(TextView view) {
@@ -3597,10 +3802,81 @@ public class FlymeStatusBarSizer extends XposedModule {
                 if (textView == null) {
                     continue;
                 }
+                updateClockSecondRefreshTracking(textView);
+                refreshClockTextIfNeeded(textView);
                 applyClockFontWeight(textView);
                 applyClockAndCarrierTextSize(textView);
             }
         });
+    }
+
+    private static void refreshClockTextIfNeeded(TextView textView) {
+        if (!isPrimaryStatusBarClockView(textView)) {
+            return;
+        }
+        ReflectUtils.invokeMethod(textView, "updateClock", new Class<?>[0]);
+    }
+
+    private static void updateClockSecondRefreshTracking(TextView view) {
+        if (!isPrimaryStatusBarClockView(view)) {
+            return;
+        }
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        if (shouldUseCustomClockSecondRefresh(config)) {
+            CLOCK_SECOND_REFRESH_VIEWS.put(view, Boolean.TRUE);
+        } else {
+            CLOCK_SECOND_REFRESH_VIEWS.remove(view);
+        }
+        scheduleNextClockSecondRefresh();
+    }
+
+    private static boolean shouldUseCustomClockSecondRefresh(ModuleConfig config) {
+        if (config == null || !config.enabled) {
+            return false;
+        }
+        String format = config.clockCustomFormat;
+        return format != null && format.contains("{ss}");
+    }
+
+    private static void refreshClockViewsForSecondTick() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        handler.removeCallbacks(CLOCK_SECOND_REFRESH_RUNNABLE);
+        ArrayList<TextView> clocks = new ArrayList<>(CLOCK_SECOND_REFRESH_VIEWS.keySet());
+        boolean hasActiveClock = false;
+        for (TextView clock : clocks) {
+            if (clock == null || !clock.isAttachedToWindow()) {
+                CLOCK_SECOND_REFRESH_VIEWS.remove(clock);
+                continue;
+            }
+            ModuleConfig config = ModuleConfig.load(clock.getContext());
+            if (!shouldUseCustomClockSecondRefresh(config)) {
+                CLOCK_SECOND_REFRESH_VIEWS.remove(clock);
+                continue;
+            }
+            hasActiveClock = true;
+            refreshClockTextIfNeeded(clock);
+            applyClockAndCarrierTextSize(clock);
+        }
+        if (hasActiveClock) {
+            scheduleNextClockSecondRefresh();
+        }
+    }
+
+    private static void scheduleNextClockSecondRefresh() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        handler.removeCallbacks(CLOCK_SECOND_REFRESH_RUNNABLE);
+        if (CLOCK_SECOND_REFRESH_VIEWS.isEmpty()) {
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        long next = ((now / 1000L) + 1L) * 1000L;
+        handler.postAtTime(CLOCK_SECOND_REFRESH_RUNNABLE, next);
     }
 
     private static void refreshTrackedInputMethodViews() {

@@ -37,6 +37,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_EXPORT_CONFIG = 1001;
@@ -47,6 +50,13 @@ public class MainActivity extends Activity {
     private static final int MENU_RESET = 3;
     private static final int MENU_RESTART = 4;
     private static final String PACKAGE_SYSTEM_UI = "com.android.systemui";
+    private static final Pattern CLOCK_EXPRESSION_TOKEN_PATTERN = Pattern.compile("\\{([A-Za-z0-9_]+)\\}");
+    private static final String[][] CLOCK_EXPRESSION_TOKEN_ROWS = {
+            {"HH", "H", "hh", "h"},
+            {"mm", "ss", "ampm", "period"},
+            {"week", "week_short", "week_1"},
+            {"branch", "branch_alias"}
+    };
 
     private static final int FALLBACK_BACKGROUND = Color.rgb(253, 248, 253);
     private static final int FALLBACK_SURFACE = Color.WHITE;
@@ -78,7 +88,11 @@ public class MainActivity extends Activity {
     private View[] mainPages;
     private TextView[] mainTabs;
     private final ArrayList<String> imeToolbarDraftOrder = new ArrayList<>();
+    private final ArrayList<String> clockExpressionDraftTokens = new ArrayList<>();
+    private final HashMap<String, TextView> clockExpressionButtons = new HashMap<>();
     private LinearLayout imeToolbarOrderContainer;
+    private LinearLayout clockExpressionOrderContainer;
+    private TextView clockExpressionPreviewView;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -694,13 +708,53 @@ public class MainActivity extends Activity {
 
     private View buildTimeCard() {
         LinearLayout card = card(colorSurface, 28);
-        addSwitchRow(card, "\u65f6\u95f4\u663e\u793a\u661f\u671f",
-                "\u5728\u72b6\u6001\u680f\u65f6\u95f4\u53f3\u4fa7\u8ffd\u52a0\u5f53\u524d\u661f\u671f",
-                SettingsStore.KEY_SHOW_CLOCK_WEEKDAY, SettingsStore.DEFAULT_SHOW_CLOCK_WEEKDAY);
+        addProfileSectionHeader(card, "自定义时间表达式",
+                "点下面的按钮加入表达式。已加入的项支持长按拖动排序。小时、分钟、秒连续排列时会自动补冒号，不需要单独插入。");
+        TextView hint = new TextView(this);
+        hint.setText("当前支持：小时、分钟、秒、星期、AM/PM、时段词、十二时辰地支和传统别称。");
+        hint.setTextColor(colorSubtext);
+        hint.setTextSize(13);
+        hint.setPadding(0, dp(10), 0, 0);
+        card.addView(hint, matchWrap());
+
+        card.addView(buildClockExpressionButtonPanel(), matchWrapWithTop(12));
+
+        TextView orderTitle = new TextView(this);
+        orderTitle.setText("当前顺序");
+        orderTitle.setTextColor(colorPrimary);
+        orderTitle.setTextSize(15);
+        orderTitle.setPadding(0, dp(16), 0, 0);
+        card.addView(orderTitle, matchWrap());
+
+        TextView orderHint = new TextView(this);
+        orderHint.setText("点击已选项可移除，长按可拖动排序。");
+        orderHint.setTextColor(colorSubtext);
+        orderHint.setTextSize(12);
+        orderHint.setPadding(0, dp(4), 0, 0);
+        card.addView(orderHint, matchWrap());
+
+        clockExpressionPreviewView = new TextView(this);
+        clockExpressionPreviewView.setTextColor(colorPrimary);
+        clockExpressionPreviewView.setTextSize(13);
+        clockExpressionPreviewView.setPadding(dp(12), dp(10), dp(12), dp(10));
+        clockExpressionPreviewView.setBackground(roundRect(colorSurfaceSoft, 18));
+        card.addView(clockExpressionPreviewView, matchWrapWithTop(10));
+
+        clockExpressionOrderContainer = new LinearLayout(this);
+        clockExpressionOrderContainer.setOrientation(LinearLayout.VERTICAL);
+        clockExpressionOrderContainer.setPadding(0, dp(12), 0, 0);
+        card.addView(clockExpressionOrderContainer, matchWrap());
+        loadClockExpressionDraft();
+        renderClockExpressionEditor();
+
         addDivider(card);
-        addSwitchRow(card, "\u9690\u85cf\u201c\u5468\u201d\u5b57",
-                "\u5f00\u542f\u540e\u53ea\u663e\u793a\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u65e5\uff0c\u4e0d\u663e\u793a\u201c\u5468\u201d\u6216\u201c\u9031\u201d\u524d\u7f00",
-                SettingsStore.KEY_CLOCK_WEEKDAY_HIDE_PREFIX, SettingsStore.DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX);
+        addActionButtonRow(card, "应用当前表达式",
+                "保存当前按钮顺序生成的表达式，并通知 SystemUI 立即刷新状态栏时间。",
+                "应用", this::applyClockExpressionDraft);
+        addDivider(card);
+        addActionButtonRow(card, "清空当前表达式",
+                "清空后会只保留系统原始时间显示。",
+                "清空", this::clearClockExpressionDraft);
         addDivider(card);
         addSwitchRow(card, "\u65f6\u95f4\u52a0\u7c97",
                 "\u5bf9\u72b6\u6001\u680f\u65f6\u95f4\u4ee5\u53ca\u5176\u53f3\u4fa7\u8ffd\u52a0\u7684\u661f\u671f/\u65e5\u671f\u5e94\u7528\u5b57\u91cd",
@@ -971,6 +1025,11 @@ public class MainActivity extends Activity {
 
     private void addTextSettingRow(LinearLayout root, String titleText, String subtitleText,
             String key, String defaultValue, String emptyLabel) {
+        addTextSettingRow(root, titleText, subtitleText, key, defaultValue, emptyLabel, null, false);
+    }
+
+    private void addTextSettingRow(LinearLayout root, String titleText, String subtitleText,
+            String key, String defaultValue, String emptyLabel, String inputHint, boolean plainTextInput) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -1003,6 +1062,8 @@ public class MainActivity extends Activity {
                 titleText,
                 readStringSetting(key, defaultValue),
                 subtitleText,
+                inputHint,
+                plainTextInput,
                 value -> {
                     putStringSetting(key, value);
                     updateTextSettingLabel(valueView, value, emptyLabel);
@@ -1405,12 +1466,19 @@ public class MainActivity extends Activity {
     }
 
     private void showTextInputDialog(String titleText, String currentValue, String message,
-            TextValueConsumer consumer) {
+            String inputHint, boolean plainTextInput, TextValueConsumer consumer) {
         EditText input = new EditText(this);
         input.setText(currentValue == null ? "" : currentValue);
         input.setSelection(input.getText().length());
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        input.setHint("https://example.com or intent://...");
+        if (plainTextInput) {
+            input.setInputType(InputType.TYPE_CLASS_TEXT
+                    | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                    | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            input.setHint(inputHint == null ? "" : inputHint);
+        } else {
+            input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+            input.setHint(inputHint == null ? "https://example.com or intent://..." : inputHint);
+        }
         input.setMinLines(2);
         input.setMaxLines(6);
         int padding = dp(20);
@@ -1433,6 +1501,407 @@ public class MainActivity extends Activity {
             return;
         }
         valueView.setText(value);
+    }
+
+    private View buildClockExpressionButtonPanel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        clockExpressionButtons.clear();
+        for (String[] rowTokens : CLOCK_EXPRESSION_TOKEN_ROWS) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setPadding(0, panel.getChildCount() == 0 ? 0 : dp(10), 0, 0);
+            for (int i = 0; i < rowTokens.length; i++) {
+                String token = rowTokens[i];
+                TextView button = buildClockExpressionTokenButton(token);
+                clockExpressionButtons.put(token, button);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                if (i > 0) {
+                    lp.leftMargin = dp(8);
+                }
+                row.addView(button, lp);
+            }
+            panel.addView(row, matchWrap());
+        }
+        return panel;
+    }
+
+    private TextView buildClockExpressionTokenButton(String token) {
+        TextView button = new TextView(this);
+        button.setText(getClockExpressionTokenLabel(token));
+        button.setTextColor(colorPrimary);
+        button.setTextSize(13);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(dp(10), dp(12), dp(10), dp(12));
+        button.setBackground(outlinedRect(colorSurface, colorStroke, 1, 18));
+        button.setTag(token);
+        button.setOnClickListener(v -> {
+            Object tag = v.getTag();
+            if (!(tag instanceof String)) {
+                return;
+            }
+            String currentToken = (String) tag;
+            if (clockExpressionDraftTokens.contains(currentToken)) {
+                removeClockExpressionToken(currentToken);
+            } else {
+                clockExpressionDraftTokens.add(currentToken);
+                renderClockExpressionEditor();
+            }
+        });
+        return button;
+    }
+
+    private void loadClockExpressionDraft() {
+        clockExpressionDraftTokens.clear();
+        String raw = readStringSetting(
+                SettingsStore.KEY_CLOCK_CUSTOM_FORMAT,
+                SettingsStore.DEFAULT_CLOCK_CUSTOM_FORMAT);
+        if (!TextUtils.isEmpty(raw)) {
+            Matcher matcher = CLOCK_EXPRESSION_TOKEN_PATTERN.matcher(raw);
+            while (matcher.find()) {
+                String token = matcher.group(1);
+                if (isValidClockExpressionToken(token)) {
+                    clockExpressionDraftTokens.add(token);
+                }
+            }
+        }
+        syncClockExpressionButtons();
+    }
+
+    private boolean isValidClockExpressionToken(String token) {
+        return "HH".equals(token)
+                || "H".equals(token)
+                || "hh".equals(token)
+                || "h".equals(token)
+                || "mm".equals(token)
+                || "ss".equals(token)
+                || "week".equals(token)
+                || "week_short".equals(token)
+                || "week_1".equals(token)
+                || "ampm".equals(token)
+                || "period".equals(token)
+                || "branch".equals(token)
+                || "branch_alias".equals(token);
+    }
+
+    private void renderClockExpressionEditor() {
+        syncClockExpressionButtons();
+        updateClockExpressionPreview();
+        if (clockExpressionOrderContainer == null) {
+            return;
+        }
+        clockExpressionOrderContainer.removeAllViews();
+        if (clockExpressionDraftTokens.isEmpty()) {
+            TextView empty = new TextView(this);
+            empty.setText("当前为空，状态栏时间会回退到系统原始时间显示。");
+            empty.setTextColor(colorSubtext);
+            empty.setTextSize(13);
+            empty.setPadding(0, dp(4), 0, 0);
+            clockExpressionOrderContainer.addView(empty, matchWrap());
+            return;
+        }
+        for (int i = 0; i < clockExpressionDraftTokens.size(); i++) {
+            String token = clockExpressionDraftTokens.get(i);
+            clockExpressionOrderContainer.addView(buildClockExpressionOrderRow(token), matchWrap());
+            if (i < clockExpressionDraftTokens.size() - 1) {
+                View divider = new View(this);
+                divider.setBackgroundColor(colorStroke);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
+                lp.topMargin = dp(8);
+                lp.bottomMargin = dp(8);
+                clockExpressionOrderContainer.addView(divider, lp);
+            }
+        }
+    }
+
+    private View buildClockExpressionOrderRow(String token) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(14), dp(12), dp(14), dp(12));
+        row.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
+        row.setTag(token);
+
+        TextView drag = new TextView(this);
+        drag.setText("≡");
+        drag.setTextColor(colorPrimary);
+        drag.setTextSize(18);
+        row.addView(drag, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout textColumn = new LinearLayout(this);
+        textColumn.setOrientation(LinearLayout.VERTICAL);
+        textColumn.setPadding(dp(12), 0, 0, 0);
+
+        TextView title = new TextView(this);
+        title.setText(getClockExpressionTokenLabel(token));
+        title.setTextColor(colorText);
+        title.setTextSize(15);
+        textColumn.addView(title, matchWrap());
+
+        TextView value = new TextView(this);
+        value.setText("{" + token + "}");
+        value.setTextColor(colorSubtext);
+        value.setTextSize(12);
+        value.setPadding(0, dp(4), 0, 0);
+        textColumn.addView(value, matchWrap());
+        row.addView(textColumn, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView remove = chip("点击移除", colorSurfaceStrong, colorPrimary);
+        row.addView(remove, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        row.setOnClickListener(v -> {
+            Object tag = v.getTag();
+            if (tag instanceof String) {
+                removeClockExpressionToken((String) tag);
+            }
+        });
+        row.setOnLongClickListener(v -> {
+            String currentToken = v.getTag() instanceof String ? (String) v.getTag() : "";
+            ClipData data = ClipData.newPlainText("clock_expression_token", currentToken);
+            View.DragShadowBuilder shadow = new View.DragShadowBuilder(v);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                v.startDragAndDrop(data, shadow, v, 0);
+            } else {
+                v.startDrag(data, shadow, v, 0);
+            }
+            v.setAlpha(0.55f);
+            return true;
+        });
+        row.setOnDragListener((v, event) -> handleClockExpressionRowDrag(v, event));
+        return row;
+    }
+
+    private boolean handleClockExpressionRowDrag(View target, DragEvent event) {
+        if (!(target.getTag() instanceof String)) {
+            return false;
+        }
+        switch (event.getAction()) {
+            case DragEvent.ACTION_DRAG_STARTED:
+                return event.getLocalState() instanceof View
+                        && ((View) event.getLocalState()).getTag() instanceof String;
+            case DragEvent.ACTION_DRAG_ENTERED:
+                target.setBackground(outlinedRect(colorSurfaceStrong, colorFeatureStroke, 1, 20));
+                return true;
+            case DragEvent.ACTION_DRAG_EXITED:
+                target.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
+                return true;
+            case DragEvent.ACTION_DROP:
+                target.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
+                Object localState = event.getLocalState();
+                if (!(localState instanceof View) || !((((View) localState).getTag()) instanceof String)) {
+                    return false;
+                }
+                moveClockExpressionToken((String) ((View) localState).getTag(), (String) target.getTag());
+                syncClockExpressionEditorRows();
+                updateClockExpressionPreview();
+                syncClockExpressionButtons();
+                return true;
+            case DragEvent.ACTION_DRAG_ENDED:
+                target.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
+                Object draggedView = event.getLocalState();
+                if (draggedView instanceof View) {
+                    ((View) draggedView).setAlpha(1f);
+                }
+                syncClockExpressionEditorRows();
+                updateClockExpressionPreview();
+                syncClockExpressionButtons();
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private void moveClockExpressionToken(String fromToken, String toToken) {
+        if (TextUtils.isEmpty(fromToken) || TextUtils.isEmpty(toToken) || fromToken.equals(toToken)) {
+            return;
+        }
+        int fromIndex = clockExpressionDraftTokens.indexOf(fromToken);
+        int toIndex = clockExpressionDraftTokens.indexOf(toToken);
+        if (fromIndex < 0 || toIndex < 0) {
+            return;
+        }
+        clockExpressionDraftTokens.remove(fromIndex);
+        if (fromIndex < toIndex) {
+            toIndex--;
+        }
+        clockExpressionDraftTokens.add(toIndex, fromToken);
+    }
+
+    private void syncClockExpressionEditorRows() {
+        if (clockExpressionOrderContainer == null) {
+            return;
+        }
+        int orderIndex = 0;
+        for (int i = 0; i < clockExpressionOrderContainer.getChildCount(); i++) {
+            View child = clockExpressionOrderContainer.getChildAt(i);
+            if (!(child instanceof LinearLayout) || orderIndex >= clockExpressionDraftTokens.size()) {
+                continue;
+            }
+            LinearLayout row = (LinearLayout) child;
+            String token = clockExpressionDraftTokens.get(orderIndex++);
+            row.setTag(token);
+            row.setAlpha(1f);
+            row.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
+            View titleView = null;
+            View valueView = null;
+            if (row.getChildCount() > 1 && row.getChildAt(1) instanceof LinearLayout) {
+                LinearLayout textColumn = (LinearLayout) row.getChildAt(1);
+                titleView = textColumn.getChildCount() > 0 ? textColumn.getChildAt(0) : null;
+                valueView = textColumn.getChildCount() > 1 ? textColumn.getChildAt(1) : null;
+            }
+            if (titleView instanceof TextView) {
+                ((TextView) titleView).setText(getClockExpressionTokenLabel(token));
+            }
+            if (valueView instanceof TextView) {
+                ((TextView) valueView).setText("{" + token + "}");
+            }
+        }
+    }
+
+    private void removeClockExpressionToken(String token) {
+        int index = clockExpressionDraftTokens.indexOf(token);
+        if (index < 0) {
+            return;
+        }
+        clockExpressionDraftTokens.remove(index);
+        renderClockExpressionEditor();
+    }
+
+    private void updateClockExpressionPreview() {
+        if (clockExpressionPreviewView == null) {
+            return;
+        }
+        String format = buildClockExpressionFormat(clockExpressionDraftTokens);
+        clockExpressionPreviewView.setText(TextUtils.isEmpty(format) ? "未设置" : format);
+    }
+
+    private void syncClockExpressionButtons() {
+        for (String token : clockExpressionButtons.keySet()) {
+            TextView button = clockExpressionButtons.get(token);
+            if (button == null) {
+                continue;
+            }
+            boolean selected = clockExpressionDraftTokens.contains(token);
+            button.setTextColor(selected ? Color.WHITE : colorPrimary);
+            button.setBackground(outlinedRect(
+                    selected ? colorPrimary : colorSurface,
+                    selected ? colorPrimary : colorStroke,
+                    1,
+                    18));
+        }
+    }
+
+    private String getClockExpressionTokenLabel(String token) {
+        if ("HH".equals(token)) {
+            return "24小时";
+        }
+        if ("H".equals(token)) {
+            return "24小时单数";
+        }
+        if ("hh".equals(token)) {
+            return "12小时";
+        }
+        if ("h".equals(token)) {
+            return "12小时单数";
+        }
+        if ("mm".equals(token)) {
+            return "分钟";
+        }
+        if ("ss".equals(token)) {
+            return "秒";
+        }
+        if ("week".equals(token)) {
+            return "星期";
+        }
+        if ("week_short".equals(token)) {
+            return "周";
+        }
+        if ("week_1".equals(token)) {
+            return "周简写";
+        }
+        if ("ampm".equals(token)) {
+            return "AM/PM";
+        }
+        if ("period".equals(token)) {
+            return "时段词";
+        }
+        if ("branch".equals(token)) {
+            return "地支";
+        }
+        if ("branch_alias".equals(token)) {
+            return "传统别称";
+        }
+        return token;
+    }
+
+    private void applyClockExpressionDraft() {
+        String format = buildClockExpressionFormat(clockExpressionDraftTokens);
+        putStringSetting(SettingsStore.KEY_CLOCK_CUSTOM_FORMAT, format);
+        showToast(TextUtils.isEmpty(format) ? "已清空自定义时间表达式" : "自定义时间表达式已应用");
+    }
+
+    private void clearClockExpressionDraft() {
+        clockExpressionDraftTokens.clear();
+        renderClockExpressionEditor();
+        showToast("当前表达式已清空，点应用后才会写入设置");
+    }
+
+    private String buildClockExpressionFormat(ArrayList<String> tokens) {
+        if (tokens == null || tokens.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < tokens.size(); i++) {
+            String token = tokens.get(i);
+            if (!isValidClockExpressionToken(token)) {
+                continue;
+            }
+            String previous = findPreviousClockToken(tokens, i);
+            if (builder.length() > 0) {
+                builder.append(resolveClockExpressionSeparator(previous, token));
+            }
+            builder.append('{').append(token).append('}');
+        }
+        return builder.toString();
+    }
+
+    private String findPreviousClockToken(ArrayList<String> tokens, int index) {
+        for (int i = index - 1; i >= 0; i--) {
+            String token = tokens.get(i);
+            if (isValidClockExpressionToken(token)) {
+                return token;
+            }
+        }
+        return null;
+    }
+
+    private String resolveClockExpressionSeparator(String previous, String current) {
+        if (TextUtils.isEmpty(previous) || TextUtils.isEmpty(current)) {
+            return "";
+        }
+        if (isClockTimeUnitToken(previous) && isClockTimeUnitToken(current)) {
+            if (("HH".equals(previous) || "H".equals(previous) || "hh".equals(previous) || "h".equals(previous))
+                    && "mm".equals(current)) {
+                return ":";
+            }
+            if ("mm".equals(previous) && "ss".equals(current)) {
+                return ":";
+            }
+        }
+        return " ";
+    }
+
+    private boolean isClockTimeUnitToken(String token) {
+        return "HH".equals(token) || "H".equals(token)
+                || "hh".equals(token) || "h".equals(token)
+                || "mm".equals(token) || "ss".equals(token);
     }
 
     private void loadImeToolbarDraftOrder() {

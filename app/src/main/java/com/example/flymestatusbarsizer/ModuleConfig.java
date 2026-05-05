@@ -27,8 +27,7 @@ final class ModuleConfig {
     int connectionRateHideThresholdKb = SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB;
     int connectionRateShowSampleCount = SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT;
     int connectionRateHideSampleCount = SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT;
-    boolean showClockWeekday = SettingsStore.DEFAULT_SHOW_CLOCK_WEEKDAY;
-    boolean clockWeekdayHidePrefix = SettingsStore.DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX;
+    String clockCustomFormat = SettingsStore.DEFAULT_CLOCK_CUSTOM_FORMAT;
     boolean clockBoldEnabled = SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED;
     int clockFontWeight = SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT;
     int clockAndCarrierTextSizePercent = SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT;
@@ -121,10 +120,10 @@ final class ModuleConfig {
             connectionRateShowSampleCount = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT);
         } else if (SettingsStore.KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT.equals(key)) {
             connectionRateHideSampleCount = parseInt(value, SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT);
-        } else if (SettingsStore.KEY_SHOW_CLOCK_WEEKDAY.equals(key)) {
-            showClockWeekday = "1".equals(value);
-        } else if (SettingsStore.KEY_CLOCK_WEEKDAY_HIDE_PREFIX.equals(key)) {
-            clockWeekdayHidePrefix = "1".equals(value);
+        } else if (SettingsStore.KEY_CLOCK_CUSTOM_FORMAT.equals(key)) {
+            clockCustomFormat = value == null
+                    ? SettingsStore.DEFAULT_CLOCK_CUSTOM_FORMAT
+                    : value;
         } else if (SettingsStore.KEY_CLOCK_BOLD_ENABLED.equals(key)) {
             clockBoldEnabled = "1".equals(value);
         } else if (SettingsStore.KEY_CLOCK_FONT_WEIGHT.equals(key)) {

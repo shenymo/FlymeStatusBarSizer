@@ -379,7 +379,7 @@ TextView 构造完成
 - 统一应用 `text_scale`
 - 配置变更后可批量重刷
 
-### 6.2 时间追加星期/日期入口
+### 6.2 自定义时间表达式入口
 
 Hook 目标：
 
@@ -390,14 +390,14 @@ Hook 目标：
 ```text
 SystemUI 生成时间文本
   -> hookClockWeekday(...)
-  -> appendWeekday(...)
-  -> 返回“时间 + 星期”
+  -> buildCustomClockText(...)
+  -> 返回“自定义表达式结果”或系统原始时间
 ```
 
 说明：
 
-- 当前实现追加的是 `EEE` 格式的星期缩写
-- 只对 `idName == "clock"` 生效
+- 当前实现优先渲染模块自定义时间表达式
+- 只对 `idName == "clock"` 的状态栏主时钟生效
 
 ### 6.3 时间加粗链路
 

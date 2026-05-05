@@ -24,8 +24,7 @@ final class SettingsStore {
     static final String KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB = "connection_rate_hide_threshold_kb";
     static final String KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT = "connection_rate_show_sample_count";
     static final String KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT = "connection_rate_hide_sample_count";
-    static final String KEY_SHOW_CLOCK_WEEKDAY = "show_clock_weekday";
-    static final String KEY_CLOCK_WEEKDAY_HIDE_PREFIX = "clock_weekday_hide_prefix";
+    static final String KEY_CLOCK_CUSTOM_FORMAT = "clock_custom_format";
     static final String KEY_CLOCK_BOLD_ENABLED = "clock_bold_enabled";
     static final String KEY_CLOCK_FONT_WEIGHT = "clock_font_weight";
     static final String KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = "clock_and_carrier_text_size_percent";
@@ -60,8 +59,7 @@ final class SettingsStore {
     static final int DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB = 32;
     static final int DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT = 2;
     static final int DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT = 3;
-    static final boolean DEFAULT_SHOW_CLOCK_WEEKDAY = false;
-    static final boolean DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX = false;
+    static final String DEFAULT_CLOCK_CUSTOM_FORMAT = "";
     static final boolean DEFAULT_CLOCK_BOLD_ENABLED = true;
     static final int DEFAULT_CLOCK_FONT_WEIGHT = 900;
     static final int DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = 100;
@@ -95,8 +93,6 @@ final class SettingsStore {
             KEY_SIGNAL_CODE_DRAW_ENABLED,
             KEY_BATTERY_LEVEL_TEXT_ENABLED,
             KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
-            KEY_SHOW_CLOCK_WEEKDAY,
-            KEY_CLOCK_WEEKDAY_HIDE_PREFIX,
             KEY_CLOCK_BOLD_ENABLED,
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
@@ -106,6 +102,7 @@ final class SettingsStore {
     };
 
     static final String[] STRING_KEYS = {
+            KEY_CLOCK_CUSTOM_FORMAT,
             KEY_MBACK_LONG_TOUCH_INTENT_URI,
             KEY_IME_TOOLBAR_ORDER
     };
@@ -255,10 +252,6 @@ final class SettingsStore {
                 return DEFAULT_BATTERY_LEVEL_TEXT_ENABLED;
             case KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED:
                 return DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED;
-            case KEY_SHOW_CLOCK_WEEKDAY:
-                return DEFAULT_SHOW_CLOCK_WEEKDAY;
-            case KEY_CLOCK_WEEKDAY_HIDE_PREFIX:
-                return DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX;
             case KEY_CLOCK_BOLD_ENABLED:
                 return DEFAULT_CLOCK_BOLD_ENABLED;
             case KEY_MBACK_LONG_TOUCH_URL_ENABLED:
@@ -277,6 +270,9 @@ final class SettingsStore {
     }
 
     static String defaultString(String key) {
+        if (KEY_CLOCK_CUSTOM_FORMAT.equals(key)) {
+            return DEFAULT_CLOCK_CUSTOM_FORMAT;
+        }
         if (KEY_MBACK_LONG_TOUCH_INTENT_URI.equals(key)) {
             return DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
         }

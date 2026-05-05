@@ -58,11 +58,9 @@ public class SettingsProvider extends ContentProvider {
         add(cursor, SettingsStore.KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT,
                 SettingsStore.readInt(prefs, SettingsStore.KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT,
                         SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT));
-        add(cursor, SettingsStore.KEY_SHOW_CLOCK_WEEKDAY,
-                SettingsStore.hasExplicitBooleanTrue(prefs, SettingsStore.KEY_SHOW_CLOCK_WEEKDAY));
-        add(cursor, SettingsStore.KEY_CLOCK_WEEKDAY_HIDE_PREFIX,
-                SettingsStore.readBoolean(prefs, SettingsStore.KEY_CLOCK_WEEKDAY_HIDE_PREFIX,
-                        SettingsStore.DEFAULT_CLOCK_WEEKDAY_HIDE_PREFIX));
+        add(cursor, SettingsStore.KEY_CLOCK_CUSTOM_FORMAT,
+                SettingsStore.readString(prefs, SettingsStore.KEY_CLOCK_CUSTOM_FORMAT,
+                        SettingsStore.DEFAULT_CLOCK_CUSTOM_FORMAT));
         add(cursor, SettingsStore.KEY_CLOCK_BOLD_ENABLED,
                 SettingsStore.readBoolean(prefs, SettingsStore.KEY_CLOCK_BOLD_ENABLED,
                         SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED));
