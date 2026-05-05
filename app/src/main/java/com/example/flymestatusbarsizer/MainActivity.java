@@ -14,7 +14,12 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.TextPaint;
 import android.text.TextUtils;
+import android.text.method.LinkMovementMethod;
+import android.text.style.ClickableSpan;
 import android.view.DragEvent;
 import android.view.Gravity;
 import android.view.View;
@@ -328,6 +333,37 @@ public class MainActivity extends Activity {
                 Uri.parse("https://github.com/shenymo/FlymeStatusBarSizer"))));
         card.addView(githubLink, matchWrap());
 
+        final String groupLinkUrl = "https://qun.qq.com/universal-share/share?ac=1&authKey=WuaHYIEHdI6Y%2Fvn7SvcFMtyuUX%2Bwp%2FMedY0eMgPLq9Bbrz%2FPMRsiIgDttNOMbPWW&busi_data=eyJncm91cENvZGUiOiIxMTAyMTM4MzgxIiwidG9rZW4iOiJIb1hmV2xvaVUxWFk2YjAyOXl5MmIwelljU3A5bFRYejQrb3JtUlJwOXRMK1BLU3pnWWRaSG9VdHZ4M3Fld2xqIiwidWluIjoiMjI4OTU3MTk5MCJ9&data=O3ClX619ry0x93elARpxRoHiwSavPU_N00zhT1jj5d_rR0feICi-g7gudqIpU6sbrKtr1_CCPBpNQ-APojGliw&svctype=4&tempid=h5_group_info";
+        final String groupNumber = "1102138381";
+        TextView groupLink = new TextView(this);
+        String groupText = "交流群：" + groupNumber;
+        SpannableString groupSpan = new SpannableString(groupText);
+        int groupNumberStart = groupText.indexOf(groupNumber);
+        if (groupNumberStart >= 0) {
+            groupSpan.setSpan(new ClickableSpan() {
+                @Override
+                public void onClick(View widget) {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(groupLinkUrl)));
+                }
+
+                @Override
+                public void updateDrawState(TextPaint ds) {
+                    super.updateDrawState(ds);
+                    ds.setColor(colorPrimary);
+                    ds.setUnderlineText(false);
+                }
+            }, groupNumberStart, groupNumberStart + groupNumber.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        groupLink.setText(groupSpan);
+        groupLink.setTextColor(colorSubtext);
+        groupLink.setTextSize(15);
+        groupLink.setSingleLine(false);
+        groupLink.setEllipsize(TextUtils.TruncateAt.END);
+        groupLink.setPadding(0, dp(16), 0, 0);
+        groupLink.setMovementMethod(LinkMovementMethod.getInstance());
+        groupLink.setHighlightColor(Color.TRANSPARENT);
+        card.addView(groupLink, matchWrap());
+
         TextView versionTitle = new TextView(this);
         versionTitle.setText("当前版本");
         versionTitle.setTextColor(colorText);
@@ -401,6 +437,10 @@ public class MainActivity extends Activity {
                 prefs,
                 SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED));
+        previewView.setBatteryHollowEnabled(SettingsStore.readBoolean(
+                prefs,
+                SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
+                SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED));
         FrameLayout.LayoutParams previewLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 dp(220));
@@ -631,6 +671,11 @@ public class MainActivity extends Activity {
                 "关闭后只保留图形电池，不在电池内部绘制剩余电量数字。",
                 SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED);
+        addDivider(details);
+        addSwitchRow(details, "镂空电池",
+                "开启后电池内部会直接满填当前颜色，剩余电量改为挖空数字。20% 和 10% 的低电量变色继续保留。",
+                SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
+                SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED);
         addDivider(details);
         int[] batteryTextFontOptions = BatteryTextFontHelper.getAvailableFontOptions(this);
         addChoiceRow(details, "电池数字字体",
@@ -1305,6 +1350,10 @@ public class MainActivity extends Activity {
                     prefs,
                     SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
                     SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED));
+            previewView.setBatteryHollowEnabled(SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
+                    SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED));
             previewView.invalidate();
         }
     }

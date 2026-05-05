@@ -3,6 +3,8 @@ package com.example.flymestatusbarsizer;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
@@ -17,19 +19,23 @@ final class OneUiBatteryPainter {
     private static final float BOLT_WIDTH_RATIO = 0.22f;
     private static final Paint BODY_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static final Paint CUTOUT_TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final RectF BODY = new RectF();
     private static final RectF FILL = new RectF();
-
     static {
         TEXT_PAINT.setTextAlign(Paint.Align.CENTER);
         TEXT_PAINT.setFakeBoldText(true);
+        CUTOUT_TEXT_PAINT.setTextAlign(Paint.Align.CENTER);
+        CUTOUT_TEXT_PAINT.setFakeBoldText(true);
+        CUTOUT_TEXT_PAINT.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
     }
 
     private OneUiBatteryPainter() {
     }
 
     static void draw(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
-            int fillColor, int textColor, boolean showLevelText, float textScale, Typeface typeface) {
+            int fillColor, int textColor, boolean showLevelText, float textScale, Typeface typeface,
+            boolean hollow) {
         if (bounds.width() <= 0 || bounds.height() <= 0) {
             return;
         }
@@ -44,6 +50,25 @@ final class OneUiBatteryPainter {
         float radius = visualHeight * 0.5f;
 
         BODY.set(left, top, left + visualWidth, top + visualHeight);
+        boolean showBolt = charging || pluggedIn;
+        float normalizedTextScale = normalizeTextScale(textScale);
+        String levelText = Integer.toString(clampedLevel);
+        float textSize = BODY.height() * 0.62f * normalizedTextScale;
+        applyTextTypeface(typeface);
+        float textWidth = 0f;
+        if (showLevelText) {
+            TEXT_PAINT.setTextSize(textSize);
+            textWidth = TEXT_PAINT.measureText(levelText);
+        }
+        int renderedFillColor = charging
+                ? withMaxAlpha(CHARGING_FILL_COLOR, CHARGING_FILL_ALPHA)
+                : withMaxAlpha(effectiveFillColor, NORMAL_FILL_ALPHA);
+        if (hollow) {
+            drawHollowBattery(canvas, radius, renderedFillColor, levelText, textSize,
+                    showLevelText, showBolt, normalizedTextScale, textWidth);
+            return;
+        }
+
         BODY_PAINT.setStyle(Paint.Style.FILL);
         BODY_PAINT.setColor(BODY_COLOR);
         canvas.drawRoundRect(BODY, radius, radius, BODY_PAINT);
@@ -51,27 +76,15 @@ final class OneUiBatteryPainter {
         float fillRight = BODY.left + BODY.width() * clampedLevel / 100f;
         if (fillRight > BODY.left) {
             FILL.set(BODY.left, BODY.top, fillRight, BODY.bottom);
-            BODY_PAINT.setColor(charging
-                    ? withMaxAlpha(CHARGING_FILL_COLOR, CHARGING_FILL_ALPHA)
-                    : withMaxAlpha(effectiveFillColor, NORMAL_FILL_ALPHA));
+            BODY_PAINT.setColor(renderedFillColor);
             canvas.save();
             canvas.clipRect(FILL);
             canvas.drawRoundRect(BODY, radius, radius, BODY_PAINT);
             canvas.restore();
         }
 
-        boolean showBolt = charging || pluggedIn;
         float textCenterX = BODY.centerX();
-        float normalizedTextScale = normalizeTextScale(textScale);
-        String levelText = Integer.toString(clampedLevel);
-        float textSize = BODY.height() * 0.62f * normalizedTextScale;
-        applyTextTypeface(typeface);
         if (showBolt) {
-            float textWidth = 0f;
-            if (showLevelText) {
-                TEXT_PAINT.setTextSize(textSize);
-                textWidth = TEXT_PAINT.measureText(levelText);
-            }
             textCenterX = BatteryBoltPainter.draw(
                     canvas, BODY, textColor, showLevelText, BOLT_WIDTH_RATIO, normalizedTextScale, textWidth);
         }
@@ -82,6 +95,25 @@ final class OneUiBatteryPainter {
             TEXT_PAINT.setColor(textColor);
             canvas.drawText(levelText, textCenterX, textBaseline, TEXT_PAINT);
         }
+    }
+
+    private static void drawHollowBattery(Canvas canvas, float radius, int fillColor, String levelText,
+            float textSize, boolean showLevelText, boolean showBolt, float contentScale, float textWidth) {
+        int layer = canvas.saveLayer(BODY.left, BODY.top, BODY.right, BODY.bottom, null);
+        BODY_PAINT.setStyle(Paint.Style.FILL);
+        BODY_PAINT.setColor(fillColor);
+        canvas.drawRoundRect(BODY, radius, radius, BODY_PAINT);
+        float textCenterX = BODY.centerX();
+        if (showBolt) {
+            textCenterX = BatteryBoltPainter.drawCutout(
+                    canvas, BODY, showLevelText, BOLT_WIDTH_RATIO, contentScale, textWidth, CUTOUT_TEXT_PAINT);
+        }
+        if (showLevelText) {
+            CUTOUT_TEXT_PAINT.setTextSize(textSize);
+            float textBaseline = BODY.centerY() - (CUTOUT_TEXT_PAINT.descent() + CUTOUT_TEXT_PAINT.ascent()) / 2f;
+            canvas.drawText(levelText, textCenterX, textBaseline, CUTOUT_TEXT_PAINT);
+        }
+        canvas.restoreToCount(layer);
     }
 
     private static int withMaxAlpha(int color, int maxAlpha) {
@@ -114,5 +146,6 @@ final class OneUiBatteryPainter {
 
     private static void applyTextTypeface(Typeface typeface) {
         TEXT_PAINT.setTypeface(typeface);
+        CUTOUT_TEXT_PAINT.setTypeface(typeface);
     }
 }

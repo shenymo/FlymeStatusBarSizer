@@ -20,10 +20,25 @@ final class BatteryBoltPainter {
 
     static float draw(Canvas canvas, RectF body, int color, boolean showLevelText,
             float widthRatio, float contentScale, float textWidth) {
+        return drawInternal(canvas, body, showLevelText, widthRatio, contentScale, textWidth, PAINT, color);
+    }
+
+    static float drawCutout(Canvas canvas, RectF body, boolean showLevelText,
+            float widthRatio, float contentScale, float textWidth, Paint paint) {
+        return drawInternal(canvas, body, showLevelText, widthRatio, contentScale, textWidth, paint, 0);
+    }
+
+    private static float drawInternal(Canvas canvas, RectF body, boolean showLevelText,
+            float widthRatio, float contentScale, float textWidth, Paint paint, int color) {
         if (canvas == null || body == null) {
             return 0f;
         }
-        PAINT.setColor(color);
+        if (paint == null) {
+            return 0f;
+        }
+        if (paint == PAINT) {
+            PAINT.setColor(color);
+        }
         float resolvedScale = normalizeContentScale(contentScale);
         float resolvedWidthRatio = Math.max(0.1f, widthRatio) * resolvedScale;
         float iconWidth = body.width() * resolvedWidthRatio;
@@ -54,7 +69,7 @@ final class BatteryBoltPainter {
         PATH.lineTo(iconLeft + iconWidth * 0.90f, iconTop + iconHeight * 0.34f);
         PATH.lineTo(iconLeft + iconWidth * 0.62f, iconTop + iconHeight * 0.34f);
         PATH.close();
-        canvas.drawPath(PATH, PAINT);
+        canvas.drawPath(PATH, paint);
         return textCenterX;
     }
 

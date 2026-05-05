@@ -22,6 +22,7 @@ final class ModuleConfig {
     boolean signalCodeDrawEnabled = SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED;
     int batteryIconStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
     boolean batteryLevelTextEnabled = SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED;
+    boolean batteryHollowEnabled = SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED;
     int batteryTextFont = SettingsStore.DEFAULT_BATTERY_TEXT_FONT;
     int statusBarIconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
     int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
@@ -171,6 +172,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
                     SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED);
+            config.batteryHollowEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
+                    SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED);
             config.batteryIconStyle = SettingsStore.normalizeBatteryStyle(
                     SettingsStore.readInt(
                             prefs,

@@ -1059,13 +1059,14 @@ public class FlymeStatusBarSizer extends XposedModule {
         int style = config == null
                 ? SettingsStore.DEFAULT_BATTERY_ICON_STYLE
                 : SettingsStore.normalizeBatteryStyle(config.batteryIconStyle);
+        boolean hollow = config != null && config.batteryHollowEnabled;
         if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
             OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
-                    fillColor, textColor, showLevelText, textScale, typeface);
+                    fillColor, textColor, showLevelText, textScale, typeface, hollow);
             return;
         }
         IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
-                fillColor, textColor, showLevelText, textScale, typeface);
+                fillColor, textColor, showLevelText, textScale, typeface, hollow);
     }
 
     private static int resolveBatteryTintColor(Object target, int fallback) {
