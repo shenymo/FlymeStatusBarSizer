@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer;
 
 import android.app.Notification;
+import android.content.ComponentCallbacks;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -70,6 +71,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final String TAG_IME_TOOLBAR_ORIGINAL = "flyme_status_bar_sizer_ime_toolbar_original";
     private static volatile FlymeStatusBarSizer MODULE;
     private static volatile Method flymeGetApplicationIconMethod;
+    private static volatile Method flymeClearApplicationIconCacheMethod;
+    private static volatile int LAST_NOTIFICATION_APP_ICON_VIEW_REFRESH_NIGHT = -1;
 
     private static final WeakHashMap<View, int[]> ORIGINAL_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_MARGINS = new WeakHashMap<>();
@@ -96,6 +99,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
     private static Handler MAIN_HANDLER;
+    private static volatile int LAST_UI_MODE_NIGHT = -1;
     private static final Runnable CLOCK_SECOND_REFRESH_RUNNABLE = FlymeStatusBarSizer::refreshClockViewsForSecondTick;
     private static final HashMap<String, Integer> SYSTEM_UI_ID_CACHE = new HashMap<>();
     private static final HashMap<String, Boolean> NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE =
@@ -765,15 +769,31 @@ public class FlymeStatusBarSizer extends XposedModule {
                     loader);
             for (Method method : clazz.getDeclaredMethods()) {
                 String name = method.getName();
-                if (!"updateDrawable".equals(name)) {
+                if ("updateDrawable".equals(name)) {
+                    method.setAccessible(true);
+                    hook(method).intercept(chain -> {
+                        Object result = chain.proceed();
+                        applyNotificationStatusBarIconDrawable(chain.getThisObject());
+                        return result;
+                    });
                     continue;
                 }
-                method.setAccessible(true);
-                hook(method).intercept(chain -> {
-                    Object result = chain.proceed();
-                    applyNotificationStatusBarIconDrawable(chain.getThisObject());
-                    return result;
-                });
+                if ("onConfigurationChanged".equals(name)
+                        && method.getParameterTypes().length == 1
+                        && Configuration.class.equals(method.getParameterTypes()[0])) {
+                    method.setAccessible(true);
+                    hook(method).intercept(chain -> {
+                        Object result = chain.proceed();
+                        Object target = chain.getThisObject();
+                        if (target instanceof View) {
+                            refreshNotificationAppIconAfterConfigurationChange(
+                                    (View) target,
+                                    chain.getArg(0) instanceof Configuration
+                                            ? (Configuration) chain.getArg(0) : null);
+                        }
+                        return result;
+                    });
+                }
             }
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook notification status bar update", t);
@@ -4728,8 +4748,80 @@ public class FlymeStatusBarSizer extends XposedModule {
                 return;
             }
             MAIN_HANDLER = new Handler(Looper.getMainLooper());
+            registerConfigurationCallbacks(context);
             CONFIG_REFRESH_REGISTERED = true;
             scheduleInitialRuntimeRefreshes();
+        }
+    }
+
+    private static void registerConfigurationCallbacks(Context context) {
+        Context appContext = context.getApplicationContext() != null
+                ? context.getApplicationContext() : context;
+        LAST_UI_MODE_NIGHT = readNightModeMask(appContext.getResources().getConfiguration());
+        ComponentCallbacks callbacks = new ComponentCallbacks() {
+            @Override
+            public void onConfigurationChanged(Configuration newConfig) {
+                int newNightMode = readNightModeMask(newConfig);
+                int oldNightMode = LAST_UI_MODE_NIGHT;
+                LAST_UI_MODE_NIGHT = newNightMode;
+                if (oldNightMode == -1 || oldNightMode == newNightMode) {
+                    return;
+                }
+                Handler handler = MAIN_HANDLER;
+                if (handler != null) {
+                    handler.post(FlymeStatusBarSizer::refreshNotificationAppIconsForUiModeChange);
+                } else {
+                    refreshNotificationAppIconsForUiModeChange();
+                }
+            }
+
+            @Override
+            public void onLowMemory() {
+            }
+        };
+        try {
+            appContext.registerComponentCallbacks(callbacks);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static int readNightModeMask(Configuration configuration) {
+        if (configuration == null) {
+            return -1;
+        }
+        return configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK;
+    }
+
+    private static void refreshNotificationAppIconAfterConfigurationChange(
+            View view, Configuration configuration) {
+        if (!(view instanceof ImageView) || !isNotificationBackedStatusBarIconView(view)) {
+            return;
+        }
+        int nightMode = readNightModeMask(configuration);
+        if (nightMode != -1 && nightMode != LAST_NOTIFICATION_APP_ICON_VIEW_REFRESH_NIGHT) {
+            LAST_NOTIFICATION_APP_ICON_VIEW_REFRESH_NIGHT = nightMode;
+            clearFlymeNotificationAppIconCache(view.getContext());
+        }
+        view.post(() -> applyNotificationStatusBarIconDrawable(view));
+    }
+
+    private static void clearFlymeNotificationAppIconCache(Context context) {
+        if (context == null) {
+            return;
+        }
+        try {
+            Method method = flymeClearApplicationIconCacheMethod;
+            if (method == null) {
+                Class<?> clazz = Class.forName(
+                        FLYME_STATUS_BAR_ICON_UTILS,
+                        false,
+                        context.getClassLoader());
+                method = clazz.getDeclaredMethod("clearAppCache");
+                method.setAccessible(true);
+                flymeClearApplicationIconCacheMethod = method;
+            }
+            method.invoke(null);
+        } catch (Throwable ignored) {
         }
     }
 
@@ -4753,6 +4845,20 @@ public class FlymeStatusBarSizer extends XposedModule {
         refreshTrackedStatusBarIconViews();
         refreshClockAndCarrierTextViews();
         refreshTrackedInputMethodViews();
+    }
+
+    private static void refreshNotificationAppIconsForUiModeChange() {
+        Context context = ModuleConfig.getSystemUiContext();
+        if (context != null) {
+            clearFlymeNotificationAppIconCache(context);
+        }
+        ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
+        for (View view : views) {
+            if (!(view instanceof ImageView) || !isNotificationBackedStatusBarIconView(view)) {
+                continue;
+            }
+            applyNotificationStatusBarIconDrawable(view);
+        }
     }
 
     private static void refreshTrackedConnectionRateViews() {
