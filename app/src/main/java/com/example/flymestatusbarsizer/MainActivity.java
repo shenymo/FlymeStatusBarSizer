@@ -95,6 +95,9 @@ public class MainActivity extends Activity {
     private final ArrayList<String> imeToolbarDraftOrder = new ArrayList<>();
     private final ArrayList<String> clockExpressionDraftTokens = new ArrayList<>();
     private final HashMap<String, TextView> clockExpressionButtons = new HashMap<>();
+    private int notificationAppIconSizeDraft;
+    private int notificationAppIconSpacingDraft;
+    private int notificationAppIconPaddingDraft;
     private LinearLayout imeToolbarOrderContainer;
     private LinearLayout clockExpressionOrderContainer;
     private TextView clockExpressionPreviewView;
@@ -103,6 +106,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         prefs = SettingsStore.prefs(this);
         SettingsStore.prepareRemoteSync(this);
+        loadNotificationAppIconDraftValues();
         initPalette();
         configureSystemBars();
         int topInset = getStatusBarInset();
@@ -280,23 +284,24 @@ public class MainActivity extends Activity {
         card.addView(title, matchWrap());
 
         addDivider(card);
-        addSliderRow(card, "通知图标大小",
+        addDraftSliderRow(card, "通知图标大小",
                 "改的是状态栏里这个通知图标 View 占用的宽度，状态栏高度保持系统原来的值。",
-                SettingsStore.KEY_NOTIFICATION_APP_ICON_SIZE_DP,
-                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP,
+                notificationAppIconSizeDraft,
                 12, 28, "dp");
         addDivider(card);
-        addSliderRow(card, "通知图标左右间距",
+        addDraftSliderRow(card, "通知图标左右间距",
                 "改这个图标 View 的左右 margin。数值越大，图标之间的空隙越大。",
-                SettingsStore.KEY_NOTIFICATION_APP_ICON_SPACING_DP,
-                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SPACING_DP,
+                notificationAppIconSpacingDraft,
                 0, 12, "dp");
         addDivider(card);
-        addSliderRow(card, "图标容器内边距",
+        addDraftSliderRow(card, "图标容器内边距",
                 "改这个图标 View 的 padding。数值越大，图标会更靠中间。",
-                SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP,
-                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP,
+                notificationAppIconPaddingDraft,
                 0, 8, "dp");
+        addDivider(card);
+        addActionButtonRow(card, "应用当前尺寸",
+                "拖动滑杆时只改当前页面里的草稿值。点应用后才会写入设置，并尝试让现有通知图标刷新一次。",
+                "应用", this::applyNotificationAppIconDraftValues);
         return card;
     }
 
@@ -1062,6 +1067,79 @@ public class MainActivity extends Activity {
                     valueView.setText(formatValue(value, suffix));
                     seekBar.setProgress(value - min);
                     putIntSetting(key, value);
+                }));
+
+        row.addView(header, matchWrap());
+        row.addView(subtitle, matchWrap());
+        row.addView(seekBar, matchWrapWithTop(8));
+        root.addView(row, matchWrap());
+    }
+
+    private void addDraftSliderRow(LinearLayout root, String titleText, String subtitleText,
+            int initialValue, int min, int max, String suffix) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView title = new TextView(this);
+        title.setText(titleText);
+        title.setTextColor(colorText);
+        title.setTextSize(16);
+        header.addView(title, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView valueView = new TextView(this);
+        valueView.setTextColor(colorPrimary);
+        valueView.setTextSize(14);
+        valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 999));
+        int clamped = Math.max(min, Math.min(max, initialValue));
+        valueView.setText(formatValue(clamped, suffix));
+        header.addView(valueView, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText(subtitleText);
+        subtitle.setTextColor(colorSubtext);
+        subtitle.setTextSize(13);
+        subtitle.setPadding(0, dp(4), 0, 0);
+
+        SeekBar seekBar = new SeekBar(this);
+        seekBar.setMax(max - min);
+        seekBar.setProgress(clamped - min);
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int value = min + progress;
+                valueView.setText(formatValue(value, suffix));
+                if (fromUser) {
+                    updateNotificationAppIconDraftValue(titleText, value);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                updateNotificationAppIconDraftValue(titleText, min + seekBar.getProgress());
+            }
+        });
+        valueView.setOnClickListener(v -> showIntInputDialog(
+                titleText,
+                min + seekBar.getProgress(),
+                min,
+                max,
+                suffix,
+                value -> {
+                    valueView.setText(formatValue(value, suffix));
+                    seekBar.setProgress(value - min);
+                    updateNotificationAppIconDraftValue(titleText, value);
                 }));
 
         row.addView(header, matchWrap());
@@ -2220,6 +2298,43 @@ public class MainActivity extends Activity {
         }
         putStringSetting(SettingsStore.KEY_IME_TOOLBAR_ORDER, TextUtils.join(",", imeToolbarDraftOrder));
         showToast("输入法工具栏顺序已应用");
+    }
+
+    private void loadNotificationAppIconDraftValues() {
+        notificationAppIconSizeDraft = readIntSetting(
+                SettingsStore.KEY_NOTIFICATION_APP_ICON_SIZE_DP,
+                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP);
+        notificationAppIconSpacingDraft = readIntSetting(
+                SettingsStore.KEY_NOTIFICATION_APP_ICON_SPACING_DP,
+                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SPACING_DP);
+        notificationAppIconPaddingDraft = readIntSetting(
+                SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP,
+                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP);
+    }
+
+    private void updateNotificationAppIconDraftValue(String titleText, int value) {
+        if ("通知图标大小".equals(titleText)) {
+            notificationAppIconSizeDraft = value;
+            return;
+        }
+        if ("通知图标左右间距".equals(titleText)) {
+            notificationAppIconSpacingDraft = value;
+            return;
+        }
+        if ("图标容器内边距".equals(titleText)) {
+            notificationAppIconPaddingDraft = value;
+        }
+    }
+
+    private void applyNotificationAppIconDraftValues() {
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putInt(SettingsStore.KEY_NOTIFICATION_APP_ICON_SIZE_DP, notificationAppIconSizeDraft);
+        editor.putInt(SettingsStore.KEY_NOTIFICATION_APP_ICON_SPACING_DP, notificationAppIconSpacingDraft);
+        editor.putInt(SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP, notificationAppIconPaddingDraft);
+        editor.apply();
+        loadNotificationAppIconDraftValues();
+        SettingsStore.notifyChanged(this);
+        showToast("通知应用图标尺寸已应用");
     }
 
     private void syncImeToolbarOrderEditorRows() {
