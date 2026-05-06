@@ -7,6 +7,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 
 final class SignalPreviewPainter {
+    private static final int SIGNAL_DRAW_ALPHA = 224;
     private static final float SIGNAL_ASPECT_RATIO = 1.5f;
     private static final float BASELINE_OFFSET_PX = 1f;
     private static final float CORE_BOX_RATIO = 20f / 24f;
@@ -22,7 +23,7 @@ final class SignalPreviewPainter {
     }
 
     static void drawSingleSim(Canvas canvas, Rect bounds, int color, ColorFilter colorFilter) {
-        drawBars(canvas, buildGeometry(bounds, false), color, colorFilter);
+        drawBars(canvas, buildGeometry(bounds, false), withFixedAlpha(color, SIGNAL_DRAW_ALPHA), colorFilter);
     }
 
     static void drawMergedDualSim(Canvas canvas, Rect bounds, int color) {
@@ -31,8 +32,9 @@ final class SignalPreviewPainter {
 
     static void drawMergedDualSim(Canvas canvas, Rect bounds, int color, ColorFilter colorFilter) {
         SignalGeometry geometry = buildGeometry(bounds, true);
-        drawBars(canvas, geometry, color, colorFilter);
-        drawDots(canvas, geometry, color, colorFilter);
+        int drawColor = withFixedAlpha(color, SIGNAL_DRAW_ALPHA);
+        drawBars(canvas, geometry, drawColor, colorFilter);
+        drawDots(canvas, geometry, drawColor, colorFilter);
     }
 
     static int resolveIntrinsicWidth(int heightPx) {
@@ -41,6 +43,10 @@ final class SignalPreviewPainter {
 
     static int resolveIntrinsicHeight(int heightPx) {
         return Math.max(1, heightPx);
+    }
+
+    static int withFixedAlpha(int color, int alpha) {
+        return (color & 0x00ffffff) | (alpha << 24);
     }
 
     private static void drawBars(Canvas canvas, SignalGeometry geometry, int color, ColorFilter colorFilter) {

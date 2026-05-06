@@ -10,6 +10,7 @@ import android.graphics.drawable.Drawable;
 import android.util.StateSet;
 
 final class SignalIconDrawable extends Drawable {
+    private static final int SIGNAL_DRAW_ALPHA = 224;
     private final boolean mergedDual;
     private final int intrinsicWidth;
     private final int intrinsicHeight;
@@ -40,7 +41,7 @@ final class SignalIconDrawable extends Drawable {
         if (bounds.isEmpty()) {
             return;
         }
-        int color = (drawColor & 0x00ffffff) | (alpha << 24);
+        int color = SignalPreviewPainter.withFixedAlpha(drawColor, SIGNAL_DRAW_ALPHA);
         if (mergedDual) {
             SignalPreviewPainter.drawMergedDualSim(canvas, bounds, color, colorFilter);
         } else {

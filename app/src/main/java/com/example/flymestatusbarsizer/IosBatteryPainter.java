@@ -14,14 +14,15 @@ final class IosBatteryPainter {
     private static final int CHARGING_FILL_COLOR = Color.rgb(0, 205, 85);
     private static final int LOW_BATTERY_RED = Color.rgb(255, 59, 48);
     private static final int LOW_BATTERY_ORANGE = Color.rgb(255, 149, 0);
-    private static final int NORMAL_FILL_ALPHA = 224;
-    private static final int CHARGING_FILL_ALPHA = 242;
+    private static final int RENDER_ALPHA = 224;
     private static final float BOLT_WIDTH_RATIO = 0.26f;
     private static final Paint PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint CUTOUT_TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final RectF BODY = new RectF();
     private static final RectF CAP = new RectF();
+    private static final RectF BODY_CONTENT = new RectF();
+    private static final RectF CAP_CONTENT = new RectF();
     private static final RectF FILL = new RectF();
 
     static {
@@ -59,6 +60,10 @@ final class IosBatteryPainter {
         BODY.set(left, top, left + bodyWidth, top + bodyHeight);
         CAP.set(BODY.right + gap, BODY.top + bodyHeight * 0.28f,
                 BODY.right + gap + capWidth, BODY.bottom - bodyHeight * 0.28f);
+        BODY_CONTENT.set(BODY);
+        CAP_CONTENT.set(CAP);
+        float contentRadius = radius;
+        float capContentRadius = capRadius;
 
         boolean showBolt = charging || pluggedIn;
         float normalizedTextScale = normalizeTextScale(textScale);
@@ -70,66 +75,44 @@ final class IosBatteryPainter {
             TEXT_PAINT.setTextSize(textSize);
             textWidth = TEXT_PAINT.measureText(levelText);
         }
-        int renderedFillColor = charging
-                ? withMaxAlpha(CHARGING_FILL_COLOR, CHARGING_FILL_ALPHA)
-                : withMaxAlpha(effectiveFillColor, NORMAL_FILL_ALPHA);
+        int renderedBodyColor = withFixedAlpha(BODY_COLOR, RENDER_ALPHA);
+        int renderedFillColor = withFixedAlpha(charging ? CHARGING_FILL_COLOR : effectiveFillColor, RENDER_ALPHA);
+        int renderedTextColor = withFixedAlpha(textColor, RENDER_ALPHA);
         if (hollow) {
-            drawHollowBattery(canvas, radius, capRadius, renderedFillColor, clampedLevel, levelText,
+            drawHollowBattery(canvas, contentRadius, capContentRadius, renderedBodyColor, renderedFillColor,
+                    clampedLevel, levelText,
                     textSize, showLevelText, showBolt, normalizedTextScale, textWidth,
                     hollowFillFollowsLevel);
             return;
         }
 
-        PAINT.setStyle(Paint.Style.FILL);
-        PAINT.setColor(BODY_COLOR);
-        PAINT.setAlpha(255);
-        canvas.drawRoundRect(BODY, radius, radius, PAINT);
-        canvas.drawRoundRect(CAP, capRadius, capRadius, PAINT);
-
-        float totalFillWidth = BODY.width() + CAP.width();
-        float filledWidth = totalFillWidth * clampedLevel / 100f;
-        float bodyFillWidth = Math.min(BODY.width(), filledWidth);
-        if (bodyFillWidth > 0f) {
-            FILL.set(BODY.left, BODY.top, BODY.left + bodyFillWidth, BODY.bottom);
-            PAINT.setColor(renderedFillColor);
-            canvas.save();
-            canvas.clipRect(FILL);
-            canvas.drawRoundRect(BODY, radius, radius, PAINT);
-            canvas.restore();
-        }
-        float capFillWidth = Math.min(CAP.width(), Math.max(0f, filledWidth - BODY.width()));
-        if (capFillWidth > 0f) {
-            FILL.set(CAP.left, CAP.top, CAP.left + capFillWidth, CAP.bottom);
-            PAINT.setColor(renderedFillColor);
-            canvas.save();
-            canvas.clipRect(FILL);
-            canvas.drawRoundRect(CAP, capRadius, capRadius, PAINT);
-            canvas.restore();
-        }
+        drawBodyAndCapRange(canvas, contentRadius, capContentRadius, renderedFillColor, 0f, clampedLevel);
+        drawBodyAndCapRange(canvas, contentRadius, capContentRadius, renderedBodyColor, clampedLevel, 100f);
 
         float textCenterX = BODY.centerX();
         if (showBolt) {
             textCenterX = BatteryBoltPainter.draw(
-                    canvas, BODY, textColor, showLevelText, BOLT_WIDTH_RATIO, normalizedTextScale, textWidth);
+                    canvas, BODY, renderedTextColor, showLevelText, BOLT_WIDTH_RATIO, normalizedTextScale, textWidth);
         }
 
         if (showLevelText) {
             TEXT_PAINT.setTextSize(textSize);
             float textBaseline = BODY.centerY() - (TEXT_PAINT.descent() + TEXT_PAINT.ascent()) / 2f;
-            TEXT_PAINT.setColor(textColor);
+            TEXT_PAINT.setColor(renderedTextColor);
             canvas.drawText(levelText, textCenterX, textBaseline, TEXT_PAINT);
         }
     }
 
-    private static void drawHollowBattery(Canvas canvas, float radius, float capRadius, int fillColor,
-            int level, String levelText, float textSize, boolean showLevelText, boolean showBolt,
-            float contentScale, float textWidth, boolean fillFollowsLevel) {
+    private static void drawHollowBattery(Canvas canvas, float contentRadius, float capContentRadius,
+            int emptyColor, int fillColor, int level, String levelText, float textSize,
+            boolean showLevelText, boolean showBolt, float contentScale, float textWidth,
+            boolean fillFollowsLevel) {
         int layer = canvas.saveLayer(BODY.left, BODY.top, CAP.right, BODY.bottom, null);
         if (fillFollowsLevel) {
-            drawBodyAndCap(BODY_COLOR, radius, capRadius, false, 100f, canvas);
-            drawBodyAndCap(fillColor, radius, capRadius, true, level, canvas);
+            drawBodyAndCapRange(canvas, contentRadius, capContentRadius, fillColor, 0f, level);
+            drawBodyAndCapRange(canvas, contentRadius, capContentRadius, emptyColor, level, 100f);
         } else {
-            drawBodyAndCap(fillColor, radius, capRadius, false, 100f, canvas);
+            drawBodyAndCapRange(canvas, contentRadius, capContentRadius, fillColor, 0f, 100f);
         }
         float textCenterX = BODY.centerX();
         if (showBolt) {
@@ -144,41 +127,50 @@ final class IosBatteryPainter {
         canvas.restoreToCount(layer);
     }
 
-    private static void drawBodyAndCap(int color, float radius, float capRadius,
-            boolean clipToLevel, float level, Canvas canvas) {
-        PAINT.setStyle(Paint.Style.FILL);
-        PAINT.setColor(color);
-        if (!clipToLevel) {
-            canvas.drawRoundRect(BODY, radius, radius, PAINT);
-            canvas.drawRoundRect(CAP, capRadius, capRadius, PAINT);
+    private static void drawBodyAndCapRange(Canvas canvas, float contentRadius, float capContentRadius,
+            int color, float startPercent, float endPercent) {
+        if (BODY_CONTENT.width() <= 0f || BODY_CONTENT.height() <= 0f) {
             return;
         }
-        float totalFillWidth = BODY.width() + CAP.width();
-        float filledWidth = totalFillWidth * Math.max(0f, Math.min(100f, level)) / 100f;
-        float bodyFillWidth = Math.min(BODY.width(), filledWidth);
-        if (bodyFillWidth > 0f) {
-            FILL.set(BODY.left, BODY.top, BODY.left + bodyFillWidth, BODY.bottom);
+        float clampedStart = Math.max(0f, Math.min(100f, startPercent));
+        float clampedEnd = Math.max(0f, Math.min(100f, endPercent));
+        if (clampedEnd <= clampedStart) {
+            return;
+        }
+        PAINT.setStyle(Paint.Style.FILL);
+        PAINT.setColor(color);
+        float totalFillWidth = BODY_CONTENT.width() + Math.max(0f, CAP_CONTENT.width());
+        float startWidth = totalFillWidth * clampedStart / 100f;
+        float endWidth = totalFillWidth * clampedEnd / 100f;
+
+        float bodyStart = Math.min(BODY_CONTENT.width(), Math.max(0f, startWidth));
+        float bodyEnd = Math.min(BODY_CONTENT.width(), Math.max(0f, endWidth));
+        if (bodyEnd > bodyStart) {
+            FILL.set(BODY_CONTENT.left + bodyStart, BODY_CONTENT.top,
+                    BODY_CONTENT.left + bodyEnd, BODY_CONTENT.bottom);
             canvas.save();
             canvas.clipRect(FILL);
-            canvas.drawRoundRect(BODY, radius, radius, PAINT);
+            canvas.drawRoundRect(BODY_CONTENT, contentRadius, contentRadius, PAINT);
             canvas.restore();
         }
-        float capFillWidth = Math.min(CAP.width(), Math.max(0f, filledWidth - BODY.width()));
-        if (capFillWidth > 0f) {
-            FILL.set(CAP.left, CAP.top, CAP.left + capFillWidth, CAP.bottom);
+
+        if (CAP_CONTENT.width() <= 0f || CAP_CONTENT.height() <= 0f) {
+            return;
+        }
+        float capStart = Math.min(CAP_CONTENT.width(), Math.max(0f, startWidth - BODY_CONTENT.width()));
+        float capEnd = Math.min(CAP_CONTENT.width(), Math.max(0f, endWidth - BODY_CONTENT.width()));
+        if (capEnd > capStart) {
+            FILL.set(CAP_CONTENT.left + capStart, CAP_CONTENT.top,
+                    CAP_CONTENT.left + capEnd, CAP_CONTENT.bottom);
             canvas.save();
             canvas.clipRect(FILL);
-            canvas.drawRoundRect(CAP, capRadius, capRadius, PAINT);
+            canvas.drawRoundRect(CAP_CONTENT, capContentRadius, capContentRadius, PAINT);
             canvas.restore();
         }
     }
 
-    private static int withMaxAlpha(int color, int maxAlpha) {
-        int alpha = Color.alpha(color);
-        if (alpha == 0) {
-            alpha = 255;
-        }
-        return Color.argb(Math.min(alpha, maxAlpha), Color.red(color), Color.green(color), Color.blue(color));
+    private static int withFixedAlpha(int color, int alpha) {
+        return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color));
     }
 
     private static int resolveLevelFillColor(int level, boolean charging, int fillColor) {
