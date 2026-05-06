@@ -14,6 +14,7 @@ final class SettingsStore {
     static final String KEY_BATTERY_ICON_STYLE = "battery_icon_style";
     static final String KEY_BATTERY_LEVEL_TEXT_ENABLED = "battery_level_text_enabled";
     static final String KEY_BATTERY_HOLLOW_ENABLED = "battery_hollow_enabled";
+    static final String KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL = "battery_hollow_fill_follows_level";
     static final String KEY_BATTERY_TEXT_FONT = "battery_text_font";
     static final String KEY_STATUS_BAR_ICON_SCALE_PERCENT = "status_bar_icon_scale_percent";
     static final String KEY_BATTERY_INNER_TEXT_SCALE_PERCENT = "battery_inner_text_scale_percent";
@@ -50,6 +51,7 @@ final class SettingsStore {
     static final int DEFAULT_BATTERY_ICON_STYLE = BATTERY_STYLE_IOS;
     static final boolean DEFAULT_BATTERY_LEVEL_TEXT_ENABLED = true;
     static final boolean DEFAULT_BATTERY_HOLLOW_ENABLED = false;
+    static final boolean DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL = false;
     static final int DEFAULT_BATTERY_TEXT_FONT = BATTERY_TEXT_FONT_SYSTEM_DEFAULT;
     static final int DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT = 100;
     static final int DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT = 100;
@@ -92,6 +94,7 @@ final class SettingsStore {
             KEY_SIGNAL_CODE_DRAW_ENABLED,
             KEY_BATTERY_LEVEL_TEXT_ENABLED,
             KEY_BATTERY_HOLLOW_ENABLED,
+            KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL,
             KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
             KEY_CLOCK_BOLD_ENABLED,
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
@@ -253,6 +256,8 @@ final class SettingsStore {
                 return DEFAULT_BATTERY_LEVEL_TEXT_ENABLED;
             case KEY_BATTERY_HOLLOW_ENABLED:
                 return DEFAULT_BATTERY_HOLLOW_ENABLED;
+            case KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL:
+                return DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL;
             case KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED:
                 return DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED;
             case KEY_CLOCK_BOLD_ENABLED:

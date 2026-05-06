@@ -441,6 +441,10 @@ public class MainActivity extends Activity {
                 prefs,
                 SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED));
+        previewView.setBatteryHollowFillFollowsLevel(SettingsStore.readBoolean(
+                prefs,
+                SettingsStore.KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL,
+                SettingsStore.DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL));
         FrameLayout.LayoutParams previewLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 dp(220));
@@ -672,10 +676,19 @@ public class MainActivity extends Activity {
                 SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED);
         addDivider(details);
-        addSwitchRow(details, "镂空电池",
-                "开启后电池内部会直接满填当前颜色，剩余电量改为挖空数字。20% 和 10% 的低电量变色继续保留。",
+        LinearLayout hollowOptions = buildBatteryHollowOptions();
+        hollowOptions.setVisibility(SettingsStore.readBoolean(
+                prefs,
                 SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
-                SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED);
+                SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED) ? View.VISIBLE : View.GONE);
+        addSwitchRow(details, "镂空电池",
+                "开启后使用镂空电池样式。默认内部保持满填，下面可以单独控制是否随容量缩短。",
+                SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
+                SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED,
+                (buttonView, isChecked) -> hollowOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
+        LinearLayout.LayoutParams hollowOptionsLp = matchWrapWithTop(10);
+        hollowOptionsLp.leftMargin = dp(12);
+        details.addView(hollowOptions, hollowOptionsLp);
         addDivider(details);
         int[] batteryTextFontOptions = BatteryTextFontHelper.getAvailableFontOptions(this);
         addChoiceRow(details, "电池数字字体",
@@ -881,6 +894,11 @@ public class MainActivity extends Activity {
 
     private void addSwitchRow(LinearLayout root, String titleText, String subtitleText,
             String key, boolean defaultValue) {
+        addSwitchRow(root, titleText, subtitleText, key, defaultValue, null);
+    }
+
+    private void addSwitchRow(LinearLayout root, String titleText, String subtitleText,
+            String key, boolean defaultValue, CompoundButton.OnCheckedChangeListener extraListener) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -903,8 +921,12 @@ public class MainActivity extends Activity {
 
         Switch toggle = new Switch(this);
         toggle.setChecked(SettingsStore.readBoolean(prefs, key, defaultValue));
-        toggle.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) ->
-                putBooleanSetting(key, isChecked));
+        toggle.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) -> {
+            putBooleanSetting(key, isChecked);
+            if (extraListener != null) {
+                extraListener.onCheckedChanged(buttonView, isChecked);
+            }
+        });
 
         row.addView(textColumn, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
@@ -912,6 +934,21 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         root.addView(row, matchWrap());
+    }
+
+    private LinearLayout buildBatteryHollowOptions() {
+        LinearLayout card = card(colorSurfaceSoft, colorStroke, 22);
+        TextView title = new TextView(this);
+        title.setText("镂空电池");
+        title.setTextColor(colorPrimary);
+        title.setTextSize(13);
+        card.addView(title, matchWrap());
+        addDivider(card);
+        addSwitchRow(card, "电池内填充色随容量变化",
+                "关闭时内部始终填满；开启后内部填充会按剩余电量缩短，未填充部分保留灰色底色。",
+                SettingsStore.KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL,
+                SettingsStore.DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL);
+        return card;
     }
 
     private void addSliderRow(LinearLayout root, String titleText, String subtitleText, String key,
@@ -1196,13 +1233,17 @@ public class MainActivity extends Activity {
     }
 
     private void addDivider(LinearLayout root) {
-        View divider = new View(this);
-        divider.setBackgroundColor(colorStroke);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
         lp.topMargin = dp(14);
         lp.bottomMargin = dp(14);
-        root.addView(divider, lp);
+        root.addView(buildDividerView(), lp);
+    }
+
+    private View buildDividerView() {
+        View divider = new View(this);
+        divider.setBackgroundColor(colorStroke);
+        return divider;
     }
 
     private void addProfileSectionHeader(LinearLayout root, String titleText, String subtitleText) {
@@ -1354,6 +1395,10 @@ public class MainActivity extends Activity {
                     prefs,
                     SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
                     SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED));
+            previewView.setBatteryHollowFillFollowsLevel(SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL,
+                    SettingsStore.DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL));
             previewView.invalidate();
         }
     }

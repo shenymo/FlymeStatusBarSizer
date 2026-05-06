@@ -35,7 +35,7 @@ final class OneUiBatteryPainter {
 
     static void draw(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
             int fillColor, int textColor, boolean showLevelText, float textScale, Typeface typeface,
-            boolean hollow) {
+            boolean hollow, boolean hollowFillFollowsLevel) {
         if (bounds.width() <= 0 || bounds.height() <= 0) {
             return;
         }
@@ -64,8 +64,9 @@ final class OneUiBatteryPainter {
                 ? withMaxAlpha(CHARGING_FILL_COLOR, CHARGING_FILL_ALPHA)
                 : withMaxAlpha(effectiveFillColor, NORMAL_FILL_ALPHA);
         if (hollow) {
-            drawHollowBattery(canvas, radius, renderedFillColor, levelText, textSize,
-                    showLevelText, showBolt, normalizedTextScale, textWidth);
+            drawHollowBattery(canvas, radius, renderedFillColor, clampedLevel, levelText, textSize,
+                    showLevelText, showBolt, normalizedTextScale, textWidth,
+                    hollowFillFollowsLevel);
             return;
         }
 
@@ -97,12 +98,16 @@ final class OneUiBatteryPainter {
         }
     }
 
-    private static void drawHollowBattery(Canvas canvas, float radius, int fillColor, String levelText,
-            float textSize, boolean showLevelText, boolean showBolt, float contentScale, float textWidth) {
+    private static void drawHollowBattery(Canvas canvas, float radius, int fillColor, int level,
+            String levelText, float textSize, boolean showLevelText, boolean showBolt,
+            float contentScale, float textWidth, boolean fillFollowsLevel) {
         int layer = canvas.saveLayer(BODY.left, BODY.top, BODY.right, BODY.bottom, null);
-        BODY_PAINT.setStyle(Paint.Style.FILL);
-        BODY_PAINT.setColor(fillColor);
-        canvas.drawRoundRect(BODY, radius, radius, BODY_PAINT);
+        if (fillFollowsLevel) {
+            drawBody(BODY_COLOR, radius, false, 100f, canvas);
+            drawBody(fillColor, radius, true, level, canvas);
+        } else {
+            drawBody(fillColor, radius, false, 100f, canvas);
+        }
         float textCenterX = BODY.centerX();
         if (showBolt) {
             textCenterX = BatteryBoltPainter.drawCutout(
@@ -114,6 +119,23 @@ final class OneUiBatteryPainter {
             canvas.drawText(levelText, textCenterX, textBaseline, CUTOUT_TEXT_PAINT);
         }
         canvas.restoreToCount(layer);
+    }
+
+    private static void drawBody(int color, float radius, boolean clipToLevel, float level, Canvas canvas) {
+        BODY_PAINT.setStyle(Paint.Style.FILL);
+        BODY_PAINT.setColor(color);
+        if (!clipToLevel) {
+            canvas.drawRoundRect(BODY, radius, radius, BODY_PAINT);
+            return;
+        }
+        float fillRight = BODY.left + BODY.width() * Math.max(0f, Math.min(100f, level)) / 100f;
+        if (fillRight > BODY.left) {
+            FILL.set(BODY.left, BODY.top, fillRight, BODY.bottom);
+            canvas.save();
+            canvas.clipRect(FILL);
+            canvas.drawRoundRect(BODY, radius, radius, BODY_PAINT);
+            canvas.restore();
+        }
     }
 
     private static int withMaxAlpha(int color, int maxAlpha) {

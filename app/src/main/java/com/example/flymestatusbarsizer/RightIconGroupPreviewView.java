@@ -31,6 +31,7 @@ public final class RightIconGroupPreviewView extends View {
     private int batteryStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
     private boolean batteryLevelTextEnabled = true;
     private boolean batteryHollowEnabled = SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED;
+    private boolean batteryHollowFillFollowsLevel = SettingsStore.DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL;
     private int batteryTextFont = SettingsStore.DEFAULT_BATTERY_TEXT_FONT;
     private int iconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
     private int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
@@ -80,6 +81,14 @@ public final class RightIconGroupPreviewView extends View {
             return;
         }
         batteryHollowEnabled = enabled;
+        invalidate();
+    }
+
+    public void setBatteryHollowFillFollowsLevel(boolean enabled) {
+        if (batteryHollowFillFollowsLevel == enabled) {
+            return;
+        }
+        batteryHollowFillFollowsLevel = enabled;
         invalidate();
     }
 
@@ -226,12 +235,12 @@ public final class RightIconGroupPreviewView extends View {
         if (SettingsStore.normalizeBatteryStyle(batteryStyle) == SettingsStore.BATTERY_STYLE_ONEUI) {
             OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
                     fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
-                    batteryHollowEnabled);
+                    batteryHollowEnabled, batteryHollowFillFollowsLevel);
             return;
         }
         IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
                 fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
-                batteryHollowEnabled);
+                batteryHollowEnabled, batteryHollowFillFollowsLevel);
     }
 
     private int dp(int value) {
