@@ -3073,7 +3073,20 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (view == null) {
             return false;
         }
+        if (isNotificationBackedStatusBarIconView(view)) {
+            return true;
+        }
         return findAncestorByIdName(view, "notificationIcons") != null;
+    }
+
+    private static boolean isNotificationBackedStatusBarIconView(View view) {
+        if (view == null) {
+            return false;
+        }
+        if (!"com.android.systemui.statusbar.StatusBarIconView".equals(view.getClass().getName())) {
+            return false;
+        }
+        return ReflectUtils.invokeNoArg(view, "getNotification") != null;
     }
 
     private static boolean isStatusBarIconCandidate(View view) {
