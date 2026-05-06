@@ -686,7 +686,6 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private void hookNotificationAppIcons(ClassLoader loader) {
         hookNotificationIconTint(loader);
-        hookNotificationStatusBarIconDrawable(loader);
         hookNotificationStatusBarIconUpdate(loader);
     }
 
@@ -749,31 +748,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             });
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook notification icon tint", t);
-        }
-    }
-
-    private void hookNotificationStatusBarIconDrawable(ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(
-                    "com.android.systemui.statusbar.StatusBarIconView",
-                    false,
-                    loader);
-            for (Method method : clazz.getDeclaredMethods()) {
-                if (!"getIcon".equals(method.getName())
-                        || method.getParameterTypes().length != 1
-                        || method.getReturnType() != Drawable.class) {
-                    continue;
-                }
-                method.setAccessible(true);
-                hook(method).intercept(chain -> {
-                    Object result = chain.proceed();
-                    Drawable override = resolveNotificationStatusBarIconDrawable(chain.getThisObject());
-                    return override != null ? override : result;
-                });
-                return;
-            }
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook notification status bar drawable", t);
         }
     }
 
