@@ -31,6 +31,7 @@ final class SettingsStore {
     static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
     static final String KEY_MBACK_NAV_BAR_TRANSPARENT = "mback_nav_bar_transparent";
     static final String KEY_NOTIFICATION_BACKGROUND_TRANSPARENT = "notification_background_transparent";
+    static final String KEY_NOTIFICATION_APP_ICON_ENABLED = "notification_app_icon_enabled";
     static final String KEY_MBACK_INSET_SIZE = "mback_inset_size";
     static final String KEY_MBACK_NAV_BAR_HEIGHT = "mback_nav_bar_height";
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
@@ -68,6 +69,7 @@ final class SettingsStore {
     static final String DEFAULT_MBACK_LONG_TOUCH_INTENT_URI = "";
     static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
     static final boolean DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT = false;
+    static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
     static final int DEFAULT_MBACK_INSET_SIZE = -1;
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
@@ -100,6 +102,7 @@ final class SettingsStore {
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_BACKGROUND_TRANSPARENT,
+            KEY_NOTIFICATION_APP_ICON_ENABLED,
             KEY_MBACK_HIDE_PILL,
             KEY_IME_TOOLBAR_ENABLED
     };
@@ -268,6 +271,8 @@ final class SettingsStore {
                 return DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
             case KEY_NOTIFICATION_BACKGROUND_TRANSPARENT:
                 return DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT;
+            case KEY_NOTIFICATION_APP_ICON_ENABLED:
+                return DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
             case KEY_MBACK_HIDE_PILL:
                 return DEFAULT_MBACK_HIDE_PILL;
             case KEY_IME_TOOLBAR_ENABLED:

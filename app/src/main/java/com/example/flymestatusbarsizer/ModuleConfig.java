@@ -40,6 +40,7 @@ final class ModuleConfig {
     String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
     boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
     boolean notificationBackgroundTransparent = SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT;
+    boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
     boolean mbackHidePill = SettingsStore.DEFAULT_MBACK_HIDE_PILL;
     int mbackInsetSize = SettingsStore.DEFAULT_MBACK_INSET_SIZE;
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
@@ -255,6 +256,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_NOTIFICATION_BACKGROUND_TRANSPARENT,
                     SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT);
+            config.notificationAppIconEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
+                    SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED);
             config.mbackHidePill = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_MBACK_HIDE_PILL,

@@ -179,6 +179,19 @@ final class ReflectUtils {
         }
     }
 
+    static void setField(Object target, String name, Object value) {
+        if (target == null || name == null) {
+            return;
+        }
+        try {
+            Field field = findCachedField(target.getClass(), name);
+            if (field != null) {
+                field.set(target, value);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     static int getIntField(Object target, String name, int fallback) {
         Object value = getField(target, name);
         return value instanceof Integer ? (Integer) value : fallback;

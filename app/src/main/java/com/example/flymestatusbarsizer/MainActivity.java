@@ -245,14 +245,19 @@ public class MainActivity extends Activity {
     private View buildNotificationCard() {
         LinearLayout card = card(colorSurface, 28);
         addProfileSectionHeader(card, "通知",
-                "只接管 SystemUI 通知卡片的背景层。Android 13 及以上叠加液态玻璃采样层，低版本回退为透明背景。");
+                "这里可以单独控制通知图标和通知卡片背景。应用图标开关只影响第三方应用通知，已有通知可能要等刷新后才会变化。");
+        addSwitchRow(card, "通知使用应用图标",
+                "开启后把第三方应用的状态栏通知图标改成应用自身图标，不再使用 Flyme 那套统一通知图标。",
+                SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
+                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED);
+        addDivider(card);
         addSwitchRow(card, "通知液态玻璃",
                 "开启后会把通知卡片背景替换成液态玻璃效果，并清掉原来的 tint。文字、图标和点击区域保持原来的 SystemUI 行为。",
                 SettingsStore.KEY_NOTIFICATION_BACKGROUND_TRANSPARENT,
                 SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT);
         return buildExpandableInfoCard(
                 "通知卡片",
-                "给通知卡片补一个液态玻璃背景开关，Android 13+ 使用 shader 采样通知后方内容，低版本自动退回透明卡片。",
+                "可以分别控制第三方通知图标是否改成应用图标，以及通知卡片背景是否替换成液态玻璃。",
                 "通知", card);
     }
 
