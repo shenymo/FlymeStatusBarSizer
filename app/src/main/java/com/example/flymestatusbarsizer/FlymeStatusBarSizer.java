@@ -20,6 +20,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
+import android.graphics.drawable.AdaptiveIconDrawable;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
@@ -98,8 +99,13 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final HashMap<String, Integer> SYSTEM_UI_ID_CACHE = new HashMap<>();
     private static final HashMap<String, Boolean> NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE =
             new HashMap<>();
+    private static final HashMap<String, Boolean> NOTIFICATION_APP_ICON_ADAPTIVE_CACHE =
+            new HashMap<>();
     private static final String EXTRA_NOTIFICATION_APP_ICON_REPLACED =
             "flyme_status_bar_sizer_notification_app_icon_replaced";
+    private static final float NOTIFICATION_APP_ICON_SCALE = 1.12f;
+    private static final float NOTIFICATION_ADAPTIVE_APP_ICON_SCALE = 1.24f;
+    private static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
     private static volatile int LAST_SIGNAL_LEVEL = -1;
     private static volatile int LAST_SIGNAL_SUB_ID = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
     private static volatile int LAST_CELLULAR_LEVEL = -1;
@@ -912,6 +918,35 @@ public class FlymeStatusBarSizer extends XposedModule {
         return packageName + ":" + userId;
     }
 
+    private static boolean isAdaptiveNotificationApplicationIcon(
+            Context context, String packageName, int userId) {
+        if (context == null || TextUtils.isEmpty(packageName)) {
+            return false;
+        }
+        String cacheKey = buildNotificationAppIconEligibilityCacheKey(packageName, userId);
+        synchronized (NOTIFICATION_APP_ICON_ADAPTIVE_CACHE) {
+            Boolean cached = NOTIFICATION_APP_ICON_ADAPTIVE_CACHE.get(cacheKey);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        boolean isAdaptive = false;
+        try {
+            ApplicationInfo appInfo = resolveNotificationApplicationInfo(context, packageName, userId);
+            PackageManager packageManager = context.getPackageManager();
+            if (appInfo != null && packageManager != null) {
+                Drawable icon = appInfo.loadIcon(packageManager);
+                isAdaptive = icon instanceof AdaptiveIconDrawable;
+            }
+        } catch (Throwable ignored) {
+            isAdaptive = false;
+        }
+        synchronized (NOTIFICATION_APP_ICON_ADAPTIVE_CACHE) {
+            NOTIFICATION_APP_ICON_ADAPTIVE_CACHE.put(cacheKey, isAdaptive);
+        }
+        return isAdaptive;
+    }
+
     private static boolean shouldUseApplicationIconForNotification(
             Context context, String packageName, ApplicationInfo appInfo) {
         if (context == null || appInfo == null || TextUtils.isEmpty(packageName)) {
@@ -999,6 +1034,73 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private static int resolveNotificationAppIconRenderSize(View view) {
+        if (view == null) {
+            return 0;
+        }
+        int sizePx = Math.max(view.getWidth(), view.getHeight());
+        if (sizePx > 0) {
+            return sizePx;
+        }
+        sizePx = Math.max(view.getMeasuredWidth(), view.getMeasuredHeight());
+        if (sizePx > 0) {
+            return sizePx;
+        }
+        ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
+        if (layoutParams != null) {
+            sizePx = Math.max(layoutParams.width, layoutParams.height);
+            if (sizePx > 0) {
+                return sizePx;
+            }
+        }
+        return dp(view, DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP);
+    }
+
+    private static Drawable createNotificationStatusBarIconDrawable(
+            View view,
+            String packageName,
+            int userId,
+            Drawable drawable) {
+        Drawable working = cloneNotificationIconDrawable(drawable);
+        if (view == null || working == null) {
+            return working;
+        }
+        int sizePx = resolveNotificationAppIconRenderSize(view);
+        if (sizePx <= 0) {
+            return working;
+        }
+        float scale = isAdaptiveNotificationApplicationIcon(view.getContext(), packageName, userId)
+                ? NOTIFICATION_ADAPTIVE_APP_ICON_SCALE
+                : NOTIFICATION_APP_ICON_SCALE;
+        Bitmap bitmap = createScaledNotificationAppIconBitmap(working, sizePx, scale);
+        if (bitmap == null) {
+            return working;
+        }
+        return new BitmapDrawable(view.getResources(), bitmap);
+    }
+
+    private static Bitmap createScaledNotificationAppIconBitmap(
+            Drawable drawable,
+            int sizePx,
+            float scale) {
+        if (drawable == null || sizePx <= 0) {
+            return null;
+        }
+        Drawable working = cloneNotificationIconDrawable(drawable);
+        if (working == null) {
+            return null;
+        }
+        int targetSize = Math.max(1, sizePx);
+        int scaledSize = Math.max(targetSize, Math.round(targetSize * Math.max(1f, scale)));
+        int left = (targetSize - scaledSize) / 2;
+        int top = (targetSize - scaledSize) / 2;
+        Bitmap bitmap = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        working.setBounds(left, top, left + scaledSize, top + scaledSize);
+        working.draw(canvas);
+        return bitmap;
+    }
+
     private static Drawable resolveNotificationStatusBarIconDrawable(Object target) {
         if (!(target instanceof View)) {
             return null;
@@ -1032,7 +1134,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return null;
         }
         markNotificationAppIconReplacement(sbn.getNotification(), true);
-        return cloneNotificationIconDrawable(drawable);
+        return createNotificationStatusBarIconDrawable(view, packageName, userId, drawable);
     }
 
     private static void applyNotificationStatusBarIconDrawable(Object target) {
