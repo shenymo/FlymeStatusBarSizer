@@ -69,8 +69,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_TRANSLATION_Y = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> TRACKED_CLOCK_AND_CARRIER_TEXT_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, String> VIEW_ID_NAME_CACHE = new WeakHashMap<>();
-    private static final WeakHashMap<View, Boolean> TRACKED_CONNECTION_RATE_VIEWS = new WeakHashMap<>();
-    private static final WeakHashMap<View, ConnectionRateThresholdState> CONNECTION_RATE_THRESHOLD_STATES = new WeakHashMap<>();
+    private static final WeakHashMap<View, ConnectionRateViewState> CONNECTION_RATE_VIEW_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_BATTERY_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_STATUS_BAR_ICON_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<Object, View> TRACKED_INPUT_METHOD_VIEWS = new WeakHashMap<>();
@@ -402,6 +401,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                         View view = (View) thisObject;
                         trackConnectionRateView(view);
                         ensureConfigRefreshObserver(view.getContext());
+                        if ("onAttachedToWindow".equals(name) || "onConfigurationChanged".equals(name)) {
+                            rememberConnectionRateBaseState(view, true);
+                            applyConnectionRateTextScale(view);
+                        }
                         if ("onConnectionRateChange".equals(name) && chain.getArgs().size() == 2
                                 && chain.getArg(0) instanceof Boolean) {
                             Object rateArg = chain.getArg(1);
@@ -2202,8 +2205,259 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void trackConnectionRateView(View view) {
-        TRACKED_CONNECTION_RATE_VIEWS.put(view, Boolean.TRUE);
-        rememberConnectionRateState(view);
+        if (view == null) {
+            return;
+        }
+        rememberConnectionRateViewState(view);
+    }
+
+    private static void rememberConnectionRateBaseState(View view, boolean overwrite) {
+        rememberConnectionRateBaseState(view, resolveConnectionRateUnitView(view),
+                rememberConnectionRateViewState(view), overwrite);
+    }
+
+    private static void rememberConnectionRateBaseState(
+            View view, TextView unitView, ConnectionRateViewState state, boolean overwrite) {
+        if (view == null) {
+            return;
+        }
+        if (state == null) {
+            return;
+        }
+        int textSize = ReflectUtils.getIntField(view, "mTextSize", 0);
+        if (textSize > 0 && (overwrite || state.originalTextSize <= 0)) {
+            state.originalTextSize = textSize;
+        }
+        int maxWidth = ReflectUtils.getIntField(view, "mMaxWidth", 0);
+        if (maxWidth > 0 && (overwrite || state.originalMaxWidth <= 0)) {
+            state.originalMaxWidth = maxWidth;
+        }
+        if (overwrite || Float.isNaN(state.originalRotation)) {
+            state.originalRotation = view.getRotation();
+        }
+        if (view instanceof LinearLayout) {
+            LinearLayout group = (LinearLayout) view;
+            if (overwrite || state.originalOrientation == Integer.MIN_VALUE) {
+                state.originalOrientation = group.getOrientation();
+            }
+        }
+        if (unitView == null) {
+            if (overwrite) {
+                state.hasAppliedTextScaleSignature = false;
+            }
+            return;
+        }
+        if (overwrite || Float.isNaN(state.originalUnitTextSize)) {
+            state.originalUnitTextSize = unitView.getTextSize();
+        }
+        if (overwrite || state.originalUnitMinWidth < 0) {
+            state.originalUnitMinWidth = unitView.getMinWidth();
+        }
+        if (overwrite || state.originalUnitMaxLines == Integer.MIN_VALUE) {
+            state.originalUnitMaxLines = unitView.getMaxLines();
+        }
+        if (overwrite || Float.isNaN(state.originalUnitRotation)) {
+            state.originalUnitRotation = unitView.getRotation();
+        }
+        if (overwrite || state.originalUnitPadding == null) {
+            state.originalUnitPadding = new int[]{
+                    unitView.getPaddingLeft(),
+                    unitView.getPaddingTop(),
+                    unitView.getPaddingRight(),
+                    unitView.getPaddingBottom()
+            };
+        }
+        if (overwrite) {
+            state.hasAppliedTextScaleSignature = false;
+        }
+    }
+
+    private static TextView resolveConnectionRateUnitView(View view) {
+        if (view == null) {
+            return null;
+        }
+        Object unit = ReflectUtils.getField(view, "mUnitView");
+        if (unit instanceof TextView) {
+            return (TextView) unit;
+        }
+        if (view instanceof ViewGroup) {
+            View child = findSystemUiChild(view, "unit");
+            if (child instanceof TextView) {
+                return (TextView) child;
+            }
+        }
+        return null;
+    }
+
+    private static boolean applyConnectionRateTextScale(View view) {
+        if (view == null) {
+            return false;
+        }
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        TextView unitView = resolveConnectionRateUnitView(view);
+        ConnectionRateViewState state = rememberConnectionRateViewState(view);
+        long signature = getConnectionRateTextScaleSignature(config, unitView != null);
+        if (state.hasAppliedTextScaleSignature && state.appliedTextScaleSignature == signature) {
+            return false;
+        }
+        rememberConnectionRateBaseState(view, unitView, state, false);
+        float scale = config != null && config.enabled ? resolveClockAndCarrierTextScale(config) : 1f;
+        boolean changed = false;
+
+        if (state.originalTextSize > 0) {
+            int targetTextSize = scaleSize(state.originalTextSize, scale);
+            int currentTextSize = ReflectUtils.getIntField(view, "mTextSize", 0);
+            if (currentTextSize != targetTextSize) {
+                ReflectUtils.setIntField(view, "mTextSize", targetTextSize);
+                changed = true;
+            }
+        }
+
+        if (state.originalMaxWidth > 0) {
+            int targetMaxWidth = scaleSize(state.originalMaxWidth, scale);
+            int currentMaxWidth = ReflectUtils.getIntField(view, "mMaxWidth", 0);
+            if (currentMaxWidth != targetMaxWidth) {
+                ReflectUtils.setIntField(view, "mMaxWidth", targetMaxWidth);
+                changed = true;
+            }
+        }
+
+        if (applyConnectionRateHorizontalState(view, state, config.enabled)) {
+            changed = true;
+        }
+
+        if (unitView != null) {
+            if (!Float.isNaN(state.originalUnitTextSize) && state.originalUnitTextSize > 0f) {
+                float targetUnitTextSize = state.originalUnitTextSize * scale;
+                if (Math.abs(unitView.getTextSize() - targetUnitTextSize) > 0.5f) {
+                    unitView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, targetUnitTextSize);
+                    changed = true;
+                }
+            }
+
+            if (state.originalUnitMinWidth > 0) {
+                int targetMinWidth = scaleSize(state.originalUnitMinWidth, scale);
+                if (unitView.getMinWidth() != targetMinWidth) {
+                    unitView.setMinWidth(targetMinWidth);
+                    changed = true;
+                }
+            }
+
+            int[] originalPadding = state.originalUnitPadding;
+            if (originalPadding != null) {
+                int left = scaleInsetSize(originalPadding[0], scale);
+                int top = scaleInsetSize(originalPadding[1], scale);
+                int right = scaleInsetSize(originalPadding[2], scale);
+                int bottom = scaleInsetSize(originalPadding[3], scale);
+                if (unitView.getPaddingLeft() != left || unitView.getPaddingTop() != top
+                        || unitView.getPaddingRight() != right || unitView.getPaddingBottom() != bottom) {
+                    unitView.setPadding(left, top, right, bottom);
+                    changed = true;
+                }
+            }
+
+            if (applyConnectionRateUnitHorizontalState(unitView, state, config.enabled)) {
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            disableAncestorClipping(view, 4);
+            if (unitView != null) {
+                unitView.requestLayout();
+                unitView.invalidate();
+            }
+            view.requestLayout();
+            view.invalidate();
+        }
+        state.appliedTextScaleSignature = signature;
+        state.hasAppliedTextScaleSignature = true;
+        return changed;
+    }
+
+    private static long getConnectionRateTextScaleSignature(ModuleConfig config, boolean hasUnitView) {
+        boolean enabled = config != null && config.enabled;
+        int effectivePercent = enabled
+                ? SettingsStore.normalizeScalePercent(config.clockAndCarrierTextSizePercent)
+                : SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT;
+        long signature = 17L;
+        signature = signature * 31L + (enabled ? 1L : 0L);
+        signature = signature * 31L + effectivePercent;
+        signature = signature * 31L + (hasUnitView ? 1L : 0L);
+        return signature;
+    }
+
+    private static boolean applyConnectionRateHorizontalState(View view, ConnectionRateViewState state, boolean enabled) {
+        if (view == null) {
+            return false;
+        }
+        if (state == null) {
+            return false;
+        }
+        boolean changed = false;
+        float targetRotation = enabled
+                ? 0f
+                : (Float.isNaN(state.originalRotation) ? view.getRotation() : state.originalRotation);
+        if (Math.abs(view.getRotation() - targetRotation) > 0.5f) {
+            view.setRotation(targetRotation);
+            changed = true;
+        }
+        if (view instanceof LinearLayout) {
+            LinearLayout group = (LinearLayout) view;
+            int targetOrientation = enabled
+                    ? LinearLayout.HORIZONTAL
+                    : (state.originalOrientation == Integer.MIN_VALUE
+                    ? group.getOrientation() : state.originalOrientation);
+            if (group.getOrientation() != targetOrientation) {
+                group.setOrientation(targetOrientation);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    private static boolean applyConnectionRateUnitHorizontalState(
+            TextView unitView, ConnectionRateViewState state, boolean enabled) {
+        if (unitView == null) {
+            return false;
+        }
+        if (state == null) {
+            return false;
+        }
+        boolean changed = false;
+        float targetRotation = enabled
+                ? 0f
+                : (Float.isNaN(state.originalUnitRotation) ? unitView.getRotation() : state.originalUnitRotation);
+        if (Math.abs(unitView.getRotation() - targetRotation) > 0.5f) {
+            unitView.setRotation(targetRotation);
+            changed = true;
+        }
+
+        int targetMaxLines = enabled ? 1
+                : (state.originalUnitMaxLines == Integer.MIN_VALUE ? unitView.getMaxLines() : state.originalUnitMaxLines);
+        if (enabled) {
+            if (unitView.getMaxLines() != 1) {
+                unitView.setSingleLine(true);
+                changed = true;
+            }
+        } else if (state.originalUnitMaxLines != Integer.MIN_VALUE) {
+            if (targetMaxLines == 1) {
+                if (unitView.getMaxLines() != 1) {
+                    unitView.setSingleLine(true);
+                    changed = true;
+                }
+            } else {
+                if (unitView.getMaxLines() == 1) {
+                    unitView.setSingleLine(false);
+                    changed = true;
+                }
+                if (unitView.getMaxLines() != targetMaxLines) {
+                    unitView.setMaxLines(targetMaxLines);
+                    changed = true;
+                }
+            }
+        }
+        return changed;
     }
 
     private static void trackStatusBarIconView(View view) {
@@ -3617,11 +3871,11 @@ public class FlymeStatusBarSizer extends XposedModule {
         view.invalidate();
     }
 
-    private static ConnectionRateThresholdState rememberConnectionRateState(View view) {
-        ConnectionRateThresholdState state = CONNECTION_RATE_THRESHOLD_STATES.get(view);
+    private static ConnectionRateViewState rememberConnectionRateViewState(View view) {
+        ConnectionRateViewState state = CONNECTION_RATE_VIEW_STATES.get(view);
         if (state == null) {
-            state = new ConnectionRateThresholdState();
-            CONNECTION_RATE_THRESHOLD_STATES.put(view, state);
+            state = new ConnectionRateViewState();
+            CONNECTION_RATE_VIEW_STATES.put(view, state);
         }
         return state;
     }
@@ -3630,7 +3884,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (view == null) {
             return;
         }
-        ConnectionRateThresholdState state = rememberConnectionRateState(view);
+        ConnectionRateViewState state = rememberConnectionRateViewState(view);
         applyConnectionRateThresholdVisibility(view, state, ModuleConfig.load(view.getContext()));
     }
 
@@ -3638,11 +3892,11 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (view == null) {
             return;
         }
-        applyConnectionRateThresholdVisibility(view, baseShow, rate, rememberConnectionRateState(view),
+        applyConnectionRateThresholdVisibility(view, baseShow, rate, rememberConnectionRateViewState(view),
                 ModuleConfig.load(view.getContext()));
     }
 
-    private static void applyConnectionRateThresholdVisibility(View view, ConnectionRateThresholdState state,
+    private static void applyConnectionRateThresholdVisibility(View view, ConnectionRateViewState state,
             ModuleConfig config) {
         if (view == null || state == null || config == null) {
             return;
@@ -3672,7 +3926,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void applyConnectionRateThresholdVisibility(View view, boolean baseShow, double rate,
-            ConnectionRateThresholdState state, ModuleConfig config) {
+            ConnectionRateViewState state, ModuleConfig config) {
         if (view == null || state == null || config == null) {
             return;
         }
@@ -3818,14 +4072,13 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         handler.post(() -> {
-            ArrayList<View> connectionRateViews = new ArrayList<>(TRACKED_CONNECTION_RATE_VIEWS.keySet());
+            ArrayList<View> connectionRateViews = new ArrayList<>(CONNECTION_RATE_VIEW_STATES.keySet());
             for (View view : connectionRateViews) {
                 if (view == null) {
                     continue;
                 }
+                applyConnectionRateTextScale(view);
                 applyConnectionRateThresholdVisibility(view);
-                view.requestLayout();
-                view.invalidate();
             }
         });
     }
@@ -4119,7 +4372,18 @@ public class FlymeStatusBarSizer extends XposedModule {
         void apply(View view);
     }
 
-    private static final class ConnectionRateThresholdState {
+    private static final class ConnectionRateViewState {
+        int originalTextSize = -1;
+        int originalMaxWidth = -1;
+        int originalOrientation = Integer.MIN_VALUE;
+        float originalRotation = Float.NaN;
+        float originalUnitTextSize = Float.NaN;
+        int originalUnitMinWidth = -1;
+        int originalUnitMaxLines = Integer.MIN_VALUE;
+        float originalUnitRotation = Float.NaN;
+        int[] originalUnitPadding;
+        long appliedTextScaleSignature;
+        boolean hasAppliedTextScaleSignature;
         boolean featureEnabled;
         boolean thresholdVisible;
         boolean lastBaseShow;

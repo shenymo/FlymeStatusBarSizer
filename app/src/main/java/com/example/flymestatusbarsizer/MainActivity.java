@@ -824,7 +824,7 @@ public class MainActivity extends Activity {
                 SettingsStore.KEY_CLOCK_FONT_WEIGHT, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT, 100, 900, "");
         addDivider(card);
         addSliderRow(card, "时间和锁屏运营商字体大小",
-                "同时控制左上角时间，以及锁屏界面运营商那行字。默认 100%。",
+                "同时控制左上角时间、锁屏界面运营商，以及网速显示文字大小。默认 100%。",
                 SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
                 SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT, 50, 200, "%");
         return card;
