@@ -1253,27 +1253,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
         }
 
-        if (lp instanceof ViewGroup.MarginLayoutParams) {
-            ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) lp;
-            int[] originalMargins = ORIGINAL_MARGINS.get(view);
-            if (originalMargins != null) {
-                int left = originalMargins[0];
-                int top = originalMargins[1];
-                int right = originalMargins[2];
-                int bottom = originalMargins[3];
-                if (customize) {
-                    int spacing = dp(view, config.notificationAppIconSpacingDp);
-                    left = spacing;
-                    right = spacing;
-                }
-                if (mlp.leftMargin != left || mlp.topMargin != top
-                        || mlp.rightMargin != right || mlp.bottomMargin != bottom) {
-                    mlp.setMargins(left, top, right, bottom);
-                    changed = true;
-                }
-            }
-        }
-
         int[] originalPadding = ORIGINAL_PADDINGS.get(view);
         if (originalPadding != null) {
             int left = originalPadding[0];

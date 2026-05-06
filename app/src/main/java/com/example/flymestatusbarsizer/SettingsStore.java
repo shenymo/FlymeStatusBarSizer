@@ -33,7 +33,6 @@ final class SettingsStore {
     static final String KEY_NOTIFICATION_BACKGROUND_TRANSPARENT = "notification_background_transparent";
     static final String KEY_NOTIFICATION_APP_ICON_ENABLED = "notification_app_icon_enabled";
     static final String KEY_NOTIFICATION_APP_ICON_SIZE_DP = "notification_app_icon_size_dp";
-    static final String KEY_NOTIFICATION_APP_ICON_SPACING_DP = "notification_app_icon_spacing_dp";
     static final String KEY_NOTIFICATION_APP_ICON_PADDING_DP = "notification_app_icon_padding_dp";
     static final String KEY_MBACK_INSET_SIZE = "mback_inset_size";
     static final String KEY_MBACK_NAV_BAR_HEIGHT = "mback_nav_bar_height";
@@ -74,7 +73,6 @@ final class SettingsStore {
     static final boolean DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT = false;
     static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
     static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
-    static final int DEFAULT_NOTIFICATION_APP_ICON_SPACING_DP = 0;
     static final int DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP = 0;
     static final int DEFAULT_MBACK_INSET_SIZE = -1;
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
@@ -93,7 +91,6 @@ final class SettingsStore {
             KEY_CLOCK_FONT_WEIGHT,
             KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
             KEY_NOTIFICATION_APP_ICON_SIZE_DP,
-            KEY_NOTIFICATION_APP_ICON_SPACING_DP,
             KEY_NOTIFICATION_APP_ICON_PADDING_DP,
             KEY_MBACK_INSET_SIZE,
             KEY_MBACK_NAV_BAR_HEIGHT
@@ -249,8 +246,6 @@ final class SettingsStore {
                 return DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT;
             case KEY_NOTIFICATION_APP_ICON_SIZE_DP:
                 return DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
-            case KEY_NOTIFICATION_APP_ICON_SPACING_DP:
-                return DEFAULT_NOTIFICATION_APP_ICON_SPACING_DP;
             case KEY_NOTIFICATION_APP_ICON_PADDING_DP:
                 return DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP;
             case KEY_MBACK_INSET_SIZE:
@@ -334,10 +329,6 @@ final class SettingsStore {
 
     static int normalizeNotificationAppIconSizeDp(int value) {
         return Math.max(12, Math.min(28, value));
-    }
-
-    static int normalizeNotificationAppIconSpacingDp(int value) {
-        return Math.max(0, Math.min(12, value));
     }
 
     static int normalizeNotificationAppIconPaddingDp(int value) {

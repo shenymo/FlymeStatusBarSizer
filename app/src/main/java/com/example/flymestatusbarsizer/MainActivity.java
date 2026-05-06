@@ -96,7 +96,6 @@ public class MainActivity extends Activity {
     private final ArrayList<String> clockExpressionDraftTokens = new ArrayList<>();
     private final HashMap<String, TextView> clockExpressionButtons = new HashMap<>();
     private int notificationAppIconSizeDraft;
-    private int notificationAppIconSpacingDraft;
     private int notificationAppIconPaddingDraft;
     private LinearLayout imeToolbarOrderContainer;
     private LinearLayout clockExpressionOrderContainer;
@@ -288,11 +287,6 @@ public class MainActivity extends Activity {
                 "改的是状态栏里这个通知图标 View 占用的宽度，状态栏高度保持系统原来的值。",
                 notificationAppIconSizeDraft,
                 12, 28, "dp");
-        addDivider(card);
-        addDraftSliderRow(card, "通知图标左右间距",
-                "改这个图标 View 的左右 margin。数值越大，图标之间的空隙越大。",
-                notificationAppIconSpacingDraft,
-                0, 12, "dp");
         addDivider(card);
         addDraftSliderRow(card, "图标容器内边距",
                 "改这个图标 View 的 padding。数值越大，图标会更靠中间。",
@@ -2304,9 +2298,6 @@ public class MainActivity extends Activity {
         notificationAppIconSizeDraft = readIntSetting(
                 SettingsStore.KEY_NOTIFICATION_APP_ICON_SIZE_DP,
                 SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP);
-        notificationAppIconSpacingDraft = readIntSetting(
-                SettingsStore.KEY_NOTIFICATION_APP_ICON_SPACING_DP,
-                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SPACING_DP);
         notificationAppIconPaddingDraft = readIntSetting(
                 SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP,
                 SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP);
@@ -2317,10 +2308,6 @@ public class MainActivity extends Activity {
             notificationAppIconSizeDraft = value;
             return;
         }
-        if ("通知图标左右间距".equals(titleText)) {
-            notificationAppIconSpacingDraft = value;
-            return;
-        }
         if ("图标容器内边距".equals(titleText)) {
             notificationAppIconPaddingDraft = value;
         }
@@ -2329,7 +2316,6 @@ public class MainActivity extends Activity {
     private void applyNotificationAppIconDraftValues() {
         SharedPreferences.Editor editor = prefs.edit();
         editor.putInt(SettingsStore.KEY_NOTIFICATION_APP_ICON_SIZE_DP, notificationAppIconSizeDraft);
-        editor.putInt(SettingsStore.KEY_NOTIFICATION_APP_ICON_SPACING_DP, notificationAppIconSpacingDraft);
         editor.putInt(SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP, notificationAppIconPaddingDraft);
         editor.apply();
         loadNotificationAppIconDraftValues();
