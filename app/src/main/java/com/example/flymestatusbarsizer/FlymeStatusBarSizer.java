@@ -20,7 +20,6 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
-import android.graphics.drawable.AdaptiveIconDrawable;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
@@ -99,13 +98,10 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final HashMap<String, Integer> SYSTEM_UI_ID_CACHE = new HashMap<>();
     private static final HashMap<String, Boolean> NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE =
             new HashMap<>();
-    private static final HashMap<String, Boolean> NOTIFICATION_APP_ICON_ADAPTIVE_CACHE =
-            new HashMap<>();
     private static final String EXTRA_NOTIFICATION_APP_ICON_REPLACED =
             "flyme_status_bar_sizer_notification_app_icon_replaced";
-    private static final float NOTIFICATION_APP_ICON_SCALE = 1.12f;
-    private static final float NOTIFICATION_ADAPTIVE_APP_ICON_SCALE = 1.24f;
     private static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
+    private static final int DEFAULT_NOTIFICATION_APP_ICON_INSET_DP = 1;
     private static volatile int LAST_SIGNAL_LEVEL = -1;
     private static volatile int LAST_SIGNAL_SUB_ID = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
     private static volatile int LAST_CELLULAR_LEVEL = -1;
@@ -918,35 +914,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         return packageName + ":" + userId;
     }
 
-    private static boolean isAdaptiveNotificationApplicationIcon(
-            Context context, String packageName, int userId) {
-        if (context == null || TextUtils.isEmpty(packageName)) {
-            return false;
-        }
-        String cacheKey = buildNotificationAppIconEligibilityCacheKey(packageName, userId);
-        synchronized (NOTIFICATION_APP_ICON_ADAPTIVE_CACHE) {
-            Boolean cached = NOTIFICATION_APP_ICON_ADAPTIVE_CACHE.get(cacheKey);
-            if (cached != null) {
-                return cached;
-            }
-        }
-        boolean isAdaptive = false;
-        try {
-            ApplicationInfo appInfo = resolveNotificationApplicationInfo(context, packageName, userId);
-            PackageManager packageManager = context.getPackageManager();
-            if (appInfo != null && packageManager != null) {
-                Drawable icon = appInfo.loadIcon(packageManager);
-                isAdaptive = icon instanceof AdaptiveIconDrawable;
-            }
-        } catch (Throwable ignored) {
-            isAdaptive = false;
-        }
-        synchronized (NOTIFICATION_APP_ICON_ADAPTIVE_CACHE) {
-            NOTIFICATION_APP_ICON_ADAPTIVE_CACHE.put(cacheKey, isAdaptive);
-        }
-        return isAdaptive;
-    }
-
     private static boolean shouldUseApplicationIconForNotification(
             Context context, String packageName, ApplicationInfo appInfo) {
         if (context == null || appInfo == null || TextUtils.isEmpty(packageName)) {
@@ -1069,36 +1036,79 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (sizePx <= 0) {
             return working;
         }
-        float scale = isAdaptiveNotificationApplicationIcon(view.getContext(), packageName, userId)
-                ? NOTIFICATION_ADAPTIVE_APP_ICON_SCALE
-                : NOTIFICATION_APP_ICON_SCALE;
-        Bitmap bitmap = createScaledNotificationAppIconBitmap(working, sizePx, scale);
+        Bitmap bitmap = createFittedNotificationAppIconBitmap(view, working, sizePx);
         if (bitmap == null) {
             return working;
         }
         return new BitmapDrawable(view.getResources(), bitmap);
     }
 
-    private static Bitmap createScaledNotificationAppIconBitmap(
+    private static Bitmap createFittedNotificationAppIconBitmap(
+            View view,
             Drawable drawable,
-            int sizePx,
-            float scale) {
-        if (drawable == null || sizePx <= 0) {
+            int sizePx) {
+        if (view == null || drawable == null || sizePx <= 0) {
             return null;
         }
-        Drawable working = cloneNotificationIconDrawable(drawable);
-        if (working == null) {
+        Bitmap sourceBitmap = createBitmapFromDrawable(drawable, sizePx);
+        if (sourceBitmap == null || sourceBitmap.isRecycled()) {
             return null;
         }
         int targetSize = Math.max(1, sizePx);
-        int scaledSize = Math.max(targetSize, Math.round(targetSize * Math.max(1f, scale)));
-        int left = (targetSize - scaledSize) / 2;
-        int top = (targetSize - scaledSize) / 2;
+        Rect sourceBounds = findVisibleBitmapBounds(sourceBitmap);
+        if (sourceBounds.isEmpty()) {
+            sourceBounds.set(0, 0, sourceBitmap.getWidth(), sourceBitmap.getHeight());
+        }
+        int insetPx = Math.max(0, dp(view, DEFAULT_NOTIFICATION_APP_ICON_INSET_DP));
+        int availableSize = Math.max(1, targetSize - insetPx * 2);
+        float scale = Math.min(
+                (float) availableSize / Math.max(1, sourceBounds.width()),
+                (float) availableSize / Math.max(1, sourceBounds.height()));
+        int destWidth = Math.max(1, Math.round(sourceBounds.width() * scale));
+        int destHeight = Math.max(1, Math.round(sourceBounds.height() * scale));
+        int left = (targetSize - destWidth) / 2;
+        int top = (targetSize - destHeight) / 2;
         Bitmap bitmap = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
-        working.setBounds(left, top, left + scaledSize, top + scaledSize);
-        working.draw(canvas);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
+        Rect destBounds = new Rect(left, top, left + destWidth, top + destHeight);
+        canvas.drawBitmap(sourceBitmap, sourceBounds, destBounds, paint);
         return bitmap;
+    }
+
+    private static Rect findVisibleBitmapBounds(Bitmap bitmap) {
+        if (bitmap == null || bitmap.isRecycled()) {
+            return new Rect();
+        }
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        int left = width;
+        int top = height;
+        int right = -1;
+        int bottom = -1;
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (Color.alpha(bitmap.getPixel(x, y)) <= 8) {
+                    continue;
+                }
+                if (x < left) {
+                    left = x;
+                }
+                if (x > right) {
+                    right = x;
+                }
+                if (y < top) {
+                    top = y;
+                }
+                if (y > bottom) {
+                    bottom = y;
+                }
+            }
+        }
+        if (right < left || bottom < top) {
+            return new Rect();
+        }
+        return new Rect(left, top, right + 1, bottom + 1);
     }
 
     private static Drawable resolveNotificationStatusBarIconDrawable(Object target) {
