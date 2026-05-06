@@ -91,6 +91,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, NotificationGlassDrawable> NOTIFICATION_GLASS_DRAWABLES = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> CLOCK_SECOND_REFRESH_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_RESTORE_GUARDS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_APPLY_GUARDS = new WeakHashMap<>();
     private static final Object CONFIG_REFRESH_LOCK = new Object();
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
@@ -1156,9 +1157,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!(target instanceof ImageView)) {
             return;
         }
+        ImageView view = (ImageView) target;
+        synchronized (NOTIFICATION_APP_ICON_APPLY_GUARDS) {
+            if (Boolean.TRUE.equals(NOTIFICATION_APP_ICON_APPLY_GUARDS.get(view))) {
+                return;
+            }
+            NOTIFICATION_APP_ICON_APPLY_GUARDS.put(view, Boolean.TRUE);
+        }
         try {
             Drawable drawable = resolveNotificationStatusBarIconDrawable(target);
-            ImageView view = (ImageView) target;
             if (drawable == null) {
                 if (restoreNotificationStatusBarIconDrawableIfNeeded(view)) {
                     return;
@@ -1171,6 +1178,10 @@ public class FlymeStatusBarSizer extends XposedModule {
             view.setColorFilter(null);
             applyNotificationAppIconViewStyle(view);
         } catch (Throwable ignored) {
+        } finally {
+            synchronized (NOTIFICATION_APP_ICON_APPLY_GUARDS) {
+                NOTIFICATION_APP_ICON_APPLY_GUARDS.remove(view);
+            }
         }
     }
 
@@ -1214,7 +1225,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (lp instanceof ViewGroup.MarginLayoutParams) {
             rememberOriginalMargins(view, (ViewGroup.MarginLayoutParams) lp);
         }
-        rememberOriginalPadding(view);
+        rememberOriginalNotificationIconPadding(view);
 
         ModuleConfig config = ModuleConfig.load(view.getContext());
         boolean customize = shouldCustomizeNotificationAppIconView(view, config);
@@ -1276,8 +1287,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                 right = padding;
                 bottom = padding;
             }
-            if (view.getPaddingLeft() != left || view.getPaddingTop() != top
-                    || view.getPaddingRight() != right || view.getPaddingBottom() != bottom) {
+            int[] currentPadding = readViewPaddingDirect(view);
+            if (currentPadding[0] != left || currentPadding[1] != top
+                    || currentPadding[2] != right || currentPadding[3] != bottom) {
                 view.setPadding(left, top, right, bottom);
                 changed = true;
             }
@@ -3686,6 +3698,25 @@ public class FlymeStatusBarSizer extends XposedModule {
                 view.getPaddingRight(),
                 view.getPaddingBottom()
         });
+    }
+
+    private static void rememberOriginalNotificationIconPadding(View view) {
+        if (view == null || ORIGINAL_PADDINGS.containsKey(view)) {
+            return;
+        }
+        ORIGINAL_PADDINGS.put(view, readViewPaddingDirect(view));
+    }
+
+    private static int[] readViewPaddingDirect(View view) {
+        if (view == null) {
+            return new int[]{0, 0, 0, 0};
+        }
+        return new int[]{
+                ReflectUtils.getIntField(view, "mPaddingLeft", 0),
+                ReflectUtils.getIntField(view, "mPaddingTop", 0),
+                ReflectUtils.getIntField(view, "mPaddingRight", 0),
+                ReflectUtils.getIntField(view, "mPaddingBottom", 0)
+        };
     }
 
     private static void rememberOriginalTextSize(TextView view) {
