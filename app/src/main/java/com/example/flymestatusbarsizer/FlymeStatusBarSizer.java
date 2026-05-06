@@ -96,6 +96,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static Handler MAIN_HANDLER;
     private static final Runnable CLOCK_SECOND_REFRESH_RUNNABLE = FlymeStatusBarSizer::refreshClockViewsForSecondTick;
     private static final HashMap<String, Integer> SYSTEM_UI_ID_CACHE = new HashMap<>();
+    private static final HashMap<String, Boolean> NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE =
+            new HashMap<>();
     private static final String EXTRA_NOTIFICATION_APP_ICON_REPLACED =
             "flyme_status_bar_sizer_notification_app_icon_replaced";
     private static volatile int LAST_SIGNAL_LEVEL = -1;
@@ -845,7 +847,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static ApplicationInfo resolveNotificationApplicationInfo(
-            Context context, String packageName, StatusBarNotification sbn) {
+            Context context, String packageName, int userId) {
         if (context == null || TextUtils.isEmpty(packageName)) {
             return null;
         }
@@ -853,7 +855,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (packageManager == null) {
             return null;
         }
-        int userId = resolveNotificationUserId(sbn);
         if (userId >= 0) {
             Object value = ReflectUtils.invokeMethod(
                     packageManager,
@@ -881,6 +882,34 @@ public class FlymeStatusBarSizer extends XposedModule {
         Object userHandle = sbn == null ? null : sbn.getUser();
         userId = ReflectUtils.invokeNoArgInt(userHandle, "getIdentifier", -1);
         return Math.max(userId, 0);
+    }
+
+    private static boolean shouldUseApplicationIconForNotification(
+            Context context, String packageName, int userId) {
+        if (context == null || TextUtils.isEmpty(packageName)) {
+            return false;
+        }
+        String cacheKey = buildNotificationAppIconEligibilityCacheKey(packageName, userId);
+        synchronized (NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE) {
+            Boolean cached = NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE.get(cacheKey);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        ApplicationInfo appInfo = resolveNotificationApplicationInfo(context, packageName, userId);
+        boolean shouldReplace = shouldUseApplicationIconForNotification(
+                context,
+                packageName,
+                appInfo);
+        synchronized (NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE) {
+            NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE.put(cacheKey, shouldReplace);
+        }
+        return shouldReplace;
+    }
+
+    private static String buildNotificationAppIconEligibilityCacheKey(
+            String packageName, int userId) {
+        return packageName + ":" + userId;
     }
 
     private static boolean shouldUseApplicationIconForNotification(
@@ -991,14 +1020,14 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (TextUtils.isEmpty(packageName)) {
             return null;
         }
-        ApplicationInfo appInfo = resolveNotificationApplicationInfo(view.getContext(), packageName, sbn);
-        if (!shouldUseApplicationIconForNotification(view.getContext(), packageName, appInfo)) {
+        int userId = resolveNotificationUserId(sbn);
+        if (!shouldUseApplicationIconForNotification(view.getContext(), packageName, userId)) {
             return null;
         }
         Drawable drawable = getCachedNotificationApplicationIcon(
                 view.getContext(),
                 packageName,
-                resolveNotificationUserId(sbn));
+                userId);
         if (drawable == null) {
             return null;
         }
