@@ -34,6 +34,7 @@ import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.graphics.Typeface;
+import android.util.StateSet;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -169,6 +170,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         });
         hookFlymeBatteryMeterViewDraw(loader);
         hookFlymeBatteryMeterViewMeasure(loader);
+        hookFlymeBatteryMeterViewDarkChanged(loader);
         hookConstructors(loader, "com.flyme.statusbar.battery.FlymeBatteryTextView", view -> {
             ModuleConfig config = ModuleConfig.load(view.getContext());
             if (!isBatteryCodeDrawEnabled(config) || !(view instanceof TextView)) {
@@ -526,6 +528,24 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook FlymeBatteryMeterView.onMeasure", t);
+        }
+    }
+
+    private void hookFlymeBatteryMeterViewDarkChanged(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName("com.flyme.statusbar.battery.FlymeBatteryMeterView", false, loader);
+            Method method = clazz.getDeclaredMethod("onDarkChanged", ArrayList.class, float.class, int.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof View) {
+                    invalidateLinkedSignalViews((View) target);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook FlymeBatteryMeterView.onDarkChanged", t);
         }
     }
 
@@ -1863,6 +1883,79 @@ public class FlymeStatusBarSizer extends XposedModule {
             return color;
         }
         return normalizeIconColor(fallback);
+    }
+
+    static int resolveSignalLinkedTintColor(View signalView, ColorStateList tintList, int[] state, int fallbackColor) {
+        int fallback = normalizeIconColor(resolveTintListColor(tintList, state, fallbackColor));
+        View batteryTintSource = findBestBatteryTintSource(signalView);
+        if (batteryTintSource == null) {
+            return fallback;
+        }
+        return resolveBatteryTintColor(batteryTintSource, fallback);
+    }
+
+    private static int resolveTintListColor(ColorStateList tintList, int[] state, int fallbackColor) {
+        if (tintList == null) {
+            return fallbackColor;
+        }
+        return tintList.getColorForState(state == null ? StateSet.NOTHING : state, tintList.getDefaultColor());
+    }
+
+    private static View findBestBatteryTintSource(View anchor) {
+        if (anchor == null) {
+            return null;
+        }
+        View anchorRoot = anchor.getRootView();
+        if (anchorRoot == null) {
+            return null;
+        }
+        View best = null;
+        int bestScore = Integer.MAX_VALUE;
+        int[] anchorLocation = getViewLocation(anchor);
+        ArrayList<View> batteryViews = new ArrayList<>(TRACKED_BATTERY_VIEWS.keySet());
+        for (View batteryView : batteryViews) {
+            if (!isBatteryTintSourceCandidate(anchor, anchorRoot, batteryView)) {
+                continue;
+            }
+            int score = calculateViewDistanceScore(anchorLocation, batteryView);
+            if (best == null || score < bestScore) {
+                best = batteryView;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
+    private static boolean isBatteryTintSourceCandidate(View anchor, View anchorRoot, View batteryView) {
+        if (anchor == null || anchorRoot == null || batteryView == null) {
+            return false;
+        }
+        if (batteryView.getVisibility() != View.VISIBLE || !batteryView.isShown()) {
+            return false;
+        }
+        if (batteryView.getWindowToken() == null) {
+            return false;
+        }
+        return batteryView.getRootView() == anchorRoot;
+    }
+
+    private static int calculateViewDistanceScore(int[] anchorLocation, View target) {
+        int[] targetLocation = getViewLocation(target);
+        int dx = Math.abs(anchorLocation[0] - targetLocation[0]);
+        int dy = Math.abs(anchorLocation[1] - targetLocation[1]);
+        return dy * 1000 + dx;
+    }
+
+    private static int[] getViewLocation(View view) {
+        int[] location = new int[]{0, 0};
+        if (view == null) {
+            return location;
+        }
+        try {
+            view.getLocationOnScreen(location);
+        } catch (Throwable ignored) {
+        }
+        return location;
     }
 
     private static boolean measureIosBatteryViewIfNeeded(Object view) {
@@ -3472,13 +3565,10 @@ public class FlymeStatusBarSizer extends XposedModule {
             view.invalidate();
             return;
         }
-        SignalIconDrawable drawable = new SignalIconDrawable(mergedDual, intrinsicWidth, intrinsicHeight);
+        SignalIconDrawable drawable = new SignalIconDrawable(view, mergedDual, intrinsicWidth, intrinsicHeight);
         drawable.setAlpha(view.getImageAlpha());
         drawable.setState(view.getDrawableState());
         drawable.setTintList(view.getImageTintList());
-        if (current != null) {
-            drawable.setColorFilter(current.getColorFilter());
-        }
         view.setImageDrawable(drawable);
         SIGNAL_DRAWABLE_OWNERS.put(drawable, view);
     }
@@ -4944,8 +5034,36 @@ public class FlymeStatusBarSizer extends XposedModule {
                 ReflectUtils.invokeMethod(batteryView, "apply", new Class[]{boolean.class}, true);
                 batteryView.requestLayout();
                 batteryView.invalidate();
+                invalidateLinkedSignalViews(batteryView);
             }
         });
+    }
+
+    private static void invalidateLinkedSignalViews(View batteryView) {
+        if (batteryView == null) {
+            return;
+        }
+        View batteryRoot = batteryView.getRootView();
+        if (batteryRoot == null) {
+            return;
+        }
+        ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
+        for (View view : views) {
+            if (!(view instanceof ImageView)) {
+                continue;
+            }
+            if (!"mobile_signal".equals(getSystemUiIdName(view))) {
+                continue;
+            }
+            if (view.getRootView() != batteryRoot) {
+                continue;
+            }
+            Drawable drawable = ((ImageView) view).getDrawable();
+            if (drawable instanceof SignalIconDrawable) {
+                drawable.invalidateSelf();
+                view.invalidate();
+            }
+        }
     }
 
     private static void refreshTrackedStatusBarIconViews() {

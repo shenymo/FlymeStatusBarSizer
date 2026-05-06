@@ -9,9 +9,12 @@ import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.util.StateSet;
 
+import java.lang.ref.WeakReference;
+
 final class SignalIconDrawable extends Drawable {
     private static final int SIGNAL_DRAW_ALPHA = 224;
     private final boolean mergedDual;
+    private final WeakReference<android.view.View> ownerViewRef;
     private final int intrinsicWidth;
     private final int intrinsicHeight;
     private ColorStateList tintList;
@@ -19,7 +22,8 @@ final class SignalIconDrawable extends Drawable {
     private int drawColor = Color.WHITE;
     private int alpha = 255;
 
-    SignalIconDrawable(boolean mergedDual, int intrinsicWidth, int intrinsicHeight) {
+    SignalIconDrawable(android.view.View ownerView, boolean mergedDual, int intrinsicWidth, int intrinsicHeight) {
+        this.ownerViewRef = new WeakReference<>(ownerView);
         this.mergedDual = mergedDual;
         this.intrinsicWidth = Math.max(1, intrinsicWidth);
         this.intrinsicHeight = Math.max(1, intrinsicHeight);
@@ -41,6 +45,7 @@ final class SignalIconDrawable extends Drawable {
         if (bounds.isEmpty()) {
             return;
         }
+        updateDrawColor(getState());
         int color = SignalPreviewPainter.withFixedAlpha(drawColor, SIGNAL_DRAW_ALPHA);
         if (mergedDual) {
             SignalPreviewPainter.drawMergedDualSim(canvas, bounds, color, colorFilter);
@@ -98,9 +103,14 @@ final class SignalIconDrawable extends Drawable {
     }
 
     private boolean updateDrawColor(int[] state) {
-        int resolvedColor = tintList == null
+        int fallbackColor = tintList == null
                 ? Color.WHITE
                 : tintList.getColorForState(state == null ? StateSet.NOTHING : state, tintList.getDefaultColor());
+        int resolvedColor = FlymeStatusBarSizer.resolveSignalLinkedTintColor(
+                ownerViewRef.get(),
+                tintList,
+                state,
+                fallbackColor);
         if (drawColor == resolvedColor) {
             return false;
         }
