@@ -7,8 +7,10 @@ import android.content.Intent;
 import android.net.Uri;
 import android.content.res.Resources;
 import android.content.res.Configuration;
+import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorFilter;
 import android.graphics.Insets;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -119,6 +121,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private void hookSystemUi(ClassLoader loader) {
         hookConnectionRateView(loader);
         hookSignalImageAssignments();
+        hookSignalTintUpdates();
         hookSignalViewLayout();
         hookSignalDrawableLevelChanges(loader);
         hookTelephonyCreateForSubscriptionId();
@@ -235,6 +238,38 @@ public class FlymeStatusBarSizer extends XposedModule {
             });
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setImageDrawable", t);
+        }
+    }
+
+    private void hookSignalTintUpdates() {
+        try {
+            Method setImageTintList = ImageView.class.getDeclaredMethod("setImageTintList", ColorStateList.class);
+            setImageTintList.setAccessible(true);
+            hook(setImageTintList).intercept(chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof ImageView) {
+                    syncSignalTintToCustomDrawable((ImageView) target);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setImageTintList", t);
+        }
+        try {
+            Method setColorFilter = ImageView.class.getDeclaredMethod("setColorFilter", ColorFilter.class);
+            setColorFilter.setAccessible(true);
+            hook(setColorFilter).intercept(chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof ImageView) {
+                    syncSignalColorFilterToCustomDrawable((ImageView) target,
+                            chain.getArg(0) instanceof ColorFilter ? (ColorFilter) chain.getArg(0) : null);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setColorFilter(ColorFilter)", t);
         }
     }
 
@@ -2349,6 +2384,29 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         LAST_SIGNAL_LEVEL = normalizeSignalLevel(rawLevel);
+    }
+
+    private static void syncSignalTintToCustomDrawable(ImageView view) {
+        if (view == null || !"mobile_signal".equals(getSystemUiIdName(view))) {
+            return;
+        }
+        Drawable drawable = view.getDrawable();
+        if (!(drawable instanceof SignalIconDrawable)) {
+            return;
+        }
+        drawable.setTintList(view.getImageTintList());
+        drawable.setState(view.getDrawableState());
+    }
+
+    private static void syncSignalColorFilterToCustomDrawable(ImageView view, ColorFilter colorFilter) {
+        if (view == null || !"mobile_signal".equals(getSystemUiIdName(view))) {
+            return;
+        }
+        Drawable drawable = view.getDrawable();
+        if (!(drawable instanceof SignalIconDrawable)) {
+            return;
+        }
+        drawable.setColorFilter(colorFilter);
     }
 
     private static int resolveSignalBars(String idName, View view) {
