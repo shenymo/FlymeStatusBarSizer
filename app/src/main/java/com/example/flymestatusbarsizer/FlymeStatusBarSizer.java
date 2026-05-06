@@ -95,6 +95,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<TextView, Boolean> CLOCK_SECOND_REFRESH_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_RESTORE_GUARDS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_APPLY_GUARDS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS = new WeakHashMap<>();
     private static final Object CONFIG_REFRESH_LOCK = new Object();
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
@@ -272,7 +273,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                 Object result = chain.proceed();
                 Object target = chain.getThisObject();
                 if (target instanceof ImageView) {
-                    syncSignalTintToCustomDrawable((ImageView) target);
+                    ImageView view = (ImageView) target;
+                    syncSignalTintToCustomDrawable(view);
+                    clearNotificationAppIconTintIfNeeded(view);
                 }
                 return result;
             });
@@ -286,8 +289,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                 Object result = chain.proceed();
                 Object target = chain.getThisObject();
                 if (target instanceof ImageView) {
-                    syncSignalColorFilterToCustomDrawable((ImageView) target,
+                    ImageView view = (ImageView) target;
+                    syncSignalColorFilterToCustomDrawable(view,
                             chain.getArg(0) instanceof ColorFilter ? (ColorFilter) chain.getArg(0) : null);
+                    clearNotificationAppIconTintIfNeeded(view);
                 }
                 return result;
             });
@@ -815,15 +820,34 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (!shouldKeepNotificationAppIconOriginalColors(view)) {
                 return;
             }
-            view.setImageTintList(null);
-            view.setColorFilter(null);
-            Drawable drawable = view.getDrawable();
-            if (drawable != null) {
-                drawable.setTintList(null);
-                drawable.setColorFilter(null);
+            synchronized (NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS) {
+                if (Boolean.TRUE.equals(NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS.get(view))) {
+                    return;
+                }
+                NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS.put(view, Boolean.TRUE);
+            }
+            try {
+                clearDrawableColorState(view.getDrawable());
+                if (view.getImageTintList() != null) {
+                    view.setImageTintList(null);
+                }
+                if (view.getColorFilter() != null) {
+                    view.setColorFilter(null);
+                }
+            } finally {
+                synchronized (NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS) {
+                    NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS.remove(view);
+                }
             }
         } catch (Throwable ignored) {
         }
+    }
+
+    private static void postClearNotificationAppIconTintIfNeeded(ImageView view) {
+        if (view == null) {
+            return;
+        }
+        view.post(() -> clearNotificationAppIconTintIfNeeded(view));
     }
 
     private static boolean shouldKeepNotificationAppIconOriginalColors(ImageView view) {
@@ -1015,10 +1039,14 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (state != null) {
                 Drawable clone = state.newDrawable().mutate();
                 clone.setLevel(drawable.getLevel());
+                clearDrawableColorState(clone);
                 return clone;
             }
-            return drawable.mutate();
+            Drawable mutated = drawable.mutate();
+            clearDrawableColorState(mutated);
+            return mutated;
         } catch (Throwable ignored) {
+            clearDrawableColorState(drawable);
             return drawable;
         }
     }
@@ -1066,7 +1094,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (bitmap == null) {
             return working;
         }
-        return new BitmapDrawable(view.getResources(), bitmap);
+        BitmapDrawable bitmapDrawable = new BitmapDrawable(view.getResources(), bitmap);
+        clearDrawableColorState(bitmapDrawable);
+        return bitmapDrawable;
     }
 
     private static Bitmap createFittedNotificationAppIconBitmap(
@@ -1194,8 +1224,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                 return;
             }
             view.setImageDrawable(drawable);
-            view.setImageTintList(null);
-            view.setColorFilter(null);
+            clearNotificationAppIconTintIfNeeded(view);
+            postClearNotificationAppIconTintIfNeeded(view);
             applyNotificationAppIconViewStyle(view);
         } catch (Throwable ignored) {
         } finally {
@@ -1333,11 +1363,26 @@ public class FlymeStatusBarSizer extends XposedModule {
         } catch (Throwable ignored) {
             working = drawable;
         }
+        clearDrawableColorState(working);
         Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         working.setBounds(0, 0, sizePx, sizePx);
         working.draw(canvas);
         return bitmap;
+    }
+
+    private static void clearDrawableColorState(Drawable drawable) {
+        if (drawable == null) {
+            return;
+        }
+        try {
+            drawable.setTintList(null);
+        } catch (Throwable ignored) {
+        }
+        try {
+            drawable.setColorFilter(null);
+        } catch (Throwable ignored) {
+        }
     }
 
     private static void markNotificationAppIconReplacement(Notification notification, boolean replaced) {
