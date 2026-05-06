@@ -90,6 +90,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, NotificationLiquidGlassView> NOTIFICATION_GLASS_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, NotificationGlassDrawable> NOTIFICATION_GLASS_DRAWABLES = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> CLOCK_SECOND_REFRESH_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_RESTORE_GUARDS = new WeakHashMap<>();
     private static final Object CONFIG_REFRESH_LOCK = new Object();
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
@@ -1005,6 +1006,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (view == null) {
             return 0;
         }
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        if (config.enabled && config.notificationAppIconEnabled) {
+            return dp(view, config.notificationAppIconSizeDp);
+        }
         int sizePx = Math.max(view.getWidth(), view.getHeight());
         if (sizePx > 0) {
             return sizePx;
@@ -1153,15 +1158,147 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         try {
             Drawable drawable = resolveNotificationStatusBarIconDrawable(target);
+            ImageView view = (ImageView) target;
             if (drawable == null) {
+                if (restoreNotificationStatusBarIconDrawableIfNeeded(view)) {
+                    return;
+                }
+                applyNotificationAppIconViewStyle(view);
                 return;
             }
-            ImageView view = (ImageView) target;
             view.setImageDrawable(drawable);
             view.setImageTintList(null);
             view.setColorFilter(null);
+            applyNotificationAppIconViewStyle(view);
         } catch (Throwable ignored) {
         }
+    }
+
+    private static boolean restoreNotificationStatusBarIconDrawableIfNeeded(ImageView view) {
+        if (view == null || !isNotificationBackedStatusBarIconView(view)) {
+            return false;
+        }
+        Object value = ReflectUtils.invokeNoArg(view, "getNotification");
+        if (!(value instanceof StatusBarNotification)) {
+            return false;
+        }
+        Notification notification = ((StatusBarNotification) value).getNotification();
+        if (!wasNotificationAppIconReplaced(notification)) {
+            return false;
+        }
+        synchronized (NOTIFICATION_APP_ICON_RESTORE_GUARDS) {
+            if (Boolean.TRUE.equals(NOTIFICATION_APP_ICON_RESTORE_GUARDS.get(view))) {
+                return false;
+            }
+            NOTIFICATION_APP_ICON_RESTORE_GUARDS.put(view, Boolean.TRUE);
+        }
+        try {
+            ReflectUtils.invokeNoArg(view, "updateDrawable");
+            return true;
+        } finally {
+            synchronized (NOTIFICATION_APP_ICON_RESTORE_GUARDS) {
+                NOTIFICATION_APP_ICON_RESTORE_GUARDS.remove(view);
+            }
+        }
+    }
+
+    private static void applyNotificationAppIconViewStyle(ImageView view) {
+        if (view == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        rememberOriginalLayout(view, lp);
+        if (lp instanceof ViewGroup.MarginLayoutParams) {
+            rememberOriginalMargins(view, (ViewGroup.MarginLayoutParams) lp);
+        }
+        rememberOriginalPadding(view);
+
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        boolean customize = shouldCustomizeNotificationAppIconView(view, config);
+        boolean changed = false;
+
+        int[] originalSize = ORIGINAL_SIZES.get(view);
+        if (customize) {
+            int targetWidth = dp(view, config.notificationAppIconSizeDp);
+            if (targetWidth > 0 && lp.width != targetWidth) {
+                lp.width = targetWidth;
+                changed = true;
+            }
+            if (originalSize != null && lp.height != originalSize[1]) {
+                lp.height = originalSize[1];
+                changed = true;
+            }
+        } else if (originalSize != null) {
+            if (lp.width != originalSize[0]) {
+                lp.width = originalSize[0];
+                changed = true;
+            }
+            if (lp.height != originalSize[1]) {
+                lp.height = originalSize[1];
+                changed = true;
+            }
+        }
+
+        if (lp instanceof ViewGroup.MarginLayoutParams) {
+            ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) lp;
+            int[] originalMargins = ORIGINAL_MARGINS.get(view);
+            if (originalMargins != null) {
+                int left = originalMargins[0];
+                int top = originalMargins[1];
+                int right = originalMargins[2];
+                int bottom = originalMargins[3];
+                if (customize) {
+                    int spacing = dp(view, config.notificationAppIconSpacingDp);
+                    left = spacing;
+                    right = spacing;
+                }
+                if (mlp.leftMargin != left || mlp.topMargin != top
+                        || mlp.rightMargin != right || mlp.bottomMargin != bottom) {
+                    mlp.setMargins(left, top, right, bottom);
+                    changed = true;
+                }
+            }
+        }
+
+        int[] originalPadding = ORIGINAL_PADDINGS.get(view);
+        if (originalPadding != null) {
+            int left = originalPadding[0];
+            int top = originalPadding[1];
+            int right = originalPadding[2];
+            int bottom = originalPadding[3];
+            if (customize) {
+                int padding = dp(view, config.notificationAppIconPaddingDp);
+                left = padding;
+                top = padding;
+                right = padding;
+                bottom = padding;
+            }
+            if (view.getPaddingLeft() != left || view.getPaddingTop() != top
+                    || view.getPaddingRight() != right || view.getPaddingBottom() != bottom) {
+                view.setPadding(left, top, right, bottom);
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            view.setLayoutParams(lp);
+        }
+        view.requestLayout();
+        view.invalidate();
+    }
+
+    private static boolean shouldCustomizeNotificationAppIconView(ImageView view, ModuleConfig config) {
+        if (view == null || config == null || !config.enabled || !config.notificationAppIconEnabled) {
+            return false;
+        }
+        Object value = ReflectUtils.invokeNoArg(view, "getNotification");
+        if (!(value instanceof StatusBarNotification)) {
+            return false;
+        }
+        return wasNotificationAppIconReplaced(((StatusBarNotification) value).getNotification());
     }
 
     private static Bitmap createBitmapFromDrawable(Drawable drawable, int sizePx) {
@@ -4659,6 +4796,10 @@ public class FlymeStatusBarSizer extends XposedModule {
             ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
             for (View view : views) {
                 if (view == null) {
+                    continue;
+                }
+                if (isNotificationBackedStatusBarIconView(view) && view instanceof ImageView) {
+                    applyNotificationStatusBarIconDrawable(view);
                     continue;
                 }
                 ModuleConfig config = ModuleConfig.load(view.getContext());

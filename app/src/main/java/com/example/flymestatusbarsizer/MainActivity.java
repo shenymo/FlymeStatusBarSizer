@@ -246,10 +246,19 @@ public class MainActivity extends Activity {
         LinearLayout card = card(colorSurface, 28);
         addProfileSectionHeader(card, "通知",
                 "这里可以单独控制通知图标和通知卡片背景。应用图标开关只影响第三方应用通知，已有通知可能要等刷新后才会变化。");
+        LinearLayout appIconOptions = buildNotificationAppIconOptions();
+        appIconOptions.setVisibility(SettingsStore.readBoolean(
+                prefs,
+                SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
+                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED) ? View.VISIBLE : View.GONE);
         addSwitchRow(card, "通知使用应用图标",
                 "开启后把第三方应用的状态栏通知图标改成应用自身图标，不再使用 Flyme 那套统一通知图标。",
                 SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
-                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED);
+                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED,
+                (buttonView, isChecked) -> appIconOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
+        LinearLayout.LayoutParams appIconOptionsLp = matchWrapWithTop(10);
+        appIconOptionsLp.leftMargin = dp(12);
+        card.addView(appIconOptions, appIconOptionsLp);
         addDivider(card);
         addSwitchRow(card, "通知液态玻璃",
                 "开启后会把通知卡片背景替换成液态玻璃效果，并清掉原来的 tint。文字、图标和点击区域保持原来的 SystemUI 行为。",
@@ -259,6 +268,36 @@ public class MainActivity extends Activity {
                 "通知卡片",
                 "可以分别控制第三方通知图标是否改成应用图标，以及通知卡片背景是否替换成液态玻璃。",
                 "通知", card);
+    }
+
+    private LinearLayout buildNotificationAppIconOptions() {
+        LinearLayout card = card(colorSurfaceSoft, colorStroke, 22);
+
+        TextView title = new TextView(this);
+        title.setText("应用图标尺寸");
+        title.setTextColor(colorPrimary);
+        title.setTextSize(13);
+        card.addView(title, matchWrap());
+
+        addDivider(card);
+        addSliderRow(card, "通知图标大小",
+                "改的是状态栏里这个通知图标 View 占用的宽度，状态栏高度保持系统原来的值。",
+                SettingsStore.KEY_NOTIFICATION_APP_ICON_SIZE_DP,
+                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP,
+                12, 28, "dp");
+        addDivider(card);
+        addSliderRow(card, "通知图标左右间距",
+                "改这个图标 View 的左右 margin。数值越大，图标之间的空隙越大。",
+                SettingsStore.KEY_NOTIFICATION_APP_ICON_SPACING_DP,
+                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SPACING_DP,
+                0, 12, "dp");
+        addDivider(card);
+        addSliderRow(card, "图标容器内边距",
+                "改这个图标 View 的 padding。数值越大，图标会更靠中间。",
+                SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP,
+                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP,
+                0, 8, "dp");
+        return card;
     }
 
     private View buildImeToolbarCard() {

@@ -41,6 +41,9 @@ final class ModuleConfig {
     boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
     boolean notificationBackgroundTransparent = SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT;
     boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
+    int notificationAppIconSizeDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
+    int notificationAppIconSpacingDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SPACING_DP;
+    int notificationAppIconPaddingDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP;
     boolean mbackHidePill = SettingsStore.DEFAULT_MBACK_HIDE_PILL;
     int mbackInsetSize = SettingsStore.DEFAULT_MBACK_INSET_SIZE;
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
@@ -260,6 +263,21 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
                     SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED);
+            config.notificationAppIconSizeDp = SettingsStore.normalizeNotificationAppIconSizeDp(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_NOTIFICATION_APP_ICON_SIZE_DP,
+                            SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP));
+            config.notificationAppIconSpacingDp = SettingsStore.normalizeNotificationAppIconSpacingDp(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_NOTIFICATION_APP_ICON_SPACING_DP,
+                            SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SPACING_DP));
+            config.notificationAppIconPaddingDp = SettingsStore.normalizeNotificationAppIconPaddingDp(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP,
+                            SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP));
             config.mbackHidePill = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_MBACK_HIDE_PILL,
