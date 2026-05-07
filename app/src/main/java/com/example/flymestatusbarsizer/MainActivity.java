@@ -55,6 +55,7 @@ public class MainActivity extends Activity {
     private static final int MENU_RESET = 3;
     private static final int MENU_RESTART = 4;
     private static final String PACKAGE_SYSTEM_UI = "com.android.systemui";
+    private static final long SYSTEM_UI_RESTART_DELAY_MS = 600L;
     private static final Pattern CLOCK_EXPRESSION_TOKEN_PATTERN = Pattern.compile("\\{([A-Za-z0-9_]+)\\}");
     private static final String[][] CLOCK_EXPRESSION_TOKEN_ROWS = {
             {"HH", "H", "hh", "h"},
@@ -2350,11 +2351,18 @@ public class MainActivity extends Activity {
     }
 
     private void restartSystemUi() {
-        restartRootCommands("SystemUI", new String[]{
-                "killall " + PACKAGE_SYSTEM_UI,
-                "pkill -f " + PACKAGE_SYSTEM_UI,
-                "am crash " + PACKAGE_SYSTEM_UI
-        });
+        Intent homeIntent = new Intent(Intent.ACTION_MAIN);
+        homeIntent.addCategory(Intent.CATEGORY_HOME);
+        homeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(homeIntent);
+        moveTaskToBack(true);
+        new Handler(Looper.getMainLooper()).postDelayed(() ->
+                        restartRootCommands("SystemUI", new String[]{
+                                "killall " + PACKAGE_SYSTEM_UI,
+                                "pkill -f " + PACKAGE_SYSTEM_UI,
+                                "am crash " + PACKAGE_SYSTEM_UI
+                        }),
+                SYSTEM_UI_RESTART_DELAY_MS);
     }
 
     private void restartPackageProcess(String packageName, String label) {
