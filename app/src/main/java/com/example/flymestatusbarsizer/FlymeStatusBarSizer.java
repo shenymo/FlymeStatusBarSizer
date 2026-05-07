@@ -165,7 +165,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             TRACKED_BATTERY_VIEWS.put(view, Boolean.TRUE);
             if (isBatteryCodeDrawEnabled(config)) {
                 disableAncestorClipping(view, 6);
-                resizeIosBatteryView(view, config, ReflectUtils.getBooleanField(view, "mCharging", false));
+                resizeIosBatteryView(view, config, shouldShowBatteryBolt(view));
             }
         });
         hookFlymeBatteryMeterViewDraw(loader);
@@ -1821,8 +1821,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         int level = ReflectUtils.getIntField(view, "mLastLevel", 0);
         boolean pluggedIn = ReflectUtils.getBooleanField(view, "mLastPlugged", false);
         boolean charging = ReflectUtils.getBooleanField(view, "mCharging", false);
-        resizeIosBatteryView(batteryView, config, charging);
-        int[] batteryRenderSize = getMergedBatteryRenderSize(batteryView, config, charging);
+        boolean showBolt = charging || pluggedIn;
+        resizeIosBatteryView(batteryView, config, showBolt);
+        int[] batteryRenderSize = getMergedBatteryRenderSize(batteryView, config, showBolt);
         int width = batteryRenderSize[0];
         int height = batteryRenderSize[1];
         int left = 0;
@@ -1967,8 +1968,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!isBatteryCodeDrawEnabled(config)) {
             return false;
         }
-        boolean charging = ReflectUtils.getBooleanField(view, "mCharging", false);
-        ReflectUtils.setMeasuredDimension(batteryView, iosBatteryMeasuredWidthWithMergedIcons(batteryView, config, charging),
+        boolean showBolt = shouldShowBatteryBolt(view);
+        ReflectUtils.setMeasuredDimension(batteryView, iosBatteryMeasuredWidthWithMergedIcons(batteryView, config, showBolt),
                 iosBatteryMeasuredHeightWithMergedIcons(batteryView, config));
         return true;
     }
@@ -2013,12 +2014,12 @@ public class FlymeStatusBarSizer extends XposedModule {
         return Color.alpha(color) == 0 ? Color.BLACK : color;
     }
 
-    private static void resizeIosBatteryView(View view, ModuleConfig config, boolean charging) {
+    private static void resizeIosBatteryView(View view, ModuleConfig config, boolean showBolt) {
         ViewGroup.LayoutParams lp = view.getLayoutParams();
         if (lp == null) {
             return;
         }
-        int width = iosBatteryMeasuredWidthWithMergedIcons(view, config, charging);
+        int width = iosBatteryMeasuredWidthWithMergedIcons(view, config, showBolt);
         int height = iosBatteryMeasuredHeightWithMergedIcons(view, config);
         boolean changed = false;
         if (lp.width != width) {
@@ -2035,25 +2036,41 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private static int iosBatteryMeasuredWidth(View view, ModuleConfig config, boolean charging) {
-        return getMergedBatteryRenderSize(view, config, charging)[0];
+    private static int iosBatteryMeasuredWidth(View view, ModuleConfig config, boolean showBolt) {
+        return getMergedBatteryRenderSize(view, config, showBolt)[0];
     }
 
     private static int iosBatteryMeasuredHeight(View view, ModuleConfig config) {
         return getMergedBatteryRenderSize(view, config, false)[1] + dp(view, 2);
     }
 
-    private static int iosBatteryMeasuredWidthWithMergedIcons(View view, ModuleConfig config, boolean charging) {
-        return iosBatteryMeasuredWidth(view, config, charging);
+    private static int iosBatteryMeasuredWidthWithMergedIcons(View view, ModuleConfig config, boolean showBolt) {
+        return iosBatteryMeasuredWidth(view, config, showBolt);
     }
 
     private static int iosBatteryMeasuredHeightWithMergedIcons(View view, ModuleConfig config) {
         return iosBatteryMeasuredHeight(view, config);
     }
 
-    private static int[] getMergedBatteryRenderSize(View batteryView, ModuleConfig config, boolean charging) {
+    private static int[] getMergedBatteryRenderSize(View batteryView, ModuleConfig config, boolean showBolt) {
         int size = scaleSize(dp(batteryView, 24), resolveStatusBarIconScale(config));
-        return new int[]{size, size};
+        float textScale = resolveBatteryInnerTextScale(config);
+        int style = config == null
+                ? SettingsStore.DEFAULT_BATTERY_ICON_STYLE
+                : SettingsStore.normalizeBatteryStyle(config.batteryIconStyle);
+        int width = style == SettingsStore.BATTERY_STYLE_ONEUI
+                ? OneUiBatteryPainter.getRequiredWidth(size, showBolt, textScale)
+                : IosBatteryPainter.getRequiredWidth(size, showBolt, textScale);
+        return new int[]{width, size};
+    }
+
+    private static boolean shouldShowBatteryBolt(Object target) {
+        if (target == null) {
+            return false;
+        }
+        return ReflectUtils.getBooleanField(target, "mCharging", false)
+                || ReflectUtils.getBooleanField(target, "mLastPlugged", false)
+                || ReflectUtils.getBooleanField(target, "mPluggedIn", false);
     }
 
     private static void applyIosBatteryStyleIfNeeded(Object drawable) {
@@ -5029,7 +5046,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                     continue;
                 }
                 if (isBatteryCodeDrawEnabled(config)) {
-                    resizeIosBatteryView(batteryView, config, ReflectUtils.getBooleanField(batteryView, "mCharging", false));
+                    resizeIosBatteryView(batteryView, config, shouldShowBatteryBolt(batteryView));
                 }
                 ReflectUtils.invokeMethod(batteryView, "apply", new Class[]{boolean.class}, true);
                 batteryView.requestLayout();
