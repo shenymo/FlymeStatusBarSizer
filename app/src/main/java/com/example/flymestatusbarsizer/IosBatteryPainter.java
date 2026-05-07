@@ -57,6 +57,7 @@ final class IosBatteryPainter {
     }
 
     static void draw(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
+            boolean quickCharging,
             int fillColor, int textColor, boolean showLevelText, float textScale, Typeface typeface,
             boolean hollow, boolean hollowFillFollowsLevel) {
         if (bounds.width() <= 0 || bounds.height() <= 0) {
@@ -87,6 +88,7 @@ final class IosBatteryPainter {
         float capContentRadius = capRadius;
 
         boolean showBolt = charging || pluggedIn;
+        boolean useQuickBolt = charging && quickCharging;
         float normalizedTextScale = normalizeTextScale(textScale);
         String levelText = Integer.toString(clampedLevel);
         float textSize = bodyHeight * 0.62f * normalizedTextScale;
@@ -105,7 +107,7 @@ final class IosBatteryPainter {
         if (hollow) {
             drawHollowBattery(canvas, contentRadius, capContentRadius, renderedBodyColor, renderedFillColor,
                     clampedLevel, levelText,
-                    textSize, showLevelText, showBolt, renderedBoltColor,
+                    textSize, showLevelText, showBolt, renderedBoltColor, useQuickBolt,
                     hollowFillFollowsLevel);
             return;
         }
@@ -115,7 +117,7 @@ final class IosBatteryPainter {
 
         if (showBolt) {
             BatteryBoltPainter.draw(canvas, BOLT, BODY.width(), BODY.height(),
-                    renderedBoltColor, BOLT_WIDTH_RATIO, 1f);
+                    renderedBoltColor, BOLT_WIDTH_RATIO, 1f, useQuickBolt);
         }
 
         if (showLevelText) {
@@ -128,7 +130,7 @@ final class IosBatteryPainter {
 
     private static void drawHollowBattery(Canvas canvas, float contentRadius, float capContentRadius,
             int emptyColor, int fillColor, int level, String levelText, float textSize,
-            boolean showLevelText, boolean showBolt, int boltColor,
+            boolean showLevelText, boolean showBolt, int boltColor, boolean quickCharging,
             boolean fillFollowsLevel) {
         if (!showLevelText) {
             if (fillFollowsLevel) {
@@ -139,7 +141,7 @@ final class IosBatteryPainter {
             }
             if (showBolt) {
                 BatteryBoltPainter.draw(canvas, BOLT, BODY.width(), BODY.height(),
-                        boltColor, BOLT_WIDTH_RATIO, 1f);
+                        boltColor, BOLT_WIDTH_RATIO, 1f, quickCharging);
             }
             return;
         }
@@ -152,7 +154,7 @@ final class IosBatteryPainter {
         }
         if (showBolt) {
             BatteryBoltPainter.draw(canvas, BOLT, BODY.width(), BODY.height(),
-                    boltColor, BOLT_WIDTH_RATIO, 1f);
+                    boltColor, BOLT_WIDTH_RATIO, 1f, quickCharging);
         }
         if (showLevelText) {
             CUTOUT_TEXT_PAINT.setTextSize(textSize);

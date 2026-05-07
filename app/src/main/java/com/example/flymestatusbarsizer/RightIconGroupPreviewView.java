@@ -233,12 +233,12 @@ public final class RightIconGroupPreviewView extends View {
             int fillColor, int textColor, boolean showLevelText) {
         Typeface typeface = BatteryTextFontHelper.resolveTypeface(getContext(), batteryTextFont);
         if (SettingsStore.normalizeBatteryStyle(batteryStyle) == SettingsStore.BATTERY_STYLE_ONEUI) {
-            OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
+            OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, false,
                     fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
                     batteryHollowEnabled, batteryHollowFillFollowsLevel);
             return;
         }
-        IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
+        IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, false,
                 fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
                 batteryHollowEnabled, batteryHollowFillFollowsLevel);
     }

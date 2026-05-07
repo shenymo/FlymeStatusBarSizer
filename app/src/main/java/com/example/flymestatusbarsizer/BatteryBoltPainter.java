@@ -7,23 +7,28 @@ import android.graphics.Path;
 import android.graphics.RectF;
 
 final class BatteryBoltPainter {
-    private static final String BOLT_PATH_DATA =
+    private static final String QUICK_BOLT_PATH_DATA =
             "M520,840L560,560L319,560L640,120L680,120L640,400L881,400L560,840L520,840Z"
                     + "M120,720L120,640L468,640L456,720L120,720Z"
                     + "M80,520L80,440L308,440L250,520L80,520Z"
                     + "M160,320L160,240L454,240L396,320L160,320Z";
+    private static final String NORMAL_BOLT_PATH_DATA =
+            "M520,840L560,560L319,560L640,120L680,120L640,400L881,400L560,840L520,840Z";
     private static final Paint PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private static final Path SOURCE_PATH = SimplePathDataParser.parse(BOLT_PATH_DATA);
+    private static final Path QUICK_SOURCE_PATH = SimplePathDataParser.parse(QUICK_BOLT_PATH_DATA);
+    private static final Path NORMAL_SOURCE_PATH = SimplePathDataParser.parse(NORMAL_BOLT_PATH_DATA);
     private static final Path PATH = new Path();
     private static final Matrix MATRIX = new Matrix();
-    private static final RectF SOURCE_BOUNDS = new RectF();
+    private static final RectF LAYOUT_BOUNDS = new RectF();
     private static final float MAX_ICON_AREA_FILL_RATIO = 1f;
     private static final float TARGET_BOLT_HEIGHT_RATIO = 0.86f;
 
     static {
         PAINT.setStyle(Paint.Style.FILL);
-        if (SOURCE_PATH != null) {
-            SOURCE_PATH.computeBounds(SOURCE_BOUNDS, true);
+        if (QUICK_SOURCE_PATH != null) {
+            QUICK_SOURCE_PATH.computeBounds(LAYOUT_BOUNDS, true);
+        } else if (NORMAL_SOURCE_PATH != null) {
+            NORMAL_SOURCE_PATH.computeBounds(LAYOUT_BOUNDS, true);
         }
     }
 
@@ -31,23 +36,26 @@ final class BatteryBoltPainter {
     }
 
     static void draw(Canvas canvas, RectF area, float bodyWidth, float bodyHeight,
-            int color, float widthRatio, float contentScale) {
-        drawInternal(canvas, area, bodyWidth, bodyHeight, widthRatio, contentScale, PAINT, color);
+            int color, float widthRatio, float contentScale, boolean quickCharging) {
+        drawInternal(canvas, area, bodyWidth, bodyHeight, widthRatio, contentScale,
+                quickCharging, PAINT, color);
     }
 
     static void drawCutout(Canvas canvas, RectF area, float bodyWidth, float bodyHeight,
-            float widthRatio, float contentScale, Paint paint) {
-        drawInternal(canvas, area, bodyWidth, bodyHeight, widthRatio, contentScale, paint, 0);
+            float widthRatio, float contentScale, boolean quickCharging, Paint paint) {
+        drawInternal(canvas, area, bodyWidth, bodyHeight, widthRatio, contentScale,
+                quickCharging, paint, 0);
     }
 
     private static void drawInternal(Canvas canvas, RectF area, float bodyWidth, float bodyHeight,
-            float widthRatio, float contentScale, Paint paint, int color) {
+            float widthRatio, float contentScale, boolean quickCharging, Paint paint, int color) {
         if (canvas == null || area == null) {
             return;
         }
         if (paint == null) {
             return;
         }
+        Path sourcePath = quickCharging ? QUICK_SOURCE_PATH : NORMAL_SOURCE_PATH;
         if (paint == PAINT) {
             PAINT.setColor(color);
         }
@@ -59,22 +67,22 @@ final class BatteryBoltPainter {
         if (iconWidth <= 0f || iconHeight <= 0f) {
             return;
         }
-        if (SOURCE_PATH == null || SOURCE_BOUNDS.isEmpty()) {
+        if (sourcePath == null || LAYOUT_BOUNDS.isEmpty()) {
             return;
         }
-        float scale = Math.min(iconWidth / SOURCE_BOUNDS.width(), iconHeight / SOURCE_BOUNDS.height());
+        float scale = Math.min(iconWidth / LAYOUT_BOUNDS.width(), iconHeight / LAYOUT_BOUNDS.height());
         if (scale <= 0f) {
             return;
         }
-        float translatedWidth = SOURCE_BOUNDS.width() * scale;
-        float translatedHeight = SOURCE_BOUNDS.height() * scale;
-        float translateX = area.centerX() - translatedWidth / 2f - SOURCE_BOUNDS.left * scale;
-        float translateY = area.centerY() - translatedHeight / 2f - SOURCE_BOUNDS.top * scale;
+        float translatedWidth = LAYOUT_BOUNDS.width() * scale;
+        float translatedHeight = LAYOUT_BOUNDS.height() * scale;
+        float translateX = area.centerX() - translatedWidth / 2f - LAYOUT_BOUNDS.left * scale;
+        float translateY = area.centerY() - translatedHeight / 2f - LAYOUT_BOUNDS.top * scale;
         MATRIX.reset();
         MATRIX.setScale(scale, scale);
         MATRIX.postTranslate(translateX, translateY);
         PATH.reset();
-        SOURCE_PATH.transform(MATRIX, PATH);
+        sourcePath.transform(MATRIX, PATH);
         canvas.drawPath(PATH, paint);
     }
 

@@ -1846,10 +1846,12 @@ public class FlymeStatusBarSizer extends XposedModule {
         int level = ReflectUtils.getIntField(drawable, "mLevel", 0);
         boolean pluggedIn = ReflectUtils.getBooleanField(drawable, "mPluggedIn", false);
         boolean charging = ReflectUtils.getBooleanField(drawable, "mCharging", false);
+        boolean quickCharging = resolveBatteryQuickCharging(drawable);
         int tintColor = resolveBatteryTintColor(drawable, Color.BLACK);
         int textColor = resolveBatteryTextColor(tintColor);
         boolean showLevelText = config.batteryLevelTextEnabled;
         drawBatteryByStyle(config, canvas, ((Drawable) drawable).getBounds(), level, pluggedIn, charging,
+                quickCharging,
                 tintColor, textColor, showLevelText);
         return true;
     }
@@ -1866,6 +1868,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         int level = ReflectUtils.getIntField(view, "mLastLevel", 0);
         boolean pluggedIn = ReflectUtils.getBooleanField(view, "mLastPlugged", false);
         boolean charging = ReflectUtils.getBooleanField(view, "mCharging", false);
+        boolean quickCharging = resolveBatteryQuickCharging(view);
         boolean showBolt = charging || pluggedIn;
         int size = resolveBatterySquareSize(batteryView, config);
         int width = resolveBatteryRenderWidth(size, config, showBolt);
@@ -1877,7 +1880,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         BatteryViewState state = rememberBatteryViewState(batteryView);
         state.drawBounds.set(0, top, width, top + height);
         drawBatteryByStyle(config, canvas, state.drawBounds,
-                level, pluggedIn, charging, fillColor, textColor, showLevelText);
+                level, pluggedIn, charging, quickCharging, fillColor, textColor, showLevelText);
         return true;
     }
 
@@ -1890,7 +1893,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void drawBatteryByStyle(ModuleConfig config, Canvas canvas, Rect bounds, int level,
-            boolean pluggedIn, boolean charging, int fillColor, int textColor, boolean showLevelText) {
+            boolean pluggedIn, boolean charging, boolean quickCharging,
+            int fillColor, int textColor, boolean showLevelText) {
         float textScale = resolveBatteryInnerTextScale(config);
         Typeface typeface = BatteryTextFontHelper.resolveTypeface(ModuleConfig.getSystemUiContext(), config == null
                 ? SettingsStore.DEFAULT_BATTERY_TEXT_FONT
@@ -1899,14 +1903,24 @@ public class FlymeStatusBarSizer extends XposedModule {
         boolean hollow = config != null && config.batteryHollowEnabled;
         boolean hollowFillFollowsLevel = config != null && config.batteryHollowFillFollowsLevel;
         if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
-            OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
+            OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, quickCharging,
                     fillColor, textColor, showLevelText, textScale, typeface, hollow,
                     hollowFillFollowsLevel);
             return;
         }
-        IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging,
+        IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, quickCharging,
                 fillColor, textColor, showLevelText, textScale, typeface, hollow,
                 hollowFillFollowsLevel);
+    }
+
+    private static boolean resolveBatteryQuickCharging(Object target) {
+        Object quickValue = ReflectUtils.getField(target, "mQuickCharging");
+        if (quickValue instanceof Boolean) {
+            return (Boolean) quickValue;
+        }
+        Object batteryController = ReflectUtils.getField(target, "mBatteryController");
+        Object controllerValue = ReflectUtils.invokeNoArg(batteryController, "isQuickCharging");
+        return controllerValue instanceof Boolean && (Boolean) controllerValue;
     }
 
     private static int resolveBatteryTintColor(Object target, int fallback) {
