@@ -15,7 +15,7 @@ final class IosBatteryPainter {
     private static final int LOW_BATTERY_ORANGE = Color.rgb(255, 149, 0);
     private static final int EMPTY_BACKGROUND_ALPHA = 0x4D;
     private static final int RENDER_ALPHA = 224;
-    private static final float BOLT_WIDTH_RATIO = 0.26f;
+    private static final float BOLT_WIDTH_RATIO = 0.59f;
     private static final float BOLT_GAP_RATIO = 0.05f;
     private static final float BOLT_TRAILING_PADDING_RATIO = 0.03f;
     private static final Paint PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -39,7 +39,7 @@ final class IosBatteryPainter {
     private IosBatteryPainter() {
     }
 
-    static int getRequiredWidth(int squareSize, boolean showBolt, float textScale) {
+    static int getRequiredWidth(int squareSize, boolean showBolt) {
         if (squareSize <= 0) {
             return 0;
         }
@@ -50,9 +50,8 @@ final class IosBatteryPainter {
         float capWidth = Math.max(1.2f, side * 0.08f);
         float gap = Math.max(0.8f, side * 0.025f);
         float bodyWidth = side - capWidth - gap;
-        float contentScale = normalizeTextScale(textScale);
         float boltGap = Math.max(1f, side * BOLT_GAP_RATIO);
-        float boltWidth = Math.max(1f, bodyWidth * BOLT_WIDTH_RATIO * contentScale);
+        float boltWidth = Math.max(1f, bodyWidth * BOLT_WIDTH_RATIO);
         float trailingPadding = Math.max(1f, side * BOLT_TRAILING_PADDING_RATIO);
         return Math.round(side + boltGap + boltWidth + trailingPadding);
     }
@@ -106,7 +105,7 @@ final class IosBatteryPainter {
         if (hollow) {
             drawHollowBattery(canvas, contentRadius, capContentRadius, renderedBodyColor, renderedFillColor,
                     clampedLevel, levelText,
-                    textSize, showLevelText, showBolt, normalizedTextScale, renderedBoltColor,
+                    textSize, showLevelText, showBolt, renderedBoltColor,
                     hollowFillFollowsLevel);
             return;
         }
@@ -116,7 +115,7 @@ final class IosBatteryPainter {
 
         if (showBolt) {
             BatteryBoltPainter.draw(canvas, BOLT, BODY.width(), BODY.height(),
-                    renderedBoltColor, BOLT_WIDTH_RATIO, normalizedTextScale);
+                    renderedBoltColor, BOLT_WIDTH_RATIO, 1f);
         }
 
         if (showLevelText) {
@@ -129,7 +128,7 @@ final class IosBatteryPainter {
 
     private static void drawHollowBattery(Canvas canvas, float contentRadius, float capContentRadius,
             int emptyColor, int fillColor, int level, String levelText, float textSize,
-            boolean showLevelText, boolean showBolt, float contentScale, int boltColor,
+            boolean showLevelText, boolean showBolt, int boltColor,
             boolean fillFollowsLevel) {
         if (!showLevelText) {
             if (fillFollowsLevel) {
@@ -140,7 +139,7 @@ final class IosBatteryPainter {
             }
             if (showBolt) {
                 BatteryBoltPainter.draw(canvas, BOLT, BODY.width(), BODY.height(),
-                        boltColor, BOLT_WIDTH_RATIO, contentScale);
+                        boltColor, BOLT_WIDTH_RATIO, 1f);
             }
             return;
         }
@@ -153,7 +152,7 @@ final class IosBatteryPainter {
         }
         if (showBolt) {
             BatteryBoltPainter.draw(canvas, BOLT, BODY.width(), BODY.height(),
-                    boltColor, BOLT_WIDTH_RATIO, contentScale);
+                    boltColor, BOLT_WIDTH_RATIO, 1f);
         }
         if (showLevelText) {
             CUTOUT_TEXT_PAINT.setTextSize(textSize);

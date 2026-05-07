@@ -2248,11 +2248,10 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int resolveBatteryRenderWidth(int size, ModuleConfig config, boolean showBolt) {
-        float textScale = resolveBatteryInnerTextScale(config);
         int style = resolveBatteryStyle(config);
         int width = style == SettingsStore.BATTERY_STYLE_ONEUI
-                ? OneUiBatteryPainter.getRequiredWidth(size, showBolt, textScale)
-                : IosBatteryPainter.getRequiredWidth(size, showBolt, textScale);
+                ? OneUiBatteryPainter.getRequiredWidth(size, showBolt)
+                : IosBatteryPainter.getRequiredWidth(size, showBolt);
         return width;
     }
 

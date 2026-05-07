@@ -17,7 +17,8 @@ final class BatteryBoltPainter {
     private static final Path PATH = new Path();
     private static final Matrix MATRIX = new Matrix();
     private static final RectF SOURCE_BOUNDS = new RectF();
-    private static final float MAX_ICON_AREA_FILL_RATIO = 0.92f;
+    private static final float MAX_ICON_AREA_FILL_RATIO = 1f;
+    private static final float TARGET_BOLT_HEIGHT_RATIO = 0.86f;
 
     static {
         PAINT.setStyle(Paint.Style.FILL);
@@ -52,7 +53,7 @@ final class BatteryBoltPainter {
         }
         float resolvedScale = normalizeContentScale(contentScale);
         float desiredWidth = Math.max(0f, bodyWidth) * Math.max(0.1f, widthRatio) * resolvedScale;
-        float desiredHeight = Math.max(0f, bodyHeight) * 0.56f * resolvedScale;
+        float desiredHeight = Math.max(0f, bodyHeight) * TARGET_BOLT_HEIGHT_RATIO * resolvedScale;
         float iconWidth = Math.min(area.width() * MAX_ICON_AREA_FILL_RATIO, desiredWidth);
         float iconHeight = Math.min(area.height() * MAX_ICON_AREA_FILL_RATIO, desiredHeight);
         if (iconWidth <= 0f || iconHeight <= 0f) {
