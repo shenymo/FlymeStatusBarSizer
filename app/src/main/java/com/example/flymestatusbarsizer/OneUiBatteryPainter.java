@@ -10,10 +10,10 @@ import android.graphics.RectF;
 import android.graphics.Typeface;
 
 final class OneUiBatteryPainter {
-    private static final int BODY_COLOR = Color.rgb(150, 150, 150);
     private static final int CHARGING_FILL_COLOR = 0xff00cd55;
     private static final int LOW_BATTERY_RED = Color.rgb(255, 59, 48);
     private static final int LOW_BATTERY_ORANGE = Color.rgb(255, 149, 0);
+    private static final int EMPTY_BACKGROUND_ALPHA = 0x4D;
     private static final int RENDER_ALPHA = 224;
     private static final float BOLT_WIDTH_RATIO = 0.22f;
     private static final Paint BODY_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -62,7 +62,7 @@ final class OneUiBatteryPainter {
             TEXT_PAINT.setTextSize(textSize);
             textWidth = TEXT_PAINT.measureText(levelText);
         }
-        int renderedBodyColor = withFixedAlpha(BODY_COLOR, RENDER_ALPHA);
+        int renderedBodyColor = withFixedAlpha(fillColor, EMPTY_BACKGROUND_ALPHA);
         int renderedFillColor = withFixedAlpha(charging ? CHARGING_FILL_COLOR : effectiveFillColor, RENDER_ALPHA);
         int renderedTextColor = withFixedAlpha(textColor, RENDER_ALPHA);
         if (hollow) {
