@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Typeface;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 
 final class BatteryTextFontHelper {
     private static final String MI_SANS_LATIN_VF_NUMBER_ASSET_PATH = "fonts/MiSansLatinVFNumber.ttf";
@@ -16,6 +17,8 @@ final class BatteryTextFontHelper {
             SettingsStore.BATTERY_TEXT_FONT_SANS_SERIF_CONDENSED,
             SettingsStore.BATTERY_TEXT_FONT_MI_SANS_LATIN_VF_NUMBER
     };
+    private static final HashMap<String, Typeface> namedTypefaceCache = new HashMap<>();
+    private static final HashMap<String, Boolean> namedTypefaceResolved = new HashMap<>();
     private static volatile Typeface miSansLatinVfNumberTypeface;
     private static volatile boolean miSansLatinVfNumberLoaded;
 
@@ -139,17 +142,26 @@ final class BatteryTextFontHelper {
     }
 
     private static Typeface resolveNamedTypeface(String familyName) {
-        Typeface typeface = Typeface.create(familyName, Typeface.NORMAL);
-        if (typeface == null) {
-            return null;
+        synchronized (BatteryTextFontHelper.class) {
+            if (namedTypefaceResolved.containsKey(familyName)) {
+                return namedTypefaceCache.get(familyName);
+            }
+            Typeface typeface = Typeface.create(familyName, Typeface.NORMAL);
+            Typeface resolved = null;
+            if (typeface != null) {
+                if ("sans-serif".equals(familyName)) {
+                    resolved = Typeface.SANS_SERIF;
+                } else if (!sameTypeface(typeface, Typeface.DEFAULT)
+                        && !sameTypeface(typeface, Typeface.SANS_SERIF)) {
+                    resolved = typeface;
+                }
+            }
+            namedTypefaceResolved.put(familyName, Boolean.TRUE);
+            if (resolved != null) {
+                namedTypefaceCache.put(familyName, resolved);
+            }
+            return resolved;
         }
-        if ("sans-serif".equals(familyName)) {
-            return Typeface.SANS_SERIF;
-        }
-        if (sameTypeface(typeface, Typeface.DEFAULT) || sameTypeface(typeface, Typeface.SANS_SERIF)) {
-            return null;
-        }
-        return typeface;
     }
 
     private static boolean sameTypeface(Typeface first, Typeface second) {

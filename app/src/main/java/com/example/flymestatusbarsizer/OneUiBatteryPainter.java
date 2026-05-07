@@ -114,6 +114,19 @@ final class OneUiBatteryPainter {
     private static void drawHollowBattery(Canvas canvas, float contentRadius, int emptyColor, int fillColor,
             int level, String levelText, float textSize, boolean showLevelText, boolean showBolt,
             float contentScale, int boltColor, boolean fillFollowsLevel) {
+        if (!showLevelText) {
+            if (fillFollowsLevel) {
+                drawBodyRange(canvas, contentRadius, fillColor, 0f, level);
+                drawBodyRange(canvas, contentRadius, emptyColor, level, 100f);
+            } else {
+                drawBodyRange(canvas, contentRadius, fillColor, 0f, 100f);
+            }
+            if (showBolt) {
+                BatteryBoltPainter.draw(canvas, BOLT, BODY.width(), BODY.height(),
+                        boltColor, BOLT_WIDTH_RATIO, contentScale);
+            }
+            return;
+        }
         int layer = canvas.saveLayer(BODY.left, BODY.top, Math.max(BODY.right, BOLT.right), BODY.bottom, null);
         if (fillFollowsLevel) {
             drawBodyRange(canvas, contentRadius, fillColor, 0f, level);

@@ -131,6 +131,19 @@ final class IosBatteryPainter {
             int emptyColor, int fillColor, int level, String levelText, float textSize,
             boolean showLevelText, boolean showBolt, float contentScale, int boltColor,
             boolean fillFollowsLevel) {
+        if (!showLevelText) {
+            if (fillFollowsLevel) {
+                drawBodyAndCapRange(canvas, contentRadius, capContentRadius, fillColor, 0f, level);
+                drawBodyAndCapRange(canvas, contentRadius, capContentRadius, emptyColor, level, 100f);
+            } else {
+                drawBodyAndCapRange(canvas, contentRadius, capContentRadius, fillColor, 0f, 100f);
+            }
+            if (showBolt) {
+                BatteryBoltPainter.draw(canvas, BOLT, BODY.width(), BODY.height(),
+                        boltColor, BOLT_WIDTH_RATIO, contentScale);
+            }
+            return;
+        }
         int layer = canvas.saveLayer(BODY.left, BODY.top, Math.max(CAP.right, BOLT.right), BODY.bottom, null);
         if (fillFollowsLevel) {
             drawBodyAndCapRange(canvas, contentRadius, capContentRadius, fillColor, 0f, level);
