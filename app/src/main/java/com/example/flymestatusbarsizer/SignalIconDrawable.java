@@ -17,26 +17,31 @@ final class SignalIconDrawable extends Drawable {
     private final WeakReference<android.view.View> ownerViewRef;
     private final int intrinsicWidth;
     private final int intrinsicHeight;
+    private final int mobileTypeBadge;
     private ColorStateList tintList;
     private ColorFilter colorFilter;
     private int drawColor = Color.WHITE;
     private int alpha = 255;
 
-    SignalIconDrawable(android.view.View ownerView, boolean mergedDual, int intrinsicWidth, int intrinsicHeight) {
+    SignalIconDrawable(android.view.View ownerView, boolean mergedDual, int intrinsicWidth,
+                       int intrinsicHeight, int mobileTypeBadge) {
         this.ownerViewRef = new WeakReference<>(ownerView);
         this.mergedDual = mergedDual;
         this.intrinsicWidth = Math.max(1, intrinsicWidth);
         this.intrinsicHeight = Math.max(1, intrinsicHeight);
+        this.mobileTypeBadge = mobileTypeBadge;
     }
 
     boolean isMergedDual() {
         return mergedDual;
     }
 
-    boolean matchesGeometry(boolean mergedDual, int intrinsicWidth, int intrinsicHeight) {
+    boolean matchesGeometry(boolean mergedDual, int intrinsicWidth, int intrinsicHeight,
+                            int mobileTypeBadge) {
         return this.mergedDual == mergedDual
                 && this.intrinsicWidth == Math.max(1, intrinsicWidth)
-                && this.intrinsicHeight == Math.max(1, intrinsicHeight);
+                && this.intrinsicHeight == Math.max(1, intrinsicHeight)
+                && this.mobileTypeBadge == mobileTypeBadge;
     }
 
     @Override
@@ -47,7 +52,6 @@ final class SignalIconDrawable extends Drawable {
         }
         updateDrawColor(getState());
         int color = SignalPreviewPainter.withFixedAlpha(drawColor, SIGNAL_DRAW_ALPHA);
-        int mobileTypeBadge = FlymeStatusBarSizer.resolveSignalMobileTypeBadge();
         if (mergedDual) {
             SignalPreviewPainter.drawMergedDualSim(canvas, bounds, color, colorFilter, mobileTypeBadge);
         } else {

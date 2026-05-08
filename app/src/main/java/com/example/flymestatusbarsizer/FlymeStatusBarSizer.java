@@ -11,6 +11,9 @@ import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -31,6 +34,7 @@ import android.os.SystemClock;
 import android.service.notification.StatusBarNotification;
 import android.telephony.ServiceState;
 import android.telephony.SignalStrength;
+import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyDisplayInfo;
 import android.telephony.TelephonyManager;
@@ -58,6 +62,7 @@ import java.text.DateFormatSymbols;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.WeakHashMap;
 
@@ -98,6 +103,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<ServiceState, Integer> SERVICE_STATE_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<TelephonyDisplayInfo, TelephonyDisplayInfoState> TELEPHONY_DISPLAY_INFO_STATES =
             new WeakHashMap<>();
+    private static final HashMap<Integer, MobileTypeSubState> MOBILE_TYPE_SUB_STATES = new HashMap<>();
     private static final WeakHashMap<View, NotificationLiquidGlassView> NOTIFICATION_GLASS_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, NotificationGlassDrawable> NOTIFICATION_GLASS_DRAWABLES = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> CLOCK_SECOND_REFRESH_VIEWS = new WeakHashMap<>();
@@ -107,9 +113,28 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final Object CONFIG_REFRESH_LOCK = new Object();
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
+    private static volatile boolean DEFAULT_NETWORK_CALLBACK_REGISTERED;
     private static Handler MAIN_HANDLER;
     private static volatile int LAST_UI_MODE_NIGHT = -1;
     private static final Runnable CLOCK_SECOND_REFRESH_RUNNABLE = FlymeStatusBarSizer::refreshClockViewsForSecondTick;
+    private static final Runnable SIGNAL_ICON_REFRESH_RUNNABLE = FlymeStatusBarSizer::refreshTrackedSignalIconViewsNow;
+    private static final ConnectivityManager.NetworkCallback DEFAULT_NETWORK_CALLBACK =
+            new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onAvailable(Network network) {
+                    scheduleTrackedSignalIconRefresh();
+                }
+
+                @Override
+                public void onLost(Network network) {
+                    scheduleTrackedSignalIconRefresh();
+                }
+
+                @Override
+                public void onCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) {
+                    scheduleTrackedSignalIconRefresh();
+                }
+            };
     private static final HashMap<String, Integer> SYSTEM_UI_ID_CACHE = new HashMap<>();
     private static final HashMap<String, Boolean> NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE =
             new HashMap<>();
@@ -454,6 +479,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 Integer subId = TELEPHONY_MANAGER_SUB_IDS.get(chain.getThisObject());
                 if (subId != null) {
                     SERVICE_STATE_SUB_IDS.put((ServiceState) result, subId);
+                    rememberMobileTypeSubState(subId);
                     LAST_SERVICE_STATE_SUB_ID = subId;
                 }
                 LAST_MOBILE_TYPE_SERVICE_STATE_RAW = safeToString(result);
@@ -510,10 +536,15 @@ public class FlymeStatusBarSizer extends XposedModule {
                     TelephonyDisplayInfoState state = rememberTelephonyDisplayInfoState(displayInfo);
                     LAST_MOBILE_TYPE_RAW_NETWORK_TYPE = rawNetworkType;
                     state.networkType = (Integer) result;
+                    MobileTypeSubState subState = resolveSingleObservedMobileTypeSubState();
+                    if (subState != null) {
+                        subState.networkType = state.networkType;
+                    }
                     LAST_MOBILE_TYPE_NETWORK_TYPE = state.networkType;
                     LAST_MOBILE_TYPE_DISPLAY_INFO_RAW = safeToString(displayInfo);
                     LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyDisplayInfo.getNetworkType";
                     reportMobileTypeDebug("TelephonyDisplayInfo.getNetworkType");
+                    scheduleTrackedSignalIconRefresh();
                 }
                 return result;
             });
@@ -535,10 +566,15 @@ public class FlymeStatusBarSizer extends XposedModule {
                     TelephonyDisplayInfoState state = rememberTelephonyDisplayInfoState(displayInfo);
                     LAST_MOBILE_TYPE_RAW_OVERRIDE_NETWORK_TYPE = rawOverrideNetworkType;
                     state.overrideNetworkType = (Integer) result;
+                    MobileTypeSubState subState = resolveSingleObservedMobileTypeSubState();
+                    if (subState != null) {
+                        subState.overrideNetworkType = state.overrideNetworkType;
+                    }
                     LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE = state.overrideNetworkType;
                     LAST_MOBILE_TYPE_DISPLAY_INFO_RAW = safeToString(displayInfo);
                     LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyDisplayInfo.getOverrideNetworkType";
                     reportMobileTypeDebug("TelephonyDisplayInfo.getOverrideNetworkType");
+                    scheduleTrackedSignalIconRefresh();
                 }
                 return result;
             });
@@ -564,11 +600,16 @@ public class FlymeStatusBarSizer extends XposedModule {
                     LAST_MOBILE_TYPE_NR_STATE = (Integer) result;
                     Integer subId = SERVICE_STATE_SUB_IDS.get(serviceState);
                     if (subId != null) {
+                        MobileTypeSubState subState = rememberMobileTypeSubState(subId);
+                        if (subState != null) {
+                            subState.nrState = (Integer) result;
+                        }
                         LAST_SERVICE_STATE_SUB_ID = subId;
                     }
                     LAST_MOBILE_TYPE_SERVICE_STATE_RAW = safeToString(serviceState);
                     LAST_MOBILE_TYPE_LAST_EVENT = "ServiceState.getNrState";
                     reportMobileTypeDebug("ServiceState.getNrState");
+                    scheduleTrackedSignalIconRefresh();
                 }
                 return result;
             });
@@ -589,6 +630,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                     }
                     Integer subId = SERVICE_STATE_SUB_IDS.get(serviceState);
                     if (subId != null) {
+                        MobileTypeSubState subState = rememberMobileTypeSubState(subId);
+                        if (subState != null) {
+                            subState.nrCaState = safeToString(result);
+                        }
                         LAST_SERVICE_STATE_SUB_ID = subId;
                     }
                     LAST_MOBILE_TYPE_RAW_NR_CA_STATE = safeToString(rawNrCaState);
@@ -596,6 +641,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                     LAST_MOBILE_TYPE_SERVICE_STATE_RAW = safeToString(serviceState);
                     LAST_MOBILE_TYPE_LAST_EVENT = "ServiceState.getNrCaState";
                     reportMobileTypeDebug("ServiceState.getNrCaState");
+                    scheduleTrackedSignalIconRefresh();
                 }
                 return result;
             });
@@ -620,8 +666,17 @@ public class FlymeStatusBarSizer extends XposedModule {
                     result = getSpoofedFlymeFiveGIcon(config, loader);
                 }
                 LAST_MOBILE_TYPE_FLYME_ICON_GROUP = describeMobileIconGroup(result);
+                Object serviceStateArg = chain.getArg(1);
+                if (serviceStateArg instanceof ServiceState) {
+                    Integer subId = SERVICE_STATE_SUB_IDS.get(serviceStateArg);
+                    MobileTypeSubState subState = rememberMobileTypeSubState(subId);
+                    if (subState != null) {
+                        subState.flymeIconGroup = LAST_MOBILE_TYPE_FLYME_ICON_GROUP;
+                    }
+                }
                 LAST_MOBILE_TYPE_LAST_EVENT = "FlymeMobileConnectionFeatureKt.getFlymeFiveGIcon";
                 reportMobileTypeDebug("FlymeMobileConnectionFeatureKt.getFlymeFiveGIcon");
+                scheduleTrackedSignalIconRefresh();
                 return result;
             });
         } catch (Throwable t) {
@@ -2222,7 +2277,12 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     static int resolveSignalMobileTypeBadge() {
-        int badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL);
+        int badge = resolveSignalMobileTypeBadgeForActiveDataSubscription(
+                ModuleConfig.getSystemUiContext());
+        if (badge != Integer.MIN_VALUE) {
+            return badge;
+        }
+        badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL);
         if (badge != Integer.MIN_VALUE) {
             return badge;
         }
@@ -2297,7 +2357,17 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int resolveSignalMobileTypeBadgeFromTelephonyState() {
-        int overrideNetworkType = LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE;
+        return resolveSignalMobileTypeBadgeFromTelephonyState(
+                LAST_MOBILE_TYPE_NETWORK_TYPE,
+                LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE,
+                LAST_MOBILE_TYPE_NR_STATE,
+                LAST_MOBILE_TYPE_NR_CA_STATE);
+    }
+
+    private static int resolveSignalMobileTypeBadgeFromTelephonyState(int networkType,
+                                                                      int overrideNetworkType,
+                                                                      int nrState,
+                                                                      String nrCaState) {
         if (overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_ADVANCED) {
             return SignalPreviewPainter.MOBILE_TYPE_BADGE_5GA;
         }
@@ -2305,18 +2375,182 @@ public class FlymeStatusBarSizer extends XposedModule {
                 || overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE) {
             return SignalPreviewPainter.MOBILE_TYPE_BADGE_5G;
         }
-        if (LAST_MOBILE_TYPE_NETWORK_TYPE == TelephonyManager.NETWORK_TYPE_NR) {
-            return "true".equalsIgnoreCase(LAST_MOBILE_TYPE_NR_CA_STATE)
+        if (networkType == TelephonyManager.NETWORK_TYPE_NR) {
+            return isNrCaStateEnabled(nrCaState)
                     ? SignalPreviewPainter.MOBILE_TYPE_BADGE_5GA
                     : SignalPreviewPainter.MOBILE_TYPE_BADGE_5G;
         }
-        int nrState = LAST_MOBILE_TYPE_NR_STATE;
         if (nrState == 2 || nrState == 3) {
-            return "true".equalsIgnoreCase(LAST_MOBILE_TYPE_NR_CA_STATE)
+            return isNrCaStateEnabled(nrCaState)
                     ? SignalPreviewPainter.MOBILE_TYPE_BADGE_5GA
                     : SignalPreviewPainter.MOBILE_TYPE_BADGE_5G;
         }
         return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
+    }
+
+    private static boolean isNrCaStateEnabled(String nrCaState) {
+        return "true".equalsIgnoreCase(nrCaState);
+    }
+
+    private static int resolveSignalMobileTypeBadgeForActiveDataSubscription(Context context) {
+        if (context == null) {
+            return Integer.MIN_VALUE;
+        }
+        if (isUsingWifiOnlyInternet(context)) {
+            return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
+        }
+        int subId = resolveDefaultDataSubscriptionId();
+        if (!SubscriptionManager.isValidSubscriptionId(subId)) {
+            return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
+        }
+        MobileTypeSubState cachedState = snapshotMobileTypeSubState(subId);
+        int badge = resolveSignalMobileTypeBadgeFromSubState(cachedState);
+        if (badge != Integer.MIN_VALUE) {
+            return badge;
+        }
+        return resolveSignalMobileTypeBadgeFromLiveTelephony(context, subId);
+    }
+
+    private static int resolveSignalMobileTypeBadgeFromSubState(MobileTypeSubState state) {
+        if (state == null) {
+            return Integer.MIN_VALUE;
+        }
+        int badge = resolveSignalMobileTypeBadgeFromText(state.flymeIconGroup);
+        if (badge != Integer.MIN_VALUE) {
+            return badge;
+        }
+        badge = resolveSignalMobileTypeBadgeFromTelephonyState(
+                state.networkType,
+                state.overrideNetworkType,
+                state.nrState,
+                state.nrCaState);
+        if (badge != SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE
+                || hasMeaningfulMobileTypeSubState(state)) {
+            return badge;
+        }
+        return Integer.MIN_VALUE;
+    }
+
+    private static boolean hasMeaningfulMobileTypeSubState(MobileTypeSubState state) {
+        return state != null
+                && (state.networkType != Integer.MIN_VALUE
+                || state.overrideNetworkType != Integer.MIN_VALUE
+                || state.nrState != Integer.MIN_VALUE
+                || !TextUtils.isEmpty(state.nrCaState)
+                || !TextUtils.isEmpty(state.flymeIconGroup));
+    }
+
+    private static int resolveSignalMobileTypeBadgeFromLiveTelephony(Context context, int subId) {
+        TelephonyManager manager = getTelephonyManagerForSub(context, subId);
+        if (manager == null) {
+            return Integer.MIN_VALUE;
+        }
+        int networkType = Integer.MIN_VALUE;
+        try {
+            networkType = manager.getDataNetworkType();
+        } catch (Throwable ignored) {
+        }
+        int nrState = Integer.MIN_VALUE;
+        String nrCaState = "";
+        ServiceState serviceState = null;
+        try {
+            serviceState = manager.getServiceState();
+        } catch (Throwable ignored) {
+        }
+        if (serviceState != null) {
+            nrState = ReflectUtils.invokeNoArgInt(serviceState, "getNrState", Integer.MIN_VALUE);
+            nrCaState = safeToString(ReflectUtils.invokeNoArg(serviceState, "getNrCaState"));
+        }
+        int badge = resolveSignalMobileTypeBadgeFromTelephonyState(
+                networkType,
+                Integer.MIN_VALUE,
+                nrState,
+                nrCaState);
+        if (badge != SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE
+                || networkType != Integer.MIN_VALUE
+                || nrState != Integer.MIN_VALUE
+                || !TextUtils.isEmpty(nrCaState)) {
+            return badge;
+        }
+        return Integer.MIN_VALUE;
+    }
+
+    private static int resolveDefaultDataSubscriptionId() {
+        try {
+            return SubscriptionManager.getDefaultDataSubscriptionId();
+        } catch (Throwable ignored) {
+            return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        }
+    }
+
+    private static MobileTypeSubState resolveSingleObservedMobileTypeSubState() {
+        return rememberMobileTypeSubState(
+                resolveSingleActiveSubscriptionId(ModuleConfig.getSystemUiContext()));
+    }
+
+    private static int resolveSingleActiveSubscriptionId(Context context) {
+        if (context == null) {
+            return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        }
+        try {
+            SubscriptionManager manager = context.getSystemService(SubscriptionManager.class);
+            if (manager == null) {
+                return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+            }
+            List<SubscriptionInfo> subscriptions = manager.getActiveSubscriptionInfoList();
+            if (subscriptions == null || subscriptions.size() != 1) {
+                return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+            }
+            SubscriptionInfo subscription = subscriptions.get(0);
+            return subscription == null
+                    ? SubscriptionManager.INVALID_SUBSCRIPTION_ID
+                    : subscription.getSubscriptionId();
+        } catch (Throwable ignored) {
+            return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        }
+    }
+
+    private static boolean isUsingWifiOnlyInternet(Context context) {
+        if (context == null) {
+            return false;
+        }
+        try {
+            ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
+            if (manager == null) {
+                return false;
+            }
+            Network activeNetwork = manager.getActiveNetwork();
+            if (activeNetwork == null) {
+                return false;
+            }
+            NetworkCapabilities capabilities = manager.getNetworkCapabilities(activeNetwork);
+            if (capabilities == null) {
+                return false;
+            }
+            return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                    && !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static TelephonyManager getTelephonyManagerForSub(Context context, int subId) {
+        if (context == null) {
+            return null;
+        }
+        TelephonyManager baseManager = context.getSystemService(TelephonyManager.class);
+        if (baseManager == null) {
+            return null;
+        }
+        if (!SubscriptionManager.isValidSubscriptionId(subId)) {
+            return baseManager;
+        }
+        try {
+            TelephonyManager perSubManager = baseManager.createForSubscriptionId(subId);
+            return perSubManager != null ? perSubManager : baseManager;
+        } catch (Throwable ignored) {
+            return baseManager;
+        }
     }
 
     private static int resolveTintListColor(ColorStateList tintList, int[] state, int fallbackColor) {
@@ -4195,6 +4429,39 @@ public class FlymeStatusBarSizer extends XposedModule {
         return state;
     }
 
+    private static MobileTypeSubState rememberMobileTypeSubState(Integer subId) {
+        if (subId == null || !SubscriptionManager.isValidSubscriptionId(subId)) {
+            return null;
+        }
+        synchronized (MOBILE_TYPE_SUB_STATES) {
+            MobileTypeSubState state = MOBILE_TYPE_SUB_STATES.get(subId);
+            if (state == null) {
+                state = new MobileTypeSubState();
+                MOBILE_TYPE_SUB_STATES.put(subId, state);
+            }
+            return state;
+        }
+    }
+
+    private static MobileTypeSubState snapshotMobileTypeSubState(int subId) {
+        if (!SubscriptionManager.isValidSubscriptionId(subId)) {
+            return null;
+        }
+        synchronized (MOBILE_TYPE_SUB_STATES) {
+            MobileTypeSubState state = MOBILE_TYPE_SUB_STATES.get(subId);
+            if (state == null) {
+                return null;
+            }
+            MobileTypeSubState snapshot = new MobileTypeSubState();
+            snapshot.networkType = state.networkType;
+            snapshot.overrideNetworkType = state.overrideNetworkType;
+            snapshot.nrState = state.nrState;
+            snapshot.nrCaState = state.nrCaState;
+            snapshot.flymeIconGroup = state.flymeIconGroup;
+            return snapshot;
+        }
+    }
+
     private static void recordMobileTypeResourceAssignment(ImageView view, int resId) {
         LAST_MOBILE_TYPE_LAST_EVENT = "ImageView.setImageResource";
         LAST_MOBILE_TYPE_RESOURCE_ID = resId;
@@ -4733,11 +5000,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         int intrinsicWidth = SignalPreviewPainter.resolveIntrinsicWidth(intrinsicHeight, mobileTypeBadge);
         Drawable current = view.getDrawable();
         if (current instanceof SignalIconDrawable
-                && ((SignalIconDrawable) current).matchesGeometry(mergedDual, intrinsicWidth, intrinsicHeight)) {
+                && ((SignalIconDrawable) current).matchesGeometry(
+                mergedDual, intrinsicWidth, intrinsicHeight, mobileTypeBadge)) {
             view.invalidate();
             return;
         }
-        SignalIconDrawable drawable = new SignalIconDrawable(view, mergedDual, intrinsicWidth, intrinsicHeight);
+        SignalIconDrawable drawable = new SignalIconDrawable(
+                view, mergedDual, intrinsicWidth, intrinsicHeight, mobileTypeBadge);
         drawable.setAlpha(view.getImageAlpha());
         drawable.setState(view.getDrawableState());
         drawable.setTintList(view.getImageTintList());
@@ -6082,6 +6351,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
             MAIN_HANDLER = new Handler(Looper.getMainLooper());
             registerConfigurationCallbacks(context);
+            registerDefaultNetworkCallback(context);
             CONFIG_REFRESH_REGISTERED = true;
             scheduleInitialRuntimeRefreshes();
         }
@@ -6114,6 +6384,27 @@ public class FlymeStatusBarSizer extends XposedModule {
         };
         try {
             appContext.registerComponentCallbacks(callbacks);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void registerDefaultNetworkCallback(Context context) {
+        if (context == null || DEFAULT_NETWORK_CALLBACK_REGISTERED) {
+            return;
+        }
+        Context appContext = context.getApplicationContext() != null
+                ? context.getApplicationContext() : context;
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        try {
+            ConnectivityManager manager = appContext.getSystemService(ConnectivityManager.class);
+            if (manager == null) {
+                return;
+            }
+            manager.registerDefaultNetworkCallback(DEFAULT_NETWORK_CALLBACK, handler);
+            DEFAULT_NETWORK_CALLBACK_REGISTERED = true;
         } catch (Throwable ignored) {
         }
     }
@@ -6277,6 +6568,29 @@ public class FlymeStatusBarSizer extends XposedModule {
                 drawable.invalidateSelf();
                 view.invalidate();
             }
+        }
+    }
+
+    private static void scheduleTrackedSignalIconRefresh() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            refreshTrackedSignalIconViewsNow();
+            return;
+        }
+        handler.removeCallbacks(SIGNAL_ICON_REFRESH_RUNNABLE);
+        handler.post(SIGNAL_ICON_REFRESH_RUNNABLE);
+    }
+
+    private static void refreshTrackedSignalIconViewsNow() {
+        ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
+        for (View view : views) {
+            if (!(view instanceof ImageView)) {
+                continue;
+            }
+            if (!"mobile_signal".equals(getSystemUiIdName(view))) {
+                continue;
+            }
+            applySignalIconOverride((ImageView) view);
         }
     }
 
@@ -6603,6 +6917,14 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final class TelephonyDisplayInfoState {
         int networkType = Integer.MIN_VALUE;
         int overrideNetworkType = Integer.MIN_VALUE;
+    }
+
+    private static final class MobileTypeSubState {
+        volatile int networkType = Integer.MIN_VALUE;
+        volatile int overrideNetworkType = Integer.MIN_VALUE;
+        volatile int nrState = Integer.MIN_VALUE;
+        volatile String nrCaState = "";
+        volatile String flymeIconGroup = "";
     }
 
 }
