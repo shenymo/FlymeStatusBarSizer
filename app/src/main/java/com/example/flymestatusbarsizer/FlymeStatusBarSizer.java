@@ -599,6 +599,12 @@ public class FlymeStatusBarSizer extends XposedModule {
                 "com.android.systemui.statusbar.pipeline.mobile.data.repository.prod.MobileConnectionRepositoryImpl$callbackEvents$1$1$callback$1");
         hookTelephonyDisplayInfoCallback(loader,
                 "com.android.systemui.statusbar.pipeline.mobile.data.repository.prod.MobileConnectionRepositoryKairosImpl$callbackEvents$1$2$callback$1");
+        hookMobileTypeStateSyncCallback(loader,
+                "com.android.settingslib.mobile.MobileStatusTracker$MobileTelephonyCallback");
+        hookMobileTypeStateSyncCallback(loader,
+                "com.android.systemui.statusbar.pipeline.mobile.data.repository.prod.MobileConnectionRepositoryImpl$callbackEvents$1$1$callback$1");
+        hookMobileTypeStateSyncCallback(loader,
+                "com.android.systemui.statusbar.pipeline.mobile.data.repository.prod.MobileConnectionRepositoryKairosImpl$callbackEvents$1$2$callback$1");
         hookActiveDataSubscriptionIdCallback(loader,
                 "com.android.settingslib.mobile.MobileStatusTracker$MobileTelephonyCallback");
     }
@@ -648,6 +654,38 @@ public class FlymeStatusBarSizer extends XposedModule {
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG,
                     "Failed to hook " + className + ".onActiveDataSubscriptionIdChanged", t);
+        }
+    }
+
+    private void hookMobileTypeStateSyncCallback(ClassLoader loader, String className) {
+        hookMobileTypeStateSyncMethod(loader, className, "onServiceStateChanged", ServiceState.class);
+        hookMobileTypeStateSyncMethod(loader, className, "onDataConnectionStateChanged",
+                int.class, int.class);
+    }
+
+    private void hookMobileTypeStateSyncMethod(ClassLoader loader,
+                                               String className,
+                                               String methodName,
+                                               Class<?>... parameterTypes) {
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            Method method = clazz.getDeclaredMethod(methodName, parameterTypes);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                int subId = resolveTelephonyCallbackSubId(chain.getThisObject());
+                if (!SubscriptionManager.isValidSubscriptionId(subId)) {
+                    return result;
+                }
+                syncMobileTypeSubStateFromLiveTelephony(ModuleConfig.getSystemUiContext(), subId);
+                LAST_MOBILE_TYPE_LAST_EVENT = className + "." + methodName;
+                reportMobileTypeDebug(className + "." + methodName);
+                scheduleTrackedSignalIconRefreshForMobileTypeSubId(subId);
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook " + className + "." + methodName, t);
         }
     }
 
@@ -739,7 +777,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                 if (isMobileTypeSpoofEnabled(config)) {
                     result = getSpoofedFlymeFiveGIcon(config, loader);
                 }
-                LAST_MOBILE_TYPE_FLYME_ICON_GROUP = describeMobileIconGroup(result);
+                LAST_MOBILE_TYPE_FLYME_ICON_GROUP = normalizeMobileIconGroupLabel(
+                        describeMobileIconGroup(result));
                 Object serviceStateArg = chain.getArg(1);
                 if (serviceStateArg instanceof ServiceState) {
                     Integer subId = SERVICE_STATE_SUB_IDS.get(serviceStateArg);
@@ -2601,7 +2640,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         if (serviceState != null) {
             state.nrState = ReflectUtils.invokeNoArgInt(serviceState, "getNrState", Integer.MIN_VALUE);
-            state.nrCaState = safeToString(ReflectUtils.invokeNoArg(serviceState, "getNrCaState"));
+            state.nrCaState = normalizeMobileIconGroupLabel(
+                    safeToString(ReflectUtils.invokeNoArg(serviceState, "getNrCaState")));
         }
         ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
         if (isMobileTypeSpoofEnabled(config)) {
@@ -2646,24 +2686,29 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         MobileTypeSubState liveState = queryLiveMobileTypeSubState(context, subId);
-        if (!hasMeaningfulMobileTypeSubState(liveState)) {
-            return;
-        }
         MobileTypeSubState cachedState = rememberMobileTypeSubState(subId);
         if (cachedState == null) {
             return;
         }
-        if (liveState.networkType != Integer.MIN_VALUE) {
-            cachedState.networkType = liveState.networkType;
-        }
-        if (liveState.overrideNetworkType != Integer.MIN_VALUE) {
-            cachedState.overrideNetworkType = liveState.overrideNetworkType;
-        }
-        if (liveState.nrState != Integer.MIN_VALUE) {
-            cachedState.nrState = liveState.nrState;
-        }
-        if (!TextUtils.isEmpty(liveState.nrCaState)) {
-            cachedState.nrCaState = liveState.nrCaState;
+        cachedState.networkType = liveState == null
+                ? Integer.MIN_VALUE
+                : liveState.networkType;
+        cachedState.overrideNetworkType = liveState == null
+                ? Integer.MIN_VALUE
+                : liveState.overrideNetworkType;
+        cachedState.nrState = liveState == null
+                ? Integer.MIN_VALUE
+                : liveState.nrState;
+        cachedState.nrCaState = liveState == null
+                ? ""
+                : nonNullText(liveState.nrCaState);
+        if (liveState == null
+                || resolveSignalMobileTypeBadgeFromTelephonyState(
+                cachedState.networkType,
+                cachedState.overrideNetworkType,
+                cachedState.nrState,
+                cachedState.nrCaState) == SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE) {
+            cachedState.flymeIconGroup = "";
         }
     }
 
@@ -4989,6 +5034,20 @@ public class FlymeStatusBarSizer extends XposedModule {
         return safeToString(iconGroup);
     }
 
+    private static String normalizeMobileIconGroupLabel(String value) {
+        if (TextUtils.isEmpty(value)) {
+            return "";
+        }
+        String normalized = value.trim();
+        if (TextUtils.isEmpty(normalized)
+                || "null".equalsIgnoreCase(normalized)
+                || "unknown".equalsIgnoreCase(normalized)
+                || "-".equals(normalized)) {
+            return "";
+        }
+        return normalized;
+    }
+
     private static String resolveResourceName(Context context, int resId) {
         if (resId == 0) {
             return "0";
@@ -5303,6 +5362,10 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static String nonEmpty(String value) {
         return TextUtils.isEmpty(value) ? "-" : value;
+    }
+
+    private static String nonNullText(String value) {
+        return value == null ? "" : value;
     }
 
     private static String safeToString(Object value) {
