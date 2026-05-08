@@ -22,6 +22,8 @@ import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
 import android.view.DragEvent;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.CompoundButton;
@@ -98,8 +100,7 @@ public class MainActivity extends Activity {
     private final ArrayList<String> imeToolbarDraftOrder = new ArrayList<>();
     private final ArrayList<String> clockExpressionDraftTokens = new ArrayList<>();
     private final HashMap<String, TextView> clockExpressionButtons = new HashMap<>();
-    private int notificationAppIconSizeDraft;
-    private int notificationAppIconPaddingDraft;
+    private final HashMap<String, Integer> pendingIntSliderValues = new HashMap<>();
     private LinearLayout imeToolbarOrderContainer;
     private LinearLayout clockExpressionOrderContainer;
     private TextView clockExpressionPreviewView;
@@ -108,7 +109,6 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         prefs = SettingsStore.prefs(this);
         SettingsStore.prepareRemoteSync(this);
-        loadNotificationAppIconDraftValues();
         initPalette();
         configureSystemBars();
         int topInset = getStatusBarInset();
@@ -227,9 +227,9 @@ public class MainActivity extends Activity {
 
         mainTabs = new TextView[]{homeTab, miscTab, aboutTab};
         bindMainTabs(0);
-        homeTab.setOnClickListener(v -> bindMainTabs(0));
-        miscTab.setOnClickListener(v -> bindMainTabs(1));
-        aboutTab.setOnClickListener(v -> bindMainTabs(2));
+        setTapClickListener(homeTab, v -> bindMainTabs(0));
+        setTapClickListener(miscTab, v -> bindMainTabs(1));
+        setTapClickListener(aboutTab, v -> bindMainTabs(2));
         return shell;
     }
 
@@ -293,19 +293,17 @@ public class MainActivity extends Activity {
         card.addView(title, matchWrap());
 
         addDivider(card);
-        addDraftSliderRow(card, "通知图标大小",
+        addApplySliderRow(card, "通知图标大小",
                 "改的是状态栏里这个通知图标 View 占用的宽度，状态栏高度保持系统原来的值。",
-                notificationAppIconSizeDraft,
+                SettingsStore.KEY_NOTIFICATION_APP_ICON_SIZE_DP,
+                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP,
                 12, 28, "dp");
         addDivider(card);
-        addDraftSliderRow(card, "图标容器内边距",
+        addApplySliderRow(card, "图标容器内边距",
                 "改这个图标 View 的 padding。数值越大，图标会更靠中间。",
-                notificationAppIconPaddingDraft,
+                SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP,
+                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP,
                 0, 8, "dp");
-        addDivider(card);
-        addActionButtonRow(card, "应用当前尺寸",
-                "拖动滑杆时只改当前页面里的草稿值。点应用后才会写入设置，并尝试让现有通知图标刷新一次。",
-                "应用", this::applyNotificationAppIconDraftValues);
         return card;
     }
 
@@ -380,7 +378,7 @@ public class MainActivity extends Activity {
         githubLink.setSingleLine(false);
         githubLink.setEllipsize(TextUtils.TruncateAt.END);
         githubLink.setPadding(0, dp(6), 0, 0);
-        githubLink.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW,
+        setTapClickListener(githubLink, v -> startActivity(new Intent(Intent.ACTION_VIEW,
                 Uri.parse("https://github.com/shenymo/FlymeStatusBarSizer"))));
         card.addView(githubLink, matchWrap());
 
@@ -473,7 +471,7 @@ public class MainActivity extends Activity {
         navCard.addView(navHint, matchWrap());
 
         TextView backButton = filledButton("返回关于", colorPrimary, Color.WHITE);
-        backButton.setOnClickListener(v -> bindMainTabs(2));
+        setTapClickListener(backButton, v -> bindMainTabs(2));
         navCard.addView(backButton, matchWrapWithTop(14));
         page.addView(navCard, matchWrapWithTop(10));
 
@@ -570,7 +568,7 @@ public class MainActivity extends Activity {
         button.setPadding(dp(18), dp(12), dp(18), dp(12));
         button.setBackground(roundRect(colorPrimary, 999));
         button.setElevation(dp(6));
-        button.setOnClickListener(this::showTopMenu);
+        setTapClickListener(button, this::showTopMenu);
         return button;
     }
 
@@ -660,12 +658,12 @@ public class MainActivity extends Activity {
         card.addView(summary, matchWrap());
 
         addDivider(card);
-        addSliderRow(card, "全部状态栏图标大小",
+        addApplySliderRow(card, "全部状态栏图标大小",
                 "默认 100%。统一调右上角系统状态图标，还有代码绘制的电池和信号图标。",
                 SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,
                 SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT, 50, 200, "%");
         addDivider(card);
-        addSliderRow(card, "电池内部数字大小",
+        addApplySliderRow(card, "电池内部数字大小",
                 "只改电池图标内部的电量数字。默认 100%。",
                 SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
                 SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT, 50, 200, "%");
@@ -718,9 +716,9 @@ public class MainActivity extends Activity {
         View[] pages = new View[]{actionPage, immersivePage, heightPage};
         TextView[] pageTabs = new TextView[]{actionTab, immersiveTab, heightTab};
         bindSettingsPageTabs(pages, pageTabs, 0);
-        actionTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 0));
-        immersiveTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 1));
-        heightTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 2));
+        setTapClickListener(actionTab, v -> bindSettingsPageTabs(pages, pageTabs, 0));
+        setTapClickListener(immersiveTab, v -> bindSettingsPageTabs(pages, pageTabs, 1));
+        setTapClickListener(heightTab, v -> bindSettingsPageTabs(pages, pageTabs, 2));
 
         return buildExpandableInfoCard(
                 "MBack",
@@ -767,7 +765,7 @@ public class MainActivity extends Activity {
                 SettingsStore.KEY_MBACK_HIDE_PILL,
                 SettingsStore.DEFAULT_MBACK_HIDE_PILL);
         addDivider(page);
-        addInsetSliderRow(page, "mBack inset 大小",
+        addApplyInsetSliderRow(page, "mBack inset 大小",
                 "这里的 inset 指 mBack 背景抬高。-1 表示保持系统默认，0 表示不额外抬高，其他数值按 dp 处理；同时也会影响应用感知到的底部区域。",
                 SettingsStore.KEY_MBACK_INSET_SIZE,
                 SettingsStore.DEFAULT_MBACK_INSET_SIZE, -1, 80);
@@ -780,7 +778,7 @@ public class MainActivity extends Activity {
 
         addProfileSectionHeader(page, "导航栏高度",
                 "这个页直接压 mBack 导航栏窗口本身的高度，比单纯透明更能减少底部透明可触区域对应用按钮的遮挡。");
-        addInsetSliderRow(page, "mBack 导航栏高度",
+        addApplyInsetSliderRow(page, "mBack 导航栏高度",
                 "控制 mBack 导航栏窗口本身的高度。-1 表示保持系统默认，数值越小，底部透明可触区域越矮。这个项更直接影响应用底部按钮是否容易被挡住。",
                 SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT,
                 SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT, -1, 80);
@@ -967,8 +965,8 @@ public class MainActivity extends Activity {
         View[] pages = new View[]{expressionPage, typographyPage};
         TextView[] pageTabs = new TextView[]{expressionTab, typographyTab};
         bindSettingsPageTabs(pages, pageTabs, 0);
-        expressionTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 0));
-        typographyTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 1));
+        setTapClickListener(expressionTab, v -> bindSettingsPageTabs(pages, pageTabs, 0));
+        setTapClickListener(typographyTab, v -> bindSettingsPageTabs(pages, pageTabs, 1));
 
         return buildExpandableInfoCard(
                 "时间",
@@ -1040,11 +1038,11 @@ public class MainActivity extends Activity {
                 "\u5bf9\u72b6\u6001\u680f\u65f6\u95f4\u4ee5\u53ca\u5176\u53f3\u4fa7\u8ffd\u52a0\u7684\u661f\u671f/\u65e5\u671f\u5e94\u7528\u5b57\u91cd",
                 SettingsStore.KEY_CLOCK_BOLD_ENABLED, SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED);
         addDivider(page);
-        addSliderRow(page, "\u65f6\u95f4/\u65e5\u671f\u7c97\u7ec6",
+        addApplySliderRow(page, "\u65f6\u95f4/\u65e5\u671f\u7c97\u7ec6",
                 "\u53ea\u5bf9\u72b6\u6001\u680f\u65f6\u95f4\u6587\u5b57\u751f\u6548\uff0c\u8303\u56f4 100-900",
                 SettingsStore.KEY_CLOCK_FONT_WEIGHT, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT, 100, 900, "");
         addDivider(page);
-        addSliderRow(page, "时间和锁屏运营商字体大小",
+        addApplySliderRow(page, "时间和锁屏运营商字体大小",
                 "同时控制左上角时间、锁屏界面运营商，以及网速显示文字大小。默认 100%。",
                 SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
                 SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT, 50, 200, "%");
@@ -1089,7 +1087,7 @@ public class MainActivity extends Activity {
         details.setVisibility(View.GONE);
         details.setPadding(0, dp(16), 0, 0);
 
-        header.setOnClickListener(v -> {
+        setTapClickListener(header, v -> {
             boolean expanded = details.getVisibility() == View.VISIBLE;
             details.setVisibility(expanded ? View.GONE : View.VISIBLE);
             expand.setText(expanded ? "\u5c55\u5f00" : "\u6536\u8d77");
@@ -1139,6 +1137,9 @@ public class MainActivity extends Activity {
         Switch toggle = new Switch(this);
         toggle.setChecked(SettingsStore.readBoolean(prefs, key, defaultValue));
         toggle.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) -> {
+            if (buttonView.isPressed()) {
+                performTapHaptic(buttonView);
+            }
             putBooleanSetting(key, isChecked);
             if (extraListener != null) {
                 extraListener.onCheckedChanged(buttonView, isChecked);
@@ -1212,6 +1213,7 @@ public class MainActivity extends Activity {
                 int value = min + progress;
                 valueView.setText(formatValue(value, suffix));
                 if (fromUser) {
+                    performSliderHaptic(seekBar);
                     putIntSetting(key, value);
                 }
             }
@@ -1225,7 +1227,7 @@ public class MainActivity extends Activity {
                 putIntSetting(key, min + seekBar.getProgress());
             }
         });
-        valueView.setOnClickListener(v -> showIntInputDialog(
+        setTapClickListener(valueView, v -> showIntInputDialog(
                 titleText,
                 min + seekBar.getProgress(),
                 min,
@@ -1243,81 +1245,18 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
-    private void addDraftSliderRow(LinearLayout root, String titleText, String subtitleText,
-            int initialValue, int min, int max, String suffix) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.VERTICAL);
-
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-
-        TextView title = new TextView(this);
-        title.setText(titleText);
-        title.setTextColor(colorText);
-        title.setTextSize(16);
-        header.addView(title, new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-
-        TextView valueView = new TextView(this);
-        valueView.setTextColor(colorPrimary);
-        valueView.setTextSize(14);
-        valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
-        valueView.setBackground(roundRect(colorSurfaceSoft, 999));
-        int clamped = Math.max(min, Math.min(max, initialValue));
-        valueView.setText(formatValue(clamped, suffix));
-        header.addView(valueView, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(13);
-        subtitle.setPadding(0, dp(4), 0, 0);
-
-        SeekBar seekBar = new SeekBar(this);
-        seekBar.setMax(max - min);
-        seekBar.setProgress(clamped - min);
-        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int value = min + progress;
-                valueView.setText(formatValue(value, suffix));
-                if (fromUser) {
-                    updateNotificationAppIconDraftValue(titleText, value);
-                }
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-                updateNotificationAppIconDraftValue(titleText, min + seekBar.getProgress());
-            }
-        });
-        valueView.setOnClickListener(v -> showIntInputDialog(
-                titleText,
-                min + seekBar.getProgress(),
-                min,
-                max,
-                suffix,
-                value -> {
-                    valueView.setText(formatValue(value, suffix));
-                    seekBar.setProgress(value - min);
-                    updateNotificationAppIconDraftValue(titleText, value);
-                }));
-
-        row.addView(header, matchWrap());
-        row.addView(subtitle, matchWrap());
-        row.addView(seekBar, matchWrapWithTop(8));
-        root.addView(row, matchWrap());
+    private void addApplySliderRow(LinearLayout root, String titleText, String subtitleText, String key,
+            int defaultValue, int min, int max, String suffix) {
+        addApplySliderRowInternal(root, titleText, subtitleText, key, defaultValue, min, max, suffix, false);
     }
 
-    private void addInsetSliderRow(LinearLayout root, String titleText, String subtitleText,
+    private void addApplyInsetSliderRow(LinearLayout root, String titleText, String subtitleText,
             String key, int defaultValue, int min, int max) {
+        addApplySliderRowInternal(root, titleText, subtitleText, key, defaultValue, min, max, "", true);
+    }
+
+    private void addApplySliderRowInternal(LinearLayout root, String titleText, String subtitleText, String key,
+            int defaultValue, int min, int max, String suffix, boolean insetValue) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
 
@@ -1337,9 +1276,8 @@ public class MainActivity extends Activity {
         valueView.setTextSize(14);
         valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
         valueView.setBackground(roundRect(colorSurfaceSoft, 999));
-        int current = readIntSetting(key, defaultValue);
-        int clamped = Math.max(min, Math.min(max, current));
-        valueView.setText(formatInsetValue(clamped));
+        int clamped = getPendingIntSliderValue(key, defaultValue, min, max);
+        valueView.setText(formatSliderDisplayValue(clamped, suffix, insetValue));
         header.addView(valueView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -1357,9 +1295,10 @@ public class MainActivity extends Activity {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 int value = min + progress;
-                valueView.setText(formatInsetValue(value));
+                valueView.setText(formatSliderDisplayValue(value, suffix, insetValue));
                 if (fromUser) {
-                    putIntSetting(key, value);
+                    performSliderHaptic(seekBar);
+                    updatePendingIntSliderValue(key, value, min, max);
                 }
             }
 
@@ -1369,24 +1308,36 @@ public class MainActivity extends Activity {
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
-                putIntSetting(key, min + seekBar.getProgress());
+                updatePendingIntSliderValue(key, min + seekBar.getProgress(), min, max);
             }
         });
-        valueView.setOnClickListener(v -> showIntInputDialog(
+        setTapClickListener(valueView, v -> showIntInputDialog(
                 titleText,
                 min + seekBar.getProgress(),
                 min,
                 max,
-                "",
+                insetValue ? "" : suffix,
                 value -> {
-                    valueView.setText(formatInsetValue(value));
+                    updatePendingIntSliderValue(key, value, min, max);
+                    valueView.setText(formatSliderDisplayValue(value, suffix, insetValue));
                     seekBar.setProgress(value - min);
-                    putIntSetting(key, value);
                 }));
+
+        LinearLayout actionRow = new LinearLayout(this);
+        actionRow.setOrientation(LinearLayout.HORIZONTAL);
+        actionRow.setGravity(Gravity.END);
+
+        TextView applyButton = filledButton("应用", colorPrimary, Color.WHITE);
+        setTapClickListener(applyButton,
+                v -> applyPendingIntSliderValue(key, defaultValue, min, max, titleText));
+        actionRow.addView(applyButton, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
 
         row.addView(header, matchWrap());
         row.addView(subtitle, matchWrap());
         row.addView(seekBar, matchWrapWithTop(8));
+        row.addView(actionRow, matchWrapWithTop(10));
         root.addView(row, matchWrap());
     }
 
@@ -1431,7 +1382,7 @@ public class MainActivity extends Activity {
         valueView.setMaxWidth(dp(180));
         valueView.setSingleLine(false);
         updateTextSettingLabel(valueView, readStringSetting(key, defaultValue), emptyLabel);
-        valueView.setOnClickListener(v -> showTextInputDialog(
+        setTapClickListener(valueView, v -> showTextInputDialog(
                 titleText,
                 readStringSetting(key, defaultValue),
                 subtitleText,
@@ -1479,7 +1430,7 @@ public class MainActivity extends Activity {
         valueView.setBackground(roundRect(colorSurfaceSoft, 999));
         int currentValue = readIntSetting(key, defaultValue);
         valueView.setText(resolveChoiceLabel(currentValue, values, labels));
-        valueView.setOnClickListener(v -> showChoiceMenu(v, key, defaultValue, values, labels, valueView));
+        setTapClickListener(valueView, v -> showChoiceMenu(v, key, defaultValue, values, labels, valueView));
 
         row.addView(textColumn, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
@@ -1512,7 +1463,7 @@ public class MainActivity extends Activity {
         textColumn.addView(subtitle, matchWrap());
 
         TextView button = filledButton(buttonText, colorPrimary, Color.WHITE);
-        button.setOnClickListener(v -> action.run());
+        setTapClickListener(button, v -> action.run());
 
         row.addView(textColumn, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
@@ -1558,6 +1509,7 @@ public class MainActivity extends Activity {
         popup.getMenu().add(0, MENU_RESET, 2, "\u6062\u590d\u9ed8\u8ba4");
         popup.getMenu().add(0, MENU_RESTART, 3, "\u91cd\u542f SystemUI");
         popup.setOnMenuItemClickListener(item -> {
+            performTapHaptic(anchor);
             int id = item.getItemId();
             if (id == MENU_IMPORT) {
                 startImportConfig();
@@ -1588,6 +1540,7 @@ public class MainActivity extends Activity {
             popup.getMenu().add(0, values[i], i, labels[i]);
         }
         popup.setOnMenuItemClickListener(item -> {
+            performTapHaptic(anchor);
             int selectedValue = item.getItemId();
             putIntSetting(key, selectedValue);
             valueView.setText(resolveChoiceLabel(selectedValue, values, labels));
@@ -1835,12 +1788,12 @@ public class MainActivity extends Activity {
         int padding = dp(20);
         input.setPadding(padding, padding, padding, padding);
 
-        new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(titleText)
                 .setMessage("\u8f93\u5165\u8303\u56f4 " + min + " ~ " + max + (suffix == null ? "" : suffix))
                 .setView(input)
                 .setNegativeButton("\u53d6\u6d88", null)
-                .setPositiveButton("\u786e\u5b9a", (dialog, which) -> {
+                .setPositiveButton("\u786e\u5b9a", (dialogInterface, which) -> {
                     String text = input.getText() == null ? "" : input.getText().toString().trim();
                     if (text.length() == 0) {
                         showToast("\u8bf7\u8f93\u5165\u6570\u503c");
@@ -1855,6 +1808,7 @@ public class MainActivity extends Activity {
                     }
                 })
                 .show();
+        attachDialogButtonHaptics(dialog);
     }
 
     private void showTextInputDialog(String titleText, String currentValue, String message,
@@ -1876,15 +1830,16 @@ public class MainActivity extends Activity {
         int padding = dp(20);
         input.setPadding(padding, padding, padding, padding);
 
-        new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(titleText)
                 .setMessage(message)
                 .setView(input)
-                .setNeutralButton("清空", (dialog, which) -> consumer.accept(""))
+                .setNeutralButton("清空", (dialogInterface, which) -> consumer.accept(""))
                 .setNegativeButton("\u53d6\u6d88", null)
-                .setPositiveButton("\u786e\u5b9a", (dialog, which) ->
+                .setPositiveButton("\u786e\u5b9a", (dialogInterface, which) ->
                         consumer.accept(input.getText() == null ? "" : input.getText().toString().trim()))
                 .show();
+        attachDialogButtonHaptics(dialog);
     }
 
     private void updateTextSettingLabel(TextView valueView, String value, String emptyLabel) {
@@ -1928,7 +1883,7 @@ public class MainActivity extends Activity {
         button.setPadding(dp(10), dp(12), dp(10), dp(12));
         button.setBackground(outlinedRect(colorSurface, colorStroke, 1, 18));
         button.setTag(token);
-        button.setOnClickListener(v -> {
+        setTapClickListener(button, v -> {
             Object tag = v.getTag();
             if (!(tag instanceof String)) {
                 return;
@@ -2048,7 +2003,7 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        row.setOnClickListener(v -> {
+        setTapClickListener(row, v -> {
             Object tag = v.getTag();
             if (tag instanceof String) {
                 removeClockExpressionToken((String) tag);
@@ -2475,33 +2430,28 @@ public class MainActivity extends Activity {
         showToast("输入法工具栏顺序已应用");
     }
 
-    private void loadNotificationAppIconDraftValues() {
-        notificationAppIconSizeDraft = readIntSetting(
-                SettingsStore.KEY_NOTIFICATION_APP_ICON_SIZE_DP,
-                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP);
-        notificationAppIconPaddingDraft = readIntSetting(
-                SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP,
-                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP);
+    private int getPendingIntSliderValue(String key, int defaultValue, int min, int max) {
+        Integer pending = pendingIntSliderValues.get(key);
+        if (pending != null) {
+            return Math.max(min, Math.min(max, pending));
+        }
+        int clamped = Math.max(min, Math.min(max, readIntSetting(key, defaultValue)));
+        pendingIntSliderValues.put(key, clamped);
+        return clamped;
     }
 
-    private void updateNotificationAppIconDraftValue(String titleText, int value) {
-        if ("通知图标大小".equals(titleText)) {
-            notificationAppIconSizeDraft = value;
-            return;
-        }
-        if ("图标容器内边距".equals(titleText)) {
-            notificationAppIconPaddingDraft = value;
-        }
+    private void updatePendingIntSliderValue(String key, int value, int min, int max) {
+        pendingIntSliderValues.put(key, Math.max(min, Math.min(max, value)));
     }
 
-    private void applyNotificationAppIconDraftValues() {
-        SharedPreferences.Editor editor = prefs.edit();
-        editor.putInt(SettingsStore.KEY_NOTIFICATION_APP_ICON_SIZE_DP, notificationAppIconSizeDraft);
-        editor.putInt(SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP, notificationAppIconPaddingDraft);
-        editor.apply();
-        loadNotificationAppIconDraftValues();
-        SettingsStore.notifyChanged(this);
-        showToast("通知应用图标尺寸已应用");
+    private void applyPendingIntSliderValue(String key, int defaultValue, int min, int max, String titleText) {
+        int value = getPendingIntSliderValue(key, defaultValue, min, max);
+        putIntSetting(key, value);
+        showToast(titleText + "已应用");
+    }
+
+    private String formatSliderDisplayValue(int value, String suffix, boolean insetValue) {
+        return insetValue ? formatInsetValue(value) : formatValue(value, suffix);
     }
 
     private void syncImeToolbarOrderEditorRows() {
@@ -2524,6 +2474,53 @@ public class MainActivity extends Activity {
                 ((TextView) titleView).setText(getImeToolbarActionLabel(action));
             }
         }
+    }
+
+    private void setTapClickListener(View view, View.OnClickListener listener) {
+        if (view == null || listener == null) {
+            return;
+        }
+        view.setHapticFeedbackEnabled(true);
+        view.setOnClickListener(v -> {
+            performTapHaptic(v);
+            listener.onClick(v);
+        });
+    }
+
+    private void performTapHaptic(View view) {
+        if (view == null) {
+            return;
+        }
+        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+    }
+
+    private void performSliderHaptic(View view) {
+        if (view == null) {
+            return;
+        }
+        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+    }
+
+    private void attachDialogButtonHaptics(AlertDialog dialog) {
+        if (dialog == null) {
+            return;
+        }
+        attachPressHaptic(dialog.getButton(AlertDialog.BUTTON_POSITIVE));
+        attachPressHaptic(dialog.getButton(AlertDialog.BUTTON_NEGATIVE));
+        attachPressHaptic(dialog.getButton(AlertDialog.BUTTON_NEUTRAL));
+    }
+
+    private void attachPressHaptic(View view) {
+        if (view == null) {
+            return;
+        }
+        view.setHapticFeedbackEnabled(true);
+        view.setOnTouchListener((v, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                performTapHaptic(v);
+            }
+            return false;
+        });
     }
 
     private void showToast(String message) {

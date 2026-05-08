@@ -179,7 +179,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static volatile int LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE = Integer.MIN_VALUE;
     private static volatile int LAST_MOBILE_TYPE_RAW_NR_STATE = Integer.MIN_VALUE;
     private static volatile int LAST_MOBILE_TYPE_NR_STATE = Integer.MIN_VALUE;
-    private static volatile String LAST_MOBILE_TYPE_LAST_EVENT = "";
     private static volatile String LAST_MOBILE_TYPE_DEBUG_MODE = "";
     private static volatile String LAST_MOBILE_TYPE_SPOOF_PROFILE = "";
     private static volatile String LAST_MOBILE_TYPE_RAW_FLYME_ICON_GROUP = "";
@@ -541,7 +540,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                 Object target = chain.getThisObject();
                 ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
                 if (!isSignalCodeDrawEnabled(config)
-                        && !isMobileTypeObservationEnabled(config)
                         && !isTelephonyDebugEnabled(config)) {
                     return result;
                 }
@@ -582,8 +580,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                 if (isInternalMobileTypeQueryActive()) {
                     return result;
                 }
-                LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyManager.getServiceState";
-                reportMobileTypeDebug("TelephonyManager.getServiceState");
                 return result;
             });
         } catch (Throwable t) {
@@ -599,7 +595,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                 Object result = chain.proceed();
                 ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
                 if (!isSignalCodeDrawEnabled(config)
-                        && !isMobileTypeObservationEnabled(config)
                         && !isTelephonyDebugEnabled(config)) {
                     return result;
                 }
@@ -695,8 +690,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     int spoofedNetworkType = resolveTelephonyDebugNetworkType(config, state.subId);
                     if (spoofedNetworkType != Integer.MIN_VALUE) {
                         result = spoofedNetworkType;
-                    } else if (isMobileTypeSpoofEnabled(config)) {
-                        result = getSpoofedNetworkType(config);
                     }
                     LAST_MOBILE_TYPE_RAW_NETWORK_TYPE = rawNetworkType;
                     state.networkType = (Integer) result;
@@ -719,8 +712,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     if (!changed) {
                         return result;
                     }
-                    LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyDisplayInfo.getNetworkType";
-                    reportMobileTypeDebug("TelephonyDisplayInfo.getNetworkType");
                     scheduleTrackedSignalIconRefreshForMobileTypeSubId(state.subId);
                 }
                 return result;
@@ -749,8 +740,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                             state.subId);
                     if (spoofedOverrideNetworkType != Integer.MIN_VALUE) {
                         result = spoofedOverrideNetworkType;
-                    } else if (isMobileTypeSpoofEnabled(config)) {
-                        result = getSpoofedOverrideNetworkType(config);
                     }
                     LAST_MOBILE_TYPE_RAW_OVERRIDE_NETWORK_TYPE = rawOverrideNetworkType;
                     state.overrideNetworkType = (Integer) result;
@@ -773,8 +762,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     if (!changed) {
                         return result;
                     }
-                    LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyDisplayInfo.getOverrideNetworkType";
-                    reportMobileTypeDebug("TelephonyDisplayInfo.getOverrideNetworkType");
                     scheduleTrackedSignalIconRefreshForMobileTypeSubId(state.subId);
                 }
                 return result;
@@ -843,8 +830,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                         : SubscriptionManager.INVALID_SUBSCRIPTION_ID;
                 subId = resolveEffectiveTelephonyDebugSubId(config, subId);
                 syncMobileTypeSubStateFromLiveTelephony(ModuleConfig.getSystemUiContext(), subId);
-                LAST_MOBILE_TYPE_LAST_EVENT = className + ".onActiveDataSubscriptionIdChanged";
-                reportMobileTypeDebug(className + ".onActiveDataSubscriptionIdChanged");
                 scheduleTrackedPrimarySignalIconRefresh();
                 return result;
             });
@@ -878,8 +863,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     return result;
                 }
                 syncMobileTypeSubStateFromLiveTelephony(ModuleConfig.getSystemUiContext(), subId);
-                LAST_MOBILE_TYPE_LAST_EVENT = className + "." + methodName;
-                reportMobileTypeDebug(className + "." + methodName);
                 scheduleTrackedSignalIconRefreshForMobileTypeSubId(subId);
                 return result;
             });
@@ -912,8 +895,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     int spoofedNrState = resolveTelephonyDebugNrState(config, subId);
                     if (spoofedNrState != Integer.MIN_VALUE) {
                         result = spoofedNrState;
-                    } else if (isMobileTypeSpoofEnabled(config)) {
-                        result = getSpoofedNrState(config);
                     }
                     MobileTypeSubState subState = SubscriptionManager.isValidSubscriptionId(subId)
                             ? rememberMobileTypeSubState(subId)
@@ -938,8 +919,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     if (!changed) {
                         return result;
                     }
-                    LAST_MOBILE_TYPE_LAST_EVENT = "ServiceState.getNrState";
-                    reportMobileTypeDebug("ServiceState.getNrState");
                     scheduleTrackedSignalIconRefreshForMobileTypeSubId(subId);
                 }
                 return result;
@@ -969,8 +948,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     Object spoofedNrCaState = resolveTelephonyDebugNrCaState(config, subId);
                     if (spoofedNrCaState != null) {
                         result = spoofedNrCaState;
-                    } else if (isMobileTypeSpoofEnabled(config)) {
-                        result = getSpoofedNrCaState(config);
                     }
                     MobileTypeSubState subState = SubscriptionManager.isValidSubscriptionId(subId)
                             ? rememberMobileTypeSubState(subId)
@@ -997,8 +974,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     if (!changed) {
                         return result;
                     }
-                    LAST_MOBILE_TYPE_LAST_EVENT = "ServiceState.getNrCaState";
-                    reportMobileTypeDebug("ServiceState.getNrCaState");
                     scheduleTrackedSignalIconRefreshForMobileTypeSubId(subId);
                 }
                 return result;
@@ -1039,8 +1014,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                         || debugProfile == SettingsStore.TELEPHONY_DEBUG_NETWORK_PROFILE_2G
                         || debugProfile == SettingsStore.TELEPHONY_DEBUG_NETWORK_PROFILE_OFFLINE) {
                     result = spoofedFlymeIcon;
-                } else if (isMobileTypeSpoofEnabled(config)) {
-                    result = getSpoofedFlymeFiveGIcon(config, loader);
                 }
                 LAST_MOBILE_TYPE_FLYME_ICON_GROUP = normalizeMobileIconGroupLabel(
                         describeMobileIconGroup(result));
@@ -1052,8 +1025,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     scheduleTrackedSignalIconRefreshForMobileTypeSubId(
                             subId);
                 }
-                LAST_MOBILE_TYPE_LAST_EVENT = "FlymeMobileConnectionFeatureKt.getFlymeFiveGIcon";
-                reportMobileTypeDebug("FlymeMobileConnectionFeatureKt.getFlymeFiveGIcon");
                 return result;
             });
         } catch (Throwable t) {
@@ -2918,12 +2889,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             state.nrState = ReflectUtils.invokeNoArgInt(serviceState, "getNrState", Integer.MIN_VALUE);
             state.nrCaState = normalizeMobileIconGroupLabel(
                     safeToString(ReflectUtils.invokeNoArg(serviceState, "getNrCaState")));
-        }
-        if (isMobileTypeSpoofEnabled(config)) {
-            state.networkType = getSpoofedNetworkType(config);
-            state.overrideNetworkType = getSpoofedOverrideNetworkType(config);
-            state.nrState = getSpoofedNrState(config);
-            state.nrCaState = String.valueOf(getSpoofedNrCaState(config));
         }
         return hasMeaningfulMobileTypeSubState(state) ? state : null;
     }
@@ -4950,7 +4915,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         ModuleConfig config = owner == null ? ModuleConfig.load(ModuleConfig.getSystemUiContext())
                 : ModuleConfig.load(owner.getContext());
         if (!isSignalCodeDrawEnabled(config)
-                && !isMobileTypeObservationEnabled(config)
                 && !isTelephonyDebugEnabled(config)) {
             return;
         }
@@ -5130,7 +5094,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void recordMobileTypeResourceAssignment(ImageView view, int resId) {
-        LAST_MOBILE_TYPE_LAST_EVENT = "ImageView.setImageResource";
         LAST_MOBILE_TYPE_RESOURCE_ID = resId;
         LAST_MOBILE_TYPE_RESOURCE_NAME = resolveResourceName(view == null ? null : view.getContext(), resId);
         LAST_MOBILE_TYPE_ICON_TYPE = "";
@@ -5141,11 +5104,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                 ? ""
                 : view.getDrawable().getClass().getName();
         LAST_MOBILE_TYPE_VIEW_VISIBILITY = view == null ? View.VISIBLE : view.getVisibility();
-        reportMobileTypeDebug("ImageView.setImageResource");
     }
 
     private static void recordMobileTypeIconAssignment(ImageView view, Icon icon) {
-        LAST_MOBILE_TYPE_LAST_EVENT = "ImageView.setImageIcon";
         LAST_MOBILE_TYPE_RESOURCE_ID = 0;
         LAST_MOBILE_TYPE_RESOURCE_NAME = "";
         LAST_MOBILE_TYPE_ICON_TYPE = describeIconType(icon);
@@ -5156,53 +5117,11 @@ public class FlymeStatusBarSizer extends XposedModule {
                 ? ""
                 : view.getDrawable().getClass().getName();
         LAST_MOBILE_TYPE_VIEW_VISIBILITY = view == null ? View.VISIBLE : view.getVisibility();
-        reportMobileTypeDebug("ImageView.setImageIcon");
     }
 
     private static void recordMobileTypeDrawableAssignment(ImageView view, Drawable drawable) {
-        LAST_MOBILE_TYPE_LAST_EVENT = "ImageView.setImageDrawable";
         LAST_MOBILE_TYPE_DRAWABLE_CLASS = drawable == null ? "null" : drawable.getClass().getName();
         LAST_MOBILE_TYPE_VIEW_VISIBILITY = view == null ? View.VISIBLE : view.getVisibility();
-        reportMobileTypeDebug("ImageView.setImageDrawable");
-    }
-
-    private static void reportMobileTypeDebug(String reason) {
-    }
-
-    private static boolean isMobileTypeObservationEnabled(ModuleConfig config) {
-        return false;
-    }
-
-    private static boolean isMobileTypeSpoofEnabled(ModuleConfig config) {
-        return false;
-    }
-
-    private static int getSpoofedNetworkType(ModuleConfig config) {
-        return LAST_MOBILE_TYPE_NETWORK_TYPE;
-    }
-
-    private static int getSpoofedOverrideNetworkType(ModuleConfig config) {
-        return LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE;
-    }
-
-    private static int getSpoofedNrState(ModuleConfig config) {
-        return LAST_MOBILE_TYPE_NR_STATE;
-    }
-
-    private static boolean getSpoofedNrCaState(ModuleConfig config) {
-        return "true".equalsIgnoreCase(LAST_MOBILE_TYPE_NR_CA_STATE);
-    }
-
-    private static Object getSpoofedFlymeFiveGIcon(ModuleConfig config, ClassLoader loader) {
-        return null;
-    }
-
-    private static String describeMobileTypeDebugMode(int mode) {
-        return "";
-    }
-
-    private static String describeMobileTypeSpoofProfile(int profile) {
-        return "";
     }
 
     private static String describeMobileIconGroup(Object iconGroup) {
@@ -5821,10 +5740,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         view.setVisibility(targetVisibility);
-        String event = visible ? "restoreMobileTypeView" : "hideMobileTypeView";
-        LAST_MOBILE_TYPE_LAST_EVENT = event;
         LAST_MOBILE_TYPE_VIEW_VISIBILITY = view.getVisibility();
-        reportMobileTypeDebug(event);
         ViewParent parent = view.getParent();
         if (parent instanceof View) {
             ((View) parent).requestLayout();
@@ -5854,7 +5770,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         View root = anchorView.getRootView();
         ModuleConfig config = ModuleConfig.load(anchorView.getContext());
-        boolean useRootOnlyRefresh = isTelephonyDebugEnabled(config) || isMobileTypeSpoofEnabled(config);
+        boolean useRootOnlyRefresh = isTelephonyDebugEnabled(config);
         View anchorGroup = null;
         ArrayList<View> linkedGroups = null;
         int anchorSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
