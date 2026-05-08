@@ -7155,10 +7155,26 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void applyStatusBarContainerScale(View view, ModuleConfig config) {
         float scale = resolveStatusBarIconScale(config);
+        if (isMobileSignalRelatedContainerView(view)) {
+            return;
+        }
         applyScaleToLayoutParams(view, scale);
         if (view instanceof ViewGroup) {
             applyScaleToChildren(view, scale);
         }
+    }
+
+    private static boolean isMobileSignalRelatedContainerView(View view) {
+        if (view == null) {
+            return false;
+        }
+        String idName = getSystemUiIdName(view);
+        return "mobile_group".equals(idName)
+                || "mobile_type_container".equals(idName)
+                || "inout_container".equals(idName)
+                || "mobile_roaming_space".equals(idName)
+                || "mobile_combo".equals(idName)
+                || isMobileSignalGroupView(view);
     }
 
     private static void applyPrivacyChipScale(View view, ModuleConfig config) {
