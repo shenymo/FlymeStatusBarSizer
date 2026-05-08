@@ -119,6 +119,9 @@ final class ModuleConfig {
             return;
         }
         SharedPreferences.OnSharedPreferenceChangeListener newListener = (sharedPreferences, key) -> {
+            if (SettingsStore.KEY_MOBILE_TYPE_DEBUG_LOG_BUFFER.equals(key)) {
+                return;
+            }
             invalidateCache();
             ModuleConfig refreshed = fromSharedPreferences(sharedPreferences);
             if (refreshed != null) {
@@ -157,6 +160,10 @@ final class ModuleConfig {
 
     static Context getSystemUiContext() {
         return systemUiContext;
+    }
+
+    static SharedPreferences getRemotePrefs() {
+        return remotePrefs;
     }
 
     private static ModuleConfig fromSharedPreferences(SharedPreferences prefs) {
