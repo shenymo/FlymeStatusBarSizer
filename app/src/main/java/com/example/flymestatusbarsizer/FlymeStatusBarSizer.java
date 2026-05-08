@@ -655,6 +655,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                     TelephonyDisplayInfo displayInfo = (TelephonyDisplayInfo) chain.getThisObject();
                     int rawNetworkType = (Integer) result;
                     ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                    int previousDisplayInfoSubId = LAST_MOBILE_TYPE_DISPLAY_INFO_SUB_ID;
+                    int previousLastNetworkType = LAST_MOBILE_TYPE_NETWORK_TYPE;
                     TelephonyDisplayInfoState state = rememberTelephonyDisplayInfoState(displayInfo);
                     int subId = resolveEffectiveTelephonyDebugSubId(config, state.subId);
                     if (SubscriptionManager.isValidSubscriptionId(subId)) {
@@ -669,12 +671,22 @@ public class FlymeStatusBarSizer extends XposedModule {
                     LAST_MOBILE_TYPE_RAW_NETWORK_TYPE = rawNetworkType;
                     state.networkType = (Integer) result;
                     MobileTypeSubState subState = resolveObservedMobileTypeSubState(displayInfo, state);
+                    int previousObservedNetworkType = subState == null
+                            ? Integer.MIN_VALUE
+                            : subState.networkType;
                     if (subState != null) {
                         subState.networkType = state.networkType;
                     }
                     LAST_MOBILE_TYPE_DISPLAY_INFO_SUB_ID = state.subId;
                     LAST_MOBILE_TYPE_NETWORK_TYPE = state.networkType;
                     if (isInternalMobileTypeQueryActive()) {
+                        return result;
+                    }
+                    boolean changed = previousDisplayInfoSubId != state.subId
+                            || previousLastNetworkType != state.networkType
+                            || (subState != null
+                            && previousObservedNetworkType != subState.networkType);
+                    if (!changed) {
                         return result;
                     }
                     LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyDisplayInfo.getNetworkType";
@@ -695,6 +707,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                     TelephonyDisplayInfo displayInfo = (TelephonyDisplayInfo) chain.getThisObject();
                     int rawOverrideNetworkType = (Integer) result;
                     ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                    int previousDisplayInfoSubId = LAST_MOBILE_TYPE_DISPLAY_INFO_SUB_ID;
+                    int previousLastOverrideNetworkType = LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE;
                     TelephonyDisplayInfoState state = rememberTelephonyDisplayInfoState(displayInfo);
                     int subId = resolveEffectiveTelephonyDebugSubId(config, state.subId);
                     if (SubscriptionManager.isValidSubscriptionId(subId)) {
@@ -711,12 +725,22 @@ public class FlymeStatusBarSizer extends XposedModule {
                     LAST_MOBILE_TYPE_RAW_OVERRIDE_NETWORK_TYPE = rawOverrideNetworkType;
                     state.overrideNetworkType = (Integer) result;
                     MobileTypeSubState subState = resolveObservedMobileTypeSubState(displayInfo, state);
+                    int previousObservedOverrideNetworkType = subState == null
+                            ? Integer.MIN_VALUE
+                            : subState.overrideNetworkType;
                     if (subState != null) {
                         subState.overrideNetworkType = state.overrideNetworkType;
                     }
                     LAST_MOBILE_TYPE_DISPLAY_INFO_SUB_ID = state.subId;
                     LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE = state.overrideNetworkType;
                     if (isInternalMobileTypeQueryActive()) {
+                        return result;
+                    }
+                    boolean changed = previousDisplayInfoSubId != state.subId
+                            || previousLastOverrideNetworkType != state.overrideNetworkType
+                            || (subState != null
+                            && previousObservedOverrideNetworkType != subState.overrideNetworkType);
+                    if (!changed) {
                         return result;
                     }
                     LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyDisplayInfo.getOverrideNetworkType";
@@ -845,6 +869,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                     ServiceState serviceState = (ServiceState) chain.getThisObject();
                     int rawNrState = (Integer) result;
                     ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                    int previousServiceStateSubId = LAST_SERVICE_STATE_SUB_ID;
+                    int previousLastNrState = LAST_MOBILE_TYPE_NR_STATE;
                     int subId = resolveEffectiveTelephonyDebugSubId(
                             config,
                             SERVICE_STATE_SUB_IDS.get(serviceState) == null
@@ -859,16 +885,27 @@ public class FlymeStatusBarSizer extends XposedModule {
                     } else if (isMobileTypeSpoofEnabled(config)) {
                         result = getSpoofedNrState(config);
                     }
+                    MobileTypeSubState subState = SubscriptionManager.isValidSubscriptionId(subId)
+                            ? rememberMobileTypeSubState(subId)
+                            : null;
+                    int previousObservedNrState = subState == null
+                            ? Integer.MIN_VALUE
+                            : subState.nrState;
                     LAST_MOBILE_TYPE_RAW_NR_STATE = rawNrState;
                     LAST_MOBILE_TYPE_NR_STATE = (Integer) result;
                     if (SubscriptionManager.isValidSubscriptionId(subId)) {
-                        MobileTypeSubState subState = rememberMobileTypeSubState(subId);
                         if (subState != null) {
                             subState.nrState = (Integer) result;
                         }
                         LAST_SERVICE_STATE_SUB_ID = subId;
                     }
                     if (isInternalMobileTypeQueryActive()) {
+                        return result;
+                    }
+                    boolean changed = previousServiceStateSubId != LAST_SERVICE_STATE_SUB_ID
+                            || previousLastNrState != LAST_MOBILE_TYPE_NR_STATE
+                            || (subState != null && previousObservedNrState != subState.nrState);
+                    if (!changed) {
                         return result;
                     }
                     LAST_MOBILE_TYPE_LAST_EVENT = "ServiceState.getNrState";
@@ -889,6 +926,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                     ServiceState serviceState = (ServiceState) chain.getThisObject();
                     Object rawNrCaState = result;
                     ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                    int previousServiceStateSubId = LAST_SERVICE_STATE_SUB_ID;
+                    String previousLastNrCaState = LAST_MOBILE_TYPE_NR_CA_STATE;
                     int subId = resolveEffectiveTelephonyDebugSubId(
                             config,
                             SERVICE_STATE_SUB_IDS.get(serviceState) == null
@@ -903,16 +942,29 @@ public class FlymeStatusBarSizer extends XposedModule {
                     } else if (isMobileTypeSpoofEnabled(config)) {
                         result = getSpoofedNrCaState(config);
                     }
+                    MobileTypeSubState subState = SubscriptionManager.isValidSubscriptionId(subId)
+                            ? rememberMobileTypeSubState(subId)
+                            : null;
+                    String previousObservedNrCaState = subState == null
+                            ? ""
+                            : nonNullText(subState.nrCaState);
+                    String resolvedNrCaState = safeToString(result);
                     if (SubscriptionManager.isValidSubscriptionId(subId)) {
-                        MobileTypeSubState subState = rememberMobileTypeSubState(subId);
                         if (subState != null) {
-                            subState.nrCaState = safeToString(result);
+                            subState.nrCaState = resolvedNrCaState;
                         }
                         LAST_SERVICE_STATE_SUB_ID = subId;
                     }
                     LAST_MOBILE_TYPE_RAW_NR_CA_STATE = safeToString(rawNrCaState);
-                    LAST_MOBILE_TYPE_NR_CA_STATE = safeToString(result);
+                    LAST_MOBILE_TYPE_NR_CA_STATE = resolvedNrCaState;
                     if (isInternalMobileTypeQueryActive()) {
+                        return result;
+                    }
+                    boolean changed = previousServiceStateSubId != LAST_SERVICE_STATE_SUB_ID
+                            || !TextUtils.equals(previousLastNrCaState, LAST_MOBILE_TYPE_NR_CA_STATE)
+                            || (subState != null
+                            && !TextUtils.equals(previousObservedNrCaState, subState.nrCaState));
+                    if (!changed) {
                         return result;
                     }
                     LAST_MOBILE_TYPE_LAST_EVENT = "ServiceState.getNrCaState";
@@ -6254,9 +6306,16 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         View root = anchorView.getRootView();
-        View anchorGroup = findMobileSignalGroup(anchorView);
-        ArrayList<View> linkedGroups = collectSiblingMobileSignalGroups(anchorGroup);
-        int anchorSubId = resolveSubIdFromSignalViewOwner(anchorView);
+        ModuleConfig config = ModuleConfig.load(anchorView.getContext());
+        boolean useRootOnlyRefresh = isTelephonyDebugEnabled(config) || isMobileTypeSpoofEnabled(config);
+        View anchorGroup = null;
+        ArrayList<View> linkedGroups = null;
+        int anchorSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        if (!useRootOnlyRefresh) {
+            anchorGroup = findMobileSignalGroup(anchorView);
+            linkedGroups = collectSiblingMobileSignalGroups(anchorGroup);
+            anchorSubId = resolveSubIdFromSignalViewOwner(anchorView);
+        }
         ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
         for (View trackedView : views) {
             if (!(trackedView instanceof ImageView)) {
@@ -6268,12 +6327,16 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (root != null && trackedView.getRootView() != root) {
                 continue;
             }
-            View trackedGroup = findMobileSignalGroup(trackedView);
-            boolean sameLinkedGroup = !linkedGroups.isEmpty() && linkedGroups.contains(trackedGroup);
-            boolean sameSubId = SubscriptionManager.isValidSubscriptionId(anchorSubId)
-                    && resolveSignalViewSubId(trackedView) == anchorSubId;
-            if (!sameLinkedGroup && !sameSubId) {
-                continue;
+            if (!useRootOnlyRefresh) {
+                View trackedGroup = findMobileSignalGroup(trackedView);
+                boolean sameLinkedGroup = linkedGroups != null
+                        && !linkedGroups.isEmpty()
+                        && linkedGroups.contains(trackedGroup);
+                boolean sameSubId = SubscriptionManager.isValidSubscriptionId(anchorSubId)
+                        && resolveSignalViewSubId(trackedView) == anchorSubId;
+                if (!sameLinkedGroup && !sameSubId) {
+                    continue;
+                }
             }
             applySignalIconOverride((ImageView) trackedView);
         }
@@ -7806,6 +7869,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void refreshTrackedSignalIconViewsForSubId(int subId) {
+        ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+        boolean useFastSubIdMatch = isTelephonyDebugEnabled(config);
         ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
         for (View view : views) {
             if (!(view instanceof ImageView)) {
@@ -7814,7 +7879,12 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (!"mobile_signal".equals(getSystemUiIdName(view))) {
                 continue;
             }
-            if (!shouldRefreshSignalViewForSubId((ImageView) view, subId)) {
+            if (useFastSubIdMatch) {
+                int viewSubId = resolveSignalViewSubId(view);
+                if (!SubscriptionManager.isValidSubscriptionId(viewSubId) || viewSubId != subId) {
+                    continue;
+                }
+            } else if (!shouldRefreshSignalViewForSubId((ImageView) view, subId)) {
                 continue;
             }
             applySignalIconOverride((ImageView) view);
