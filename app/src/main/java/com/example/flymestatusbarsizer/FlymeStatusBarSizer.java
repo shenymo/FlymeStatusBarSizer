@@ -61,6 +61,7 @@ import java.lang.reflect.Method;
 import java.text.DateFormatSymbols;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -147,6 +148,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static volatile int LAST_CELLULAR_LEVEL = -1;
     private static volatile int LAST_ACTIVE_SUBSCRIPTION_COUNT = -1;
     private static volatile int LAST_SERVICE_STATE_SUB_ID = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    private static volatile int LAST_MOBILE_TYPE_DISPLAY_INFO_SUB_ID =
+            SubscriptionManager.INVALID_SUBSCRIPTION_ID;
     private static volatile int LAST_MOBILE_TYPE_RESOURCE_ID = 0;
     private static volatile int LAST_MOBILE_TYPE_ICON_RESOURCE_ID = 0;
     private static volatile int LAST_MOBILE_TYPE_VIEW_VISIBILITY = View.VISIBLE;
@@ -214,6 +217,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookTelephonyGetSignalStrength();
         hookTelephonyGetServiceState();
         hookSignalStrengthGetLevel();
+        hookTelephonyDisplayInfoCallbacks(loader);
         hookTelephonyDisplayInfoAccess();
         hookServiceStateNrAccess();
         hookFlymeFiveGIconDecision(loader);
@@ -536,15 +540,16 @@ public class FlymeStatusBarSizer extends XposedModule {
                     TelephonyDisplayInfoState state = rememberTelephonyDisplayInfoState(displayInfo);
                     LAST_MOBILE_TYPE_RAW_NETWORK_TYPE = rawNetworkType;
                     state.networkType = (Integer) result;
-                    MobileTypeSubState subState = resolveSingleObservedMobileTypeSubState();
+                    MobileTypeSubState subState = resolveObservedMobileTypeSubState(displayInfo, state);
                     if (subState != null) {
                         subState.networkType = state.networkType;
                     }
+                    LAST_MOBILE_TYPE_DISPLAY_INFO_SUB_ID = state.subId;
                     LAST_MOBILE_TYPE_NETWORK_TYPE = state.networkType;
                     LAST_MOBILE_TYPE_DISPLAY_INFO_RAW = safeToString(displayInfo);
                     LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyDisplayInfo.getNetworkType";
                     reportMobileTypeDebug("TelephonyDisplayInfo.getNetworkType");
-                    scheduleTrackedSignalIconRefresh();
+                    scheduleTrackedSignalIconRefreshForMobileTypeSubId(state.subId);
                 }
                 return result;
             });
@@ -566,20 +571,80 @@ public class FlymeStatusBarSizer extends XposedModule {
                     TelephonyDisplayInfoState state = rememberTelephonyDisplayInfoState(displayInfo);
                     LAST_MOBILE_TYPE_RAW_OVERRIDE_NETWORK_TYPE = rawOverrideNetworkType;
                     state.overrideNetworkType = (Integer) result;
-                    MobileTypeSubState subState = resolveSingleObservedMobileTypeSubState();
+                    MobileTypeSubState subState = resolveObservedMobileTypeSubState(displayInfo, state);
                     if (subState != null) {
                         subState.overrideNetworkType = state.overrideNetworkType;
                     }
+                    LAST_MOBILE_TYPE_DISPLAY_INFO_SUB_ID = state.subId;
                     LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE = state.overrideNetworkType;
                     LAST_MOBILE_TYPE_DISPLAY_INFO_RAW = safeToString(displayInfo);
                     LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyDisplayInfo.getOverrideNetworkType";
                     reportMobileTypeDebug("TelephonyDisplayInfo.getOverrideNetworkType");
-                    scheduleTrackedSignalIconRefresh();
+                    scheduleTrackedSignalIconRefreshForMobileTypeSubId(state.subId);
                 }
                 return result;
             });
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook TelephonyDisplayInfo.getOverrideNetworkType", t);
+        }
+    }
+
+    private void hookTelephonyDisplayInfoCallbacks(ClassLoader loader) {
+        hookTelephonyDisplayInfoCallback(loader,
+                "com.android.settingslib.mobile.MobileStatusTracker$MobileTelephonyCallback");
+        hookTelephonyDisplayInfoCallback(loader,
+                "com.android.systemui.statusbar.pipeline.mobile.data.repository.prod.MobileConnectionRepositoryImpl$callbackEvents$1$1$callback$1");
+        hookTelephonyDisplayInfoCallback(loader,
+                "com.android.systemui.statusbar.pipeline.mobile.data.repository.prod.MobileConnectionRepositoryKairosImpl$callbackEvents$1$2$callback$1");
+        hookActiveDataSubscriptionIdCallback(loader,
+                "com.android.settingslib.mobile.MobileStatusTracker$MobileTelephonyCallback");
+    }
+
+    private void hookTelephonyDisplayInfoCallback(ClassLoader loader, String className) {
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            Method method = clazz.getDeclaredMethod("onDisplayInfoChanged", TelephonyDisplayInfo.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                Object arg = chain.getArg(0);
+                if (!(arg instanceof TelephonyDisplayInfo)) {
+                    return result;
+                }
+                int subId = resolveTelephonyCallbackSubId(chain.getThisObject());
+                if (!SubscriptionManager.isValidSubscriptionId(subId)) {
+                    return result;
+                }
+                TelephonyDisplayInfo displayInfo = (TelephonyDisplayInfo) arg;
+                bindTelephonyDisplayInfoToSubId(displayInfo, subId);
+                primeTelephonyDisplayInfoState(displayInfo);
+                scheduleTrackedSignalIconRefreshForMobileTypeSubId(subId);
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook " + className + ".onDisplayInfoChanged", t);
+        }
+    }
+
+    private void hookActiveDataSubscriptionIdCallback(ClassLoader loader, String className) {
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            Method method = clazz.getDeclaredMethod("onActiveDataSubscriptionIdChanged", int.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                int subId = chain.getArg(0) instanceof Integer
+                        ? (Integer) chain.getArg(0)
+                        : SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+                syncMobileTypeSubStateFromLiveTelephony(ModuleConfig.getSystemUiContext(), subId);
+                LAST_MOBILE_TYPE_LAST_EVENT = className + ".onActiveDataSubscriptionIdChanged";
+                reportMobileTypeDebug(className + ".onActiveDataSubscriptionIdChanged");
+                scheduleTrackedSignalIconRefresh();
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook " + className + ".onActiveDataSubscriptionIdChanged", t);
         }
     }
 
@@ -609,7 +674,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                     LAST_MOBILE_TYPE_SERVICE_STATE_RAW = safeToString(serviceState);
                     LAST_MOBILE_TYPE_LAST_EVENT = "ServiceState.getNrState";
                     reportMobileTypeDebug("ServiceState.getNrState");
-                    scheduleTrackedSignalIconRefresh();
+                    scheduleTrackedSignalIconRefreshForMobileTypeSubId(
+                            subId == null ? SubscriptionManager.INVALID_SUBSCRIPTION_ID : subId);
                 }
                 return result;
             });
@@ -641,7 +707,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                     LAST_MOBILE_TYPE_SERVICE_STATE_RAW = safeToString(serviceState);
                     LAST_MOBILE_TYPE_LAST_EVENT = "ServiceState.getNrCaState";
                     reportMobileTypeDebug("ServiceState.getNrCaState");
-                    scheduleTrackedSignalIconRefresh();
+                    scheduleTrackedSignalIconRefreshForMobileTypeSubId(
+                            subId == null ? SubscriptionManager.INVALID_SUBSCRIPTION_ID : subId);
                 }
                 return result;
             });
@@ -673,10 +740,11 @@ public class FlymeStatusBarSizer extends XposedModule {
                     if (subState != null) {
                         subState.flymeIconGroup = LAST_MOBILE_TYPE_FLYME_ICON_GROUP;
                     }
+                    scheduleTrackedSignalIconRefreshForMobileTypeSubId(
+                            subId == null ? SubscriptionManager.INVALID_SUBSCRIPTION_ID : subId);
                 }
                 LAST_MOBILE_TYPE_LAST_EVENT = "FlymeMobileConnectionFeatureKt.getFlymeFiveGIcon";
                 reportMobileTypeDebug("FlymeMobileConnectionFeatureKt.getFlymeFiveGIcon");
-                scheduleTrackedSignalIconRefresh();
                 return result;
             });
         } catch (Throwable t) {
@@ -2282,36 +2350,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     static int resolveSignalMobileTypeBadge() {
-        int badge = resolveSignalMobileTypeBadgeForActiveDataSubscription(
+        return resolveSignalMobileTypeBadgeForActiveDataSubscription(
                 ModuleConfig.getSystemUiContext());
-        if (badge != Integer.MIN_VALUE) {
-            return badge;
-        }
-        badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL);
-        if (badge != Integer.MIN_VALUE) {
-            return badge;
-        }
-        badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL_ICON_GROUP);
-        if (badge != Integer.MIN_VALUE) {
-            return badge;
-        }
-        badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_RESOURCE_NAME);
-        if (badge != Integer.MIN_VALUE) {
-            return badge;
-        }
-        badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_ICON_RESOURCE_NAME);
-        if (badge != Integer.MIN_VALUE) {
-            return badge;
-        }
-        badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_DEFAULT_ICON_GROUP);
-        if (badge != Integer.MIN_VALUE) {
-            return badge;
-        }
-        badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_FLYME_ICON_GROUP);
-        if (badge != Integer.MIN_VALUE) {
-            return badge;
-        }
-        return resolveSignalMobileTypeBadgeFromTelephonyState();
     }
 
     private static int resolveSignalMobileTypeBadgeFromText(String value) {
@@ -2398,40 +2438,38 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int resolveSignalMobileTypeBadgeForActiveDataSubscription(Context context) {
-        if (context == null) {
-            return Integer.MIN_VALUE;
-        }
-        if (isUsingWifiOnlyInternet(context)) {
+        if (context == null || isUsingWifiOnlyInternet(context)) {
             return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
         }
         int subId = resolveDefaultDataSubscriptionId();
         if (!SubscriptionManager.isValidSubscriptionId(subId)) {
             return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
         }
-        MobileTypeSubState cachedState = snapshotMobileTypeSubState(subId);
-        int badge = resolveSignalMobileTypeBadgeFromSubState(cachedState);
-        if (badge != Integer.MIN_VALUE) {
-            return badge;
-        }
-        return resolveSignalMobileTypeBadgeFromLiveTelephony(context, subId);
+        MobileTypeSubState state = resolveTargetMobileTypeSubState(context, subId);
+        int badge = resolveSignalMobileTypeBadgeFromSubState(state);
+        return badge != Integer.MIN_VALUE
+                ? badge
+                : SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
     }
 
     private static int resolveSignalMobileTypeBadgeFromSubState(MobileTypeSubState state) {
         if (state == null) {
             return Integer.MIN_VALUE;
         }
-        int badge = resolveSignalMobileTypeBadgeFromText(state.flymeIconGroup);
-        if (badge != Integer.MIN_VALUE) {
-            return badge;
-        }
-        badge = resolveSignalMobileTypeBadgeFromTelephonyState(
+        int badge = resolveSignalMobileTypeBadgeFromTelephonyState(
                 state.networkType,
                 state.overrideNetworkType,
                 state.nrState,
                 state.nrCaState);
-        if (badge != SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE
-                || hasMeaningfulMobileTypeSubState(state)) {
+        if (badge != SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE) {
             return badge;
+        }
+        badge = resolveSignalMobileTypeBadgeFromText(state.flymeIconGroup);
+        if (badge != Integer.MIN_VALUE) {
+            return badge;
+        }
+        if (hasMeaningfulMobileTypeSubState(state)) {
+            return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
         }
         return Integer.MIN_VALUE;
     }
@@ -2446,38 +2484,11 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int resolveSignalMobileTypeBadgeFromLiveTelephony(Context context, int subId) {
-        TelephonyManager manager = getTelephonyManagerForSub(context, subId);
-        if (manager == null) {
+        MobileTypeSubState state = snapshotLiveMobileTypeSubState(context, subId);
+        if (state == null) {
             return Integer.MIN_VALUE;
         }
-        int networkType = Integer.MIN_VALUE;
-        try {
-            networkType = manager.getDataNetworkType();
-        } catch (Throwable ignored) {
-        }
-        int nrState = Integer.MIN_VALUE;
-        String nrCaState = "";
-        ServiceState serviceState = null;
-        try {
-            serviceState = manager.getServiceState();
-        } catch (Throwable ignored) {
-        }
-        if (serviceState != null) {
-            nrState = ReflectUtils.invokeNoArgInt(serviceState, "getNrState", Integer.MIN_VALUE);
-            nrCaState = safeToString(ReflectUtils.invokeNoArg(serviceState, "getNrCaState"));
-        }
-        int badge = resolveSignalMobileTypeBadgeFromTelephonyState(
-                networkType,
-                Integer.MIN_VALUE,
-                nrState,
-                nrCaState);
-        if (badge != SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE
-                || networkType != Integer.MIN_VALUE
-                || nrState != Integer.MIN_VALUE
-                || !TextUtils.isEmpty(nrCaState)) {
-            return badge;
-        }
-        return Integer.MIN_VALUE;
+        return resolveSignalMobileTypeBadgeFromSubState(state);
     }
 
     private static int resolveDefaultDataSubscriptionId() {
@@ -2488,31 +2499,21 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private static MobileTypeSubState resolveSingleObservedMobileTypeSubState() {
-        return rememberMobileTypeSubState(
-                resolveSingleActiveSubscriptionId(ModuleConfig.getSystemUiContext()));
-    }
-
-    private static int resolveSingleActiveSubscriptionId(Context context) {
-        if (context == null) {
-            return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
-        }
-        try {
-            SubscriptionManager manager = context.getSystemService(SubscriptionManager.class);
-            if (manager == null) {
-                return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    private static MobileTypeSubState resolveObservedMobileTypeSubState(
+            TelephonyDisplayInfo displayInfo, TelephonyDisplayInfoState state) {
+        int subId = state == null
+                ? SubscriptionManager.INVALID_SUBSCRIPTION_ID
+                : state.subId;
+        if (!SubscriptionManager.isValidSubscriptionId(subId) && displayInfo != null) {
+            TelephonyDisplayInfoState mappedState = TELEPHONY_DISPLAY_INFO_STATES.get(displayInfo);
+            if (mappedState != null) {
+                subId = mappedState.subId;
             }
-            List<SubscriptionInfo> subscriptions = manager.getActiveSubscriptionInfoList();
-            if (subscriptions == null || subscriptions.size() != 1) {
-                return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
-            }
-            SubscriptionInfo subscription = subscriptions.get(0);
-            return subscription == null
-                    ? SubscriptionManager.INVALID_SUBSCRIPTION_ID
-                    : subscription.getSubscriptionId();
-        } catch (Throwable ignored) {
-            return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
         }
+        if (SubscriptionManager.isValidSubscriptionId(subId)) {
+            return rememberMobileTypeSubState(subId);
+        }
+        return null;
     }
 
     private static boolean isUsingWifiOnlyInternet(Context context) {
@@ -2556,6 +2557,114 @@ public class FlymeStatusBarSizer extends XposedModule {
         } catch (Throwable ignored) {
             return baseManager;
         }
+    }
+
+    private static MobileTypeSubState snapshotLiveMobileTypeSubState(Context context, int subId) {
+        TelephonyManager manager = getTelephonyManagerForSub(context, subId);
+        if (manager == null) {
+            return null;
+        }
+        MobileTypeSubState state = new MobileTypeSubState();
+        try {
+            state.networkType = manager.getDataNetworkType();
+        } catch (Throwable ignored) {
+        }
+        ServiceState serviceState = null;
+        try {
+            serviceState = manager.getServiceState();
+        } catch (Throwable ignored) {
+        }
+        if (serviceState != null) {
+            state.nrState = ReflectUtils.invokeNoArgInt(serviceState, "getNrState", Integer.MIN_VALUE);
+            state.nrCaState = safeToString(ReflectUtils.invokeNoArg(serviceState, "getNrCaState"));
+        }
+        ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+        if (isMobileTypeSpoofEnabled(config)) {
+            state.networkType = getSpoofedNetworkType(config);
+            state.overrideNetworkType = getSpoofedOverrideNetworkType(config);
+            state.nrState = getSpoofedNrState(config);
+            state.nrCaState = String.valueOf(getSpoofedNrCaState(config));
+        }
+        return hasMeaningfulMobileTypeSubState(state) ? state : null;
+    }
+
+    private static MobileTypeSubState resolveTargetMobileTypeSubState(Context context, int subId) {
+        if (!SubscriptionManager.isValidSubscriptionId(subId)) {
+            return null;
+        }
+        MobileTypeSubState cachedState = snapshotMobileTypeSubState(subId);
+        MobileTypeSubState liveState = snapshotLiveMobileTypeSubState(context, subId);
+        if (cachedState == null) {
+            return liveState;
+        }
+        if (liveState == null) {
+            return cachedState;
+        }
+        return mergeMobileTypeSubStates(cachedState, liveState);
+    }
+
+    private static void syncMobileTypeSubStateFromLiveTelephony(Context context, int subId) {
+        if (!SubscriptionManager.isValidSubscriptionId(subId)) {
+            return;
+        }
+        MobileTypeSubState liveState = snapshotLiveMobileTypeSubState(context, subId);
+        if (!hasMeaningfulMobileTypeSubState(liveState)) {
+            return;
+        }
+        MobileTypeSubState cachedState = rememberMobileTypeSubState(subId);
+        if (cachedState == null) {
+            return;
+        }
+        if (liveState.networkType != Integer.MIN_VALUE) {
+            cachedState.networkType = liveState.networkType;
+        }
+        if (liveState.overrideNetworkType != Integer.MIN_VALUE) {
+            cachedState.overrideNetworkType = liveState.overrideNetworkType;
+        }
+        if (liveState.nrState != Integer.MIN_VALUE) {
+            cachedState.nrState = liveState.nrState;
+        }
+        if (!TextUtils.isEmpty(liveState.nrCaState)) {
+            cachedState.nrCaState = liveState.nrCaState;
+        }
+    }
+
+    private static boolean shouldRefreshMobileTypeForSubId(int subId) {
+        return SubscriptionManager.isValidSubscriptionId(subId)
+                && subId == resolveDefaultDataSubscriptionId();
+    }
+
+    private static void scheduleTrackedSignalIconRefreshForMobileTypeSubId(int subId) {
+        if (shouldRefreshMobileTypeForSubId(subId)) {
+            scheduleTrackedSignalIconRefresh();
+        }
+    }
+
+    private static MobileTypeSubState mergeMobileTypeSubStates(MobileTypeSubState baseState,
+                                                               MobileTypeSubState overrideState) {
+        if (baseState == null) {
+            return overrideState;
+        }
+        if (overrideState == null) {
+            return baseState;
+        }
+        MobileTypeSubState merged = new MobileTypeSubState();
+        merged.networkType = overrideState.networkType != Integer.MIN_VALUE
+                ? overrideState.networkType
+                : baseState.networkType;
+        merged.overrideNetworkType = overrideState.overrideNetworkType != Integer.MIN_VALUE
+                ? overrideState.overrideNetworkType
+                : baseState.overrideNetworkType;
+        merged.nrState = overrideState.nrState != Integer.MIN_VALUE
+                ? overrideState.nrState
+                : baseState.nrState;
+        merged.nrCaState = !TextUtils.isEmpty(overrideState.nrCaState)
+                ? overrideState.nrCaState
+                : baseState.nrCaState;
+        merged.flymeIconGroup = !TextUtils.isEmpty(overrideState.flymeIconGroup)
+                ? overrideState.flymeIconGroup
+                : baseState.flymeIconGroup;
+        return hasMeaningfulMobileTypeSubState(merged) ? merged : null;
     }
 
     private static int resolveTintListColor(ColorStateList tintList, int[] state, int fallbackColor) {
@@ -4434,6 +4543,101 @@ public class FlymeStatusBarSizer extends XposedModule {
         return state;
     }
 
+    private static void bindTelephonyDisplayInfoToSubId(TelephonyDisplayInfo displayInfo, int subId) {
+        if (displayInfo == null || !SubscriptionManager.isValidSubscriptionId(subId)) {
+            return;
+        }
+        TelephonyDisplayInfoState state = rememberTelephonyDisplayInfoState(displayInfo);
+        state.subId = subId;
+        LAST_MOBILE_TYPE_DISPLAY_INFO_SUB_ID = subId;
+        MobileTypeSubState subState = rememberMobileTypeSubState(subId);
+        if (subState != null) {
+            if (state.networkType != Integer.MIN_VALUE) {
+                subState.networkType = state.networkType;
+            }
+            if (state.overrideNetworkType != Integer.MIN_VALUE) {
+                subState.overrideNetworkType = state.overrideNetworkType;
+            }
+        }
+    }
+
+    private static void primeTelephonyDisplayInfoState(TelephonyDisplayInfo displayInfo) {
+        if (displayInfo == null) {
+            return;
+        }
+        try {
+            displayInfo.getNetworkType();
+        } catch (Throwable ignored) {
+        }
+        try {
+            displayInfo.getOverrideNetworkType();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static int resolveTelephonyCallbackSubId(Object callback) {
+        if (callback == null) {
+            return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        }
+        int subId = resolveSubIdFromCarrierCallbackOwner(ReflectUtils.getField(callback, "$this_run"));
+        if (SubscriptionManager.isValidSubscriptionId(subId)) {
+            return subId;
+        }
+        subId = resolveSubIdFromCarrierCallbackOwner(ReflectUtils.getField(callback, "this$0"));
+        if (SubscriptionManager.isValidSubscriptionId(subId)) {
+            return subId;
+        }
+        return resolveSubIdFromCarrierCallbackOwner(callback);
+    }
+
+    private static int resolveSubIdFromCarrierCallbackOwner(Object owner) {
+        if (owner == null) {
+            return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        }
+        int subId = ReflectUtils.invokeNoArgInt(owner, "getSubId",
+                SubscriptionManager.INVALID_SUBSCRIPTION_ID);
+        if (SubscriptionManager.isValidSubscriptionId(subId)) {
+            return subId;
+        }
+        subId = ReflectUtils.getIntField(owner, "subId", SubscriptionManager.INVALID_SUBSCRIPTION_ID);
+        if (SubscriptionManager.isValidSubscriptionId(subId)) {
+            return subId;
+        }
+        subId = ReflectUtils.getIntField(owner, "mSubId", SubscriptionManager.INVALID_SUBSCRIPTION_ID);
+        if (SubscriptionManager.isValidSubscriptionId(subId)) {
+            return subId;
+        }
+        subId = resolveSubIdFromTelephonyManager(ReflectUtils.getField(owner, "telephonyManager"));
+        if (SubscriptionManager.isValidSubscriptionId(subId)) {
+            return subId;
+        }
+        subId = resolveSubIdFromTelephonyManager(ReflectUtils.getField(owner, "mPhone"));
+        if (SubscriptionManager.isValidSubscriptionId(subId)) {
+            return subId;
+        }
+        Object subscriptionInfo = ReflectUtils.getField(owner, "mSubscriptionInfo");
+        if (subscriptionInfo instanceof SubscriptionInfo) {
+            return ((SubscriptionInfo) subscriptionInfo).getSubscriptionId();
+        }
+        return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    }
+
+    private static int resolveSubIdFromTelephonyManager(Object object) {
+        if (!(object instanceof TelephonyManager)) {
+            return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        }
+        TelephonyManager manager = (TelephonyManager) object;
+        Integer mappedSubId = TELEPHONY_MANAGER_SUB_IDS.get(manager);
+        if (mappedSubId != null && SubscriptionManager.isValidSubscriptionId(mappedSubId)) {
+            return mappedSubId;
+        }
+        try {
+            return manager.getSubscriptionId();
+        } catch (Throwable ignored) {
+            return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        }
+    }
+
     private static MobileTypeSubState rememberMobileTypeSubState(Integer subId) {
         if (subId == null || !SubscriptionManager.isValidSubscriptionId(subId)) {
             return null;
@@ -4518,6 +4722,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         snapshot.append("spoofProfile=").append(nonEmpty(LAST_MOBILE_TYPE_SPOOF_PROFILE)).append('\n');
         snapshot.append("signalCodeDrawEnabled=").append(isSignalCodeDrawEnabled(config)).append('\n');
         snapshot.append("mobile_type.lastEvent=").append(nonEmpty(LAST_MOBILE_TYPE_LAST_EVENT)).append('\n');
+        int defaultDataSubId = resolveDefaultDataSubscriptionId();
+        snapshot.append("defaultDataSubId=").append(defaultDataSubId).append('\n');
+        snapshot.append("activeSubscriptionCount=").append(resolveActiveSubscriptionCount(context)).append('\n');
+        snapshot.append("wifiOnlyInternet=").append(isUsingWifiOnlyInternet(context)).append('\n');
+        appendDefaultDataMobileTypeDebug(snapshot, context, defaultDataSubId);
+        snapshot.append("selectedMobileTypeBadge=").append(
+                describeMobileTypeBadge(resolveSignalMobileTypeBadgeFromCachedState(context))).append('\n');
         snapshot.append("mobile_type.rawFlymeFiveGIcon=").append(nonEmpty(LAST_MOBILE_TYPE_RAW_FLYME_ICON_GROUP)).append('\n');
         snapshot.append("mobile_type.flymeFiveGIcon=").append(nonEmpty(LAST_MOBILE_TYPE_FLYME_ICON_GROUP)).append('\n');
         snapshot.append("mobile_type.defaultIconGroup=").append(nonEmpty(LAST_MOBILE_TYPE_DEFAULT_ICON_GROUP)).append('\n');
@@ -4540,6 +4751,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 describeOverrideNetworkType(LAST_MOBILE_TYPE_RAW_OVERRIDE_NETWORK_TYPE)).append('\n');
         snapshot.append("displayInfo.overrideNetworkType=").append(
                 describeOverrideNetworkType(LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE)).append('\n');
+        snapshot.append("displayInfo.subId=").append(LAST_MOBILE_TYPE_DISPLAY_INFO_SUB_ID).append('\n');
         snapshot.append("displayInfo.raw=").append(nonEmpty(LAST_MOBILE_TYPE_DISPLAY_INFO_RAW)).append('\n');
         snapshot.append("serviceState.rawNrState=").append(describeNrState(LAST_MOBILE_TYPE_RAW_NR_STATE)).append('\n');
         snapshot.append("serviceState.nrState=").append(describeNrState(LAST_MOBILE_TYPE_NR_STATE)).append('\n');
@@ -4549,6 +4761,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         snapshot.append("serviceState.raw=").append(nonEmpty(LAST_MOBILE_TYPE_SERVICE_STATE_RAW)).append('\n');
         snapshot.append("signal.lastSubId=").append(LAST_SIGNAL_SUB_ID).append('\n');
         snapshot.append("signal.lastLevel=").append(LAST_CELLULAR_LEVEL).append('\n');
+        appendMobileTypeSubStateDebug(snapshot, defaultDataSubId);
         String snapshotText = snapshot.toString();
         long uptime = SystemClock.uptimeMillis();
         if (snapshotText.equals(LAST_MOBILE_TYPE_DEBUG_SNAPSHOT)
@@ -4923,6 +5136,91 @@ public class FlymeStatusBarSizer extends XposedModule {
                 break;
         }
         return nrState + " (" + label + ")";
+    }
+
+    private static String describeMobileTypeBadge(int badge) {
+        switch (badge) {
+            case Integer.MIN_VALUE:
+                return "UNRESOLVED";
+            case SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE:
+                return "NONE";
+            case SignalPreviewPainter.MOBILE_TYPE_BADGE_5G:
+                return "5G";
+            case SignalPreviewPainter.MOBILE_TYPE_BADGE_5GA:
+                return "5GA";
+            default:
+                return "UNKNOWN(" + badge + ")";
+        }
+    }
+
+    private static int resolveSignalMobileTypeBadgeFromCachedState(Context context) {
+        if (context != null && isUsingWifiOnlyInternet(context)) {
+            return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
+        }
+        int subId = resolveDefaultDataSubscriptionId();
+        MobileTypeSubState state = resolveTargetMobileTypeSubState(context, subId);
+        int badge = resolveSignalMobileTypeBadgeFromSubState(state);
+        if (badge != Integer.MIN_VALUE) {
+            return badge;
+        }
+        return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
+    }
+
+    private static void appendDefaultDataMobileTypeDebug(StringBuilder snapshot,
+                                                         Context context,
+                                                         int defaultDataSubId) {
+        if (!SubscriptionManager.isValidSubscriptionId(defaultDataSubId)) {
+            snapshot.append("targetSubState=invalid").append('\n');
+            return;
+        }
+        MobileTypeSubState state = resolveTargetMobileTypeSubState(context, defaultDataSubId);
+        if (state == null) {
+            snapshot.append("targetSub[").append(defaultDataSubId).append("]=none").append('\n');
+            return;
+        }
+        snapshot.append("targetSub[").append(defaultDataSubId).append("]={networkType=")
+                .append(describeNetworkType(state.networkType))
+                .append(", overrideNetworkType=")
+                .append(describeOverrideNetworkType(state.overrideNetworkType))
+                .append(", nrState=").append(describeNrState(state.nrState))
+                .append(", nrCaState=").append(nonEmpty(state.nrCaState))
+                .append(", badge=")
+                .append(describeMobileTypeBadge(resolveSignalMobileTypeBadgeFromSubState(state)))
+                .append('}')
+                .append('\n');
+    }
+
+    private static void appendMobileTypeSubStateDebug(StringBuilder snapshot, int defaultDataSubId) {
+        ArrayList<Integer> subIds = new ArrayList<>();
+        synchronized (MOBILE_TYPE_SUB_STATES) {
+            subIds.addAll(MOBILE_TYPE_SUB_STATES.keySet());
+        }
+        if (subIds.isEmpty()) {
+            snapshot.append("subStates=none").append('\n');
+            return;
+        }
+        Collections.sort(subIds);
+        for (int i = 0; i < subIds.size(); i++) {
+            int subId = subIds.get(i);
+            if (subId == defaultDataSubId) {
+                continue;
+            }
+            MobileTypeSubState state = snapshotMobileTypeSubState(subId);
+            if (state == null) {
+                continue;
+            }
+            snapshot.append("auxSub[").append(subId).append("]={networkType=")
+                    .append(describeNetworkType(state.networkType))
+                    .append(", overrideNetworkType=")
+                    .append(describeOverrideNetworkType(state.overrideNetworkType))
+                    .append(", nrState=").append(describeNrState(state.nrState))
+                    .append(", nrCaState=").append(nonEmpty(state.nrCaState))
+                    .append(", flymeIcon=").append(nonEmpty(state.flymeIconGroup))
+                    .append(", badge=")
+                    .append(describeMobileTypeBadge(resolveSignalMobileTypeBadgeFromSubState(state)))
+                    .append('}')
+                    .append('\n');
+        }
     }
 
     private static String nonEmpty(String value) {
@@ -6920,6 +7218,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static final class TelephonyDisplayInfoState {
+        volatile int subId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
         int networkType = Integer.MIN_VALUE;
         int overrideNetworkType = Integer.MIN_VALUE;
     }
