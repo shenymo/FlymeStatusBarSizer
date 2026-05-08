@@ -39,7 +39,6 @@ final class ModuleConfig {
     boolean mbackLongTouchIntentEnabled = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
     String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
     boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
-    boolean notificationBackgroundTransparent = SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT;
     boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
     int notificationAppIconSizeDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
     int notificationAppIconPaddingDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP;
@@ -48,8 +47,6 @@ final class ModuleConfig {
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
     boolean imeToolbarEnabled = SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED;
     String imeToolbarOrder = SettingsStore.DEFAULT_IME_TOOLBAR_ORDER;
-    int mobileTypeDebugMode = SettingsStore.DEFAULT_MOBILE_TYPE_DEBUG_MODE;
-    int mobileTypeSpoofProfile = SettingsStore.DEFAULT_MOBILE_TYPE_SPOOF_PROFILE;
     boolean telephonyDebugEnabled = SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED;
     int telephonyDebugSimCount = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
     int telephonyDebugDefaultDataSlot = SettingsStore.DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT;
@@ -263,10 +260,6 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,
                     SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT);
-            config.notificationBackgroundTransparent = SettingsStore.readBoolean(
-                    prefs,
-                    SettingsStore.KEY_NOTIFICATION_BACKGROUND_TRANSPARENT,
-                    SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT);
             config.notificationAppIconEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
@@ -301,14 +294,6 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_IME_TOOLBAR_ORDER,
                     SettingsStore.DEFAULT_IME_TOOLBAR_ORDER);
-            config.mobileTypeDebugMode = SettingsStore.readInt(
-                    prefs,
-                    SettingsStore.KEY_MOBILE_TYPE_DEBUG_MODE,
-                    SettingsStore.DEFAULT_MOBILE_TYPE_DEBUG_MODE);
-            config.mobileTypeSpoofProfile = SettingsStore.readInt(
-                    prefs,
-                    SettingsStore.KEY_MOBILE_TYPE_SPOOF_PROFILE,
-                    SettingsStore.DEFAULT_MOBILE_TYPE_SPOOF_PROFILE);
             config.telephonyDebugEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_TELEPHONY_DEBUG_ENABLED,

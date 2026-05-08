@@ -241,11 +241,9 @@ public class MainActivity extends Activity {
         page.addView(buildIntroCard(), matchWrapWithTop(16));
         page.addView(buildStatusBarIconScaleCard(), matchWrapWithTop(16));
 
-        addSectionLabel(page, "实时网速");
-        page.addView(buildConnectionRateCard(), matchWrapWithTop(10));
+        page.addView(buildConnectionRateCard(), matchWrapWithTop(16));
 
-        addSectionLabel(page, "右上角图标组");
-        page.addView(buildRightIconGroupSection(), matchWrapWithTop(10));
+        page.addView(buildRightIconGroupSection(), matchWrapWithTop(16));
         return page;
     }
 
@@ -262,35 +260,31 @@ public class MainActivity extends Activity {
     }
 
     private View buildNotificationCard() {
-        LinearLayout card = card(colorSurface, 28);
-        addProfileSectionHeader(card, "通知",
-                "这里可以单独控制通知图标和通知卡片背景。应用图标开关只影响第三方应用通知，已有通知可能要等刷新后才会变化。");
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+
         LinearLayout appIconOptions = buildNotificationAppIconOptions();
         appIconOptions.setVisibility(SettingsStore.readBoolean(
                 prefs,
                 SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
                 SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED) ? View.VISIBLE : View.GONE);
-        addSwitchRow(card, "通知使用应用图标",
+        addSwitchRow(details, "通知使用应用图标",
                 "开启后把第三方应用的状态栏通知图标改成应用自身图标，不再使用 Flyme 那套统一通知图标。",
                 SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
                 SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED,
                 (buttonView, isChecked) -> appIconOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
         LinearLayout.LayoutParams appIconOptionsLp = matchWrapWithTop(10);
         appIconOptionsLp.leftMargin = dp(12);
-        card.addView(appIconOptions, appIconOptionsLp);
-        addDivider(card);
-        addSwitchRow(card, "通知液态玻璃",
-                "开启后会把通知卡片背景替换成液态玻璃效果，并清掉原来的 tint。文字、图标和点击区域保持原来的 SystemUI 行为。",
-                SettingsStore.KEY_NOTIFICATION_BACKGROUND_TRANSPARENT,
-                SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT);
+        details.addView(appIconOptions, appIconOptionsLp);
         return buildExpandableInfoCard(
-                "通知卡片",
-                "可以分别控制第三方通知图标是否改成应用图标，以及通知卡片背景是否替换成液态玻璃。",
-                "通知", card);
+                "通知",
+                "可以控制第三方通知图标是否改成应用图标。",
+                details);
     }
 
     private LinearLayout buildNotificationAppIconOptions() {
-        LinearLayout card = card(colorSurfaceSoft, colorStroke, 22);
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
 
         TextView title = new TextView(this);
         title.setText("应用图标尺寸");
@@ -319,8 +313,6 @@ public class MainActivity extends Activity {
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
 
-        addProfileSectionHeader(details, "输入法工具栏",
-                "在输入法内容区下方补一排常用按钮，包含粘贴、删除、全选、复制和切换输入法。");
         addSwitchRow(details, "启用输入法工具栏",
                 "开启后会在输入法界面加一排工具按钮。关闭后恢复原来的输入法视图，不再显示这排按钮。",
                 SettingsStore.KEY_IME_TOOLBAR_ENABLED,
@@ -350,7 +342,7 @@ public class MainActivity extends Activity {
         return buildExpandableInfoCard(
                 "输入法工具栏",
                 "可以控制输入法工具栏开关，也可以拖动调整这五个按钮的顺序。",
-                "工具栏", details);
+                details);
     }
 
     private LinearLayout buildAboutPage() {
@@ -689,7 +681,7 @@ public class MainActivity extends Activity {
         return buildExpandableInfoCard(
                 "实时网速",
                 "保留系统原采样，只保留显隐阈值和确认次数。",
-                "网速", details);
+                details);
     }
 
     private View buildMBackSection() {
@@ -697,7 +689,7 @@ public class MainActivity extends Activity {
         details.setOrientation(LinearLayout.VERTICAL);
 
         TextView pageHint = new TextView(this);
-        pageHint.setText("分成 3 页来调，先定长触动作，再试沉浸/inset，最后单独压导航栏高度");
+        pageHint.setText("分成 3 页来调，先定长触动作，再调沉浸 / inset 抬高，最后单独压导航栏高度");
         pageHint.setTextColor(colorSubtext);
         pageHint.setTextSize(13);
         details.addView(pageHint, matchWrap());
@@ -732,8 +724,8 @@ public class MainActivity extends Activity {
 
         return buildExpandableInfoCard(
                 "MBack",
-                "把 mBack 长触、导航栏透明、底部 inset 和导航栏高度实验项收拢到一组，便于分阶段测试。",
-                "MBack", details);
+                "把 mBack 长触、导航栏透明、背景抬高（inset）和导航栏高度收拢到一组，便于集中调整。",
+                details);
     }
 
     private LinearLayout buildMBackActionPage() {
@@ -764,19 +756,19 @@ public class MainActivity extends Activity {
         page.setOrientation(LinearLayout.VERTICAL);
 
         addProfileSectionHeader(page, "沉浸 / Inset",
-                "优先用透明背景和底部 inset 去试应用能否绘制到 mBack 下方。透明只改背景层，inset 直接影响应用可用区域判断。");
+                "这里主要调透明背景和 mBack 背景抬高。透明只改背景层；这里的 inset 指把 mBack 背景往上抬，同时会影响应用对底部区域的判断。");
         addSwitchRow(page, "mBack 导航栏透明",
-                "把 mBack 所在导航栏背景压成透明，只动导航栏背景层，不改 mBack 本体绘制。用于测试底部白边问题。",
+                "把 mBack 所在导航栏背景压成透明，只动导航栏背景层，不改 mBack 本体绘制。",
                 SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,
                 SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT);
         addDivider(page);
         addSwitchRow(page, "隐藏小白条",
-                "只隐藏 mBack 自己画出来的那条胶囊，不直接改长触逻辑和 inset。适合配合透明背景、inset=0 一起试。",
+                "只隐藏 mBack 自己画出来的那条胶囊，不直接改长触逻辑和 inset。适合配合透明背景和背景抬高一起调。",
                 SettingsStore.KEY_MBACK_HIDE_PILL,
                 SettingsStore.DEFAULT_MBACK_HIDE_PILL);
         addDivider(page);
         addInsetSliderRow(page, "mBack inset 大小",
-                "控制 SystemUI 返回给应用的底部 inset。-1 表示保持系统默认，0 表示压成 0，其他数值按 dp 处理。实验项，可能影响部分应用底部点击区域。",
+                "这里的 inset 指 mBack 背景抬高。-1 表示保持系统默认，0 表示不额外抬高，其他数值按 dp 处理；同时也会影响应用感知到的底部区域。",
                 SettingsStore.KEY_MBACK_INSET_SIZE,
                 SettingsStore.DEFAULT_MBACK_INSET_SIZE, -1, 80);
         return page;
@@ -879,7 +871,7 @@ public class MainActivity extends Activity {
         container.addView(buildExpandableInfoCard(
                 "\u7535\u6c60\u56fe\u6807",
                 "\u53ea\u628a\u7cfb\u7edf\u539f\u6709\u7684\u7535\u6c60\u56fe\u6807\u6539\u4e3a\u4ee3\u7801\u7ed8\u5236\uff0c\u53ef\u4ee5\u5355\u72ec\u5f00\u5173\uff0c\u4e0d\u518d\u63a5\u7ba1 Wi-Fi \u548c\u79fb\u52a8\u4fe1\u53f7\u3002",
-                "\u7535\u6c60", details), matchWrap());
+                details), matchWrap());
         container.addView(buildSignalIconSection(), matchWrapWithTop(12));
         return container;
     }
@@ -893,38 +885,13 @@ public class MainActivity extends Activity {
                 SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED);
         addDivider(details);
-        addChoiceRow(details, "mobile_type 模式",
-                "关闭时不额外打印日志。观测模式只把链路输出到 logcat。伪造模式会在更上层返回假网络状态，用来模拟 4G / 5G / 5GA / 5G+。",
-                SettingsStore.KEY_MOBILE_TYPE_DEBUG_MODE,
-                SettingsStore.DEFAULT_MOBILE_TYPE_DEBUG_MODE,
-                new int[]{
-                        SettingsStore.MOBILE_TYPE_DEBUG_MODE_OFF,
-                        SettingsStore.MOBILE_TYPE_DEBUG_MODE_OBSERVE,
-                        SettingsStore.MOBILE_TYPE_DEBUG_MODE_SPOOF
-                },
-                new String[]{"关闭", "观测", "伪造"});
-        addDivider(details);
-        addChoiceRow(details, "伪造目标",
-                "只有在上面的模式切到伪造时才生效。SystemUI 会优先被喂成这一类 mobile_type，再观察最终资源名和 Flyme 5G 图标组。",
-                SettingsStore.KEY_MOBILE_TYPE_SPOOF_PROFILE,
-                SettingsStore.DEFAULT_MOBILE_TYPE_SPOOF_PROFILE,
-                new int[]{
-                        SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_NONE,
-                        SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G,
-                        SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G,
-                        SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA,
-                        SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA,
-                        SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS
-                },
-                new String[]{"跟随系统", "强制 4G", "强制 5G", "强制 5G CA", "强制 5GA", "强制 5G+"});
-        addDivider(details);
-        addProfileSectionHeader(details, "恢复方式",
-                "代码绘制开关只管 mobile_signal。mobile_type 的观测/伪造日志输出到 logcat，筛关键字 `FSBS_MOBILETYPE_DEBUG` 即可。");
+        addProfileSectionHeader(details, "说明",
+                "这里只控制 mobile_signal 的代码绘制；mobile_type 会继续按系统真实网络状态参与 5G/5GA 标识判断。");
 
         return buildExpandableInfoCard(
                 "信号图标",
-                "单独控制移动信号图标这一组逻辑，同时提供 mobile_type 的观测和伪造模式。",
-                "信号", details);
+                "单独控制移动信号图标这一组逻辑。",
+                details);
     }
 
     private TextView buildSettingsPageTab(String text) {
@@ -978,72 +945,114 @@ public class MainActivity extends Activity {
     }
 
     private View buildTimeCard() {
-        LinearLayout card = card(colorSurface, 28);
-        addProfileSectionHeader(card, "自定义时间表达式",
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout tabShell = new LinearLayout(this);
+        tabShell.setOrientation(LinearLayout.HORIZONTAL);
+
+        TextView expressionTab = buildBottomNavTab("表达式");
+        TextView typographyTab = buildBottomNavTab("字体");
+        tabShell.addView(expressionTab, weightedWrap());
+        tabShell.addView(typographyTab, weightedWrapWithStart(10));
+        details.addView(tabShell, matchWrap());
+
+        FrameLayout pageContainer = new FrameLayout(this);
+        LinearLayout expressionPage = buildTimeExpressionPage();
+        LinearLayout typographyPage = buildTimeTypographyPage();
+        pageContainer.addView(expressionPage, matchWrapFrame());
+        pageContainer.addView(typographyPage, matchWrapFrame());
+        details.addView(pageContainer, matchWrap());
+
+        View[] pages = new View[]{expressionPage, typographyPage};
+        TextView[] pageTabs = new TextView[]{expressionTab, typographyTab};
+        bindSettingsPageTabs(pages, pageTabs, 0);
+        expressionTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 0));
+        typographyTab.setOnClickListener(v -> bindSettingsPageTabs(pages, pageTabs, 1));
+
+        return buildExpandableInfoCard(
+                "时间",
+                "用按钮组合状态栏时间格式，并把时间字重和字号设置收拢到同一组。",
+                details);
+    }
+
+    private LinearLayout buildTimeExpressionPage() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        addProfileSectionHeader(page, "表达式编辑",
                 "点下面的按钮加入表达式。已加入的项支持长按拖动排序。小时、分钟、秒连续排列时会自动补冒号，不需要单独插入。");
         TextView hint = new TextView(this);
         hint.setText("当前支持：小时、分钟、秒、星期、AM/PM、时段词、十二时辰地支和传统别称。");
         hint.setTextColor(colorSubtext);
         hint.setTextSize(13);
         hint.setPadding(0, dp(10), 0, 0);
-        card.addView(hint, matchWrap());
+        page.addView(hint, matchWrap());
 
-        card.addView(buildClockExpressionButtonPanel(), matchWrapWithTop(12));
+        page.addView(buildClockExpressionButtonPanel(), matchWrapWithTop(12));
 
         TextView orderTitle = new TextView(this);
         orderTitle.setText("当前顺序");
         orderTitle.setTextColor(colorPrimary);
         orderTitle.setTextSize(15);
         orderTitle.setPadding(0, dp(16), 0, 0);
-        card.addView(orderTitle, matchWrap());
+        page.addView(orderTitle, matchWrap());
 
         TextView orderHint = new TextView(this);
         orderHint.setText("点击已选项可移除，长按可拖动排序。");
         orderHint.setTextColor(colorSubtext);
         orderHint.setTextSize(12);
         orderHint.setPadding(0, dp(4), 0, 0);
-        card.addView(orderHint, matchWrap());
+        page.addView(orderHint, matchWrap());
 
         clockExpressionPreviewView = new TextView(this);
         clockExpressionPreviewView.setTextColor(colorPrimary);
         clockExpressionPreviewView.setTextSize(13);
         clockExpressionPreviewView.setPadding(dp(12), dp(10), dp(12), dp(10));
         clockExpressionPreviewView.setBackground(roundRect(colorSurfaceSoft, 18));
-        card.addView(clockExpressionPreviewView, matchWrapWithTop(10));
+        page.addView(clockExpressionPreviewView, matchWrapWithTop(10));
 
         clockExpressionOrderContainer = new LinearLayout(this);
         clockExpressionOrderContainer.setOrientation(LinearLayout.VERTICAL);
         clockExpressionOrderContainer.setPadding(0, dp(12), 0, 0);
-        card.addView(clockExpressionOrderContainer, matchWrap());
+        page.addView(clockExpressionOrderContainer, matchWrap());
         loadClockExpressionDraft();
         renderClockExpressionEditor();
 
-        addDivider(card);
-        addActionButtonRow(card, "应用当前表达式",
+        addDivider(page);
+        addActionButtonRow(page, "应用当前表达式",
                 "保存当前按钮顺序生成的表达式，并通知 SystemUI 立即刷新状态栏时间。",
                 "应用", this::applyClockExpressionDraft);
-        addDivider(card);
-        addActionButtonRow(card, "清空当前表达式",
+        addDivider(page);
+        addActionButtonRow(page, "清空当前表达式",
                 "清空后会只保留系统原始时间显示。",
                 "清空", this::clearClockExpressionDraft);
-        addDivider(card);
-        addSwitchRow(card, "\u65f6\u95f4\u52a0\u7c97",
+        return page;
+    }
+
+    private LinearLayout buildTimeTypographyPage() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        addProfileSectionHeader(page, "字重 / 字号",
+                "这里集中控制状态栏时间、右侧追加日期以及锁屏运营商相关文字的字重和字号。");
+        addSwitchRow(page, "\u65f6\u95f4\u52a0\u7c97",
                 "\u5bf9\u72b6\u6001\u680f\u65f6\u95f4\u4ee5\u53ca\u5176\u53f3\u4fa7\u8ffd\u52a0\u7684\u661f\u671f/\u65e5\u671f\u5e94\u7528\u5b57\u91cd",
                 SettingsStore.KEY_CLOCK_BOLD_ENABLED, SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED);
-        addDivider(card);
-        addSliderRow(card, "\u65f6\u95f4/\u65e5\u671f\u7c97\u7ec6",
+        addDivider(page);
+        addSliderRow(page, "\u65f6\u95f4/\u65e5\u671f\u7c97\u7ec6",
                 "\u53ea\u5bf9\u72b6\u6001\u680f\u65f6\u95f4\u6587\u5b57\u751f\u6548\uff0c\u8303\u56f4 100-900",
                 SettingsStore.KEY_CLOCK_FONT_WEIGHT, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT, 100, 900, "");
-        addDivider(card);
-        addSliderRow(card, "时间和锁屏运营商字体大小",
+        addDivider(page);
+        addSliderRow(page, "时间和锁屏运营商字体大小",
                 "同时控制左上角时间、锁屏界面运营商，以及网速显示文字大小。默认 100%。",
                 SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
                 SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT, 50, 200, "%");
-        return card;
+        return page;
     }
 
     private LinearLayout buildExpandableInfoCard(String titleText, String subtitleText,
-            String badgeText, LinearLayout details) {
+            LinearLayout details) {
         LinearLayout card = card(colorFeatureSurface, colorFeatureStroke, 28);
 
         LinearLayout header = new LinearLayout(this);
@@ -1053,14 +1062,10 @@ public class MainActivity extends Activity {
         LinearLayout textColumn = new LinearLayout(this);
         textColumn.setOrientation(LinearLayout.VERTICAL);
 
-        TextView badge = chip(badgeText, colorSurfaceStrong, colorPrimary);
-        textColumn.addView(badge, matchWrap());
-
         TextView title = new TextView(this);
         title.setText(titleText);
         title.setTextColor(colorText);
         title.setTextSize(20);
-        title.setPadding(0, dp(10), 0, 0);
         textColumn.addView(title, matchWrap());
 
         TextView subtitle = new TextView(this);

@@ -30,7 +30,6 @@ final class SettingsStore {
     static final String KEY_MBACK_LONG_TOUCH_URL_ENABLED = "mback_long_touch_url_enabled";
     static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
     static final String KEY_MBACK_NAV_BAR_TRANSPARENT = "mback_nav_bar_transparent";
-    static final String KEY_NOTIFICATION_BACKGROUND_TRANSPARENT = "notification_background_transparent";
     static final String KEY_NOTIFICATION_APP_ICON_ENABLED = "notification_app_icon_enabled";
     static final String KEY_NOTIFICATION_APP_ICON_SIZE_DP = "notification_app_icon_size_dp";
     static final String KEY_NOTIFICATION_APP_ICON_PADDING_DP = "notification_app_icon_padding_dp";
@@ -39,8 +38,6 @@ final class SettingsStore {
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
     static final String KEY_IME_TOOLBAR_ENABLED = "ime_toolbar_enabled";
     static final String KEY_IME_TOOLBAR_ORDER = "ime_toolbar_order";
-    static final String KEY_MOBILE_TYPE_DEBUG_MODE = "mobile_type_debug_mode";
-    static final String KEY_MOBILE_TYPE_SPOOF_PROFILE = "mobile_type_spoof_profile";
     static final String KEY_TELEPHONY_DEBUG_ENABLED = "telephony_debug_enabled";
     static final String KEY_TELEPHONY_DEBUG_SIM_COUNT = "telephony_debug_sim_count";
     static final String KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT = "telephony_debug_default_data_slot";
@@ -79,7 +76,6 @@ final class SettingsStore {
     static final boolean DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED = false;
     static final String DEFAULT_MBACK_LONG_TOUCH_INTENT_URI = "";
     static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
-    static final boolean DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT = false;
     static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
     static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
     static final int DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP = 0;
@@ -88,17 +84,6 @@ final class SettingsStore {
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
     static final boolean DEFAULT_IME_TOOLBAR_ENABLED = true;
     static final String DEFAULT_IME_TOOLBAR_ORDER = "paste,delete,select_all,copy,switch_ime";
-    static final int MOBILE_TYPE_DEBUG_MODE_OFF = 0;
-    static final int MOBILE_TYPE_DEBUG_MODE_OBSERVE = 1;
-    static final int MOBILE_TYPE_DEBUG_MODE_SPOOF = 2;
-    static final int MOBILE_TYPE_SPOOF_PROFILE_NONE = 0;
-    static final int MOBILE_TYPE_SPOOF_PROFILE_4G = 1;
-    static final int MOBILE_TYPE_SPOOF_PROFILE_5G = 2;
-    static final int MOBILE_TYPE_SPOOF_PROFILE_5G_CA = 3;
-    static final int MOBILE_TYPE_SPOOF_PROFILE_5GA = 4;
-    static final int MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS = 5;
-    static final int DEFAULT_MOBILE_TYPE_DEBUG_MODE = MOBILE_TYPE_DEBUG_MODE_OFF;
-    static final int DEFAULT_MOBILE_TYPE_SPOOF_PROFILE = MOBILE_TYPE_SPOOF_PROFILE_5G;
     static final boolean DEFAULT_TELEPHONY_DEBUG_ENABLED = false;
     static final int DEFAULT_TELEPHONY_DEBUG_SIM_COUNT = 2;
     static final int TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_NONE = -1;
@@ -132,8 +117,6 @@ final class SettingsStore {
             KEY_NOTIFICATION_APP_ICON_PADDING_DP,
             KEY_MBACK_INSET_SIZE,
             KEY_MBACK_NAV_BAR_HEIGHT,
-            KEY_MOBILE_TYPE_DEBUG_MODE,
-            KEY_MOBILE_TYPE_SPOOF_PROFILE,
             KEY_TELEPHONY_DEBUG_SIM_COUNT,
             KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
             KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
@@ -153,7 +136,6 @@ final class SettingsStore {
             KEY_CLOCK_BOLD_ENABLED,
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
-            KEY_NOTIFICATION_BACKGROUND_TRANSPARENT,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
             KEY_MBACK_HIDE_PILL,
             KEY_IME_TOOLBAR_ENABLED,
@@ -299,10 +281,6 @@ final class SettingsStore {
                 return DEFAULT_MBACK_INSET_SIZE;
             case KEY_MBACK_NAV_BAR_HEIGHT:
                 return DEFAULT_MBACK_NAV_BAR_HEIGHT;
-            case KEY_MOBILE_TYPE_DEBUG_MODE:
-                return DEFAULT_MOBILE_TYPE_DEBUG_MODE;
-            case KEY_MOBILE_TYPE_SPOOF_PROFILE:
-                return DEFAULT_MOBILE_TYPE_SPOOF_PROFILE;
             case KEY_TELEPHONY_DEBUG_SIM_COUNT:
                 return DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
             case KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT:
@@ -342,8 +320,6 @@ final class SettingsStore {
                 return DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
             case KEY_MBACK_NAV_BAR_TRANSPARENT:
                 return DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
-            case KEY_NOTIFICATION_BACKGROUND_TRANSPARENT:
-                return DEFAULT_NOTIFICATION_BACKGROUND_TRANSPARENT;
             case KEY_NOTIFICATION_APP_ICON_ENABLED:
                 return DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
             case KEY_MBACK_HIDE_PILL:

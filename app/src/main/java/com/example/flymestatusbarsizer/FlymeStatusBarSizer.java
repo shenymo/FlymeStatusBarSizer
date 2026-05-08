@@ -82,8 +82,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final String PACKAGE_ANDROID = "android";
     private static final String FLYME_STATUS_BAR_ICON_UTILS =
             "com.flyme.systemui.statusbar.policy.FlymeStatusBarIconUtils";
-    private static final String MOBILE_TYPE_DEBUG_LOG_MARKER = "[FSBS_MOBILETYPE_DEBUG]";
-    private static final long MOBILE_TYPE_DEBUG_PUSH_MIN_INTERVAL_MS = 1500L;
     private static final String TAG_IME_TOOLBAR_ROOT = "flyme_status_bar_sizer_ime_toolbar_root";
     private static final String TAG_IME_TOOLBAR_ORIGINAL = "flyme_status_bar_sizer_ime_toolbar_original";
     private static volatile FlymeStatusBarSizer MODULE;
@@ -117,8 +115,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final HashMap<Integer, MobileTypeSubState> MOBILE_TYPE_SUB_STATES = new HashMap<>();
     private static final HashMap<Integer, SignalLevelSubState> SIGNAL_LEVEL_SUB_STATES = new HashMap<>();
     private static final HashMap<Integer, Integer> SIGNAL_SUB_SLOT_INDEX_CACHE = new HashMap<>();
-    private static final WeakHashMap<View, NotificationLiquidGlassView> NOTIFICATION_GLASS_VIEWS = new WeakHashMap<>();
-    private static final WeakHashMap<View, NotificationGlassDrawable> NOTIFICATION_GLASS_DRAWABLES = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> CLOCK_SECOND_REFRESH_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_RESTORE_GUARDS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_APPLY_GUARDS = new WeakHashMap<>();
@@ -260,8 +256,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookTelephonyDisplayInfoAccess();
         hookServiceStateNrAccess();
         hookFlymeFiveGIconDecision(loader);
-        hookDefaultNetworkTypeDecision(loader);
-        hookNetworkTypeIconModelCreation(loader);
     }
 
     private void installBatteryHooks(ClassLoader loader) {
@@ -301,7 +295,6 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     public void installNotificationHooks(ClassLoader loader) {
         hookNotificationAppIcons(loader);
-        hookNotificationBackgroundTransparency(loader);
     }
 
     public void installMBackHooks(ClassLoader loader) {
@@ -1068,56 +1061,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private void hookDefaultNetworkTypeDecision(ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(
-                    "com.android.systemui.statusbar.pipeline.mobile.domain.interactor.MobileIconInteractorImpl$defaultNetworkType$1",
-                    false,
-                    loader);
-            Method method = clazz.getDeclaredMethod("invokeSuspend", Object.class);
-            method.setAccessible(true);
-            hook(method).intercept(chain -> {
-                Object result = chain.proceed();
-                LAST_MOBILE_TYPE_DEFAULT_ICON_GROUP = describeMobileIconGroup(result);
-                LAST_MOBILE_TYPE_LAST_EVENT = "MobileIconInteractorImpl.defaultNetworkType";
-                reportMobileTypeDebug("MobileIconInteractorImpl.defaultNetworkType");
-                return result;
-            });
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook MobileIconInteractorImpl.defaultNetworkType", t);
-        }
-    }
-
-    private void hookNetworkTypeIconModelCreation(ClassLoader loader) {
-        hookNetworkTypeIconModelConstructors(loader,
-                "com.android.systemui.statusbar.pipeline.mobile.domain.model.NetworkTypeIconModel$DefaultIcon");
-        hookNetworkTypeIconModelConstructors(loader,
-                "com.android.systemui.statusbar.pipeline.mobile.domain.model.NetworkTypeIconModel$OverriddenIcon");
-    }
-
-    private void hookNetworkTypeIconModelConstructors(ClassLoader loader, String className) {
-        try {
-            Class<?> clazz = Class.forName(className, false, loader);
-            for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
-                constructor.setAccessible(true);
-                hook(constructor).intercept(chain -> {
-                    Object result = chain.proceed();
-                    Object thisObject = chain.getThisObject();
-                    LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL = safeToString(ReflectUtils.getField(thisObject, "name"));
-                    LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL_ICON_ID =
-                            ReflectUtils.getIntField(thisObject, "iconId", 0);
-                    LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL_ICON_GROUP =
-                            describeMobileIconGroup(ReflectUtils.getField(thisObject, "iconGroup"));
-                    LAST_MOBILE_TYPE_LAST_EVENT = "NetworkTypeIconModel";
-                    reportMobileTypeDebug("NetworkTypeIconModel");
-                    return result;
-                });
-            }
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook " + className, t);
-        }
-    }
-
     private void hookConnectionRateView(ClassLoader loader) {
         try {
             Class<?> clazz = Class.forName("com.flyme.statusbar.connectionRateView.ConnectionRateView", false, loader);
@@ -1393,83 +1336,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook mBack pill visibility", t);
-        }
-    }
-
-    private void hookNotificationBackgroundTransparency(ClassLoader loader) {
-        try {
-            Class<?> activatableClass = Class.forName(
-                    "com.android.systemui.statusbar.notification.row.ActivatableNotificationView",
-                    false,
-                    loader);
-            for (Method method : activatableClass.getDeclaredMethods()) {
-                String name = method.getName();
-                if ("setBackground".equals(name) && method.getParameterTypes().length == 0) {
-                    method.setAccessible(true);
-                    hook(method).intercept(chain -> {
-                        Object result = chain.proceed();
-                        Object target = chain.getThisObject();
-                        if (target instanceof View) {
-                            applyTransparentNotificationBackgroundIfNeeded((View) target);
-                        }
-                        return result;
-                    });
-                } else if ("updateBackgroundTint".equals(name) && method.getParameterTypes().length <= 1) {
-                    method.setAccessible(true);
-                    hook(method).intercept(chain -> {
-                        Object result = chain.proceed();
-                        Object target = chain.getThisObject();
-                        if (target instanceof View) {
-                            applyTransparentNotificationBackgroundIfNeeded((View) target);
-                        }
-                        return result;
-                    });
-                }
-            }
-
-            Class<?> backgroundClass = Class.forName(
-                    "com.android.systemui.statusbar.notification.row.NotificationBackgroundView",
-                    false,
-                    loader);
-            for (Method method : backgroundClass.getDeclaredMethods()) {
-                String name = method.getName();
-                if ("onAttachedToWindow".equals(name)
-                        && method.getParameterTypes().length == 0) {
-                    method.setAccessible(true);
-                    hook(method).intercept(chain -> {
-                        Object result = chain.proceed();
-                        Object target = chain.getThisObject();
-                        if (target instanceof View
-                                && shouldUseTransparentNotificationBackground((View) target)) {
-                            syncNotificationGlassDrawableState((View) target);
-                            ((View) target).invalidate();
-                        }
-                        return result;
-                    });
-                } else if (("setActualHeight".equals(name)
-                        || "setDrawableAlpha".equals(name)
-                        || "setExpandAnimationRunning".equals(name)
-                        || "setTint".equals(name)
-                        || "setTintForNoBlur".equals(name)
-                        || "setState".equals(name)
-                        || "drawableStateChanged".equals(name)
-                        || "setClipTopAmount".equals(name)
-                        || "setClipBottomAmount".equals(name)
-                        || "setBottomAmountClips".equals(name))
-                        && method.getParameterTypes().length <= 1) {
-                    method.setAccessible(true);
-                    hook(method).intercept(chain -> {
-                        Object result = chain.proceed();
-                        Object target = chain.getThisObject();
-                        if (target instanceof View) {
-                            syncNotificationGlassDrawableState((View) target);
-                        }
-                        return result;
-                    });
-                }
-            }
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook notification background transparency", t);
         }
     }
 
@@ -2391,94 +2257,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         view.invalidate();
     }
 
-    private static void applyTransparentNotificationBackgroundIfNeeded(View root) {
-        if (root == null) {
-            return;
-        }
-        try {
-            if (!shouldUseTransparentNotificationBackground(root)) {
-                hideNotificationLiquidGlassOverlay(root);
-                return;
-            }
-            Object backgroundNormal = ReflectUtils.getField(root, "mBackgroundNormal");
-            Object backgroundFlyme = ReflectUtils.getField(root, "mBackgroundFlyme");
-            float radius = resolveNotificationCornerRadiusPx(root);
-            applyTransparentNotificationBackgroundView(backgroundNormal, root.getContext(), radius);
-            applyTransparentNotificationBackgroundView(backgroundFlyme, root.getContext(), radius);
-            hideNotificationLiquidGlassOverlay(root);
-            ReflectUtils.invokeMethod(root, "setBackgroundTintColor", new Class[]{int.class}, 0);
-            ReflectUtils.invokeMethod(root, "setTintColor", new Class[]{int.class}, 0);
-            ReflectUtils.invokeMethod(root, "setTintColor", new Class[]{int.class, boolean.class}, 0, false);
-            root.invalidate();
-        } catch (Throwable t) {
-            if (MODULE != null) {
-                MODULE.log(android.util.Log.WARN, TAG,
-                        "Failed to apply notification liquid glass overlay", t);
-            }
-        }
-    }
-
-    private static void applyTransparentNotificationBackgroundView(Object backgroundView, Context context,
-            float cornerRadiusPx) {
-        if (backgroundView == null || context == null) {
-            return;
-        }
-        Drawable drawable = createTransparentNotificationDrawable(context, backgroundView, cornerRadiusPx);
-        ReflectUtils.invokeMethod(backgroundView, "setCustomBackground",
-                new Class[]{Drawable.class}, drawable);
-        ReflectUtils.invokeMethod(backgroundView, "setTint", new Class[]{int.class}, 0);
-        ReflectUtils.invokeMethod(backgroundView, "setTintForNoBlur", new Class[]{int.class}, 0);
-        if (backgroundView instanceof View) {
-            View background = (View) backgroundView;
-            syncNotificationGlassDrawableState(background);
-            background.invalidate();
-        }
-    }
-
-    private static boolean shouldUseTransparentNotificationBackground(View view) {
-        Context context = view == null ? null : view.getContext();
-        if (context == null) {
-            return false;
-        }
-        ModuleConfig config = ModuleConfig.load(context);
-        return config.enabled && config.notificationBackgroundTransparent;
-    }
-
-    private static Drawable createTransparentNotificationDrawable(Context context, Object backgroundView,
-            float cornerRadiusPx) {
-        if (backgroundView instanceof View) {
-            View view = (View) backgroundView;
-            NotificationGlassDrawable drawable = NOTIFICATION_GLASS_DRAWABLES.get(view);
-            if (drawable == null) {
-                drawable = new NotificationGlassDrawable(cornerRadiusPx);
-                NOTIFICATION_GLASS_DRAWABLES.put(view, drawable);
-            } else {
-                drawable.setCornerRadiusPx(cornerRadiusPx);
-            }
-            return drawable;
-        }
-        return new ColorDrawable(Color.TRANSPARENT);
-    }
-
-    private static void syncNotificationGlassDrawableState(View backgroundView) {
-        if (backgroundView == null || !shouldUseTransparentNotificationBackground(backgroundView)) {
-            return;
-        }
-        NotificationGlassDrawable drawable = NOTIFICATION_GLASS_DRAWABLES.get(backgroundView);
-        if (drawable == null) {
-            return;
-        }
-        drawable.syncFromBackgroundState(
-                ReflectUtils.getIntField(backgroundView, "mActualHeight", backgroundView.getHeight()),
-                ReflectUtils.getIntField(backgroundView, "mClipTopAmount", 0),
-                ReflectUtils.getIntField(backgroundView, "mClipBottomAmount", 0),
-                ReflectUtils.getIntField(backgroundView, "mTintColor", 0),
-                ReflectUtils.getIntField(backgroundView, "mDrawableAlpha", 255),
-                ReflectUtils.getBooleanField(backgroundView, "mBottomAmountClips", true),
-                ReflectUtils.getBooleanField(backgroundView, "mExpandAnimationRunning", false),
-                backgroundView.getDrawableState());
-    }
-
     private static int resolveSystemUiDrawableId(Context context, String name) {
         if (context == null || name == null) {
             return 0;
@@ -2488,47 +2266,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         } catch (Throwable ignored) {
             return 0;
         }
-    }
-
-    private static NotificationLiquidGlassView ensureNotificationLiquidGlassOverlay(View root) {
-        return null;
-    }
-
-    private static void hideNotificationLiquidGlassOverlay(View root) {
-        if (!(root instanceof ViewGroup)) {
-            return;
-        }
-        NotificationLiquidGlassView existing = NOTIFICATION_GLASS_VIEWS.get(root);
-        if (existing != null) {
-            existing.setVisibility(View.GONE);
-        }
-    }
-
-    private static void updateNotificationLiquidGlassBinding(ViewGroup row, NotificationLiquidGlassView glassView) {
-        if (glassView != null) {
-            glassView.setVisibility(View.GONE);
-        }
-    }
-
-    private static ViewGroup findNotificationGlassSource(View row) {
-        ViewParent parent = row == null ? null : row.getParent();
-        while (parent instanceof View) {
-            View view = (View) parent;
-            if (view instanceof ViewGroup) {
-                return (ViewGroup) view;
-            }
-            parent = view.getParent();
-        }
-        return null;
-    }
-
-    private static float resolveNotificationCornerRadiusPx(View view) {
-        Context context = view == null ? null : view.getContext();
-        int radius = context == null ? 0 : getSystemUiDimen(context, "notification_background_radius");
-        if (radius > 0) {
-            return radius;
-        }
-        return view == null ? 0f : dp(view, 16f);
     }
 
     private static void setInsetsFrameProviderInsetsSize(Object provider, Insets insets) {
@@ -5430,175 +5167,42 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void reportMobileTypeDebug(String reason) {
-        Context context = ModuleConfig.getSystemUiContext();
-        ModuleConfig config = ModuleConfig.load(context);
-        if (!isMobileTypeObservationEnabled(config)) {
-            return;
-        }
-        LAST_MOBILE_TYPE_DEBUG_MODE = describeMobileTypeDebugMode(config.mobileTypeDebugMode);
-        LAST_MOBILE_TYPE_SPOOF_PROFILE = describeMobileTypeSpoofProfile(config.mobileTypeSpoofProfile);
-        StringBuilder snapshot = new StringBuilder(320);
-        snapshot.append("reason=").append(nonEmpty(reason)).append('\n');
-        snapshot.append("debugMode=").append(nonEmpty(LAST_MOBILE_TYPE_DEBUG_MODE)).append('\n');
-        snapshot.append("spoofProfile=").append(nonEmpty(LAST_MOBILE_TYPE_SPOOF_PROFILE)).append('\n');
-        snapshot.append("signalCodeDrawEnabled=").append(isSignalCodeDrawEnabled(config)).append('\n');
-        snapshot.append("mobile_type.lastEvent=").append(nonEmpty(LAST_MOBILE_TYPE_LAST_EVENT)).append('\n');
-        int defaultDataSubId = resolveDefaultDataSubscriptionId();
-        snapshot.append("defaultDataSubId=").append(defaultDataSubId).append('\n');
-        snapshot.append("activeSubscriptionCount=").append(resolveActiveSubscriptionCount(context)).append('\n');
-        snapshot.append("wifiOnlyInternet=").append(isUsingWifiOnlyInternet(context)).append('\n');
-        appendDefaultDataMobileTypeDebug(snapshot, context, defaultDataSubId);
-        snapshot.append("selectedMobileTypeBadge=").append(
-                describeMobileTypeBadge(resolveSignalMobileTypeBadgeFromCachedState(context))).append('\n');
-        snapshot.append("displayInfo.subId=").append(LAST_MOBILE_TYPE_DISPLAY_INFO_SUB_ID).append('\n');
-        snapshot.append("displayInfo.networkType=").append(describeNetworkType(LAST_MOBILE_TYPE_NETWORK_TYPE)).append('\n');
-        snapshot.append("displayInfo.overrideNetworkType=").append(
-                describeOverrideNetworkType(LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE)).append('\n');
-        snapshot.append("serviceState.subId=").append(LAST_SERVICE_STATE_SUB_ID).append('\n');
-        snapshot.append("serviceState.nrState=").append(describeNrState(LAST_MOBILE_TYPE_NR_STATE)).append('\n');
-        snapshot.append("serviceState.nrCaState=").append(nonEmpty(LAST_MOBILE_TYPE_NR_CA_STATE)).append('\n');
-        snapshot.append("mobile_type.flymeFiveGIcon=").append(nonEmpty(LAST_MOBILE_TYPE_FLYME_ICON_GROUP)).append('\n');
-        snapshot.append("mobile_type.defaultIconGroup=").append(nonEmpty(LAST_MOBILE_TYPE_DEFAULT_ICON_GROUP)).append('\n');
-        snapshot.append("mobile_type.networkTypeIconModel=").append(nonEmpty(LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL)).append('\n');
-        snapshot.append("mobile_type.viewVisibility=").append(describeVisibility(LAST_MOBILE_TYPE_VIEW_VISIBILITY)).append('\n');
-        appendMobileTypeSubStateDebug(snapshot, defaultDataSubId);
-        String snapshotText = snapshot.toString();
-        long uptime = SystemClock.uptimeMillis();
-        if (snapshotText.equals(LAST_MOBILE_TYPE_DEBUG_SNAPSHOT)
-                && uptime - LAST_MOBILE_TYPE_DEBUG_PUSH_UPTIME < MOBILE_TYPE_DEBUG_PUSH_MIN_INTERVAL_MS) {
-            return;
-        }
-        LAST_MOBILE_TYPE_DEBUG_SNAPSHOT = snapshotText;
-        LAST_MOBILE_TYPE_DEBUG_PUSH_UPTIME = uptime;
-        logMobileTypeDebugSnapshot(snapshotText);
-    }
-
-    private static void logMobileTypeDebugSnapshot(String snapshotText) {
-        String compact = snapshotText == null ? "" : snapshotText.replace('\n', ' ').trim();
-        String entry = MOBILE_TYPE_DEBUG_LOG_MARKER + " " + compact;
-        android.util.Log.i(TAG, entry);
     }
 
     private static boolean isMobileTypeObservationEnabled(ModuleConfig config) {
-        return config != null && config.mobileTypeDebugMode != SettingsStore.MOBILE_TYPE_DEBUG_MODE_OFF;
+        return false;
     }
 
     private static boolean isMobileTypeSpoofEnabled(ModuleConfig config) {
-        return config != null
-                && config.mobileTypeDebugMode == SettingsStore.MOBILE_TYPE_DEBUG_MODE_SPOOF
-                && config.mobileTypeSpoofProfile != SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_NONE;
+        return false;
     }
 
     private static int getSpoofedNetworkType(ModuleConfig config) {
-        switch (config.mobileTypeSpoofProfile) {
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G:
-                return TelephonyManager.NETWORK_TYPE_LTE;
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G:
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA:
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA:
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS:
-                return TelephonyManager.NETWORK_TYPE_NR;
-            default:
-                return LAST_MOBILE_TYPE_NETWORK_TYPE;
-        }
+        return LAST_MOBILE_TYPE_NETWORK_TYPE;
     }
 
     private static int getSpoofedOverrideNetworkType(ModuleConfig config) {
-        switch (config.mobileTypeSpoofProfile) {
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA:
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS:
-                return TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_ADVANCED;
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G:
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G:
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA:
-                return TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NONE;
-            default:
-                return LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE;
-        }
+        return LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE;
     }
 
     private static int getSpoofedNrState(ModuleConfig config) {
-        switch (config.mobileTypeSpoofProfile) {
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G:
-                return 0;
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G:
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA:
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA:
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS:
-                return 3;
-            default:
-                return LAST_MOBILE_TYPE_NR_STATE;
-        }
+        return LAST_MOBILE_TYPE_NR_STATE;
     }
 
     private static boolean getSpoofedNrCaState(ModuleConfig config) {
-        switch (config.mobileTypeSpoofProfile) {
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA:
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA:
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS:
-                return true;
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G:
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G:
-                return false;
-            default:
-                return "true".equalsIgnoreCase(LAST_MOBILE_TYPE_NR_CA_STATE);
-        }
+        return "true".equalsIgnoreCase(LAST_MOBILE_TYPE_NR_CA_STATE);
     }
 
     private static Object getSpoofedFlymeFiveGIcon(ModuleConfig config, ClassLoader loader) {
-        if (config == null || loader == null) {
-            return null;
-        }
-        switch (config.mobileTypeSpoofProfile) {
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G:
-                return null;
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G:
-                return ReflectUtils.getStaticField(loader,
-                        "com.android.settingslib.mobile.TelephonyIcons", "FIVE_G_BASIC");
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA:
-                return ReflectUtils.getStaticField(loader,
-                        "com.android.settingslib.mobile.TelephonyIcons", "FIVE_G_CA");
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA:
-                return ReflectUtils.getStaticField(loader,
-                        "com.android.settingslib.mobile.TelephonyIcons", "FIVE_G_A");
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS:
-                return ReflectUtils.getStaticField(loader,
-                        "com.android.settingslib.mobile.TelephonyIcons", "NR_5G_PLUS");
-            default:
-                return null;
-        }
+        return null;
     }
 
     private static String describeMobileTypeDebugMode(int mode) {
-        switch (mode) {
-            case SettingsStore.MOBILE_TYPE_DEBUG_MODE_OFF:
-                return "OFF";
-            case SettingsStore.MOBILE_TYPE_DEBUG_MODE_OBSERVE:
-                return "OBSERVE";
-            case SettingsStore.MOBILE_TYPE_DEBUG_MODE_SPOOF:
-                return "SPOOF";
-            default:
-                return "UNKNOWN(" + mode + ")";
-        }
+        return "";
     }
 
     private static String describeMobileTypeSpoofProfile(int profile) {
-        switch (profile) {
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_NONE:
-                return "FOLLOW_SYSTEM";
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G:
-                return "FORCE_4G";
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G:
-                return "FORCE_5G";
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA:
-                return "FORCE_5G_CA";
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA:
-                return "FORCE_5GA";
-            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS:
-                return "FORCE_5G_PLUS";
-            default:
-                return "UNKNOWN(" + profile + ")";
-        }
+        return "";
     }
 
     private static String describeMobileIconGroup(Object iconGroup) {
@@ -5879,63 +5483,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             return badge;
         }
         return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
-    }
-
-    private static void appendDefaultDataMobileTypeDebug(StringBuilder snapshot,
-                                                         Context context,
-                                                         int defaultDataSubId) {
-        if (!SubscriptionManager.isValidSubscriptionId(defaultDataSubId)) {
-            snapshot.append("targetSubState=invalid").append('\n');
-            return;
-        }
-        MobileTypeSubState state = snapshotResolvedMobileTypeSubState(defaultDataSubId);
-        if (state == null) {
-            snapshot.append("targetSub[").append(defaultDataSubId).append("]=none").append('\n');
-            return;
-        }
-        snapshot.append("targetSub[").append(defaultDataSubId).append("]={networkType=")
-                .append(describeNetworkType(state.networkType))
-                .append(", overrideNetworkType=")
-                .append(describeOverrideNetworkType(state.overrideNetworkType))
-                .append(", nrState=").append(describeNrState(state.nrState))
-                .append(", nrCaState=").append(nonEmpty(state.nrCaState))
-                .append(", badge=")
-                .append(describeMobileTypeBadge(resolveSignalMobileTypeBadgeFromSubState(state)))
-                .append('}')
-                .append('\n');
-    }
-
-    private static void appendMobileTypeSubStateDebug(StringBuilder snapshot, int defaultDataSubId) {
-        ArrayList<Integer> subIds = new ArrayList<>();
-        synchronized (MOBILE_TYPE_SUB_STATES) {
-            subIds.addAll(MOBILE_TYPE_SUB_STATES.keySet());
-        }
-        if (subIds.isEmpty()) {
-            snapshot.append("subStates=none").append('\n');
-            return;
-        }
-        Collections.sort(subIds);
-        for (int i = 0; i < subIds.size(); i++) {
-            int subId = subIds.get(i);
-            if (subId == defaultDataSubId) {
-                continue;
-            }
-            MobileTypeSubState state = snapshotMobileTypeSubState(subId);
-            if (state == null) {
-                continue;
-            }
-            snapshot.append("auxSub[").append(subId).append("]={networkType=")
-                    .append(describeNetworkType(state.networkType))
-                    .append(", overrideNetworkType=")
-                    .append(describeOverrideNetworkType(state.overrideNetworkType))
-                    .append(", nrState=").append(describeNrState(state.nrState))
-                    .append(", nrCaState=").append(nonEmpty(state.nrCaState))
-                    .append(", flymeIcon=").append(nonEmpty(state.flymeIconGroup))
-                    .append(", badge=")
-                    .append(describeMobileTypeBadge(resolveSignalMobileTypeBadgeFromSubState(state)))
-                    .append('}')
-                    .append('\n');
-        }
     }
 
     private static String nonEmpty(String value) {
