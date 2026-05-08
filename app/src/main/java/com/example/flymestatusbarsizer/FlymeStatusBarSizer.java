@@ -1,5 +1,10 @@
 package com.example.flymestatusbarsizer;
 
+import com.example.flymestatusbarsizer.feature.clock.ClockHooks;
+import com.example.flymestatusbarsizer.feature.ime.ImeHooks;
+import com.example.flymestatusbarsizer.feature.mback.MBackHooks;
+import com.example.flymestatusbarsizer.feature.notification.NotificationHooks;
+
 import android.app.Notification;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -223,11 +228,24 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (SYSTEM_UI.equals(packageName)) {
             hookSystemUi(loader);
         }
-        hookInputMethodService(loader);
+        ImeHooks.install(this, loader);
     }
 
     private void hookSystemUi(ClassLoader loader) {
+        installStatusBarHooks(loader);
+        installSignalHooks(loader);
+        NotificationHooks.install(this, loader);
+        MBackHooks.install(this, loader);
+        installBatteryHooks(loader);
+        ClockHooks.install(this, loader);
+    }
+
+    private void installStatusBarHooks(ClassLoader loader) {
         hookConnectionRateView(loader);
+        hookStatusBarIconConstructors(loader);
+    }
+
+    private void installSignalHooks(ClassLoader loader) {
         hookSignalImageAssignments();
         hookSignalTintUpdates();
         hookSignalDrawableLevelChanges(loader);
@@ -244,12 +262,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookFlymeFiveGIconDecision(loader);
         hookDefaultNetworkTypeDecision(loader);
         hookNetworkTypeIconModelCreation(loader);
-        hookStatusBarIconConstructors(loader);
-        hookNotificationAppIcons(loader);
-        hookMBackLongTouchIntent(loader);
-        hookMBackNavBarExperiments(loader);
-        hookMBackPillVisibility(loader);
-        hookNotificationBackgroundTransparency(loader);
+    }
+
+    private void installBatteryHooks(ClassLoader loader) {
         hookConstructors(loader, "com.flyme.statusbar.battery.FlymeBatteryMeterView", view -> {
             ModuleConfig config = ModuleConfig.load(view.getContext());
             if (!config.enabled) {
@@ -278,6 +293,24 @@ public class FlymeStatusBarSizer extends XposedModule {
             ReflectUtils.setIntField(textView, "mLowColor", Color.WHITE);
         });
         hookBatteryDrawable(loader);
+    }
+
+    public void installImeHooks(ClassLoader loader) {
+        hookInputMethodService(loader);
+    }
+
+    public void installNotificationHooks(ClassLoader loader) {
+        hookNotificationAppIcons(loader);
+        hookNotificationBackgroundTransparency(loader);
+    }
+
+    public void installMBackHooks(ClassLoader loader) {
+        hookMBackLongTouchIntent(loader);
+        hookMBackNavBarExperiments(loader);
+        hookMBackPillVisibility(loader);
+    }
+
+    public void installClockHooks(ClassLoader loader) {
         hookClockWeekday(loader);
         hookClockAndCarrierTextSize(loader);
     }
