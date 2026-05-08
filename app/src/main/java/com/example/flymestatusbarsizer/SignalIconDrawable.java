@@ -47,10 +47,11 @@ final class SignalIconDrawable extends Drawable {
         }
         updateDrawColor(getState());
         int color = SignalPreviewPainter.withFixedAlpha(drawColor, SIGNAL_DRAW_ALPHA);
+        int mobileTypeBadge = FlymeStatusBarSizer.resolveSignalMobileTypeBadge();
         if (mergedDual) {
-            SignalPreviewPainter.drawMergedDualSim(canvas, bounds, color, colorFilter);
+            SignalPreviewPainter.drawMergedDualSim(canvas, bounds, color, colorFilter, mobileTypeBadge);
         } else {
-            SignalPreviewPainter.drawSingleSim(canvas, bounds, color, colorFilter);
+            SignalPreviewPainter.drawSingleSim(canvas, bounds, color, colorFilter, mobileTypeBadge);
         }
     }
 

@@ -2212,6 +2212,113 @@ public class FlymeStatusBarSizer extends XposedModule {
         return resolveBatteryTintColor(batteryTintSource, fallback);
     }
 
+    static int resolveSignalMobileTypeBadgeFontWeight() {
+        Context context = ModuleConfig.getSystemUiContext();
+        ModuleConfig config = ModuleConfig.load(context);
+        if (config == null || !config.enabled) {
+            return 400;
+        }
+        return resolveClockFontWeight(config);
+    }
+
+    static int resolveSignalMobileTypeBadge() {
+        int badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL);
+        if (badge != Integer.MIN_VALUE) {
+            return badge;
+        }
+        badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL_ICON_GROUP);
+        if (badge != Integer.MIN_VALUE) {
+            return badge;
+        }
+        badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_RESOURCE_NAME);
+        if (badge != Integer.MIN_VALUE) {
+            return badge;
+        }
+        badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_ICON_RESOURCE_NAME);
+        if (badge != Integer.MIN_VALUE) {
+            return badge;
+        }
+        badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_DEFAULT_ICON_GROUP);
+        if (badge != Integer.MIN_VALUE) {
+            return badge;
+        }
+        badge = resolveSignalMobileTypeBadgeFromText(LAST_MOBILE_TYPE_FLYME_ICON_GROUP);
+        if (badge != Integer.MIN_VALUE) {
+            return badge;
+        }
+        return resolveSignalMobileTypeBadgeFromTelephonyState();
+    }
+
+    private static int resolveSignalMobileTypeBadgeFromText(String value) {
+        if (TextUtils.isEmpty(value)) {
+            return Integer.MIN_VALUE;
+        }
+        String normalized = value.toUpperCase(Locale.ROOT)
+                .replace(" ", "")
+                .replace("-", "")
+                .replace("_", "")
+                .replace(":", "")
+                .replace(".", "")
+                .replace("/", "");
+        if (TextUtils.isEmpty(normalized)
+                || "NULL".equals(normalized)
+                || "UNKNOWN".equals(normalized)) {
+            return Integer.MIN_VALUE;
+        }
+        if (containsAny(normalized,
+                "5GA",
+                "5GCA",
+                "5GPLUS",
+                "NRADVANCED",
+                "FIVEGA",
+                "FIVEGCA",
+                "NR5GPLUS")) {
+            return SignalPreviewPainter.MOBILE_TYPE_BADGE_5GA;
+        }
+        if (containsAny(normalized,
+                "5GBASIC",
+                "FIVEGBASIC",
+                "5G")) {
+            return SignalPreviewPainter.MOBILE_TYPE_BADGE_5G;
+        }
+        return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
+    }
+
+    private static boolean containsAny(String value, String... tokens) {
+        if (TextUtils.isEmpty(value) || tokens == null) {
+            return false;
+        }
+        for (String token : tokens) {
+            if (!TextUtils.isEmpty(token) && value.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int resolveSignalMobileTypeBadgeFromTelephonyState() {
+        int overrideNetworkType = LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE;
+        if (overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_ADVANCED) {
+            return SignalPreviewPainter.MOBILE_TYPE_BADGE_5GA;
+        }
+        if (overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA
+                || overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE) {
+            return SignalPreviewPainter.MOBILE_TYPE_BADGE_5G;
+        }
+        if (LAST_MOBILE_TYPE_NETWORK_TYPE == TelephonyManager.NETWORK_TYPE_NR) {
+            return "true".equalsIgnoreCase(LAST_MOBILE_TYPE_NR_CA_STATE)
+                    ? SignalPreviewPainter.MOBILE_TYPE_BADGE_5GA
+                    : SignalPreviewPainter.MOBILE_TYPE_BADGE_5G;
+        }
+        int nrState = LAST_MOBILE_TYPE_NR_STATE;
+        if (nrState == 2 || nrState == 3) {
+            return "true".equalsIgnoreCase(LAST_MOBILE_TYPE_NR_CA_STATE)
+                    ? SignalPreviewPainter.MOBILE_TYPE_BADGE_5GA
+                    : SignalPreviewPainter.MOBILE_TYPE_BADGE_5G;
+        }
+        return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
+    }
+
     private static int resolveTintListColor(ColorStateList tintList, int[] state, int fallbackColor) {
         if (tintList == null) {
             return fallbackColor;
@@ -3927,6 +4034,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         if ("mobile_type".equals(idName)) {
             hideMobileTypeView(view);
+            refreshLinkedSignalViews(view);
             return;
         }
         if ("mobile_signal".equals(idName)) {
@@ -3955,6 +4063,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         if ("mobile_type".equals(idName)) {
             hideMobileTypeView(view);
+            refreshLinkedSignalViews(view);
             return;
         }
         applyStatusBarScaleIfNeeded(view);
@@ -3999,6 +4108,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         if ("mobile_type".equals(idName)) {
             hideMobileTypeView(view);
+            refreshLinkedSignalViews(view);
             return;
         }
         String drawableName = drawable == null ? "null" : drawable.getClass().getName();
@@ -4031,6 +4141,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         if ("mobile_type".equals(idName)) {
             hideMobileTypeView(view);
+            refreshLinkedSignalViews(view);
             return;
         }
         if ("mobile_signal".equals(idName) && view instanceof ImageView) {
@@ -4615,10 +4726,11 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         alignSignalIconVertically(view);
-        resizeSignalIconView(view);
+        int mobileTypeBadge = resolveSignalMobileTypeBadge();
+        resizeSignalIconView(view, mobileTypeBadge);
         disableAncestorClipping(view, 6);
         int intrinsicHeight = resolveSignalIconIntrinsicHeight(view);
-        int intrinsicWidth = SignalPreviewPainter.resolveIntrinsicWidth(intrinsicHeight);
+        int intrinsicWidth = SignalPreviewPainter.resolveIntrinsicWidth(intrinsicHeight, mobileTypeBadge);
         Drawable current = view.getDrawable();
         if (current instanceof SignalIconDrawable
                 && ((SignalIconDrawable) current).matchesGeometry(mergedDual, intrinsicWidth, intrinsicHeight)) {
@@ -4693,6 +4805,26 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (group.getVisibility() != visibility) {
                 group.setVisibility(visibility);
             }
+        }
+    }
+
+    private static void refreshLinkedSignalViews(View anchorView) {
+        if (anchorView == null) {
+            return;
+        }
+        View root = anchorView.getRootView();
+        ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
+        for (View trackedView : views) {
+            if (!(trackedView instanceof ImageView)) {
+                continue;
+            }
+            if (!"mobile_signal".equals(getSystemUiIdName(trackedView))) {
+                continue;
+            }
+            if (root != null && trackedView.getRootView() != root) {
+                continue;
+            }
+            applySignalIconOverride((ImageView) trackedView);
         }
     }
 
@@ -4849,7 +4981,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private static void resizeSignalIconView(ImageView view) {
+    private static void resizeSignalIconView(ImageView view, int mobileTypeBadge) {
         if (view == null) {
             return;
         }
@@ -4858,7 +4990,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         int targetHeight = resolveTargetSignalIconBoxSize(view);
-        int targetWidth = SignalPreviewPainter.resolveIntrinsicWidth(targetHeight);
+        int targetWidth = SignalPreviewPainter.resolveIntrinsicWidth(targetHeight, mobileTypeBadge);
         boolean changed = false;
         if (lp.width != targetWidth) {
             lp.width = targetWidth;
