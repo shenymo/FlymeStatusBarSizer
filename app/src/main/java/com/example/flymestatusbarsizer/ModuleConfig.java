@@ -48,6 +48,8 @@ final class ModuleConfig {
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
     boolean imeToolbarEnabled = SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED;
     String imeToolbarOrder = SettingsStore.DEFAULT_IME_TOOLBAR_ORDER;
+    int mobileTypeDebugMode = SettingsStore.DEFAULT_MOBILE_TYPE_DEBUG_MODE;
+    int mobileTypeSpoofProfile = SettingsStore.DEFAULT_MOBILE_TYPE_SPOOF_PROFILE;
 
     static ModuleConfig load(Context context) {
         if (context != null) {
@@ -292,6 +294,14 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_IME_TOOLBAR_ORDER,
                     SettingsStore.DEFAULT_IME_TOOLBAR_ORDER);
+            config.mobileTypeDebugMode = SettingsStore.readInt(
+                    prefs,
+                    SettingsStore.KEY_MOBILE_TYPE_DEBUG_MODE,
+                    SettingsStore.DEFAULT_MOBILE_TYPE_DEBUG_MODE);
+            config.mobileTypeSpoofProfile = SettingsStore.readInt(
+                    prefs,
+                    SettingsStore.KEY_MOBILE_TYPE_SPOOF_PROFILE,
+                    SettingsStore.DEFAULT_MOBILE_TYPE_SPOOF_PROFILE);
             return config;
         } catch (Throwable t) {
             Log.w(TAG, "Failed to load remote module config", t);

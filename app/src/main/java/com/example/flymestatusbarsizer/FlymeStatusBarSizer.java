@@ -1,17 +1,17 @@
 package com.example.flymestatusbarsizer;
 
 import android.app.Notification;
-import android.content.ComponentCallbacks;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ComponentCallbacks;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
-import android.net.Uri;
-import android.content.res.Resources;
-import android.content.res.Configuration;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
+import android.content.res.Resources;
+import android.net.Uri;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -29,8 +29,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.service.notification.StatusBarNotification;
+import android.telephony.ServiceState;
 import android.telephony.SignalStrength;
 import android.telephony.SubscriptionManager;
+import android.telephony.TelephonyDisplayInfo;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.graphics.Typeface;
@@ -68,6 +70,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final String PACKAGE_ANDROID = "android";
     private static final String FLYME_STATUS_BAR_ICON_UTILS =
             "com.flyme.systemui.statusbar.policy.FlymeStatusBarIconUtils";
+    private static final String MOBILE_TYPE_DEBUG_LOG_MARKER = "[FSBS_MOBILETYPE_DEBUG]";
     private static final String TAG_IME_TOOLBAR_ROOT = "flyme_status_bar_sizer_ime_toolbar_root";
     private static final String TAG_IME_TOOLBAR_ORIGINAL = "flyme_status_bar_sizer_ime_toolbar_original";
     private static volatile FlymeStatusBarSizer MODULE;
@@ -92,6 +95,9 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<Drawable, View> SIGNAL_DRAWABLE_OWNERS = new WeakHashMap<>();
     private static final WeakHashMap<TelephonyManager, Integer> TELEPHONY_MANAGER_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<SignalStrength, Integer> SIGNAL_STRENGTH_SUB_IDS = new WeakHashMap<>();
+    private static final WeakHashMap<ServiceState, Integer> SERVICE_STATE_SUB_IDS = new WeakHashMap<>();
+    private static final WeakHashMap<TelephonyDisplayInfo, TelephonyDisplayInfoState> TELEPHONY_DISPLAY_INFO_STATES =
+            new WeakHashMap<>();
     private static final WeakHashMap<View, NotificationLiquidGlassView> NOTIFICATION_GLASS_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, NotificationGlassDrawable> NOTIFICATION_GLASS_DRAWABLES = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> CLOCK_SECOND_REFRESH_VIEWS = new WeakHashMap<>();
@@ -115,6 +121,36 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static volatile int LAST_SIGNAL_SUB_ID = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
     private static volatile int LAST_CELLULAR_LEVEL = -1;
     private static volatile int LAST_ACTIVE_SUBSCRIPTION_COUNT = -1;
+    private static volatile int LAST_SERVICE_STATE_SUB_ID = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    private static volatile int LAST_MOBILE_TYPE_RESOURCE_ID = 0;
+    private static volatile int LAST_MOBILE_TYPE_ICON_RESOURCE_ID = 0;
+    private static volatile int LAST_MOBILE_TYPE_VIEW_VISIBILITY = View.VISIBLE;
+    private static volatile int LAST_MOBILE_TYPE_RAW_NETWORK_TYPE = Integer.MIN_VALUE;
+    private static volatile int LAST_MOBILE_TYPE_NETWORK_TYPE = Integer.MIN_VALUE;
+    private static volatile int LAST_MOBILE_TYPE_RAW_OVERRIDE_NETWORK_TYPE = Integer.MIN_VALUE;
+    private static volatile int LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE = Integer.MIN_VALUE;
+    private static volatile int LAST_MOBILE_TYPE_RAW_NR_STATE = Integer.MIN_VALUE;
+    private static volatile int LAST_MOBILE_TYPE_NR_STATE = Integer.MIN_VALUE;
+    private static volatile String LAST_MOBILE_TYPE_LAST_EVENT = "";
+    private static volatile String LAST_MOBILE_TYPE_DEBUG_MODE = "";
+    private static volatile String LAST_MOBILE_TYPE_SPOOF_PROFILE = "";
+    private static volatile String LAST_MOBILE_TYPE_RAW_FLYME_ICON_GROUP = "";
+    private static volatile String LAST_MOBILE_TYPE_FLYME_ICON_GROUP = "";
+    private static volatile String LAST_MOBILE_TYPE_DEFAULT_ICON_GROUP = "";
+    private static volatile String LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL = "";
+    private static volatile String LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL_ICON_GROUP = "";
+    private static volatile String LAST_MOBILE_TYPE_RESOURCE_NAME = "";
+    private static volatile String LAST_MOBILE_TYPE_ICON_RESOURCE_NAME = "";
+    private static volatile String LAST_MOBILE_TYPE_ICON_RESOURCE_PACKAGE = "";
+    private static volatile String LAST_MOBILE_TYPE_ICON_TYPE = "";
+    private static volatile String LAST_MOBILE_TYPE_DRAWABLE_CLASS = "";
+    private static volatile String LAST_MOBILE_TYPE_RAW_NR_CA_STATE = "";
+    private static volatile String LAST_MOBILE_TYPE_NR_CA_STATE = "";
+    private static volatile String LAST_MOBILE_TYPE_DISPLAY_INFO_RAW = "";
+    private static volatile String LAST_MOBILE_TYPE_SERVICE_STATE_RAW = "";
+    private static volatile int LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL_ICON_ID;
+    private static volatile long LAST_MOBILE_TYPE_DEBUG_PUSH_UPTIME;
+    private static volatile String LAST_MOBILE_TYPE_DEBUG_SNAPSHOT = "";
     private static final float IME_TOOLBAR_ICON_VIEWPORT = 960f;
     private static final String[] IME_TOOLBAR_ACTIONS = {
             "paste", "delete", "select_all", "copy", "switch_ime"
@@ -151,7 +187,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookSignalDrawableLevelChanges(loader);
         hookTelephonyCreateForSubscriptionId();
         hookTelephonyGetSignalStrength();
+        hookTelephonyGetServiceState();
         hookSignalStrengthGetLevel();
+        hookTelephonyDisplayInfoAccess();
+        hookServiceStateNrAccess();
+        hookFlymeFiveGIconDecision(loader);
+        hookDefaultNetworkTypeDecision(loader);
+        hookNetworkTypeIconModelCreation(loader);
         hookStatusBarIconConstructors(loader);
         hookNotificationAppIcons(loader);
         hookMBackLongTouchIntent(loader);
@@ -256,6 +298,20 @@ public class FlymeStatusBarSizer extends XposedModule {
             log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setImageResource", t);
         }
         try {
+            Method setImageIcon = ImageView.class.getDeclaredMethod("setImageIcon", Icon.class);
+            setImageIcon.setAccessible(true);
+            hook(setImageIcon).intercept(chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof ImageView) {
+                    onSignalImageIconAssigned((ImageView) target, (Icon) chain.getArg(0));
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setImageIcon", t);
+        }
+        try {
             Method setImageDrawable = ImageView.class.getDeclaredMethod("setImageDrawable", Drawable.class);
             setImageDrawable.setAccessible(true);
             hook(setImageDrawable).intercept(chain -> {
@@ -351,10 +407,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             method.setAccessible(true);
             hook(method).intercept(chain -> {
                 Object result = chain.proceed();
-                ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
-                if (!isSignalCodeDrawEnabled(config)) {
-                    return result;
-                }
                 if (result instanceof TelephonyManager && chain.getArg(0) instanceof Integer) {
                     TELEPHONY_MANAGER_SUB_IDS.put((TelephonyManager) result, (Integer) chain.getArg(0));
                 }
@@ -373,7 +425,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 Object result = chain.proceed();
                 Object target = chain.getThisObject();
                 ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
-                if (!isSignalCodeDrawEnabled(config)) {
+                if (!isSignalCodeDrawEnabled(config) && !isMobileTypeObservationEnabled(config)) {
                     return result;
                 }
                 if (target instanceof TelephonyManager && result instanceof SignalStrength) {
@@ -390,6 +442,30 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private void hookTelephonyGetServiceState() {
+        try {
+            Method method = TelephonyManager.class.getDeclaredMethod("getServiceState");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                if (!(chain.getThisObject() instanceof TelephonyManager) || !(result instanceof ServiceState)) {
+                    return result;
+                }
+                Integer subId = TELEPHONY_MANAGER_SUB_IDS.get(chain.getThisObject());
+                if (subId != null) {
+                    SERVICE_STATE_SUB_IDS.put((ServiceState) result, subId);
+                    LAST_SERVICE_STATE_SUB_ID = subId;
+                }
+                LAST_MOBILE_TYPE_SERVICE_STATE_RAW = safeToString(result);
+                LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyManager.getServiceState";
+                reportMobileTypeDebug("TelephonyManager.getServiceState");
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook TelephonyManager.getServiceState", t);
+        }
+    }
+
     private void hookSignalStrengthGetLevel() {
         try {
             Method method = SignalStrength.class.getDeclaredMethod("getLevel");
@@ -397,7 +473,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             hook(method).intercept(chain -> {
                 Object result = chain.proceed();
                 ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
-                if (!isSignalCodeDrawEnabled(config)) {
+                if (!isSignalCodeDrawEnabled(config) && !isMobileTypeObservationEnabled(config)) {
                     return result;
                 }
                 if (result instanceof Integer) {
@@ -415,6 +491,191 @@ public class FlymeStatusBarSizer extends XposedModule {
             });
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook SignalStrength.getLevel", t);
+        }
+    }
+
+    private void hookTelephonyDisplayInfoAccess() {
+        try {
+            Method method = TelephonyDisplayInfo.class.getDeclaredMethod("getNetworkType");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                if (result instanceof Integer && chain.getThisObject() instanceof TelephonyDisplayInfo) {
+                    TelephonyDisplayInfo displayInfo = (TelephonyDisplayInfo) chain.getThisObject();
+                    int rawNetworkType = (Integer) result;
+                    ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                    if (isMobileTypeSpoofEnabled(config)) {
+                        result = getSpoofedNetworkType(config);
+                    }
+                    TelephonyDisplayInfoState state = rememberTelephonyDisplayInfoState(displayInfo);
+                    LAST_MOBILE_TYPE_RAW_NETWORK_TYPE = rawNetworkType;
+                    state.networkType = (Integer) result;
+                    LAST_MOBILE_TYPE_NETWORK_TYPE = state.networkType;
+                    LAST_MOBILE_TYPE_DISPLAY_INFO_RAW = safeToString(displayInfo);
+                    LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyDisplayInfo.getNetworkType";
+                    reportMobileTypeDebug("TelephonyDisplayInfo.getNetworkType");
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook TelephonyDisplayInfo.getNetworkType", t);
+        }
+        try {
+            Method method = TelephonyDisplayInfo.class.getDeclaredMethod("getOverrideNetworkType");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                if (result instanceof Integer && chain.getThisObject() instanceof TelephonyDisplayInfo) {
+                    TelephonyDisplayInfo displayInfo = (TelephonyDisplayInfo) chain.getThisObject();
+                    int rawOverrideNetworkType = (Integer) result;
+                    ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                    if (isMobileTypeSpoofEnabled(config)) {
+                        result = getSpoofedOverrideNetworkType(config);
+                    }
+                    TelephonyDisplayInfoState state = rememberTelephonyDisplayInfoState(displayInfo);
+                    LAST_MOBILE_TYPE_RAW_OVERRIDE_NETWORK_TYPE = rawOverrideNetworkType;
+                    state.overrideNetworkType = (Integer) result;
+                    LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE = state.overrideNetworkType;
+                    LAST_MOBILE_TYPE_DISPLAY_INFO_RAW = safeToString(displayInfo);
+                    LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyDisplayInfo.getOverrideNetworkType";
+                    reportMobileTypeDebug("TelephonyDisplayInfo.getOverrideNetworkType");
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook TelephonyDisplayInfo.getOverrideNetworkType", t);
+        }
+    }
+
+    private void hookServiceStateNrAccess() {
+        try {
+            Method method = ServiceState.class.getDeclaredMethod("getNrState");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                if (result instanceof Integer && chain.getThisObject() instanceof ServiceState) {
+                    ServiceState serviceState = (ServiceState) chain.getThisObject();
+                    int rawNrState = (Integer) result;
+                    ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                    if (isMobileTypeSpoofEnabled(config)) {
+                        result = getSpoofedNrState(config);
+                    }
+                    LAST_MOBILE_TYPE_RAW_NR_STATE = rawNrState;
+                    LAST_MOBILE_TYPE_NR_STATE = (Integer) result;
+                    Integer subId = SERVICE_STATE_SUB_IDS.get(serviceState);
+                    if (subId != null) {
+                        LAST_SERVICE_STATE_SUB_ID = subId;
+                    }
+                    LAST_MOBILE_TYPE_SERVICE_STATE_RAW = safeToString(serviceState);
+                    LAST_MOBILE_TYPE_LAST_EVENT = "ServiceState.getNrState";
+                    reportMobileTypeDebug("ServiceState.getNrState");
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook ServiceState.getNrState", t);
+        }
+        try {
+            Method method = ServiceState.class.getDeclaredMethod("getNrCaState");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                if (chain.getThisObject() instanceof ServiceState) {
+                    ServiceState serviceState = (ServiceState) chain.getThisObject();
+                    Object rawNrCaState = result;
+                    ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                    if (isMobileTypeSpoofEnabled(config)) {
+                        result = getSpoofedNrCaState(config);
+                    }
+                    Integer subId = SERVICE_STATE_SUB_IDS.get(serviceState);
+                    if (subId != null) {
+                        LAST_SERVICE_STATE_SUB_ID = subId;
+                    }
+                    LAST_MOBILE_TYPE_RAW_NR_CA_STATE = safeToString(rawNrCaState);
+                    LAST_MOBILE_TYPE_NR_CA_STATE = safeToString(result);
+                    LAST_MOBILE_TYPE_SERVICE_STATE_RAW = safeToString(serviceState);
+                    LAST_MOBILE_TYPE_LAST_EVENT = "ServiceState.getNrCaState";
+                    reportMobileTypeDebug("ServiceState.getNrCaState");
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook ServiceState.getNrCaState", t);
+        }
+    }
+
+    private void hookFlymeFiveGIconDecision(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.statusbar.net.FlymeMobileConnectionFeatureKt",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("getFlymeFiveGIcon", int.class, ServiceState.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                LAST_MOBILE_TYPE_RAW_FLYME_ICON_GROUP = describeMobileIconGroup(result);
+                ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                if (isMobileTypeSpoofEnabled(config)) {
+                    result = getSpoofedFlymeFiveGIcon(config, loader);
+                }
+                LAST_MOBILE_TYPE_FLYME_ICON_GROUP = describeMobileIconGroup(result);
+                LAST_MOBILE_TYPE_LAST_EVENT = "FlymeMobileConnectionFeatureKt.getFlymeFiveGIcon";
+                reportMobileTypeDebug("FlymeMobileConnectionFeatureKt.getFlymeFiveGIcon");
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook FlymeMobileConnectionFeatureKt.getFlymeFiveGIcon", t);
+        }
+    }
+
+    private void hookDefaultNetworkTypeDecision(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.statusbar.pipeline.mobile.domain.interactor.MobileIconInteractorImpl$defaultNetworkType$1",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("invokeSuspend", Object.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                LAST_MOBILE_TYPE_DEFAULT_ICON_GROUP = describeMobileIconGroup(result);
+                LAST_MOBILE_TYPE_LAST_EVENT = "MobileIconInteractorImpl.defaultNetworkType";
+                reportMobileTypeDebug("MobileIconInteractorImpl.defaultNetworkType");
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook MobileIconInteractorImpl.defaultNetworkType", t);
+        }
+    }
+
+    private void hookNetworkTypeIconModelCreation(ClassLoader loader) {
+        hookNetworkTypeIconModelConstructors(loader,
+                "com.android.systemui.statusbar.pipeline.mobile.domain.model.NetworkTypeIconModel$DefaultIcon");
+        hookNetworkTypeIconModelConstructors(loader,
+                "com.android.systemui.statusbar.pipeline.mobile.domain.model.NetworkTypeIconModel$OverriddenIcon");
+    }
+
+    private void hookNetworkTypeIconModelConstructors(ClassLoader loader, String className) {
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
+                constructor.setAccessible(true);
+                hook(constructor).intercept(chain -> {
+                    Object result = chain.proceed();
+                    Object thisObject = chain.getThisObject();
+                    LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL = safeToString(ReflectUtils.getField(thisObject, "name"));
+                    LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL_ICON_ID =
+                            ReflectUtils.getIntField(thisObject, "iconId", 0);
+                    LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL_ICON_GROUP =
+                            describeMobileIconGroup(ReflectUtils.getField(thisObject, "iconGroup"));
+                    LAST_MOBILE_TYPE_LAST_EVENT = "NetworkTypeIconModel";
+                    reportMobileTypeDebug("NetworkTypeIconModel");
+                    return result;
+                });
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook " + className, t);
         }
     }
 
@@ -3649,6 +3910,9 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static void onSignalImageResourceAssigned(ImageView view, int resId) {
         trackStatusBarIconView(view);
         String idName = getSystemUiIdName(view);
+        if ("mobile_type".equals(idName)) {
+            recordMobileTypeResourceAssignment(view, resId);
+        }
         if (!isMobileSignalRelatedId(idName)) {
             applyStatusBarScaleIfNeeded(view);
             return;
@@ -3667,6 +3931,31 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         if ("mobile_signal".equals(idName)) {
             applySignalIconOverride(view);
+        }
+        applyStatusBarScaleIfNeeded(view);
+    }
+
+    private static void onSignalImageIconAssigned(ImageView view, Icon icon) {
+        trackStatusBarIconView(view);
+        String idName = getSystemUiIdName(view);
+        if ("mobile_type".equals(idName)) {
+            recordMobileTypeIconAssignment(view, icon);
+        }
+        if (!isMobileSignalRelatedId(idName)) {
+            applyStatusBarScaleIfNeeded(view);
+            return;
+        }
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        if (!isSignalCodeDrawEnabled(config)) {
+            if ("mobile_type".equals(idName)) {
+                restoreMobileTypeView(view);
+            }
+            applyStatusBarScaleIfNeeded(view);
+            return;
+        }
+        if ("mobile_type".equals(idName)) {
+            hideMobileTypeView(view);
+            return;
         }
         applyStatusBarScaleIfNeeded(view);
     }
@@ -3693,6 +3982,9 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static void onSignalImageDrawableAssigned(ImageView view, Drawable drawable) {
         trackStatusBarIconView(view);
         String idName = getSystemUiIdName(view);
+        if ("mobile_type".equals(idName)) {
+            recordMobileTypeDrawableAssignment(view, drawable);
+        }
         if (!isMobileSignalRelatedId(idName)) {
             applyStatusBarScaleIfNeeded(view);
             return;
@@ -3754,7 +4046,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         View owner = SIGNAL_DRAWABLE_OWNERS.get(drawable);
         ModuleConfig config = owner == null ? ModuleConfig.load(ModuleConfig.getSystemUiContext())
                 : ModuleConfig.load(owner.getContext());
-        if (!isSignalCodeDrawEnabled(config)) {
+        if (!isSignalCodeDrawEnabled(config) && !isMobileTypeObservationEnabled(config)) {
             return;
         }
         LAST_SIGNAL_LEVEL = normalizeSignalLevel(rawLevel);
@@ -3781,6 +4073,485 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         drawable.setColorFilter(colorFilter);
+    }
+
+    private static TelephonyDisplayInfoState rememberTelephonyDisplayInfoState(TelephonyDisplayInfo displayInfo) {
+        TelephonyDisplayInfoState state = TELEPHONY_DISPLAY_INFO_STATES.get(displayInfo);
+        if (state == null) {
+            state = new TelephonyDisplayInfoState();
+            TELEPHONY_DISPLAY_INFO_STATES.put(displayInfo, state);
+        }
+        return state;
+    }
+
+    private static void recordMobileTypeResourceAssignment(ImageView view, int resId) {
+        LAST_MOBILE_TYPE_LAST_EVENT = "ImageView.setImageResource";
+        LAST_MOBILE_TYPE_RESOURCE_ID = resId;
+        LAST_MOBILE_TYPE_RESOURCE_NAME = resolveResourceName(view == null ? null : view.getContext(), resId);
+        LAST_MOBILE_TYPE_ICON_TYPE = "";
+        LAST_MOBILE_TYPE_ICON_RESOURCE_ID = 0;
+        LAST_MOBILE_TYPE_ICON_RESOURCE_PACKAGE = "";
+        LAST_MOBILE_TYPE_ICON_RESOURCE_NAME = "";
+        LAST_MOBILE_TYPE_DRAWABLE_CLASS = view == null || view.getDrawable() == null
+                ? ""
+                : view.getDrawable().getClass().getName();
+        LAST_MOBILE_TYPE_VIEW_VISIBILITY = view == null ? View.VISIBLE : view.getVisibility();
+        reportMobileTypeDebug("ImageView.setImageResource");
+    }
+
+    private static void recordMobileTypeIconAssignment(ImageView view, Icon icon) {
+        LAST_MOBILE_TYPE_LAST_EVENT = "ImageView.setImageIcon";
+        LAST_MOBILE_TYPE_RESOURCE_ID = 0;
+        LAST_MOBILE_TYPE_RESOURCE_NAME = "";
+        LAST_MOBILE_TYPE_ICON_TYPE = describeIconType(icon);
+        LAST_MOBILE_TYPE_ICON_RESOURCE_PACKAGE = resolveIconResourcePackage(icon);
+        LAST_MOBILE_TYPE_ICON_RESOURCE_ID = resolveIconResourceId(icon);
+        LAST_MOBILE_TYPE_ICON_RESOURCE_NAME = resolveIconResourceName(view == null ? null : view.getContext(), icon);
+        LAST_MOBILE_TYPE_DRAWABLE_CLASS = view == null || view.getDrawable() == null
+                ? ""
+                : view.getDrawable().getClass().getName();
+        LAST_MOBILE_TYPE_VIEW_VISIBILITY = view == null ? View.VISIBLE : view.getVisibility();
+        reportMobileTypeDebug("ImageView.setImageIcon");
+    }
+
+    private static void recordMobileTypeDrawableAssignment(ImageView view, Drawable drawable) {
+        LAST_MOBILE_TYPE_LAST_EVENT = "ImageView.setImageDrawable";
+        LAST_MOBILE_TYPE_DRAWABLE_CLASS = drawable == null ? "null" : drawable.getClass().getName();
+        LAST_MOBILE_TYPE_VIEW_VISIBILITY = view == null ? View.VISIBLE : view.getVisibility();
+        reportMobileTypeDebug("ImageView.setImageDrawable");
+    }
+
+    private static void reportMobileTypeDebug(String reason) {
+        Context context = ModuleConfig.getSystemUiContext();
+        ModuleConfig config = ModuleConfig.load(context);
+        if (!isMobileTypeObservationEnabled(config)) {
+            return;
+        }
+        LAST_MOBILE_TYPE_DEBUG_MODE = describeMobileTypeDebugMode(config.mobileTypeDebugMode);
+        LAST_MOBILE_TYPE_SPOOF_PROFILE = describeMobileTypeSpoofProfile(config.mobileTypeSpoofProfile);
+        StringBuilder snapshot = new StringBuilder(512);
+        snapshot.append("reason=").append(nonEmpty(reason)).append('\n');
+        snapshot.append("debugMode=").append(nonEmpty(LAST_MOBILE_TYPE_DEBUG_MODE)).append('\n');
+        snapshot.append("spoofProfile=").append(nonEmpty(LAST_MOBILE_TYPE_SPOOF_PROFILE)).append('\n');
+        snapshot.append("signalCodeDrawEnabled=").append(isSignalCodeDrawEnabled(config)).append('\n');
+        snapshot.append("mobile_type.lastEvent=").append(nonEmpty(LAST_MOBILE_TYPE_LAST_EVENT)).append('\n');
+        snapshot.append("mobile_type.rawFlymeFiveGIcon=").append(nonEmpty(LAST_MOBILE_TYPE_RAW_FLYME_ICON_GROUP)).append('\n');
+        snapshot.append("mobile_type.flymeFiveGIcon=").append(nonEmpty(LAST_MOBILE_TYPE_FLYME_ICON_GROUP)).append('\n');
+        snapshot.append("mobile_type.defaultIconGroup=").append(nonEmpty(LAST_MOBILE_TYPE_DEFAULT_ICON_GROUP)).append('\n');
+        snapshot.append("mobile_type.networkTypeIconModel=").append(nonEmpty(LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL)).append('\n');
+        snapshot.append("mobile_type.networkTypeIconModelIconGroup=").append(
+                nonEmpty(LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL_ICON_GROUP)).append('\n');
+        snapshot.append("mobile_type.networkTypeIconModelIconId=").append(
+                LAST_MOBILE_TYPE_NETWORK_TYPE_MODEL_ICON_ID).append('\n');
+        snapshot.append("mobile_type.viewVisibility=").append(describeVisibility(LAST_MOBILE_TYPE_VIEW_VISIBILITY)).append('\n');
+        snapshot.append("mobile_type.resourceId=").append(LAST_MOBILE_TYPE_RESOURCE_ID).append('\n');
+        snapshot.append("mobile_type.resourceName=").append(nonEmpty(LAST_MOBILE_TYPE_RESOURCE_NAME)).append('\n');
+        snapshot.append("mobile_type.iconType=").append(nonEmpty(LAST_MOBILE_TYPE_ICON_TYPE)).append('\n');
+        snapshot.append("mobile_type.iconResId=").append(LAST_MOBILE_TYPE_ICON_RESOURCE_ID).append('\n');
+        snapshot.append("mobile_type.iconResPackage=").append(nonEmpty(LAST_MOBILE_TYPE_ICON_RESOURCE_PACKAGE)).append('\n');
+        snapshot.append("mobile_type.iconResName=").append(nonEmpty(LAST_MOBILE_TYPE_ICON_RESOURCE_NAME)).append('\n');
+        snapshot.append("mobile_type.drawableClass=").append(nonEmpty(LAST_MOBILE_TYPE_DRAWABLE_CLASS)).append('\n');
+        snapshot.append("displayInfo.rawNetworkType=").append(describeNetworkType(LAST_MOBILE_TYPE_RAW_NETWORK_TYPE)).append('\n');
+        snapshot.append("displayInfo.networkType=").append(describeNetworkType(LAST_MOBILE_TYPE_NETWORK_TYPE)).append('\n');
+        snapshot.append("displayInfo.rawOverrideNetworkType=").append(
+                describeOverrideNetworkType(LAST_MOBILE_TYPE_RAW_OVERRIDE_NETWORK_TYPE)).append('\n');
+        snapshot.append("displayInfo.overrideNetworkType=").append(
+                describeOverrideNetworkType(LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE)).append('\n');
+        snapshot.append("displayInfo.raw=").append(nonEmpty(LAST_MOBILE_TYPE_DISPLAY_INFO_RAW)).append('\n');
+        snapshot.append("serviceState.rawNrState=").append(describeNrState(LAST_MOBILE_TYPE_RAW_NR_STATE)).append('\n');
+        snapshot.append("serviceState.nrState=").append(describeNrState(LAST_MOBILE_TYPE_NR_STATE)).append('\n');
+        snapshot.append("serviceState.rawNrCaState=").append(nonEmpty(LAST_MOBILE_TYPE_RAW_NR_CA_STATE)).append('\n');
+        snapshot.append("serviceState.nrCaState=").append(nonEmpty(LAST_MOBILE_TYPE_NR_CA_STATE)).append('\n');
+        snapshot.append("serviceState.subId=").append(LAST_SERVICE_STATE_SUB_ID).append('\n');
+        snapshot.append("serviceState.raw=").append(nonEmpty(LAST_MOBILE_TYPE_SERVICE_STATE_RAW)).append('\n');
+        snapshot.append("signal.lastSubId=").append(LAST_SIGNAL_SUB_ID).append('\n');
+        snapshot.append("signal.lastLevel=").append(LAST_CELLULAR_LEVEL).append('\n');
+        String snapshotText = snapshot.toString();
+        long uptime = SystemClock.uptimeMillis();
+        if (snapshotText.equals(LAST_MOBILE_TYPE_DEBUG_SNAPSHOT)
+                && uptime - LAST_MOBILE_TYPE_DEBUG_PUSH_UPTIME < 500L) {
+            return;
+        }
+        LAST_MOBILE_TYPE_DEBUG_SNAPSHOT = snapshotText;
+        LAST_MOBILE_TYPE_DEBUG_PUSH_UPTIME = uptime;
+        logMobileTypeDebugSnapshot(snapshotText);
+    }
+
+    private static void logMobileTypeDebugSnapshot(String snapshotText) {
+        String compact = snapshotText == null ? "" : snapshotText.replace('\n', ' ').trim();
+        android.util.Log.i(TAG, MOBILE_TYPE_DEBUG_LOG_MARKER + " " + compact);
+    }
+
+    private static boolean isMobileTypeObservationEnabled(ModuleConfig config) {
+        return config != null && config.mobileTypeDebugMode != SettingsStore.MOBILE_TYPE_DEBUG_MODE_OFF;
+    }
+
+    private static boolean isMobileTypeSpoofEnabled(ModuleConfig config) {
+        return config != null
+                && config.mobileTypeDebugMode == SettingsStore.MOBILE_TYPE_DEBUG_MODE_SPOOF
+                && config.mobileTypeSpoofProfile != SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_NONE;
+    }
+
+    private static int getSpoofedNetworkType(ModuleConfig config) {
+        switch (config.mobileTypeSpoofProfile) {
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G:
+                return TelephonyManager.NETWORK_TYPE_LTE;
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G:
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA:
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA:
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS:
+                return TelephonyManager.NETWORK_TYPE_NR;
+            default:
+                return LAST_MOBILE_TYPE_NETWORK_TYPE;
+        }
+    }
+
+    private static int getSpoofedOverrideNetworkType(ModuleConfig config) {
+        switch (config.mobileTypeSpoofProfile) {
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA:
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS:
+                return TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_ADVANCED;
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G:
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G:
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA:
+                return TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NONE;
+            default:
+                return LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE;
+        }
+    }
+
+    private static int getSpoofedNrState(ModuleConfig config) {
+        switch (config.mobileTypeSpoofProfile) {
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G:
+                return 0;
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G:
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA:
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA:
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS:
+                return 3;
+            default:
+                return LAST_MOBILE_TYPE_NR_STATE;
+        }
+    }
+
+    private static boolean getSpoofedNrCaState(ModuleConfig config) {
+        switch (config.mobileTypeSpoofProfile) {
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA:
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA:
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS:
+                return true;
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G:
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G:
+                return false;
+            default:
+                return "true".equalsIgnoreCase(LAST_MOBILE_TYPE_NR_CA_STATE);
+        }
+    }
+
+    private static Object getSpoofedFlymeFiveGIcon(ModuleConfig config, ClassLoader loader) {
+        if (config == null || loader == null) {
+            return null;
+        }
+        switch (config.mobileTypeSpoofProfile) {
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G:
+                return null;
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G:
+                return ReflectUtils.getStaticField(loader,
+                        "com.android.settingslib.mobile.TelephonyIcons", "FIVE_G_BASIC");
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA:
+                return ReflectUtils.getStaticField(loader,
+                        "com.android.settingslib.mobile.TelephonyIcons", "FIVE_G_CA");
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA:
+                return ReflectUtils.getStaticField(loader,
+                        "com.android.settingslib.mobile.TelephonyIcons", "FIVE_G_A");
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS:
+                return ReflectUtils.getStaticField(loader,
+                        "com.android.settingslib.mobile.TelephonyIcons", "NR_5G_PLUS");
+            default:
+                return null;
+        }
+    }
+
+    private static String describeMobileTypeDebugMode(int mode) {
+        switch (mode) {
+            case SettingsStore.MOBILE_TYPE_DEBUG_MODE_OFF:
+                return "OFF";
+            case SettingsStore.MOBILE_TYPE_DEBUG_MODE_OBSERVE:
+                return "OBSERVE";
+            case SettingsStore.MOBILE_TYPE_DEBUG_MODE_SPOOF:
+                return "SPOOF";
+            default:
+                return "UNKNOWN(" + mode + ")";
+        }
+    }
+
+    private static String describeMobileTypeSpoofProfile(int profile) {
+        switch (profile) {
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_NONE:
+                return "FOLLOW_SYSTEM";
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G:
+                return "FORCE_4G";
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G:
+                return "FORCE_5G";
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA:
+                return "FORCE_5G_CA";
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA:
+                return "FORCE_5GA";
+            case SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS:
+                return "FORCE_5G_PLUS";
+            default:
+                return "UNKNOWN(" + profile + ")";
+        }
+    }
+
+    private static String describeMobileIconGroup(Object iconGroup) {
+        if (iconGroup == null) {
+            return "null";
+        }
+        Object name = ReflectUtils.getField(iconGroup, "name");
+        if (name != null) {
+            return String.valueOf(name);
+        }
+        return safeToString(iconGroup);
+    }
+
+    private static String resolveResourceName(Context context, int resId) {
+        if (resId == 0) {
+            return "0";
+        }
+        if (context == null) {
+            return "0x" + Integer.toHexString(resId);
+        }
+        try {
+            return context.getResources().getResourceName(resId);
+        } catch (Throwable ignored) {
+            return "0x" + Integer.toHexString(resId);
+        }
+    }
+
+    private static String resolveIconResourceName(Context context, Icon icon) {
+        if (icon == null) {
+            return "";
+        }
+        try {
+            if (icon.getType() != Icon.TYPE_RESOURCE) {
+                return describeIconType(icon);
+            }
+            int resId = resolveIconResourceId(icon);
+            String packageName = resolveIconResourcePackage(icon);
+            if (resId == 0) {
+                return "0";
+            }
+            if (context == null || TextUtils.isEmpty(packageName)
+                    || packageName.equals(context.getPackageName())) {
+                return resolveResourceName(context, resId);
+            }
+            PackageManager packageManager = context.getPackageManager();
+            Resources resources = packageManager == null ? null : packageManager.getResourcesForApplication(packageName);
+            if (resources != null) {
+                return resources.getResourceName(resId);
+            }
+        } catch (Throwable ignored) {
+        }
+        return "0x" + Integer.toHexString(resolveIconResourceId(icon));
+    }
+
+    private static int resolveIconResourceId(Icon icon) {
+        if (icon == null) {
+            return 0;
+        }
+        try {
+            return icon.getType() == Icon.TYPE_RESOURCE ? icon.getResId() : 0;
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    private static String resolveIconResourcePackage(Icon icon) {
+        if (icon == null) {
+            return "";
+        }
+        try {
+            return icon.getType() == Icon.TYPE_RESOURCE ? safeToString(icon.getResPackage()) : "";
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    private static String describeIconType(Icon icon) {
+        if (icon == null) {
+            return "null";
+        }
+        switch (icon.getType()) {
+            case Icon.TYPE_BITMAP:
+                return "BITMAP";
+            case Icon.TYPE_RESOURCE:
+                return "RESOURCE";
+            case Icon.TYPE_DATA:
+                return "DATA";
+            case Icon.TYPE_URI:
+                return "URI";
+            case Icon.TYPE_ADAPTIVE_BITMAP:
+                return "ADAPTIVE_BITMAP";
+            case Icon.TYPE_URI_ADAPTIVE_BITMAP:
+                return "URI_ADAPTIVE_BITMAP";
+            default:
+                return "type=" + icon.getType();
+        }
+    }
+
+    private static String describeVisibility(int visibility) {
+        switch (visibility) {
+            case View.VISIBLE:
+                return "VISIBLE";
+            case View.INVISIBLE:
+                return "INVISIBLE";
+            case View.GONE:
+                return "GONE";
+            default:
+                return String.valueOf(visibility);
+        }
+    }
+
+    private static String describeNetworkType(int networkType) {
+        if (networkType == Integer.MIN_VALUE) {
+            return "unknown";
+        }
+        String label;
+        switch (networkType) {
+            case TelephonyManager.NETWORK_TYPE_UNKNOWN:
+                label = "UNKNOWN";
+                break;
+            case TelephonyManager.NETWORK_TYPE_GPRS:
+                label = "GPRS";
+                break;
+            case TelephonyManager.NETWORK_TYPE_EDGE:
+                label = "EDGE";
+                break;
+            case TelephonyManager.NETWORK_TYPE_UMTS:
+                label = "UMTS";
+                break;
+            case TelephonyManager.NETWORK_TYPE_CDMA:
+                label = "CDMA";
+                break;
+            case TelephonyManager.NETWORK_TYPE_EVDO_0:
+                label = "EVDO_0";
+                break;
+            case TelephonyManager.NETWORK_TYPE_EVDO_A:
+                label = "EVDO_A";
+                break;
+            case TelephonyManager.NETWORK_TYPE_1xRTT:
+                label = "1xRTT";
+                break;
+            case TelephonyManager.NETWORK_TYPE_HSDPA:
+                label = "HSDPA";
+                break;
+            case TelephonyManager.NETWORK_TYPE_HSUPA:
+                label = "HSUPA";
+                break;
+            case TelephonyManager.NETWORK_TYPE_HSPA:
+                label = "HSPA";
+                break;
+            case TelephonyManager.NETWORK_TYPE_IDEN:
+                label = "IDEN";
+                break;
+            case TelephonyManager.NETWORK_TYPE_EVDO_B:
+                label = "EVDO_B";
+                break;
+            case TelephonyManager.NETWORK_TYPE_LTE:
+                label = "LTE";
+                break;
+            case TelephonyManager.NETWORK_TYPE_EHRPD:
+                label = "EHRPD";
+                break;
+            case TelephonyManager.NETWORK_TYPE_HSPAP:
+                label = "HSPAP";
+                break;
+            case TelephonyManager.NETWORK_TYPE_GSM:
+                label = "GSM";
+                break;
+            case TelephonyManager.NETWORK_TYPE_TD_SCDMA:
+                label = "TD_SCDMA";
+                break;
+            case TelephonyManager.NETWORK_TYPE_IWLAN:
+                label = "IWLAN";
+                break;
+            case TelephonyManager.NETWORK_TYPE_NR:
+                label = "NR";
+                break;
+            default:
+                label = "unknown";
+                break;
+        }
+        return networkType + " (" + label + ")";
+    }
+
+    private static String describeOverrideNetworkType(int overrideNetworkType) {
+        if (overrideNetworkType == Integer.MIN_VALUE) {
+            return "unknown";
+        }
+        String label;
+        switch (overrideNetworkType) {
+            case TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NONE:
+                label = "NONE";
+                break;
+            case TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_CA:
+                label = "LTE_CA";
+                break;
+            case TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO:
+                label = "LTE_ADVANCED_PRO";
+                break;
+            case TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA:
+                label = "NR_NSA";
+                break;
+            case TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE:
+                label = "NR_NSA_MMWAVE";
+                break;
+            case TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_ADVANCED:
+                label = "NR_ADVANCED";
+                break;
+            default:
+                label = "unknown";
+                break;
+        }
+        return overrideNetworkType + " (" + label + ")";
+    }
+
+    private static String describeNrState(int nrState) {
+        if (nrState == Integer.MIN_VALUE) {
+            return "unknown";
+        }
+        String label;
+        switch (nrState) {
+            case 0:
+                label = "NONE";
+                break;
+            case 1:
+                label = "RESTRICTED";
+                break;
+            case 2:
+                label = "NOT_RESTRICTED";
+                break;
+            case 3:
+                label = "CONNECTED";
+                break;
+            default:
+                label = "unknown";
+                break;
+        }
+        return nrState + " (" + label + ")";
+    }
+
+    private static String nonEmpty(String value) {
+        return TextUtils.isEmpty(value) ? "-" : value;
+    }
+
+    private static String safeToString(Object value) {
+        try {
+            return value == null ? "" : String.valueOf(value);
+        } catch (Throwable ignored) {
+            return "";
+        }
     }
 
     private static int resolveSignalBars(String idName, View view) {
@@ -3884,6 +4655,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         view.setVisibility(View.GONE);
+        LAST_MOBILE_TYPE_LAST_EVENT = "hideMobileTypeView";
+        LAST_MOBILE_TYPE_VIEW_VISIBILITY = view.getVisibility();
+        reportMobileTypeDebug("hideMobileTypeView");
         ViewParent parent = view.getParent();
         if (parent instanceof View) {
             ((View) parent).requestLayout();
@@ -3896,6 +4670,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         view.setVisibility(View.VISIBLE);
+        LAST_MOBILE_TYPE_LAST_EVENT = "restoreMobileTypeView";
+        LAST_MOBILE_TYPE_VIEW_VISIBILITY = view.getVisibility();
+        reportMobileTypeDebug("restoreMobileTypeView");
         ViewParent parent = view.getParent();
         if (parent instanceof View) {
             ((View) parent).requestLayout();
@@ -5689,6 +6466,11 @@ public class FlymeStatusBarSizer extends XposedModule {
         boolean showBolt;
         int tintColor = Color.BLACK;
         int textColor = Color.WHITE;
+    }
+
+    private static final class TelephonyDisplayInfoState {
+        int networkType = Integer.MIN_VALUE;
+        int overrideNetworkType = Integer.MIN_VALUE;
     }
 
 }

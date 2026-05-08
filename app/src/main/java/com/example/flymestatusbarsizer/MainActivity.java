@@ -43,6 +43,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -764,12 +765,37 @@ public class MainActivity extends Activity {
                 SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED);
         addDivider(details);
+        addChoiceRow(details, "mobile_type 模式",
+                "关闭时不额外打印日志。观测模式只把链路输出到 logcat。伪造模式会在更上层返回假网络状态，用来模拟 4G / 5G / 5GA / 5G+。",
+                SettingsStore.KEY_MOBILE_TYPE_DEBUG_MODE,
+                SettingsStore.DEFAULT_MOBILE_TYPE_DEBUG_MODE,
+                new int[]{
+                        SettingsStore.MOBILE_TYPE_DEBUG_MODE_OFF,
+                        SettingsStore.MOBILE_TYPE_DEBUG_MODE_OBSERVE,
+                        SettingsStore.MOBILE_TYPE_DEBUG_MODE_SPOOF
+                },
+                new String[]{"关闭", "观测", "伪造"});
+        addDivider(details);
+        addChoiceRow(details, "伪造目标",
+                "只有在上面的模式切到伪造时才生效。SystemUI 会优先被喂成这一类 mobile_type，再观察最终资源名和 Flyme 5G 图标组。",
+                SettingsStore.KEY_MOBILE_TYPE_SPOOF_PROFILE,
+                SettingsStore.DEFAULT_MOBILE_TYPE_SPOOF_PROFILE,
+                new int[]{
+                        SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_NONE,
+                        SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_4G,
+                        SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G,
+                        SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_CA,
+                        SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5GA,
+                        SettingsStore.MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS
+                },
+                new String[]{"跟随系统", "强制 4G", "强制 5G", "强制 5G CA", "强制 5GA", "强制 5G+"});
+        addDivider(details);
         addProfileSectionHeader(details, "恢复方式",
-                "这个开关只决定模块还要不要接管信号图标。关闭后信号相关逻辑会停用，SystemUI 下次重启会回到系统原图标。");
+                "代码绘制开关只管 mobile_signal。mobile_type 的观测/伪造日志统一输出到 logcat，筛关键字 `FSBS_MOBILETYPE_DEBUG` 即可。");
 
         return buildExpandableInfoCard(
                 "信号图标",
-                "单独控制移动信号图标这一组逻辑，关闭后不再替换系统原图标。",
+                "单独控制移动信号图标这一组逻辑，同时提供 mobile_type 的观测和伪造模式。",
                 "信号", details);
     }
 

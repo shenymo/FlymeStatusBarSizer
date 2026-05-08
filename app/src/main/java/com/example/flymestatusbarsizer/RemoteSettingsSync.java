@@ -69,7 +69,10 @@ final class RemoteSettingsSync {
             return;
         }
         try {
-            SharedPreferences.Editor editor = remote.edit().clear();
+            SharedPreferences.Editor editor = remote.edit();
+            removeKnownKeys(editor, SettingsStore.BOOLEAN_KEYS);
+            removeKnownKeys(editor, SettingsStore.INT_KEYS);
+            removeKnownKeys(editor, SettingsStore.STRING_KEYS);
             Map<String, ?> values = localPrefs.getAll();
             writeTypedValues(editor, values, SettingsStore.BOOLEAN_KEYS);
             writeTypedValues(editor, values, SettingsStore.INT_KEYS);
@@ -102,6 +105,15 @@ final class RemoteSettingsSync {
             } else if (value != null) {
                 editor.putString(key, String.valueOf(value));
             }
+        }
+    }
+
+    private static void removeKnownKeys(SharedPreferences.Editor editor, String[] keys) {
+        if (editor == null || keys == null) {
+            return;
+        }
+        for (String key : keys) {
+            editor.remove(key);
         }
     }
 

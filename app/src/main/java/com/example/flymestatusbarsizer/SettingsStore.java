@@ -39,6 +39,8 @@ final class SettingsStore {
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
     static final String KEY_IME_TOOLBAR_ENABLED = "ime_toolbar_enabled";
     static final String KEY_IME_TOOLBAR_ORDER = "ime_toolbar_order";
+    static final String KEY_MOBILE_TYPE_DEBUG_MODE = "mobile_type_debug_mode";
+    static final String KEY_MOBILE_TYPE_SPOOF_PROFILE = "mobile_type_spoof_profile";
     static final boolean DEFAULT_ENABLED = true;
     static final boolean DEFAULT_BATTERY_CODE_DRAW_ENABLED = true;
     static final boolean DEFAULT_SIGNAL_CODE_DRAW_ENABLED = true;
@@ -79,6 +81,17 @@ final class SettingsStore {
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
     static final boolean DEFAULT_IME_TOOLBAR_ENABLED = true;
     static final String DEFAULT_IME_TOOLBAR_ORDER = "paste,delete,select_all,copy,switch_ime";
+    static final int MOBILE_TYPE_DEBUG_MODE_OFF = 0;
+    static final int MOBILE_TYPE_DEBUG_MODE_OBSERVE = 1;
+    static final int MOBILE_TYPE_DEBUG_MODE_SPOOF = 2;
+    static final int MOBILE_TYPE_SPOOF_PROFILE_NONE = 0;
+    static final int MOBILE_TYPE_SPOOF_PROFILE_4G = 1;
+    static final int MOBILE_TYPE_SPOOF_PROFILE_5G = 2;
+    static final int MOBILE_TYPE_SPOOF_PROFILE_5G_CA = 3;
+    static final int MOBILE_TYPE_SPOOF_PROFILE_5GA = 4;
+    static final int MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS = 5;
+    static final int DEFAULT_MOBILE_TYPE_DEBUG_MODE = MOBILE_TYPE_DEBUG_MODE_OFF;
+    static final int DEFAULT_MOBILE_TYPE_SPOOF_PROFILE = MOBILE_TYPE_SPOOF_PROFILE_5G;
     static final String[] INT_KEYS = {
             KEY_BATTERY_ICON_STYLE,
             KEY_BATTERY_TEXT_FONT,
@@ -93,7 +106,9 @@ final class SettingsStore {
             KEY_NOTIFICATION_APP_ICON_SIZE_DP,
             KEY_NOTIFICATION_APP_ICON_PADDING_DP,
             KEY_MBACK_INSET_SIZE,
-            KEY_MBACK_NAV_BAR_HEIGHT
+            KEY_MBACK_NAV_BAR_HEIGHT,
+            KEY_MOBILE_TYPE_DEBUG_MODE,
+            KEY_MOBILE_TYPE_SPOOF_PROFILE
     };
 
     static final String[] BOOLEAN_KEYS = {
@@ -252,6 +267,10 @@ final class SettingsStore {
                 return DEFAULT_MBACK_INSET_SIZE;
             case KEY_MBACK_NAV_BAR_HEIGHT:
                 return DEFAULT_MBACK_NAV_BAR_HEIGHT;
+            case KEY_MOBILE_TYPE_DEBUG_MODE:
+                return DEFAULT_MOBILE_TYPE_DEBUG_MODE;
+            case KEY_MOBILE_TYPE_SPOOF_PROFILE:
+                return DEFAULT_MOBILE_TYPE_SPOOF_PROFILE;
             default:
                 return 0;
         }
