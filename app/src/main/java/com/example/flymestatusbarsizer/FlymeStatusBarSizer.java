@@ -905,7 +905,12 @@ public class FlymeStatusBarSizer extends XposedModule {
                 Object result = chain.proceed();
                 Object target = chain.getThisObject();
                 if (target instanceof View) {
-                    invalidateLinkedSignalViews((View) target);
+                    View batteryView = (View) target;
+                    BatteryViewState state = rememberBatteryViewState(batteryView);
+                    if (refreshBatteryViewRuntimeSnapshot(batteryView, state)) {
+                        batteryView.invalidate();
+                    }
+                    invalidateLinkedSignalViews(batteryView);
                 }
                 return result;
             });
