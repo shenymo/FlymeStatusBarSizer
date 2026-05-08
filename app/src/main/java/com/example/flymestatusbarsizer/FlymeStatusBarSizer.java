@@ -114,6 +114,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_RESTORE_GUARDS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_APPLY_GUARDS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> SIGNAL_DRAWABLE_APPLY_GUARDS = new WeakHashMap<>();
     private static final Object CONFIG_REFRESH_LOCK = new Object();
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
@@ -219,7 +220,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookConnectionRateView(loader);
         hookSignalImageAssignments();
         hookSignalTintUpdates();
-        hookSignalViewLayout();
         hookSignalDrawableLevelChanges(loader);
         hookSubscriptionManagerDebug();
         hookTelephonyCreateForSubscriptionId();
@@ -400,24 +400,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             });
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setColorFilter(ColorFilter)", t);
-        }
-    }
-
-    private void hookSignalViewLayout() {
-        try {
-            Method onLayout = View.class.getDeclaredMethod(
-                    "onLayout", boolean.class, int.class, int.class, int.class, int.class);
-            onLayout.setAccessible(true);
-            hook(onLayout).intercept(chain -> {
-                Object result = chain.proceed();
-                Object target = chain.getThisObject();
-                if (target instanceof View) {
-                    onSignalViewLayoutChanged((View) target);
-                }
-                return result;
-            });
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook View.onLayout for signal debug", t);
         }
     }
 
@@ -4836,8 +4818,51 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (view == null) {
             return;
         }
+        trackSingleStatusBarIconView(view);
+        ViewParent parent = view.getParent();
+        while (parent instanceof View) {
+            View ancestor = (View) parent;
+            if (isStatusBarContainerView(ancestor)) {
+                trackSingleStatusBarIconView(ancestor);
+            }
+            parent = ancestor.getParent();
+        }
+    }
+
+    private static void trackSingleStatusBarIconView(View view) {
+        if (!shouldTrackStatusBarIconView(view)) {
+            return;
+        }
+        boolean alreadyTracked = TRACKED_STATUS_BAR_ICON_VIEWS.containsKey(view);
         TRACKED_STATUS_BAR_ICON_VIEWS.put(view, Boolean.TRUE);
         ensureConfigRefreshObserver(view.getContext());
+        if (alreadyTracked) {
+            return;
+        }
+        view.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (left == oldLeft && top == oldTop && right == oldRight && bottom == oldBottom) {
+                return;
+            }
+            v.post(() -> onSignalViewLayoutChanged(v));
+        });
+    }
+
+    private static boolean shouldTrackStatusBarIconView(View view) {
+        if (view == null) {
+            return false;
+        }
+        if (isPrivacyChipView(view) || isNotificationBackedStatusBarIconView(view)) {
+            return true;
+        }
+        String className = view.getClass().getName();
+        if ("com.android.systemui.statusbar.StatusBarIconView".equals(className)
+                || "com.android.systemui.statusbar.pipeline.shared.ui.view.SingleBindableStatusBarIconView".equals(className)) {
+            return true;
+        }
+        String idName = getSystemUiIdName(view);
+        return "mobile_signal".equals(idName)
+                || isStandaloneStatusBarImageView(view)
+                || isStatusBarContainerView(view);
     }
 
     private static void applyStatusBarScaleIfNeeded(View view) {
@@ -4984,6 +5009,9 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void onSignalImageDrawableAssigned(ImageView view, Drawable drawable) {
         trackStatusBarIconView(view);
+        if (isSignalDrawableApplyGuardActive(view)) {
+            return;
+        }
         String idName = getSystemUiIdName(view);
         if ("mobile_type".equals(idName)) {
             recordMobileTypeDrawableAssignment(view, drawable);
@@ -5819,9 +5847,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (state != null && state.level >= 0) {
             return state.level;
         }
-        queryAndStoreLiveSignalLevel(context, subId, "resolveSignalLevelForSubId");
-        state = snapshotSignalLevelSubState(subId);
-        return state != null && state.level >= 0 ? state.level : -1;
+        return -1;
     }
 
     private static MergedSignalLevels resolveMergedSignalLevels(ImageView view, View mobileGroup) {
@@ -6019,7 +6045,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (signalDrawable.matchesGeometry(
                     mergedDual, intrinsicWidth, intrinsicHeight, mobileTypeBadge)) {
                 signalDrawable.setSignalLevels(signalLevel, secondarySignalLevel);
-                view.invalidate();
                 return;
             }
         }
@@ -6029,8 +6054,38 @@ public class FlymeStatusBarSizer extends XposedModule {
         drawable.setAlpha(view.getImageAlpha());
         drawable.setState(view.getDrawableState());
         drawable.setTintList(view.getImageTintList());
-        view.setImageDrawable(drawable);
-        SIGNAL_DRAWABLE_OWNERS.put(drawable, view);
+        applySignalDrawableToView(view, drawable);
+    }
+
+    private static void applySignalDrawableToView(ImageView view, Drawable drawable) {
+        if (view == null) {
+            return;
+        }
+        synchronized (SIGNAL_DRAWABLE_APPLY_GUARDS) {
+            if (Boolean.TRUE.equals(SIGNAL_DRAWABLE_APPLY_GUARDS.get(view))) {
+                return;
+            }
+            SIGNAL_DRAWABLE_APPLY_GUARDS.put(view, Boolean.TRUE);
+        }
+        try {
+            view.setImageDrawable(drawable);
+            if (drawable != null) {
+                SIGNAL_DRAWABLE_OWNERS.put(drawable, view);
+            }
+        } finally {
+            synchronized (SIGNAL_DRAWABLE_APPLY_GUARDS) {
+                SIGNAL_DRAWABLE_APPLY_GUARDS.remove(view);
+            }
+        }
+    }
+
+    private static boolean isSignalDrawableApplyGuardActive(ImageView view) {
+        if (view == null) {
+            return false;
+        }
+        synchronized (SIGNAL_DRAWABLE_APPLY_GUARDS) {
+            return Boolean.TRUE.equals(SIGNAL_DRAWABLE_APPLY_GUARDS.get(view));
+        }
     }
 
     private static void alignSignalIconVertically(ImageView view) {
@@ -7670,7 +7725,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                         + " view=" + view.getClass().getName()
                         + " id=" + getSystemUiIdName(view));
             }
-            queryAndStoreLiveSignalLevel(view.getContext(), subId, "bindSignalViewState");
         }
     }
 
