@@ -50,6 +50,13 @@ final class ModuleConfig {
     String imeToolbarOrder = SettingsStore.DEFAULT_IME_TOOLBAR_ORDER;
     int mobileTypeDebugMode = SettingsStore.DEFAULT_MOBILE_TYPE_DEBUG_MODE;
     int mobileTypeSpoofProfile = SettingsStore.DEFAULT_MOBILE_TYPE_SPOOF_PROFILE;
+    boolean telephonyDebugEnabled = SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED;
+    int telephonyDebugSimCount = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
+    int telephonyDebugDefaultDataSlot = SettingsStore.DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT;
+    int telephonyDebugSlot1NetworkProfile = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE;
+    int telephonyDebugSlot1SignalLevel = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL;
+    int telephonyDebugSlot2NetworkProfile = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE;
+    int telephonyDebugSlot2SignalLevel = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL;
 
     static ModuleConfig load(Context context) {
         if (context != null) {
@@ -302,6 +309,40 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_MOBILE_TYPE_SPOOF_PROFILE,
                     SettingsStore.DEFAULT_MOBILE_TYPE_SPOOF_PROFILE);
+            config.telephonyDebugEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_TELEPHONY_DEBUG_ENABLED,
+                    SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED);
+            config.telephonyDebugSimCount = SettingsStore.normalizeTelephonyDebugSimCount(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_TELEPHONY_DEBUG_SIM_COUNT,
+                            SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT));
+            config.telephonyDebugDefaultDataSlot = SettingsStore.normalizeTelephonyDebugDefaultDataSlot(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
+                            SettingsStore.DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT));
+            config.telephonyDebugSlot1NetworkProfile = SettingsStore.normalizeTelephonyDebugNetworkProfile(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
+                            SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE));
+            config.telephonyDebugSlot1SignalLevel = SettingsStore.normalizeTelephonyDebugSignalLevel(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL,
+                            SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL));
+            config.telephonyDebugSlot2NetworkProfile = SettingsStore.normalizeTelephonyDebugNetworkProfile(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE,
+                            SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE));
+            config.telephonyDebugSlot2SignalLevel = SettingsStore.normalizeTelephonyDebugSignalLevel(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL,
+                            SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL));
             return config;
         } catch (Throwable t) {
             Log.w(TAG, "Failed to load remote module config", t);

@@ -41,6 +41,13 @@ final class SettingsStore {
     static final String KEY_IME_TOOLBAR_ORDER = "ime_toolbar_order";
     static final String KEY_MOBILE_TYPE_DEBUG_MODE = "mobile_type_debug_mode";
     static final String KEY_MOBILE_TYPE_SPOOF_PROFILE = "mobile_type_spoof_profile";
+    static final String KEY_TELEPHONY_DEBUG_ENABLED = "telephony_debug_enabled";
+    static final String KEY_TELEPHONY_DEBUG_SIM_COUNT = "telephony_debug_sim_count";
+    static final String KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT = "telephony_debug_default_data_slot";
+    static final String KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE = "telephony_debug_slot1_network_profile";
+    static final String KEY_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL = "telephony_debug_slot1_signal_level";
+    static final String KEY_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE = "telephony_debug_slot2_network_profile";
+    static final String KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL = "telephony_debug_slot2_signal_level";
     static final boolean DEFAULT_ENABLED = true;
     static final boolean DEFAULT_BATTERY_CODE_DRAW_ENABLED = true;
     static final boolean DEFAULT_SIGNAL_CODE_DRAW_ENABLED = true;
@@ -92,6 +99,24 @@ final class SettingsStore {
     static final int MOBILE_TYPE_SPOOF_PROFILE_5G_PLUS = 5;
     static final int DEFAULT_MOBILE_TYPE_DEBUG_MODE = MOBILE_TYPE_DEBUG_MODE_OFF;
     static final int DEFAULT_MOBILE_TYPE_SPOOF_PROFILE = MOBILE_TYPE_SPOOF_PROFILE_5G;
+    static final boolean DEFAULT_TELEPHONY_DEBUG_ENABLED = false;
+    static final int DEFAULT_TELEPHONY_DEBUG_SIM_COUNT = 2;
+    static final int TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_NONE = -1;
+    static final int TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_CARD1 = 0;
+    static final int TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_CARD2 = 1;
+    static final int DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT = TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_CARD1;
+    static final int TELEPHONY_DEBUG_NETWORK_PROFILE_OFFLINE = 0;
+    static final int TELEPHONY_DEBUG_NETWORK_PROFILE_2G = 1;
+    static final int TELEPHONY_DEBUG_NETWORK_PROFILE_3G = 2;
+    static final int TELEPHONY_DEBUG_NETWORK_PROFILE_4G = 3;
+    static final int TELEPHONY_DEBUG_NETWORK_PROFILE_5G = 4;
+    static final int TELEPHONY_DEBUG_NETWORK_PROFILE_5G_CA = 5;
+    static final int TELEPHONY_DEBUG_NETWORK_PROFILE_5GA = 6;
+    static final int TELEPHONY_DEBUG_NETWORK_PROFILE_5G_PLUS = 7;
+    static final int DEFAULT_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE = TELEPHONY_DEBUG_NETWORK_PROFILE_5G;
+    static final int DEFAULT_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL = 4;
+    static final int DEFAULT_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE = TELEPHONY_DEBUG_NETWORK_PROFILE_4G;
+    static final int DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL = 2;
     static final String[] INT_KEYS = {
             KEY_BATTERY_ICON_STYLE,
             KEY_BATTERY_TEXT_FONT,
@@ -108,7 +133,13 @@ final class SettingsStore {
             KEY_MBACK_INSET_SIZE,
             KEY_MBACK_NAV_BAR_HEIGHT,
             KEY_MOBILE_TYPE_DEBUG_MODE,
-            KEY_MOBILE_TYPE_SPOOF_PROFILE
+            KEY_MOBILE_TYPE_SPOOF_PROFILE,
+            KEY_TELEPHONY_DEBUG_SIM_COUNT,
+            KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
+            KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
+            KEY_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL,
+            KEY_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE,
+            KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL
     };
 
     static final String[] BOOLEAN_KEYS = {
@@ -125,7 +156,8 @@ final class SettingsStore {
             KEY_NOTIFICATION_BACKGROUND_TRANSPARENT,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
             KEY_MBACK_HIDE_PILL,
-            KEY_IME_TOOLBAR_ENABLED
+            KEY_IME_TOOLBAR_ENABLED,
+            KEY_TELEPHONY_DEBUG_ENABLED
     };
 
     static final String[] STRING_KEYS = {
@@ -271,6 +303,18 @@ final class SettingsStore {
                 return DEFAULT_MOBILE_TYPE_DEBUG_MODE;
             case KEY_MOBILE_TYPE_SPOOF_PROFILE:
                 return DEFAULT_MOBILE_TYPE_SPOOF_PROFILE;
+            case KEY_TELEPHONY_DEBUG_SIM_COUNT:
+                return DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
+            case KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT:
+                return DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT;
+            case KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE:
+                return DEFAULT_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE;
+            case KEY_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL:
+                return DEFAULT_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL;
+            case KEY_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE:
+                return DEFAULT_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE;
+            case KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL:
+                return DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL;
             default:
                 return 0;
         }
@@ -306,6 +350,8 @@ final class SettingsStore {
                 return DEFAULT_MBACK_HIDE_PILL;
             case KEY_IME_TOOLBAR_ENABLED:
                 return DEFAULT_IME_TOOLBAR_ENABLED;
+            case KEY_TELEPHONY_DEBUG_ENABLED:
+                return DEFAULT_TELEPHONY_DEBUG_ENABLED;
             default:
                 return false;
         }
@@ -352,6 +398,35 @@ final class SettingsStore {
 
     static int normalizeNotificationAppIconPaddingDp(int value) {
         return Math.max(0, Math.min(8, value));
+    }
+
+    static int normalizeTelephonyDebugSimCount(int value) {
+        return Math.max(0, Math.min(2, value));
+    }
+
+    static int normalizeTelephonyDebugDefaultDataSlot(int value) {
+        return Math.max(TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_NONE,
+                Math.min(TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_CARD2, value));
+    }
+
+    static int normalizeTelephonyDebugSignalLevel(int value) {
+        return Math.max(0, Math.min(4, value));
+    }
+
+    static int normalizeTelephonyDebugNetworkProfile(int value) {
+        switch (value) {
+            case TELEPHONY_DEBUG_NETWORK_PROFILE_OFFLINE:
+            case TELEPHONY_DEBUG_NETWORK_PROFILE_2G:
+            case TELEPHONY_DEBUG_NETWORK_PROFILE_3G:
+            case TELEPHONY_DEBUG_NETWORK_PROFILE_4G:
+            case TELEPHONY_DEBUG_NETWORK_PROFILE_5G:
+            case TELEPHONY_DEBUG_NETWORK_PROFILE_5G_CA:
+            case TELEPHONY_DEBUG_NETWORK_PROFILE_5GA:
+            case TELEPHONY_DEBUG_NETWORK_PROFILE_5G_PLUS:
+                return value;
+            default:
+                return TELEPHONY_DEBUG_NETWORK_PROFILE_4G;
+        }
     }
 
     static boolean includeInBackup(String key) {

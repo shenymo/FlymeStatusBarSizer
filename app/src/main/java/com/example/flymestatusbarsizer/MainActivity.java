@@ -92,6 +92,7 @@ public class MainActivity extends Activity {
     private int colorPrimaryDeep;
     private int colorStroke;
     private RightIconGroupPreviewView previewView;
+    private View telephonyDebugPage;
     private View[] mainPages;
     private TextView[] mainTabs;
     private final ArrayList<String> imeToolbarDraftOrder = new ArrayList<>();
@@ -138,6 +139,15 @@ public class MainActivity extends Activity {
         page.addView(buildBottomNavigation(), bottomNavigationLayoutParams());
         page.addView(buildFloatingMenuButton(), floatingMenuLayoutParams(topInset));
         setContentView(page);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (telephonyDebugPage != null && telephonyDebugPage.getVisibility() == View.VISIBLE) {
+            bindMainTabs(2);
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override
@@ -191,9 +201,13 @@ public class MainActivity extends Activity {
         LinearLayout homePage = buildHomePage();
         LinearLayout debugPage = buildDebugPage();
         LinearLayout aboutPage = buildAboutPage();
+        LinearLayout telephonyPage = buildTelephonyDebugPage();
         pageContainer.addView(homePage, matchWrapFrame());
         pageContainer.addView(debugPage, matchWrapFrame());
         pageContainer.addView(aboutPage, matchWrapFrame());
+        pageContainer.addView(telephonyPage, matchWrapFrame());
+        telephonyPage.setVisibility(View.GONE);
+        telephonyDebugPage = telephonyPage;
         mainPages = new View[]{homePage, debugPage, aboutPage};
         return pageContainer;
     }
@@ -437,8 +451,122 @@ public class MainActivity extends Activity {
         buildDateValue.setPadding(0, dp(6), 0, 0);
         card.addView(buildDateValue, matchWrap());
 
+        addDivider(card);
+        addActionButtonRow(card, "Telephony 调试",
+                "进入一个单独的调试页，伪造 SystemUI 读取到的插卡数量、默认上网卡、网络类型和信号强度。",
+                "进入", this::showTelephonyDebugPage);
+
         page.addView(card, matchWrapWithTop(10));
         return page;
+    }
+
+    private LinearLayout buildTelephonyDebugPage() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        addSectionLabel(page, "Telephony 调试");
+
+        LinearLayout navCard = card(colorFeatureSurface, colorFeatureStroke, 24);
+        TextView navTitle = new TextView(this);
+        navTitle.setText("这里改的是 Telephony 读取结果，不是直接调用模块的信号图标刷新接口。");
+        navTitle.setTextColor(colorText);
+        navTitle.setTextSize(15);
+        navCard.addView(navTitle, matchWrap());
+
+        TextView navHint = new TextView(this);
+        navHint.setText("双卡合并图标时，当前显示会跟随你选择的默认上网卡。");
+        navHint.setTextColor(colorSubtext);
+        navHint.setTextSize(13);
+        navHint.setPadding(0, dp(6), 0, 0);
+        navCard.addView(navHint, matchWrap());
+
+        TextView backButton = filledButton("返回关于", colorPrimary, Color.WHITE);
+        backButton.setOnClickListener(v -> bindMainTabs(2));
+        navCard.addView(backButton, matchWrapWithTop(14));
+        page.addView(navCard, matchWrapWithTop(10));
+
+        LinearLayout card = card(colorSurface, 28);
+        addProfileSectionHeader(card, "调试开关",
+                "打开后，远端偏好会立即同步到 SystemUI。你可以先设好两张测试卡的状态，再切换插卡数量和默认数据卡。");
+        addSwitchRow(card, "启用 Telephony 伪造",
+                "关闭后恢复真实 Telephony 结果，但下面保存的调试预设会保留。",
+                SettingsStore.KEY_TELEPHONY_DEBUG_ENABLED,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED);
+        addDivider(card);
+        addChoiceRow(card, "模拟插卡数量",
+                "用于测试 0 卡、单卡和双卡时你的自绘信号图标是否按预期切换布局和可见性。",
+                SettingsStore.KEY_TELEPHONY_DEBUG_SIM_COUNT,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT,
+                new int[]{0, 1, 2},
+                new String[]{"0 张", "1 张", "2 张"});
+        addDivider(card);
+        addChoiceRow(card, "默认上网卡",
+                "双卡场景下，当前显示出来的移动网络类型和信号等级会跟随这里选择的那张卡。",
+                SettingsStore.KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
+                new int[]{
+                        SettingsStore.TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_NONE,
+                        SettingsStore.TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_CARD1,
+                        SettingsStore.TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_CARD2
+                },
+                new String[]{"无", "卡 1", "卡 2"});
+
+        addDivider(card);
+        addTelephonyDebugSlotSection(card,
+                "卡 1",
+                "第一张测试卡。单卡场景默认就看它，双卡场景切成默认上网卡时也会读它的网络类型和信号。",
+                SettingsStore.KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
+                SettingsStore.KEY_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL);
+
+        addDivider(card);
+        addTelephonyDebugSlotSection(card,
+                "卡 2",
+                "第二张测试卡。只有插卡数量切到 2 张时才会参与模拟，用来测试双卡下切主副卡后的图标变化。",
+                SettingsStore.KEY_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE,
+                SettingsStore.KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL);
+
+        addDivider(card);
+        addActionButtonRow(card, "恢复真实系统",
+                "只关闭 Telephony 伪造，不清空你刚才配好的两张测试卡参数。",
+                "恢复", this::disableTelephonyDebug);
+        page.addView(card, matchWrapWithTop(10));
+        return page;
+    }
+
+    private void addTelephonyDebugSlotSection(LinearLayout root,
+            String titleText,
+            String subtitleText,
+            String networkKey,
+            int defaultNetworkValue,
+            String signalKey,
+            int defaultSignalValue) {
+        addProfileSectionHeader(root, titleText, subtitleText);
+        addChoiceRow(root, "网络类型",
+                "改的是 Telephony 读到的网络制式。4G 会隐藏 5G 标识，5G / 5G CA / 5GA / 5G+ 会分别走不同的 5G 分支。",
+                networkKey,
+                defaultNetworkValue,
+                new int[]{
+                        SettingsStore.TELEPHONY_DEBUG_NETWORK_PROFILE_OFFLINE,
+                        SettingsStore.TELEPHONY_DEBUG_NETWORK_PROFILE_2G,
+                        SettingsStore.TELEPHONY_DEBUG_NETWORK_PROFILE_3G,
+                        SettingsStore.TELEPHONY_DEBUG_NETWORK_PROFILE_4G,
+                        SettingsStore.TELEPHONY_DEBUG_NETWORK_PROFILE_5G,
+                        SettingsStore.TELEPHONY_DEBUG_NETWORK_PROFILE_5G_CA,
+                        SettingsStore.TELEPHONY_DEBUG_NETWORK_PROFILE_5GA,
+                        SettingsStore.TELEPHONY_DEBUG_NETWORK_PROFILE_5G_PLUS
+                },
+                new String[]{"无服务", "2G", "3G", "4G", "5G", "5G CA", "5GA", "5G+"});
+        addDivider(root);
+        addChoiceRow(root, "信号强度",
+                "这里填的是标准 0 到 4 级。代码绘制信号图标会直接跟着这个等级变化。",
+                signalKey,
+                defaultSignalValue,
+                new int[]{0, 1, 2, 3, 4},
+                new String[]{"0 格", "1 格", "2 格", "3 格", "4 格"});
     }
 
     private View buildFloatingMenuButton() {
@@ -832,7 +960,21 @@ public class MainActivity extends Activity {
         if (mainPages == null || mainTabs == null) {
             return;
         }
+        if (telephonyDebugPage != null) {
+            telephonyDebugPage.setVisibility(View.GONE);
+        }
         bindSettingsPageTabs(mainPages, mainTabs, selectedIndex);
+    }
+
+    private void showTelephonyDebugPage() {
+        if (telephonyDebugPage == null || mainPages == null || mainTabs == null) {
+            return;
+        }
+        bindSettingsPageTabs(mainPages, mainTabs, 2);
+        for (View page : mainPages) {
+            page.setVisibility(View.GONE);
+        }
+        telephonyDebugPage.setVisibility(View.VISIBLE);
     }
 
     private View buildTimeCard() {
@@ -1490,6 +1632,13 @@ public class MainActivity extends Activity {
         prefs.edit().putString(key, value == null ? "" : value).apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
+    }
+
+    private void disableTelephonyDebug() {
+        prefs.edit().putBoolean(SettingsStore.KEY_TELEPHONY_DEBUG_ENABLED, false).apply();
+        SettingsStore.notifyChanged(this);
+        invalidatePreview();
+        showToast("已恢复真实 Telephony");
     }
 
     private void testLaunchMBackIntent() {
