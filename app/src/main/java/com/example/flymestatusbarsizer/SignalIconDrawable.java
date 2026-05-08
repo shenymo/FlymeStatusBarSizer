@@ -18,18 +18,20 @@ final class SignalIconDrawable extends Drawable {
     private final int intrinsicWidth;
     private final int intrinsicHeight;
     private final int mobileTypeBadge;
+    private int signalLevel;
     private ColorStateList tintList;
     private ColorFilter colorFilter;
     private int drawColor = Color.WHITE;
     private int alpha = 255;
 
     SignalIconDrawable(android.view.View ownerView, boolean mergedDual, int intrinsicWidth,
-                       int intrinsicHeight, int mobileTypeBadge) {
+                       int intrinsicHeight, int mobileTypeBadge, int signalLevel) {
         this.ownerViewRef = new WeakReference<>(ownerView);
         this.mergedDual = mergedDual;
         this.intrinsicWidth = Math.max(1, intrinsicWidth);
         this.intrinsicHeight = Math.max(1, intrinsicHeight);
         this.mobileTypeBadge = mobileTypeBadge;
+        this.signalLevel = sanitizeSignalLevel(signalLevel);
     }
 
     boolean isMergedDual() {
@@ -44,6 +46,16 @@ final class SignalIconDrawable extends Drawable {
                 && this.mobileTypeBadge == mobileTypeBadge;
     }
 
+    boolean setSignalLevel(int signalLevel) {
+        int sanitized = sanitizeSignalLevel(signalLevel);
+        if (this.signalLevel == sanitized) {
+            return false;
+        }
+        this.signalLevel = sanitized;
+        invalidateSelf();
+        return true;
+    }
+
     @Override
     public void draw(Canvas canvas) {
         Rect bounds = getBounds();
@@ -53,9 +65,11 @@ final class SignalIconDrawable extends Drawable {
         updateDrawColor(getState());
         int color = SignalPreviewPainter.withFixedAlpha(drawColor, SIGNAL_DRAW_ALPHA);
         if (mergedDual) {
-            SignalPreviewPainter.drawMergedDualSim(canvas, bounds, color, colorFilter, mobileTypeBadge);
+            SignalPreviewPainter.drawMergedDualSim(
+                    canvas, bounds, color, colorFilter, mobileTypeBadge, signalLevel);
         } else {
-            SignalPreviewPainter.drawSingleSim(canvas, bounds, color, colorFilter, mobileTypeBadge);
+            SignalPreviewPainter.drawSingleSim(
+                    canvas, bounds, color, colorFilter, mobileTypeBadge, signalLevel);
         }
     }
 
@@ -122,5 +136,12 @@ final class SignalIconDrawable extends Drawable {
         drawColor = resolvedColor;
         invalidateSelf();
         return true;
+    }
+
+    private static int sanitizeSignalLevel(int signalLevel) {
+        if (signalLevel < 0) {
+            return 0;
+        }
+        return Math.min(signalLevel, 4);
     }
 }

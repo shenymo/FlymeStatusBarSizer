@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
