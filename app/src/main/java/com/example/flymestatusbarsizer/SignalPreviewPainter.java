@@ -121,10 +121,29 @@ final class SignalPreviewPainter {
         return (color & 0x00ffffff) | (alpha << 24);
     }
 
+    static int modulateAlpha(int baseAlpha, int appliedAlpha) {
+        int clampedBase = Math.max(0, Math.min(baseAlpha, 255));
+        int clampedApplied = Math.max(0, Math.min(appliedAlpha, 255));
+        if (clampedBase == 0 || clampedApplied == 0) {
+            return 0;
+        }
+        if (clampedBase == 255) {
+            return clampedApplied;
+        }
+        if (clampedApplied == 255) {
+            return clampedBase;
+        }
+        return (clampedBase * clampedApplied + 127) / 255;
+    }
+
+    static int modulateColorAlpha(int color, int appliedAlpha) {
+        return withFixedAlpha(color, modulateAlpha((color >>> 24) & 0xff, appliedAlpha));
+    }
+
     private static void drawSignal(Canvas canvas, Rect bounds, boolean mergedDual, int color,
                                    ColorFilter colorFilter, int mobileTypeBadge,
                                    int primarySignalLevel, int secondarySignalLevel) {
-        int drawColor = withFixedAlpha(color, SIGNAL_DRAW_ALPHA);
+        int drawColor = modulateColorAlpha(color, SIGNAL_DRAW_ALPHA);
         int inactiveColor = scaleAlpha(drawColor, INACTIVE_SIGNAL_ALPHA_RATIO);
         if (mobileTypeBadge == MOBILE_TYPE_BADGE_NONE) {
             SignalGeometry geometry = buildGeometry(bounds, mergedDual);

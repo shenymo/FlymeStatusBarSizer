@@ -12,7 +12,6 @@ import android.util.StateSet;
 import java.lang.ref.WeakReference;
 
 final class SignalIconDrawable extends Drawable {
-    private static final int SIGNAL_DRAW_ALPHA = 224;
     private final boolean mergedDual;
     private final WeakReference<android.view.View> ownerViewRef;
     private final int intrinsicWidth;
@@ -73,7 +72,7 @@ final class SignalIconDrawable extends Drawable {
             return;
         }
         updateDrawColor(getState());
-        int color = SignalPreviewPainter.withFixedAlpha(drawColor, SIGNAL_DRAW_ALPHA);
+        int color = SignalPreviewPainter.modulateColorAlpha(drawColor, alpha);
         if (mergedDual) {
             SignalPreviewPainter.drawMergedDualSim(
                     canvas, bounds, color, colorFilter, mobileTypeBadge,

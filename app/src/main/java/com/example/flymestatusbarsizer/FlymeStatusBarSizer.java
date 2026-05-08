@@ -154,6 +154,10 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
     private static final int DEFAULT_NOTIFICATION_APP_ICON_INSET_DP = 1;
     private static final String SIGNAL_LEVEL_LOG_MARKER = "[FSBS_SIGNAL_LEVEL]";
+    private static final boolean SIGNAL_LEVEL_DEBUG_LOG_FORCE_ENABLED = false;
+    private static final int SIGNAL_IMAGE_ASSIGNMENT_RESOURCE = 1;
+    private static final int SIGNAL_IMAGE_ASSIGNMENT_ICON = 2;
+    private static final int SIGNAL_IMAGE_ASSIGNMENT_DRAWABLE = 3;
     private static final int TELEPHONY_DEBUG_SUB_ID_CARD1 = 910001;
     private static final int TELEPHONY_DEBUG_SUB_ID_CARD2 = 910002;
     private static final ThreadLocal<Integer> INTERNAL_SIGNAL_LEVEL_QUERY_DEPTH =
@@ -2766,6 +2770,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         return config != null && config.telephonyDebugEnabled;
     }
 
+    private static boolean isSignalLevelDebugLogEnabled(ModuleConfig config) {
+        return SIGNAL_LEVEL_DEBUG_LOG_FORCE_ENABLED || isTelephonyDebugEnabled(config);
+    }
+
     private static int resolveTelephonyDebugActiveSubscriptionCount(ModuleConfig config) {
         if (!isTelephonyDebugEnabled(config)) {
             return -1;
@@ -5045,65 +5053,11 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void onSignalImageResourceAssigned(ImageView view, int resId) {
-        trackStatusBarIconView(view);
-        String idName = getSystemUiIdName(view);
-        if ("mobile_type".equals(idName)) {
-            recordMobileTypeResourceAssignment(view, resId);
-        }
-        if (!isMobileSignalRelatedId(idName)) {
-            applyStatusBarScaleIfNeeded(view);
-            return;
-        }
-        ModuleConfig config = ModuleConfig.load(view.getContext());
-        if (!isSignalCodeDrawEnabled(config)) {
-            if ("mobile_type".equals(idName)) {
-                restoreMobileTypeView(view);
-            }
-            applyStatusBarScaleIfNeeded(view);
-            return;
-        }
-        if ("mobile_type".equals(idName)) {
-            hideMobileTypeView(view);
-            refreshLinkedSignalViews(view);
-            return;
-        }
-        if ("mobile_signal".equals(idName)) {
-            bindSignalViewState(view);
-            applySignalIconOverride(view);
-            return;
-        }
-        applyStatusBarScaleIfNeeded(view);
+        onSignalImageAssigned(view, SIGNAL_IMAGE_ASSIGNMENT_RESOURCE, resId, null, null);
     }
 
     private static void onSignalImageIconAssigned(ImageView view, Icon icon) {
-        trackStatusBarIconView(view);
-        String idName = getSystemUiIdName(view);
-        if ("mobile_type".equals(idName)) {
-            recordMobileTypeIconAssignment(view, icon);
-        }
-        if (!isMobileSignalRelatedId(idName)) {
-            applyStatusBarScaleIfNeeded(view);
-            return;
-        }
-        ModuleConfig config = ModuleConfig.load(view.getContext());
-        if (!isSignalCodeDrawEnabled(config)) {
-            if ("mobile_type".equals(idName)) {
-                restoreMobileTypeView(view);
-            }
-            applyStatusBarScaleIfNeeded(view);
-            return;
-        }
-        if ("mobile_type".equals(idName)) {
-            hideMobileTypeView(view);
-            refreshLinkedSignalViews(view);
-            return;
-        }
-        if ("mobile_signal".equals(idName)) {
-            bindSignalViewState(view);
-            applySignalIconOverride(view);
-            return;
-        }
-        applyStatusBarScaleIfNeeded(view);
+        onSignalImageAssigned(view, SIGNAL_IMAGE_ASSIGNMENT_ICON, 0, icon, null);
     }
 
     private void hookStatusBarIconConstructors(ClassLoader loader) {
@@ -5126,13 +5080,19 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void onSignalImageDrawableAssigned(ImageView view, Drawable drawable) {
+        onSignalImageAssigned(view, SIGNAL_IMAGE_ASSIGNMENT_DRAWABLE, 0, null, drawable);
+    }
+
+    private static void onSignalImageAssigned(ImageView view, int assignmentType, int resId,
+                                              Icon icon, Drawable drawable) {
         trackStatusBarIconView(view);
-        if (isSignalDrawableApplyGuardActive(view)) {
+        if (assignmentType == SIGNAL_IMAGE_ASSIGNMENT_DRAWABLE
+                && isSignalDrawableApplyGuardActive(view)) {
             return;
         }
         String idName = getSystemUiIdName(view);
         if ("mobile_type".equals(idName)) {
-            recordMobileTypeDrawableAssignment(view, drawable);
+            recordMobileTypeImageAssignment(view, assignmentType, resId, icon, drawable);
         }
         if (!isMobileSignalRelatedId(idName)) {
             applyStatusBarScaleIfNeeded(view);
@@ -5141,13 +5101,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         ModuleConfig config = ModuleConfig.load(view.getContext());
         if (!isSignalCodeDrawEnabled(config)) {
             if ("mobile_type".equals(idName)) {
-                restoreMobileTypeView(view);
+                setMobileTypeVisibility(view, true);
             }
             applyStatusBarScaleIfNeeded(view);
             return;
         }
         if ("mobile_type".equals(idName)) {
-            hideMobileTypeView(view);
+            setMobileTypeVisibility(view, false);
             refreshLinkedSignalViews(view);
             return;
         }
@@ -5160,6 +5120,23 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         applyStatusBarScaleIfNeeded(view);
+    }
+
+    private static void recordMobileTypeImageAssignment(ImageView view, int assignmentType, int resId,
+                                                        Icon icon, Drawable drawable) {
+        switch (assignmentType) {
+            case SIGNAL_IMAGE_ASSIGNMENT_RESOURCE:
+                recordMobileTypeResourceAssignment(view, resId);
+                return;
+            case SIGNAL_IMAGE_ASSIGNMENT_ICON:
+                recordMobileTypeIconAssignment(view, icon);
+                return;
+            case SIGNAL_IMAGE_ASSIGNMENT_DRAWABLE:
+                recordMobileTypeDrawableAssignment(view, drawable);
+                return;
+            default:
+                return;
+        }
     }
 
     private static void onSignalViewLayoutChanged(View view) {
@@ -5177,13 +5154,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         ModuleConfig config = ModuleConfig.load(view.getContext());
         if (!isSignalCodeDrawEnabled(config)) {
             if ("mobile_type".equals(idName)) {
-                restoreMobileTypeView(view);
+                setMobileTypeVisibility(view, true);
             }
             applyStatusBarScaleIfNeeded(view);
             return;
         }
         if ("mobile_type".equals(idName)) {
-            hideMobileTypeView(view);
+            setMobileTypeVisibility(view, false);
             refreshLinkedSignalViews(view);
             return;
         }
@@ -6255,29 +6232,19 @@ public class FlymeStatusBarSizer extends XposedModule {
         view.setLayoutParams(lp);
     }
 
-    private static void hideMobileTypeView(View view) {
-        if (view == null || view.getVisibility() == View.GONE) {
+    private static void setMobileTypeVisibility(View view, boolean visible) {
+        if (view == null) {
             return;
         }
-        view.setVisibility(View.GONE);
-        LAST_MOBILE_TYPE_LAST_EVENT = "hideMobileTypeView";
-        LAST_MOBILE_TYPE_VIEW_VISIBILITY = view.getVisibility();
-        reportMobileTypeDebug("hideMobileTypeView");
-        ViewParent parent = view.getParent();
-        if (parent instanceof View) {
-            ((View) parent).requestLayout();
-        }
-        view.requestLayout();
-    }
-
-    private static void restoreMobileTypeView(View view) {
-        if (view == null || view.getVisibility() == View.VISIBLE) {
+        int targetVisibility = visible ? View.VISIBLE : View.GONE;
+        if (view.getVisibility() == targetVisibility) {
             return;
         }
-        view.setVisibility(View.VISIBLE);
-        LAST_MOBILE_TYPE_LAST_EVENT = "restoreMobileTypeView";
+        view.setVisibility(targetVisibility);
+        String event = visible ? "restoreMobileTypeView" : "hideMobileTypeView";
+        LAST_MOBILE_TYPE_LAST_EVENT = event;
         LAST_MOBILE_TYPE_VIEW_VISIBILITY = view.getVisibility();
-        reportMobileTypeDebug("restoreMobileTypeView");
+        reportMobileTypeDebug(event);
         ViewParent parent = view.getParent();
         if (parent instanceof View) {
             ((View) parent).requestLayout();
@@ -8111,6 +8078,10 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void reportSignalLevelDebug(String detail) {
+        ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+        if (!isSignalLevelDebugLogEnabled(config)) {
+            return;
+        }
         android.util.Log.i(TAG, SIGNAL_LEVEL_LOG_MARKER + " " + detail);
     }
 
