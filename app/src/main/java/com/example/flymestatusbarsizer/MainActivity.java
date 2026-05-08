@@ -474,7 +474,7 @@ public class MainActivity extends Activity {
         navCard.addView(navTitle, matchWrap());
 
         TextView navHint = new TextView(this);
-        navHint.setText("双卡合并图标时，当前显示会跟随你选择的默认上网卡。");
+        navHint.setText("双卡合并图标时，5G/网络类型跟随默认上网卡，双层信号会分别读取卡 1 / 卡 2 的等级。");
         navHint.setTextColor(colorSubtext);
         navHint.setTextSize(13);
         navHint.setPadding(0, dp(6), 0, 0);
@@ -501,7 +501,7 @@ public class MainActivity extends Activity {
                 new String[]{"0 张", "1 张", "2 张"});
         addDivider(card);
         addChoiceRow(card, "默认上网卡",
-                "双卡场景下，当前显示出来的移动网络类型和信号等级会跟随这里选择的那张卡。",
+                "双卡场景下，移动网络类型和 5G 标识会跟随这里选择的那张卡；合并双层信号则分别读取卡 1 / 卡 2 的等级。",
                 SettingsStore.KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
                 SettingsStore.DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
                 new int[]{
@@ -514,7 +514,7 @@ public class MainActivity extends Activity {
         addDivider(card);
         addTelephonyDebugSlotSection(card,
                 "卡 1",
-                "第一张测试卡。单卡场景默认就看它，双卡场景切成默认上网卡时也会读它的网络类型和信号。",
+                "第一张测试卡。单卡场景默认看它；双卡合并图标时，上层柱读取它的信号等级。",
                 SettingsStore.KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
                 SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
                 SettingsStore.KEY_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL,
@@ -523,7 +523,7 @@ public class MainActivity extends Activity {
         addDivider(card);
         addTelephonyDebugSlotSection(card,
                 "卡 2",
-                "第二张测试卡。只有插卡数量切到 2 张时才会参与模拟，用来测试双卡下切主副卡后的图标变化。",
+                "第二张测试卡。只有插卡数量切到 2 张时才会参与模拟；双卡合并图标时，下层圆点读取它的信号等级。",
                 SettingsStore.KEY_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE,
                 SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE,
                 SettingsStore.KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL,

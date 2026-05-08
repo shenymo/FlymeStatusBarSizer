@@ -5792,29 +5792,156 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static int resolveSignalBars(String idName, View view) {
         if ("mobile_signal".equals(idName)) {
-            int subId = resolveSignalViewSubId(view);
-            if (SubscriptionManager.isValidSubscriptionId(subId)) {
-                ModuleConfig config = ModuleConfig.load(view == null ? ModuleConfig.getSystemUiContext() : view.getContext());
-                int debugLevel = resolveTelephonyDebugSignalLevel(config, subId);
-                if (debugLevel >= 0) {
-                    return debugLevel;
-                }
-                SignalLevelSubState state = snapshotSignalLevelSubState(subId);
-                if (state != null && state.level >= 0) {
-                    return state.level;
-                }
-                queryAndStoreLiveSignalLevel(view == null ? null : view.getContext(), subId,
-                        "resolveSignalBars");
-                state = snapshotSignalLevelSubState(subId);
-                if (state != null && state.level >= 0) {
-                    return state.level;
-                }
+            int level = resolveSignalLevelForSubId(
+                    view == null ? null : view.getContext(),
+                    resolveSignalViewSubId(view));
+            if (level >= 0) {
+                return level;
             }
             if (LAST_SIGNAL_LEVEL >= 0) {
                 return LAST_SIGNAL_LEVEL;
             }
         }
         return LAST_CELLULAR_LEVEL >= 0 ? normalizeSignalLevel(LAST_CELLULAR_LEVEL) : -1;
+    }
+
+    private static int resolveSignalLevelForSubId(Context context, int subId) {
+        if (!SubscriptionManager.isValidSubscriptionId(subId)) {
+            return -1;
+        }
+        ModuleConfig config = ModuleConfig.load(
+                context == null ? ModuleConfig.getSystemUiContext() : context);
+        int debugLevel = resolveTelephonyDebugSignalLevel(config, subId);
+        if (debugLevel >= 0) {
+            return debugLevel;
+        }
+        SignalLevelSubState state = snapshotSignalLevelSubState(subId);
+        if (state != null && state.level >= 0) {
+            return state.level;
+        }
+        queryAndStoreLiveSignalLevel(context, subId, "resolveSignalLevelForSubId");
+        state = snapshotSignalLevelSubState(subId);
+        return state != null && state.level >= 0 ? state.level : -1;
+    }
+
+    private static MergedSignalLevels resolveMergedSignalLevels(ImageView view, View mobileGroup) {
+        MergedSignalLevels levels = new MergedSignalLevels();
+        int fallbackLevel = resolveSignalBars("mobile_signal", view);
+        levels.primaryLevel = fallbackLevel;
+        levels.secondaryLevel = fallbackLevel;
+        Context context = view == null ? null : view.getContext();
+        ModuleConfig config = ModuleConfig.load(
+                context == null ? ModuleConfig.getSystemUiContext() : context);
+        if (isTelephonyDebugEnabled(config)) {
+            int simCount = resolveTelephonyDebugActiveSubscriptionCount(config);
+            if (simCount >= 1) {
+                int primaryLevel = resolveSignalLevelForSubId(context, TELEPHONY_DEBUG_SUB_ID_CARD1);
+                if (primaryLevel >= 0) {
+                    levels.primaryLevel = primaryLevel;
+                }
+            }
+            if (simCount >= 2) {
+                int secondaryLevel = resolveSignalLevelForSubId(context, TELEPHONY_DEBUG_SUB_ID_CARD2);
+                if (secondaryLevel >= 0) {
+                    levels.secondaryLevel = secondaryLevel;
+                }
+            } else {
+                levels.secondaryLevel = levels.primaryLevel;
+            }
+            normalizeMergedSignalLevels(levels);
+            return levels;
+        }
+
+        ArrayList<View> groups = collectSiblingMobileSignalGroups(mobileGroup);
+        int slot1SubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        int slot2SubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        int firstObservedSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        int secondObservedSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        for (int i = 0; i < groups.size(); i++) {
+            int subId = resolveSubIdFromCarrierCallbackOwner(groups.get(i));
+            if (!SubscriptionManager.isValidSubscriptionId(subId)) {
+                continue;
+            }
+            if (!SubscriptionManager.isValidSubscriptionId(firstObservedSubId)) {
+                firstObservedSubId = subId;
+            } else if (subId != firstObservedSubId
+                    && !SubscriptionManager.isValidSubscriptionId(secondObservedSubId)) {
+                secondObservedSubId = subId;
+            }
+            int simSlotIndex = resolveSignalSubSlotIndex(context, subId);
+            if (simSlotIndex == 0 && !SubscriptionManager.isValidSubscriptionId(slot1SubId)) {
+                slot1SubId = subId;
+            } else if (simSlotIndex == 1
+                    && subId != slot1SubId
+                    && !SubscriptionManager.isValidSubscriptionId(slot2SubId)) {
+                slot2SubId = subId;
+            }
+        }
+
+        int primarySubId = SubscriptionManager.isValidSubscriptionId(slot1SubId)
+                ? slot1SubId
+                : firstObservedSubId;
+        int secondarySubId = SubscriptionManager.isValidSubscriptionId(slot2SubId)
+                ? slot2SubId
+                : secondObservedSubId;
+        if (!SubscriptionManager.isValidSubscriptionId(secondarySubId)
+                || secondarySubId == primarySubId) {
+            secondarySubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        }
+
+        int primaryLevel = resolveSignalLevelForSubId(context, primarySubId);
+        if (primaryLevel >= 0) {
+            levels.primaryLevel = primaryLevel;
+        }
+        int secondaryLevel = resolveSignalLevelForSubId(context, secondarySubId);
+        if (secondaryLevel >= 0) {
+            levels.secondaryLevel = secondaryLevel;
+        }
+        normalizeMergedSignalLevels(levels);
+        return levels;
+    }
+
+    private static void normalizeMergedSignalLevels(MergedSignalLevels levels) {
+        if (levels == null) {
+            return;
+        }
+        if (levels.primaryLevel < 0 && levels.secondaryLevel >= 0) {
+            levels.primaryLevel = levels.secondaryLevel;
+        }
+        if (levels.secondaryLevel < 0 && levels.primaryLevel >= 0) {
+            levels.secondaryLevel = levels.primaryLevel;
+        }
+        if (levels.primaryLevel < 0) {
+            levels.primaryLevel = 0;
+        }
+        if (levels.secondaryLevel < 0) {
+            levels.secondaryLevel = levels.primaryLevel;
+        }
+    }
+
+    private static int resolveSignalSubSlotIndex(Context context, int subId) {
+        if (!SubscriptionManager.isValidSubscriptionId(subId)) {
+            return -1;
+        }
+        if (subId == TELEPHONY_DEBUG_SUB_ID_CARD1) {
+            return 0;
+        }
+        if (subId == TELEPHONY_DEBUG_SUB_ID_CARD2) {
+            return 1;
+        }
+        if (context == null) {
+            return -1;
+        }
+        try {
+            SubscriptionManager manager = context.getSystemService(SubscriptionManager.class);
+            if (manager == null) {
+                return -1;
+            }
+            SubscriptionInfo info = manager.getActiveSubscriptionInfo(subId);
+            return info == null ? -1 : info.getSimSlotIndex();
+        } catch (Throwable ignored) {
+            return -1;
+        }
     }
 
     private static int normalizeSignalLevel(int rawLevel) {
@@ -5873,7 +6000,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         alignSignalIconVertically(view);
         bindSignalViewState(view);
         int mobileTypeBadge = resolveSignalMobileTypeBadge();
-        int signalLevel = resolveSignalBars("mobile_signal", view);
+        MergedSignalLevels mergedSignalLevels = mergedDual
+                ? resolveMergedSignalLevels(view, mobileGroup)
+                : null;
+        int signalLevel = mergedDual
+                ? mergedSignalLevels.primaryLevel
+                : resolveSignalBars("mobile_signal", view);
+        int secondarySignalLevel = mergedDual
+                ? mergedSignalLevels.secondaryLevel
+                : signalLevel;
         resizeSignalIconView(view, mobileTypeBadge);
         disableAncestorClipping(view, 6);
         int intrinsicHeight = resolveSignalIconIntrinsicHeight(view);
@@ -5883,13 +6018,14 @@ public class FlymeStatusBarSizer extends XposedModule {
             SignalIconDrawable signalDrawable = (SignalIconDrawable) current;
             if (signalDrawable.matchesGeometry(
                     mergedDual, intrinsicWidth, intrinsicHeight, mobileTypeBadge)) {
-                signalDrawable.setSignalLevel(signalLevel);
+                signalDrawable.setSignalLevels(signalLevel, secondarySignalLevel);
                 view.invalidate();
                 return;
             }
         }
         SignalIconDrawable drawable = new SignalIconDrawable(
-                view, mergedDual, intrinsicWidth, intrinsicHeight, mobileTypeBadge, signalLevel);
+                view, mergedDual, intrinsicWidth, intrinsicHeight, mobileTypeBadge,
+                signalLevel, secondarySignalLevel);
         drawable.setAlpha(view.getImageAlpha());
         drawable.setState(view.getDrawableState());
         drawable.setTintList(view.getImageTintList());
@@ -8031,6 +8167,11 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static final class SignalViewState {
         volatile int subId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    }
+
+    private static final class MergedSignalLevels {
+        volatile int primaryLevel = -1;
+        volatile int secondaryLevel = -1;
     }
 
     private static final class MobileTypeSubState {

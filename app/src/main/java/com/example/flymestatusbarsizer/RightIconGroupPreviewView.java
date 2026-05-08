@@ -12,6 +12,8 @@ import android.view.View;
 
 public final class RightIconGroupPreviewView extends View {
     private static final int PREVIEW_BATTERY_LEVEL = 82;
+    private static final int PREVIEW_MERGED_PRIMARY_SIGNAL_LEVEL = 4;
+    private static final int PREVIEW_MERGED_SECONDARY_SIGNAL_LEVEL = 2;
     private static final int DEFAULT_TEXT_COLOR = Color.rgb(28, 27, 31);
 
     private final Paint surfacePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -189,7 +191,12 @@ public final class RightIconGroupPreviewView extends View {
         int signalLeft = Math.round(currentRight - iconSize);
         target.set(signalLeft, iconTop, signalLeft + iconSize, iconTop + iconSize);
         if (mergedDual) {
-            SignalPreviewPainter.drawMergedDualSim(canvas, target, previewTintColor);
+            SignalPreviewPainter.drawMergedDualSim(
+                    canvas,
+                    target,
+                    previewTintColor,
+                    PREVIEW_MERGED_PRIMARY_SIGNAL_LEVEL,
+                    PREVIEW_MERGED_SECONDARY_SIGNAL_LEVEL);
         } else {
             SignalPreviewPainter.drawSingleSim(canvas, target, previewTintColor);
         }

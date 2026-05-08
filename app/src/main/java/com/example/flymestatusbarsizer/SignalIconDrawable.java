@@ -18,20 +18,23 @@ final class SignalIconDrawable extends Drawable {
     private final int intrinsicWidth;
     private final int intrinsicHeight;
     private final int mobileTypeBadge;
-    private int signalLevel;
+    private int primarySignalLevel;
+    private int secondarySignalLevel;
     private ColorStateList tintList;
     private ColorFilter colorFilter;
     private int drawColor = Color.WHITE;
     private int alpha = 255;
 
     SignalIconDrawable(android.view.View ownerView, boolean mergedDual, int intrinsicWidth,
-                       int intrinsicHeight, int mobileTypeBadge, int signalLevel) {
+                       int intrinsicHeight, int mobileTypeBadge, int primarySignalLevel,
+                       int secondarySignalLevel) {
         this.ownerViewRef = new WeakReference<>(ownerView);
         this.mergedDual = mergedDual;
         this.intrinsicWidth = Math.max(1, intrinsicWidth);
         this.intrinsicHeight = Math.max(1, intrinsicHeight);
         this.mobileTypeBadge = mobileTypeBadge;
-        this.signalLevel = sanitizeSignalLevel(signalLevel);
+        this.primarySignalLevel = sanitizeSignalLevel(primarySignalLevel);
+        this.secondarySignalLevel = sanitizeSignalLevel(secondarySignalLevel);
     }
 
     boolean isMergedDual() {
@@ -47,11 +50,18 @@ final class SignalIconDrawable extends Drawable {
     }
 
     boolean setSignalLevel(int signalLevel) {
-        int sanitized = sanitizeSignalLevel(signalLevel);
-        if (this.signalLevel == sanitized) {
+        return setSignalLevels(signalLevel, signalLevel);
+    }
+
+    boolean setSignalLevels(int primarySignalLevel, int secondarySignalLevel) {
+        int sanitizedPrimary = sanitizeSignalLevel(primarySignalLevel);
+        int sanitizedSecondary = sanitizeSignalLevel(secondarySignalLevel);
+        if (this.primarySignalLevel == sanitizedPrimary
+                && this.secondarySignalLevel == sanitizedSecondary) {
             return false;
         }
-        this.signalLevel = sanitized;
+        this.primarySignalLevel = sanitizedPrimary;
+        this.secondarySignalLevel = sanitizedSecondary;
         invalidateSelf();
         return true;
     }
@@ -66,10 +76,11 @@ final class SignalIconDrawable extends Drawable {
         int color = SignalPreviewPainter.withFixedAlpha(drawColor, SIGNAL_DRAW_ALPHA);
         if (mergedDual) {
             SignalPreviewPainter.drawMergedDualSim(
-                    canvas, bounds, color, colorFilter, mobileTypeBadge, signalLevel);
+                    canvas, bounds, color, colorFilter, mobileTypeBadge,
+                    primarySignalLevel, secondarySignalLevel);
         } else {
             SignalPreviewPainter.drawSingleSim(
-                    canvas, bounds, color, colorFilter, mobileTypeBadge, signalLevel);
+                    canvas, bounds, color, colorFilter, mobileTypeBadge, primarySignalLevel);
         }
     }
 
