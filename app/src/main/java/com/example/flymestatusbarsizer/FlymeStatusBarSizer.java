@@ -6,7 +6,6 @@ import android.content.ClipboardManager;
 import android.content.ComponentCallbacks;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
@@ -78,7 +77,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final String FLYME_STATUS_BAR_ICON_UTILS =
             "com.flyme.systemui.statusbar.policy.FlymeStatusBarIconUtils";
     private static final String MOBILE_TYPE_DEBUG_LOG_MARKER = "[FSBS_MOBILETYPE_DEBUG]";
-    private static final int MOBILE_TYPE_DEBUG_LOG_LIMIT = 50;
     private static final long MOBILE_TYPE_DEBUG_PUSH_MIN_INTERVAL_MS = 1500L;
     private static final String TAG_IME_TOOLBAR_ROOT = "flyme_status_bar_sizer_ime_toolbar_root";
     private static final String TAG_IME_TOOLBAR_ORIGINAL = "flyme_status_bar_sizer_ime_toolbar_original";
@@ -4839,66 +4837,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         String compact = snapshotText == null ? "" : snapshotText.replace('\n', ' ').trim();
         String entry = MOBILE_TYPE_DEBUG_LOG_MARKER + " " + compact;
         android.util.Log.i(TAG, entry);
-        appendMobileTypeDebugLogEntry(entry);
-    }
-
-    private static void appendMobileTypeDebugLogEntry(String entry) {
-        if (TextUtils.isEmpty(entry)) {
-            return;
-        }
-        try {
-            String formattedEntry = formatMobileTypeDebugLogEntry(entry);
-            String buffer = appendEntryToMobileTypeDebugBuffer(loadMobileTypeDebugBuffer(), formattedEntry);
-            persistMobileTypeDebugBuffer(buffer);
-        } catch (Throwable t) {
-            android.util.Log.w(TAG, "Failed to persist mobile type debug log", t);
-        }
-    }
-
-    private static String loadMobileTypeDebugBuffer() {
-        SharedPreferences remotePrefs = ModuleConfig.getRemotePrefs();
-        return SettingsStore.readString(
-                remotePrefs,
-                SettingsStore.KEY_MOBILE_TYPE_DEBUG_LOG_BUFFER,
-                "");
-    }
-
-    private static String appendEntryToMobileTypeDebugBuffer(String existing, String entry) {
-        ArrayList<String> lines = new ArrayList<>();
-        if (!TextUtils.isEmpty(existing)) {
-            String[] split = existing.split("\n");
-            for (String line : split) {
-                if (!TextUtils.isEmpty(line)) {
-                    lines.add(line);
-                }
-            }
-        }
-        lines.add(entry);
-        int overflow = lines.size() - MOBILE_TYPE_DEBUG_LOG_LIMIT;
-        if (overflow > 0) {
-            lines.subList(0, overflow).clear();
-        }
-        StringBuilder builder = new StringBuilder(lines.size() * 128);
-        for (int i = 0; i < lines.size(); i++) {
-            if (i > 0) {
-                builder.append('\n');
-            }
-            builder.append(lines.get(i));
-        }
-        return builder.toString();
-    }
-
-    private static void persistMobileTypeDebugBuffer(String buffer) {
-        SharedPreferences remotePrefs = ModuleConfig.getRemotePrefs();
-        if (remotePrefs != null) {
-            remotePrefs.edit()
-                    .putString(SettingsStore.KEY_MOBILE_TYPE_DEBUG_LOG_BUFFER, buffer)
-                    .apply();
-        }
-    }
-
-    private static String formatMobileTypeDebugLogEntry(String entry) {
-        return System.currentTimeMillis() + " " + entry;
     }
 
     private static boolean isMobileTypeObservationEnabled(ModuleConfig config) {

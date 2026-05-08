@@ -83,10 +83,6 @@ final class RemoteSettingsSync {
         }
     }
 
-    static SharedPreferences getRemotePrefs() {
-        return remotePrefs;
-    }
-
     private static void writeTypedValues(SharedPreferences.Editor editor, Map<String, ?> values, String[] keys) {
         if (editor == null || values == null || keys == null) {
             return;

@@ -41,7 +41,6 @@ final class SettingsStore {
     static final String KEY_IME_TOOLBAR_ORDER = "ime_toolbar_order";
     static final String KEY_MOBILE_TYPE_DEBUG_MODE = "mobile_type_debug_mode";
     static final String KEY_MOBILE_TYPE_SPOOF_PROFILE = "mobile_type_spoof_profile";
-    static final String KEY_MOBILE_TYPE_DEBUG_LOG_BUFFER = "mobile_type_debug_log_buffer";
     static final boolean DEFAULT_ENABLED = true;
     static final boolean DEFAULT_BATTERY_CODE_DRAW_ENABLED = true;
     static final boolean DEFAULT_SIGNAL_CODE_DRAW_ENABLED = true;
@@ -321,9 +320,6 @@ final class SettingsStore {
         }
         if (KEY_IME_TOOLBAR_ORDER.equals(key)) {
             return DEFAULT_IME_TOOLBAR_ORDER;
-        }
-        if (KEY_MOBILE_TYPE_DEBUG_LOG_BUFFER.equals(key)) {
-            return "";
         }
         return "";
     }

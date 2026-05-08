@@ -2,9 +2,6 @@ package com.example.flymestatusbarsizer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
@@ -104,8 +101,6 @@ public class MainActivity extends Activity {
     private LinearLayout imeToolbarOrderContainer;
     private LinearLayout clockExpressionOrderContainer;
     private TextView clockExpressionPreviewView;
-    private TextView mobileTypeDebugLogView;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -442,39 +437,7 @@ public class MainActivity extends Activity {
         card.addView(buildDateValue, matchWrap());
 
         page.addView(card, matchWrapWithTop(10));
-        page.addView(buildMobileTypeDebugLogCard(), matchWrapWithTop(12));
         return page;
-    }
-
-    private View buildMobileTypeDebugLogCard() {
-        LinearLayout details = new LinearLayout(this);
-        details.setOrientation(LinearLayout.VERTICAL);
-
-        addProfileSectionHeader(details, "mobile_type 调试日志",
-                "这里会保留最近 50 条 `FSBS_MOBILETYPE_DEBUG` 日志。回到关于页会自动刷新，也可以手动刷新或一键复制。");
-        addActionButtonRow(details, "刷新日志",
-                "重新读取最近 50 条 mobile_type 调试日志。",
-                "刷新", this::refreshMobileTypeDebugLogView);
-        addDivider(details);
-        addActionButtonRow(details, "复制全部日志",
-                "把当前显示的日志完整复制到剪贴板。",
-                "复制", this::copyMobileTypeDebugLogs);
-        addDivider(details);
-
-        mobileTypeDebugLogView = new TextView(this);
-        mobileTypeDebugLogView.setTextColor(colorPrimaryDeep);
-        mobileTypeDebugLogView.setTextSize(12);
-        mobileTypeDebugLogView.setTypeface(android.graphics.Typeface.MONOSPACE);
-        mobileTypeDebugLogView.setTextIsSelectable(true);
-        mobileTypeDebugLogView.setPadding(dp(12), dp(12), dp(12), dp(12));
-        mobileTypeDebugLogView.setBackground(roundRect(colorSurfaceSoft, 18));
-        details.addView(mobileTypeDebugLogView, matchWrap());
-        refreshMobileTypeDebugLogView();
-
-        return buildExpandableInfoCard(
-                "调试日志",
-                "在关于页直接查看和复制最近的 mobile_type 调试日志，不用只盯着 logcat。",
-                "日志", details);
     }
 
     private View buildFloatingMenuButton() {
@@ -827,7 +790,7 @@ public class MainActivity extends Activity {
                 new String[]{"跟随系统", "强制 4G", "强制 5G", "强制 5G CA", "强制 5GA", "强制 5G+"});
         addDivider(details);
         addProfileSectionHeader(details, "恢复方式",
-                "代码绘制开关只管 mobile_signal。mobile_type 的观测/伪造日志会同时输出到 logcat 和关于页调试日志，筛关键字 `FSBS_MOBILETYPE_DEBUG` 即可。");
+                "代码绘制开关只管 mobile_signal。mobile_type 的观测/伪造日志输出到 logcat，筛关键字 `FSBS_MOBILETYPE_DEBUG` 即可。");
 
         return buildExpandableInfoCard(
                 "信号图标",
@@ -2408,46 +2371,8 @@ public class MainActivity extends Activity {
         }
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        refreshMobileTypeDebugLogView();
-    }
-
     private void showToast(String message) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
-    }
-
-    private void refreshMobileTypeDebugLogView() {
-        if (mobileTypeDebugLogView == null) {
-            return;
-        }
-        SharedPreferences remotePrefs = RemoteSettingsSync.getRemotePrefs();
-        String logs = SettingsStore.readString(
-                remotePrefs,
-                SettingsStore.KEY_MOBILE_TYPE_DEBUG_LOG_BUFFER,
-                "");
-        mobileTypeDebugLogView.setText(TextUtils.isEmpty(logs) ? "暂无日志" : logs);
-    }
-
-    private void copyMobileTypeDebugLogs() {
-        SharedPreferences remotePrefs = RemoteSettingsSync.getRemotePrefs();
-        String logs = SettingsStore.readString(
-                remotePrefs,
-                SettingsStore.KEY_MOBILE_TYPE_DEBUG_LOG_BUFFER,
-                "");
-        if (TextUtils.isEmpty(logs)) {
-            showToast("当前没有可复制的日志");
-            return;
-        }
-        ClipboardManager clipboard =
-                (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        if (clipboard == null) {
-            showToast("无法访问剪贴板");
-            return;
-        }
-        clipboard.setPrimaryClip(ClipData.newPlainText("mobile_type_debug_logs", logs));
-        showToast("调试日志已复制");
     }
 
     private void restartSystemUi() {
