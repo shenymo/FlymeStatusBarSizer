@@ -55,6 +55,7 @@ import android.widget.LinearLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -101,6 +102,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<Object, View> TRACKED_INPUT_METHOD_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<Drawable, View> SIGNAL_DRAWABLE_OWNERS = new WeakHashMap<>();
     private static final WeakHashMap<View, SignalViewState> SIGNAL_VIEW_STATES = new WeakHashMap<>();
+    private static final WeakHashMap<View, WeakReference<View>> SIGNAL_TINT_SOURCE_CACHE =
+            new WeakHashMap<>();
     private static final WeakHashMap<TelephonyManager, Integer> TELEPHONY_MANAGER_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<SignalStrength, Integer> SIGNAL_STRENGTH_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<ServiceState, Integer> SERVICE_STATE_SUB_IDS = new WeakHashMap<>();
@@ -108,6 +111,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             new WeakHashMap<>();
     private static final HashMap<Integer, MobileTypeSubState> MOBILE_TYPE_SUB_STATES = new HashMap<>();
     private static final HashMap<Integer, SignalLevelSubState> SIGNAL_LEVEL_SUB_STATES = new HashMap<>();
+    private static final HashMap<Integer, Integer> SIGNAL_SUB_SLOT_INDEX_CACHE = new HashMap<>();
     private static final WeakHashMap<View, NotificationLiquidGlassView> NOTIFICATION_GLASS_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, NotificationGlassDrawable> NOTIFICATION_GLASS_DRAWABLES = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> CLOCK_SECOND_REFRESH_VIEWS = new WeakHashMap<>();
@@ -123,6 +127,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static volatile int LAST_UI_MODE_NIGHT = -1;
     private static final Runnable CLOCK_SECOND_REFRESH_RUNNABLE = FlymeStatusBarSizer::refreshClockViewsForSecondTick;
     private static final Runnable SIGNAL_ICON_REFRESH_RUNNABLE = FlymeStatusBarSizer::refreshTrackedSignalIconViewsNow;
+    private static final Runnable PRIMARY_SIGNAL_ICON_REFRESH_RUNNABLE =
+            FlymeStatusBarSizer::refreshTrackedPrimarySignalIconViewsNow;
     private static final ConnectivityManager.NetworkCallback DEFAULT_NETWORK_CALLBACK =
             new ConnectivityManager.NetworkCallback() {
                 @Override
@@ -668,6 +674,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                     }
                     LAST_MOBILE_TYPE_DISPLAY_INFO_SUB_ID = state.subId;
                     LAST_MOBILE_TYPE_NETWORK_TYPE = state.networkType;
+                    if (isInternalMobileTypeQueryActive()) {
+                        return result;
+                    }
                     LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyDisplayInfo.getNetworkType";
                     reportMobileTypeDebug("TelephonyDisplayInfo.getNetworkType");
                     scheduleTrackedSignalIconRefreshForMobileTypeSubId(state.subId);
@@ -707,6 +716,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                     }
                     LAST_MOBILE_TYPE_DISPLAY_INFO_SUB_ID = state.subId;
                     LAST_MOBILE_TYPE_OVERRIDE_NETWORK_TYPE = state.overrideNetworkType;
+                    if (isInternalMobileTypeQueryActive()) {
+                        return result;
+                    }
                     LAST_MOBILE_TYPE_LAST_EVENT = "TelephonyDisplayInfo.getOverrideNetworkType";
                     reportMobileTypeDebug("TelephonyDisplayInfo.getOverrideNetworkType");
                     scheduleTrackedSignalIconRefreshForMobileTypeSubId(state.subId);
@@ -779,7 +791,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 syncMobileTypeSubStateFromLiveTelephony(ModuleConfig.getSystemUiContext(), subId);
                 LAST_MOBILE_TYPE_LAST_EVENT = className + ".onActiveDataSubscriptionIdChanged";
                 reportMobileTypeDebug(className + ".onActiveDataSubscriptionIdChanged");
-                scheduleTrackedSignalIconRefresh();
+                scheduleTrackedPrimarySignalIconRefresh();
                 return result;
             });
         } catch (Throwable t) {
@@ -3157,7 +3169,7 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void scheduleTrackedSignalIconRefreshForMobileTypeSubId(int subId) {
         if (shouldRefreshMobileTypeForSubId(subId)) {
-            scheduleTrackedSignalIconRefresh();
+            scheduleTrackedPrimarySignalIconRefresh();
         }
     }
 
@@ -3203,6 +3215,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (anchorRoot == null) {
             return null;
         }
+        View cached = resolveCachedSignalTintSource(anchor, anchorRoot);
+        if (cached != null) {
+            return cached;
+        }
         View best = null;
         int bestScore = Integer.MAX_VALUE;
         int[] anchorLocation = getViewLocation(anchor);
@@ -3217,6 +3233,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 bestScore = score;
             }
         }
+        rememberSignalTintSource(anchor, best);
         return best;
     }
 
@@ -3250,6 +3267,54 @@ public class FlymeStatusBarSizer extends XposedModule {
         } catch (Throwable ignored) {
         }
         return location;
+    }
+
+    private static View resolveCachedSignalTintSource(View anchor, View anchorRoot) {
+        if (anchor == null || anchorRoot == null) {
+            return null;
+        }
+        WeakReference<View> reference = SIGNAL_TINT_SOURCE_CACHE.get(anchor);
+        View cached = reference == null ? null : reference.get();
+        if (!isBatteryTintSourceCandidate(anchor, anchorRoot, cached)) {
+            SIGNAL_TINT_SOURCE_CACHE.remove(anchor);
+            return null;
+        }
+        return cached;
+    }
+
+    private static void rememberSignalTintSource(View anchor, View batteryView) {
+        if (anchor == null) {
+            return;
+        }
+        if (batteryView == null) {
+            SIGNAL_TINT_SOURCE_CACHE.remove(anchor);
+            return;
+        }
+        SIGNAL_TINT_SOURCE_CACHE.put(anchor, new WeakReference<>(batteryView));
+    }
+
+    private static void clearSignalTintSourceCache() {
+        SIGNAL_TINT_SOURCE_CACHE.clear();
+    }
+
+    private static void clearSignalTintSourceCacheForView(View view) {
+        if (view == null) {
+            return;
+        }
+        SIGNAL_TINT_SOURCE_CACHE.remove(view);
+    }
+
+    private static void clearSignalTintSourceCacheForRoot(View rootView) {
+        if (rootView == null) {
+            clearSignalTintSourceCache();
+            return;
+        }
+        ArrayList<View> signalViews = new ArrayList<>(SIGNAL_TINT_SOURCE_CACHE.keySet());
+        for (View signalView : signalViews) {
+            if (signalView == null || signalView.getRootView() == rootView) {
+                SIGNAL_TINT_SOURCE_CACHE.remove(signalView);
+            }
+        }
     }
 
     private static boolean isTrackedBatteryDrawableOwner(Object drawable) {
@@ -3321,6 +3386,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         ModuleConfig config = ModuleConfig.load(batteryView.getContext());
+        clearSignalTintSourceCacheForRoot(batteryView.getRootView());
         if (isBatteryCodeDrawEnabled(config)) {
             refreshBatteryViewRuntimeSnapshot(batteryView, rememberBatteryViewState(batteryView));
             syncBatteryViewLayoutIfNeeded(batteryView, config, true);
@@ -5047,6 +5113,9 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static void onSignalViewLayoutChanged(View view) {
         trackStatusBarIconView(view);
         String idName = getSystemUiIdName(view);
+        if ("mobile_signal".equals(idName)) {
+            clearSignalTintSourceCacheForView(view);
+        }
         if (!isMobileSignalRelatedId(idName)) {
             if (isStatusBarIconCandidate(view)) {
                 applyStatusBarScaleIfNeeded(view);
@@ -5150,13 +5219,18 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (displayInfo == null) {
             return;
         }
+        beginInternalMobileTypeQuery();
         try {
-            displayInfo.getNetworkType();
-        } catch (Throwable ignored) {
-        }
-        try {
-            displayInfo.getOverrideNetworkType();
-        } catch (Throwable ignored) {
+            try {
+                displayInfo.getNetworkType();
+            } catch (Throwable ignored) {
+            }
+            try {
+                displayInfo.getOverrideNetworkType();
+            } catch (Throwable ignored) {
+            }
+        } finally {
+            endInternalMobileTypeQuery();
         }
     }
 
@@ -5955,6 +6029,12 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (subId == TELEPHONY_DEBUG_SUB_ID_CARD2) {
             return 1;
         }
+        synchronized (SIGNAL_SUB_SLOT_INDEX_CACHE) {
+            Integer cached = SIGNAL_SUB_SLOT_INDEX_CACHE.get(subId);
+            if (cached != null) {
+                return cached;
+            }
+        }
         if (context == null) {
             return -1;
         }
@@ -5964,9 +6044,21 @@ public class FlymeStatusBarSizer extends XposedModule {
                 return -1;
             }
             SubscriptionInfo info = manager.getActiveSubscriptionInfo(subId);
-            return info == null ? -1 : info.getSimSlotIndex();
+            int slotIndex = info == null ? -1 : info.getSimSlotIndex();
+            if (slotIndex >= 0) {
+                synchronized (SIGNAL_SUB_SLOT_INDEX_CACHE) {
+                    SIGNAL_SUB_SLOT_INDEX_CACHE.put(subId, slotIndex);
+                }
+            }
+            return slotIndex;
         } catch (Throwable ignored) {
             return -1;
+        }
+    }
+
+    private static void clearSignalSubSlotIndexCache() {
+        synchronized (SIGNAL_SUB_SLOT_INDEX_CACHE) {
+            SIGNAL_SUB_SLOT_INDEX_CACHE.clear();
         }
     }
 
@@ -5985,6 +6077,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         ModuleConfig config = ModuleConfig.load(context);
         if (isTelephonyDebugEnabled(config)) {
             int count = resolveTelephonyDebugActiveSubscriptionCount(config);
+            if (count != LAST_ACTIVE_SUBSCRIPTION_COUNT) {
+                clearSignalSubSlotIndexCache();
+            }
             LAST_ACTIVE_SUBSCRIPTION_COUNT = count;
             return count;
         }
@@ -5997,6 +6092,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                 return LAST_ACTIVE_SUBSCRIPTION_COUNT;
             }
             int count = manager.getActiveSubscriptionInfoCount();
+            if (count != LAST_ACTIVE_SUBSCRIPTION_COUNT) {
+                clearSignalSubSlotIndexCache();
+            }
             LAST_ACTIVE_SUBSCRIPTION_COUNT = count;
             return count;
         } catch (Throwable ignored) {
@@ -6156,6 +6254,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         View root = anchorView.getRootView();
+        View anchorGroup = findMobileSignalGroup(anchorView);
+        ArrayList<View> linkedGroups = collectSiblingMobileSignalGroups(anchorGroup);
+        int anchorSubId = resolveSubIdFromSignalViewOwner(anchorView);
         ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
         for (View trackedView : views) {
             if (!(trackedView instanceof ImageView)) {
@@ -6165,6 +6266,13 @@ public class FlymeStatusBarSizer extends XposedModule {
                 continue;
             }
             if (root != null && trackedView.getRootView() != root) {
+                continue;
+            }
+            View trackedGroup = findMobileSignalGroup(trackedView);
+            boolean sameLinkedGroup = !linkedGroups.isEmpty() && linkedGroups.contains(trackedGroup);
+            boolean sameSubId = SubscriptionManager.isValidSubscriptionId(anchorSubId)
+                    && resolveSignalViewSubId(trackedView) == anchorSubId;
+            if (!sameLinkedGroup && !sameSubId) {
                 continue;
             }
             applySignalIconOverride((ImageView) trackedView);
@@ -7554,6 +7662,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void refreshTrackedRuntimeViews(boolean forceSignalRequery) {
+        clearSignalTintSourceCache();
+        clearSignalSubSlotIndexCache();
         refreshTrackedConnectionRateViews();
         refreshTrackedBatteryViews();
         refreshTrackedStatusBarIconViews();
@@ -7642,6 +7752,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (batteryRoot == null) {
             return;
         }
+        clearSignalTintSourceCacheForRoot(batteryRoot);
         ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
         for (View view : views) {
             if (!(view instanceof ImageView)) {
@@ -7667,6 +7778,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             refreshTrackedSignalIconViewsNow();
             return;
         }
+        handler.removeCallbacks(PRIMARY_SIGNAL_ICON_REFRESH_RUNNABLE);
         handler.removeCallbacks(SIGNAL_ICON_REFRESH_RUNNABLE);
         handler.post(SIGNAL_ICON_REFRESH_RUNNABLE);
     }
@@ -7683,6 +7795,16 @@ public class FlymeStatusBarSizer extends XposedModule {
         handler.post(() -> refreshTrackedSignalIconViewsForSubId(subId));
     }
 
+    private static void scheduleTrackedPrimarySignalIconRefresh() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            refreshTrackedPrimarySignalIconViewsNow();
+            return;
+        }
+        handler.removeCallbacks(PRIMARY_SIGNAL_ICON_REFRESH_RUNNABLE);
+        handler.post(PRIMARY_SIGNAL_ICON_REFRESH_RUNNABLE);
+    }
+
     private static void refreshTrackedSignalIconViewsForSubId(int subId) {
         ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
         for (View view : views) {
@@ -7692,8 +7814,24 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (!"mobile_signal".equals(getSystemUiIdName(view))) {
                 continue;
             }
-            int viewSubId = resolveSignalViewSubId(view);
-            if (!SubscriptionManager.isValidSubscriptionId(viewSubId) || viewSubId != subId) {
+            if (!shouldRefreshSignalViewForSubId((ImageView) view, subId)) {
+                continue;
+            }
+            applySignalIconOverride((ImageView) view);
+        }
+    }
+
+    private static void refreshTrackedPrimarySignalIconViewsNow() {
+        ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
+        for (View view : views) {
+            if (!(view instanceof ImageView)) {
+                continue;
+            }
+            if (!"mobile_signal".equals(getSystemUiIdName(view))) {
+                continue;
+            }
+            View mobileGroup = findMobileSignalGroup(view);
+            if (mobileGroup != null && !isPrimarySignalView((ImageView) view, mobileGroup)) {
                 continue;
             }
             applySignalIconOverride((ImageView) view);
@@ -7795,6 +7933,27 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
         }
         return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    }
+
+    private static boolean shouldRefreshSignalViewForSubId(ImageView view, int subId) {
+        if (view == null || !SubscriptionManager.isValidSubscriptionId(subId)) {
+            return false;
+        }
+        int viewSubId = resolveSignalViewSubId(view);
+        if (SubscriptionManager.isValidSubscriptionId(viewSubId) && viewSubId == subId) {
+            return true;
+        }
+        View mobileGroup = findMobileSignalGroup(view);
+        if (mobileGroup == null || !isPrimarySignalView(view, mobileGroup)) {
+            return false;
+        }
+        ArrayList<View> groups = collectSiblingMobileSignalGroups(mobileGroup);
+        for (int i = 0; i < groups.size(); i++) {
+            if (resolveSubIdFromCarrierCallbackOwner(groups.get(i)) == subId) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void queryAndStoreLiveSignalLevel(Context context, int subId, String source) {
