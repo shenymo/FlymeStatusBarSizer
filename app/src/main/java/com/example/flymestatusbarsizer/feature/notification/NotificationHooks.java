@@ -49,6 +49,10 @@ public final class NotificationHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_ACTIVE_STATES =
             new WeakHashMap<>();
+    private static final WeakHashMap<View, NotificationAppIconViewSignature>
+            NOTIFICATION_APP_ICON_LAST_SIGNATURES = new WeakHashMap<>();
+    private static final WeakHashMap<View, Drawable> NOTIFICATION_APP_ICON_LAST_DRAWABLES =
+            new WeakHashMap<>();
     private static final HashMap<String, Boolean> NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE =
             new HashMap<>();
 
@@ -106,8 +110,8 @@ public final class NotificationHooks {
             NOTIFICATION_APP_ICON_APPLY_GUARDS.put(view, Boolean.TRUE);
         }
         try {
-            Drawable drawable = resolveNotificationStatusBarIconDrawable(target);
-            if (drawable == null) {
+            NotificationAppIconBinding binding = resolveNotificationAppIconBinding(view);
+            if (binding == null) {
                 if (restoreNotificationStatusBarIconDrawableIfNeeded(view)) {
                     return;
                 }
@@ -117,8 +121,22 @@ public final class NotificationHooks {
                 applyNotificationAppIconViewStyle(view);
                 return;
             }
-            view.setImageDrawable(drawable);
+            markNotificationAppIconReplacement(binding.notification, true);
             setNotificationAppIconActive(view, true);
+            if (shouldReuseNotificationAppIconDrawable(view, binding.signature)) {
+                clearNotificationAppIconTintIfNeeded(view);
+                postClearNotificationAppIconTintIfNeeded(view);
+                applyNotificationAppIconViewStyle(view);
+                return;
+            }
+            Drawable drawable = resolveNotificationStatusBarIconDrawable(view, binding);
+            if (drawable == null) {
+                clearNotificationAppIconReplacementState(view, binding.notification);
+                applyNotificationAppIconViewStyle(view);
+                return;
+            }
+            view.setImageDrawable(drawable);
+            rememberNotificationAppIconRenderState(view, binding.signature, drawable);
             clearNotificationAppIconTintIfNeeded(view);
             postClearNotificationAppIconTintIfNeeded(view);
             applyNotificationAppIconViewStyle(view);
@@ -245,12 +263,8 @@ public final class NotificationHooks {
                 resolveNotificationViewNotification(view));
     }
 
-    private static Drawable resolveNotificationStatusBarIconDrawable(Object target) {
-        if (!(target instanceof View)) {
-            return null;
-        }
-        View view = (View) target;
-        if (!isNotificationBackedStatusBarIconView(view)) {
+    private static NotificationAppIconBinding resolveNotificationAppIconBinding(View view) {
+        if (view == null || !isNotificationBackedStatusBarIconView(view)) {
             return null;
         }
         FlymeStatusBarSizer.NotificationConfigSnapshot config =
@@ -258,7 +272,7 @@ public final class NotificationHooks {
         if (!config.enabled || !config.notificationAppIconEnabled) {
             return null;
         }
-        Object value = FlymeStatusBarSizer.invokeNoArgCompat(target, "getNotification");
+        Object value = FlymeStatusBarSizer.invokeNoArgCompat(view, "getNotification");
         if (!(value instanceof StatusBarNotification)) {
             return null;
         }
@@ -271,14 +285,37 @@ public final class NotificationHooks {
         if (!shouldUseApplicationIconForNotification(view.getContext(), packageName, userId)) {
             return null;
         }
+        int renderSizePx = resolveNotificationAppIconRenderSize(view);
+        if (renderSizePx <= 0) {
+            return null;
+        }
+        int paddingPx = dp(view, config.notificationAppIconPaddingDp);
+        int nightMode = readNightModeMask(view.getResources().getConfiguration());
+        NotificationAppIconViewSignature signature = new NotificationAppIconViewSignature(
+                packageName,
+                userId,
+                renderSizePx,
+                paddingPx,
+                nightMode);
+        return new NotificationAppIconBinding(
+                sbn.getNotification(),
+                packageName,
+                userId,
+                signature);
+    }
+
+    private static Drawable resolveNotificationStatusBarIconDrawable(
+            View view, NotificationAppIconBinding binding) {
+        if (view == null || binding == null) {
+            return null;
+        }
         Drawable drawable = getCachedNotificationApplicationIcon(
                 view.getContext(),
-                packageName,
-                userId);
+                binding.packageName,
+                binding.userId);
         if (drawable == null) {
             return null;
         }
-        markNotificationAppIconReplacement(sbn.getNotification(), true);
         return createNotificationStatusBarIconDrawable(view, drawable);
     }
 
@@ -644,9 +681,9 @@ public final class NotificationHooks {
 
         if (changed) {
             view.setLayoutParams(lp);
+            view.requestLayout();
+            view.invalidate();
         }
-        view.requestLayout();
-        view.invalidate();
     }
 
     private static boolean shouldCustomizeNotificationAppIconView(
@@ -760,7 +797,44 @@ public final class NotificationHooks {
     private static void clearNotificationAppIconReplacementState(
             View view, Notification notification) {
         setNotificationAppIconActive(view, false);
+        clearNotificationAppIconRenderState(view);
         markNotificationAppIconReplacement(notification, false);
+    }
+
+    private static boolean shouldReuseNotificationAppIconDrawable(
+            ImageView view, NotificationAppIconViewSignature signature) {
+        if (view == null || signature == null || !isNotificationAppIconActive(view)) {
+            return false;
+        }
+        synchronized (NOTIFICATION_APP_ICON_LAST_SIGNATURES) {
+            NotificationAppIconViewSignature lastSignature =
+                    NOTIFICATION_APP_ICON_LAST_SIGNATURES.get(view);
+            Drawable lastDrawable = NOTIFICATION_APP_ICON_LAST_DRAWABLES.get(view);
+            return signature.equals(lastSignature)
+                    && lastDrawable != null
+                    && lastDrawable == view.getDrawable();
+        }
+    }
+
+    private static void rememberNotificationAppIconRenderState(
+            View view, NotificationAppIconViewSignature signature, Drawable drawable) {
+        if (view == null || signature == null || drawable == null) {
+            return;
+        }
+        synchronized (NOTIFICATION_APP_ICON_LAST_SIGNATURES) {
+            NOTIFICATION_APP_ICON_LAST_SIGNATURES.put(view, signature);
+            NOTIFICATION_APP_ICON_LAST_DRAWABLES.put(view, drawable);
+        }
+    }
+
+    private static void clearNotificationAppIconRenderState(View view) {
+        if (view == null) {
+            return;
+        }
+        synchronized (NOTIFICATION_APP_ICON_LAST_SIGNATURES) {
+            NOTIFICATION_APP_ICON_LAST_SIGNATURES.remove(view);
+            NOTIFICATION_APP_ICON_LAST_DRAWABLES.remove(view);
+        }
     }
 
     private static void refreshNotificationAppIconAfterConfigurationChange(
@@ -815,5 +889,70 @@ public final class NotificationHooks {
 
     private static int dp(View view, int value) {
         return Math.round(value * view.getResources().getDisplayMetrics().density);
+    }
+
+    private static final class NotificationAppIconBinding {
+        final Notification notification;
+        final String packageName;
+        final int userId;
+        final NotificationAppIconViewSignature signature;
+
+        NotificationAppIconBinding(
+                Notification notification,
+                String packageName,
+                int userId,
+                NotificationAppIconViewSignature signature) {
+            this.notification = notification;
+            this.packageName = packageName;
+            this.userId = userId;
+            this.signature = signature;
+        }
+    }
+
+    private static final class NotificationAppIconViewSignature {
+        final String packageName;
+        final int userId;
+        final int renderSizePx;
+        final int paddingPx;
+        final int nightMode;
+
+        NotificationAppIconViewSignature(
+                String packageName,
+                int userId,
+                int renderSizePx,
+                int paddingPx,
+                int nightMode) {
+            this.packageName = packageName;
+            this.userId = userId;
+            this.renderSizePx = renderSizePx;
+            this.paddingPx = paddingPx;
+            this.nightMode = nightMode;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof NotificationAppIconViewSignature)) {
+                return false;
+            }
+            NotificationAppIconViewSignature other = (NotificationAppIconViewSignature) obj;
+            return userId == other.userId
+                    && renderSizePx == other.renderSizePx
+                    && paddingPx == other.paddingPx
+                    && nightMode == other.nightMode
+                    && TextUtils.equals(packageName, other.packageName);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = packageName == null ? 0 : packageName.hashCode();
+            result = 31 * result + userId;
+            result = 31 * result + renderSizePx;
+            result = 31 * result + paddingPx;
+            result = 31 * result + nightMode;
+            return result;
+        }
     }
 }
