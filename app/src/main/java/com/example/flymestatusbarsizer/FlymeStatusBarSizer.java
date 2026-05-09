@@ -76,6 +76,10 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, SignalViewState> SIGNAL_VIEW_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, WeakReference<View>> SIGNAL_TINT_SOURCE_CACHE =
             new WeakHashMap<>();
+    private static final WeakHashMap<View, Integer> ORIGINAL_SIGNAL_ACTIVITY_VISIBILITIES =
+            new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> SIGNAL_ACTIVITY_HIDDEN_BY_MODULE =
+            new WeakHashMap<>();
     private static final WeakHashMap<TelephonyManager, Integer> TELEPHONY_MANAGER_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<SignalStrength, Integer> SIGNAL_STRENGTH_SUB_IDS = new WeakHashMap<>();
     private static final WeakHashMap<ServiceState, Integer> SERVICE_STATE_SUB_IDS = new WeakHashMap<>();
@@ -2430,10 +2434,14 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         ModuleConfig config = ModuleConfig.load(view.getContext());
+        String idName = getSystemUiIdName(view);
+        if (isMobileSignalRelatedId(idName)) {
+            syncMobileActivityIndicatorsVisibility(view,
+                    config.enabled && isSignalCodeDrawEnabled(config));
+        }
         if (!config.enabled) {
             return;
         }
-        String idName = getSystemUiIdName(view);
         if ("mobile_signal".equals(idName) && view instanceof ImageView) {
             if (isSignalCodeDrawEnabled(config)) {
                 resetStandaloneImageScale((ImageView) view);
@@ -3311,6 +3319,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         Context context = view.getContext();
         ModuleConfig config = ModuleConfig.load(context);
+        syncMobileActivityIndicatorsVisibility(view, isSignalCodeDrawEnabled(config));
         if (!isSignalCodeDrawEnabled(config)) {
             return;
         }
@@ -3416,6 +3425,60 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         view.setVisibility(targetVisibility);
         LAST_MOBILE_TYPE_VIEW_VISIBILITY = view.getVisibility();
+        ViewParent parent = view.getParent();
+        if (parent instanceof View) {
+            ((View) parent).requestLayout();
+        }
+        view.requestLayout();
+    }
+
+    private static void syncMobileActivityIndicatorsVisibility(View anchorView, boolean hide) {
+        if (anchorView == null) {
+            return;
+        }
+        View searchRoot = findMobileSignalGroup(anchorView);
+        if (searchRoot == null) {
+            searchRoot = anchorView;
+        }
+        syncSingleMobileActivityIndicatorVisibility(
+                findSystemUiChild(searchRoot, "mobile_in"), hide);
+        syncSingleMobileActivityIndicatorVisibility(
+                findSystemUiChild(searchRoot, "mobile_out"), hide);
+        syncSingleMobileActivityIndicatorVisibility(
+                findSystemUiChild(searchRoot, "mobile_inout"), hide);
+        syncSingleMobileActivityIndicatorVisibility(
+                findSystemUiChild(searchRoot, "inout_container"), hide);
+    }
+
+    private static void syncSingleMobileActivityIndicatorVisibility(View view, boolean hide) {
+        if (view == null) {
+            return;
+        }
+        boolean changed = false;
+        if (hide) {
+            if (!Boolean.TRUE.equals(SIGNAL_ACTIVITY_HIDDEN_BY_MODULE.get(view))) {
+                ORIGINAL_SIGNAL_ACTIVITY_VISIBILITIES.put(view, view.getVisibility());
+                SIGNAL_ACTIVITY_HIDDEN_BY_MODULE.put(view, Boolean.TRUE);
+            }
+            if (view.getVisibility() != View.GONE) {
+                view.setVisibility(View.GONE);
+                changed = true;
+            }
+        } else {
+            if (!Boolean.TRUE.equals(SIGNAL_ACTIVITY_HIDDEN_BY_MODULE.get(view))) {
+                return;
+            }
+            SIGNAL_ACTIVITY_HIDDEN_BY_MODULE.remove(view);
+            Integer originalVisibility = ORIGINAL_SIGNAL_ACTIVITY_VISIBILITIES.get(view);
+            int targetVisibility = originalVisibility == null ? View.VISIBLE : originalVisibility;
+            if (view.getVisibility() != targetVisibility) {
+                view.setVisibility(targetVisibility);
+                changed = true;
+            }
+        }
+        if (!changed) {
+            return;
+        }
         ViewParent parent = view.getParent();
         if (parent instanceof View) {
             ((View) parent).requestLayout();
