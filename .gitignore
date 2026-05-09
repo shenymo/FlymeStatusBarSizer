@@ -35,3 +35,4 @@ google-services.json
 *.logcat
 *.logcat
 2026050701.txt
+.ace-tool/
