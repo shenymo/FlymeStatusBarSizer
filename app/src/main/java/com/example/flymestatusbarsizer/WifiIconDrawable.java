@@ -92,11 +92,11 @@ final class WifiIconDrawable extends Drawable {
         float drawLeft = bounds.left + (width - drawWidth) / 2f;
         float drawTop = bounds.top;
 
-        drawDot(canvas, drawLeft, drawTop, unit, activeColor);
+        drawDot(canvas, drawLeft, drawTop, unit, resolveDotColor(activeColor, inactiveColor));
         drawArc(canvas, drawLeft, drawTop, unit,
-                INNER_ARC_RADIUS, level >= 2 ? activeColor : inactiveColor);
+                INNER_ARC_RADIUS, resolveInnerArcColor(activeColor, inactiveColor));
         drawArc(canvas, drawLeft, drawTop, unit,
-                OUTER_ARC_RADIUS, level >= 4 ? activeColor : inactiveColor);
+                OUTER_ARC_RADIUS, resolveOuterArcColor(activeColor, inactiveColor));
     }
 
     @Override
@@ -194,6 +194,28 @@ final class WifiIconDrawable extends Drawable {
 
     private static void setOvalRect(float centerX, float centerY, float radius) {
         OVAL_RECT.set(centerX - radius, centerY - radius, centerX + radius, centerY + radius);
+    }
+
+    private int resolveDotColor(int activeColor, int inactiveColor) {
+        return resolveVisibleBars() >= 1 ? activeColor : inactiveColor;
+    }
+
+    private int resolveInnerArcColor(int activeColor, int inactiveColor) {
+        return resolveVisibleBars() >= 2 ? activeColor : inactiveColor;
+    }
+
+    private int resolveOuterArcColor(int activeColor, int inactiveColor) {
+        return resolveVisibleBars() >= 3 ? activeColor : inactiveColor;
+    }
+
+    private int resolveVisibleBars() {
+        if (level <= 0) {
+            return 1;
+        }
+        if (level == 1) {
+            return 2;
+        }
+        return 3;
     }
 
     private static int sanitizeLevel(int level) {
