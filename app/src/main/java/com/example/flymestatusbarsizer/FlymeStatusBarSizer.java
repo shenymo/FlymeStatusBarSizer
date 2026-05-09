@@ -10,7 +10,6 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ComponentCallbacks;
 import android.content.Context;
-import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
@@ -19,12 +18,10 @@ import android.content.res.Resources;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
-import android.net.Uri;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
-import android.graphics.Insets;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
@@ -61,7 +58,6 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import java.lang.ref.WeakReference;
-import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.text.DateFormatSymbols;
@@ -74,6 +70,7 @@ import java.util.Locale;
 import java.util.WeakHashMap;
 
 import io.github.libxposed.api.XposedModule;
+import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModuleInterface;
 
 public class FlymeStatusBarSizer extends XposedModule {
@@ -296,10 +293,24 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookNotificationAppIcons(loader);
     }
 
-    public void installMBackHooks(ClassLoader loader) {
-        hookMBackLongTouchIntent(loader);
-        hookMBackNavBarExperiments(loader);
-        hookMBackPillVisibility(loader);
+    public static MBackConfigSnapshot loadMBackConfig(Context context) {
+        ModuleConfig config = ModuleConfig.load(context);
+        return new MBackConfigSnapshot(config);
+    }
+
+    public static void logMBackWarning(String message, Throwable throwable) {
+        FlymeStatusBarSizer module = MODULE;
+        if (module != null) {
+            module.log(android.util.Log.WARN, TAG, message, throwable);
+        }
+    }
+
+    public void intercept(Method method, XposedInterface.Hooker hooker) {
+        hook(method).intercept(hooker);
+    }
+
+    public <T> void intercept(Constructor<T> constructor, XposedInterface.Hooker hooker) {
+        hook(constructor).intercept(hooker);
     }
 
     public void installClockHooks(ClassLoader loader) {
@@ -1217,99 +1228,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private void hookMBackLongTouchIntent(ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(
-                    "com.flyme.systemui.navigationbar.actions.NavBarActionsConfig",
-                    false,
-                    loader);
-            Method cancelMethod = clazz.getDeclaredMethod("requestCancelTISSwipeUp", String.class);
-            cancelMethod.setAccessible(true);
-            for (Method method : clazz.getDeclaredMethods()) {
-                if (!"helpStartAI".equals(method.getName())) {
-                    continue;
-                }
-                Class<?>[] parameterTypes = method.getParameterTypes();
-                if (parameterTypes.length != 2
-                        || parameterTypes[0] != Context.class
-                        || parameterTypes[1] != String.class) {
-                    continue;
-                }
-                method.setAccessible(true);
-                hook(method).intercept(chain -> {
-                    Context context = (Context) chain.getArg(0);
-                    ModuleConfig config = ModuleConfig.load(context);
-                    if (!config.mbackLongTouchIntentEnabled) {
-                        return chain.proceed();
-                    }
-                    String intentUri = config.mbackLongTouchIntentUri;
-                    if (intentUri == null || intentUri.trim().isEmpty()) {
-                        return chain.proceed();
-                    }
-                    String fromWhere = (String) chain.getArg(1);
-                    if (!"press_navigation".equals(fromWhere)) {
-                        return chain.proceed();
-                    }
-                    try {
-                        cancelMethod.invoke(null, "launch mback long touch intent from " + fromWhere);
-                    } catch (Throwable ignored) {
-                    }
-                    if (launchConfiguredIntent(context, intentUri)) {
-                        return null;
-                    }
-                    return chain.proceed();
-                });
-                return;
-            }
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook mBack long touch intent", t);
-        }
-    }
-
-    private void hookMBackNavBarExperiments(ClassLoader loader) {
-        hookMBackNavBarTransparency(loader);
-        hookMBackInsetOverride(loader);
-        hookMBackNavBarHeight(loader);
-    }
-
-    private void hookMBackPillVisibility(ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(
-                    "com.flyme.systemui.navigationbar.MBackButtonView",
-                    false,
-                    loader);
-            for (Method method : clazz.getDeclaredMethods()) {
-                String name = method.getName();
-                if (!"onDraw".equals(name)
-                        && !"setDarkIntensity".equals(name)
-                        && !"updateResources".equals(name)
-                        && !"onAttachedToWindow".equals(name)) {
-                    continue;
-                }
-                method.setAccessible(true);
-                hook(method).intercept(chain -> {
-                    Object thisObject = chain.getThisObject();
-                    if (!(thisObject instanceof View)) {
-                        return chain.proceed();
-                    }
-                    View view = (View) thisObject;
-                    ModuleConfig config = ModuleConfig.load(view.getContext());
-                    if (!config.enabled || !config.mbackHidePill) {
-                        return chain.proceed();
-                    }
-                    if ("onDraw".equals(name)) {
-                        return null;
-                    }
-                    Object result = chain.proceed();
-                    hideMBackPillView(view);
-                    return result;
-                });
-            }
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook mBack pill visibility", t);
-        }
-    }
-
     private void hookNotificationAppIcons(ClassLoader loader) {
         hookNotificationIconTint(loader);
         hookNotificationStatusBarIconUpdate(loader);
@@ -2016,218 +1934,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                 && notification.extras.getBoolean(EXTRA_NOTIFICATION_APP_ICON_REPLACED, false);
     }
 
-    private void hookMBackNavBarTransparency(ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(
-                    "com.android.systemui.navigationbar.views.NavigationBarTransitions",
-                    false,
-                    loader);
-            for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
-                constructor.setAccessible(true);
-                hook(constructor).intercept(chain -> {
-                    Object result = chain.proceed();
-                    applyMBackNavBarTransparency(chain.getThisObject());
-                    return result;
-                });
-            }
-            for (Method method : clazz.getDeclaredMethods()) {
-                String name = method.getName();
-                Class<?>[] parameterTypes = method.getParameterTypes();
-                boolean backgroundAlphaMethod = "setBackgroundOverrideAlpha".equals(name)
-                        && parameterTypes.length == 1
-                        && parameterTypes[0] == float.class;
-                boolean transitionMethod = "onTransition".equals(name)
-                        && parameterTypes.length == 3
-                        && parameterTypes[0] == int.class
-                        && parameterTypes[1] == int.class
-                        && parameterTypes[2] == boolean.class;
-                if (!backgroundAlphaMethod && !transitionMethod) {
-                    continue;
-                }
-                method.setAccessible(true);
-                hook(method).intercept(chain -> {
-                    Object result = chain.proceed();
-                    applyMBackNavBarTransparency(chain.getThisObject());
-                    return result;
-                });
-            }
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook mBack nav bar transparency", t);
-        }
-    }
-
-    private void hookMBackInsetOverride(ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(
-                    "com.android.systemui.navigationbar.views.NavigationBar",
-                    false,
-                    loader);
-            for (Method method : clazz.getDeclaredMethods()) {
-                if (!"getInsetsFrameProvider".equals(method.getName())) {
-                    continue;
-                }
-                Class<?>[] parameterTypes = method.getParameterTypes();
-                Class<?> returnType = method.getReturnType();
-                if (parameterTypes.length != 2
-                        || parameterTypes[0] != int.class
-                        || parameterTypes[1] != Context.class
-                        || !returnType.isArray()
-                        || returnType.getComponentType() == null
-                        || !"android.view.InsetsFrameProvider".equals(returnType.getComponentType().getName())) {
-                    continue;
-                }
-                method.setAccessible(true);
-                hook(method).intercept(chain -> {
-                    Object result = chain.proceed();
-                    Context context = chain.getArg(1) instanceof Context
-                            ? (Context) chain.getArg(1)
-                            : null;
-                    return overrideMBackInsetsFrameProviders(result, context);
-                });
-                return;
-            }
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook mBack inset override", t);
-        }
-    }
-
-    private void hookMBackNavBarHeight(ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(
-                    "com.android.systemui.navigationbar.views.NavigationBar",
-                    false,
-                    loader);
-            for (Method method : clazz.getDeclaredMethods()) {
-                if (!"getBarLayoutParamsForRotation".equals(method.getName())) {
-                    continue;
-                }
-                Class<?>[] parameterTypes = method.getParameterTypes();
-                if (parameterTypes.length != 1
-                        || parameterTypes[0] != int.class
-                        || !WindowManager.LayoutParams.class.equals(method.getReturnType())) {
-                    continue;
-                }
-                method.setAccessible(true);
-                hook(method).intercept(chain -> {
-                    Object result = chain.proceed();
-                    applyMBackNavBarHeightOverride(result, chain.getThisObject());
-                    return result;
-                });
-                return;
-            }
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook mBack nav bar height", t);
-        }
-    }
-
-    private static boolean launchConfiguredIntent(Context context, String intentUri) {
-        if (context == null || intentUri == null) {
-            return false;
-        }
-        String raw = intentUri.trim();
-        if (raw.isEmpty()) {
-            return false;
-        }
-        try {
-            Intent intent;
-            if (raw.startsWith("intent:") || raw.contains("#Intent;")) {
-                intent = Intent.parseUri(raw, Intent.URI_INTENT_SCHEME);
-            } else {
-                intent = new Intent(Intent.ACTION_VIEW, Uri.parse(raw));
-            }
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            Context launchContext = context.getApplicationContext() != null
-                    ? context.getApplicationContext()
-                    : context;
-            launchContext.startActivity(intent);
-            return true;
-        } catch (Throwable t) {
-            if (MODULE != null) {
-                MODULE.log(android.util.Log.WARN, TAG,
-                        "Failed to launch mBack long touch intent: " + raw, t);
-            }
-            return false;
-        }
-    }
-
-    private static void applyMBackNavBarTransparency(Object transitions) {
-        Context context = getNavBarTransitionsContext(transitions);
-        if (context == null) {
-            return;
-        }
-        ModuleConfig config = ModuleConfig.load(context);
-        if (!config.enabled || !config.mbackNavBarTransparent) {
-            return;
-        }
-        View navBarView = getNavBarTransitionsView(transitions);
-        if (navBarView == null) {
-            return;
-        }
-        Drawable background = navBarView.getBackground();
-        if (background != null) {
-            background.setAlpha(0);
-        }
-        Object barBackground = ReflectUtils.getField(transitions, "mBarBackground");
-        if (barBackground instanceof Drawable) {
-            ((Drawable) barBackground).setAlpha(0);
-        }
-        navBarView.invalidate();
-    }
-
-    private static Object overrideMBackInsetsFrameProviders(Object result, Context context) {
-        if (result == null || context == null) {
-            return result;
-        }
-        Class<?> resultClass = result.getClass();
-        Class<?> componentType = resultClass.getComponentType();
-        if (!resultClass.isArray()
-                || componentType == null
-                || !"android.view.InsetsFrameProvider".equals(componentType.getName())) {
-            return result;
-        }
-        ModuleConfig config = ModuleConfig.load(context);
-        if (!config.enabled || config.mbackInsetSize < 0) {
-            return result;
-        }
-        int bottomInsetPx = Math.max(0, dp(context, config.mbackInsetSize));
-        int providerCount = Array.getLength(result);
-        if (providerCount > 0) {
-            setInsetsFrameProviderInsetsSize(Array.get(result, 0), Insets.of(0, 0, 0, bottomInsetPx));
-        }
-        if (providerCount > 2) {
-            setInsetsFrameProviderInsetsSize(Array.get(result, 2), Insets.of(0, 0, 0, bottomInsetPx));
-        }
-        return result;
-    }
-
-    private static void applyMBackNavBarHeightOverride(Object layoutParamsObject, Object navigationBar) {
-        if (!(layoutParamsObject instanceof WindowManager.LayoutParams)) {
-            return;
-        }
-        Context context = (Context) ReflectUtils.getField(navigationBar, "mContext");
-        if (context == null) {
-            return;
-        }
-        ModuleConfig config = ModuleConfig.load(context);
-        if (!config.enabled || config.mbackNavBarHeight < 0) {
-            return;
-        }
-        WindowManager.LayoutParams layoutParams = (WindowManager.LayoutParams) layoutParamsObject;
-        if (layoutParams.gravity != Gravity.BOTTOM || layoutParams.height <= 0) {
-            return;
-        }
-        int heightPx = Math.max(1, dp(context, config.mbackNavBarHeight));
-        layoutParams.height = heightPx;
-    }
-
-    private static void hideMBackPillView(View view) {
-        if (view == null) {
-            return;
-        }
-        view.setAlpha(0f);
-        view.invalidate();
-    }
-
     private static int resolveSystemUiDrawableId(Context context, String name) {
         if (context == null || name == null) {
             return 0;
@@ -2236,18 +1942,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             return context.getResources().getIdentifier(name, "drawable", SYSTEM_UI);
         } catch (Throwable ignored) {
             return 0;
-        }
-    }
-
-    private static void setInsetsFrameProviderInsetsSize(Object provider, Insets insets) {
-        if (provider == null || insets == null) {
-            return;
-        }
-        try {
-            Method method = provider.getClass().getDeclaredMethod("setInsetsSize", Insets.class);
-            method.setAccessible(true);
-            method.invoke(provider, insets);
-        } catch (Throwable ignored) {
         }
     }
 
@@ -7852,16 +7546,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         return Math.round(value * context.getResources().getDisplayMetrics().density);
     }
 
-    private static View getNavBarTransitionsView(Object transitions) {
-        Object value = ReflectUtils.getField(transitions, "mView");
-        return value instanceof View ? (View) value : null;
-    }
-
-    private static Context getNavBarTransitionsContext(Object transitions) {
-        View view = getNavBarTransitionsView(transitions);
-        return view == null ? null : view.getContext();
-    }
-
     private interface ViewAction {
         void apply(View view);
     }
@@ -7933,6 +7617,26 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static final class SignalViewState {
         volatile int subId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    }
+
+    public static final class MBackConfigSnapshot {
+        public final boolean enabled;
+        public final boolean mbackLongTouchIntentEnabled;
+        public final String mbackLongTouchIntentUri;
+        public final boolean mbackNavBarTransparent;
+        public final boolean mbackHidePill;
+        public final int mbackInsetSize;
+        public final int mbackNavBarHeight;
+
+        private MBackConfigSnapshot(ModuleConfig config) {
+            enabled = config != null && config.enabled;
+            mbackLongTouchIntentEnabled = config != null && config.mbackLongTouchIntentEnabled;
+            mbackLongTouchIntentUri = config == null ? "" : config.mbackLongTouchIntentUri;
+            mbackNavBarTransparent = config != null && config.mbackNavBarTransparent;
+            mbackHidePill = config != null && config.mbackHidePill;
+            mbackInsetSize = config == null ? -1 : config.mbackInsetSize;
+            mbackNavBarHeight = config == null ? -1 : config.mbackNavBarHeight;
+        }
     }
 
     private static final class MergedSignalLevels {
