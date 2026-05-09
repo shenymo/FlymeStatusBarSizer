@@ -47,6 +47,8 @@ public final class NotificationHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS =
             new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_ACTIVE_STATES =
+            new WeakHashMap<>();
     private static final HashMap<String, Boolean> NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE =
             new HashMap<>();
 
@@ -109,10 +111,14 @@ public final class NotificationHooks {
                 if (restoreNotificationStatusBarIconDrawableIfNeeded(view)) {
                     return;
                 }
+                clearNotificationAppIconReplacementState(
+                        view,
+                        resolveNotificationViewNotification(view));
                 applyNotificationAppIconViewStyle(view);
                 return;
             }
             view.setImageDrawable(drawable);
+            setNotificationAppIconActive(view, true);
             clearNotificationAppIconTintIfNeeded(view);
             postClearNotificationAppIconTintIfNeeded(view);
             applyNotificationAppIconViewStyle(view);
@@ -219,7 +225,10 @@ public final class NotificationHooks {
         if (view == null) {
             return;
         }
-        view.post(() -> clearNotificationAppIconTintIfNeeded(view));
+        view.post(() -> {
+            clearNotificationAppIconTintIfNeeded(view);
+            view.post(() -> clearNotificationAppIconTintIfNeeded(view));
+        });
     }
 
     private static boolean shouldKeepNotificationAppIconOriginalColors(ImageView view) {
@@ -231,11 +240,9 @@ public final class NotificationHooks {
         if (!config.enabled || !config.notificationAppIconEnabled) {
             return false;
         }
-        Object value = FlymeStatusBarSizer.invokeNoArgCompat(view, "getNotification");
-        if (!(value instanceof StatusBarNotification)) {
-            return false;
-        }
-        return wasNotificationAppIconReplaced(((StatusBarNotification) value).getNotification());
+        return isNotificationAppIconApplied(
+                view,
+                resolveNotificationViewNotification(view));
     }
 
     private static Drawable resolveNotificationStatusBarIconDrawable(Object target) {
@@ -551,12 +558,8 @@ public final class NotificationHooks {
         if (view == null || !isNotificationBackedStatusBarIconView(view)) {
             return false;
         }
-        Object value = FlymeStatusBarSizer.invokeNoArgCompat(view, "getNotification");
-        if (!(value instanceof StatusBarNotification)) {
-            return false;
-        }
-        Notification notification = ((StatusBarNotification) value).getNotification();
-        if (!wasNotificationAppIconReplaced(notification)) {
+        Notification notification = resolveNotificationViewNotification(view);
+        if (!isNotificationAppIconApplied(view, notification)) {
             return false;
         }
         synchronized (NOTIFICATION_APP_ICON_RESTORE_GUARDS) {
@@ -566,8 +569,13 @@ public final class NotificationHooks {
             NOTIFICATION_APP_ICON_RESTORE_GUARDS.put(view, Boolean.TRUE);
         }
         try {
+            clearNotificationAppIconReplacementState(view, notification);
             FlymeStatusBarSizer.invokeNoArgCompat(view, "updateDrawable");
             return true;
+        } catch (Throwable ignored) {
+            setNotificationAppIconActive(view, true);
+            markNotificationAppIconReplacement(notification, true);
+            return false;
         } finally {
             synchronized (NOTIFICATION_APP_ICON_RESTORE_GUARDS) {
                 NOTIFICATION_APP_ICON_RESTORE_GUARDS.remove(view);
@@ -646,11 +654,9 @@ public final class NotificationHooks {
         if (view == null || config == null || !config.enabled || !config.notificationAppIconEnabled) {
             return false;
         }
-        Object value = FlymeStatusBarSizer.invokeNoArgCompat(view, "getNotification");
-        if (!(value instanceof StatusBarNotification)) {
-            return false;
-        }
-        return wasNotificationAppIconReplaced(((StatusBarNotification) value).getNotification());
+        return isNotificationAppIconApplied(
+                view,
+                resolveNotificationViewNotification(view));
     }
 
     private static Bitmap createBitmapFromDrawable(Drawable drawable, int sizePx) {
@@ -714,6 +720,47 @@ public final class NotificationHooks {
         return notification != null
                 && notification.extras != null
                 && notification.extras.getBoolean(EXTRA_NOTIFICATION_APP_ICON_REPLACED, false);
+    }
+
+    private static Notification resolveNotificationViewNotification(View view) {
+        if (view == null) {
+            return null;
+        }
+        Object value = FlymeStatusBarSizer.invokeNoArgCompat(view, "getNotification");
+        if (!(value instanceof StatusBarNotification)) {
+            return null;
+        }
+        return ((StatusBarNotification) value).getNotification();
+    }
+
+    private static boolean isNotificationAppIconApplied(View view, Notification notification) {
+        return isNotificationAppIconActive(view)
+                || wasNotificationAppIconReplaced(notification);
+    }
+
+    private static boolean isNotificationAppIconActive(View view) {
+        synchronized (NOTIFICATION_APP_ICON_ACTIVE_STATES) {
+            return Boolean.TRUE.equals(NOTIFICATION_APP_ICON_ACTIVE_STATES.get(view));
+        }
+    }
+
+    private static void setNotificationAppIconActive(View view, boolean active) {
+        if (view == null) {
+            return;
+        }
+        synchronized (NOTIFICATION_APP_ICON_ACTIVE_STATES) {
+            if (active) {
+                NOTIFICATION_APP_ICON_ACTIVE_STATES.put(view, Boolean.TRUE);
+            } else {
+                NOTIFICATION_APP_ICON_ACTIVE_STATES.remove(view);
+            }
+        }
+    }
+
+    private static void clearNotificationAppIconReplacementState(
+            View view, Notification notification) {
+        setNotificationAppIconActive(view, false);
+        markNotificationAppIconReplacement(notification, false);
     }
 
     private static void refreshNotificationAppIconAfterConfigurationChange(

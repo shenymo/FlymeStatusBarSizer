@@ -7,6 +7,8 @@ import com.example.flymestatusbarsizer.feature.notification.NotificationHooks;
 
 import android.content.ComponentCallbacks;
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.net.ConnectivityManager;
@@ -15,6 +17,7 @@ import android.net.NetworkCapabilities;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
+import android.graphics.drawable.Icon;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
