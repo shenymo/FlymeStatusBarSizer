@@ -5,30 +5,22 @@ import com.example.flymestatusbarsizer.feature.ime.ImeHooks;
 import com.example.flymestatusbarsizer.feature.mback.MBackHooks;
 import com.example.flymestatusbarsizer.feature.notification.NotificationHooks;
 
-import android.app.Notification;
 import android.content.ComponentCallbacks;
 import android.content.Context;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
-import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
-import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.Rect;
-import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
-import android.graphics.drawable.Icon;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
-import android.service.notification.StatusBarNotification;
 import android.telephony.ServiceState;
 import android.telephony.SignalStrength;
 import android.telephony.SubscriptionInfo;
@@ -66,13 +58,7 @@ import io.github.libxposed.api.XposedModuleInterface;
 public class FlymeStatusBarSizer extends XposedModule {
     private static final String TAG = "FlymeStatusBarSizer";
     private static final String SYSTEM_UI = "com.android.systemui";
-    private static final String PACKAGE_ANDROID = "android";
-    private static final String FLYME_STATUS_BAR_ICON_UTILS =
-            "com.flyme.systemui.statusbar.policy.FlymeStatusBarIconUtils";
     private static volatile FlymeStatusBarSizer MODULE;
-    private static volatile Method flymeGetApplicationIconMethod;
-    private static volatile Method flymeClearApplicationIconCacheMethod;
-    private static volatile int LAST_NOTIFICATION_APP_ICON_VIEW_REFRESH_NIGHT = -1;
 
     private static final WeakHashMap<View, int[]> ORIGINAL_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_MARGINS = new WeakHashMap<>();
@@ -95,9 +81,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final HashMap<Integer, MobileTypeSubState> MOBILE_TYPE_SUB_STATES = new HashMap<>();
     private static final HashMap<Integer, SignalLevelSubState> SIGNAL_LEVEL_SUB_STATES = new HashMap<>();
     private static final HashMap<Integer, Integer> SIGNAL_SUB_SLOT_INDEX_CACHE = new HashMap<>();
-    private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_RESTORE_GUARDS = new WeakHashMap<>();
-    private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_APPLY_GUARDS = new WeakHashMap<>();
-    private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> SIGNAL_DRAWABLE_APPLY_GUARDS = new WeakHashMap<>();
     private static final Object CONFIG_REFRESH_LOCK = new Object();
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
@@ -126,12 +109,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                 }
             };
     private static final HashMap<String, Integer> SYSTEM_UI_ID_CACHE = new HashMap<>();
-    private static final HashMap<String, Boolean> NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE =
-            new HashMap<>();
-    private static final String EXTRA_NOTIFICATION_APP_ICON_REPLACED =
-            "flyme_status_bar_sizer_notification_app_icon_replaced";
-    private static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
-    private static final int DEFAULT_NOTIFICATION_APP_ICON_INSET_DP = 1;
     private static final String SIGNAL_LEVEL_LOG_MARKER = "[FSBS_SIGNAL_LEVEL]";
     private static final boolean SIGNAL_LEVEL_DEBUG_LOG_FORCE_ENABLED = false;
     private static final int SIGNAL_IMAGE_ASSIGNMENT_RESOURCE = 1;
@@ -261,10 +238,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookBatteryDrawable(loader);
     }
 
-    public void installNotificationHooks(ClassLoader loader) {
-        hookNotificationAppIcons(loader);
-    }
-
     public static MBackConfigSnapshot loadMBackConfig(Context context) {
         ModuleConfig config = ModuleConfig.load(context);
         return new MBackConfigSnapshot(config);
@@ -278,6 +251,11 @@ public class FlymeStatusBarSizer extends XposedModule {
     public static ClockConfigSnapshot loadClockConfig(Context context) {
         ModuleConfig config = ModuleConfig.load(context);
         return new ClockConfigSnapshot(config);
+    }
+
+    public static NotificationConfigSnapshot loadNotificationConfig(Context context) {
+        ModuleConfig config = ModuleConfig.load(context);
+        return new NotificationConfigSnapshot(config);
     }
 
     public static void logMBackWarning(String message, Throwable throwable) {
@@ -302,6 +280,13 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     public static void logConnectionRateWarning(String message, Throwable throwable) {
+        FlymeStatusBarSizer module = MODULE;
+        if (module != null) {
+            module.log(android.util.Log.WARN, TAG, message, throwable);
+        }
+    }
+
+    public static void logNotificationWarning(String message, Throwable throwable) {
         FlymeStatusBarSizer module = MODULE;
         if (module != null) {
             module.log(android.util.Log.WARN, TAG, message, throwable);
@@ -371,14 +356,14 @@ public class FlymeStatusBarSizer extends XposedModule {
             setImageTintList.setAccessible(true);
             hook(setImageTintList).intercept(chain -> {
                 Object result = chain.proceed();
-                Object target = chain.getThisObject();
-                if (target instanceof ImageView) {
-                    ImageView view = (ImageView) target;
-                    syncSignalTintToCustomDrawable(view);
-                    clearNotificationAppIconTintIfNeeded(view);
-                }
-                return result;
-            });
+                    Object target = chain.getThisObject();
+                    if (target instanceof ImageView) {
+                        ImageView view = (ImageView) target;
+                        syncSignalTintToCustomDrawable(view);
+                        NotificationHooks.clearNotificationAppIconTintIfNeeded(view);
+                    }
+                    return result;
+                });
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setImageTintList", t);
         }
@@ -387,15 +372,15 @@ public class FlymeStatusBarSizer extends XposedModule {
             setColorFilter.setAccessible(true);
             hook(setColorFilter).intercept(chain -> {
                 Object result = chain.proceed();
-                Object target = chain.getThisObject();
-                if (target instanceof ImageView) {
-                    ImageView view = (ImageView) target;
-                    syncSignalColorFilterToCustomDrawable(view,
-                            chain.getArg(0) instanceof ColorFilter ? (ColorFilter) chain.getArg(0) : null);
-                    clearNotificationAppIconTintIfNeeded(view);
-                }
-                return result;
-            });
+                    Object target = chain.getThisObject();
+                    if (target instanceof ImageView) {
+                        ImageView view = (ImageView) target;
+                        syncSignalColorFilterToCustomDrawable(view,
+                                chain.getArg(0) instanceof ColorFilter ? (ColorFilter) chain.getArg(0) : null);
+                        NotificationHooks.clearNotificationAppIconTintIfNeeded(view);
+                    }
+                    return result;
+                });
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setColorFilter(ColorFilter)", t);
         }
@@ -1133,712 +1118,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook FlymeBatteryMeterView.onDarkChanged", t);
         }
-    }
-
-    private void hookNotificationAppIcons(ClassLoader loader) {
-        hookNotificationIconTint(loader);
-        hookNotificationStatusBarIconUpdate(loader);
-    }
-
-    private void hookNotificationSmallIconReplacement(ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(
-                    "com.flyme.notification.utils.FlymeNotificationIconUtils",
-                    false,
-                    loader);
-            Method method = clazz.getDeclaredMethod(
-                    "resetNotificationSmallIconIfNeed",
-                    StatusBarNotification.class);
-            method.setAccessible(true);
-            hook(method).intercept(chain -> {
-                Object result = chain.proceed();
-                Object notificationArg = chain.getArg(0);
-                if (!(notificationArg instanceof StatusBarNotification)) {
-                    return result;
-                }
-                Context context = null;
-                Object thisObject = chain.getThisObject();
-                Object contextField = ReflectUtils.getField(thisObject, "mContext");
-                if (contextField instanceof Context) {
-                    context = (Context) contextField;
-                }
-                replaceNotificationSmallIconWithAppIconIfNeeded(
-                        context,
-                        (StatusBarNotification) notificationArg);
-                return result;
-            });
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook notification small icon replacement", t);
-        }
-    }
-
-    private void hookNotificationIconTint(ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(
-                    "com.android.systemui.statusbar.StatusBarIconView",
-                    false,
-                    loader);
-            Method updateIconColor = clazz.getDeclaredMethod("updateIconColor");
-            updateIconColor.setAccessible(true);
-            hook(updateIconColor).intercept(chain -> {
-                Object result = chain.proceed();
-                clearNotificationAppIconTintIfNeeded(chain.getThisObject());
-                return result;
-            });
-
-            Method onDarkChanged = clazz.getDeclaredMethod(
-                    "onDarkChanged",
-                    ArrayList.class,
-                    float.class,
-                    int.class);
-            onDarkChanged.setAccessible(true);
-            hook(onDarkChanged).intercept(chain -> {
-                Object result = chain.proceed();
-                clearNotificationAppIconTintIfNeeded(chain.getThisObject());
-                return result;
-            });
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook notification icon tint", t);
-        }
-    }
-
-    private void hookNotificationStatusBarIconUpdate(ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(
-                    "com.android.systemui.statusbar.StatusBarIconView",
-                    false,
-                    loader);
-            for (Method method : clazz.getDeclaredMethods()) {
-                String name = method.getName();
-                if ("updateDrawable".equals(name)) {
-                    method.setAccessible(true);
-                    hook(method).intercept(chain -> {
-                        Object result = chain.proceed();
-                        applyNotificationStatusBarIconDrawable(chain.getThisObject());
-                        return result;
-                    });
-                    continue;
-                }
-                if ("onConfigurationChanged".equals(name)
-                        && method.getParameterTypes().length == 1
-                        && Configuration.class.equals(method.getParameterTypes()[0])) {
-                    method.setAccessible(true);
-                    hook(method).intercept(chain -> {
-                        Object result = chain.proceed();
-                        Object target = chain.getThisObject();
-                        if (target instanceof View) {
-                            refreshNotificationAppIconAfterConfigurationChange(
-                                    (View) target,
-                                    chain.getArg(0) instanceof Configuration
-                                            ? (Configuration) chain.getArg(0) : null);
-                        }
-                        return result;
-                    });
-                }
-            }
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook notification status bar update", t);
-        }
-    }
-
-    private static void replaceNotificationSmallIconWithAppIconIfNeeded(
-            Context context, StatusBarNotification sbn) {
-        Notification notification = sbn == null ? null : sbn.getNotification();
-        markNotificationAppIconReplacement(notification, false);
-    }
-
-    private static void clearNotificationAppIconTintIfNeeded(Object target) {
-        if (!(target instanceof ImageView)) {
-            return;
-        }
-        try {
-            ImageView view = (ImageView) target;
-            if (!shouldKeepNotificationAppIconOriginalColors(view)) {
-                return;
-            }
-            synchronized (NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS) {
-                if (Boolean.TRUE.equals(NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS.get(view))) {
-                    return;
-                }
-                NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS.put(view, Boolean.TRUE);
-            }
-            try {
-                clearDrawableColorState(view.getDrawable());
-                if (view.getImageTintList() != null) {
-                    view.setImageTintList(null);
-                }
-                if (view.getColorFilter() != null) {
-                    view.setColorFilter(null);
-                }
-            } finally {
-                synchronized (NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS) {
-                    NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS.remove(view);
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-    }
-
-    private static void postClearNotificationAppIconTintIfNeeded(ImageView view) {
-        if (view == null) {
-            return;
-        }
-        view.post(() -> clearNotificationAppIconTintIfNeeded(view));
-    }
-
-    private static boolean shouldKeepNotificationAppIconOriginalColors(ImageView view) {
-        if (view == null || !isNotificationBackedStatusBarIconView(view)) {
-            return false;
-        }
-        ModuleConfig config = ModuleConfig.load(view.getContext());
-        if (!config.enabled || !config.notificationAppIconEnabled) {
-            return false;
-        }
-        Object value = ReflectUtils.invokeNoArg(view, "getNotification");
-        if (!(value instanceof StatusBarNotification)) {
-            return false;
-        }
-        return wasNotificationAppIconReplaced(((StatusBarNotification) value).getNotification());
-    }
-
-    private static Icon getNotificationSmallIcon(Notification notification) {
-        Object value = ReflectUtils.invokeNoArg(notification, "getSmallIcon");
-        return value instanceof Icon ? (Icon) value : null;
-    }
-
-    private static boolean isSameNotificationIcon(Icon actual, Icon expected) {
-        if (actual == null || expected == null) {
-            return false;
-        }
-        if (actual == expected) {
-            return true;
-        }
-        Object value = ReflectUtils.invokeMethod(
-                actual,
-                "sameAs",
-                new Class<?>[]{Icon.class},
-                expected);
-        return value instanceof Boolean && (Boolean) value;
-    }
-
-    private static String resolveNotificationSourcePackage(StatusBarNotification sbn) {
-        Object value = ReflectUtils.invokeNoArg(sbn, "getOrigPackageName");
-        if (value instanceof String && !TextUtils.isEmpty((String) value)) {
-            return (String) value;
-        }
-        String packageName = sbn == null ? null : sbn.getPackageName();
-        return TextUtils.isEmpty(packageName) ? null : packageName;
-    }
-
-    private static ApplicationInfo resolveNotificationApplicationInfo(
-            Context context, String packageName, int userId) {
-        if (context == null || TextUtils.isEmpty(packageName)) {
-            return null;
-        }
-        PackageManager packageManager = context.getPackageManager();
-        if (packageManager == null) {
-            return null;
-        }
-        if (userId >= 0) {
-            Object value = ReflectUtils.invokeMethod(
-                    packageManager,
-                    "getApplicationInfoAsUser",
-                    new Class<?>[]{String.class, int.class, int.class},
-                    packageName,
-                    0,
-                    userId);
-            if (value instanceof ApplicationInfo) {
-                return (ApplicationInfo) value;
-            }
-        }
-        try {
-            return packageManager.getApplicationInfo(packageName, 0);
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private static int resolveNotificationUserId(StatusBarNotification sbn) {
-        int userId = ReflectUtils.invokeNoArgInt(sbn, "getUserId", -1);
-        if (userId >= 0) {
-            return userId;
-        }
-        Object userHandle = sbn == null ? null : sbn.getUser();
-        userId = ReflectUtils.invokeNoArgInt(userHandle, "getIdentifier", -1);
-        return Math.max(userId, 0);
-    }
-
-    private static boolean shouldUseApplicationIconForNotification(
-            Context context, String packageName, int userId) {
-        if (context == null || TextUtils.isEmpty(packageName)) {
-            return false;
-        }
-        String cacheKey = buildNotificationAppIconEligibilityCacheKey(packageName, userId);
-        synchronized (NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE) {
-            Boolean cached = NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE.get(cacheKey);
-            if (cached != null) {
-                return cached;
-            }
-        }
-        ApplicationInfo appInfo = resolveNotificationApplicationInfo(context, packageName, userId);
-        boolean shouldReplace = shouldUseApplicationIconForNotification(
-                context,
-                packageName,
-                appInfo);
-        synchronized (NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE) {
-            NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE.put(cacheKey, shouldReplace);
-        }
-        return shouldReplace;
-    }
-
-    private static String buildNotificationAppIconEligibilityCacheKey(
-            String packageName, int userId) {
-        return packageName + ":" + userId;
-    }
-
-    private static boolean shouldUseApplicationIconForNotification(
-            Context context, String packageName, ApplicationInfo appInfo) {
-        if (context == null || appInfo == null || TextUtils.isEmpty(packageName)) {
-            return false;
-        }
-        if (isCoreSystemNotificationPackage(packageName)) {
-            return false;
-        }
-        int flags = appInfo.flags;
-        boolean isSystemApp = (flags & ApplicationInfo.FLAG_SYSTEM) != 0;
-        boolean isUpdatedSystemApp = (flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0;
-        if (!isSystemApp && !isUpdatedSystemApp) {
-            return true;
-        }
-        return hasLauncherEntry(context.getPackageManager(), packageName);
-    }
-
-    private static boolean isCoreSystemNotificationPackage(String packageName) {
-        return PACKAGE_ANDROID.equals(packageName)
-                || SYSTEM_UI.equals(packageName);
-    }
-
-    private static boolean hasLauncherEntry(PackageManager packageManager, String packageName) {
-        if (packageManager == null || TextUtils.isEmpty(packageName)) {
-            return false;
-        }
-        try {
-            return packageManager.getLaunchIntentForPackage(packageName) != null;
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
-
-    private static Icon createNotificationAppIcon(
-            Context context, String packageName, int userId) {
-        if (context == null || TextUtils.isEmpty(packageName)) {
-            return null;
-        }
-        Drawable drawable = getCachedNotificationApplicationIcon(context, packageName, userId);
-        Bitmap bitmap = createBitmapFromDrawable(drawable, dp(context, 24));
-        return bitmap == null ? null : Icon.createWithBitmap(bitmap);
-    }
-
-    private static Drawable getCachedNotificationApplicationIcon(
-            Context context, String packageName, int userId) {
-        if (context == null || TextUtils.isEmpty(packageName)) {
-            return null;
-        }
-        try {
-            Method method = flymeGetApplicationIconMethod;
-            if (method == null) {
-                Class<?> clazz = Class.forName(
-                        FLYME_STATUS_BAR_ICON_UTILS,
-                        false,
-                        context.getClassLoader());
-                method = clazz.getDeclaredMethod(
-                        "getApplicationIcon",
-                        Context.class,
-                        String.class,
-                        int.class);
-                method.setAccessible(true);
-                flymeGetApplicationIconMethod = method;
-            }
-            Object value = method.invoke(null, context, packageName, userId);
-            return value instanceof Drawable ? (Drawable) value : null;
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private static Drawable cloneNotificationIconDrawable(Drawable drawable) {
-        if (drawable == null) {
-            return null;
-        }
-        try {
-            Drawable.ConstantState state = drawable.getConstantState();
-            if (state != null) {
-                Drawable clone = state.newDrawable().mutate();
-                clone.setLevel(drawable.getLevel());
-                clearDrawableColorState(clone);
-                return clone;
-            }
-            Drawable mutated = drawable.mutate();
-            clearDrawableColorState(mutated);
-            return mutated;
-        } catch (Throwable ignored) {
-            clearDrawableColorState(drawable);
-            return drawable;
-        }
-    }
-
-    private static int resolveNotificationAppIconRenderSize(View view) {
-        if (view == null) {
-            return 0;
-        }
-        ModuleConfig config = ModuleConfig.load(view.getContext());
-        if (config.enabled && config.notificationAppIconEnabled) {
-            return dp(view, config.notificationAppIconSizeDp);
-        }
-        int sizePx = Math.max(view.getWidth(), view.getHeight());
-        if (sizePx > 0) {
-            return sizePx;
-        }
-        sizePx = Math.max(view.getMeasuredWidth(), view.getMeasuredHeight());
-        if (sizePx > 0) {
-            return sizePx;
-        }
-        ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
-        if (layoutParams != null) {
-            sizePx = Math.max(layoutParams.width, layoutParams.height);
-            if (sizePx > 0) {
-                return sizePx;
-            }
-        }
-        return dp(view, DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP);
-    }
-
-    private static Drawable createNotificationStatusBarIconDrawable(
-            View view,
-            String packageName,
-            int userId,
-            Drawable drawable) {
-        Drawable working = cloneNotificationIconDrawable(drawable);
-        if (view == null || working == null) {
-            return working;
-        }
-        int sizePx = resolveNotificationAppIconRenderSize(view);
-        if (sizePx <= 0) {
-            return working;
-        }
-        Bitmap bitmap = createFittedNotificationAppIconBitmap(view, working, sizePx);
-        if (bitmap == null) {
-            return working;
-        }
-        BitmapDrawable bitmapDrawable = new BitmapDrawable(view.getResources(), bitmap);
-        clearDrawableColorState(bitmapDrawable);
-        return bitmapDrawable;
-    }
-
-    private static Bitmap createFittedNotificationAppIconBitmap(
-            View view,
-            Drawable drawable,
-            int sizePx) {
-        if (view == null || drawable == null || sizePx <= 0) {
-            return null;
-        }
-        Bitmap sourceBitmap = createBitmapFromDrawable(drawable, sizePx);
-        if (sourceBitmap == null || sourceBitmap.isRecycled()) {
-            return null;
-        }
-        int targetSize = Math.max(1, sizePx);
-        Rect sourceBounds = findVisibleBitmapBounds(sourceBitmap);
-        if (sourceBounds.isEmpty()) {
-            sourceBounds.set(0, 0, sourceBitmap.getWidth(), sourceBitmap.getHeight());
-        }
-        int insetPx = Math.max(0, dp(view, DEFAULT_NOTIFICATION_APP_ICON_INSET_DP));
-        int availableSize = Math.max(1, targetSize - insetPx * 2);
-        float scale = Math.min(
-                (float) availableSize / Math.max(1, sourceBounds.width()),
-                (float) availableSize / Math.max(1, sourceBounds.height()));
-        int destWidth = Math.max(1, Math.round(sourceBounds.width() * scale));
-        int destHeight = Math.max(1, Math.round(sourceBounds.height() * scale));
-        int left = (targetSize - destWidth) / 2;
-        int top = (targetSize - destHeight) / 2;
-        Bitmap bitmap = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
-        Rect destBounds = new Rect(left, top, left + destWidth, top + destHeight);
-        canvas.drawBitmap(sourceBitmap, sourceBounds, destBounds, paint);
-        return bitmap;
-    }
-
-    private static Rect findVisibleBitmapBounds(Bitmap bitmap) {
-        if (bitmap == null || bitmap.isRecycled()) {
-            return new Rect();
-        }
-        int width = bitmap.getWidth();
-        int height = bitmap.getHeight();
-        int left = width;
-        int top = height;
-        int right = -1;
-        int bottom = -1;
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                if (Color.alpha(bitmap.getPixel(x, y)) <= 8) {
-                    continue;
-                }
-                if (x < left) {
-                    left = x;
-                }
-                if (x > right) {
-                    right = x;
-                }
-                if (y < top) {
-                    top = y;
-                }
-                if (y > bottom) {
-                    bottom = y;
-                }
-            }
-        }
-        if (right < left || bottom < top) {
-            return new Rect();
-        }
-        return new Rect(left, top, right + 1, bottom + 1);
-    }
-
-    private static Drawable resolveNotificationStatusBarIconDrawable(Object target) {
-        if (!(target instanceof View)) {
-            return null;
-        }
-        View view = (View) target;
-        if (!isNotificationBackedStatusBarIconView(view)) {
-            return null;
-        }
-        ModuleConfig config = ModuleConfig.load(view.getContext());
-        if (!config.enabled || !config.notificationAppIconEnabled) {
-            return null;
-        }
-        Object value = ReflectUtils.invokeNoArg(target, "getNotification");
-        if (!(value instanceof StatusBarNotification)) {
-            return null;
-        }
-        StatusBarNotification sbn = (StatusBarNotification) value;
-        String packageName = resolveNotificationSourcePackage(sbn);
-        if (TextUtils.isEmpty(packageName)) {
-            return null;
-        }
-        int userId = resolveNotificationUserId(sbn);
-        if (!shouldUseApplicationIconForNotification(view.getContext(), packageName, userId)) {
-            return null;
-        }
-        Drawable drawable = getCachedNotificationApplicationIcon(
-                view.getContext(),
-                packageName,
-                userId);
-        if (drawable == null) {
-            return null;
-        }
-        markNotificationAppIconReplacement(sbn.getNotification(), true);
-        return createNotificationStatusBarIconDrawable(view, packageName, userId, drawable);
-    }
-
-    private static void applyNotificationStatusBarIconDrawable(Object target) {
-        if (!(target instanceof ImageView)) {
-            return;
-        }
-        ImageView view = (ImageView) target;
-        synchronized (NOTIFICATION_APP_ICON_APPLY_GUARDS) {
-            if (Boolean.TRUE.equals(NOTIFICATION_APP_ICON_APPLY_GUARDS.get(view))) {
-                return;
-            }
-            NOTIFICATION_APP_ICON_APPLY_GUARDS.put(view, Boolean.TRUE);
-        }
-        try {
-            Drawable drawable = resolveNotificationStatusBarIconDrawable(target);
-            if (drawable == null) {
-                if (restoreNotificationStatusBarIconDrawableIfNeeded(view)) {
-                    return;
-                }
-                applyNotificationAppIconViewStyle(view);
-                return;
-            }
-            view.setImageDrawable(drawable);
-            clearNotificationAppIconTintIfNeeded(view);
-            postClearNotificationAppIconTintIfNeeded(view);
-            applyNotificationAppIconViewStyle(view);
-        } catch (Throwable ignored) {
-        } finally {
-            synchronized (NOTIFICATION_APP_ICON_APPLY_GUARDS) {
-                NOTIFICATION_APP_ICON_APPLY_GUARDS.remove(view);
-            }
-        }
-    }
-
-    private static boolean restoreNotificationStatusBarIconDrawableIfNeeded(ImageView view) {
-        if (view == null || !isNotificationBackedStatusBarIconView(view)) {
-            return false;
-        }
-        Object value = ReflectUtils.invokeNoArg(view, "getNotification");
-        if (!(value instanceof StatusBarNotification)) {
-            return false;
-        }
-        Notification notification = ((StatusBarNotification) value).getNotification();
-        if (!wasNotificationAppIconReplaced(notification)) {
-            return false;
-        }
-        synchronized (NOTIFICATION_APP_ICON_RESTORE_GUARDS) {
-            if (Boolean.TRUE.equals(NOTIFICATION_APP_ICON_RESTORE_GUARDS.get(view))) {
-                return false;
-            }
-            NOTIFICATION_APP_ICON_RESTORE_GUARDS.put(view, Boolean.TRUE);
-        }
-        try {
-            ReflectUtils.invokeNoArg(view, "updateDrawable");
-            return true;
-        } finally {
-            synchronized (NOTIFICATION_APP_ICON_RESTORE_GUARDS) {
-                NOTIFICATION_APP_ICON_RESTORE_GUARDS.remove(view);
-            }
-        }
-    }
-
-    private static void applyNotificationAppIconViewStyle(ImageView view) {
-        if (view == null) {
-            return;
-        }
-        ViewGroup.LayoutParams lp = view.getLayoutParams();
-        if (lp == null) {
-            return;
-        }
-        rememberOriginalLayout(view, lp);
-        if (lp instanceof ViewGroup.MarginLayoutParams) {
-            rememberOriginalMargins(view, (ViewGroup.MarginLayoutParams) lp);
-        }
-        rememberOriginalNotificationIconPadding(view);
-
-        ModuleConfig config = ModuleConfig.load(view.getContext());
-        boolean customize = shouldCustomizeNotificationAppIconView(view, config);
-        boolean changed = false;
-
-        int[] originalSize = ORIGINAL_SIZES.get(view);
-        if (customize) {
-            int targetWidth = dp(view, config.notificationAppIconSizeDp);
-            if (targetWidth > 0 && lp.width != targetWidth) {
-                lp.width = targetWidth;
-                changed = true;
-            }
-            if (originalSize != null && lp.height != originalSize[1]) {
-                lp.height = originalSize[1];
-                changed = true;
-            }
-        } else if (originalSize != null) {
-            if (lp.width != originalSize[0]) {
-                lp.width = originalSize[0];
-                changed = true;
-            }
-            if (lp.height != originalSize[1]) {
-                lp.height = originalSize[1];
-                changed = true;
-            }
-        }
-
-        int[] originalPadding = ORIGINAL_PADDINGS.get(view);
-        if (originalPadding != null) {
-            int left = originalPadding[0];
-            int top = originalPadding[1];
-            int right = originalPadding[2];
-            int bottom = originalPadding[3];
-            if (customize) {
-                int padding = dp(view, config.notificationAppIconPaddingDp);
-                left = padding;
-                top = padding;
-                right = padding;
-                bottom = padding;
-            }
-            int[] currentPadding = readViewPaddingDirect(view);
-            if (currentPadding[0] != left || currentPadding[1] != top
-                    || currentPadding[2] != right || currentPadding[3] != bottom) {
-                view.setPadding(left, top, right, bottom);
-                changed = true;
-            }
-        }
-
-        if (changed) {
-            view.setLayoutParams(lp);
-        }
-        view.requestLayout();
-        view.invalidate();
-    }
-
-    private static boolean shouldCustomizeNotificationAppIconView(ImageView view, ModuleConfig config) {
-        if (view == null || config == null || !config.enabled || !config.notificationAppIconEnabled) {
-            return false;
-        }
-        Object value = ReflectUtils.invokeNoArg(view, "getNotification");
-        if (!(value instanceof StatusBarNotification)) {
-            return false;
-        }
-        return wasNotificationAppIconReplaced(((StatusBarNotification) value).getNotification());
-    }
-
-    private static Bitmap createBitmapFromDrawable(Drawable drawable, int sizePx) {
-        if (drawable == null || sizePx <= 0) {
-            return null;
-        }
-        if (drawable instanceof BitmapDrawable) {
-            Bitmap bitmap = ((BitmapDrawable) drawable).getBitmap();
-            if (bitmap != null && !bitmap.isRecycled()) {
-                return bitmap;
-            }
-        }
-        Drawable working = drawable;
-        try {
-            Drawable.ConstantState constantState = drawable.getConstantState();
-            if (constantState != null) {
-                working = constantState.newDrawable().mutate();
-            } else {
-                working = drawable.mutate();
-            }
-        } catch (Throwable ignored) {
-            working = drawable;
-        }
-        clearDrawableColorState(working);
-        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        working.setBounds(0, 0, sizePx, sizePx);
-        working.draw(canvas);
-        return bitmap;
-    }
-
-    private static void clearDrawableColorState(Drawable drawable) {
-        if (drawable == null) {
-            return;
-        }
-        try {
-            drawable.setTintList(null);
-        } catch (Throwable ignored) {
-        }
-        try {
-            drawable.setColorFilter(null);
-        } catch (Throwable ignored) {
-        }
-    }
-
-    private static void markNotificationAppIconReplacement(Notification notification, boolean replaced) {
-        if (notification == null || notification.extras == null) {
-            return;
-        }
-        try {
-            if (replaced) {
-                notification.extras.putBoolean(EXTRA_NOTIFICATION_APP_ICON_REPLACED, true);
-                return;
-            }
-            notification.extras.remove(EXTRA_NOTIFICATION_APP_ICON_REPLACED);
-        } catch (Throwable ignored) {
-        }
-    }
-
-    private static boolean wasNotificationAppIconReplaced(Notification notification) {
-        return notification != null
-                && notification.extras != null
-                && notification.extras.getBoolean(EXTRA_NOTIFICATION_APP_ICON_REPLACED, false);
     }
 
     private static int resolveSystemUiDrawableId(Context context, String name) {
@@ -5042,6 +4321,17 @@ public class FlymeStatusBarSizer extends XposedModule {
         return MAIN_HANDLER;
     }
 
+    public static Context getSystemUiContextCompat() {
+        return ModuleConfig.getSystemUiContext();
+    }
+
+    private static int readNightModeMask(Configuration configuration) {
+        if (configuration == null) {
+            return -1;
+        }
+        return configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK;
+    }
+
     private static void registerConfigurationCallbacks(Context context) {
         Context appContext = context.getApplicationContext() != null
                 ? context.getApplicationContext() : context;
@@ -5057,9 +4347,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                 }
                 Handler handler = MAIN_HANDLER;
                 if (handler != null) {
-                    handler.post(FlymeStatusBarSizer::refreshNotificationAppIconsForUiModeChange);
+                    handler.post(NotificationHooks::refreshNotificationAppIconsForUiModeChange);
                 } else {
-                    refreshNotificationAppIconsForUiModeChange();
+                    NotificationHooks.refreshNotificationAppIconsForUiModeChange();
                 }
             }
 
@@ -5094,46 +4384,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private static int readNightModeMask(Configuration configuration) {
-        if (configuration == null) {
-            return -1;
-        }
-        return configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK;
-    }
-
-    private static void refreshNotificationAppIconAfterConfigurationChange(
-            View view, Configuration configuration) {
-        if (!(view instanceof ImageView) || !isNotificationBackedStatusBarIconView(view)) {
-            return;
-        }
-        int nightMode = readNightModeMask(configuration);
-        if (nightMode != -1 && nightMode != LAST_NOTIFICATION_APP_ICON_VIEW_REFRESH_NIGHT) {
-            LAST_NOTIFICATION_APP_ICON_VIEW_REFRESH_NIGHT = nightMode;
-            clearFlymeNotificationAppIconCache(view.getContext());
-        }
-        view.post(() -> applyNotificationStatusBarIconDrawable(view));
-    }
-
-    private static void clearFlymeNotificationAppIconCache(Context context) {
-        if (context == null) {
-            return;
-        }
-        try {
-            Method method = flymeClearApplicationIconCacheMethod;
-            if (method == null) {
-                Class<?> clazz = Class.forName(
-                        FLYME_STATUS_BAR_ICON_UTILS,
-                        false,
-                        context.getClassLoader());
-                method = clazz.getDeclaredMethod("clearAppCache");
-                method.setAccessible(true);
-                flymeClearApplicationIconCacheMethod = method;
-            }
-            method.invoke(null);
-        } catch (Throwable ignored) {
-        }
-    }
-
     private static void scheduleInitialRuntimeRefreshes() {
         Handler handler = MAIN_HANDLER;
         if (handler == null) {
@@ -5156,20 +4406,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         refreshTrackedStatusBarIconViews();
         ClockHooks.refreshTrackedViews();
         refreshTrackedInputMethodViews();
-    }
-
-    private static void refreshNotificationAppIconsForUiModeChange() {
-        Context context = ModuleConfig.getSystemUiContext();
-        if (context != null) {
-            clearFlymeNotificationAppIconCache(context);
-        }
-        ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
-        for (View view : views) {
-            if (!(view instanceof ImageView) || !isNotificationBackedStatusBarIconView(view)) {
-                continue;
-            }
-            applyNotificationStatusBarIconDrawable(view);
-        }
     }
 
     private static void refreshTrackedBatteryViews() {
@@ -5554,7 +4790,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                     continue;
                 }
                 if (isNotificationBackedStatusBarIconView(view) && view instanceof ImageView) {
-                    applyNotificationStatusBarIconDrawable(view);
+                    NotificationHooks.applyNotificationStatusBarIconDrawable(view);
                     continue;
                 }
                 ModuleConfig config = ModuleConfig.load(view.getContext());
@@ -5697,6 +4933,30 @@ public class FlymeStatusBarSizer extends XposedModule {
         return ReflectUtils.invokeMethod(target, name, parameterTypes, args);
     }
 
+    public static ArrayList<View> getTrackedStatusBarIconViewsSnapshot() {
+        return new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
+    }
+
+    public static void rememberOriginalLayoutCompat(View view, ViewGroup.LayoutParams lp) {
+        rememberOriginalLayout(view, lp);
+    }
+
+    public static void rememberOriginalNotificationIconPaddingCompat(View view) {
+        rememberOriginalNotificationIconPadding(view);
+    }
+
+    public static int[] getOriginalSizeCompat(View view) {
+        return ORIGINAL_SIZES.get(view);
+    }
+
+    public static int[] getOriginalPaddingCompat(View view) {
+        return ORIGINAL_PADDINGS.get(view);
+    }
+
+    public static int[] readViewPaddingDirectCompat(View view) {
+        return readViewPaddingDirect(view);
+    }
+
     public static View findSystemUiChildCompat(View root, String idName) {
         return findSystemUiChild(root, idName);
     }
@@ -5789,6 +5049,20 @@ public class FlymeStatusBarSizer extends XposedModule {
             clockCustomFormat = config == null ? "" : config.clockCustomFormat;
             clockFontWeight = resolveClockFontWeight(config);
             clockAndCarrierTextScale = enabled ? resolveClockAndCarrierTextScale(config) : 1f;
+        }
+    }
+
+    public static final class NotificationConfigSnapshot {
+        public final boolean enabled;
+        public final boolean notificationAppIconEnabled;
+        public final int notificationAppIconSizeDp;
+        public final int notificationAppIconPaddingDp;
+
+        private NotificationConfigSnapshot(ModuleConfig config) {
+            enabled = config != null && config.enabled;
+            notificationAppIconEnabled = config != null && config.notificationAppIconEnabled;
+            notificationAppIconSizeDp = config == null ? 0 : config.notificationAppIconSizeDp;
+            notificationAppIconPaddingDp = config == null ? 0 : config.notificationAppIconPaddingDp;
         }
     }
 
