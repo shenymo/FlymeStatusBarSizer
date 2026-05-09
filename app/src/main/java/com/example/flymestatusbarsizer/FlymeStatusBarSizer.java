@@ -89,10 +89,12 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final HashMap<Integer, SignalLevelSubState> SIGNAL_LEVEL_SUB_STATES = new HashMap<>();
     private static final HashMap<Integer, Integer> SIGNAL_SUB_SLOT_INDEX_CACHE = new HashMap<>();
     private static final WeakHashMap<View, Boolean> SIGNAL_DRAWABLE_APPLY_GUARDS = new WeakHashMap<>();
+    private static final Object SIGNAL_ACTIVITY_FALSE_FLOW_LOCK = new Object();
     private static final Object CONFIG_REFRESH_LOCK = new Object();
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
     private static volatile boolean DEFAULT_NETWORK_CALLBACK_REGISTERED;
+    private static volatile Object SIGNAL_ACTIVITY_FALSE_FLOW;
     private static Handler MAIN_HANDLER;
     private static volatile int LAST_UI_MODE_NIGHT = -1;
     private static final Runnable SIGNAL_ICON_REFRESH_RUNNABLE = FlymeStatusBarSizer::refreshTrackedSignalIconViewsNow;
@@ -201,6 +203,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookSignalImageAssignments();
         hookSignalTintUpdates();
         hookSignalDrawableLevelChanges(loader);
+        hookLocationBasedMobileActivityVisibility(loader);
         hookSubscriptionManagerDebug();
         hookTelephonyCreateForSubscriptionId();
         hookTelephonyGetDataNetworkType();
@@ -390,6 +393,67 @@ public class FlymeStatusBarSizer extends XposedModule {
                 });
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setColorFilter(ColorFilter)", t);
+        }
+    }
+
+    private void hookLocationBasedMobileActivityVisibility(ClassLoader loader) {
+        hookLocationBasedMobileActivityVisibility(loader, "getActivityInVisible");
+        hookLocationBasedMobileActivityVisibility(loader, "getActivityOutVisible");
+        hookLocationBasedMobileActivityVisibility(loader, "getActivityContainerVisible");
+    }
+
+    private void hookLocationBasedMobileActivityVisibility(ClassLoader loader, String methodName) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.statusbar.pipeline.mobile.ui.viewmodel.LocationBasedMobileViewModel",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod(methodName);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                if (!isSignalCodeDrawEnabled(config)) {
+                    return result;
+                }
+                Object falseFlow = getSignalActivityFalseFlow(loader);
+                return falseFlow != null ? falseFlow : result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook LocationBasedMobileViewModel." + methodName, t);
+        }
+    }
+
+    private static Object getSignalActivityFalseFlow(ClassLoader loader) {
+        Object cached = SIGNAL_ACTIVITY_FALSE_FLOW;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (SIGNAL_ACTIVITY_FALSE_FLOW_LOCK) {
+            cached = SIGNAL_ACTIVITY_FALSE_FLOW;
+            if (cached != null) {
+                return cached;
+            }
+            try {
+                Class<?> stateFlowKtClass = Class.forName(
+                        "kotlinx.coroutines.flow.StateFlowKt",
+                        false,
+                        loader);
+                Method method = stateFlowKtClass.getDeclaredMethod("MutableStateFlow", Object.class);
+                method.setAccessible(true);
+                cached = method.invoke(null, Boolean.FALSE);
+                SIGNAL_ACTIVITY_FALSE_FLOW = cached;
+                return cached;
+            } catch (Throwable t) {
+                FlymeStatusBarSizer module = MODULE;
+                if (module != null) {
+                    module.log(android.util.Log.WARN, TAG,
+                            "Failed to create constant false StateFlow for mobile activity visibility",
+                            t);
+                }
+                return null;
+            }
         }
     }
 
