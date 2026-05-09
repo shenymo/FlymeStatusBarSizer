@@ -879,16 +879,16 @@ public class MainActivity extends Activity {
         details.setOrientation(LinearLayout.VERTICAL);
 
         addSwitchRow(details, "代码绘制信号图标",
-                "关闭后恢复系统原来的信号图标，不再替换 mobile_signal，也不再改双卡槽位和图标尺寸。",
+                "关闭后恢复系统原来的移动信号和 Wi-Fi 图标，不再替换 mobile_signal / wifi_signal，也不再改双卡槽位和图标尺寸。",
                 SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED);
         addDivider(details);
         addProfileSectionHeader(details, "说明",
-                "这里只控制 mobile_signal 的代码绘制；mobile_type 会继续按系统真实网络状态参与 5G/5GA 标识判断。");
+                "这里统一控制 mobile_signal 和 wifi_signal 的代码绘制；mobile_type 会继续按系统真实网络状态参与 5G/5GA 标识判断。");
 
         return buildExpandableInfoCard(
                 "信号图标",
-                "单独控制移动信号图标这一组逻辑。",
+                "统一控制移动信号和 Wi-Fi 图标这一组逻辑。",
                 details);
     }
 

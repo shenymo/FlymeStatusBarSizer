@@ -125,12 +125,22 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final int SIGNAL_IMAGE_ASSIGNMENT_DRAWABLE = 3;
     private static final int TELEPHONY_DEBUG_SUB_ID_CARD1 = 910001;
     private static final int TELEPHONY_DEBUG_SUB_ID_CARD2 = 910002;
+    private static final String WIFI_SLOT_PRIMARY = "wifi";
+    private static final String WIFI_SLOT_VICE = "dual_wifi";
     private static final ThreadLocal<Integer> INTERNAL_SIGNAL_LEVEL_QUERY_DEPTH =
             ThreadLocal.withInitial(() -> 0);
     private static volatile int LAST_SIGNAL_LEVEL = -1;
     private static volatile int LAST_SIGNAL_SUB_ID = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
     private static volatile int LAST_CELLULAR_LEVEL = -1;
     private static volatile int LAST_ACTIVE_SUBSCRIPTION_COUNT = -1;
+    private static volatile int LAST_WIFI_LEVEL = -1;
+    private static volatile int LAST_VICE_WIFI_LEVEL = -1;
+    private static volatile int LAST_WIFI_STANDARD = 4;
+    private static volatile int LAST_VICE_WIFI_STANDARD = 4;
+    private static volatile boolean LAST_WIFI_CONNECTED;
+    private static volatile boolean LAST_VICE_WIFI_CONNECTED;
+    private static volatile boolean LAST_WIFI_ENABLED;
+    private static volatile boolean LAST_VICE_WIFI_ENABLED;
     private static volatile int LAST_SERVICE_STATE_SUB_ID = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
     private static volatile int LAST_MOBILE_TYPE_DISPLAY_INFO_SUB_ID =
             SubscriptionManager.INVALID_SUBSCRIPTION_ID;
@@ -203,6 +213,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookSignalImageAssignments();
         hookSignalTintUpdates();
         hookSignalDrawableLevelChanges(loader);
+        hookWifiSignalControllerState(loader);
         hookLocationBasedMobileActivityVisibility(loader);
         hookSubscriptionManagerDebug();
         hookTelephonyCreateForSubscriptionId();
@@ -2180,6 +2191,25 @@ public class FlymeStatusBarSizer extends XposedModule {
         return config != null && config.enabled && config.signalCodeDrawEnabled;
     }
 
+    private void hookWifiSignalControllerState(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.statusbar.connectivity.WifiSignalController",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("notifyListenersIfNecessary");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                onWifiControllerStateChanged(chain.getThisObject());
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook WifiSignalController.notifyListenersIfNecessary", t);
+        }
+    }
+
     private static float resolveStatusBarIconScale(ModuleConfig config) {
         int percent = config == null
                 ? SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT
@@ -2576,6 +2606,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         if ("mobile_type".equals(idName)) {
             recordMobileTypeImageAssignment(view, assignmentType, resId, icon, drawable);
         }
+        if ("wifi_signal".equals(idName)) {
+            ModuleConfig config = ModuleConfig.load(view.getContext());
+            if (isSignalCodeDrawEnabled(config)) {
+                applyWifiIconOverride(view, resId, icon, drawable);
+            } else {
+                applyStatusBarScaleIfNeeded(view);
+            }
+            return;
+        }
         if (!isMobileSignalRelatedId(idName)) {
             applyStatusBarScaleIfNeeded(view);
             return;
@@ -2624,8 +2663,18 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static void onSignalViewLayoutChanged(View view) {
         trackStatusBarIconView(view);
         String idName = getSystemUiIdName(view);
-        if ("mobile_signal".equals(idName)) {
+        if ("mobile_signal".equals(idName) || "wifi_signal".equals(idName)) {
             clearSignalTintSourceCacheForView(view);
+        }
+        if ("wifi_signal".equals(idName) && view instanceof ImageView) {
+            ModuleConfig config = ModuleConfig.load(view.getContext());
+            if (isSignalCodeDrawEnabled(config)) {
+                ImageView imageView = (ImageView) view;
+                applyWifiIconOverride(imageView, 0, null, imageView.getDrawable());
+            } else {
+                applyStatusBarScaleIfNeeded(view);
+            }
+            return;
         }
         if (!isMobileSignalRelatedId(idName)) {
             if (isStatusBarIconCandidate(view)) {
@@ -2671,26 +2720,35 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void syncSignalTintToCustomDrawable(ImageView view) {
-        if (view == null || !"mobile_signal".equals(getSystemUiIdName(view))) {
+        if (view == null) {
             return;
         }
+        String idName = getSystemUiIdName(view);
         Drawable drawable = view.getDrawable();
-        if (!(drawable instanceof SignalIconDrawable)) {
+        if ("mobile_signal".equals(idName) && drawable instanceof SignalIconDrawable) {
+            drawable.setTintList(view.getImageTintList());
+            drawable.setState(view.getDrawableState());
             return;
         }
-        drawable.setTintList(view.getImageTintList());
-        drawable.setState(view.getDrawableState());
+        if ("wifi_signal".equals(idName) && drawable instanceof WifiIconDrawable) {
+            drawable.setTintList(view.getImageTintList());
+            drawable.setState(view.getDrawableState());
+        }
     }
 
     private static void syncSignalColorFilterToCustomDrawable(ImageView view, ColorFilter colorFilter) {
-        if (view == null || !"mobile_signal".equals(getSystemUiIdName(view))) {
+        if (view == null) {
             return;
         }
+        String idName = getSystemUiIdName(view);
         Drawable drawable = view.getDrawable();
-        if (!(drawable instanceof SignalIconDrawable)) {
+        if ("mobile_signal".equals(idName) && drawable instanceof SignalIconDrawable) {
+            drawable.setColorFilter(colorFilter);
             return;
         }
-        drawable.setColorFilter(colorFilter);
+        if ("wifi_signal".equals(idName) && drawable instanceof WifiIconDrawable) {
+            drawable.setColorFilter(colorFilter);
+        }
     }
 
     private static TelephonyDisplayInfoState rememberTelephonyDisplayInfoState(TelephonyDisplayInfo displayInfo) {
@@ -3453,12 +3511,286 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private static void applyWifiDrawableToView(ImageView view, Drawable drawable) {
+        applySignalDrawableToView(view, drawable);
+    }
+
     private static boolean isSignalDrawableApplyGuardActive(ImageView view) {
         if (view == null) {
             return false;
         }
         synchronized (SIGNAL_DRAWABLE_APPLY_GUARDS) {
             return Boolean.TRUE.equals(SIGNAL_DRAWABLE_APPLY_GUARDS.get(view));
+        }
+    }
+
+    private static void applyWifiIconOverride(ImageView view, int resId, Icon icon, Drawable drawable) {
+        if (view == null) {
+            return;
+        }
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        if (!isSignalCodeDrawEnabled(config)) {
+            return;
+        }
+        int level = resolveWifiLevel(view, resId, icon, drawable);
+        resizeWifiIconView(view);
+        disableAncestorClipping(view, 6);
+        int intrinsicHeight = resolveWifiIconIntrinsicHeight(view);
+        int intrinsicWidth = resolveWifiIconIntrinsicWidth(view, intrinsicHeight);
+        Drawable current = view.getDrawable();
+        if (current instanceof WifiIconDrawable) {
+            WifiIconDrawable wifiDrawable = (WifiIconDrawable) current;
+            if (wifiDrawable.matchesGeometry(intrinsicWidth, intrinsicHeight)) {
+                wifiDrawable.setLevelValue(level);
+                return;
+            }
+        }
+        WifiIconDrawable wifiDrawable = new WifiIconDrawable(view, intrinsicWidth, intrinsicHeight, level);
+        wifiDrawable.setAlpha(view.getImageAlpha());
+        wifiDrawable.setState(view.getDrawableState());
+        wifiDrawable.setTintList(view.getImageTintList());
+        applyWifiDrawableToView(view, wifiDrawable);
+    }
+
+    private static void resizeWifiIconView(ImageView view) {
+        if (view == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        int targetSize = resolveTargetWifiIconBoxSize(view);
+        boolean changed = false;
+        if (lp.width != targetSize) {
+            lp.width = targetSize;
+            changed = true;
+        }
+        if (lp.height != targetSize) {
+            lp.height = targetSize;
+            changed = true;
+        }
+        if (changed) {
+            view.setLayoutParams(lp);
+            view.requestLayout();
+        }
+    }
+
+    private static int resolveTargetWifiIconBoxSize(ImageView view) {
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        return scaleSize(dp(view, 24), resolveStatusBarIconScale(config));
+    }
+
+    private static int resolveWifiIconIntrinsicHeight(ImageView view) {
+        if (view == null) {
+            return 1;
+        }
+        ModuleConfig config = ModuleConfig.load(view.getContext());
+        return Math.max(1, resolveBatteryRenderHeight(resolveBatterySquareSize(view, config)));
+    }
+
+    private static int resolveWifiIconIntrinsicWidth(ImageView view, int intrinsicHeight) {
+        return Math.max(1, intrinsicHeight);
+    }
+
+    private static int resolveWifiLevel(ImageView view, int resId, Icon icon, Drawable drawable) {
+        int trackedLevel = resolveTrackedWifiLevel(view);
+        if (trackedLevel >= 0) {
+            return trackedLevel;
+        }
+        int level = resolveWifiLevelFromResource(view == null ? null : view.getContext(), resId);
+        if (level >= 0) {
+            return level;
+        }
+        level = resolveWifiLevelFromResource(view == null ? null : view.getContext(),
+                resolveIconResourceId(icon));
+        if (level >= 0) {
+            return level;
+        }
+        level = resolveWifiLevelFromDrawable(drawable);
+        if (level >= 0) {
+            return level;
+        }
+        return LAST_WIFI_LEVEL >= 0 ? LAST_WIFI_LEVEL : 0;
+    }
+
+    private static int resolveTrackedWifiLevel(ImageView view) {
+        if (view == null) {
+            return -1;
+        }
+        String slot = resolveWifiSlot(view);
+        if (WIFI_SLOT_VICE.equals(slot)) {
+            return sanitizeWifiLevel(LAST_VICE_WIFI_LEVEL);
+        }
+        return sanitizeWifiLevel(LAST_WIFI_LEVEL);
+    }
+
+    private static int sanitizeWifiLevel(int level) {
+        if (level < 0) {
+            return -1;
+        }
+        return Math.min(level, 4);
+    }
+
+    private static String resolveWifiSlot(View view) {
+        if (view == null) {
+            return WIFI_SLOT_PRIMARY;
+        }
+        View combo = findAncestorByIdName(view, "wifi_combo");
+        Object slot = ReflectUtils.getField(combo, "mSlot");
+        if (!TextUtils.isEmpty(safeToString(slot))) {
+            return String.valueOf(slot);
+        }
+        slot = ReflectUtils.invokeNoArg(combo, "getSlot");
+        if (!TextUtils.isEmpty(safeToString(slot))) {
+            return String.valueOf(slot);
+        }
+        return WIFI_SLOT_PRIMARY;
+    }
+
+    private static int resolveWifiLevelFromDrawable(Drawable drawable) {
+        if (drawable == null) {
+            return -1;
+        }
+        int level = resolveWifiLevelFromLevelBits(drawable.getLevel());
+        if (level >= 0) {
+            return level;
+        }
+        return resolveWifiLevelFromResourceName(resolveResourceNameFromDrawable(drawable));
+    }
+
+    private static int resolveWifiLevelFromLevelBits(int rawLevel) {
+        if (rawLevel < 0) {
+            return -1;
+        }
+        int normalized = rawLevel & 0xff;
+        if (normalized >= 0 && normalized <= 4) {
+            return normalized;
+        }
+        return -1;
+    }
+
+    private static int resolveWifiLevelFromResource(Context context, int resId) {
+        if (resId == 0) {
+            return -1;
+        }
+        return resolveWifiLevelFromResourceName(resolveResourceName(context, resId));
+    }
+
+    private static String resolveResourceNameFromDrawable(Drawable drawable) {
+        if (drawable == null) {
+            return "";
+        }
+        Object state = ReflectUtils.getField(drawable, "mState");
+        int resId = ReflectUtils.getIntField(state, "mResId", 0);
+        Context context = ModuleConfig.getSystemUiContext();
+        return resolveResourceName(context, resId);
+    }
+
+    private static int resolveWifiLevelFromResourceName(String resourceName) {
+        if (TextUtils.isEmpty(resourceName)) {
+            return -1;
+        }
+        String name = resourceName;
+        int slash = name.lastIndexOf('/');
+        if (slash >= 0 && slash < name.length() - 1) {
+            name = name.substring(slash + 1);
+        }
+        if (name.contains("signal_null")
+                || name.contains("signal_6")
+                || name.endsWith("signal_0")
+                || name.endsWith("_0")) {
+            return 0;
+        }
+        if (name.contains("signal_1")) {
+            return 1;
+        }
+        if (name.contains("signal_2")) {
+            return 2;
+        }
+        if (name.contains("signal_3")) {
+            return 3;
+        }
+        if (name.contains("signal_4")) {
+            return 4;
+        }
+        return -1;
+    }
+
+    private static void onWifiControllerStateChanged(Object controller) {
+        if (controller == null) {
+            return;
+        }
+        Object currentState = ReflectUtils.getField(controller, "mCurrentState");
+        if (currentState == null) {
+            return;
+        }
+        boolean changed = false;
+        int wifiLevel = sanitizeWifiLevel(ReflectUtils.getIntField(currentState, "level", -1));
+        if (LAST_WIFI_LEVEL != wifiLevel) {
+            LAST_WIFI_LEVEL = wifiLevel;
+            changed = true;
+        }
+        int viceLevel = sanitizeWifiLevel(ReflectUtils.getIntField(currentState, "viceLevel", -1));
+        if (LAST_VICE_WIFI_LEVEL != viceLevel) {
+            LAST_VICE_WIFI_LEVEL = viceLevel;
+            changed = true;
+        }
+        int wifiStandard = ReflectUtils.getIntField(currentState, "wifiStandard", LAST_WIFI_STANDARD);
+        if (LAST_WIFI_STANDARD != wifiStandard) {
+            LAST_WIFI_STANDARD = wifiStandard;
+            changed = true;
+        }
+        int viceWifiStandard = ReflectUtils.getIntField(currentState, "viceWifiStandard", LAST_VICE_WIFI_STANDARD);
+        if (LAST_VICE_WIFI_STANDARD != viceWifiStandard) {
+            LAST_VICE_WIFI_STANDARD = viceWifiStandard;
+            changed = true;
+        }
+        boolean wifiConnected = ReflectUtils.getBooleanField(currentState, "connected", LAST_WIFI_CONNECTED);
+        if (LAST_WIFI_CONNECTED != wifiConnected) {
+            LAST_WIFI_CONNECTED = wifiConnected;
+            changed = true;
+        }
+        boolean viceWifiConnected = ReflectUtils.getBooleanField(currentState, "viceConnected", LAST_VICE_WIFI_CONNECTED);
+        if (LAST_VICE_WIFI_CONNECTED != viceWifiConnected) {
+            LAST_VICE_WIFI_CONNECTED = viceWifiConnected;
+            changed = true;
+        }
+        boolean wifiEnabled = ReflectUtils.getBooleanField(currentState, "enabled", LAST_WIFI_ENABLED);
+        if (LAST_WIFI_ENABLED != wifiEnabled) {
+            LAST_WIFI_ENABLED = wifiEnabled;
+            changed = true;
+        }
+        boolean viceWifiEnabled = ReflectUtils.getBooleanField(currentState, "viceEnabled", LAST_VICE_WIFI_ENABLED);
+        if (LAST_VICE_WIFI_ENABLED != viceWifiEnabled) {
+            LAST_VICE_WIFI_ENABLED = viceWifiEnabled;
+            changed = true;
+        }
+        if (changed) {
+            scheduleTrackedWifiIconRefresh();
+        }
+    }
+
+    private static void scheduleTrackedWifiIconRefresh() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            refreshTrackedWifiIconViewsNow();
+            return;
+        }
+        handler.post(FlymeStatusBarSizer::refreshTrackedWifiIconViewsNow);
+    }
+
+    private static void refreshTrackedWifiIconViewsNow() {
+        ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
+        for (View view : views) {
+            if (!(view instanceof ImageView)) {
+                continue;
+            }
+            if (!"wifi_signal".equals(getSystemUiIdName(view))) {
+                continue;
+            }
+            ImageView imageView = (ImageView) view;
+            applyWifiIconOverride(imageView, 0, null, imageView.getDrawable());
         }
     }
 
@@ -4594,14 +4926,19 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (!(view instanceof ImageView)) {
                 continue;
             }
-            if (!"mobile_signal".equals(getSystemUiIdName(view))) {
+            String idName = getSystemUiIdName(view);
+            if (!"mobile_signal".equals(idName) && !"wifi_signal".equals(idName)) {
                 continue;
             }
             if (view.getRootView() != batteryRoot) {
                 continue;
             }
             Drawable drawable = ((ImageView) view).getDrawable();
-            if (drawable instanceof SignalIconDrawable) {
+            if ("mobile_signal".equals(idName) && drawable instanceof SignalIconDrawable) {
+                drawable.invalidateSelf();
+                view.invalidate();
+            }
+            if ("wifi_signal".equals(idName) && drawable instanceof WifiIconDrawable) {
                 drawable.invalidateSelf();
                 view.invalidate();
             }
@@ -4929,6 +5266,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 }
                 applyStatusBarScaleIfNeeded(view);
             }
+            refreshTrackedWifiIconViewsNow();
         });
     }
 
