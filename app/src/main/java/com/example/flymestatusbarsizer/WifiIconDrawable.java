@@ -4,6 +4,7 @@ import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
@@ -19,43 +20,44 @@ final class WifiIconDrawable extends Drawable {
     private static final int MAX_LEVEL = 4;
     private static final int DRAW_ALPHA = 224;
     private static final float INACTIVE_ALPHA_RATIO = 0.3f;
-    // Keep the three WIFI bands on an equal spacing grid so the gaps read as uniform.
-    private static final float CENTER_X = 12f;
-    private static final float CENTER_Y = 21.5f;
-    private static final float DOT_RADIUS = 4.1f;
-    private static final float ARC_STROKE_WIDTH = 3.2f;
-    private static final float BAND_GAP = 3.45f;
-    private static final float INNER_ARC_RADIUS = DOT_RADIUS + BAND_GAP + ARC_STROKE_WIDTH * 0.5f;
-    private static final float OUTER_ARC_RADIUS = INNER_ARC_RADIUS + BAND_GAP + ARC_STROKE_WIDTH;
-    private static final float ARC_START_ANGLE = 225f;
-    private static final float ARC_SWEEP_ANGLE = 90f;
-    private static final float DIAGONAL_PROJECTION = 0.70710677f;
-    private static final float DOT_EDGE_X = 9.1f;
-    private static final float DOT_EDGE_Y = 18.6f;
-    // Normalize against the actual painted bounds, not the arc centerline bounds. This keeps
-    // WIFI's visible top/bottom within the same visual height as the battery glyph after scaling.
-    private static final float PAINTED_HALF_STROKE = ARC_STROKE_WIDTH * 0.5f;
-    private static final float PAINTED_LEFT =
-            CENTER_X - (OUTER_ARC_RADIUS + PAINTED_HALF_STROKE) * DIAGONAL_PROJECTION;
-    private static final float PAINTED_TOP = CENTER_Y - OUTER_ARC_RADIUS - PAINTED_HALF_STROKE;
-    private static final float PAINTED_RIGHT =
-            CENTER_X + (OUTER_ARC_RADIUS + PAINTED_HALF_STROKE) * DIAGONAL_PROJECTION;
-    private static final float PAINTED_BOTTOM = CENTER_Y + DOT_RADIUS;
-    private static final float PAINTED_WIDTH = PAINTED_RIGHT - PAINTED_LEFT;
-    private static final float PAINTED_HEIGHT = PAINTED_BOTTOM - PAINTED_TOP;
-    private static final float HORIZONTAL_SCALE = 0.84f;
-    private static final float VISUAL_ASPECT_RATIO =
-            (PAINTED_WIDTH * HORIZONTAL_SCALE) / PAINTED_HEIGHT;
+    private static final float VIEWPORT_SIZE = 960f;
 
     private static final Paint FILL_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private static final Paint STROKE_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private static final Path DOT_PATH = new Path();
     private static final IconMetrics.VisualCanvas VISUAL_CANVAS = new IconMetrics.VisualCanvas();
-    private static final RectF OVAL_RECT = new RectF();
+    private static final RectF SOURCE_BOUNDS = new RectF();
+    private static final RectF DRAW_BOUNDS = new RectF();
+    private static final Matrix MATRIX = new Matrix();
+    private static final Path OUTER_SOURCE_PATH = new Path();
+    private static final Path INNER_SOURCE_PATH = new Path();
+    private static final Path DOT_SOURCE_PATH = new Path();
+    private static final Path OUTER_DRAW_PATH = new Path();
+    private static final Path INNER_DRAW_PATH = new Path();
+    private static final Path DOT_DRAW_PATH = new Path();
+    private static final float VISUAL_ASPECT_RATIO;
+
+    static {
+        FILL_PAINT.setStyle(Paint.Style.FILL);
+        buildOuterBandPath(OUTER_SOURCE_PATH);
+        buildInnerBandPath(INNER_SOURCE_PATH);
+        buildDotPath(DOT_SOURCE_PATH);
+        RectF outerBounds = new RectF();
+        RectF innerBounds = new RectF();
+        RectF dotBounds = new RectF();
+        OUTER_SOURCE_PATH.computeBounds(outerBounds, true);
+        INNER_SOURCE_PATH.computeBounds(innerBounds, true);
+        DOT_SOURCE_PATH.computeBounds(dotBounds, true);
+        SOURCE_BOUNDS.set(outerBounds);
+        SOURCE_BOUNDS.union(innerBounds);
+        SOURCE_BOUNDS.union(dotBounds);
+        VISUAL_ASPECT_RATIO = SOURCE_BOUNDS.isEmpty()
+                ? 1f
+                : SOURCE_BOUNDS.width() / Math.max(1f, SOURCE_BOUNDS.height());
+    }
 
     private final WeakReference<View> ownerViewRef;
     private final int intrinsicWidth;
     private final int intrinsicHeight;
+    private final int visualBandHeight;
 
     private ColorStateList tintList;
     private ColorFilter colorFilter;
@@ -63,24 +65,19 @@ final class WifiIconDrawable extends Drawable {
     private int alpha = 255;
     private int level;
 
-    WifiIconDrawable(View ownerView, int intrinsicWidth, int intrinsicHeight, int level) {
+    WifiIconDrawable(View ownerView, int intrinsicWidth, int intrinsicHeight,
+            int visualBandHeight, int level) {
         this.ownerViewRef = new WeakReference<>(ownerView);
         this.intrinsicWidth = Math.max(1, intrinsicWidth);
         this.intrinsicHeight = Math.max(1, intrinsicHeight);
+        this.visualBandHeight = Math.max(1, visualBandHeight);
         this.level = sanitizeLevel(level);
-        STROKE_PAINT.setStyle(Paint.Style.STROKE);
-        STROKE_PAINT.setStrokeCap(Paint.Cap.BUTT);
-        FILL_PAINT.setStyle(Paint.Style.FILL);
     }
 
-    boolean matchesGeometry(int intrinsicWidth, int intrinsicHeight) {
+    boolean matchesGeometry(int intrinsicWidth, int intrinsicHeight, int visualBandHeight) {
         return this.intrinsicWidth == Math.max(1, intrinsicWidth)
-                && this.intrinsicHeight == Math.max(1, intrinsicHeight);
-    }
-
-    static int resolveIntrinsicWidth(int intrinsicHeight) {
-        int safeHeight = Math.max(1, intrinsicHeight);
-        return Math.max(1, Math.round(safeHeight * VISUAL_ASPECT_RATIO));
+                && this.intrinsicHeight == Math.max(1, intrinsicHeight)
+                && this.visualBandHeight == Math.max(1, visualBandHeight);
     }
 
     boolean setLevelValue(int level) {
@@ -107,16 +104,20 @@ final class WifiIconDrawable extends Drawable {
         if (VISUAL_CANVAS.isEmpty()) {
             return;
         }
-        float unitY = VISUAL_CANVAS.rect.height() / PAINTED_HEIGHT;
-        float unitX = unitY * HORIZONTAL_SCALE;
-        float drawLeft = VISUAL_CANVAS.rect.left - PAINTED_LEFT * unitX;
-        float drawTop = VISUAL_CANVAS.rect.top - PAINTED_TOP * unitY;
 
-        drawDot(canvas, drawLeft, drawTop, unitX, unitY, resolveDotColor(activeColor, inactiveColor));
-        drawArc(canvas, drawLeft, drawTop, unitX, unitY,
-                INNER_ARC_RADIUS, resolveInnerArcColor(activeColor, inactiveColor));
-        drawArc(canvas, drawLeft, drawTop, unitX, unitY,
-                OUTER_ARC_RADIUS, resolveOuterArcColor(activeColor, inactiveColor));
+        DRAW_BOUNDS.set(VISUAL_CANVAS.rect.left, VISUAL_CANVAS.rect.top,
+                VISUAL_CANVAS.rect.right, VISUAL_CANVAS.baselineY);
+        if (DRAW_BOUNDS.isEmpty()) {
+            return;
+        }
+
+        transformPath(OUTER_SOURCE_PATH, OUTER_DRAW_PATH, DRAW_BOUNDS);
+        transformPath(INNER_SOURCE_PATH, INNER_DRAW_PATH, DRAW_BOUNDS);
+        transformPath(DOT_SOURCE_PATH, DOT_DRAW_PATH, DRAW_BOUNDS);
+
+        drawPath(canvas, OUTER_DRAW_PATH, resolveOuterBandColor(activeColor, inactiveColor));
+        drawPath(canvas, INNER_DRAW_PATH, resolveInnerBandColor(activeColor, inactiveColor));
+        drawPath(canvas, DOT_DRAW_PATH, resolveDotColor(activeColor, inactiveColor));
     }
 
     @Override
@@ -184,49 +185,42 @@ final class WifiIconDrawable extends Drawable {
         return true;
     }
 
-    private void drawDot(Canvas canvas, float left, float top, float unitX, float unitY, int color) {
-        float centerX = left + CENTER_X * unitX;
-        float centerY = top + CENTER_Y * unitY;
-        float radiusX = DOT_RADIUS * unitX;
-        float radiusY = DOT_RADIUS * unitY;
-        DOT_PATH.reset();
-        DOT_PATH.moveTo(centerX, centerY);
-        DOT_PATH.lineTo(left + DOT_EDGE_X * unitX, top + DOT_EDGE_Y * unitY);
-        setOvalRect(centerX, centerY, radiusX, radiusY);
-        DOT_PATH.arcTo(OVAL_RECT, ARC_START_ANGLE, ARC_SWEEP_ANGLE, false);
-        DOT_PATH.close();
+    private void drawPath(Canvas canvas, Path path, int color) {
+        if (path == null || path.isEmpty()) {
+            return;
+        }
         FILL_PAINT.setColor(color);
         FILL_PAINT.setColorFilter(colorFilter);
-        canvas.drawPath(DOT_PATH, FILL_PAINT);
+        canvas.drawPath(path, FILL_PAINT);
         FILL_PAINT.setColorFilter(null);
     }
 
-    private void drawArc(Canvas canvas, float left, float top, float unitX, float unitY,
-            float radius, int color) {
-        float strokeWidth = ARC_STROKE_WIDTH * unitY;
-        float centerX = left + CENTER_X * unitX;
-        float centerY = top + CENTER_Y * unitY;
-        setOvalRect(centerX, centerY, radius * unitX, radius * unitY);
-        STROKE_PAINT.setStrokeWidth(strokeWidth);
-        STROKE_PAINT.setColor(color);
-        STROKE_PAINT.setColorFilter(colorFilter);
-        canvas.drawArc(OVAL_RECT, ARC_START_ANGLE, ARC_SWEEP_ANGLE, false, STROKE_PAINT);
-        STROKE_PAINT.setColorFilter(null);
-    }
-
-    private static void setOvalRect(float centerX, float centerY, float radiusX, float radiusY) {
-        OVAL_RECT.set(centerX - radiusX, centerY - radiusY, centerX + radiusX, centerY + radiusY);
+    private static void transformPath(Path source, Path target, RectF drawBounds) {
+        if (source == null || target == null || drawBounds == null || drawBounds.isEmpty()) {
+            if (target != null) {
+                target.reset();
+            }
+            return;
+        }
+        float scaleX = drawBounds.width() / SOURCE_BOUNDS.width();
+        float scaleY = drawBounds.height() / SOURCE_BOUNDS.height();
+        MATRIX.reset();
+        MATRIX.setScale(scaleX, scaleY);
+        MATRIX.postTranslate(drawBounds.left - SOURCE_BOUNDS.left * scaleX,
+                drawBounds.top - SOURCE_BOUNDS.top * scaleY);
+        target.reset();
+        source.transform(MATRIX, target);
     }
 
     private int resolveDotColor(int activeColor, int inactiveColor) {
         return resolveVisibleBars() >= 1 ? activeColor : inactiveColor;
     }
 
-    private int resolveInnerArcColor(int activeColor, int inactiveColor) {
+    private int resolveInnerBandColor(int activeColor, int inactiveColor) {
         return resolveVisibleBars() >= 2 ? activeColor : inactiveColor;
     }
 
-    private int resolveOuterArcColor(int activeColor, int inactiveColor) {
+    private int resolveOuterBandColor(int activeColor, int inactiveColor) {
         return resolveVisibleBars() >= 3 ? activeColor : inactiveColor;
     }
 
@@ -251,5 +245,60 @@ final class WifiIconDrawable extends Drawable {
         int alpha = (color >>> 24) & 0xff;
         int scaledAlpha = Math.max(0, Math.min(255, Math.round(alpha * ratio)));
         return SignalPreviewPainter.withFixedAlpha(color, scaledAlpha);
+    }
+
+    private static void buildOuterBandPath(Path path) {
+        if (path == null) {
+            return;
+        }
+        path.reset();
+        path.moveTo(109f, 429f);
+        path.lineTo(24f, 344f);
+        path.quadTo(116f, 255f, 234f, 207.5f);
+        path.quadTo(352f, 160f, 480f, 160f);
+        path.quadTo(608f, 160f, 726f, 207.5f);
+        path.quadTo(844f, 255f, 936f, 344f);
+        path.lineTo(851f, 429f);
+        path.quadTo(776f, 357f, 680f, 318.5f);
+        path.quadTo(584f, 280f, 480f, 280f);
+        path.quadTo(376f, 280f, 280f, 318.5f);
+        path.quadTo(184f, 357f, 109f, 429f);
+        path.close();
+    }
+
+    private static void buildInnerBandPath(Path path) {
+        if (path == null) {
+            return;
+        }
+        path.reset();
+        path.moveTo(278f, 598f);
+        path.lineTo(194f, 514f);
+        path.quadTo(253f, 459f, 326.5f, 429.5f);
+        path.quadTo(400f, 400f, 480f, 400f);
+        path.quadTo(560f, 400f, 633.5f, 429.5f);
+        path.quadTo(707f, 459f, 766f, 514f);
+        path.lineTo(682f, 598f);
+        path.quadTo(640f, 560f, 588.5f, 540f);
+        path.quadTo(537f, 520f, 480f, 520f);
+        path.quadTo(423f, 520f, 371.5f, 540f);
+        path.quadTo(320f, 560f, 278f, 598f);
+        path.close();
+    }
+
+    private static void buildDotPath(Path path) {
+        if (path == null) {
+            return;
+        }
+        path.reset();
+        path.moveTo(423.5f, 776.5f);
+        path.quadTo(400f, 753f, 400f, 720f);
+        path.quadTo(400f, 687f, 423.5f, 663.5f);
+        path.quadTo(447f, 640f, 480f, 640f);
+        path.quadTo(513f, 640f, 536.5f, 663.5f);
+        path.quadTo(560f, 687f, 560f, 720f);
+        path.quadTo(560f, 753f, 536.5f, 776.5f);
+        path.quadTo(513f, 800f, 480f, 800f);
+        path.quadTo(447f, 800f, 423.5f, 776.5f);
+        path.close();
     }
 }

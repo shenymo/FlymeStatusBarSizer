@@ -2649,6 +2649,17 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!config.enabled) {
             return;
         }
+        if ("wifi_signal".equals(idName) && view instanceof ImageView) {
+            if (isSignalCodeDrawEnabled(config)) {
+                ImageView imageView = (ImageView) view;
+                resetStandaloneImageScale(imageView);
+                resetSignalWrapperScaleIfNeeded(imageView);
+                applyWifiIconOverride(imageView, 0, null, imageView.getDrawable());
+            } else {
+                applyStandaloneStatusBarImageScale(view, config);
+            }
+            return;
+        }
         if ("mobile_signal".equals(idName) && view instanceof ImageView) {
             if (isSignalCodeDrawEnabled(config)) {
                 resetStandaloneImageScale((ImageView) view);
@@ -3645,27 +3656,31 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!isSignalCodeDrawEnabled(config)) {
             return;
         }
+        resetStandaloneImageScale(view);
+        resetSignalWrapperScaleIfNeeded(view);
         int level = resolveWifiLevel(view, resId, icon, drawable);
         alignSignalIconVertically(view);
         int intrinsicHeight = resolveWifiIconIntrinsicHeight(view);
+        int visualBandHeight = resolveWifiIconVisualBandHeight(view, config);
         int intrinsicWidth = resolveWifiIconIntrinsicWidth(view, intrinsicHeight);
+        syncWifiWrapperSize(view, config);
         long layoutSignature = getWifiLayoutSignature(config, intrinsicWidth, intrinsicHeight);
         Long previousSignature = WIFI_LAYOUT_SIGNATURES.get(view);
         if (previousSignature == null || previousSignature.longValue() != layoutSignature) {
             resizeWifiIconView(view, config);
-            syncWifiWrapperSize(view, config);
             disableAncestorClipping(view, 6);
             WIFI_LAYOUT_SIGNATURES.put(view, layoutSignature);
         }
         Drawable current = view.getDrawable();
         if (current instanceof WifiIconDrawable) {
             WifiIconDrawable wifiDrawable = (WifiIconDrawable) current;
-            if (wifiDrawable.matchesGeometry(intrinsicWidth, intrinsicHeight)) {
+            if (wifiDrawable.matchesGeometry(intrinsicWidth, intrinsicHeight, visualBandHeight)) {
                 wifiDrawable.setLevelValue(level);
                 return;
             }
         }
-        WifiIconDrawable wifiDrawable = new WifiIconDrawable(view, intrinsicWidth, intrinsicHeight, level);
+        WifiIconDrawable wifiDrawable = new WifiIconDrawable(view, intrinsicWidth, intrinsicHeight,
+                visualBandHeight, level);
         wifiDrawable.setAlpha(view.getImageAlpha());
         wifiDrawable.setState(view.getDrawableState());
         wifiDrawable.setTintList(view.getImageTintList());
@@ -3680,15 +3695,14 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (lp == null) {
             return;
         }
-        int targetHeight = resolveTargetWifiIconBoxSize(view, config);
-        int targetWidth = resolveWifiIconIntrinsicWidth(view, targetHeight);
+        int targetSize = resolveTargetWifiIconBoxSize(view, config);
         boolean changed = false;
-        if (lp.width != targetWidth) {
-            lp.width = targetWidth;
+        if (lp.width != targetSize) {
+            lp.width = targetSize;
             changed = true;
         }
-        if (lp.height != targetHeight) {
-            lp.height = targetHeight;
+        if (lp.height != targetSize) {
+            lp.height = targetSize;
             changed = true;
         }
         if (changed) {
@@ -3706,15 +3720,14 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (lp == null) {
             return;
         }
-        int targetHeight = resolveTargetWifiIconBoxSize(view, config);
-        int targetWidth = resolveWifiIconIntrinsicWidth(view, targetHeight);
         boolean changed = false;
-        if (lp.width != targetWidth) {
-            lp.width = targetWidth;
+        // Keep the wifi wrapper driven by the square icon slot instead of the painted glyph width.
+        if (lp.width != ViewGroup.LayoutParams.WRAP_CONTENT) {
+            lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
             changed = true;
         }
-        if (lp.height != targetHeight) {
-            lp.height = targetHeight;
+        if (lp.height != ViewGroup.LayoutParams.WRAP_CONTENT) {
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
             changed = true;
         }
         if (changed) {
@@ -3725,8 +3738,11 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int resolveTargetWifiIconBoxSize(ImageView view, ModuleConfig config) {
-        return IconMetrics.resolveWifiBoxSize(
-                view == null ? null : view.getContext(),
+        if (view == null) {
+            return 1;
+        }
+        return IconMetrics.resolveSignalBoxHeight(
+                view.getContext(),
                 resolveStatusBarIconScale(config));
     }
 
@@ -3735,11 +3751,17 @@ public class FlymeStatusBarSizer extends XposedModule {
             return 1;
         }
         ModuleConfig config = ModuleConfig.load(view.getContext());
-        return Math.max(1, resolveTargetWifiIconBoxSize(view, config));
+        return Math.max(1, resolveWifiIconVisualBandHeight(view, config));
     }
 
     private static int resolveWifiIconIntrinsicWidth(ImageView view, int intrinsicHeight) {
-        return WifiIconDrawable.resolveIntrinsicWidth(intrinsicHeight);
+        return Math.max(1, intrinsicHeight);
+    }
+
+    private static int resolveWifiIconVisualBandHeight(ImageView view, ModuleConfig config) {
+        return IconMetrics.resolveSharedVisualBandHeight(
+                view == null ? null : view.getContext(),
+                resolveStatusBarIconScale(config));
     }
 
     private static long getWifiLayoutSignature(ModuleConfig config, int intrinsicWidth, int intrinsicHeight) {
@@ -4582,6 +4604,17 @@ public class FlymeStatusBarSizer extends XposedModule {
         applyRuntimeSizedViewScale(wrapper, scale);
     }
 
+    private static void resetSignalWrapperScaleIfNeeded(ImageView imageView) {
+        if (imageView == null) {
+            return;
+        }
+        View wrapper = resolveSignalWrapperView(imageView);
+        if (wrapper == null) {
+            return;
+        }
+        restoreRuntimeSizedViewScale(wrapper);
+    }
+
     private static View resolveSignalWrapperView(ImageView imageView) {
         if (imageView == null) {
             return null;
@@ -4728,6 +4761,34 @@ public class FlymeStatusBarSizer extends XposedModule {
         view.invalidate();
     }
 
+    private static void restoreRuntimeSizedViewScale(View view) {
+        if (view == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        int[] runtimeSize = rememberOriginalRuntimeSize(view);
+        if (runtimeSize == null || runtimeSize[0] <= 0 || runtimeSize[1] <= 0) {
+            return;
+        }
+        boolean changed = false;
+        if (lp.width != runtimeSize[0]) {
+            lp.width = runtimeSize[0];
+            changed = true;
+        }
+        if (lp.height != runtimeSize[1]) {
+            lp.height = runtimeSize[1];
+            changed = true;
+        }
+        if (changed) {
+            view.setLayoutParams(lp);
+        }
+        view.requestLayout();
+        view.invalidate();
+    }
+
     private static int[] resolveCurrentViewSize(View view) {
         if (view == null) {
             return null;
@@ -4812,7 +4873,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             return false;
         }
         String idName = getSystemUiIdName(view);
-        return "mobile_group".equals(idName)
+        return "wifi_group".equals(idName)
+                || "wifi_combo".equals(idName)
+                || "mobile_group".equals(idName)
                 || "mobile_type_container".equals(idName)
                 || "inout_container".equals(idName)
                 || "mobile_roaming_space".equals(idName)

@@ -36,6 +36,22 @@ final class IconMetrics {
         return resolveBoxWidth(resolveSignalBoxHeight(context, scale), WIFI_BOX_ASPECT_RATIO);
     }
 
+    static int resolveSharedVisualBandHeight(Context context, float scale) {
+        int sharedBoxHeight = resolveSharedIconBoxHeight(context, scale);
+        if (sharedBoxHeight <= 0) {
+            return 0;
+        }
+        return Math.max(1, Math.round(sharedBoxHeight * VISUAL_CANVAS_HEIGHT_RATIO));
+    }
+
+    static int resolveVisualBandWidth(int visualBandHeight, float aspectRatio) {
+        if (visualBandHeight <= 0) {
+            return 0;
+        }
+        float safeAspectRatio = aspectRatio <= 0f ? SIGNAL_BOX_ASPECT_RATIO : aspectRatio;
+        return Math.max(1, Math.round(visualBandHeight * safeAspectRatio));
+    }
+
     static int resolveBatteryBoxHeight(Context context, float scale) {
         return Math.max(1, resolveSharedIconBoxHeight(context, scale));
     }
@@ -51,6 +67,48 @@ final class IconMetrics {
     static VisualCanvas resolveCenteredVisualCanvas(Rect bounds, float aspectRatio,
                                                     VisualCanvas outCanvas) {
         return resolveVisualCanvas(bounds, aspectRatio, HorizontalAlignment.CENTER, outCanvas);
+    }
+
+    static VisualCanvas resolveCenteredHeightVisualCanvas(Rect bounds, float aspectRatio,
+                                                          VisualCanvas outCanvas) {
+        VisualCanvas target = outCanvas == null ? new VisualCanvas() : outCanvas;
+        if (bounds == null || bounds.width() <= 0 || bounds.height() <= 0) {
+            target.setEmpty();
+            return target;
+        }
+        float safeAspectRatio = aspectRatio <= 0f ? SIGNAL_BOX_ASPECT_RATIO : aspectRatio;
+        float canvasHeight = bounds.height() * VISUAL_CANVAS_HEIGHT_RATIO;
+        float canvasWidth = canvasHeight * safeAspectRatio;
+        if (canvasWidth > bounds.width()) {
+            canvasWidth = bounds.width();
+            canvasHeight = canvasWidth / safeAspectRatio;
+        }
+        float left = bounds.left + (bounds.width() - canvasWidth) / 2f;
+        float top = bounds.top + (bounds.height() - canvasHeight) / 2f;
+        target.rect.set(left, top, left + canvasWidth, top + canvasHeight);
+        target.baselineY = target.rect.bottom - BASELINE_OFFSET_PX;
+        return target;
+    }
+
+    static VisualCanvas resolveCenteredFixedHeightVisualCanvas(Rect bounds, float aspectRatio,
+                                                               float canvasHeight, VisualCanvas outCanvas) {
+        VisualCanvas target = outCanvas == null ? new VisualCanvas() : outCanvas;
+        if (bounds == null || bounds.width() <= 0 || bounds.height() <= 0 || canvasHeight <= 0f) {
+            target.setEmpty();
+            return target;
+        }
+        float safeAspectRatio = aspectRatio <= 0f ? SIGNAL_BOX_ASPECT_RATIO : aspectRatio;
+        float resolvedCanvasHeight = Math.min(bounds.height(), canvasHeight);
+        float resolvedCanvasWidth = resolvedCanvasHeight * safeAspectRatio;
+        if (resolvedCanvasWidth > bounds.width()) {
+            resolvedCanvasWidth = bounds.width();
+            resolvedCanvasHeight = resolvedCanvasWidth / safeAspectRatio;
+        }
+        float left = bounds.left + (bounds.width() - resolvedCanvasWidth) / 2f;
+        float top = bounds.top + (bounds.height() - resolvedCanvasHeight) / 2f;
+        target.rect.set(left, top, left + resolvedCanvasWidth, top + resolvedCanvasHeight);
+        target.baselineY = target.rect.bottom - BASELINE_OFFSET_PX;
+        return target;
     }
 
     static VisualCanvas resolveStartVisualCanvas(Rect bounds, float aspectRatio,
