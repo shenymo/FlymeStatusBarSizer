@@ -3591,9 +3591,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         int secondarySignalLevel = mergedDual
                 ? mergedSignalLevels.secondaryLevel
                 : signalLevel;
+        int targetHeight = resolveTargetSignalIconBoxSize(view);
         resizeSignalIconView(view, mobileTypeBadge);
         disableAncestorClipping(view, 6);
-        int intrinsicHeight = resolveSignalIconIntrinsicHeight(view);
+        int intrinsicHeight = SignalPreviewPainter.resolveIntrinsicHeight(targetHeight);
         int intrinsicWidth = SignalPreviewPainter.resolveIntrinsicWidth(intrinsicHeight, mobileTypeBadge);
         Drawable current = view.getDrawable();
         if (current instanceof SignalIconDrawable) {
@@ -4495,29 +4496,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         return IconMetrics.resolveSignalBoxHeight(
                 view == null ? null : view.getContext(),
                 resolveStatusBarIconScale(config));
-    }
-
-    private static int resolveSignalIconIntrinsicHeight(ImageView view) {
-        if (view == null) {
-            return 1;
-        }
-        if (view.getHeight() > 0) {
-            return SignalPreviewPainter.resolveIntrinsicHeight(view.getHeight());
-        }
-        ViewGroup.LayoutParams lp = view.getLayoutParams();
-        if (lp != null && lp.height > 0) {
-            return SignalPreviewPainter.resolveIntrinsicHeight(lp.height);
-        }
-        int resId = view.getResources().getIdentifier("status_bar_mobile_signal_size",
-                "dimen", view.getContext().getPackageName());
-        if (resId != 0) {
-            try {
-                return SignalPreviewPainter.resolveIntrinsicHeight(
-                        view.getResources().getDimensionPixelSize(resId));
-            } catch (Resources.NotFoundException ignored) {
-            }
-        }
-        return SignalPreviewPainter.resolveIntrinsicHeight(dp(view, 15));
     }
 
     private static void applyStatusBarIconViewScale(View view, ModuleConfig config) {
