@@ -26,7 +26,7 @@ final class WifiIconDrawable extends Drawable {
     private static final float SOURCE_BOTTOM = 34.332f;
     private static final float VISUAL_ASPECT_RATIO =
             (SOURCE_RIGHT - SOURCE_LEFT) / (SOURCE_BOTTOM - SOURCE_TOP);
-    private static final float SOURCE_THICKEN_STROKE_WIDTH = 1.35f;
+    private static final float SOURCE_THICKEN_STROKE_WIDTH = 1.5f;
 
     private static final Paint STROKE_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint FILL_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
