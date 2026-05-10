@@ -38,6 +38,7 @@ final class WifiIconDrawable extends Drawable {
     private static final float CONTENT_BOTTOM = CENTER_Y;
     private static final float CONTENT_WIDTH = CONTENT_RIGHT - CONTENT_LEFT;
     private static final float CONTENT_HEIGHT = CONTENT_BOTTOM - CONTENT_TOP;
+    private static final float WIFI_BOTTOM_INSET_RATIO = 0.03f;
 
     private static final Paint FILL_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint STROKE_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -93,6 +94,12 @@ final class WifiIconDrawable extends Drawable {
         IconMetrics.resolveCenteredContentRect(bounds, CONTENT_WIDTH, CONTENT_HEIGHT, DRAW_RECT);
         if (DRAW_RECT.isEmpty()) {
             return;
+        }
+        float baselineY = IconMetrics.resolveBaselineY(DRAW_RECT);
+        float targetBottom = baselineY - DRAW_RECT.height() * WIFI_BOTTOM_INSET_RATIO;
+        float verticalShift = targetBottom - DRAW_RECT.bottom;
+        if (verticalShift != 0f) {
+            DRAW_RECT.offset(0f, verticalShift);
         }
         float unit = DRAW_RECT.width() / CONTENT_WIDTH;
         float drawLeft = DRAW_RECT.left - CONTENT_LEFT * unit;

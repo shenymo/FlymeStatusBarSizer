@@ -2254,6 +2254,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (restoreOriginalBatteryViewLayoutIfNeeded(view, state)) {
                 changed = true;
             }
+            if (restoreOriginalBatteryViewMarginsIfNeeded(view, state)) {
+                changed = true;
+            }
             state.codeDrawEnabled = false;
             state.hasLayoutSignature = false;
             return changed;
@@ -2263,10 +2266,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         boolean showBolt = state.showBolt;
         int width = iosBatteryMeasuredWidthWithMergedIcons(view, config, showBolt);
         int height = iosBatteryMeasuredHeightWithMergedIcons(view, config);
-        long layoutSignature = getBatteryLayoutSignature(config, showBolt, width, height);
+        int marginStart = resolveBatteryMarginStart(view, config);
+        int marginEnd = resolveBatteryMarginEnd(view, config);
+        long layoutSignature = getBatteryLayoutSignature(config, showBolt, width, height, marginStart, marginEnd);
         if (force || !state.hasLayoutSignature || state.layoutSignature != layoutSignature) {
             boolean hasLayoutParams = view.getLayoutParams() != null;
             if (resizeIosBatteryView(view, width, height)) {
+                changed = true;
+            }
+            if (applyBatteryViewMarginsIfNeeded(view, state, marginStart, marginEnd)) {
                 changed = true;
             }
             if (hasLayoutParams) {
@@ -2290,6 +2298,16 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         state.originalLayoutWidth = lp.width;
         state.originalLayoutHeight = lp.height;
+        if (lp instanceof ViewGroup.MarginLayoutParams) {
+            ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) lp;
+            state.originalMarginStart = mlp.getMarginStart();
+            state.originalMarginEnd = mlp.getMarginEnd();
+            state.originalLeftMargin = mlp.leftMargin;
+            state.originalTopMargin = mlp.topMargin;
+            state.originalRightMargin = mlp.rightMargin;
+            state.originalBottomMargin = mlp.bottomMargin;
+            state.originalMarginsCaptured = true;
+        }
         state.originalLayoutCaptured = true;
     }
 
@@ -2317,6 +2335,73 @@ public class FlymeStatusBarSizer extends XposedModule {
         return changed;
     }
 
+    private static boolean restoreOriginalBatteryViewMarginsIfNeeded(View view, BatteryViewState state) {
+        if (view == null || state == null || !state.originalMarginsCaptured) {
+            return false;
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (!(lp instanceof ViewGroup.MarginLayoutParams)) {
+            return false;
+        }
+        ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) lp;
+        boolean changed = false;
+        if (mlp.leftMargin != state.originalLeftMargin
+                || mlp.topMargin != state.originalTopMargin
+                || mlp.rightMargin != state.originalRightMargin
+                || mlp.bottomMargin != state.originalBottomMargin) {
+            mlp.setMargins(
+                    state.originalLeftMargin,
+                    state.originalTopMargin,
+                    state.originalRightMargin,
+                    state.originalBottomMargin);
+            changed = true;
+        }
+        if (mlp.getMarginStart() != state.originalMarginStart) {
+            mlp.setMarginStart(state.originalMarginStart);
+            changed = true;
+        }
+        if (mlp.getMarginEnd() != state.originalMarginEnd) {
+            mlp.setMarginEnd(state.originalMarginEnd);
+            changed = true;
+        }
+        if (changed) {
+            view.setLayoutParams(mlp);
+            view.requestLayout();
+        }
+        return changed;
+    }
+
+    private static boolean applyBatteryViewMarginsIfNeeded(View view, BatteryViewState state,
+                                                           int marginStart, int marginEnd) {
+        if (view == null || state == null) {
+            return false;
+        }
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (!(lp instanceof ViewGroup.MarginLayoutParams)) {
+            return false;
+        }
+        ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) lp;
+        boolean changed = false;
+        if (mlp.topMargin != 0 || mlp.bottomMargin != 0) {
+            mlp.topMargin = 0;
+            mlp.bottomMargin = 0;
+            changed = true;
+        }
+        if (mlp.getMarginStart() != marginStart) {
+            mlp.setMarginStart(marginStart);
+            changed = true;
+        }
+        if (mlp.getMarginEnd() != marginEnd) {
+            mlp.setMarginEnd(marginEnd);
+            changed = true;
+        }
+        if (changed) {
+            view.setLayoutParams(mlp);
+            view.requestLayout();
+        }
+        return changed;
+    }
+
     private static boolean resizeIosBatteryView(View view, int width, int height) {
         ViewGroup.LayoutParams lp = view.getLayoutParams();
         if (lp == null) {
@@ -2327,7 +2412,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             lp.width = width;
             changed = true;
         }
-        if (lp.height > 0 && lp.height < height) {
+        if (lp.height != height) {
             lp.height = height;
             changed = true;
         }
@@ -2343,7 +2428,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int iosBatteryMeasuredHeight(View view, ModuleConfig config) {
-        return resolveBatteryRenderHeight(resolveBatterySquareSize(view, config)) + dp(view, 2);
+        return resolveBatteryRenderHeight(resolveBatterySquareSize(view, config));
     }
 
     private static int iosBatteryMeasuredWidthWithMergedIcons(View view, ModuleConfig config, boolean showBolt) {
@@ -2354,7 +2439,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         return iosBatteryMeasuredHeight(view, config);
     }
 
-    private static long getBatteryLayoutSignature(ModuleConfig config, boolean showBolt, int width, int height) {
+    private static long getBatteryLayoutSignature(ModuleConfig config, boolean showBolt,
+                                                  int width, int height,
+                                                  int marginStart, int marginEnd) {
         long signature = 17L;
         signature = signature * 31L + (isBatteryCodeDrawEnabled(config) ? 1L : 0L);
         signature = signature * 31L + resolveBatteryStyle(config);
@@ -2367,6 +2454,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         signature = signature * 31L + (showBolt ? 1L : 0L);
         signature = signature * 31L + width;
         signature = signature * 31L + height;
+        signature = signature * 31L + marginStart;
+        signature = signature * 31L + marginEnd;
         return signature;
     }
 
@@ -2388,7 +2477,21 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int resolveBatterySquareSize(View batteryView, ModuleConfig config) {
-        return scaleSize(dp(batteryView, 24), resolveStatusBarIconScale(config));
+        return IconMetrics.resolveBatteryBoxHeight(
+                batteryView == null ? null : batteryView.getContext(),
+                resolveStatusBarIconScale(config));
+    }
+
+    private static int resolveBatteryMarginStart(View batteryView, ModuleConfig config) {
+        return IconMetrics.resolveBatteryMarginStart(
+                batteryView == null ? null : batteryView.getContext(),
+                resolveStatusBarIconScale(config));
+    }
+
+    private static int resolveBatteryMarginEnd(View batteryView, ModuleConfig config) {
+        return IconMetrics.resolveBatteryMarginEnd(
+                batteryView == null ? null : batteryView.getContext(),
+                resolveStatusBarIconScale(config));
     }
 
     private static int resolveBatteryRenderHeight(int size) {
@@ -3534,7 +3637,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         int level = resolveWifiLevel(view, resId, icon, drawable);
         alignSignalIconVertically(view);
-        resizeWifiIconView(view);
+        resizeWifiIconView(view, config);
+        syncWifiWrapperSize(view, config);
         disableAncestorClipping(view, 6);
         int intrinsicHeight = resolveWifiIconIntrinsicHeight(view);
         int intrinsicWidth = resolveWifiIconIntrinsicWidth(view, intrinsicHeight);
@@ -3553,7 +3657,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         applyWifiDrawableToView(view, wifiDrawable);
     }
 
-    private static void resizeWifiIconView(ImageView view) {
+    private static void resizeWifiIconView(ImageView view, ModuleConfig config) {
         if (view == null) {
             return;
         }
@@ -3561,7 +3665,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (lp == null) {
             return;
         }
-        int targetSize = resolveTargetWifiIconBoxSize(view);
+        int targetSize = resolveTargetWifiIconBoxSize(view, config);
         boolean changed = false;
         if (lp.width != targetSize) {
             lp.width = targetSize;
@@ -3577,9 +3681,36 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private static int resolveTargetWifiIconBoxSize(ImageView view) {
-        ModuleConfig config = ModuleConfig.load(view.getContext());
-        return scaleSize(dp(view, 24), resolveStatusBarIconScale(config));
+    private static void syncWifiWrapperSize(ImageView view, ModuleConfig config) {
+        View wrapper = resolveSignalWrapperView(view);
+        if (wrapper == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = wrapper.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        int targetSize = resolveTargetWifiIconBoxSize(view, config);
+        boolean changed = false;
+        if (lp.width != targetSize) {
+            lp.width = targetSize;
+            changed = true;
+        }
+        if (lp.height != targetSize) {
+            lp.height = targetSize;
+            changed = true;
+        }
+        if (changed) {
+            wrapper.setLayoutParams(lp);
+        }
+        wrapper.requestLayout();
+        wrapper.invalidate();
+    }
+
+    private static int resolveTargetWifiIconBoxSize(ImageView view, ModuleConfig config) {
+        return IconMetrics.resolveWifiBoxSize(
+                view == null ? null : view.getContext(),
+                resolveStatusBarIconScale(config));
     }
 
     private static int resolveWifiIconIntrinsicHeight(ImageView view) {
@@ -3587,7 +3718,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return 1;
         }
         ModuleConfig config = ModuleConfig.load(view.getContext());
-        return Math.max(1, resolveBatteryRenderHeight(resolveBatterySquareSize(view, config)));
+        return Math.max(1, resolveTargetWifiIconBoxSize(view, config));
     }
 
     private static int resolveWifiIconIntrinsicWidth(ImageView view, int intrinsicHeight) {
@@ -4312,7 +4443,9 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static int resolveTargetSignalIconBoxSize(ImageView view) {
         ModuleConfig config = ModuleConfig.load(view.getContext());
-        return scaleSize(dp(view, 24), resolveStatusBarIconScale(config));
+        return IconMetrics.resolveSignalBoxHeight(
+                view == null ? null : view.getContext(),
+                resolveStatusBarIconScale(config));
     }
 
     private static int resolveSignalIconIntrinsicHeight(ImageView view) {
@@ -5447,8 +5580,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         boolean codeDrawEnabled;
         boolean hasRuntimeSnapshot;
         boolean originalLayoutCaptured;
+        boolean originalMarginsCaptured;
         int originalLayoutWidth = Integer.MIN_VALUE;
         int originalLayoutHeight = Integer.MIN_VALUE;
+        int originalMarginStart = Integer.MIN_VALUE;
+        int originalMarginEnd = Integer.MIN_VALUE;
+        int originalLeftMargin = Integer.MIN_VALUE;
+        int originalTopMargin = Integer.MIN_VALUE;
+        int originalRightMargin = Integer.MIN_VALUE;
+        int originalBottomMargin = Integer.MIN_VALUE;
         int level;
         boolean pluggedIn;
         boolean charging;
