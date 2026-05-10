@@ -20,38 +20,36 @@ final class WifiIconDrawable extends Drawable {
     private static final int MAX_LEVEL = 4;
     private static final int DRAW_ALPHA = 224;
     private static final float INACTIVE_ALPHA_RATIO = 0.3f;
-    private static final float VIEWPORT_SIZE = 960f;
+    private static final float SOURCE_LEFT = 4.318f;
+    private static final float SOURCE_TOP = 1.117f;
+    private static final float SOURCE_RIGHT = 50.617f;
+    private static final float SOURCE_BOTTOM = 34.332f;
+    private static final float VISUAL_ASPECT_RATIO =
+            (SOURCE_RIGHT - SOURCE_LEFT) / (SOURCE_BOTTOM - SOURCE_TOP);
+    private static final float SOURCE_THICKEN_STROKE_WIDTH = 1.35f;
 
+    private static final Paint STROKE_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint FILL_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final IconMetrics.VisualCanvas VISUAL_CANVAS = new IconMetrics.VisualCanvas();
-    private static final RectF SOURCE_BOUNDS = new RectF();
+    private static final RectF SOURCE_BOUNDS =
+            new RectF(SOURCE_LEFT, SOURCE_TOP, SOURCE_RIGHT, SOURCE_BOTTOM);
     private static final RectF DRAW_BOUNDS = new RectF();
     private static final Matrix MATRIX = new Matrix();
     private static final Path OUTER_SOURCE_PATH = new Path();
     private static final Path INNER_SOURCE_PATH = new Path();
-    private static final Path DOT_SOURCE_PATH = new Path();
+    private static final Path SECTOR_SOURCE_PATH = new Path();
     private static final Path OUTER_DRAW_PATH = new Path();
     private static final Path INNER_DRAW_PATH = new Path();
-    private static final Path DOT_DRAW_PATH = new Path();
-    private static final float VISUAL_ASPECT_RATIO;
+    private static final Path SECTOR_DRAW_PATH = new Path();
 
     static {
+        STROKE_PAINT.setStyle(Paint.Style.STROKE);
+        STROKE_PAINT.setStrokeCap(Paint.Cap.ROUND);
+        STROKE_PAINT.setStrokeJoin(Paint.Join.ROUND);
         FILL_PAINT.setStyle(Paint.Style.FILL);
         buildOuterBandPath(OUTER_SOURCE_PATH);
         buildInnerBandPath(INNER_SOURCE_PATH);
-        buildDotPath(DOT_SOURCE_PATH);
-        RectF outerBounds = new RectF();
-        RectF innerBounds = new RectF();
-        RectF dotBounds = new RectF();
-        OUTER_SOURCE_PATH.computeBounds(outerBounds, true);
-        INNER_SOURCE_PATH.computeBounds(innerBounds, true);
-        DOT_SOURCE_PATH.computeBounds(dotBounds, true);
-        SOURCE_BOUNDS.set(outerBounds);
-        SOURCE_BOUNDS.union(innerBounds);
-        SOURCE_BOUNDS.union(dotBounds);
-        VISUAL_ASPECT_RATIO = SOURCE_BOUNDS.isEmpty()
-                ? 1f
-                : SOURCE_BOUNDS.width() / Math.max(1f, SOURCE_BOUNDS.height());
+        buildSectorPath(SECTOR_SOURCE_PATH);
     }
 
     private final WeakReference<View> ownerViewRef;
@@ -113,11 +111,16 @@ final class WifiIconDrawable extends Drawable {
 
         transformPath(OUTER_SOURCE_PATH, OUTER_DRAW_PATH, DRAW_BOUNDS);
         transformPath(INNER_SOURCE_PATH, INNER_DRAW_PATH, DRAW_BOUNDS);
-        transformPath(DOT_SOURCE_PATH, DOT_DRAW_PATH, DRAW_BOUNDS);
-
-        drawPath(canvas, OUTER_DRAW_PATH, resolveOuterBandColor(activeColor, inactiveColor));
-        drawPath(canvas, INNER_DRAW_PATH, resolveInnerBandColor(activeColor, inactiveColor));
-        drawPath(canvas, DOT_DRAW_PATH, resolveDotColor(activeColor, inactiveColor));
+        transformPath(SECTOR_SOURCE_PATH, SECTOR_DRAW_PATH, DRAW_BOUNDS);
+        float thickenStrokeWidth = Math.max(
+                0.75f,
+                DRAW_BOUNDS.height() * SOURCE_THICKEN_STROKE_WIDTH / SOURCE_BOUNDS.height());
+        drawSolidPath(canvas, OUTER_DRAW_PATH, resolveOuterBandColor(activeColor, inactiveColor),
+                thickenStrokeWidth);
+        drawSolidPath(canvas, INNER_DRAW_PATH, resolveInnerBandColor(activeColor, inactiveColor),
+                thickenStrokeWidth);
+        drawSolidPath(canvas, SECTOR_DRAW_PATH, resolveSectorColor(activeColor, inactiveColor),
+                thickenStrokeWidth);
     }
 
     @Override
@@ -185,7 +188,7 @@ final class WifiIconDrawable extends Drawable {
         return true;
     }
 
-    private void drawPath(Canvas canvas, Path path, int color) {
+    private void drawFilledPath(Canvas canvas, Path path, int color) {
         if (path == null || path.isEmpty()) {
             return;
         }
@@ -193,6 +196,18 @@ final class WifiIconDrawable extends Drawable {
         FILL_PAINT.setColorFilter(colorFilter);
         canvas.drawPath(path, FILL_PAINT);
         FILL_PAINT.setColorFilter(null);
+    }
+
+    private void drawSolidPath(Canvas canvas, Path path, int color, float strokeWidth) {
+        if (path == null || path.isEmpty()) {
+            return;
+        }
+        drawFilledPath(canvas, path, color);
+        STROKE_PAINT.setStrokeWidth(strokeWidth);
+        STROKE_PAINT.setColor(color);
+        STROKE_PAINT.setColorFilter(colorFilter);
+        canvas.drawPath(path, STROKE_PAINT);
+        STROKE_PAINT.setColorFilter(null);
     }
 
     private static void transformPath(Path source, Path target, RectF drawBounds) {
@@ -212,7 +227,7 @@ final class WifiIconDrawable extends Drawable {
         source.transform(MATRIX, target);
     }
 
-    private int resolveDotColor(int activeColor, int inactiveColor) {
+    private int resolveSectorColor(int activeColor, int inactiveColor) {
         return resolveVisibleBars() >= 1 ? activeColor : inactiveColor;
     }
 
@@ -252,6 +267,7 @@ final class WifiIconDrawable extends Drawable {
             return;
         }
         path.reset();
+        // Mirrors res/drawable/wifi.xml so the custom drawable stays aligned with the iOS reference.
         path.moveTo(6.982f, 14.373f);
         path.cubicTo(7.283f, 14.674f, 7.691f, 14.674f, 7.992f, 14.352f);
         path.cubicTo(13.02f, 9.109f, 19.852f, 6.209f, 27.457f, 6.209f);
@@ -283,7 +299,7 @@ final class WifiIconDrawable extends Drawable {
         path.close();
     }
 
-    private static void buildDotPath(Path path) {
+    private static void buildSectorPath(Path path) {
         if (path == null) {
             return;
         }
