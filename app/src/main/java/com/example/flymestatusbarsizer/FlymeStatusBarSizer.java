@@ -3533,6 +3533,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         int level = resolveWifiLevel(view, resId, icon, drawable);
+        alignSignalIconVertically(view);
         resizeWifiIconView(view);
         disableAncestorClipping(view, 6);
         int intrinsicHeight = resolveWifiIconIntrinsicHeight(view);

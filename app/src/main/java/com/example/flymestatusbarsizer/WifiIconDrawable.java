@@ -20,19 +20,26 @@ final class WifiIconDrawable extends Drawable {
     private static final int DRAW_ALPHA = 224;
     private static final float INACTIVE_ALPHA_RATIO = 0.3f;
     private static final float VIEWPORT_SIZE = 24f;
+    // Geometry follows the supplied vector, with a slightly tighter inner arc so
+    // the dot -> inner arc and inner arc -> outer arc gaps stay visually even.
     private static final float CENTER_X = 12f;
     private static final float CENTER_Y = 21.5f;
     private static final float DOT_RADIUS = 4.1f;
-    private static final float INNER_ARC_RADIUS = 10.1f;
+    private static final float INNER_ARC_RADIUS = 9.45f;
     private static final float OUTER_ARC_RADIUS = 16.1f;
     private static final float ARC_START_ANGLE = 225f;
     private static final float ARC_SWEEP_ANGLE = 90f;
     private static final float ARC_STROKE_WIDTH = 2.6f;
-    private static final float MOBILE_SIGNAL_VISIBLE_HEIGHT_RATIO =
-            Math.min(0.88f / 1.5f, 0.74f) * 0.96f;
-    private static final float WIFI_SOURCE_VISIBLE_HEIGHT_RATIO = OUTER_ARC_RADIUS / VIEWPORT_SIZE;
-    private static final float WIFI_DRAW_SCALE =
-            MOBILE_SIGNAL_VISIBLE_HEIGHT_RATIO / WIFI_SOURCE_VISIBLE_HEIGHT_RATIO;
+    private static final float DOT_EDGE_X = 9.1f;
+    private static final float DOT_EDGE_Y = 18.6f;
+    private static final float CONTENT_LEFT = 0.62f;
+    private static final float CONTENT_TOP = CENTER_Y - OUTER_ARC_RADIUS;
+    private static final float CONTENT_RIGHT = VIEWPORT_SIZE - CONTENT_LEFT;
+    private static final float CONTENT_BOTTOM = CENTER_Y;
+    private static final float CONTENT_WIDTH = CONTENT_RIGHT - CONTENT_LEFT;
+    private static final float CONTENT_HEIGHT = CONTENT_BOTTOM - CONTENT_TOP;
+    private static final float TARGET_VISIBLE_WIDTH_RATIO = 0.79f;
+    private static final float TARGET_VISIBLE_HEIGHT_RATIO = 0.56f;
 
     private static final Paint FILL_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint STROKE_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -87,10 +94,14 @@ final class WifiIconDrawable extends Drawable {
         float width = bounds.width();
         float height = bounds.height();
         float side = Math.min(width, height);
-        float unit = side * WIFI_DRAW_SCALE / VIEWPORT_SIZE;
-        float drawWidth = VIEWPORT_SIZE * unit;
-        float drawLeft = bounds.left + (width - drawWidth) / 2f;
-        float drawTop = bounds.top;
+        float unit = resolveDrawUnit(side);
+        if (unit <= 0f) {
+            return;
+        }
+        float visibleWidth = CONTENT_WIDTH * unit;
+        float visibleHeight = CONTENT_HEIGHT * unit;
+        float drawLeft = bounds.left + (width - visibleWidth) / 2f - CONTENT_LEFT * unit;
+        float drawTop = bounds.top + (height - visibleHeight) / 2f - CONTENT_TOP * unit;
 
         drawDot(canvas, drawLeft, drawTop, unit, resolveDotColor(activeColor, inactiveColor));
         drawArc(canvas, drawLeft, drawTop, unit,
@@ -170,7 +181,7 @@ final class WifiIconDrawable extends Drawable {
         float radius = DOT_RADIUS * unit;
         DOT_PATH.reset();
         DOT_PATH.moveTo(centerX, centerY);
-        DOT_PATH.lineTo(left + 9.1f * unit, top + 18.6f * unit);
+        DOT_PATH.lineTo(left + DOT_EDGE_X * unit, top + DOT_EDGE_Y * unit);
         setOvalRect(centerX, centerY, radius);
         DOT_PATH.arcTo(OVAL_RECT, ARC_START_ANGLE, ARC_SWEEP_ANGLE, false);
         DOT_PATH.close();
@@ -194,6 +205,15 @@ final class WifiIconDrawable extends Drawable {
 
     private static void setOvalRect(float centerX, float centerY, float radius) {
         OVAL_RECT.set(centerX - radius, centerY - radius, centerX + radius, centerY + radius);
+    }
+
+    private static float resolveDrawUnit(float side) {
+        if (side <= 0f) {
+            return 0f;
+        }
+        float targetVisibleWidth = side * TARGET_VISIBLE_WIDTH_RATIO;
+        float targetVisibleHeight = side * TARGET_VISIBLE_HEIGHT_RATIO;
+        return Math.min(targetVisibleWidth / CONTENT_WIDTH, targetVisibleHeight / CONTENT_HEIGHT);
     }
 
     private int resolveDotColor(int activeColor, int inactiveColor) {
