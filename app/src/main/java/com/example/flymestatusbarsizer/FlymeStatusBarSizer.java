@@ -3639,6 +3639,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         alignSignalIconVertically(view);
         resizeWifiIconView(view, config);
         syncWifiWrapperSize(view, config);
+        syncWifiContainerFootprint(view, config);
         disableAncestorClipping(view, 6);
         int intrinsicHeight = resolveWifiIconIntrinsicHeight(view);
         int intrinsicWidth = resolveWifiIconIntrinsicWidth(view, intrinsicHeight);
@@ -3705,6 +3706,55 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         wrapper.requestLayout();
         wrapper.invalidate();
+    }
+
+    private static void syncWifiContainerFootprint(ImageView view, ModuleConfig config) {
+        if (view == null) {
+            return;
+        }
+        int targetSize = resolveTargetWifiIconBoxSize(view, config);
+        syncWifiContainerHeight(findAncestorByIdName(view, "wifi_group"), targetSize);
+        View outerCombo = resolveOuterWifiComboView(view);
+        if (outerCombo != null) {
+            syncWifiContainerHeight(outerCombo, targetSize);
+        }
+    }
+
+    private static View resolveOuterWifiComboView(View view) {
+        View current = view;
+        View outerMost = null;
+        while (current != null) {
+            if ("wifi_combo".equals(getSystemUiIdName(current))) {
+                outerMost = current;
+            }
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return outerMost;
+    }
+
+    private static void syncWifiContainerHeight(View container, int targetHeight) {
+        if (container == null || targetHeight <= 0) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = container.getLayoutParams();
+        if (lp == null) {
+            return;
+        }
+        boolean changed = false;
+        if (lp.height != targetHeight) {
+            lp.height = targetHeight;
+            changed = true;
+        }
+        if (lp.width > 0 && lp.width < targetHeight) {
+            lp.width = targetHeight;
+            changed = true;
+        }
+        if (changed) {
+            container.setLayoutParams(lp);
+        }
+        container.requestLayout();
+        container.invalidate();
     }
 
     private static int resolveTargetWifiIconBoxSize(ImageView view, ModuleConfig config) {
