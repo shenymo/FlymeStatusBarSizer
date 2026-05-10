@@ -38,12 +38,11 @@ final class WifiIconDrawable extends Drawable {
     private static final float CONTENT_BOTTOM = CENTER_Y;
     private static final float CONTENT_WIDTH = CONTENT_RIGHT - CONTENT_LEFT;
     private static final float CONTENT_HEIGHT = CONTENT_BOTTOM - CONTENT_TOP;
-    private static final float TARGET_VISIBLE_WIDTH_RATIO = 0.79f;
-    private static final float TARGET_VISIBLE_HEIGHT_RATIO = 0.56f;
 
     private static final Paint FILL_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint STROKE_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Path DOT_PATH = new Path();
+    private static final RectF DRAW_RECT = new RectF();
     private static final RectF OVAL_RECT = new RectF();
 
     private final WeakReference<View> ownerViewRef;
@@ -91,17 +90,13 @@ final class WifiIconDrawable extends Drawable {
         int baseColor = SignalPreviewPainter.modulateColorAlpha(drawColor, alpha);
         int activeColor = SignalPreviewPainter.modulateColorAlpha(baseColor, DRAW_ALPHA);
         int inactiveColor = scaleAlpha(activeColor, INACTIVE_ALPHA_RATIO);
-        float width = bounds.width();
-        float height = bounds.height();
-        float side = Math.min(width, height);
-        float unit = resolveDrawUnit(side);
-        if (unit <= 0f) {
+        IconMetrics.resolveCenteredContentRect(bounds, CONTENT_WIDTH, CONTENT_HEIGHT, DRAW_RECT);
+        if (DRAW_RECT.isEmpty()) {
             return;
         }
-        float visibleWidth = CONTENT_WIDTH * unit;
-        float visibleHeight = CONTENT_HEIGHT * unit;
-        float drawLeft = bounds.left + (width - visibleWidth) / 2f - CONTENT_LEFT * unit;
-        float drawTop = bounds.top + (height - visibleHeight) / 2f - CONTENT_TOP * unit;
+        float unit = DRAW_RECT.width() / CONTENT_WIDTH;
+        float drawLeft = DRAW_RECT.left - CONTENT_LEFT * unit;
+        float drawTop = DRAW_RECT.top - CONTENT_TOP * unit;
 
         drawDot(canvas, drawLeft, drawTop, unit, resolveDotColor(activeColor, inactiveColor));
         drawArc(canvas, drawLeft, drawTop, unit,
@@ -205,15 +200,6 @@ final class WifiIconDrawable extends Drawable {
 
     private static void setOvalRect(float centerX, float centerY, float radius) {
         OVAL_RECT.set(centerX - radius, centerY - radius, centerX + radius, centerY + radius);
-    }
-
-    private static float resolveDrawUnit(float side) {
-        if (side <= 0f) {
-            return 0f;
-        }
-        float targetVisibleWidth = side * TARGET_VISIBLE_WIDTH_RATIO;
-        float targetVisibleHeight = side * TARGET_VISIBLE_HEIGHT_RATIO;
-        return Math.min(targetVisibleWidth / CONTENT_WIDTH, targetVisibleHeight / CONTENT_HEIGHT);
     }
 
     private int resolveDotColor(int activeColor, int inactiveColor) {

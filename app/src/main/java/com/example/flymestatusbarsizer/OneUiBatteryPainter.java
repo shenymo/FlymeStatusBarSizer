@@ -15,12 +15,14 @@ final class OneUiBatteryPainter {
     private static final int LOW_BATTERY_ORANGE = Color.rgb(255, 149, 0);
     private static final int EMPTY_BACKGROUND_ALPHA = 0x4D;
     private static final int RENDER_ALPHA = 224;
+    private static final float VISUAL_ASPECT_RATIO = 1.72f;
     private static final float BOLT_WIDTH_RATIO = 0.56f;
     private static final float BOLT_GAP_RATIO = 0.05f;
     private static final float BOLT_TRAILING_PADDING_RATIO = 0.03f;
     private static final Paint BODY_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint CUTOUT_TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static final RectF VISUAL_BOUNDS = new RectF();
     private static final RectF BODY = new RectF();
     private static final RectF BOLT = new RectF();
     private static final RectF BODY_CONTENT = new RectF();
@@ -60,11 +62,11 @@ final class OneUiBatteryPainter {
 
         int clampedLevel = Math.max(0, Math.min(100, level));
         int effectiveFillColor = resolveLevelFillColor(clampedLevel, charging, fillColor);
-        float side = Math.min(bounds.width(), bounds.height());
-        float visualWidth = side * (24f / 24f);
-        float visualHeight = visualWidth / 1.72f;
-        float left = bounds.left;
-        float top = bounds.top + (bounds.height() - visualHeight) / 2f;
+        IconMetrics.resolveStartContentRect(bounds, VISUAL_ASPECT_RATIO, 1f, VISUAL_BOUNDS);
+        float visualWidth = VISUAL_BOUNDS.width();
+        float visualHeight = VISUAL_BOUNDS.height();
+        float left = VISUAL_BOUNDS.left;
+        float top = VISUAL_BOUNDS.top;
         float radius = visualHeight * 0.5f;
 
         BODY.set(left, top, left + visualWidth, top + visualHeight);
@@ -85,7 +87,7 @@ final class OneUiBatteryPainter {
         int renderedTextColor = withFixedAlpha(textColor, RENDER_ALPHA);
         int renderedBoltColor = withFixedAlpha(resolveBoltColor(pluggedIn, charging, fillColor), RENDER_ALPHA);
         if (showBolt) {
-            float boltLeft = BODY.right + Math.max(1f, side * BOLT_GAP_RATIO);
+            float boltLeft = BODY.right + Math.max(1f, visualWidth * BOLT_GAP_RATIO);
             BOLT.set(boltLeft, BODY.top, bounds.right, BODY.bottom);
         }
         if (hollow) {

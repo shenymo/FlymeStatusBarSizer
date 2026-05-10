@@ -17,8 +17,6 @@ final class SignalPreviewPainter {
     private static final int SIGNAL_DRAW_ALPHA = 224;
     private static final float INACTIVE_SIGNAL_ALPHA_RATIO = 0.3f;
     private static final float SIGNAL_ASPECT_RATIO = 1.5f;
-    private static final float BASELINE_OFFSET_PX = 1f;
-    private static final float CORE_BOX_RATIO = 24f / 24f;
     private static final float MOBILE_TYPE_GAP_RATIO = 0.07f;
     private static final float MOBILE_TYPE_5GA_TRAILING_PADDING_RATIO = 0.08f;
     private static final Paint PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -26,6 +24,7 @@ final class SignalPreviewPainter {
     private static final Paint BADGE_SUBSCRIPT_TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final RectF BAR = new RectF();
     private static final RectF DOT = new RectF();
+    private static final RectF VISUAL_CONTENT = new RectF();
     private static final Rect SIGNAL_BOX = new Rect();
     private static final Rect BADGE_MAIN_TEXT_BOUNDS = new Rect();
     private static final Rect BADGE_SUB_TEXT_BOUNDS = new Rect();
@@ -426,17 +425,12 @@ final class SignalPreviewPainter {
     }
 
     private static SignalGeometry buildGeometry(Rect bounds, boolean mergedDual) {
-        float side = Math.min(bounds.width(), bounds.height());
-        float coreSide = side * CORE_BOX_RATIO;
-        float coreLeft = bounds.left + (bounds.width() - coreSide) / 2f;
-        float coreTop = bounds.top + (bounds.height() - coreSide) / 2f;
-        float maxVisualWidth = coreSide * (mergedDual ? 0.9f : 0.88f);
-        float maxVisualHeight = coreSide * (mergedDual ? 0.78f : 0.74f);
-        float visualWidth = Math.min(maxVisualWidth, maxVisualHeight * SIGNAL_ASPECT_RATIO);
-        float visualHeight = visualWidth / SIGNAL_ASPECT_RATIO;
-        float visualLeft = coreLeft + (coreSide - visualWidth) / 2f;
-        float visualTop = coreTop + (coreSide - visualHeight) / 2f;
-        float baselineY = visualTop + visualHeight - BASELINE_OFFSET_PX;
+        IconMetrics.resolveCenteredContentRect(bounds, SIGNAL_ASPECT_RATIO, 1f, VISUAL_CONTENT);
+        float visualWidth = VISUAL_CONTENT.width();
+        float visualHeight = VISUAL_CONTENT.height();
+        float visualLeft = VISUAL_CONTENT.left;
+        float visualTop = VISUAL_CONTENT.top;
+        float baselineY = IconMetrics.resolveBaselineY(VISUAL_CONTENT);
 
         SignalGeometry geometry = new SignalGeometry();
         geometry.unitX = visualWidth;
