@@ -7,7 +7,7 @@ import android.graphics.RectF;
 final class IconMetrics {
     private static final float VISUAL_MAX_WIDTH_RATIO = 1f;
     private static final float VISUAL_MAX_HEIGHT_RATIO = 0.56f;
-    private static final float BASELINE_OFFSET_PX = 1f;
+    private static final float BASELINE_OFFSET_PX = 0f;
     private static final float SIGNAL_BOX_ASPECT_RATIO = 1f;
     private static final float WIFI_BOX_ASPECT_RATIO = 1f;
     private static final float SHARED_ICON_BOX_DP = 22f;
