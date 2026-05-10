@@ -2266,7 +2266,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         boolean showBolt = state.showBolt;
         int width = iosBatteryMeasuredWidthWithMergedIcons(view, config, showBolt);
         int height = iosBatteryMeasuredHeightWithMergedIcons(view, config);
-        int marginStart = resolveBatteryMarginStart(view, config);
+        int marginStart = resolveEffectiveBatteryMarginStart(view, state, config);
         int marginEnd = resolveBatteryMarginEnd(view, config);
         long layoutSignature = getBatteryLayoutSignature(config, showBolt, width, height, marginStart, marginEnd);
         if (force || !state.hasLayoutSignature || state.layoutSignature != layoutSignature) {
@@ -2486,6 +2486,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         return IconMetrics.resolveBatteryMarginStart(
                 batteryView == null ? null : batteryView.getContext(),
                 resolveStatusBarIconScale(config));
+    }
+
+    private static int resolveEffectiveBatteryMarginStart(View batteryView, BatteryViewState state,
+            ModuleConfig config) {
+        if (state != null && state.originalMarginsCaptured
+                && state.originalMarginStart != Integer.MIN_VALUE) {
+            return state.originalMarginStart;
+        }
+        return resolveBatteryMarginStart(batteryView, config);
     }
 
     private static int resolveBatteryMarginEnd(View batteryView, ModuleConfig config) {

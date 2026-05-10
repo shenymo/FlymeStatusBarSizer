@@ -17,6 +17,8 @@ final class SignalPreviewPainter {
     private static final int SIGNAL_DRAW_ALPHA = 224;
     private static final float INACTIVE_SIGNAL_ALPHA_RATIO = 0.3f;
     private static final float SIGNAL_ASPECT_RATIO = 1.5f;
+    private static final float[] BAR_HEIGHT_RATIOS =
+            new float[]{0.375f, 0.5833333f, 0.7916667f, 1f};
     private static final float MOBILE_TYPE_GAP_RATIO = 0.07f;
     private static final float MOBILE_TYPE_5GA_TRAILING_PADDING_RATIO = 0.08f;
     private static final Paint PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -447,23 +449,23 @@ final class SignalPreviewPainter {
             geometry.dotCenterY = baselineY - dotRadius;
             geometry.baseBottom = baselineY - dotRadius * 2f - visualHeight * 0.08f;
             float barAreaHeight = Math.max(1f, geometry.baseBottom - visualTop);
-            geometry.heights = new float[]{
-                    barAreaHeight * 0.36f,
-                    barAreaHeight * 0.56f,
-                    barAreaHeight * 0.76f,
-                    barAreaHeight * 0.96f
-            };
+            geometry.heights = buildBarHeights(barAreaHeight);
         } else {
             geometry.baseBottom = baselineY;
             geometry.dotCenterY = baselineY;
-            geometry.heights = new float[]{
-                    visualHeight * 0.36f,
-                    visualHeight * 0.56f,
-                    visualHeight * 0.76f,
-                    visualHeight * 0.96f
-            };
+            geometry.heights = buildBarHeights(visualHeight);
         }
         return geometry;
+    }
+
+    private static float[] buildBarHeights(float maxHeight) {
+        float safeMaxHeight = Math.max(1f, maxHeight);
+        return new float[]{
+                safeMaxHeight * BAR_HEIGHT_RATIOS[0],
+                safeMaxHeight * BAR_HEIGHT_RATIOS[1],
+                safeMaxHeight * BAR_HEIGHT_RATIOS[2],
+                safeMaxHeight * BAR_HEIGHT_RATIOS[3]
+        };
     }
 
     private static final class SignalGeometry {
