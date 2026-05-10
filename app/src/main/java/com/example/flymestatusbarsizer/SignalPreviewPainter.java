@@ -24,7 +24,7 @@ final class SignalPreviewPainter {
     private static final Paint BADGE_SUBSCRIPT_TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final RectF BAR = new RectF();
     private static final RectF DOT = new RectF();
-    private static final RectF VISUAL_CONTENT = new RectF();
+    private static final IconMetrics.VisualCanvas VISUAL_CANVAS = new IconMetrics.VisualCanvas();
     private static final Rect SIGNAL_BOX = new Rect();
     private static final Rect BADGE_MAIN_TEXT_BOUNDS = new Rect();
     private static final Rect BADGE_SUB_TEXT_BOUNDS = new Rect();
@@ -425,12 +425,16 @@ final class SignalPreviewPainter {
     }
 
     private static SignalGeometry buildGeometry(Rect bounds, boolean mergedDual) {
-        IconMetrics.resolveCenteredContentRect(bounds, SIGNAL_ASPECT_RATIO, 1f, VISUAL_CONTENT);
-        float visualWidth = VISUAL_CONTENT.width();
-        float visualHeight = VISUAL_CONTENT.height();
-        float visualLeft = VISUAL_CONTENT.left;
-        float visualTop = VISUAL_CONTENT.top;
-        float baselineY = IconMetrics.resolveBaselineY(VISUAL_CONTENT);
+        IconMetrics.resolveCenteredVisualCanvas(bounds, SIGNAL_ASPECT_RATIO, VISUAL_CANVAS);
+        if (VISUAL_CANVAS.isEmpty()) {
+            return null;
+        }
+        RectF visualBounds = VISUAL_CANVAS.rect;
+        float visualWidth = visualBounds.width();
+        float visualHeight = visualBounds.height();
+        float visualLeft = visualBounds.left;
+        float visualTop = visualBounds.top;
+        float baselineY = VISUAL_CANVAS.baselineY;
 
         SignalGeometry geometry = new SignalGeometry();
         geometry.unitX = visualWidth;

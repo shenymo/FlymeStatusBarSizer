@@ -22,7 +22,7 @@ final class IosBatteryPainter {
     private static final Paint PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint CUTOUT_TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private static final RectF VISUAL_BOUNDS = new RectF();
+    private static final IconMetrics.VisualCanvas VISUAL_CANVAS = new IconMetrics.VisualCanvas();
     private static final RectF BODY = new RectF();
     private static final RectF CAP = new RectF();
     private static final RectF BOLT = new RectF();
@@ -68,21 +68,26 @@ final class IosBatteryPainter {
 
         int clampedLevel = Math.max(0, Math.min(100, level));
         int effectiveFillColor = resolveLevelFillColor(clampedLevel, charging, fillColor);
-        IconMetrics.resolveStartContentRect(bounds, VISUAL_ASPECT_RATIO, 1f, VISUAL_BOUNDS);
-        float visualWidth = VISUAL_BOUNDS.width();
-        float visualHeight = VISUAL_BOUNDS.height();
+        IconMetrics.resolveStartVisualCanvas(bounds, VISUAL_ASPECT_RATIO, VISUAL_CANVAS);
+        if (VISUAL_CANVAS.isEmpty()) {
+            return;
+        }
+        RectF visualBounds = VISUAL_CANVAS.rect;
+        float visualWidth = visualBounds.width();
+        float visualHeight = visualBounds.height();
         float capWidth = Math.max(1.2f, visualWidth * 0.08f);
         float gap = Math.max(0.8f, visualWidth * 0.025f);
         float bodyWidth = visualWidth - capWidth - gap;
         float bodyHeight = visualHeight;
-        float left = VISUAL_BOUNDS.left;
-        float top = VISUAL_BOUNDS.top;
+        float left = visualBounds.left;
+        float top = visualBounds.top;
+        float bottom = VISUAL_CANVAS.baselineY;
         float radius = bodyHeight * 0.28f;
         float capRadius = capWidth * 0.45f;
 
-        BODY.set(left, top, left + bodyWidth, top + bodyHeight);
-        CAP.set(BODY.right + gap, BODY.top + bodyHeight * 0.28f,
-                BODY.right + gap + capWidth, BODY.bottom - bodyHeight * 0.28f);
+        BODY.set(left, top, left + bodyWidth, bottom);
+        CAP.set(BODY.right + gap, BODY.top + BODY.height() * 0.28f,
+                BODY.right + gap + capWidth, BODY.bottom - BODY.height() * 0.28f);
         BOLT.setEmpty();
         BODY_CONTENT.set(BODY);
         CAP_CONTENT.set(CAP);

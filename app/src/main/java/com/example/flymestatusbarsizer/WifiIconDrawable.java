@@ -39,13 +39,19 @@ final class WifiIconDrawable extends Drawable {
     private static final float CONTENT_BOTTOM = CENTER_Y;
     private static final float CONTENT_WIDTH = CONTENT_RIGHT - CONTENT_LEFT;
     private static final float CONTENT_HEIGHT = CONTENT_BOTTOM - CONTENT_TOP;
-    private static final float WIFI_CONTENT_SCALE = 0.88f;
-    private static final float WIFI_BOTTOM_INSET_RATIO = 0f;
+    // Fold the previous WIFI-only shrink patch into the normalized viewport so the glyph now
+    // draws directly inside the shared visual canvas while keeping its intended internal padding.
+    private static final float VIEWPORT_SCALE = 1f / 0.88f;
+    private static final float VIEWPORT_WIDTH = CONTENT_WIDTH * VIEWPORT_SCALE;
+    private static final float VIEWPORT_HEIGHT = CONTENT_HEIGHT * VIEWPORT_SCALE;
+    private static final float VIEWPORT_LEFT = CONTENT_LEFT - (VIEWPORT_WIDTH - CONTENT_WIDTH) * 0.5f;
+    private static final float VIEWPORT_TOP = CONTENT_BOTTOM - VIEWPORT_HEIGHT;
+    private static final float VISUAL_ASPECT_RATIO = VIEWPORT_WIDTH / VIEWPORT_HEIGHT;
 
     private static final Paint FILL_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint STROKE_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Path DOT_PATH = new Path();
-    private static final RectF DRAW_RECT = new RectF();
+    private static final IconMetrics.VisualCanvas VISUAL_CANVAS = new IconMetrics.VisualCanvas();
     private static final RectF OVAL_RECT = new RectF();
 
     private final WeakReference<View> ownerViewRef;
@@ -93,24 +99,13 @@ final class WifiIconDrawable extends Drawable {
         int baseColor = SignalPreviewPainter.modulateColorAlpha(drawColor, alpha);
         int activeColor = SignalPreviewPainter.modulateColorAlpha(baseColor, DRAW_ALPHA);
         int inactiveColor = scaleAlpha(activeColor, INACTIVE_ALPHA_RATIO);
-        IconMetrics.resolveCenteredContentRect(bounds, CONTENT_WIDTH, CONTENT_HEIGHT, DRAW_RECT);
-        if (DRAW_RECT.isEmpty()) {
+        IconMetrics.resolveCenteredVisualCanvas(bounds, VISUAL_ASPECT_RATIO, VISUAL_CANVAS);
+        if (VISUAL_CANVAS.isEmpty()) {
             return;
         }
-        if (WIFI_CONTENT_SCALE != 1f) {
-            float insetX = DRAW_RECT.width() * (1f - WIFI_CONTENT_SCALE) * 0.5f;
-            float insetY = DRAW_RECT.height() * (1f - WIFI_CONTENT_SCALE) * 0.5f;
-            DRAW_RECT.inset(insetX, insetY);
-        }
-        float baselineY = IconMetrics.resolveBaselineY(DRAW_RECT);
-        float targetBottom = baselineY - DRAW_RECT.height() * WIFI_BOTTOM_INSET_RATIO;
-        float verticalShift = targetBottom - DRAW_RECT.bottom;
-        if (verticalShift != 0f) {
-            DRAW_RECT.offset(0f, verticalShift);
-        }
-        float unit = DRAW_RECT.width() / CONTENT_WIDTH;
-        float drawLeft = DRAW_RECT.left - CONTENT_LEFT * unit;
-        float drawTop = DRAW_RECT.top - CONTENT_TOP * unit;
+        float unit = VISUAL_CANVAS.rect.height() / VIEWPORT_HEIGHT;
+        float drawLeft = VISUAL_CANVAS.rect.left - VIEWPORT_LEFT * unit;
+        float drawTop = VISUAL_CANVAS.rect.top - VIEWPORT_TOP * unit;
 
         drawDot(canvas, drawLeft, drawTop, unit, resolveDotColor(activeColor, inactiveColor));
         drawArc(canvas, drawLeft, drawTop, unit,

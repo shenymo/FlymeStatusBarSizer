@@ -22,7 +22,7 @@ final class OneUiBatteryPainter {
     private static final Paint BODY_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint CUTOUT_TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private static final RectF VISUAL_BOUNDS = new RectF();
+    private static final IconMetrics.VisualCanvas VISUAL_CANVAS = new IconMetrics.VisualCanvas();
     private static final RectF BODY = new RectF();
     private static final RectF BOLT = new RectF();
     private static final RectF BODY_CONTENT = new RectF();
@@ -62,14 +62,19 @@ final class OneUiBatteryPainter {
 
         int clampedLevel = Math.max(0, Math.min(100, level));
         int effectiveFillColor = resolveLevelFillColor(clampedLevel, charging, fillColor);
-        IconMetrics.resolveStartContentRect(bounds, VISUAL_ASPECT_RATIO, 1f, VISUAL_BOUNDS);
-        float visualWidth = VISUAL_BOUNDS.width();
-        float visualHeight = VISUAL_BOUNDS.height();
-        float left = VISUAL_BOUNDS.left;
-        float top = VISUAL_BOUNDS.top;
+        IconMetrics.resolveStartVisualCanvas(bounds, VISUAL_ASPECT_RATIO, VISUAL_CANVAS);
+        if (VISUAL_CANVAS.isEmpty()) {
+            return;
+        }
+        RectF visualBounds = VISUAL_CANVAS.rect;
+        float visualWidth = visualBounds.width();
+        float visualHeight = visualBounds.height();
+        float left = visualBounds.left;
+        float top = visualBounds.top;
+        float bottom = VISUAL_CANVAS.baselineY;
         float radius = visualHeight * 0.5f;
 
-        BODY.set(left, top, left + visualWidth, top + visualHeight);
+        BODY.set(left, top, left + visualWidth, bottom);
         BOLT.setEmpty();
         BODY_CONTENT.set(BODY);
         float contentRadius = radius;
