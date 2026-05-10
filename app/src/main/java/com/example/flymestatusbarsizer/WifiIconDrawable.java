@@ -19,7 +19,6 @@ final class WifiIconDrawable extends Drawable {
     private static final int MAX_LEVEL = 4;
     private static final int DRAW_ALPHA = 224;
     private static final float INACTIVE_ALPHA_RATIO = 0.3f;
-    private static final float VIEWPORT_SIZE = 24f;
     // Keep the three WIFI bands on an equal spacing grid so the gaps read as uniform.
     private static final float CENTER_X = 12f;
     private static final float CENTER_Y = 21.5f;
@@ -33,20 +32,20 @@ final class WifiIconDrawable extends Drawable {
     private static final float DIAGONAL_PROJECTION = 0.70710677f;
     private static final float DOT_EDGE_X = 9.1f;
     private static final float DOT_EDGE_Y = 18.6f;
-    private static final float CONTENT_LEFT = CENTER_X - OUTER_ARC_RADIUS * DIAGONAL_PROJECTION;
-    private static final float CONTENT_TOP = CENTER_Y - OUTER_ARC_RADIUS;
-    private static final float CONTENT_RIGHT = VIEWPORT_SIZE - CONTENT_LEFT;
-    private static final float CONTENT_BOTTOM = CENTER_Y;
-    private static final float CONTENT_WIDTH = CONTENT_RIGHT - CONTENT_LEFT;
-    private static final float CONTENT_HEIGHT = CONTENT_BOTTOM - CONTENT_TOP;
-    // Fold the previous WIFI-only shrink patch into the normalized viewport so the glyph now
-    // draws directly inside the shared visual canvas while keeping its intended internal padding.
-    private static final float VIEWPORT_SCALE = 1f / 0.88f;
-    private static final float VIEWPORT_WIDTH = CONTENT_WIDTH * VIEWPORT_SCALE;
-    private static final float VIEWPORT_HEIGHT = CONTENT_HEIGHT * VIEWPORT_SCALE;
-    private static final float VIEWPORT_LEFT = CONTENT_LEFT - (VIEWPORT_WIDTH - CONTENT_WIDTH) * 0.5f;
-    private static final float VIEWPORT_TOP = CONTENT_BOTTOM - VIEWPORT_HEIGHT;
-    private static final float VISUAL_ASPECT_RATIO = VIEWPORT_WIDTH / VIEWPORT_HEIGHT;
+    // Normalize against the actual painted bounds, not the arc centerline bounds. This keeps
+    // WIFI's visible top/bottom within the same visual height as the battery glyph after scaling.
+    private static final float PAINTED_HALF_STROKE = ARC_STROKE_WIDTH * 0.5f;
+    private static final float PAINTED_LEFT =
+            CENTER_X - (OUTER_ARC_RADIUS + PAINTED_HALF_STROKE) * DIAGONAL_PROJECTION;
+    private static final float PAINTED_TOP = CENTER_Y - OUTER_ARC_RADIUS - PAINTED_HALF_STROKE;
+    private static final float PAINTED_RIGHT =
+            CENTER_X + (OUTER_ARC_RADIUS + PAINTED_HALF_STROKE) * DIAGONAL_PROJECTION;
+    private static final float PAINTED_BOTTOM = CENTER_Y + DOT_RADIUS;
+    private static final float PAINTED_WIDTH = PAINTED_RIGHT - PAINTED_LEFT;
+    private static final float PAINTED_HEIGHT = PAINTED_BOTTOM - PAINTED_TOP;
+    private static final float HORIZONTAL_SCALE = 0.84f;
+    private static final float VISUAL_ASPECT_RATIO =
+            (PAINTED_WIDTH * HORIZONTAL_SCALE) / PAINTED_HEIGHT;
 
     private static final Paint FILL_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint STROKE_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -79,6 +78,11 @@ final class WifiIconDrawable extends Drawable {
                 && this.intrinsicHeight == Math.max(1, intrinsicHeight);
     }
 
+    static int resolveIntrinsicWidth(int intrinsicHeight) {
+        int safeHeight = Math.max(1, intrinsicHeight);
+        return Math.max(1, Math.round(safeHeight * VISUAL_ASPECT_RATIO));
+    }
+
     boolean setLevelValue(int level) {
         int sanitized = sanitizeLevel(level);
         if (this.level == sanitized) {
@@ -103,14 +107,15 @@ final class WifiIconDrawable extends Drawable {
         if (VISUAL_CANVAS.isEmpty()) {
             return;
         }
-        float unit = VISUAL_CANVAS.rect.height() / VIEWPORT_HEIGHT;
-        float drawLeft = VISUAL_CANVAS.rect.left - VIEWPORT_LEFT * unit;
-        float drawTop = VISUAL_CANVAS.rect.top - VIEWPORT_TOP * unit;
+        float unitY = VISUAL_CANVAS.rect.height() / PAINTED_HEIGHT;
+        float unitX = unitY * HORIZONTAL_SCALE;
+        float drawLeft = VISUAL_CANVAS.rect.left - PAINTED_LEFT * unitX;
+        float drawTop = VISUAL_CANVAS.rect.top - PAINTED_TOP * unitY;
 
-        drawDot(canvas, drawLeft, drawTop, unit, resolveDotColor(activeColor, inactiveColor));
-        drawArc(canvas, drawLeft, drawTop, unit,
+        drawDot(canvas, drawLeft, drawTop, unitX, unitY, resolveDotColor(activeColor, inactiveColor));
+        drawArc(canvas, drawLeft, drawTop, unitX, unitY,
                 INNER_ARC_RADIUS, resolveInnerArcColor(activeColor, inactiveColor));
-        drawArc(canvas, drawLeft, drawTop, unit,
+        drawArc(canvas, drawLeft, drawTop, unitX, unitY,
                 OUTER_ARC_RADIUS, resolveOuterArcColor(activeColor, inactiveColor));
     }
 
@@ -179,14 +184,15 @@ final class WifiIconDrawable extends Drawable {
         return true;
     }
 
-    private void drawDot(Canvas canvas, float left, float top, float unit, int color) {
-        float centerX = left + CENTER_X * unit;
-        float centerY = top + CENTER_Y * unit;
-        float radius = DOT_RADIUS * unit;
+    private void drawDot(Canvas canvas, float left, float top, float unitX, float unitY, int color) {
+        float centerX = left + CENTER_X * unitX;
+        float centerY = top + CENTER_Y * unitY;
+        float radiusX = DOT_RADIUS * unitX;
+        float radiusY = DOT_RADIUS * unitY;
         DOT_PATH.reset();
         DOT_PATH.moveTo(centerX, centerY);
-        DOT_PATH.lineTo(left + DOT_EDGE_X * unit, top + DOT_EDGE_Y * unit);
-        setOvalRect(centerX, centerY, radius);
+        DOT_PATH.lineTo(left + DOT_EDGE_X * unitX, top + DOT_EDGE_Y * unitY);
+        setOvalRect(centerX, centerY, radiusX, radiusY);
         DOT_PATH.arcTo(OVAL_RECT, ARC_START_ANGLE, ARC_SWEEP_ANGLE, false);
         DOT_PATH.close();
         FILL_PAINT.setColor(color);
@@ -195,11 +201,12 @@ final class WifiIconDrawable extends Drawable {
         FILL_PAINT.setColorFilter(null);
     }
 
-    private void drawArc(Canvas canvas, float left, float top, float unit, float radius, int color) {
-        float strokeWidth = ARC_STROKE_WIDTH * unit;
-        float centerX = left + CENTER_X * unit;
-        float centerY = top + CENTER_Y * unit;
-        setOvalRect(centerX, centerY, radius * unit);
+    private void drawArc(Canvas canvas, float left, float top, float unitX, float unitY,
+            float radius, int color) {
+        float strokeWidth = ARC_STROKE_WIDTH * unitY;
+        float centerX = left + CENTER_X * unitX;
+        float centerY = top + CENTER_Y * unitY;
+        setOvalRect(centerX, centerY, radius * unitX, radius * unitY);
         STROKE_PAINT.setStrokeWidth(strokeWidth);
         STROKE_PAINT.setColor(color);
         STROKE_PAINT.setColorFilter(colorFilter);
@@ -207,8 +214,8 @@ final class WifiIconDrawable extends Drawable {
         STROKE_PAINT.setColorFilter(null);
     }
 
-    private static void setOvalRect(float centerX, float centerY, float radius) {
-        OVAL_RECT.set(centerX - radius, centerY - radius, centerX + radius, centerY + radius);
+    private static void setOvalRect(float centerX, float centerY, float radiusX, float radiusY) {
+        OVAL_RECT.set(centerX - radiusX, centerY - radiusY, centerX + radiusX, centerY + radiusY);
     }
 
     private int resolveDotColor(int activeColor, int inactiveColor) {

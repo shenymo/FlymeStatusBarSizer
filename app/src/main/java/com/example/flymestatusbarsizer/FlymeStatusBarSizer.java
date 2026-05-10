@@ -72,6 +72,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, BatteryViewState> BATTERY_VIEW_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_BATTERY_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_STATUS_BAR_ICON_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<ImageView, Long> WIFI_LAYOUT_SIGNATURES = new WeakHashMap<>();
     private static final WeakHashMap<Drawable, View> SIGNAL_DRAWABLE_OWNERS = new WeakHashMap<>();
     private static final WeakHashMap<View, SignalViewState> SIGNAL_VIEW_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, WeakReference<View>> SIGNAL_TINT_SOURCE_CACHE =
@@ -3646,11 +3647,16 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         int level = resolveWifiLevel(view, resId, icon, drawable);
         alignSignalIconVertically(view);
-        resizeWifiIconView(view, config);
-        syncWifiWrapperSize(view, config);
-        disableAncestorClipping(view, 6);
         int intrinsicHeight = resolveWifiIconIntrinsicHeight(view);
         int intrinsicWidth = resolveWifiIconIntrinsicWidth(view, intrinsicHeight);
+        long layoutSignature = getWifiLayoutSignature(config, intrinsicWidth, intrinsicHeight);
+        Long previousSignature = WIFI_LAYOUT_SIGNATURES.get(view);
+        if (previousSignature == null || previousSignature.longValue() != layoutSignature) {
+            resizeWifiIconView(view, config);
+            syncWifiWrapperSize(view, config);
+            disableAncestorClipping(view, 6);
+            WIFI_LAYOUT_SIGNATURES.put(view, layoutSignature);
+        }
         Drawable current = view.getDrawable();
         if (current instanceof WifiIconDrawable) {
             WifiIconDrawable wifiDrawable = (WifiIconDrawable) current;
@@ -3674,14 +3680,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (lp == null) {
             return;
         }
-        int targetSize = resolveTargetWifiIconBoxSize(view, config);
+        int targetHeight = resolveTargetWifiIconBoxSize(view, config);
+        int targetWidth = resolveWifiIconIntrinsicWidth(view, targetHeight);
         boolean changed = false;
-        if (lp.width != targetSize) {
-            lp.width = targetSize;
+        if (lp.width != targetWidth) {
+            lp.width = targetWidth;
             changed = true;
         }
-        if (lp.height != targetSize) {
-            lp.height = targetSize;
+        if (lp.height != targetHeight) {
+            lp.height = targetHeight;
             changed = true;
         }
         if (changed) {
@@ -3699,14 +3706,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (lp == null) {
             return;
         }
-        int targetSize = resolveTargetWifiIconBoxSize(view, config);
+        int targetHeight = resolveTargetWifiIconBoxSize(view, config);
+        int targetWidth = resolveWifiIconIntrinsicWidth(view, targetHeight);
         boolean changed = false;
-        if (lp.width != targetSize) {
-            lp.width = targetSize;
+        if (lp.width != targetWidth) {
+            lp.width = targetWidth;
             changed = true;
         }
-        if (lp.height != targetSize) {
-            lp.height = targetSize;
+        if (lp.height != targetHeight) {
+            lp.height = targetHeight;
             changed = true;
         }
         if (changed) {
@@ -3731,7 +3739,17 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int resolveWifiIconIntrinsicWidth(ImageView view, int intrinsicHeight) {
-        return Math.max(1, intrinsicHeight);
+        return WifiIconDrawable.resolveIntrinsicWidth(intrinsicHeight);
+    }
+
+    private static long getWifiLayoutSignature(ModuleConfig config, int intrinsicWidth, int intrinsicHeight) {
+        long signature = 17L;
+        signature = signature * 31L + SettingsStore.normalizeScalePercent(config == null
+                ? SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT
+                : config.statusBarIconScalePercent);
+        signature = signature * 31L + intrinsicWidth;
+        signature = signature * 31L + intrinsicHeight;
+        return signature;
     }
 
     private static int resolveWifiLevel(ImageView view, int resId, Icon icon, Drawable drawable) {
