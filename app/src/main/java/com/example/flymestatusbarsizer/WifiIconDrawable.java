@@ -252,17 +252,16 @@ final class WifiIconDrawable extends Drawable {
             return;
         }
         path.reset();
-        path.moveTo(109f, 429f);
-        path.lineTo(24f, 344f);
-        path.quadTo(116f, 255f, 234f, 207.5f);
-        path.quadTo(352f, 160f, 480f, 160f);
-        path.quadTo(608f, 160f, 726f, 207.5f);
-        path.quadTo(844f, 255f, 936f, 344f);
-        path.lineTo(851f, 429f);
-        path.quadTo(776f, 357f, 680f, 318.5f);
-        path.quadTo(584f, 280f, 480f, 280f);
-        path.quadTo(376f, 280f, 280f, 318.5f);
-        path.quadTo(184f, 357f, 109f, 429f);
+        path.moveTo(6.982f, 14.373f);
+        path.cubicTo(7.283f, 14.674f, 7.691f, 14.674f, 7.992f, 14.352f);
+        path.cubicTo(13.02f, 9.109f, 19.852f, 6.209f, 27.457f, 6.209f);
+        path.cubicTo(35.084f, 6.209f, 42.045f, 9.002f, 46.943f, 14.352f);
+        path.cubicTo(47.244f, 14.674f, 47.652f, 14.674f, 47.953f, 14.373f);
+        path.lineTo(50.359f, 11.967f);
+        path.cubicTo(50.617f, 11.688f, 50.617f, 11.301f, 50.381f, 11f);
+        path.cubicTo(45.611f, 5.199f, 36.48f, 1.117f, 27.457f, 1.117f);
+        path.cubicTo(18.455f, 1.117f, 9.303f, 5.178f, 4.555f, 11f);
+        path.cubicTo(4.318f, 11.301f, 4.34f, 11.688f, 4.576f, 11.967f);
         path.close();
     }
 
@@ -271,17 +270,16 @@ final class WifiIconDrawable extends Drawable {
             return;
         }
         path.reset();
-        path.moveTo(278f, 598f);
-        path.lineTo(194f, 514f);
-        path.quadTo(253f, 459f, 326.5f, 429.5f);
-        path.quadTo(400f, 400f, 480f, 400f);
-        path.quadTo(560f, 400f, 633.5f, 429.5f);
-        path.quadTo(707f, 459f, 766f, 514f);
-        path.lineTo(682f, 598f);
-        path.quadTo(640f, 560f, 588.5f, 540f);
-        path.quadTo(537f, 520f, 480f, 520f);
-        path.quadTo(423f, 520f, 371.5f, 540f);
-        path.quadTo(320f, 560f, 278f, 598f);
+        path.moveTo(15.576f, 23.01f);
+        path.cubicTo(15.898f, 23.311f, 16.242f, 23.311f, 16.607f, 22.924f);
+        path.cubicTo(19.207f, 20.131f, 23.439f, 18.24f, 27.457f, 18.262f);
+        path.cubicTo(31.496f, 18.24f, 35.729f, 20.131f, 38.328f, 22.924f);
+        path.cubicTo(38.693f, 23.311f, 39.037f, 23.311f, 39.359f, 23.01f);
+        path.lineTo(42.131f, 20.281f);
+        path.cubicTo(42.367f, 20.023f, 42.41f, 19.68f, 42.174f, 19.4f);
+        path.cubicTo(39.188f, 15.684f, 33.387f, 13.191f, 27.457f, 13.191f);
+        path.cubicTo(21.549f, 13.191f, 15.77f, 15.705f, 12.762f, 19.4f);
+        path.cubicTo(12.525f, 19.68f, 12.568f, 20.023f, 12.805f, 20.281f);
         path.close();
     }
 
@@ -290,15 +288,15 @@ final class WifiIconDrawable extends Drawable {
             return;
         }
         path.reset();
-        path.moveTo(423.5f, 776.5f);
-        path.quadTo(400f, 753f, 400f, 720f);
-        path.quadTo(400f, 687f, 423.5f, 663.5f);
-        path.quadTo(447f, 640f, 480f, 640f);
-        path.quadTo(513f, 640f, 536.5f, 663.5f);
-        path.quadTo(560f, 687f, 560f, 720f);
-        path.quadTo(560f, 753f, 536.5f, 776.5f);
-        path.quadTo(513f, 800f, 480f, 800f);
-        path.quadTo(447f, 800f, 423.5f, 776.5f);
+        path.moveTo(27.457f, 34.332f);
+        path.cubicTo(27.758f, 34.332f, 28.037f, 34.139f, 28.725f, 33.494f);
+        path.lineTo(33.58f, 28.832f);
+        path.cubicTo(33.816f, 28.617f, 33.881f, 28.359f, 33.623f, 28.037f);
+        path.cubicTo(32.527f, 26.555f, 29.992f, 25.244f, 27.457f, 25.244f);
+        path.cubicTo(24.943f, 25.244f, 22.408f, 26.555f, 21.313f, 28.037f);
+        path.cubicTo(21.098f, 28.359f, 21.119f, 28.617f, 21.355f, 28.832f);
+        path.lineTo(26.211f, 33.494f);
+        path.cubicTo(26.898f, 34.182f, 27.178f, 34.332f, 27.457f, 34.332f);
         path.close();
     }
 }
