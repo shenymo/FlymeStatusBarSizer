@@ -11,6 +11,7 @@ final class SettingsStore {
     static final String KEY_ENABLED = "enabled";
     static final String KEY_BATTERY_CODE_DRAW_ENABLED = "battery_code_draw_enabled";
     static final String KEY_SIGNAL_CODE_DRAW_ENABLED = "signal_code_draw_enabled";
+    static final String KEY_WIFI_CODE_DRAW_ENABLED = "wifi_code_draw_enabled";
     static final String KEY_BATTERY_ICON_STYLE = "battery_icon_style";
     static final String KEY_BATTERY_LEVEL_TEXT_ENABLED = "battery_level_text_enabled";
     static final String KEY_BATTERY_HOLLOW_ENABLED = "battery_hollow_enabled";
@@ -48,6 +49,7 @@ final class SettingsStore {
     static final boolean DEFAULT_ENABLED = true;
     static final boolean DEFAULT_BATTERY_CODE_DRAW_ENABLED = true;
     static final boolean DEFAULT_SIGNAL_CODE_DRAW_ENABLED = true;
+    static final boolean DEFAULT_WIFI_CODE_DRAW_ENABLED = true;
     static final int BATTERY_STYLE_IOS = 0;
     static final int BATTERY_STYLE_ONEUI = 1;
     static final int BATTERY_TEXT_FONT_SYSTEM_DEFAULT = 0;
@@ -129,6 +131,7 @@ final class SettingsStore {
             KEY_ENABLED,
             KEY_BATTERY_CODE_DRAW_ENABLED,
             KEY_SIGNAL_CODE_DRAW_ENABLED,
+            KEY_WIFI_CODE_DRAW_ENABLED,
             KEY_BATTERY_LEVEL_TEXT_ENABLED,
             KEY_BATTERY_HOLLOW_ENABLED,
             KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL,
@@ -306,6 +309,8 @@ final class SettingsStore {
                 return DEFAULT_BATTERY_CODE_DRAW_ENABLED;
             case KEY_SIGNAL_CODE_DRAW_ENABLED:
                 return DEFAULT_SIGNAL_CODE_DRAW_ENABLED;
+            case KEY_WIFI_CODE_DRAW_ENABLED:
+                return DEFAULT_WIFI_CODE_DRAW_ENABLED;
             case KEY_BATTERY_LEVEL_TEXT_ENABLED:
                 return DEFAULT_BATTERY_LEVEL_TEXT_ENABLED;
             case KEY_BATTERY_HOLLOW_ENABLED:

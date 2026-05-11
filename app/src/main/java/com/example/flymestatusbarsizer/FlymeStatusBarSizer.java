@@ -2189,6 +2189,12 @@ public class FlymeStatusBarSizer extends XposedModule {
         return config != null && config.enabled && config.signalCodeDrawEnabled;
     }
 
+    private static boolean isWifiCodeDrawEnabled(ModuleConfig config) {
+        return isSignalCodeDrawEnabled(config)
+                && config != null
+                && config.wifiCodeDrawEnabled;
+    }
+
     private void hookWifiSignalControllerState(ClassLoader loader) {
         try {
             Class<?> clazz = Class.forName(
@@ -2651,7 +2657,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         if ("wifi_signal".equals(idName) && view instanceof ImageView) {
             ImageView imageView = (ImageView) view;
-            if (isSignalCodeDrawEnabled(config)) {
+            if (isWifiCodeDrawEnabled(config)) {
                 resetStandaloneImageScale(imageView);
                 resetSignalWrapperScaleIfNeeded(imageView);
                 applyWifiIconOverride(imageView, 0, null, imageView.getDrawable());
@@ -2733,7 +2739,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         if ("wifi_signal".equals(idName)) {
             ModuleConfig config = ModuleConfig.load(view.getContext());
-            if (isSignalCodeDrawEnabled(config)) {
+            if (isWifiCodeDrawEnabled(config)) {
                 applyWifiIconOverride(view, resId, icon, drawable);
             } else {
                 syncWifiSlotMergeVisibility(view, false);
@@ -2794,7 +2800,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         if ("wifi_signal".equals(idName) && view instanceof ImageView) {
             ModuleConfig config = ModuleConfig.load(view.getContext());
-            if (isSignalCodeDrawEnabled(config)) {
+            if (isWifiCodeDrawEnabled(config)) {
                 ImageView imageView = (ImageView) view;
                 applyWifiIconOverride(imageView, 0, null, imageView.getDrawable());
             } else {
@@ -3659,7 +3665,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         ModuleConfig config = ModuleConfig.load(view.getContext());
         boolean mergedDualWifi = shouldMergeDualWifiIntoPrimary(config);
         syncWifiSlotMergeVisibility(view, mergedDualWifi);
-        if (!isSignalCodeDrawEnabled(config)) {
+        if (!isWifiCodeDrawEnabled(config)) {
             return;
         }
         resetStandaloneImageScale(view);
@@ -3835,7 +3841,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static boolean shouldMergeDualWifiIntoPrimary(ModuleConfig config) {
-        return isSignalCodeDrawEnabled(config)
+        return isWifiCodeDrawEnabled(config)
                 && LAST_WIFI_ENABLED
                 && LAST_WIFI_CONNECTED
                 && LAST_VICE_WIFI_ENABLED
@@ -4067,7 +4073,12 @@ public class FlymeStatusBarSizer extends XposedModule {
                 continue;
             }
             ImageView imageView = (ImageView) view;
-            applyWifiIconOverride(imageView, 0, null, imageView.getDrawable());
+            ModuleConfig config = ModuleConfig.load(imageView.getContext());
+            if (isWifiCodeDrawEnabled(config)) {
+                applyWifiIconOverride(imageView, 0, null, imageView.getDrawable());
+            } else {
+                applyStatusBarScaleIfNeeded(imageView);
+            }
         }
     }
 

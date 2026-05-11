@@ -883,12 +883,17 @@ public class MainActivity extends Activity {
                 SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED);
         addDivider(details);
+        addSwitchRow(details, "重绘 Wi-Fi 图标",
+                "开启后继续启用现有所有 Wi-Fi 图标逻辑；关闭后停止替换 wifi_signal，也不再合并双 Wi-Fi 槽位或调整 Wi-Fi 图标尺寸。这个开关只影响 Wi-Fi，仍需要上面的信号图标总开关保持开启。",
+                SettingsStore.KEY_WIFI_CODE_DRAW_ENABLED,
+                SettingsStore.DEFAULT_WIFI_CODE_DRAW_ENABLED);
+        addDivider(details);
         addProfileSectionHeader(details, "说明",
-                "这里统一控制 mobile_signal 和 wifi_signal 的代码绘制；mobile_type 会继续按系统真实网络状态参与 5G/5GA 标识判断。");
+                "这里统一控制移动信号代码绘制，并额外提供 Wi-Fi 独立开关；mobile_type 会继续按系统真实网络状态参与 5G/5GA 标识判断。");
 
         return buildExpandableInfoCard(
                 "信号图标",
-                "统一控制移动信号和 Wi-Fi 图标这一组逻辑。",
+                "统一控制移动信号图标，并可单独决定是否接管 Wi-Fi 图标。",
                 details);
     }
 
