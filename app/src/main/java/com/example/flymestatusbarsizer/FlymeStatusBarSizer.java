@@ -67,6 +67,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, int[]> ORIGINAL_MARGINS = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_PADDINGS = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_RUNTIME_SIZES = new WeakHashMap<>();
+    private static final WeakHashMap<View, String> LAST_BATTERY_DEBUG_SIGNATURES = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<View, String> VIEW_ID_NAME_CACHE = new WeakHashMap<>();
     private static final WeakHashMap<View, BatteryViewState> BATTERY_VIEW_STATES = new WeakHashMap<>();
@@ -98,6 +99,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static volatile Object SIGNAL_ACTIVITY_FALSE_FLOW;
     private static Handler MAIN_HANDLER;
     private static volatile int LAST_UI_MODE_NIGHT = -1;
+    private static volatile int LAST_BATTERY_RENDER_HEIGHT = -1;
     private static final Runnable SIGNAL_ICON_REFRESH_RUNNABLE = FlymeStatusBarSizer::refreshTrackedSignalIconViewsNow;
     private static final Runnable PRIMARY_SIGNAL_ICON_REFRESH_RUNNABLE =
             FlymeStatusBarSizer::refreshTrackedPrimarySignalIconViewsNow;
@@ -1253,10 +1255,41 @@ public class FlymeStatusBarSizer extends XposedModule {
         int top = Math.round((batteryView.getHeight() - height) / 2f);
         boolean showLevelText = config.batteryLevelTextEnabled;
         state.drawBounds.set(0, top, width, top + height);
+        if (height > 0) {
+            LAST_BATTERY_RENDER_HEIGHT = height;
+        }
+        logBatteryDebugMetrics(batteryView, size, width, height, top, state.drawBounds);
         drawBatteryByStyle(config, canvas, state.drawBounds,
                 state.level, state.pluggedIn, state.charging, state.quickCharging,
                 state.tintColor, state.textColor, showLevelText);
         return true;
+    }
+
+    private static void logBatteryDebugMetrics(View batteryView, int size, int width, int height,
+                                               int top, Rect drawBounds) {
+        if (batteryView == null || drawBounds == null) {
+            return;
+        }
+        String signature = "viewH=" + batteryView.getHeight()
+                + " viewW=" + batteryView.getWidth()
+                + " size=" + size
+                + " width=" + width
+                + " height=" + height
+                + " top=" + top
+                + " drawBounds=" + formatDebugRect(drawBounds);
+        String previous = LAST_BATTERY_DEBUG_SIGNATURES.get(batteryView);
+        if (signature.equals(previous)) {
+            return;
+        }
+        LAST_BATTERY_DEBUG_SIGNATURES.put(batteryView, signature);
+        android.util.Log.d(TAG, "[FSBS_BATTERY_DEBUG] " + signature);
+    }
+
+    private static String formatDebugRect(Rect rect) {
+        if (rect == null) {
+            return "null";
+        }
+        return "[" + rect.left + "," + rect.top + "," + rect.right + "," + rect.bottom + "]";
     }
 
     private static int resolveBatteryTextColor(int tintColor) {
@@ -4590,6 +4623,9 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int resolveTargetSignalIconBoxSize(ImageView view) {
+        if (LAST_BATTERY_RENDER_HEIGHT > 0) {
+            return LAST_BATTERY_RENDER_HEIGHT;
+        }
         ModuleConfig config = ModuleConfig.load(view.getContext());
         return IconMetrics.resolveSignalBoxHeight(
                 view == null ? null : view.getContext(),

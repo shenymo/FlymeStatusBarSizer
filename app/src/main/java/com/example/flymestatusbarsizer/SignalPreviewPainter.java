@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer;
 
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.Rect;
@@ -22,6 +23,7 @@ final class SignalPreviewPainter {
     private static final float MOBILE_TYPE_GAP_RATIO = 0.07f;
     private static final float MOBILE_TYPE_5GA_TRAILING_PADDING_RATIO = 0.08f;
     private static final Paint PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static final Paint DEBUG_BASELINE_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint BADGE_TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint BADGE_SUBSCRIPT_TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final RectF BAR = new RectF();
@@ -36,6 +38,9 @@ final class SignalPreviewPainter {
     private static final HashMap<Integer, Typeface> MOBILE_TYPE_TYPEFACE_CACHE = new HashMap<>();
 
     static {
+        DEBUG_BASELINE_PAINT.setStyle(Paint.Style.STROKE);
+        DEBUG_BASELINE_PAINT.setStrokeWidth(1.5f);
+        DEBUG_BASELINE_PAINT.setColor(Color.RED);
         BADGE_TEXT_PAINT.setStyle(Paint.Style.FILL);
         BADGE_TEXT_PAINT.setTextAlign(Paint.Align.LEFT);
         BADGE_SUBSCRIPT_TEXT_PAINT.setStyle(Paint.Style.FILL);
@@ -152,6 +157,7 @@ final class SignalPreviewPainter {
             if (mergedDual) {
                 drawDots(canvas, geometry, drawColor, inactiveColor, colorFilter, secondarySignalLevel);
             }
+            drawDebugBaseline(canvas, bounds, geometry);
             return;
         }
         float boxSize = Math.min(bounds.height(), bounds.width());
@@ -176,6 +182,7 @@ final class SignalPreviewPainter {
         if (mergedDual) {
             drawDots(canvas, geometry, drawColor, inactiveColor, colorFilter, secondarySignalLevel);
         }
+        drawDebugBaseline(canvas, SIGNAL_BOX, geometry);
         float badgeLeft = left + boxSize * (1f + MOBILE_TYPE_GAP_RATIO);
         MOBILE_TYPE_BOX.set(badgeLeft, top, badgeLeft + layout.badgeWidth, top + boxSize);
         drawMobileTypeBadge(canvas, MOBILE_TYPE_BOX, layout);
@@ -466,6 +473,14 @@ final class SignalPreviewPainter {
                 safeMaxHeight * BAR_HEIGHT_RATIOS[2],
                 safeMaxHeight * BAR_HEIGHT_RATIOS[3]
         };
+    }
+
+    private static void drawDebugBaseline(Canvas canvas, Rect bounds, SignalGeometry geometry) {
+        if (canvas == null || bounds == null || geometry == null) {
+            return;
+        }
+        float y = geometry.baseBottom;
+        canvas.drawLine(bounds.left, y, bounds.right, y, DEBUG_BASELINE_PAINT);
     }
 
     private static final class SignalGeometry {
