@@ -179,6 +179,8 @@ public class FlymeStatusBarSizer extends XposedModule {
             ThreadLocal.withInitial(() -> 0);
     private static final Runnable WIFI_ICON_REFRESH_RUNNABLE =
             FlymeStatusBarSizer::refreshTrackedWifiIconViewsNow;
+    private static final Runnable CONFIG_CHANGED_REFRESH_RUNNABLE =
+            FlymeStatusBarSizer::refreshTrackedRuntimeViews;
     private static volatile long LAST_WIFI_PERF_EVENT_ID;
     private static volatile long LAST_WIFI_PERF_NOTIFY_END_NS;
     private static volatile long LAST_WIFI_PERF_REFRESH_POST_NS;
@@ -189,14 +191,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         MODULE = this;
-        ModuleConfig.setConfigChangedCallback(() -> {
-            Handler handler = MAIN_HANDLER;
-            if (handler != null) {
-                handler.post(FlymeStatusBarSizer::refreshTrackedRuntimeViews);
-            } else {
-                refreshTrackedRuntimeViews();
-            }
-        });
+        ModuleConfig.setConfigChangedCallback(FlymeStatusBarSizer::scheduleConfigChangedRefresh);
         ModuleConfig.attachToModule(this);
         ClassLoader loader = param.getDefaultClassLoader();
         String packageName = param.getPackageName();
@@ -5783,6 +5778,16 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void refreshTrackedRuntimeViews() {
         refreshTrackedRuntimeViews(false);
+    }
+
+    private static void scheduleConfigChangedRefresh() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            refreshTrackedRuntimeViews();
+            return;
+        }
+        handler.removeCallbacks(CONFIG_CHANGED_REFRESH_RUNNABLE);
+        handler.post(CONFIG_CHANGED_REFRESH_RUNNABLE);
     }
 
     private static void refreshTrackedRuntimeViews(boolean forceSignalRequery) {

@@ -2,6 +2,8 @@ package com.example.flymestatusbarsizer;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import io.github.libxposed.api.XposedModule;
@@ -16,6 +18,10 @@ final class ModuleConfig {
     private static volatile Runnable configChangedCallback;
     private static volatile ModuleConfig activeConfig;
     private static volatile ModuleConfig lastGoodConfig;
+    private static final Object CALLBACK_DISPATCH_LOCK = new Object();
+    private static final long CONFIG_CHANGE_DEBOUNCE_MS = 80L;
+    private static volatile Handler callbackHandler;
+    private static final Runnable CONFIG_CHANGE_DISPATCH_RUNNABLE = ModuleConfig::notifyConfigChanged;
 
     boolean enabled = SettingsStore.DEFAULT_ENABLED;
     boolean batteryCodeDrawEnabled = SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED;
@@ -125,33 +131,14 @@ final class ModuleConfig {
             return;
         }
         SharedPreferences.OnSharedPreferenceChangeListener newListener = (sharedPreferences, key) -> {
-            invalidateCache();
-            ModuleConfig refreshed = fromSharedPreferences(sharedPreferences);
-            if (refreshed != null) {
-                synchronized (CACHE_LOCK) {
-                    activeConfig = refreshed;
-                    lastGoodConfig = refreshed;
-                }
-                notifyConfigChanged();
-            }
+            applyRefreshedConfig(sharedPreferences, true);
         };
         remotePrefsListener = newListener;
         try {
             prefs.registerOnSharedPreferenceChangeListener(newListener);
         } catch (Throwable ignored) {
         }
-        ModuleConfig refreshed = fromSharedPreferences(prefs);
-        synchronized (CACHE_LOCK) {
-            if (refreshed != null) {
-                activeConfig = refreshed;
-                lastGoodConfig = refreshed;
-            } else {
-                activeConfig = null;
-            }
-        }
-        if (refreshed != null) {
-            notifyConfigChanged();
-        }
+        applyRefreshedConfig(prefs, false);
     }
 
     static void rememberSystemUiContext(Context context) {
@@ -354,6 +341,61 @@ final class ModuleConfig {
             callback.run();
         } catch (Throwable t) {
             Log.w(TAG, "Failed to dispatch config change callback", t);
+        }
+    }
+
+    private static void applyRefreshedConfig(SharedPreferences prefs, boolean debounce) {
+        invalidateCache();
+        ModuleConfig refreshed = fromSharedPreferences(prefs);
+        synchronized (CACHE_LOCK) {
+            if (refreshed != null) {
+                activeConfig = refreshed;
+                lastGoodConfig = refreshed;
+            } else {
+                activeConfig = null;
+            }
+        }
+        if (refreshed != null) {
+            dispatchConfigChanged(debounce);
+        }
+    }
+
+    private static void dispatchConfigChanged(boolean debounce) {
+        if (!debounce) {
+            synchronized (CALLBACK_DISPATCH_LOCK) {
+                Handler handler = callbackHandler;
+                if (handler != null) {
+                    handler.removeCallbacks(CONFIG_CHANGE_DISPATCH_RUNNABLE);
+                }
+            }
+            notifyConfigChanged();
+            return;
+        }
+        Handler handler = ensureCallbackHandler();
+        if (handler == null) {
+            notifyConfigChanged();
+            return;
+        }
+        synchronized (CALLBACK_DISPATCH_LOCK) {
+            handler.removeCallbacks(CONFIG_CHANGE_DISPATCH_RUNNABLE);
+            handler.postDelayed(CONFIG_CHANGE_DISPATCH_RUNNABLE, CONFIG_CHANGE_DEBOUNCE_MS);
+        }
+    }
+
+    private static Handler ensureCallbackHandler() {
+        Handler handler = callbackHandler;
+        if (handler != null) {
+            return handler;
+        }
+        Looper looper = Looper.getMainLooper();
+        if (looper == null) {
+            return null;
+        }
+        synchronized (CALLBACK_DISPATCH_LOCK) {
+            if (callbackHandler == null) {
+                callbackHandler = new Handler(looper);
+            }
+            return callbackHandler;
         }
     }
 }
