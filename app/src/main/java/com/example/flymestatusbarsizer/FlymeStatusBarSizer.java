@@ -72,6 +72,10 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, BatteryViewState> BATTERY_VIEW_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_BATTERY_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_STATUS_BAR_ICON_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<ImageView, Boolean> TRACKED_WIFI_SIGNAL_VIEWS =
+            new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> TRACKED_WIFI_ACTIVITY_ROOTS =
+            new WeakHashMap<>();
     private static final WeakHashMap<ImageView, Long> WIFI_LAYOUT_SIGNATURES = new WeakHashMap<>();
     private static final WeakHashMap<ImageView, Boolean> WIFI_ICON_TAKEOVER_STATES =
             new WeakHashMap<>();
@@ -2779,6 +2783,19 @@ public class FlymeStatusBarSizer extends XposedModule {
         });
     }
 
+    private static void trackWifiRefreshTarget(View view) {
+        if (view == null) {
+            return;
+        }
+        if (view instanceof ImageView && "wifi_signal".equals(getSystemUiIdName(view))) {
+            TRACKED_WIFI_SIGNAL_VIEWS.put((ImageView) view, Boolean.TRUE);
+        }
+        View activityRoot = findWifiActivityRoot(view);
+        if (activityRoot != null) {
+            TRACKED_WIFI_ACTIVITY_ROOTS.put(activityRoot, Boolean.TRUE);
+        }
+    }
+
     private static boolean shouldTrackStatusBarIconView(View view) {
         if (view == null) {
             return false;
@@ -2893,6 +2910,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static void onSignalImageAssigned(ImageView view, int assignmentType, int resId,
                                               Icon icon, Drawable drawable) {
         trackStatusBarIconView(view);
+        trackWifiRefreshTarget(view);
         if (assignmentType == SIGNAL_IMAGE_ASSIGNMENT_DRAWABLE
                 && isSignalDrawableApplyGuardActive(view)) {
             return;
@@ -2957,6 +2975,7 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void onSignalViewLayoutChanged(View view) {
         trackStatusBarIconView(view);
+        trackWifiRefreshTarget(view);
         String idName = getSystemUiIdName(view);
         if ("mobile_signal".equals(idName) || "wifi_signal".equals(idName)) {
             clearSignalTintSourceCacheForView(view);
@@ -4262,23 +4281,31 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void refreshTrackedWifiIconViewsNow() {
-        ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
-        for (View view : views) {
-            ModuleConfig config = ModuleConfig.load(view == null ? null : view.getContext());
-            syncWifiActivityIndicatorsVisibility(view,
+        seedTrackedWifiTargetsFromTrackedViewsIfNeeded();
+        ArrayList<View> activityRoots = new ArrayList<>(TRACKED_WIFI_ACTIVITY_ROOTS.keySet());
+        for (View root : activityRoots) {
+            ModuleConfig config = ModuleConfig.load(root == null ? null : root.getContext());
+            syncWifiActivityIndicatorsVisibility(root,
                     config != null && config.enabled && isWifiCodeDrawEnabled(config));
-            if (!(view instanceof ImageView)) {
-                continue;
-            }
-            if (!"wifi_signal".equals(getSystemUiIdName(view))) {
-                continue;
-            }
-            ImageView imageView = (ImageView) view;
+        }
+        ArrayList<ImageView> signalViews = new ArrayList<>(TRACKED_WIFI_SIGNAL_VIEWS.keySet());
+        for (ImageView imageView : signalViews) {
+            ModuleConfig config = ModuleConfig.load(imageView == null ? null : imageView.getContext());
             if (isWifiCodeDrawEnabled(config)) {
                 applyWifiIconOverride(imageView, 0, null, imageView.getDrawable());
             } else {
                 applyStatusBarScaleIfNeeded(imageView);
             }
+        }
+    }
+
+    private static void seedTrackedWifiTargetsFromTrackedViewsIfNeeded() {
+        if (!TRACKED_WIFI_SIGNAL_VIEWS.isEmpty() || !TRACKED_WIFI_ACTIVITY_ROOTS.isEmpty()) {
+            return;
+        }
+        ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
+        for (View view : views) {
+            trackWifiRefreshTarget(view);
         }
     }
 
