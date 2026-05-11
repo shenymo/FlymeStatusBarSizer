@@ -3818,14 +3818,18 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (view == null) {
             return WIFI_SLOT_PRIMARY;
         }
-        View combo = findAncestorByIdName(view, "wifi_combo");
-        Object slot = ReflectUtils.getField(combo, "mSlot");
-        if (!TextUtils.isEmpty(safeToString(slot))) {
-            return String.valueOf(slot);
-        }
-        slot = ReflectUtils.invokeNoArg(combo, "getSlot");
-        if (!TextUtils.isEmpty(safeToString(slot))) {
-            return String.valueOf(slot);
+        View current = view;
+        while (current != null) {
+            String slot = safeToString(ReflectUtils.getField(current, "mSlot"));
+            if (WIFI_SLOT_PRIMARY.equals(slot) || WIFI_SLOT_VICE.equals(slot)) {
+                return slot;
+            }
+            slot = safeToString(ReflectUtils.invokeNoArg(current, "getSlot"));
+            if (WIFI_SLOT_PRIMARY.equals(slot) || WIFI_SLOT_VICE.equals(slot)) {
+                return slot;
+            }
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
         }
         return WIFI_SLOT_PRIMARY;
     }
