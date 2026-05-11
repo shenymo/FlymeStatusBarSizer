@@ -24,10 +24,10 @@ final class WifiIconDrawable extends Drawable {
     private static final float ARC_START_ANGLE = 225f;
     private static final float ARC_SWEEP_ANGLE = 90f;
     private static final float INTER_BAND_GAP_TO_THICKNESS_RATIO = 0.8f;
+    private static final float SECTOR_THICKNESS_RATIO = 1.5f;
     private static final float SQRT_TWO = (float) Math.sqrt(2d);
 
     private static final Paint ARC_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private static final Paint SECTOR_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final IconMetrics.VisualCanvas VISUAL_CANVAS = new IconMetrics.VisualCanvas();
     private static final RectF DRAW_BOUNDS = new RectF();
     private static final RectF ARC_OVAL = new RectF();
@@ -35,7 +35,6 @@ final class WifiIconDrawable extends Drawable {
     static {
         ARC_PAINT.setStyle(Paint.Style.STROKE);
         ARC_PAINT.setStrokeCap(Paint.Cap.BUTT);
-        SECTOR_PAINT.setStyle(Paint.Style.FILL);
     }
 
     private final WeakReference<View> ownerViewRef;
@@ -103,20 +102,22 @@ final class WifiIconDrawable extends Drawable {
         }
 
         float thickness = Math.max(0.75f,
-                maxOuterBoundary / (3f + 2f * INTER_BAND_GAP_TO_THICKNESS_RATIO));
+                maxOuterBoundary / (2f + SECTOR_THICKNESS_RATIO
+                        + 2f * INTER_BAND_GAP_TO_THICKNESS_RATIO));
         float gap = thickness * INTER_BAND_GAP_TO_THICKNESS_RATIO;
+        float sectorThickness = thickness * SECTOR_THICKNESS_RATIO;
         float cx = DRAW_BOUNDS.centerX();
         float cy = DRAW_BOUNDS.bottom;
-        float sectorRadius = thickness;
-        float innerRadius = sectorRadius + gap + thickness / 2f;
-        float outerRadius = innerRadius + gap + thickness;
+        float sectorRadius = sectorThickness / 2f;
+        float innerRadius = sectorRadius + sectorThickness / 2f + gap + thickness / 2f;
+        float outerRadius = innerRadius + thickness + gap;
 
         drawConcentricArc(canvas, cx, cy, outerRadius, ARC_START_ANGLE, ARC_SWEEP_ANGLE,
                 resolveOuterBandColor(activeColor, inactiveColor), thickness);
         drawConcentricArc(canvas, cx, cy, innerRadius, ARC_START_ANGLE, ARC_SWEEP_ANGLE,
                 resolveInnerBandColor(activeColor, inactiveColor), thickness);
-        drawSolidSector(canvas, cx, cy, sectorRadius, ARC_START_ANGLE, ARC_SWEEP_ANGLE,
-                resolveSectorColor(activeColor, inactiveColor));
+        drawConcentricArc(canvas, cx, cy, sectorRadius, ARC_START_ANGLE, ARC_SWEEP_ANGLE,
+                resolveSectorColor(activeColor, inactiveColor), sectorThickness);
     }
 
     @Override
@@ -195,18 +196,6 @@ final class WifiIconDrawable extends Drawable {
         ARC_PAINT.setColorFilter(colorFilter);
         canvas.drawArc(ARC_OVAL, startAngle, sweepAngle, false, ARC_PAINT);
         ARC_PAINT.setColorFilter(null);
-    }
-
-    private void drawSolidSector(Canvas canvas, float cx, float cy, float radius,
-            float startAngle, float sweepAngle, int color) {
-        if (radius <= 0f) {
-            return;
-        }
-        ARC_OVAL.set(cx - radius, cy - radius, cx + radius, cy + radius);
-        SECTOR_PAINT.setColor(color);
-        SECTOR_PAINT.setColorFilter(colorFilter);
-        canvas.drawArc(ARC_OVAL, startAngle, sweepAngle, true, SECTOR_PAINT);
-        SECTOR_PAINT.setColorFilter(null);
     }
 
     private int resolveSectorColor(int activeColor, int inactiveColor) {
