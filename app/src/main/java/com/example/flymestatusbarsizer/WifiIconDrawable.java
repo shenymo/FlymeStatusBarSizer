@@ -1,5 +1,6 @@
 package com.example.flymestatusbarsizer;
 
+import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -115,6 +116,26 @@ final class WifiIconDrawable extends Drawable {
         }
         updateDrawColor(getState());
         int baseColor = SignalPreviewPainter.modulateColorAlpha(drawColor, alpha);
+        View ownerView = ownerViewRef.get();
+        ModuleConfig config = ModuleConfig.load(ownerView == null
+                ? ModuleConfig.getSystemUiContext()
+                : ownerView.getContext());
+        drawIcon(canvas, bounds, baseColor, colorFilter, level, showSecondaryBadge, secondaryLevel,
+                resolveVerticalOffsetPx(config, ownerView));
+    }
+
+    static void drawPreview(Canvas canvas, Rect bounds, int color, int alpha, ColorFilter colorFilter,
+            int level, boolean showSecondaryBadge, int secondaryLevel, int verticalOffsetPx) {
+        int baseColor = SignalPreviewPainter.modulateColorAlpha(color, alpha);
+        drawIcon(canvas, bounds, baseColor, colorFilter, level, showSecondaryBadge, secondaryLevel,
+                verticalOffsetPx);
+    }
+
+    private static void drawIcon(Canvas canvas, Rect bounds, int baseColor, ColorFilter colorFilter,
+            int level, boolean showSecondaryBadge, int secondaryLevel, int verticalOffsetPx) {
+        if (canvas == null || bounds == null || bounds.isEmpty()) {
+            return;
+        }
         int activeColor = SignalPreviewPainter.modulateColorAlpha(baseColor, DRAW_ALPHA);
         int inactiveColor = scaleAlpha(activeColor, INACTIVE_ALPHA_RATIO);
         if (showSecondaryBadge) {
@@ -124,6 +145,10 @@ final class WifiIconDrawable extends Drawable {
         }
         if (VISUAL_CANVAS.isEmpty()) {
             return;
+        }
+        if (verticalOffsetPx != 0) {
+            VISUAL_CANVAS.rect.offset(0f, -verticalOffsetPx);
+            VISUAL_CANVAS.baselineY -= verticalOffsetPx;
         }
 
         DRAW_BOUNDS.set(VISUAL_CANVAS.rect.left, VISUAL_CANVAS.rect.top,
@@ -151,7 +176,7 @@ final class WifiIconDrawable extends Drawable {
         float outerRadius = innerRadius + thickness + gap;
 
         drawWifiGlyph(canvas, cx, cy, outerRadius, innerRadius, sectorRadius,
-                thickness, sectorThickness, activeColor, inactiveColor, level);
+                thickness, sectorThickness, activeColor, inactiveColor, level, colorFilter);
         if (showSecondaryBadge) {
             float badgeOuterRadius = resolveSecondaryOuterRadius(outerRadius, innerRadius, thickness);
             if (badgeOuterRadius <= 0f || outerRadius <= 0f) {
@@ -167,8 +192,19 @@ final class WifiIconDrawable extends Drawable {
             float badgeCenterY = cy;
             drawWifiGlyph(canvas, badgeCenterX, badgeCenterY, badgeOuterRadius, badgeInnerRadius,
                     badgeSectorRadius, badgeThickness, badgeSectorThickness,
-                    activeColor, inactiveColor, secondaryLevel);
+                    activeColor, inactiveColor, secondaryLevel, colorFilter);
         }
+    }
+
+    private static int resolveVerticalOffsetPx(ModuleConfig config, View ownerView) {
+        int offsetDp = config == null
+                ? SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP
+                : SettingsStore.normalizeIconYOffsetDp(config.wifiYOffsetDp);
+        Context context = ownerView == null ? ModuleConfig.getSystemUiContext() : ownerView.getContext();
+        if (context == null) {
+            return offsetDp;
+        }
+        return Math.round(offsetDp * context.getResources().getDisplayMetrics().density);
     }
 
     @Override
@@ -236,8 +272,9 @@ final class WifiIconDrawable extends Drawable {
         return true;
     }
 
-    private void drawConcentricArc(Canvas canvas, float cx, float cy, float radius,
-            float startAngle, float sweepAngle, int color, float strokeWidth) {
+    private static void drawConcentricArc(Canvas canvas, float cx, float cy, float radius,
+            float startAngle, float sweepAngle, int color, float strokeWidth,
+            ColorFilter colorFilter) {
         if (radius <= 0f) {
             return;
         }
@@ -249,15 +286,15 @@ final class WifiIconDrawable extends Drawable {
         ARC_PAINT.setColorFilter(null);
     }
 
-    private void drawWifiGlyph(Canvas canvas, float cx, float cy, float outerRadius,
+    private static void drawWifiGlyph(Canvas canvas, float cx, float cy, float outerRadius,
             float innerRadius, float sectorRadius, float thickness, float sectorThickness,
-            int activeColor, int inactiveColor, int level) {
+            int activeColor, int inactiveColor, int level, ColorFilter colorFilter) {
         drawConcentricArc(canvas, cx, cy, outerRadius, ARC_START_ANGLE, ARC_SWEEP_ANGLE,
-                resolveOuterBandColor(activeColor, inactiveColor, level), thickness);
+                resolveOuterBandColor(activeColor, inactiveColor, level), thickness, colorFilter);
         drawConcentricArc(canvas, cx, cy, innerRadius, ARC_START_ANGLE, ARC_SWEEP_ANGLE,
-                resolveInnerBandColor(activeColor, inactiveColor, level), thickness);
+                resolveInnerBandColor(activeColor, inactiveColor, level), thickness, colorFilter);
         drawConcentricArc(canvas, cx, cy, sectorRadius, ARC_START_ANGLE, ARC_SWEEP_ANGLE,
-                resolveSectorColor(activeColor, inactiveColor, level), sectorThickness);
+                resolveSectorColor(activeColor, inactiveColor, level), sectorThickness, colorFilter);
     }
 
     private static float resolveSecondaryAnchorOffsetX(float badgeOuterRadius) {
@@ -283,19 +320,19 @@ final class WifiIconDrawable extends Drawable {
         return Math.max(0f, Math.min(outerRadius, availableLeftSpan / leftReachFactor));
     }
 
-    private int resolveSectorColor(int activeColor, int inactiveColor, int level) {
+    private static int resolveSectorColor(int activeColor, int inactiveColor, int level) {
         return resolveVisibleBars(level) >= 1 ? activeColor : inactiveColor;
     }
 
-    private int resolveInnerBandColor(int activeColor, int inactiveColor, int level) {
+    private static int resolveInnerBandColor(int activeColor, int inactiveColor, int level) {
         return resolveVisibleBars(level) >= 2 ? activeColor : inactiveColor;
     }
 
-    private int resolveOuterBandColor(int activeColor, int inactiveColor, int level) {
+    private static int resolveOuterBandColor(int activeColor, int inactiveColor, int level) {
         return resolveVisibleBars(level) >= 3 ? activeColor : inactiveColor;
     }
 
-    private int resolveVisibleBars(int level) {
+    private static int resolveVisibleBars(int level) {
         if (level <= 0) {
             return 1;
         }

@@ -66,6 +66,17 @@ public class MainActivity extends Activity {
             {"week", "week_short", "week_1"},
             {"branch", "branch_alias"}
     };
+    private static final int POSITION_OFFSET_MIN_DP = -24;
+    private static final int POSITION_OFFSET_MAX_DP = 24;
+    private static final String[] POSITION_TUNING_KEYS = {
+            SettingsStore.KEY_BATTERY_ICON_Y_OFFSET_DP,
+            SettingsStore.KEY_BATTERY_TEXT_Y_OFFSET_DP,
+            SettingsStore.KEY_BATTERY_BOLT_Y_OFFSET_DP,
+            SettingsStore.KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
+            SettingsStore.KEY_SIGNAL_BADGE_Y_OFFSET_DP,
+            SettingsStore.KEY_SIGNAL_DUAL_Y_OFFSET_DP,
+            SettingsStore.KEY_WIFI_Y_OFFSET_DP
+    };
 
     private static final int FALLBACK_BACKGROUND = Color.rgb(253, 248, 253);
     private static final int FALLBACK_SURFACE = Color.WHITE;
@@ -93,12 +104,13 @@ public class MainActivity extends Activity {
     private int colorPrimaryContainer;
     private int colorPrimaryDeep;
     private int colorStroke;
-    private RightIconGroupPreviewView previewView;
     private View telephonyDebugPage;
+    private View positionTuningPage;
     private View[] mainPages;
     private TextView[] mainTabs;
     private final ArrayList<String> imeToolbarDraftOrder = new ArrayList<>();
     private final ArrayList<String> clockExpressionDraftTokens = new ArrayList<>();
+    private final ArrayList<PositionOffsetSliderBinding> positionTuningSliderBindings = new ArrayList<>();
     private final HashMap<String, TextView> clockExpressionButtons = new HashMap<>();
     private final HashMap<String, Integer> pendingIntSliderValues = new HashMap<>();
     private LinearLayout imeToolbarOrderContainer;
@@ -143,6 +155,10 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (positionTuningPage != null && positionTuningPage.getVisibility() == View.VISIBLE) {
+            bindMainTabs(2);
+            return;
+        }
         if (telephonyDebugPage != null && telephonyDebugPage.getVisibility() == View.VISIBLE) {
             bindMainTabs(2);
             return;
@@ -202,12 +218,16 @@ public class MainActivity extends Activity {
         LinearLayout debugPage = buildDebugPage();
         LinearLayout aboutPage = buildAboutPage();
         LinearLayout telephonyPage = buildTelephonyDebugPage();
+        LinearLayout positionPage = buildPositionTuningPage();
         pageContainer.addView(homePage, matchWrapFrame());
         pageContainer.addView(debugPage, matchWrapFrame());
         pageContainer.addView(aboutPage, matchWrapFrame());
         pageContainer.addView(telephonyPage, matchWrapFrame());
+        pageContainer.addView(positionPage, matchWrapFrame());
         telephonyPage.setVisibility(View.GONE);
+        positionPage.setVisibility(View.GONE);
         telephonyDebugPage = telephonyPage;
+        positionTuningPage = positionPage;
         mainPages = new View[]{homePage, debugPage, aboutPage};
         return pageContainer;
     }
@@ -237,8 +257,7 @@ public class MainActivity extends Activity {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
 
-        page.addView(buildPreviewPlaceholder(), matchWrap());
-        page.addView(buildIntroCard(), matchWrapWithTop(16));
+        page.addView(buildIntroCard(), matchWrap());
         page.addView(buildStatusBarIconScaleCard(), matchWrapWithTop(16));
 
         page.addView(buildConnectionRateCard(), matchWrapWithTop(16));
@@ -450,10 +469,99 @@ public class MainActivity extends Activity {
                 SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED);
 
         addDivider(card);
+        addActionButtonRow(card, "个性化位置微调",
+                "进入单独页面，分别微调模块自绘电池、闪电、电量数字、单层信号、双层信号、5G/5GA 和 Wi-Fi 的 Y 轴偏移。",
+                "进入", this::showPositionTuningPage);
+
+        addDivider(card);
         addActionButtonRow(card, "Telephony 调试",
                 "进入一个单独的调试页，伪造 SystemUI 读取到的插卡数量、默认上网卡、网络类型和信号强度。",
                 "进入", this::showTelephonyDebugPage);
 
+        page.addView(card, matchWrapWithTop(10));
+        return page;
+    }
+
+    private LinearLayout buildPositionTuningPage() {
+        positionTuningSliderBindings.clear();
+
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        addSectionLabel(page, "个性化位置微调");
+
+        LinearLayout navCard = card(colorFeatureSurface, colorFeatureStroke, 24);
+        TextView navTitle = new TextView(this);
+        navTitle.setText("这里只改模块自绘图标的 Y 轴偏移，不影响系统原生图标。");
+        navTitle.setTextColor(colorText);
+        navTitle.setTextSize(15);
+        navCard.addView(navTitle, matchWrap());
+
+        TextView navHint = new TextView(this);
+        navHint.setText("单位统一按 dp 存；正数向上，负数向下。先调整这 7 项，再点下面的应用按钮统一写入并刷新状态栏。");
+        navHint.setTextColor(colorSubtext);
+        navHint.setTextSize(13);
+        navHint.setPadding(0, dp(6), 0, 0);
+        navCard.addView(navHint, matchWrap());
+
+        TextView backButton = filledButton("返回关于", colorPrimary, Color.WHITE);
+        setTapClickListener(backButton, v -> bindMainTabs(2));
+        navCard.addView(backButton, matchWrapWithTop(14));
+        page.addView(navCard, matchWrapWithTop(10));
+
+        LinearLayout card = card(colorSurface, 28);
+        addProfileSectionHeader(card, "电池",
+                "下面 3 项都只在模块接管电池绘制后生效。电池图标是整体轮廓，数字和闪电可以在它的基础上继续单独偏移。");
+        addPositionOffsetSliderRow(card, "电池图标",
+                "整体电池轮廓的 Y 轴位置。默认 0dp。",
+                SettingsStore.KEY_BATTERY_ICON_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP);
+        addDivider(card);
+        addPositionOffsetSliderRow(card, "电池内数字数显",
+                "只改电池内部数字的基线高度。默认 0dp。",
+                SettingsStore.KEY_BATTERY_TEXT_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP);
+        addDivider(card);
+        addPositionOffsetSliderRow(card, "闪电图标",
+                "只改充电 / 快充闪电图标的 Y 轴位置。默认 0dp。",
+                SettingsStore.KEY_BATTERY_BOLT_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP);
+
+        addDivider(card);
+        addProfileSectionHeader(card, "移动网络",
+                "这些项只影响模块自绘的移动信号和 5G/5GA 标识。单层、双层和标识分开存，互不覆盖。");
+        addPositionOffsetSliderRow(card, "单层信号图标",
+                "单卡场景下信号柱的 Y 轴位置。默认 0dp。",
+                SettingsStore.KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP);
+        addDivider(card);
+        addPositionOffsetSliderRow(card, "5G / 5GA 标识",
+                "只改 5G / 5GA 文本标识的 Y 轴位置。默认 0dp。",
+                SettingsStore.KEY_SIGNAL_BADGE_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP);
+        addDivider(card);
+        addPositionOffsetSliderRow(card, "双层信号图标",
+                "双卡合一场景下整组信号图形的 Y 轴位置。默认 0dp。",
+                SettingsStore.KEY_SIGNAL_DUAL_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP);
+
+        addDivider(card);
+        addProfileSectionHeader(card, "Wi-Fi",
+                "只改模块自绘的 Wi-Fi 图标。默认 0dp。");
+        addPositionOffsetSliderRow(card, "Wi-Fi 图标",
+                "Wi-Fi 图标整体的 Y 轴位置。默认 0dp。",
+                SettingsStore.KEY_WIFI_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP);
+
+        addDivider(card);
+        addActionButtonRow(card, "应用当前偏移",
+                "把这 7 个待应用偏移值一次性写入配置，并通知当前状态栏刷新。",
+                "应用", this::applyAllPositionOffsets);
+
+        addDivider(card);
+        addActionButtonRow(card, "全部归零",
+                "先把这个页面里的 7 个待应用偏移值都改成 0dp；改完后再点上面的应用写入状态栏。",
+                "归零", this::resetAllPositionOffsets);
         page.addView(card, matchWrapWithTop(10));
         return page;
     }
@@ -580,57 +688,6 @@ public class MainActivity extends Activity {
         return button;
     }
 
-    private View buildPreviewPlaceholder() {
-        FrameLayout card = new FrameLayout(this);
-        card.setMinimumHeight(dp(220));
-        card.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(220) + dp(48)));
-        card.setPadding(dp(24), dp(24), dp(24), dp(24));
-        card.setBackground(gradientCard());
-
-        previewView = new RightIconGroupPreviewView(this);
-        previewView.setMinimumHeight(dp(220));
-        previewView.setPreviewTintColor(colorText);
-        previewView.setBatteryStyle(readIntSetting(
-                SettingsStore.KEY_BATTERY_ICON_STYLE,
-                SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
-        previewView.setBatteryTextFont(readIntSetting(
-                SettingsStore.KEY_BATTERY_TEXT_FONT,
-                SettingsStore.DEFAULT_BATTERY_TEXT_FONT));
-        previewView.setIconScalePercent(readIntSetting(
-                SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,
-                SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT));
-        previewView.setBatteryInnerTextScalePercent(readIntSetting(
-                SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
-                SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT));
-        previewView.setBatteryLevelTextEnabled(SettingsStore.readBoolean(
-                prefs,
-                SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
-                SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED));
-        previewView.setBatteryHollowEnabled(SettingsStore.readBoolean(
-                prefs,
-                SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
-                SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED));
-        previewView.setBatteryHollowFillFollowsLevel(SettingsStore.readBoolean(
-                prefs,
-                SettingsStore.KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL,
-                SettingsStore.DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL));
-        FrameLayout.LayoutParams previewLp = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(220));
-        previewLp.gravity = Gravity.TOP;
-        card.addView(previewView, previewLp);
-
-        TextView badge = chip("\u5b9e\u65f6\u9884\u89c8", Color.argb(55, 255, 255, 255), Color.WHITE);
-        FrameLayout.LayoutParams badgeLp = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT);
-        badgeLp.gravity = Gravity.TOP | Gravity.START;
-        card.addView(badge, badgeLp);
-        return card;
-    }
-
     private View buildIntroCard() {
         LinearLayout card = card(colorSurface, 24);
 
@@ -641,7 +698,7 @@ public class MainActivity extends Activity {
         card.addView(title, matchWrap());
 
         TextView summary = new TextView(this);
-        summary.setText("\u8bbe\u7f6e\u4f1a\u76f4\u63a5\u5199\u5165\u6a21\u5757\u914d\u7f6e\uff0cSystemUI \u91cd\u542f\u540e\u751f\u6548\u66f4\u7a33\u5b9a\u3002\u73b0\u5728\u9884\u89c8\u533a\u5df2\u52a0\u4e0a\u5355\u5361\u548c\u53cc\u5361\u5408\u4e00\u4e24\u79cd\u4fe1\u53f7\u56fe\u6807\u8349\u56fe\uff0c\u4fbf\u4e8e\u5148\u770b\u6bd4\u4f8b\u3002");
+        summary.setText("\u8bbe\u7f6e\u4f1a\u76f4\u63a5\u5199\u5165\u6a21\u5757\u914d\u7f6e\uff0cSystemUI \u91cd\u542f\u540e\u751f\u6548\u66f4\u7a33\u5b9a\u3002");
         summary.setTextColor(colorSubtext);
         summary.setTextSize(14);
         summary.setPadding(0, dp(6), 0, 0);
@@ -941,6 +998,9 @@ public class MainActivity extends Activity {
         if (telephonyDebugPage != null) {
             telephonyDebugPage.setVisibility(View.GONE);
         }
+        if (positionTuningPage != null) {
+            positionTuningPage.setVisibility(View.GONE);
+        }
         bindSettingsPageTabs(mainPages, mainTabs, selectedIndex);
     }
 
@@ -952,7 +1012,24 @@ public class MainActivity extends Activity {
         for (View page : mainPages) {
             page.setVisibility(View.GONE);
         }
+        if (positionTuningPage != null) {
+            positionTuningPage.setVisibility(View.GONE);
+        }
         telephonyDebugPage.setVisibility(View.VISIBLE);
+    }
+
+    private void showPositionTuningPage() {
+        if (positionTuningPage == null || mainPages == null || mainTabs == null) {
+            return;
+        }
+        bindSettingsPageTabs(mainPages, mainTabs, 2);
+        for (View page : mainPages) {
+            page.setVisibility(View.GONE);
+        }
+        if (telephonyDebugPage != null) {
+            telephonyDebugPage.setVisibility(View.GONE);
+        }
+        positionTuningPage.setVisibility(View.VISIBLE);
     }
 
     private View buildTimeCard() {
@@ -1258,6 +1335,85 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
+    private void addPositionOffsetSliderRow(LinearLayout root, String titleText, String subtitleText,
+            String key, int defaultValue) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView title = new TextView(this);
+        title.setText(titleText);
+        title.setTextColor(colorText);
+        title.setTextSize(16);
+        header.addView(title, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView valueView = new TextView(this);
+        valueView.setTextColor(colorPrimary);
+        valueView.setTextSize(14);
+        valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 999));
+        header.addView(valueView, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText(subtitleText);
+        subtitle.setTextColor(colorSubtext);
+        subtitle.setTextSize(13);
+        subtitle.setPadding(0, dp(4), 0, 0);
+
+        SeekBar seekBar = new SeekBar(this);
+        seekBar.setMax(POSITION_OFFSET_MAX_DP - POSITION_OFFSET_MIN_DP);
+        PositionOffsetSliderBinding binding = new PositionOffsetSliderBinding(valueView, seekBar);
+        int current = getPendingIntSliderValue(key, defaultValue,
+                POSITION_OFFSET_MIN_DP, POSITION_OFFSET_MAX_DP);
+        binding.setValue(current);
+
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int value = POSITION_OFFSET_MIN_DP + progress;
+                valueView.setText(formatOffsetValue(value));
+                if (fromUser) {
+                    performSliderHaptic(seekBar);
+                    updatePendingIntSliderValue(key, value,
+                            POSITION_OFFSET_MIN_DP, POSITION_OFFSET_MAX_DP);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                updatePendingIntSliderValue(key, POSITION_OFFSET_MIN_DP + seekBar.getProgress(),
+                        POSITION_OFFSET_MIN_DP, POSITION_OFFSET_MAX_DP);
+            }
+        });
+        setTapClickListener(valueView, v -> showIntInputDialog(
+                titleText,
+                POSITION_OFFSET_MIN_DP + seekBar.getProgress(),
+                POSITION_OFFSET_MIN_DP,
+                POSITION_OFFSET_MAX_DP,
+                "dp",
+                value -> {
+                    binding.setValue(value);
+                    updatePendingIntSliderValue(key, value,
+                            POSITION_OFFSET_MIN_DP, POSITION_OFFSET_MAX_DP);
+                }));
+
+        positionTuningSliderBindings.add(binding);
+        row.addView(header, matchWrap());
+        row.addView(subtitle, matchWrap());
+        row.addView(seekBar, matchWrapWithTop(8));
+        root.addView(row, matchWrap());
+    }
+
     private void addApplySliderRow(LinearLayout root, String titleText, String subtitleText, String key,
             int defaultValue, int min, int max, String suffix) {
         addApplySliderRowInternal(root, titleText, subtitleText, key, defaultValue, min, max, suffix, false);
@@ -1486,6 +1642,29 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
+    private void applyAllPositionOffsets() {
+        SharedPreferences.Editor editor = prefs.edit();
+        for (String key : POSITION_TUNING_KEYS) {
+            int value = getPendingIntSliderValue(key, 0,
+                    POSITION_OFFSET_MIN_DP, POSITION_OFFSET_MAX_DP);
+            editor.putInt(key, value);
+        }
+        editor.apply();
+        SettingsStore.notifyChanged(this);
+        invalidatePreview();
+        showToast("个性化位置微调已应用");
+    }
+
+    private void resetAllPositionOffsets() {
+        for (String key : POSITION_TUNING_KEYS) {
+            updatePendingIntSliderValue(key, 0, POSITION_OFFSET_MIN_DP, POSITION_OFFSET_MAX_DP);
+        }
+        for (PositionOffsetSliderBinding binding : positionTuningSliderBindings) {
+            binding.setValue(0);
+        }
+        showToast("个性化位置微调已归零，点应用后写入状态栏");
+    }
+
     private void addDivider(LinearLayout root) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
@@ -1637,33 +1816,6 @@ public class MainActivity extends Activity {
     }
 
     private void invalidatePreview() {
-        if (previewView != null) {
-            previewView.setBatteryStyle(readIntSetting(
-                    SettingsStore.KEY_BATTERY_ICON_STYLE,
-                    SettingsStore.DEFAULT_BATTERY_ICON_STYLE));
-            previewView.setBatteryTextFont(readIntSetting(
-                    SettingsStore.KEY_BATTERY_TEXT_FONT,
-                    SettingsStore.DEFAULT_BATTERY_TEXT_FONT));
-            previewView.setIconScalePercent(readIntSetting(
-                    SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,
-                    SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT));
-            previewView.setBatteryInnerTextScalePercent(readIntSetting(
-                    SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
-                    SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT));
-            previewView.setBatteryLevelTextEnabled(SettingsStore.readBoolean(
-                    prefs,
-                    SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
-                    SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED));
-            previewView.setBatteryHollowEnabled(SettingsStore.readBoolean(
-                    prefs,
-                    SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
-                    SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED));
-            previewView.setBatteryHollowFillFollowsLevel(SettingsStore.readBoolean(
-                    prefs,
-                    SettingsStore.KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL,
-                    SettingsStore.DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL));
-            previewView.invalidate();
-        }
     }
 
     private void resetAllSettings() {
@@ -1676,6 +1828,11 @@ public class MainActivity extends Activity {
 
     private String formatValue(int value, String suffix) {
         return suffix == null || suffix.length() == 0 ? Integer.toString(value) : value + suffix;
+    }
+
+    private String formatOffsetValue(int value) {
+        int normalized = SettingsStore.normalizeIconYOffsetDp(value);
+        return (normalized > 0 ? "+" : "") + normalized + "dp";
     }
 
     private String formatInsetValue(int value) {
@@ -2649,6 +2806,25 @@ public class MainActivity extends Activity {
                 new int[]{colorPrimaryContainer, colorPrimary, colorPrimaryDeep});
         drawable.setCornerRadius(dp(32));
         return drawable;
+    }
+
+    private final class PositionOffsetSliderBinding {
+        private final TextView valueView;
+        private final SeekBar seekBar;
+
+        private PositionOffsetSliderBinding(TextView valueView, SeekBar seekBar) {
+            this.valueView = valueView;
+            this.seekBar = seekBar;
+        }
+
+        private void setValue(int value) {
+            int normalized = SettingsStore.normalizeIconYOffsetDp(value);
+            valueView.setText(formatOffsetValue(normalized));
+            int progress = normalized - POSITION_OFFSET_MIN_DP;
+            if (seekBar.getProgress() != progress) {
+                seekBar.setProgress(progress);
+            }
+        }
     }
 
     private interface TextValueConsumer {

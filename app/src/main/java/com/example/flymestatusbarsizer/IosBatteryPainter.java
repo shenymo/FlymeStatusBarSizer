@@ -61,6 +61,7 @@ final class IosBatteryPainter {
     static void draw(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
             boolean quickCharging,
             int fillColor, int textColor, boolean showLevelText, float textScale, Typeface typeface,
+            int bodyYOffsetPx, int textYOffsetPx, int boltYOffsetPx,
             boolean hollow, boolean hollowFillFollowsLevel) {
         if (bounds.width() <= 0 || bounds.height() <= 0) {
             return;
@@ -111,10 +112,14 @@ final class IosBatteryPainter {
             float boltLeft = CAP.right + Math.max(1f, visualWidth * BOLT_GAP_RATIO);
             BOLT.set(boltLeft, BODY.top, bounds.right, BODY.bottom);
         }
+        applyBodyVerticalOffset(bodyYOffsetPx);
+        if (showBolt && boltYOffsetPx != 0) {
+            BOLT.offset(0f, -boltYOffsetPx);
+        }
         if (hollow) {
             drawHollowBattery(canvas, contentRadius, capContentRadius, renderedBodyColor, renderedFillColor,
                     clampedLevel, levelText,
-                    textSize, showLevelText, showBolt, renderedBoltColor, useQuickBolt,
+                    textSize, textYOffsetPx, showLevelText, showBolt, renderedBoltColor, useQuickBolt,
                     hollowFillFollowsLevel);
             return;
         }
@@ -129,7 +134,8 @@ final class IosBatteryPainter {
 
         if (showLevelText) {
             TEXT_PAINT.setTextSize(textSize);
-            float textBaseline = BODY.centerY() - (TEXT_PAINT.descent() + TEXT_PAINT.ascent()) / 2f;
+            float textBaseline = BODY.centerY() - (TEXT_PAINT.descent() + TEXT_PAINT.ascent()) / 2f
+                    - textYOffsetPx;
             TEXT_PAINT.setColor(renderedTextColor);
             canvas.drawText(levelText, BODY.centerX(), textBaseline, TEXT_PAINT);
         }
@@ -137,7 +143,8 @@ final class IosBatteryPainter {
 
     private static void drawHollowBattery(Canvas canvas, float contentRadius, float capContentRadius,
             int emptyColor, int fillColor, int level, String levelText, float textSize,
-            boolean showLevelText, boolean showBolt, int boltColor, boolean quickCharging,
+            int textYOffsetPx, boolean showLevelText, boolean showBolt, int boltColor,
+            boolean quickCharging,
             boolean fillFollowsLevel) {
         if (!showLevelText) {
             if (fillFollowsLevel) {
@@ -165,10 +172,26 @@ final class IosBatteryPainter {
         }
         if (showLevelText) {
             CUTOUT_TEXT_PAINT.setTextSize(textSize);
-            float textBaseline = BODY.centerY() - (CUTOUT_TEXT_PAINT.descent() + CUTOUT_TEXT_PAINT.ascent()) / 2f;
+            float textBaseline = BODY.centerY()
+                    - (CUTOUT_TEXT_PAINT.descent() + CUTOUT_TEXT_PAINT.ascent()) / 2f
+                    - textYOffsetPx;
             canvas.drawText(levelText, BODY.centerX(), textBaseline, CUTOUT_TEXT_PAINT);
         }
         canvas.restoreToCount(layer);
+    }
+
+    private static void applyBodyVerticalOffset(int bodyYOffsetPx) {
+        if (bodyYOffsetPx == 0) {
+            return;
+        }
+        float offsetY = -bodyYOffsetPx;
+        BODY.offset(0f, offsetY);
+        CAP.offset(0f, offsetY);
+        BODY_CONTENT.offset(0f, offsetY);
+        CAP_CONTENT.offset(0f, offsetY);
+        if (!BOLT.isEmpty()) {
+            BOLT.offset(0f, offsetY);
+        }
     }
 
     private static void drawBodyAndCapRange(Canvas canvas, float contentRadius, float capContentRadius,

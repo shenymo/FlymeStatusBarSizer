@@ -19,6 +19,13 @@ final class SettingsStore {
     static final String KEY_BATTERY_TEXT_FONT = "battery_text_font";
     static final String KEY_STATUS_BAR_ICON_SCALE_PERCENT = "status_bar_icon_scale_percent";
     static final String KEY_BATTERY_INNER_TEXT_SCALE_PERCENT = "battery_inner_text_scale_percent";
+    static final String KEY_BATTERY_ICON_Y_OFFSET_DP = "battery_icon_y_offset_dp";
+    static final String KEY_BATTERY_TEXT_Y_OFFSET_DP = "battery_text_y_offset_dp";
+    static final String KEY_BATTERY_BOLT_Y_OFFSET_DP = "battery_bolt_y_offset_dp";
+    static final String KEY_SIGNAL_SINGLE_Y_OFFSET_DP = "signal_single_y_offset_dp";
+    static final String KEY_SIGNAL_BADGE_Y_OFFSET_DP = "signal_badge_y_offset_dp";
+    static final String KEY_SIGNAL_DUAL_Y_OFFSET_DP = "signal_dual_y_offset_dp";
+    static final String KEY_WIFI_Y_OFFSET_DP = "wifi_y_offset_dp";
     static final String KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED = "connection_rate_auto_visibility_enabled";
     static final String KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB = "connection_rate_show_threshold_kb";
     static final String KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB = "connection_rate_hide_threshold_kb";
@@ -67,6 +74,13 @@ final class SettingsStore {
     static final int DEFAULT_BATTERY_TEXT_FONT = BATTERY_TEXT_FONT_SYSTEM_DEFAULT;
     static final int DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT = 100;
     static final int DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT = 100;
+    static final int DEFAULT_BATTERY_ICON_Y_OFFSET_DP = 0;
+    static final int DEFAULT_BATTERY_TEXT_Y_OFFSET_DP = 0;
+    static final int DEFAULT_BATTERY_BOLT_Y_OFFSET_DP = 0;
+    static final int DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP = 0;
+    static final int DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP = 0;
+    static final int DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP = 0;
+    static final int DEFAULT_WIFI_Y_OFFSET_DP = 0;
     static final boolean DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED = false;
     static final int DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB = 100;
     static final int DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB = 32;
@@ -111,6 +125,13 @@ final class SettingsStore {
             KEY_BATTERY_TEXT_FONT,
             KEY_STATUS_BAR_ICON_SCALE_PERCENT,
             KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
+            KEY_BATTERY_ICON_Y_OFFSET_DP,
+            KEY_BATTERY_TEXT_Y_OFFSET_DP,
+            KEY_BATTERY_BOLT_Y_OFFSET_DP,
+            KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
+            KEY_SIGNAL_BADGE_Y_OFFSET_DP,
+            KEY_SIGNAL_DUAL_Y_OFFSET_DP,
+            KEY_WIFI_Y_OFFSET_DP,
             KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB,
             KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB,
             KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT,
@@ -267,6 +288,20 @@ final class SettingsStore {
                 return DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
             case KEY_BATTERY_INNER_TEXT_SCALE_PERCENT:
                 return DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
+            case KEY_BATTERY_ICON_Y_OFFSET_DP:
+                return DEFAULT_BATTERY_ICON_Y_OFFSET_DP;
+            case KEY_BATTERY_TEXT_Y_OFFSET_DP:
+                return DEFAULT_BATTERY_TEXT_Y_OFFSET_DP;
+            case KEY_BATTERY_BOLT_Y_OFFSET_DP:
+                return DEFAULT_BATTERY_BOLT_Y_OFFSET_DP;
+            case KEY_SIGNAL_SINGLE_Y_OFFSET_DP:
+                return DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP;
+            case KEY_SIGNAL_BADGE_Y_OFFSET_DP:
+                return DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP;
+            case KEY_SIGNAL_DUAL_Y_OFFSET_DP:
+                return DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP;
+            case KEY_WIFI_Y_OFFSET_DP:
+                return DEFAULT_WIFI_Y_OFFSET_DP;
             case KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB:
                 return DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB;
             case KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB:
@@ -376,6 +411,10 @@ final class SettingsStore {
 
     static int normalizeScalePercent(int value) {
         return Math.max(50, Math.min(200, value));
+    }
+
+    static int normalizeIconYOffsetDp(int value) {
+        return Math.max(-24, Math.min(24, value));
     }
 
     static int normalizeNotificationAppIconSizeDp(int value) {

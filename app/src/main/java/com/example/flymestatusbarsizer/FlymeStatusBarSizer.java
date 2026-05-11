@@ -1679,15 +1679,35 @@ public class FlymeStatusBarSizer extends XposedModule {
         int style = resolveBatteryStyle(config);
         boolean hollow = config != null && config.batteryHollowEnabled;
         boolean hollowFillFollowsLevel = config != null && config.batteryHollowFillFollowsLevel;
+        Context densityContext = ModuleConfig.getSystemUiContext();
+        int bodyYOffsetPx = resolveIconOffsetPx(densityContext, config == null
+                ? SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP
+                : config.batteryIconYOffsetDp);
+        int textYOffsetPx = resolveIconOffsetPx(densityContext, config == null
+                ? SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP
+                : config.batteryTextYOffsetDp);
+        int boltYOffsetPx = resolveIconOffsetPx(densityContext, config == null
+                ? SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP
+                : config.batteryBoltYOffsetDp);
         if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
             OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, quickCharging,
-                    fillColor, textColor, showLevelText, textScale, typeface, hollow,
+                    fillColor, textColor, showLevelText, textScale, typeface,
+                    bodyYOffsetPx, textYOffsetPx, boltYOffsetPx, hollow,
                     hollowFillFollowsLevel);
             return;
         }
         IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, quickCharging,
-                fillColor, textColor, showLevelText, textScale, typeface, hollow,
+                fillColor, textColor, showLevelText, textScale, typeface,
+                bodyYOffsetPx, textYOffsetPx, boltYOffsetPx, hollow,
                 hollowFillFollowsLevel);
+    }
+
+    private static int resolveIconOffsetPx(Context context, int offsetDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
+        if (context == null) {
+            return normalized;
+        }
+        return Math.round(normalized * context.getResources().getDisplayMetrics().density);
     }
 
     private static boolean resolveBatteryQuickCharging(Object target) {

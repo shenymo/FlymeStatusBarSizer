@@ -55,6 +55,7 @@ final class OneUiBatteryPainter {
     static void draw(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
             boolean quickCharging,
             int fillColor, int textColor, boolean showLevelText, float textScale, Typeface typeface,
+            int bodyYOffsetPx, int textYOffsetPx, int boltYOffsetPx,
             boolean hollow, boolean hollowFillFollowsLevel) {
         if (bounds.width() <= 0 || bounds.height() <= 0) {
             return;
@@ -95,10 +96,14 @@ final class OneUiBatteryPainter {
             float boltLeft = BODY.right + Math.max(1f, visualWidth * BOLT_GAP_RATIO);
             BOLT.set(boltLeft, BODY.top, bounds.right, BODY.bottom);
         }
+        applyBodyVerticalOffset(bodyYOffsetPx);
+        if (showBolt && boltYOffsetPx != 0) {
+            BOLT.offset(0f, -boltYOffsetPx);
+        }
         if (hollow) {
             drawHollowBattery(canvas, contentRadius, renderedBodyColor, renderedFillColor,
                     clampedLevel, levelText, textSize,
-                    showLevelText, showBolt, renderedBoltColor, useQuickBolt,
+                    textYOffsetPx, showLevelText, showBolt, renderedBoltColor, useQuickBolt,
                     hollowFillFollowsLevel);
             return;
         }
@@ -113,14 +118,16 @@ final class OneUiBatteryPainter {
 
         if (showLevelText) {
             TEXT_PAINT.setTextSize(textSize);
-            float textBaseline = BODY.centerY() - (TEXT_PAINT.descent() + TEXT_PAINT.ascent()) / 2f;
+            float textBaseline = BODY.centerY() - (TEXT_PAINT.descent() + TEXT_PAINT.ascent()) / 2f
+                    - textYOffsetPx;
             TEXT_PAINT.setColor(renderedTextColor);
             canvas.drawText(levelText, BODY.centerX(), textBaseline, TEXT_PAINT);
         }
     }
 
     private static void drawHollowBattery(Canvas canvas, float contentRadius, int emptyColor, int fillColor,
-            int level, String levelText, float textSize, boolean showLevelText, boolean showBolt,
+            int level, String levelText, float textSize, int textYOffsetPx,
+            boolean showLevelText, boolean showBolt,
             int boltColor, boolean quickCharging, boolean fillFollowsLevel) {
         if (!showLevelText) {
             if (fillFollowsLevel) {
@@ -148,10 +155,24 @@ final class OneUiBatteryPainter {
         }
         if (showLevelText) {
             CUTOUT_TEXT_PAINT.setTextSize(textSize);
-            float textBaseline = BODY.centerY() - (CUTOUT_TEXT_PAINT.descent() + CUTOUT_TEXT_PAINT.ascent()) / 2f;
+            float textBaseline = BODY.centerY()
+                    - (CUTOUT_TEXT_PAINT.descent() + CUTOUT_TEXT_PAINT.ascent()) / 2f
+                    - textYOffsetPx;
             canvas.drawText(levelText, BODY.centerX(), textBaseline, CUTOUT_TEXT_PAINT);
         }
         canvas.restoreToCount(layer);
+    }
+
+    private static void applyBodyVerticalOffset(int bodyYOffsetPx) {
+        if (bodyYOffsetPx == 0) {
+            return;
+        }
+        float offsetY = -bodyYOffsetPx;
+        BODY.offset(0f, offsetY);
+        BODY_CONTENT.offset(0f, offsetY);
+        if (!BOLT.isEmpty()) {
+            BOLT.offset(0f, offsetY);
+        }
     }
 
     private static void drawBodyRange(Canvas canvas, float contentRadius, int color,

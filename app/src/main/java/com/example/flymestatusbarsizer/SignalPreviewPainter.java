@@ -27,6 +27,7 @@ final class SignalPreviewPainter {
     private static final RectF BAR = new RectF();
     private static final RectF DOT = new RectF();
     private static final IconMetrics.VisualCanvas VISUAL_CANVAS = new IconMetrics.VisualCanvas();
+    private static final Rect SHIFTED_SIGNAL_BOUNDS = new Rect();
     private static final Rect SIGNAL_BOX = new Rect();
     private static final Rect BADGE_MAIN_TEXT_BOUNDS = new Rect();
     private static final Rect BADGE_SUB_TEXT_BOUNDS = new Rect();
@@ -60,8 +61,14 @@ final class SignalPreviewPainter {
 
     static void drawSingleSim(Canvas canvas, Rect bounds, int color, ColorFilter colorFilter,
                               int mobileTypeBadge, int signalLevel) {
+        drawSingleSim(canvas, bounds, color, colorFilter, mobileTypeBadge, signalLevel, 0, 0);
+    }
+
+    static void drawSingleSim(Canvas canvas, Rect bounds, int color, ColorFilter colorFilter,
+                              int mobileTypeBadge, int signalLevel, int signalYOffsetPx,
+                              int badgeYOffsetPx) {
         drawSignal(canvas, bounds, false, color, colorFilter, mobileTypeBadge,
-                signalLevel, signalLevel);
+                signalLevel, signalLevel, signalYOffsetPx, badgeYOffsetPx);
     }
 
     static void drawMergedDualSim(Canvas canvas, Rect bounds, int color) {
@@ -92,8 +99,16 @@ final class SignalPreviewPainter {
     static void drawMergedDualSim(Canvas canvas, Rect bounds, int color, ColorFilter colorFilter,
                                   int mobileTypeBadge, int primarySignalLevel,
                                   int secondarySignalLevel) {
+        drawMergedDualSim(canvas, bounds, color, colorFilter, mobileTypeBadge,
+                primarySignalLevel, secondarySignalLevel, 0, 0);
+    }
+
+    static void drawMergedDualSim(Canvas canvas, Rect bounds, int color, ColorFilter colorFilter,
+                                  int mobileTypeBadge, int primarySignalLevel,
+                                  int secondarySignalLevel, int signalYOffsetPx,
+                                  int badgeYOffsetPx) {
         drawSignal(canvas, bounds, true, color, colorFilter, mobileTypeBadge,
-                primarySignalLevel, secondarySignalLevel);
+                primarySignalLevel, secondarySignalLevel, signalYOffsetPx, badgeYOffsetPx);
     }
 
     static int resolveIntrinsicWidth(int heightPx) {
@@ -143,11 +158,14 @@ final class SignalPreviewPainter {
 
     private static void drawSignal(Canvas canvas, Rect bounds, boolean mergedDual, int color,
                                    ColorFilter colorFilter, int mobileTypeBadge,
-                                   int primarySignalLevel, int secondarySignalLevel) {
+                                   int primarySignalLevel, int secondarySignalLevel,
+                                   int signalYOffsetPx, int badgeYOffsetPx) {
         int drawColor = modulateColorAlpha(color, SIGNAL_DRAW_ALPHA);
         int inactiveColor = scaleAlpha(drawColor, INACTIVE_SIGNAL_ALPHA_RATIO);
         if (mobileTypeBadge == MOBILE_TYPE_BADGE_NONE) {
-            SignalGeometry geometry = buildGeometry(bounds, mergedDual);
+            SignalGeometry geometry = buildGeometry(
+                    resolveShiftedSignalBounds(bounds, signalYOffsetPx),
+                    mergedDual);
             drawBars(canvas, geometry, drawColor, inactiveColor, colorFilter, primarySignalLevel);
             if (mergedDual) {
                 drawDots(canvas, geometry, drawColor, inactiveColor, colorFilter, secondarySignalLevel);
@@ -165,20 +183,39 @@ final class SignalPreviewPainter {
                 colorFilter);
         float contentWidth = boxSize + boxSize * MOBILE_TYPE_GAP_RATIO + layout.badgeWidth;
         float left = bounds.left + (bounds.width() - contentWidth) / 2f;
-        float top = bounds.top + (bounds.height() - boxSize) / 2f;
+        float signalTop = applyVerticalOffset(bounds.top + (bounds.height() - boxSize) / 2f,
+                signalYOffsetPx);
         SIGNAL_BOX.set(
                 Math.round(left),
-                Math.round(top),
+                Math.round(signalTop),
                 Math.round(left + boxSize),
-                Math.round(top + boxSize));
+                Math.round(signalTop + boxSize));
         SignalGeometry geometry = buildGeometry(SIGNAL_BOX, mergedDual);
         drawBars(canvas, geometry, drawColor, inactiveColor, colorFilter, primarySignalLevel);
         if (mergedDual) {
             drawDots(canvas, geometry, drawColor, inactiveColor, colorFilter, secondarySignalLevel);
         }
         float badgeLeft = left + boxSize * (1f + MOBILE_TYPE_GAP_RATIO);
-        MOBILE_TYPE_BOX.set(badgeLeft, top, badgeLeft + layout.badgeWidth, top + boxSize);
+        float badgeTop = applyVerticalOffset(bounds.top + (bounds.height() - boxSize) / 2f,
+                badgeYOffsetPx);
+        MOBILE_TYPE_BOX.set(badgeLeft, badgeTop, badgeLeft + layout.badgeWidth, badgeTop + boxSize);
         drawMobileTypeBadge(canvas, MOBILE_TYPE_BOX, layout);
+    }
+
+    private static Rect resolveShiftedSignalBounds(Rect bounds, int signalYOffsetPx) {
+        if (bounds == null) {
+            SHIFTED_SIGNAL_BOUNDS.setEmpty();
+            return SHIFTED_SIGNAL_BOUNDS;
+        }
+        SHIFTED_SIGNAL_BOUNDS.set(bounds);
+        if (signalYOffsetPx != 0) {
+            SHIFTED_SIGNAL_BOUNDS.offset(0, -signalYOffsetPx);
+        }
+        return SHIFTED_SIGNAL_BOUNDS;
+    }
+
+    private static float applyVerticalOffset(float value, int offsetPx) {
+        return value - offsetPx;
     }
 
     private static void drawBars(Canvas canvas, SignalGeometry geometry, int activeColor,

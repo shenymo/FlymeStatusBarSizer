@@ -20,7 +20,6 @@ public final class RightIconGroupPreviewView extends View {
     private final Paint surfaceStrokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint hintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint dimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF panelRect = new RectF();
     private final RectF topStatusStripRect = new RectF();
@@ -28,6 +27,7 @@ public final class RightIconGroupPreviewView extends View {
     private final Rect batteryRect = new Rect();
     private final Rect singleSignalRect = new Rect();
     private final Rect mergedSignalRect = new Rect();
+    private final Rect wifiRect = new Rect();
 
     private int previewTintColor = DEFAULT_TEXT_COLOR;
     private int batteryStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
@@ -37,6 +37,13 @@ public final class RightIconGroupPreviewView extends View {
     private int batteryTextFont = SettingsStore.DEFAULT_BATTERY_TEXT_FONT;
     private int iconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
     private int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
+    private int batteryIconYOffsetDp = SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP;
+    private int batteryTextYOffsetDp = SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP;
+    private int batteryBoltYOffsetDp = SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP;
+    private int signalSingleYOffsetDp = SettingsStore.DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP;
+    private int signalBadgeYOffsetDp = SettingsStore.DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP;
+    private int signalDualYOffsetDp = SettingsStore.DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP;
+    private int wifiYOffsetDp = SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP;
 
     public RightIconGroupPreviewView(Context context) {
         super(context);
@@ -130,6 +137,69 @@ public final class RightIconGroupPreviewView extends View {
         invalidate();
     }
 
+    public void setBatteryIconYOffsetDp(int offsetDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
+        if (batteryIconYOffsetDp == normalized) {
+            return;
+        }
+        batteryIconYOffsetDp = normalized;
+        invalidate();
+    }
+
+    public void setBatteryTextYOffsetDp(int offsetDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
+        if (batteryTextYOffsetDp == normalized) {
+            return;
+        }
+        batteryTextYOffsetDp = normalized;
+        invalidate();
+    }
+
+    public void setBatteryBoltYOffsetDp(int offsetDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
+        if (batteryBoltYOffsetDp == normalized) {
+            return;
+        }
+        batteryBoltYOffsetDp = normalized;
+        invalidate();
+    }
+
+    public void setSignalSingleYOffsetDp(int offsetDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
+        if (signalSingleYOffsetDp == normalized) {
+            return;
+        }
+        signalSingleYOffsetDp = normalized;
+        invalidate();
+    }
+
+    public void setSignalBadgeYOffsetDp(int offsetDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
+        if (signalBadgeYOffsetDp == normalized) {
+            return;
+        }
+        signalBadgeYOffsetDp = normalized;
+        invalidate();
+    }
+
+    public void setSignalDualYOffsetDp(int offsetDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
+        if (signalDualYOffsetDp == normalized) {
+            return;
+        }
+        signalDualYOffsetDp = normalized;
+        invalidate();
+    }
+
+    public void setWifiYOffsetDp(int offsetDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
+        if (wifiYOffsetDp == normalized) {
+            return;
+        }
+        wifiYOffsetDp = normalized;
+        invalidate();
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -188,44 +258,44 @@ public final class RightIconGroupPreviewView extends View {
 
         float currentRight = batteryLeft - dp(10);
         Rect target = mergedDual ? mergedSignalRect : singleSignalRect;
-        int signalLeft = Math.round(currentRight - iconSize);
-        target.set(signalLeft, iconTop, signalLeft + iconSize, iconTop + iconSize);
+        int mobileTypeBadge = SignalPreviewPainter.MOBILE_TYPE_BADGE_5G;
+        int signalWidth = SignalPreviewPainter.resolveIntrinsicWidth(iconSize, mobileTypeBadge);
+        int signalLeft = Math.round(currentRight - signalWidth);
+        target.set(signalLeft, iconTop, signalLeft + signalWidth, iconTop + iconSize);
         if (mergedDual) {
             SignalPreviewPainter.drawMergedDualSim(
                     canvas,
                     target,
                     previewTintColor,
+                    null,
+                    mobileTypeBadge,
                     PREVIEW_MERGED_PRIMARY_SIGNAL_LEVEL,
-                    PREVIEW_MERGED_SECONDARY_SIGNAL_LEVEL);
+                    PREVIEW_MERGED_SECONDARY_SIGNAL_LEVEL,
+                    offsetPx(signalDualYOffsetDp),
+                    offsetPx(signalBadgeYOffsetDp));
         } else {
-            SignalPreviewPainter.drawSingleSim(canvas, target, previewTintColor);
+            SignalPreviewPainter.drawSingleSim(
+                    canvas,
+                    target,
+                    previewTintColor,
+                    null,
+                    mobileTypeBadge,
+                    PREVIEW_MERGED_PRIMARY_SIGNAL_LEVEL,
+                    offsetPx(signalSingleYOffsetDp),
+                    offsetPx(signalBadgeYOffsetDp));
         }
-
         currentRight = signalLeft - dp(8);
-        dimPaint.setColor(Color.argb(170,
-                Color.red(previewTintColor),
-                Color.green(previewTintColor),
-                Color.blue(previewTintColor)));
-        float typeWidth = dp(22);
-        canvas.drawRoundRect(currentRight - typeWidth,
-                centerY - dp(7),
-                currentRight,
-                centerY + dp(7),
-                dp(4),
-                dp(4),
-                dimPaint);
-
-        labelPaint.setColor(Color.WHITE);
-        labelPaint.setTextSize(dp(10));
-        float typeBaseline = centerY - (labelPaint.descent() + labelPaint.ascent()) / 2f;
-        canvas.drawText("5G", currentRight - typeWidth / 2f, typeBaseline, labelPaint);
+        int wifiLeft = Math.round(currentRight - iconSize);
+        wifiRect.set(wifiLeft, iconTop, wifiLeft + iconSize, iconTop + iconSize);
+        WifiIconDrawable.drawPreview(canvas, wifiRect, previewTintColor, 255, null,
+                4, false, 0, offsetPx(wifiYOffsetDp));
     }
 
     private void drawPreviewNotes(Canvas canvas) {
         hintPaint.setColor(Color.argb(215, 255, 255, 255));
         hintPaint.setTextSize(dp(13));
         float firstLineY = panelRect.bottom - dp(28);
-        canvas.drawText("两条状态栏都会按实际位置直接画图标，便于调比例", panelRect.centerX(), firstLineY, hintPaint);
+        canvas.drawText("预览会同步显示电池、信号和 Wi-Fi，方便一起看比例和位置", panelRect.centerX(), firstLineY, hintPaint);
     }
 
     private static int resolveBatteryTextColor(int tintColor) {
@@ -242,11 +312,15 @@ public final class RightIconGroupPreviewView extends View {
         if (SettingsStore.normalizeBatteryStyle(batteryStyle) == SettingsStore.BATTERY_STYLE_ONEUI) {
             OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, false,
                     fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
+                    offsetPx(batteryIconYOffsetDp), offsetPx(batteryTextYOffsetDp),
+                    offsetPx(batteryBoltYOffsetDp),
                     batteryHollowEnabled, batteryHollowFillFollowsLevel);
             return;
         }
         IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, false,
                 fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
+                offsetPx(batteryIconYOffsetDp), offsetPx(batteryTextYOffsetDp),
+                offsetPx(batteryBoltYOffsetDp),
                 batteryHollowEnabled, batteryHollowFillFollowsLevel);
     }
 
@@ -256,5 +330,9 @@ public final class RightIconGroupPreviewView extends View {
 
     private int scalePx(int px) {
         return Math.max(1, Math.round(px * (iconScalePercent / 100f)));
+    }
+
+    private int offsetPx(int dp) {
+        return Math.round(dp * getResources().getDisplayMetrics().density);
     }
 }

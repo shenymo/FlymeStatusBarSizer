@@ -34,6 +34,13 @@ final class ModuleConfig {
     int batteryTextFont = SettingsStore.DEFAULT_BATTERY_TEXT_FONT;
     int statusBarIconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
     int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
+    int batteryIconYOffsetDp = SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP;
+    int batteryTextYOffsetDp = SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP;
+    int batteryBoltYOffsetDp = SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP;
+    int signalSingleYOffsetDp = SettingsStore.DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP;
+    int signalBadgeYOffsetDp = SettingsStore.DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP;
+    int signalDualYOffsetDp = SettingsStore.DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP;
+    int wifiYOffsetDp = SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP;
     boolean connectionRateThresholdEnabled = SettingsStore.DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED;
     int connectionRateShowThresholdKb = SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB;
     int connectionRateHideThresholdKb = SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB;
@@ -203,6 +210,41 @@ final class ModuleConfig {
                             prefs,
                             SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
                             SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT));
+            config.batteryIconYOffsetDp = SettingsStore.normalizeIconYOffsetDp(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_BATTERY_ICON_Y_OFFSET_DP,
+                            SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP));
+            config.batteryTextYOffsetDp = SettingsStore.normalizeIconYOffsetDp(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_BATTERY_TEXT_Y_OFFSET_DP,
+                            SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP));
+            config.batteryBoltYOffsetDp = SettingsStore.normalizeIconYOffsetDp(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_BATTERY_BOLT_Y_OFFSET_DP,
+                            SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP));
+            config.signalSingleYOffsetDp = SettingsStore.normalizeIconYOffsetDp(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
+                            SettingsStore.DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP));
+            config.signalBadgeYOffsetDp = SettingsStore.normalizeIconYOffsetDp(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_SIGNAL_BADGE_Y_OFFSET_DP,
+                            SettingsStore.DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP));
+            config.signalDualYOffsetDp = SettingsStore.normalizeIconYOffsetDp(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_SIGNAL_DUAL_Y_OFFSET_DP,
+                            SettingsStore.DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP));
+            config.wifiYOffsetDp = SettingsStore.normalizeIconYOffsetDp(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_WIFI_Y_OFFSET_DP,
+                            SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP));
             config.connectionRateThresholdEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,

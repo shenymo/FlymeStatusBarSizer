@@ -80,13 +80,20 @@ final class SignalIconDrawable extends Drawable {
         }
         updateDrawColor(getState());
         int color = SignalPreviewPainter.modulateColorAlpha(drawColor, alpha);
+        View ownerView = ownerViewRef.get();
+        ModuleConfig config = ModuleConfig.load(ownerView == null
+                ? ModuleConfig.getSystemUiContext()
+                : ownerView.getContext());
+        int signalYOffsetPx = resolveSignalYOffsetPx(config, ownerView, mergedDual);
+        int badgeYOffsetPx = resolveSignalBadgeYOffsetPx(config, ownerView);
         if (mergedDual) {
             SignalPreviewPainter.drawMergedDualSim(
                     canvas, drawBounds, color, colorFilter, mobileTypeBadge,
-                    primarySignalLevel, secondarySignalLevel);
+                    primarySignalLevel, secondarySignalLevel, signalYOffsetPx, badgeYOffsetPx);
         } else {
             SignalPreviewPainter.drawSingleSim(
-                    canvas, drawBounds, color, colorFilter, mobileTypeBadge, primarySignalLevel);
+                    canvas, drawBounds, color, colorFilter, mobileTypeBadge, primarySignalLevel,
+                    signalYOffsetPx, badgeYOffsetPx);
         }
     }
 
@@ -160,6 +167,35 @@ final class SignalIconDrawable extends Drawable {
             return 0;
         }
         return Math.min(signalLevel, 4);
+    }
+
+    private static int resolveSignalYOffsetPx(ModuleConfig config, View ownerView, boolean mergedDual) {
+        int offsetDp = mergedDual
+                ? (config == null
+                ? SettingsStore.DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP
+                : SettingsStore.normalizeIconYOffsetDp(config.signalDualYOffsetDp))
+                : (config == null
+                ? SettingsStore.DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP
+                : SettingsStore.normalizeIconYOffsetDp(config.signalSingleYOffsetDp));
+        return offsetDpToPx(ownerView, offsetDp);
+    }
+
+    private static int resolveSignalBadgeYOffsetPx(ModuleConfig config, View ownerView) {
+        int offsetDp = config == null
+                ? SettingsStore.DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP
+                : SettingsStore.normalizeIconYOffsetDp(config.signalBadgeYOffsetDp);
+        return offsetDpToPx(ownerView, offsetDp);
+    }
+
+    private static int offsetDpToPx(View ownerView, int offsetDp) {
+        if (ownerView == null) {
+            android.content.Context context = ModuleConfig.getSystemUiContext();
+            if (context == null) {
+                return offsetDp;
+            }
+            return Math.round(offsetDp * context.getResources().getDisplayMetrics().density);
+        }
+        return Math.round(offsetDp * ownerView.getResources().getDisplayMetrics().density);
     }
 
     private Rect resolveCenteredDrawBounds(Rect bounds) {
