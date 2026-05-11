@@ -562,6 +562,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookLocationBasedWifiActivityVisibility(loader, "isActivityInViewVisible");
         hookLocationBasedWifiActivityVisibility(loader, "isActivityOutViewVisible");
         hookLocationBasedWifiActivityVisibility(loader, "isActivityContainerVisible");
+        hookFlymeViceWifiVisibility(loader);
         hookWifiSignalControllerIconIds(loader);
     }
 
@@ -647,6 +648,38 @@ public class FlymeStatusBarSizer extends XposedModule {
             });
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook FlymeStatusBarWifiView perf hooks", t);
+        }
+    }
+
+    private void hookFlymeViceWifiVisibility(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.statusbar.net.wifi.FlymeWifiSignalPolicy",
+                    false,
+                    loader);
+            Class<?> stateClass = Class.forName(
+                    "com.flyme.systemui.statusbar.net.wifi.WifiIconState",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("updateViceWifiIconWithState", stateClass);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+                if (!isWifiCodeDrawEnabled(config)) {
+                    return chain.proceed();
+                }
+                Object iconController = ReflectUtils.getField(chain.getThisObject(), "mIconController");
+                if (iconController != null) {
+                    ReflectUtils.invokeMethod(iconController, "setIconVisibility",
+                            new Class[]{String.class, boolean.class},
+                            WIFI_SLOT_VICE,
+                            false);
+                }
+                return null;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook FlymeWifiSignalPolicy.updateViceWifiIconWithState", t);
         }
     }
 
@@ -3047,9 +3080,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     config.enabled && isSignalCodeDrawEnabled(config));
         }
         if (!config.enabled) {
-            if ("wifi_signal".equals(idName) && view instanceof ImageView) {
-                syncWifiSlotMergeVisibility((ImageView) view, false);
-            }
             return;
         }
         if ("wifi_signal".equals(idName) && view instanceof ImageView) {
@@ -3057,7 +3087,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             if (isWifiCodeDrawEnabled(config)) {
                 syncWifiIconLayout(imageView, config);
             } else {
-                syncWifiSlotMergeVisibility(imageView, false);
                 applyStandaloneStatusBarImageScale(view, config);
             }
             return;
@@ -4182,7 +4211,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         boolean debug = isWifiPerfLoggingEnabled();
         long eventId = LAST_WIFI_PERF_EVENT_ID;
         long startNs = debug ? SystemClock.elapsedRealtimeNanos() : 0L;
-        syncWifiSlotMergeVisibility(view, mergedDualWifi);
         if (!isWifiCodeDrawEnabled(config)) {
             if (debug) {
                 logWifiPerf(eventId, "layout.skip",
@@ -4412,44 +4440,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             current = parent instanceof View ? (View) parent : null;
         }
         return null;
-    }
-
-    private static void syncWifiSlotMergeVisibility(ImageView view, boolean mergedDualWifi) {
-        if (view == null) {
-            return;
-        }
-        View slotOwner = findWifiSlotOwnerView(view);
-        if (slotOwner == null || !WIFI_SLOT_VICE.equals(resolveWifiSlot(slotOwner))) {
-            return;
-        }
-        int targetVisibility = mergedDualWifi ? View.GONE : resolveWifiSlotTargetVisibility(slotOwner);
-        updateSignalSlotFootprint(slotOwner, !mergedDualWifi && targetVisibility == View.VISIBLE);
-        ReflectUtils.invokeMethod(slotOwner, "setVisibleState",
-                new Class[]{int.class, boolean.class},
-                mergedDualWifi ? 2 : 0,
-                false);
-        if (slotOwner.getVisibility() == targetVisibility) {
-            return;
-        }
-        slotOwner.setVisibility(targetVisibility);
-        ViewParent parent = slotOwner.getParent();
-        if (parent instanceof View) {
-            ((View) parent).requestLayout();
-        }
-        slotOwner.requestLayout();
-    }
-
-    private static int resolveWifiSlotTargetVisibility(View slotOwner) {
-        if (slotOwner == null) {
-            return View.GONE;
-        }
-        Object state = ReflectUtils.getField(slotOwner, "mState");
-        if (state == null) {
-            return View.GONE;
-        }
-        return ReflectUtils.getBooleanField(state, "visible", slotOwner.getVisibility() == View.VISIBLE)
-                ? View.VISIBLE
-                : View.GONE;
     }
 
     private static int resolveWifiLevelFromDrawable(Drawable drawable) {
@@ -6175,9 +6165,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                 ModuleConfig config = ModuleConfig.load(view.getContext());
                 String idName = getSystemUiIdName(view);
                 if (!config.enabled) {
-                    if (view instanceof ImageView && "wifi_signal".equals(idName)) {
-                        syncWifiSlotMergeVisibility((ImageView) view, false);
-                    }
                     continue;
                 }
                 applyStatusBarScaleIfNeeded(view);
