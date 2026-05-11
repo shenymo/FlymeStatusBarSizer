@@ -133,6 +133,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final int TELEPHONY_DEBUG_SUB_ID_CARD2 = 910002;
     private static final String WIFI_SLOT_PRIMARY = "wifi";
     private static final String WIFI_SLOT_VICE = "dual_wifi";
+    private static final Object WIFI_PERF_LOCK = new Object();
     private static final ThreadLocal<Integer> INTERNAL_SIGNAL_LEVEL_QUERY_DEPTH =
             ThreadLocal.withInitial(() -> 0);
     private static volatile int LAST_SIGNAL_LEVEL = -1;
@@ -178,6 +179,10 @@ public class FlymeStatusBarSizer extends XposedModule {
             ThreadLocal.withInitial(() -> 0);
     private static final Runnable WIFI_ICON_REFRESH_RUNNABLE =
             FlymeStatusBarSizer::refreshTrackedWifiIconViewsNow;
+    private static volatile long LAST_WIFI_PERF_EVENT_ID;
+    private static volatile long LAST_WIFI_PERF_NOTIFY_END_NS;
+    private static volatile long LAST_WIFI_PERF_REFRESH_POST_NS;
+    private static long WIFI_PERF_EVENT_SEQ;
     @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
         if (!param.isFirstPackage()) {
@@ -219,6 +224,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookSignalImageAssignments();
         hookSignalTintUpdates();
         hookSignalDrawableLevelChanges(loader);
+        hookFlymeWifiViewPerf(loader);
         hookWifiSignalControllerState(loader);
         hookWifiActivityVisibility(loader);
         hookLocationBasedMobileActivityVisibility(loader);
@@ -319,6 +325,143 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (module != null) {
             module.log(android.util.Log.WARN, TAG, message, throwable);
         }
+    }
+
+    private static boolean isWifiPerfLoggingEnabled() {
+        ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
+        return config != null && config.wifiPerfLoggingEnabled;
+    }
+
+    private static long nextWifiPerfEventId() {
+        synchronized (WIFI_PERF_LOCK) {
+            WIFI_PERF_EVENT_SEQ += 1L;
+            return WIFI_PERF_EVENT_SEQ;
+        }
+    }
+
+    private static void logWifiPerf(String stage, String message) {
+        if (!isWifiPerfLoggingEnabled()) {
+            return;
+        }
+        android.util.Log.d(TAG, "[wifi-perf][" + Thread.currentThread().getName()
+                + "][" + stage + "] " + message);
+    }
+
+    private static void logWifiPerf(long eventId, String stage, String message) {
+        if (!isWifiPerfLoggingEnabled()) {
+            return;
+        }
+        android.util.Log.d(TAG, "[wifi-perf#" + eventId + "][" + Thread.currentThread().getName()
+                + "][" + stage + "] " + message);
+    }
+
+    private static String formatDurationNs(long durationNs) {
+        long micros = Math.max(0L, durationNs) / 1000L;
+        long millis = micros / 1000L;
+        long fraction = micros % 1000L;
+        if (fraction < 10L) {
+            return millis + ".00" + fraction + "ms";
+        }
+        if (fraction < 100L) {
+            return millis + ".0" + fraction + "ms";
+        }
+        return millis + "." + fraction + "ms";
+    }
+
+    private static void appendWifiPerfChange(StringBuilder builder, String name,
+                                             Object before, Object after) {
+        if (builder == null) {
+            return;
+        }
+        if (builder.length() > 0) {
+            builder.append(", ");
+        }
+        builder.append(name).append('=').append(before).append("->").append(after);
+    }
+
+    private static String describeWifiViewForPerf(View view) {
+        if (view == null) {
+            return "view=null";
+        }
+        return "view@" + Integer.toHexString(System.identityHashCode(view))
+                + ",id=" + getSystemUiIdName(view)
+                + ",slot=" + resolveWifiSlot(view)
+                + ",visibility=" + describeVisibility(view.getVisibility());
+    }
+
+    private static String describeWifiDrawableForPerf(Drawable drawable) {
+        if (drawable == null) {
+            return "drawable=null";
+        }
+        String className = drawable.getClass().getSimpleName();
+        if (TextUtils.isEmpty(className)) {
+            className = drawable.getClass().getName();
+        }
+        return "drawable=" + className + ",levelBits=" + drawable.getLevel();
+    }
+
+    private static String describeWifiAssignmentForPerf(ImageView view, int assignmentType, int resId,
+                                                        Icon icon, Drawable drawable) {
+        String type;
+        switch (assignmentType) {
+            case SIGNAL_IMAGE_ASSIGNMENT_RESOURCE:
+                type = "resource";
+                break;
+            case SIGNAL_IMAGE_ASSIGNMENT_ICON:
+                type = "icon";
+                break;
+            case SIGNAL_IMAGE_ASSIGNMENT_DRAWABLE:
+                type = "drawable";
+                break;
+            default:
+                type = "unknown";
+                break;
+        }
+        int iconResId = resolveIconResourceId(icon);
+        int effectiveResId = resId != 0 ? resId : iconResId;
+        return "assignment=" + type
+                + ",resId=" + effectiveResId
+                + ",resName=" + resolveResourceName(view == null ? null : view.getContext(), effectiveResId)
+                + ",iconType=" + describeIconType(icon)
+                + ",drawable=" + describeWifiDrawableForPerf(drawable);
+    }
+
+    private static String describeWifiControllerStateForPerf(Object currentState) {
+        if (currentState == null) {
+            return "state=null";
+        }
+        return "level=" + ReflectUtils.getIntField(currentState, "level", -1)
+                + ",viceLevel=" + ReflectUtils.getIntField(currentState, "viceLevel", -1)
+                + ",connected=" + ReflectUtils.getBooleanField(currentState, "connected", false)
+                + ",viceConnected=" + ReflectUtils.getBooleanField(currentState, "viceConnected", false)
+                + ",enabled=" + ReflectUtils.getBooleanField(currentState, "enabled", false)
+                + ",viceEnabled=" + ReflectUtils.getBooleanField(currentState, "viceEnabled", false)
+                + ",activityIn=" + ReflectUtils.getBooleanField(currentState, "activityIn", false)
+                + ",activityOut=" + ReflectUtils.getBooleanField(currentState, "activityOut", false)
+                + ",inet=" + ReflectUtils.getIntField(currentState, "inetCondition", -1);
+    }
+
+    private static String describeWifiIconStateForPerf(Object wifiIconState) {
+        if (wifiIconState == null) {
+            return "wifiIconState=null";
+        }
+        return "slot=" + safeToString(ReflectUtils.getField(wifiIconState, "slot"))
+                + ",resId=" + ReflectUtils.getIntField(wifiIconState, "resId", -1)
+                + ",visible=" + ReflectUtils.getBooleanField(wifiIconState, "visible", false)
+                + ",activityIn=" + ReflectUtils.getBooleanField(wifiIconState, "activityIn", false)
+                + ",activityOut=" + ReflectUtils.getBooleanField(wifiIconState, "activityOut", false);
+    }
+
+    private static String describeFlymeWifiViewForPerf(Object wifiView) {
+        if (!(wifiView instanceof View)) {
+            return "flymeView=null";
+        }
+        View root = (View) wifiView;
+        Object iconView = ReflectUtils.getField(wifiView, "mWifiIcon");
+        return "root@" + Integer.toHexString(System.identityHashCode(root))
+                + ",slot=" + safeToString(ReflectUtils.getField(wifiView, "mSlot"))
+                + ",visibility=" + describeVisibility(root.getVisibility())
+                + ",icon={" + describeWifiViewForPerf(iconView instanceof View ? (View) iconView : null) + "}";
     }
 
     public static void rememberSystemUiContext(Context context) {
@@ -447,6 +590,68 @@ public class FlymeStatusBarSizer extends XposedModule {
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG,
                     "Failed to hook LocationBasedWifiViewModel." + methodName, t);
+        }
+    }
+
+    private void hookFlymeWifiViewPerf(ClassLoader loader) {
+        try {
+            Class<?> viewClass = Class.forName(
+                    "com.flyme.systemui.statusbar.net.wifi.FlymeStatusBarWifiView",
+                    false,
+                    loader);
+            Class<?> stateClass = Class.forName(
+                    "com.flyme.systemui.statusbar.net.wifi.WifiIconState",
+                    false,
+                    loader);
+            Method applyWifiState = viewClass.getDeclaredMethod("applyWifiState", stateClass);
+            applyWifiState.setAccessible(true);
+            hook(applyWifiState).intercept(chain -> {
+                boolean debug = isWifiPerfLoggingEnabled();
+                long startNs = debug ? SystemClock.elapsedRealtimeNanos() : 0L;
+                Object result = chain.proceed();
+                if (debug) {
+                    long eventId = LAST_WIFI_PERF_EVENT_ID;
+                    logWifiPerf(eventId, "flymeView.applyWifiState",
+                            "dur=" + formatDurationNs(SystemClock.elapsedRealtimeNanos() - startNs)
+                                    + ",state={" + describeWifiIconStateForPerf(chain.getArg(0)) + "},"
+                                    + describeFlymeWifiViewForPerf(chain.getThisObject()));
+                }
+                return result;
+            });
+            Method updateState = viewClass.getDeclaredMethod("updateState", stateClass);
+            updateState.setAccessible(true);
+            hook(updateState).intercept(chain -> {
+                boolean debug = isWifiPerfLoggingEnabled();
+                long startNs = debug ? SystemClock.elapsedRealtimeNanos() : 0L;
+                Object result = chain.proceed();
+                if (debug) {
+                    long eventId = LAST_WIFI_PERF_EVENT_ID;
+                    logWifiPerf(eventId, "flymeView.updateState",
+                            "dur=" + formatDurationNs(SystemClock.elapsedRealtimeNanos() - startNs)
+                                    + ",result=" + safeToString(result)
+                                    + ",state={" + describeWifiIconStateForPerf(chain.getArg(0)) + "},"
+                                    + describeFlymeWifiViewForPerf(chain.getThisObject()));
+                }
+                return result;
+            });
+            Method initViewState = viewClass.getDeclaredMethod("initViewState");
+            initViewState.setAccessible(true);
+            hook(initViewState).intercept(chain -> {
+                boolean debug = isWifiPerfLoggingEnabled();
+                long startNs = debug ? SystemClock.elapsedRealtimeNanos() : 0L;
+                Object result = chain.proceed();
+                if (debug) {
+                    long eventId = LAST_WIFI_PERF_EVENT_ID;
+                    Object state = ReflectUtils.getField(chain.getThisObject(), "mState");
+                    logWifiPerf(eventId, "flymeView.initViewState",
+                            "dur=" + formatDurationNs(SystemClock.elapsedRealtimeNanos() - startNs)
+                                    + ",state={" + describeWifiIconStateForPerf(state) + "},"
+                                    + describeFlymeWifiViewForPerf(chain.getThisObject()));
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook FlymeStatusBarWifiView perf hooks", t);
         }
     }
 
@@ -2372,8 +2577,22 @@ public class FlymeStatusBarSizer extends XposedModule {
             Method method = clazz.getDeclaredMethod("notifyListenersIfNecessary");
             method.setAccessible(true);
             hook(method).intercept(chain -> {
+                boolean debug = isWifiPerfLoggingEnabled();
+                long eventId = debug ? nextWifiPerfEventId() : 0L;
+                long startNs = debug ? SystemClock.elapsedRealtimeNanos() : 0L;
                 Object result = chain.proceed();
-                onWifiControllerStateChanged(chain.getThisObject());
+                if (debug) {
+                    long endNs = SystemClock.elapsedRealtimeNanos();
+                    LAST_WIFI_PERF_EVENT_ID = eventId;
+                    LAST_WIFI_PERF_NOTIFY_END_NS = endNs;
+                    Object state = ReflectUtils.getField(chain.getThisObject(), "mCurrentState");
+                    logWifiPerf(eventId, "controller.notifyListenersIfNecessary",
+                            "dur=" + formatDurationNs(endNs - startNs)
+                                    + ",state={" + describeWifiControllerStateForPerf(state) + "}");
+                    onWifiControllerStateChanged(chain.getThisObject(), eventId, endNs);
+                } else {
+                    onWifiControllerStateChanged(chain.getThisObject(), 0L, 0L);
+                }
                 return result;
             });
         } catch (Throwable t) {
@@ -2913,6 +3132,11 @@ public class FlymeStatusBarSizer extends XposedModule {
         trackWifiRefreshTarget(view);
         if (assignmentType == SIGNAL_IMAGE_ASSIGNMENT_DRAWABLE
                 && isSignalDrawableApplyGuardActive(view)) {
+            if (isWifiPerfLoggingEnabled() && "wifi_signal".equals(getSystemUiIdName(view))) {
+                logWifiPerf(LAST_WIFI_PERF_EVENT_ID, "image.assign.guardSkip",
+                        describeWifiAssignmentForPerf(view, assignmentType, resId, icon, drawable)
+                                + "," + describeWifiViewForPerf(view));
+            }
             return;
         }
         String idName = getSystemUiIdName(view);
@@ -2920,11 +3144,29 @@ public class FlymeStatusBarSizer extends XposedModule {
             recordMobileTypeImageAssignment(view, assignmentType, resId, icon, drawable);
         }
         if ("wifi_signal".equals(idName)) {
+            boolean debug = isWifiPerfLoggingEnabled();
+            long startNs = debug ? SystemClock.elapsedRealtimeNanos() : 0L;
+            long eventId = LAST_WIFI_PERF_EVENT_ID;
             ModuleConfig config = ModuleConfig.load(view.getContext());
             if (isWifiCodeDrawEnabled(config)) {
                 maybeTakeOverWifiIconFromImageAssignment(view, resId, icon, drawable);
+                if (debug) {
+                    logWifiPerf(eventId, "image.assign.wifi",
+                            "dur=" + formatDurationNs(SystemClock.elapsedRealtimeNanos() - startNs)
+                                    + ",codeDraw=true,"
+                                    + describeWifiAssignmentForPerf(view, assignmentType, resId, icon, drawable)
+                                    + "," + describeWifiViewForPerf(view)
+                                    + ",takeoverComplete=" + isWifiIconTakeoverComplete(view));
+                }
             } else {
                 applyStatusBarScaleIfNeeded(view);
+                if (debug) {
+                    logWifiPerf(eventId, "image.assign.wifi",
+                            "dur=" + formatDurationNs(SystemClock.elapsedRealtimeNanos() - startNs)
+                                    + ",codeDraw=false,"
+                                    + describeWifiAssignmentForPerf(view, assignmentType, resId, icon, drawable)
+                                    + "," + describeWifiViewForPerf(view));
+                }
             }
             return;
         }
@@ -3839,13 +4081,28 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void applyWifiIconOverride(ImageView view, int resId, Icon icon, Drawable drawable) {
+        applyWifiIconOverride(view, resId, icon, drawable, "unspecified");
+    }
+
+    private static void applyWifiIconOverride(ImageView view, int resId, Icon icon, Drawable drawable,
+                                              String source) {
         if (view == null) {
             return;
         }
+        boolean debug = isWifiPerfLoggingEnabled();
+        long eventId = LAST_WIFI_PERF_EVENT_ID;
+        long startNs = debug ? SystemClock.elapsedRealtimeNanos() : 0L;
         ModuleConfig config = ModuleConfig.load(view.getContext());
         boolean mergedDualWifi = shouldMergeDualWifiIntoPrimary(config);
         syncWifiIconLayout(view, config, mergedDualWifi);
         if (!isWifiCodeDrawEnabled(config)) {
+            if (debug) {
+                logWifiPerf(eventId, "override.skip",
+                        "dur=" + formatDurationNs(SystemClock.elapsedRealtimeNanos() - startNs)
+                                + ",source=" + source
+                                + ",reason=codeDrawDisabled,"
+                                + describeWifiViewForPerf(view));
+            }
             return;
         }
         int level = resolveWifiLevel(view, resId, icon, drawable);
@@ -3860,7 +4117,17 @@ public class FlymeStatusBarSizer extends XposedModule {
             WifiIconDrawable wifiDrawable = (WifiIconDrawable) current;
             rememberWifiIconTakeover(view);
             if (wifiDrawable.matchesGeometry(intrinsicWidth, intrinsicHeight, visualBandHeight)) {
-                wifiDrawable.setStateValues(level, showSecondaryBadge, secondaryLevel);
+                boolean changed = wifiDrawable.setStateValues(level, showSecondaryBadge, secondaryLevel);
+                if (debug) {
+                    logWifiPerf(eventId, "override.reuse",
+                            "dur=" + formatDurationNs(SystemClock.elapsedRealtimeNanos() - startNs)
+                                    + ",source=" + source
+                                    + ",changed=" + changed
+                                    + ",level=" + level
+                                    + ",secondaryLevel=" + secondaryLevel
+                                    + ",showSecondary=" + showSecondaryBadge
+                                    + "," + describeWifiViewForPerf(view));
+                }
                 return;
             }
         }
@@ -3871,6 +4138,16 @@ public class FlymeStatusBarSizer extends XposedModule {
         wifiDrawable.setTintList(view.getImageTintList());
         applyWifiDrawableToView(view, wifiDrawable);
         rememberWifiIconTakeover(view);
+        if (debug) {
+            logWifiPerf(eventId, "override.create",
+                    "dur=" + formatDurationNs(SystemClock.elapsedRealtimeNanos() - startNs)
+                            + ",source=" + source
+                            + ",level=" + level
+                            + ",secondaryLevel=" + secondaryLevel
+                            + ",showSecondary=" + showSecondaryBadge
+                            + "," + describeWifiDrawableForPerf(wifiDrawable)
+                            + "," + describeWifiViewForPerf(view));
+        }
     }
 
     private static void maybeTakeOverWifiIconFromImageAssignment(ImageView view, int resId,
@@ -3878,7 +4155,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (view == null || isWifiIconTakeoverComplete(view)) {
             return;
         }
-        applyWifiIconOverride(view, resId, icon, drawable);
+        applyWifiIconOverride(view, resId, icon, drawable, "imageAssignment");
     }
 
     private static boolean isWifiIconTakeoverComplete(ImageView view) {
@@ -3907,8 +4184,17 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (view == null) {
             return;
         }
+        boolean debug = isWifiPerfLoggingEnabled();
+        long eventId = LAST_WIFI_PERF_EVENT_ID;
+        long startNs = debug ? SystemClock.elapsedRealtimeNanos() : 0L;
         syncWifiSlotMergeVisibility(view, mergedDualWifi);
         if (!isWifiCodeDrawEnabled(config)) {
+            if (debug) {
+                logWifiPerf(eventId, "layout.skip",
+                        "dur=" + formatDurationNs(SystemClock.elapsedRealtimeNanos() - startNs)
+                                + ",reason=codeDrawDisabled,"
+                                + describeWifiViewForPerf(view));
+            }
             return;
         }
         resetStandaloneImageScale(view);
@@ -3925,10 +4211,24 @@ public class FlymeStatusBarSizer extends XposedModule {
                 targetWidth, targetHeight, showSecondaryBadge);
         Long previousSignature = WIFI_LAYOUT_SIGNATURES.get(view);
         if (previousSignature != null && previousSignature.longValue() == layoutSignature) {
+            if (debug) {
+                logWifiPerf(eventId, "layout.noop",
+                        "dur=" + formatDurationNs(SystemClock.elapsedRealtimeNanos() - startNs)
+                                + ",target=" + targetWidth + "x" + targetHeight
+                                + ",showSecondary=" + showSecondaryBadge
+                                + "," + describeWifiViewForPerf(view));
+            }
             return;
         }
         resizeWifiIconView(view, config, showSecondaryBadge);
         WIFI_LAYOUT_SIGNATURES.put(view, layoutSignature);
+        if (debug) {
+            logWifiPerf(eventId, "layout.apply",
+                    "dur=" + formatDurationNs(SystemClock.elapsedRealtimeNanos() - startNs)
+                            + ",target=" + targetWidth + "x" + targetHeight
+                            + ",showSecondary=" + showSecondaryBadge
+                            + "," + describeWifiViewForPerf(view));
+        }
     }
 
     private static void resizeWifiIconView(ImageView view, ModuleConfig config, boolean showSecondaryBadge) {
@@ -4226,7 +4526,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         return -1;
     }
 
-    private static void onWifiControllerStateChanged(Object controller) {
+    private static void onWifiControllerStateChanged(Object controller, long eventId,
+                                                     long notifyEndNs) {
         if (controller == null) {
             return;
         }
@@ -4235,67 +4536,124 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         boolean changed = false;
+        StringBuilder changedFields = eventId > 0L ? new StringBuilder() : null;
         int wifiLevel = sanitizeWifiLevel(ReflectUtils.getIntField(currentState, "level", -1));
         if (LAST_WIFI_LEVEL != wifiLevel) {
+            appendWifiPerfChange(changedFields, "level", LAST_WIFI_LEVEL, wifiLevel);
             LAST_WIFI_LEVEL = wifiLevel;
             changed = true;
         }
         int viceLevel = sanitizeWifiLevel(ReflectUtils.getIntField(currentState, "viceLevel", -1));
         if (LAST_VICE_WIFI_LEVEL != viceLevel) {
+            appendWifiPerfChange(changedFields, "viceLevel", LAST_VICE_WIFI_LEVEL, viceLevel);
             LAST_VICE_WIFI_LEVEL = viceLevel;
             changed = true;
         }
         boolean wifiConnected = ReflectUtils.getBooleanField(currentState, "connected", LAST_WIFI_CONNECTED);
         if (LAST_WIFI_CONNECTED != wifiConnected) {
+            appendWifiPerfChange(changedFields, "connected", LAST_WIFI_CONNECTED, wifiConnected);
             LAST_WIFI_CONNECTED = wifiConnected;
             changed = true;
         }
         boolean viceWifiConnected = ReflectUtils.getBooleanField(currentState, "viceConnected", LAST_VICE_WIFI_CONNECTED);
         if (LAST_VICE_WIFI_CONNECTED != viceWifiConnected) {
+            appendWifiPerfChange(changedFields, "viceConnected", LAST_VICE_WIFI_CONNECTED, viceWifiConnected);
             LAST_VICE_WIFI_CONNECTED = viceWifiConnected;
             changed = true;
         }
         boolean wifiEnabled = ReflectUtils.getBooleanField(currentState, "enabled", LAST_WIFI_ENABLED);
         if (LAST_WIFI_ENABLED != wifiEnabled) {
+            appendWifiPerfChange(changedFields, "enabled", LAST_WIFI_ENABLED, wifiEnabled);
             LAST_WIFI_ENABLED = wifiEnabled;
             changed = true;
         }
         boolean viceWifiEnabled = ReflectUtils.getBooleanField(currentState, "viceEnabled", LAST_VICE_WIFI_ENABLED);
         if (LAST_VICE_WIFI_ENABLED != viceWifiEnabled) {
+            appendWifiPerfChange(changedFields, "viceEnabled", LAST_VICE_WIFI_ENABLED, viceWifiEnabled);
             LAST_VICE_WIFI_ENABLED = viceWifiEnabled;
             changed = true;
         }
+        if (eventId > 0L) {
+            LAST_WIFI_PERF_EVENT_ID = eventId;
+            LAST_WIFI_PERF_NOTIFY_END_NS = notifyEndNs;
+            logWifiPerf(eventId, changed ? "controller.state.changed" : "controller.state.unchanged",
+                    "changes=" + (changedFields == null || changedFields.length() == 0
+                            ? "none" : changedFields.toString())
+                            + ",state={" + describeWifiControllerStateForPerf(currentState) + "}");
+        }
         if (changed) {
-            scheduleTrackedWifiIconRefresh();
+            scheduleTrackedWifiIconRefresh(eventId);
         }
     }
 
-    private static void scheduleTrackedWifiIconRefresh() {
+    private static void scheduleTrackedWifiIconRefresh(long eventId) {
         Handler handler = MAIN_HANDLER;
+        long enqueueNs = eventId > 0L ? SystemClock.elapsedRealtimeNanos() : 0L;
+        if (eventId > 0L) {
+            LAST_WIFI_PERF_EVENT_ID = eventId;
+            LAST_WIFI_PERF_REFRESH_POST_NS = enqueueNs;
+        }
         if (handler == null) {
+            if (eventId > 0L) {
+                logWifiPerf(eventId, "refresh.dispatch.inline", "reason=noMainHandler");
+            }
             refreshTrackedWifiIconViewsNow();
             return;
         }
         handler.removeCallbacks(WIFI_ICON_REFRESH_RUNNABLE);
         handler.post(WIFI_ICON_REFRESH_RUNNABLE);
+        if (eventId > 0L) {
+            logWifiPerf(eventId, "refresh.post",
+                    "trackedSignalViews=" + TRACKED_WIFI_SIGNAL_VIEWS.size()
+                            + ",trackedActivityRoots=" + TRACKED_WIFI_ACTIVITY_ROOTS.size());
+        }
     }
 
     private static void refreshTrackedWifiIconViewsNow() {
+        boolean debug = isWifiPerfLoggingEnabled();
+        long eventId = LAST_WIFI_PERF_EVENT_ID;
+        long startNs = debug ? SystemClock.elapsedRealtimeNanos() : 0L;
         seedTrackedWifiTargetsFromTrackedViewsIfNeeded();
         ArrayList<View> activityRoots = new ArrayList<>(TRACKED_WIFI_ACTIVITY_ROOTS.keySet());
+        int hiddenActivityRoots = 0;
         for (View root : activityRoots) {
             ModuleConfig config = ModuleConfig.load(root == null ? null : root.getContext());
-            syncWifiActivityIndicatorsVisibility(root,
-                    config != null && config.enabled && isWifiCodeDrawEnabled(config));
+            boolean hideIndicators = config != null && config.enabled && isWifiCodeDrawEnabled(config);
+            syncWifiActivityIndicatorsVisibility(root, hideIndicators);
+            if (hideIndicators) {
+                hiddenActivityRoots += 1;
+            }
         }
         ArrayList<ImageView> signalViews = new ArrayList<>(TRACKED_WIFI_SIGNAL_VIEWS.keySet());
+        int codeDrawViews = 0;
+        int scaledViews = 0;
         for (ImageView imageView : signalViews) {
             ModuleConfig config = ModuleConfig.load(imageView == null ? null : imageView.getContext());
             if (isWifiCodeDrawEnabled(config)) {
-                applyWifiIconOverride(imageView, 0, null, imageView.getDrawable());
+                codeDrawViews += 1;
+                applyWifiIconOverride(imageView, 0, null, imageView.getDrawable(), "trackedRefresh");
             } else {
+                scaledViews += 1;
                 applyStatusBarScaleIfNeeded(imageView);
             }
+        }
+        if (debug) {
+            long nowNs = SystemClock.elapsedRealtimeNanos();
+            String queueDelay = LAST_WIFI_PERF_REFRESH_POST_NS > 0L
+                    ? formatDurationNs(nowNs - LAST_WIFI_PERF_REFRESH_POST_NS)
+                    : "n/a";
+            String sinceNotify = LAST_WIFI_PERF_NOTIFY_END_NS > 0L
+                    ? formatDurationNs(nowNs - LAST_WIFI_PERF_NOTIFY_END_NS)
+                    : "n/a";
+            logWifiPerf(eventId, "refresh.run",
+                    "dur=" + formatDurationNs(nowNs - startNs)
+                            + ",queueDelay=" + queueDelay
+                            + ",sinceNotify=" + sinceNotify
+                            + ",activityRoots=" + activityRoots.size()
+                            + ",hiddenActivityRoots=" + hiddenActivityRoots
+                            + ",signalViews=" + signalViews.size()
+                            + ",codeDrawViews=" + codeDrawViews
+                            + ",scaledViews=" + scaledViews);
         }
     }
 

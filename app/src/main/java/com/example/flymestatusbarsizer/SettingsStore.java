@@ -40,6 +40,7 @@ final class SettingsStore {
     static final String KEY_IME_TOOLBAR_ENABLED = "ime_toolbar_enabled";
     static final String KEY_IME_TOOLBAR_ORDER = "ime_toolbar_order";
     static final String KEY_TELEPHONY_DEBUG_ENABLED = "telephony_debug_enabled";
+    static final String KEY_WIFI_PERF_LOGGING_ENABLED = "wifi_perf_logging_enabled";
     static final String KEY_TELEPHONY_DEBUG_SIM_COUNT = "telephony_debug_sim_count";
     static final String KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT = "telephony_debug_default_data_slot";
     static final String KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE = "telephony_debug_slot1_network_profile";
@@ -87,6 +88,7 @@ final class SettingsStore {
     static final boolean DEFAULT_IME_TOOLBAR_ENABLED = true;
     static final String DEFAULT_IME_TOOLBAR_ORDER = "paste,delete,select_all,copy,switch_ime";
     static final boolean DEFAULT_TELEPHONY_DEBUG_ENABLED = false;
+    static final boolean DEFAULT_WIFI_PERF_LOGGING_ENABLED = false;
     static final int DEFAULT_TELEPHONY_DEBUG_SIM_COUNT = 2;
     static final int TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_NONE = -1;
     static final int TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_CARD1 = 0;
@@ -142,7 +144,8 @@ final class SettingsStore {
             KEY_NOTIFICATION_APP_ICON_ENABLED,
             KEY_MBACK_HIDE_PILL,
             KEY_IME_TOOLBAR_ENABLED,
-            KEY_TELEPHONY_DEBUG_ENABLED
+            KEY_TELEPHONY_DEBUG_ENABLED,
+            KEY_WIFI_PERF_LOGGING_ENABLED
     };
 
     static final String[] STRING_KEYS = {
@@ -333,6 +336,8 @@ final class SettingsStore {
                 return DEFAULT_IME_TOOLBAR_ENABLED;
             case KEY_TELEPHONY_DEBUG_ENABLED:
                 return DEFAULT_TELEPHONY_DEBUG_ENABLED;
+            case KEY_WIFI_PERF_LOGGING_ENABLED:
+                return DEFAULT_WIFI_PERF_LOGGING_ENABLED;
             default:
                 return false;
         }

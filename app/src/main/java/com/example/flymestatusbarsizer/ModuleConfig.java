@@ -49,6 +49,7 @@ final class ModuleConfig {
     boolean imeToolbarEnabled = SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED;
     String imeToolbarOrder = SettingsStore.DEFAULT_IME_TOOLBAR_ORDER;
     boolean telephonyDebugEnabled = SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED;
+    boolean wifiPerfLoggingEnabled = SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED;
     int telephonyDebugSimCount = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
     int telephonyDebugDefaultDataSlot = SettingsStore.DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT;
     int telephonyDebugSlot1NetworkProfile = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE;
@@ -303,6 +304,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_TELEPHONY_DEBUG_ENABLED,
                     SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED);
+            config.wifiPerfLoggingEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_WIFI_PERF_LOGGING_ENABLED,
+                    SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED);
             config.telephonyDebugSimCount = SettingsStore.normalizeTelephonyDebugSimCount(
                     SettingsStore.readInt(
                             prefs,

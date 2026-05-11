@@ -442,6 +442,14 @@ public class MainActivity extends Activity {
         card.addView(buildDateValue, matchWrap());
 
         addDivider(card);
+        addProfileSectionHeader(card, "性能调试",
+                "打开后，模块会给 WIFI 更新链路输出详细耗时日志，方便你在 logcat 里分析状态通知、视图刷新和自绘接管各阶段的开销。");
+        addSwitchRow(card, "启用 WIFI 性能打点",
+                "日志 tag 仍然是 FlymeStatusBarSizer；开启后会远端同步到 SystemUI，关闭后停止输出这组 wifi-perf 日志。",
+                SettingsStore.KEY_WIFI_PERF_LOGGING_ENABLED,
+                SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED);
+
+        addDivider(card);
         addActionButtonRow(card, "Telephony 调试",
                 "进入一个单独的调试页，伪造 SystemUI 读取到的插卡数量、默认上网卡、网络类型和信号强度。",
                 "进入", this::showTelephonyDebugPage);
