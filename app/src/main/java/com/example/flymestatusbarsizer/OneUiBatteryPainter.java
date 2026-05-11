@@ -20,7 +20,6 @@ final class OneUiBatteryPainter {
     private static final float BOLT_GAP_RATIO = 0.05f;
     private static final float BOLT_TRAILING_PADDING_RATIO = 0.03f;
     private static final Paint BODY_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private static final Paint DEBUG_BASELINE_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint CUTOUT_TEXT_PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final IconMetrics.VisualCanvas VISUAL_CANVAS = new IconMetrics.VisualCanvas();
@@ -29,9 +28,6 @@ final class OneUiBatteryPainter {
     private static final RectF BODY_CONTENT = new RectF();
     private static final RectF FILL = new RectF();
     static {
-        DEBUG_BASELINE_PAINT.setStyle(Paint.Style.STROKE);
-        DEBUG_BASELINE_PAINT.setStrokeWidth(1.5f);
-        DEBUG_BASELINE_PAINT.setColor(Color.GREEN);
         TEXT_PAINT.setTextAlign(Paint.Align.CENTER);
         TEXT_PAINT.setFakeBoldText(true);
         CUTOUT_TEXT_PAINT.setTextAlign(Paint.Align.CENTER);
@@ -121,7 +117,6 @@ final class OneUiBatteryPainter {
             TEXT_PAINT.setColor(renderedTextColor);
             canvas.drawText(levelText, BODY.centerX(), textBaseline, TEXT_PAINT);
         }
-        drawDebugBaseline(canvas);
     }
 
     private static void drawHollowBattery(Canvas canvas, float contentRadius, int emptyColor, int fillColor,
@@ -157,15 +152,6 @@ final class OneUiBatteryPainter {
             canvas.drawText(levelText, BODY.centerX(), textBaseline, CUTOUT_TEXT_PAINT);
         }
         canvas.restoreToCount(layer);
-        drawDebugBaseline(canvas);
-    }
-
-    private static void drawDebugBaseline(Canvas canvas) {
-        if (canvas == null || BODY.isEmpty()) {
-            return;
-        }
-        float y = BODY.bottom;
-        canvas.drawLine(BODY.left, y, BODY.right, y, DEBUG_BASELINE_PAINT);
     }
 
     private static void drawBodyRange(Canvas canvas, float contentRadius, int color,

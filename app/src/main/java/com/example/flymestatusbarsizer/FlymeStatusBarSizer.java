@@ -67,7 +67,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, int[]> ORIGINAL_MARGINS = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_PADDINGS = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_RUNTIME_SIZES = new WeakHashMap<>();
-    private static final WeakHashMap<View, String> LAST_BATTERY_DEBUG_SIGNATURES = new WeakHashMap<>();
     private static final WeakHashMap<TextView, Float> ORIGINAL_TEXT_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<View, String> VIEW_ID_NAME_CACHE = new WeakHashMap<>();
     private static final WeakHashMap<View, BatteryViewState> BATTERY_VIEW_STATES = new WeakHashMap<>();
@@ -121,8 +120,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                 }
             };
     private static final HashMap<String, Integer> SYSTEM_UI_ID_CACHE = new HashMap<>();
-    private static final String SIGNAL_LEVEL_LOG_MARKER = "[FSBS_SIGNAL_LEVEL]";
-    private static final boolean SIGNAL_LEVEL_DEBUG_LOG_FORCE_ENABLED = false;
     private static final int SIGNAL_IMAGE_ASSIGNMENT_RESOURCE = 1;
     private static final int SIGNAL_IMAGE_ASSIGNMENT_ICON = 2;
     private static final int SIGNAL_IMAGE_ASSIGNMENT_DRAWABLE = 3;
@@ -687,7 +684,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                         config,
                         resolveTelephonyCallbackSubId(chain.getThisObject()));
                 if (!SubscriptionManager.isValidSubscriptionId(subId)) {
-                    reportSignalLevelDebug("callback-no-subId class=" + className);
                     return result;
                 }
                 SignalStrength signalStrength = (SignalStrength) arg;
@@ -1258,38 +1254,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (height > 0) {
             LAST_BATTERY_RENDER_HEIGHT = height;
         }
-        logBatteryDebugMetrics(batteryView, size, width, height, top, state.drawBounds);
         drawBatteryByStyle(config, canvas, state.drawBounds,
                 state.level, state.pluggedIn, state.charging, state.quickCharging,
                 state.tintColor, state.textColor, showLevelText);
         return true;
-    }
-
-    private static void logBatteryDebugMetrics(View batteryView, int size, int width, int height,
-                                               int top, Rect drawBounds) {
-        if (batteryView == null || drawBounds == null) {
-            return;
-        }
-        String signature = "viewH=" + batteryView.getHeight()
-                + " viewW=" + batteryView.getWidth()
-                + " size=" + size
-                + " width=" + width
-                + " height=" + height
-                + " top=" + top
-                + " drawBounds=" + formatDebugRect(drawBounds);
-        String previous = LAST_BATTERY_DEBUG_SIGNATURES.get(batteryView);
-        if (signature.equals(previous)) {
-            return;
-        }
-        LAST_BATTERY_DEBUG_SIGNATURES.put(batteryView, signature);
-        android.util.Log.d(TAG, "[FSBS_BATTERY_DEBUG] " + signature);
-    }
-
-    private static String formatDebugRect(Rect rect) {
-        if (rect == null) {
-            return "null";
-        }
-        return "[" + rect.left + "," + rect.top + "," + rect.right + "," + rect.bottom + "]";
     }
 
     private static int resolveBatteryTextColor(int tintColor) {
@@ -1505,10 +1473,6 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static boolean isTelephonyDebugEnabled(ModuleConfig config) {
         return config != null && config.telephonyDebugEnabled;
-    }
-
-    private static boolean isSignalLevelDebugLogEnabled(ModuleConfig config) {
-        return SIGNAL_LEVEL_DEBUG_LOG_FORCE_ENABLED || isTelephonyDebugEnabled(config);
     }
 
     private static int resolveTelephonyDebugActiveSubscriptionCount(ModuleConfig config) {
@@ -5391,9 +5355,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (SubscriptionManager.isValidSubscriptionId(subId)) {
             if (state.subId != subId) {
                 state.subId = subId;
-                reportSignalLevelDebug("bindView subId=" + subId
-                        + " view=" + view.getClass().getName()
-                        + " id=" + getSystemUiIdName(view));
             }
         }
     }
@@ -5478,7 +5439,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         int level = queryLiveSignalLevel(context, subId);
         if (level < 0) {
-            reportSignalLevelDebug("queryLive skip subId=" + subId + " source=" + source);
             return;
         }
         updateSignalLevelSubState(subId, level, source + ":queryLive");
@@ -5518,17 +5478,12 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (state == null) {
             return;
         }
-        boolean changed = state.level != level;
         state.level = level;
         state.lastSource = source == null ? "" : source;
         state.lastUpdateElapsedRealtime = SystemClock.elapsedRealtime();
         LAST_SIGNAL_SUB_ID = subId;
         LAST_SIGNAL_LEVEL = level;
         LAST_CELLULAR_LEVEL = level;
-        if (changed) {
-            reportSignalLevelDebug("update subId=" + subId + " level=" + level
-                    + " source=" + state.lastSource);
-        }
     }
 
     private static SignalLevelSubState rememberSignalLevelSubState(int subId) {
@@ -5541,7 +5496,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                 state = new SignalLevelSubState();
                 state.subId = subId;
                 SIGNAL_LEVEL_SUB_STATES.put(subId, state);
-                reportSignalLevelDebug("state-created subId=" + subId);
             }
             return state;
         }
@@ -5554,14 +5508,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         synchronized (SIGNAL_LEVEL_SUB_STATES) {
             return SIGNAL_LEVEL_SUB_STATES.get(subId);
         }
-    }
-
-    private static void reportSignalLevelDebug(String detail) {
-        ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
-        if (!isSignalLevelDebugLogEnabled(config)) {
-            return;
-        }
-        android.util.Log.i(TAG, SIGNAL_LEVEL_LOG_MARKER + " " + detail);
     }
 
     private static void pushInternalSignalLevelQuery() {
