@@ -341,6 +341,11 @@ public class MainActivity extends Activity {
                 SettingsStore.KEY_IME_FORCE_STOCK_CONTROL_BAR,
                 SettingsStore.DEFAULT_IME_FORCE_STOCK_CONTROL_BAR);
         addDivider(details);
+        addSwitchRow(details, "控制栏去深灰并同步输入法背景",
+                "去掉输入法控制栏那层深灰 scrim，并把控制栏背景同步成输入法背景。这个开关可以独立开启，不要求同时强制回退原生控制栏。",
+                SettingsStore.KEY_IME_CONTROL_BAR_BLEND_ENABLED,
+                SettingsStore.DEFAULT_IME_CONTROL_BAR_BLEND_ENABLED);
+        addDivider(details);
         addSwitchRow(details, "启用输入法工具栏",
                 "开启后会在输入法界面加一排工具按钮。关闭后恢复原来的输入法视图，不再显示这排按钮。",
                 SettingsStore.KEY_IME_TOOLBAR_ENABLED,

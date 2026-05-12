@@ -52,6 +52,7 @@ final class SettingsStore {
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
     static final String KEY_IME_TOOLBAR_ENABLED = "ime_toolbar_enabled";
     static final String KEY_IME_FORCE_STOCK_CONTROL_BAR = "ime_force_stock_control_bar";
+    static final String KEY_IME_CONTROL_BAR_BLEND_ENABLED = "ime_control_bar_blend_enabled";
     static final String KEY_IME_TOOLBAR_ORDER = "ime_toolbar_order";
     static final String KEY_TELEPHONY_DEBUG_ENABLED = "telephony_debug_enabled";
     static final String KEY_WIFI_PERF_LOGGING_ENABLED = "wifi_perf_logging_enabled";
@@ -111,6 +112,7 @@ final class SettingsStore {
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
     static final boolean DEFAULT_IME_TOOLBAR_ENABLED = true;
     static final boolean DEFAULT_IME_FORCE_STOCK_CONTROL_BAR = false;
+    static final boolean DEFAULT_IME_CONTROL_BAR_BLEND_ENABLED = false;
     static final String DEFAULT_IME_TOOLBAR_ORDER = "paste,delete,select_all,copy,switch_ime";
     static final boolean DEFAULT_TELEPHONY_DEBUG_ENABLED = false;
     static final boolean DEFAULT_WIFI_PERF_LOGGING_ENABLED = false;
@@ -179,6 +181,7 @@ final class SettingsStore {
             KEY_MBACK_HIDE_PILL,
             KEY_IME_TOOLBAR_ENABLED,
             KEY_IME_FORCE_STOCK_CONTROL_BAR,
+            KEY_IME_CONTROL_BAR_BLEND_ENABLED,
             KEY_TELEPHONY_DEBUG_ENABLED,
             KEY_WIFI_PERF_LOGGING_ENABLED
     };
@@ -401,6 +404,8 @@ final class SettingsStore {
                 return DEFAULT_IME_TOOLBAR_ENABLED;
             case KEY_IME_FORCE_STOCK_CONTROL_BAR:
                 return DEFAULT_IME_FORCE_STOCK_CONTROL_BAR;
+            case KEY_IME_CONTROL_BAR_BLEND_ENABLED:
+                return DEFAULT_IME_CONTROL_BAR_BLEND_ENABLED;
             case KEY_TELEPHONY_DEBUG_ENABLED:
                 return DEFAULT_TELEPHONY_DEBUG_ENABLED;
             case KEY_WIFI_PERF_LOGGING_ENABLED:

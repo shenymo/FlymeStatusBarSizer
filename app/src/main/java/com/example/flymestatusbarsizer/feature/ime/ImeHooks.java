@@ -29,6 +29,10 @@ public final class ImeHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<Object, Boolean> LAST_STOCK_CONTROL_BAR_STATES =
             new WeakHashMap<>();
+    private static final WeakHashMap<Object, Boolean> LAST_CONTROL_BAR_BACKGROUND_TWEAK_STATES =
+            new WeakHashMap<>();
+    private static final WeakHashMap<Object, ImeWindowAppearanceState> IME_WINDOW_APPEARANCE_STATES =
+            new WeakHashMap<>();
 
     private ImeHooks() {
     }
@@ -83,6 +87,15 @@ public final class ImeHooks {
     private static boolean shouldForceStockImeControlBar() {
         FlymeStatusBarSizer.ImeConfigSnapshot config = FlymeStatusBarSizer.loadImeConfig(null);
         return config.enabled && config.imeForceStockControlBar;
+    }
+
+    private static boolean shouldBlendImeControlBarBackground() {
+        FlymeStatusBarSizer.ImeConfigSnapshot config = FlymeStatusBarSizer.loadImeConfig(null);
+        return config.enabled && config.imeControlBarBlendEnabled;
+    }
+
+    private static boolean shouldApplyImeControlBarBackgroundTweaks() {
+        return shouldForceStockImeControlBar() || shouldBlendImeControlBarBackground();
     }
 
     private static void hookNavigationBarInflaterOnFinishInflate(
@@ -203,7 +216,7 @@ public final class ImeHooks {
                     boolean.class);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                if (!shouldForceStockImeControlBar()) {
+                if (!shouldApplyImeControlBarBackgroundTweaks()) {
                     return chain.proceed();
                 }
                 Object thisObject = chain.getThisObject();
@@ -213,7 +226,7 @@ public final class ImeHooks {
                 Object result = chain.proceed();
                 Object navigationBarFrame = getField(thisObject, "mNavigationBarFrame");
                 Object inputMethodService = getField(thisObject, "mService");
-                syncImeWindowNavigationBarAppearance(inputMethodService);
+                applyImeWindowNavigationBarAppearance(inputMethodService);
                 if (navigationBarFrame instanceof View) {
                     syncNavigationBarFrameBackgroundNow((View) navigationBarFrame, inputMethodService);
                     FlymeStatusBarSizer.invokeMethodCompat(
@@ -397,15 +410,21 @@ public final class ImeHooks {
             return;
         }
         boolean forceStock = shouldForceStockImeControlBar();
+        boolean applyBackgroundTweaks = shouldApplyImeControlBarBackgroundTweaks();
         Boolean lastAppliedState = LAST_STOCK_CONTROL_BAR_STATES.get(inputMethodService);
+        Boolean lastBlendState = LAST_CONTROL_BAR_BACKGROUND_TWEAK_STATES.get(inputMethodService);
         if (lastAppliedState == null || lastAppliedState.booleanValue() != forceStock) {
             FlymeStatusBarSizer.invokeMethodCompat(
                     callbackImpl,
                     "uninstallNavigationBarFrameIfNecessary",
                     new Class[0]);
         }
-        if (forceStock) {
-            syncImeWindowNavigationBarAppearance(inputMethodService);
+        boolean blendStateChanged =
+                lastBlendState == null || lastBlendState.booleanValue() != applyBackgroundTweaks;
+        if (applyBackgroundTweaks) {
+            applyImeWindowNavigationBarAppearance(inputMethodService);
+        } else if (blendStateChanged) {
+            restoreImeWindowNavigationBarAppearance(inputMethodService);
         }
         FlymeStatusBarSizer.invokeMethodCompat(
                 navigationBarController,
@@ -414,12 +433,19 @@ public final class ImeHooks {
                 resolveCurrentImeNavButtonFlags(callbackImpl));
         Object navigationBarFrame = getField(callbackImpl, "mNavigationBarFrame");
         if (navigationBarFrame instanceof View) {
-            if (forceStock) {
+            if (applyBackgroundTweaks) {
                 syncNavigationBarFrameBackgroundNow((View) navigationBarFrame, inputMethodService);
+            } else if (blendStateChanged) {
+                FlymeStatusBarSizer.invokeMethodCompat(
+                        callbackImpl,
+                        "onDrawLegacyNavigationBarBackgroundChanged",
+                        new Class[]{boolean.class},
+                        getBooleanField(callbackImpl, "mDrawLegacyNavigationBarBackground"));
             }
             ((View) navigationBarFrame).requestApplyInsets();
         }
         LAST_STOCK_CONTROL_BAR_STATES.put(inputMethodService, forceStock);
+        LAST_CONTROL_BAR_BACKGROUND_TWEAK_STATES.put(inputMethodService, applyBackgroundTweaks);
     }
 
     private static int resolveCurrentImeNavButtonFlags(Object callbackImpl) {
@@ -661,21 +687,12 @@ public final class ImeHooks {
         navigationBarFrame.setBackground(cloned);
     }
 
-    private static void syncImeWindowNavigationBarAppearance(Object inputMethodService) {
-        if (inputMethodService == null) {
-            return;
-        }
-        Object softInputWindow = getField(inputMethodService, "mWindow");
-        if (softInputWindow == null) {
-            return;
-        }
-        Object window = FlymeStatusBarSizer.invokeMethodCompat(
-                softInputWindow,
-                "getWindow",
-                new Class[0]);
+    private static void applyImeWindowNavigationBarAppearance(Object inputMethodService) {
+        Object window = getImeWindow(inputMethodService);
         if (window == null) {
             return;
         }
+        captureImeWindowAppearanceIfNeeded(inputMethodService, window);
         FlymeStatusBarSizer.invokeMethodCompat(
                 window,
                 "setNavigationBarContrastEnforced",
@@ -686,6 +703,65 @@ public final class ImeHooks {
                 "setNavigationBarColor",
                 new Class[]{int.class},
                 0);
+    }
+
+    private static void restoreImeWindowNavigationBarAppearance(Object inputMethodService) {
+        Object window = getImeWindow(inputMethodService);
+        if (window == null) {
+            return;
+        }
+        ImeWindowAppearanceState state = IME_WINDOW_APPEARANCE_STATES.get(inputMethodService);
+        if (state == null || !state.captured) {
+            return;
+        }
+        FlymeStatusBarSizer.invokeMethodCompat(
+                window,
+                "setNavigationBarContrastEnforced",
+                new Class[]{boolean.class},
+                state.navigationBarContrastEnforced);
+        FlymeStatusBarSizer.invokeMethodCompat(
+                window,
+                "setNavigationBarColor",
+                new Class[]{int.class},
+                state.navigationBarColor);
+    }
+
+    private static void captureImeWindowAppearanceIfNeeded(Object inputMethodService, Object window) {
+        if (inputMethodService == null || window == null) {
+            return;
+        }
+        ImeWindowAppearanceState existing = IME_WINDOW_APPEARANCE_STATES.get(inputMethodService);
+        if (existing != null && existing.captured) {
+            return;
+        }
+        ImeWindowAppearanceState captured = new ImeWindowAppearanceState();
+        Object contrast = FlymeStatusBarSizer.invokeMethodCompat(
+                window,
+                "isNavigationBarContrastEnforced",
+                new Class[0]);
+        captured.navigationBarContrastEnforced =
+                !(contrast instanceof Boolean) || (Boolean) contrast;
+        Object color = FlymeStatusBarSizer.invokeMethodCompat(
+                window,
+                "getNavigationBarColor",
+                new Class[0]);
+        captured.navigationBarColor = color instanceof Integer ? (Integer) color : 0;
+        captured.captured = true;
+        IME_WINDOW_APPEARANCE_STATES.put(inputMethodService, captured);
+    }
+
+    private static Object getImeWindow(Object inputMethodService) {
+        if (inputMethodService == null) {
+            return null;
+        }
+        Object softInputWindow = getField(inputMethodService, "mWindow");
+        if (softInputWindow == null) {
+            return null;
+        }
+        return FlymeStatusBarSizer.invokeMethodCompat(
+                softInputWindow,
+                "getWindow",
+                new Class[0]);
     }
 
     private static Drawable findImeBackgroundDrawable(Object inputMethodService) {
@@ -744,5 +820,11 @@ public final class ImeHooks {
 
     private static ViewGroup asViewGroup(Object object) {
         return object instanceof ViewGroup ? (ViewGroup) object : null;
+    }
+
+    private static final class ImeWindowAppearanceState {
+        boolean captured;
+        boolean navigationBarContrastEnforced;
+        int navigationBarColor;
     }
 }

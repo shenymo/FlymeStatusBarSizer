@@ -6423,12 +6423,14 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean enabled;
         public final boolean imeToolbarEnabled;
         public final boolean imeForceStockControlBar;
+        public final boolean imeControlBarBlendEnabled;
         public final String imeToolbarOrder;
 
         private ImeConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
             imeToolbarEnabled = config != null && config.imeToolbarEnabled;
             imeForceStockControlBar = config != null && config.imeForceStockControlBar;
+            imeControlBarBlendEnabled = config != null && config.imeControlBarBlendEnabled;
             imeToolbarOrder = config == null ? "" : config.imeToolbarOrder;
         }
     }
