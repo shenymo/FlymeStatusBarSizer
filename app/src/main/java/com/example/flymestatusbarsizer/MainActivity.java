@@ -7,6 +7,7 @@ import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
@@ -28,6 +29,8 @@ import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -47,9 +50,12 @@ import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -57,14 +63,18 @@ public class MainActivity extends Activity {
     private static final int REQUEST_EXPORT_CONFIG = 1001;
     private static final int REQUEST_IMPORT_CONFIG = 1002;
 
-    private static final int MENU_IMPORT = 1;
-    private static final int MENU_EXPORT = 2;
-    private static final int MENU_RESET = 3;
-    private static final int MENU_RESTART = 4;
+    private static final int MENU_ABOUT = 1;
+    private static final int MENU_IMPORT = 2;
+    private static final int MENU_EXPORT = 3;
+    private static final int MENU_RESET = 4;
+    private static final int MENU_RESTART = 5;
     private static final String IME_CONTROL_BAR_DRAG_LABEL = "ime_control_bar_button";
     private static final int IME_CONTROL_BAR_POOL_ROW_ITEM_COUNT = 3;
     private static final String PACKAGE_SYSTEM_UI = "com.android.systemui";
     private static final long SYSTEM_UI_RESTART_DELAY_MS = 600L;
+    private static final String GITHUB_URL = "https://github.com/shenymo/FlymeStatusBarSizer";
+    private static final String QQ_GROUP_URL = "https://qun.qq.com/universal-share/share?ac=1&authKey=WuaHYIEHdI6Y%2Fvn7SvcFMtyuUX%2Bwp%2FMedY0eMgPLq9Bbrz%2FPMRsiIgDttNOMbPWW&busi_data=eyJncm91cENvZGUiOiIxMTAyMTM4MzgxIiwidG9rZW4iOiJIb1hmV2xvaVUxWFk2YjAyOXl5MmIwelljU3A5bFRYejQrb3JtUlJwOXRMK1BLU3pnWWRaSG9VdHZ4M3Fld2xqIiwidWluIjoiMjI4OTU3MTk5MCJ9&data=O3ClX619ry0x93elARpxRoHiwSavPU_N00zhT1jj5d_rR0feICi-g7gudqIpU6sbrKtr1_CCPBpNQ-APojGliw&svctype=4&tempid=h5_group_info";
+    private static final String QQ_GROUP_NUMBER = "1102138381";
     private static final Pattern CLOCK_EXPRESSION_TOKEN_PATTERN = Pattern.compile("\\{([A-Za-z0-9_]+)\\}");
     private static final String[][] CLOCK_EXPRESSION_TOKEN_ROWS = {
             {"HH", "H", "hh", "h"},
@@ -84,21 +94,22 @@ public class MainActivity extends Activity {
             SettingsStore.KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
             SettingsStore.KEY_SIGNAL_BADGE_Y_OFFSET_DP,
             SettingsStore.KEY_SIGNAL_DUAL_Y_OFFSET_DP,
-            SettingsStore.KEY_WIFI_Y_OFFSET_DP
+            SettingsStore.KEY_WIFI_Y_OFFSET_DP,
+            SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP
     };
 
-    private static final int FALLBACK_BACKGROUND = Color.rgb(253, 248, 253);
+    private static final int FALLBACK_BACKGROUND = Color.rgb(248, 249, 251);
     private static final int FALLBACK_SURFACE = Color.WHITE;
-    private static final int FALLBACK_SURFACE_SOFT = Color.rgb(241, 236, 242);
-    private static final int FALLBACK_SURFACE_STRONG = Color.rgb(232, 222, 249);
-    private static final int FALLBACK_FEATURE_SURFACE = Color.rgb(245, 238, 255);
-    private static final int FALLBACK_FEATURE_STROKE = Color.rgb(207, 188, 255);
-    private static final int FALLBACK_TEXT = Color.rgb(28, 27, 31);
-    private static final int FALLBACK_SUBTEXT = Color.rgb(73, 69, 81);
-    private static final int FALLBACK_PRIMARY = Color.rgb(79, 55, 138);
-    private static final int FALLBACK_PRIMARY_CONTAINER = Color.rgb(103, 80, 164);
-    private static final int FALLBACK_PRIMARY_DEEP = Color.rgb(58, 43, 103);
-    private static final int FALLBACK_STROKE = Color.rgb(203, 196, 210);
+    private static final int FALLBACK_SURFACE_SOFT = Color.rgb(242, 244, 246);
+    private static final int FALLBACK_SURFACE_STRONG = Color.rgb(231, 232, 234);
+    private static final int FALLBACK_FEATURE_SURFACE = Color.rgb(245, 249, 255);
+    private static final int FALLBACK_FEATURE_STROKE = Color.rgb(192, 198, 214);
+    private static final int FALLBACK_TEXT = Color.rgb(25, 28, 30);
+    private static final int FALLBACK_SUBTEXT = Color.rgb(64, 71, 84);
+    private static final int FALLBACK_PRIMARY = Color.rgb(0, 92, 174);
+    private static final int FALLBACK_PRIMARY_CONTAINER = Color.rgb(0, 116, 217);
+    private static final int FALLBACK_PRIMARY_DEEP = Color.rgb(0, 71, 136);
+    private static final int FALLBACK_STROKE = Color.rgb(192, 198, 214);
 
     private SharedPreferences prefs;
     private int colorBackground;
@@ -132,6 +143,45 @@ public class MainActivity extends Activity {
             SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;
     private LinearLayout clockExpressionOrderContainer;
     private TextView clockExpressionPreviewView;
+    private LinearLayout topBar;
+    private TextView backButtonView;
+    private TextView moreButtonView;
+    private TextView topBarEyebrowView;
+    private TextView topBarTitleView;
+    private TextView topBarSubtitleView;
+    private FrameLayout pageHostView;
+    private OnBackInvokedCallback systemBackCallback;
+    private final Map<Page, View> pageViews = new LinkedHashMap<>();
+    private final ArrayDeque<Page> navigationStack = new ArrayDeque<>();
+    private Page currentPage = Page.HOME;
+
+    enum Page {
+        HOME("Flyme Status Bar", "重构后的总览入口，保留原有配置逻辑，只调整信息架构与视觉层级。", "Flyme 模块", true),
+        ICONS_BATTERY("图标与电池", "状态栏图标缩放、电池样式、通知图标以及信号与 Wi-Fi 接管设置。", null, true),
+        TIME_NETWORK("时间与网络", "实时网速显隐阈值、时间表达式编辑，以及时间字重字号设置。", null, true),
+        SYSTEM_INTERACTION("系统交互", "MBack 长触、导航栏沉浸与高度，以及输入法控制栏接管。", null, true),
+        ADVANCED_DEBUG("高级与调试", "配置管理、WIFI 性能打点，以及高阶工具入口。", null, true),
+        ABOUT("关于与支持", "项目地址、交流群、版本构建信息和目标作用域说明。", null, false),
+        POSITION_TUNING("布局微调", "单独调整时钟、电池、信号、Wi-Fi 与输入法控制栏的细节位置。", null, true),
+        TELEPHONY_DEBUG("Telephony 调试", "伪造 Telephony 读数，验证双卡、网络制式与信号等级对图标布局的影响。", null, true);
+
+        final String title;
+        final String subtitle;
+        final String eyebrow;
+        final boolean showMore;
+
+        Page(String title, String subtitle, String eyebrow, boolean showMore) {
+            this.title = title;
+            this.subtitle = subtitle;
+            this.eyebrow = eyebrow;
+            this.showMore = showMore;
+        }
+    }
+
+    interface PageBinder {
+        void bind(MainActivity activity, LinearLayout root);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -139,47 +189,28 @@ public class MainActivity extends Activity {
         SettingsStore.prepareRemoteSync(this);
         initPalette();
         configureSystemBars();
-        int topInset = getStatusBarInset();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             getWindow().setDecorFitsSystemWindows(true);
         }
-
-        FrameLayout page = new FrameLayout(this);
-        page.setBackgroundColor(colorBackground);
-
-        ScrollView scrollView = new ScrollView(this);
-        scrollView.setBackgroundColor(colorBackground);
-        scrollView.setFillViewport(true);
-        page.addView(scrollView, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
-
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(16) + topInset, dp(20), dp(120));
-        scrollView.addView(root, new ScrollView.LayoutParams(
-                ScrollView.LayoutParams.MATCH_PARENT,
-                ScrollView.LayoutParams.WRAP_CONTENT));
-
-        root.addView(buildTopBar(), matchWrap());
-        root.addView(buildMainPageContainer(), matchWrapWithTop(18));
-
-        page.addView(buildBottomNavigation(), bottomNavigationLayoutParams());
-        page.addView(buildFloatingMenuButton(), floatingMenuLayoutParams(topInset));
-        setContentView(page);
+        setContentView(R.layout.activity_main);
+        bindHostViews();
+        bindPages();
+        showPage(Page.HOME);
+        registerSystemBackCallback();
     }
 
     @Override
     public void onBackPressed() {
-        if (positionTuningPage != null && positionTuningPage.getVisibility() == View.VISIBLE) {
-            bindMainTabs(2);
-            return;
-        }
-        if (telephonyDebugPage != null && telephonyDebugPage.getVisibility() == View.VISIBLE) {
-            bindMainTabs(2);
+        if (handleBackNavigation()) {
             return;
         }
         super.onBackPressed();
+    }
+
+    @Override
+    protected void onDestroy() {
+        unregisterSystemBackCallback();
+        super.onDestroy();
     }
 
     @Override
@@ -193,6 +224,161 @@ public class MainActivity extends Activity {
             exportConfig(uri);
         } else if (requestCode == REQUEST_IMPORT_CONFIG) {
             importConfig(uri);
+        }
+    }
+
+    private void bindHostViews() {
+        topBar = findViewById(R.id.top_bar);
+        backButtonView = findViewById(R.id.back_button);
+        moreButtonView = findViewById(R.id.more_button);
+        topBarEyebrowView = findViewById(R.id.top_bar_eyebrow);
+        topBarTitleView = findViewById(R.id.top_bar_title);
+        topBarSubtitleView = findViewById(R.id.top_bar_subtitle);
+        pageHostView = findViewById(R.id.page_host);
+        if (topBar != null) {
+            topBar.setBackgroundColor(colorBackground);
+            int topInset = getStatusBarInset();
+            topBar.setPadding(
+                    topBar.getPaddingLeft(),
+                    dp(12) + topInset,
+                    topBar.getPaddingRight(),
+                    topBar.getPaddingBottom());
+        }
+        if (pageHostView != null) {
+            pageHostView.setBackgroundColor(colorBackground);
+        }
+        setTapClickListener(backButtonView, v -> onBackPressed());
+        setTapClickListener(moreButtonView, this::showMoreMenu);
+    }
+
+    private void bindPages() {
+        pageViews.clear();
+        registerPage(Page.HOME, R.layout.page_home, HomePageController::bind);
+        registerPage(Page.ICONS_BATTERY, R.layout.page_icons_battery, IconsBatteryPageController::bind);
+        registerPage(Page.TIME_NETWORK, R.layout.page_time_network, TimeNetworkPageController::bind);
+        registerPage(Page.SYSTEM_INTERACTION, R.layout.page_system_interaction,
+                SystemInteractionPageController::bind);
+        registerPage(Page.ADVANCED_DEBUG, R.layout.page_advanced_debug, AdvancedDebugPageController::bind);
+        registerPage(Page.ABOUT, R.layout.page_about, AboutPageController::bind);
+        registerPage(Page.POSITION_TUNING, R.layout.page_position_tuning, PositionTuningPageController::bind);
+        registerPage(Page.TELEPHONY_DEBUG, R.layout.page_telephony_debug, TelephonyDebugPageController::bind);
+    }
+
+    private void registerPage(Page page, int layoutResId, PageBinder binder) {
+        if (pageHostView == null) {
+            return;
+        }
+        View pageView = getLayoutInflater().inflate(layoutResId, pageHostView, false);
+        LinearLayout container = pageView.findViewById(R.id.page_content);
+        if (binder != null && container != null) {
+            binder.bind(this, container);
+        }
+        pageView.setVisibility(View.GONE);
+        pageHostView.addView(pageView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+        pageViews.put(page, pageView);
+    }
+
+    void openPage(Page page) {
+        if (page == null || page == currentPage) {
+            return;
+        }
+        navigationStack.push(currentPage);
+        showPage(page);
+    }
+
+    void showPage(Page page) {
+        if (page == null) {
+            return;
+        }
+        currentPage = page;
+        for (Map.Entry<Page, View> entry : pageViews.entrySet()) {
+            entry.getValue().setVisibility(entry.getKey() == page ? View.VISIBLE : View.GONE);
+        }
+        updateTopBar(page);
+    }
+
+    private void updateTopBar(Page page) {
+        if (page == null) {
+            return;
+        }
+        boolean onHome = page == Page.HOME && navigationStack.isEmpty();
+        if (backButtonView != null) {
+            backButtonView.setVisibility(onHome ? View.GONE : View.VISIBLE);
+        }
+        if (moreButtonView != null) {
+            moreButtonView.setVisibility(page.showMore ? View.VISIBLE : View.GONE);
+        }
+        if (topBarEyebrowView != null) {
+            if (TextUtils.isEmpty(page.eyebrow)) {
+                topBarEyebrowView.setVisibility(View.GONE);
+            } else {
+                topBarEyebrowView.setText(page.eyebrow);
+                topBarEyebrowView.setVisibility(View.VISIBLE);
+            }
+        }
+        if (topBarTitleView != null) {
+            topBarTitleView.setText(page.title);
+            topBarTitleView.setTextSize(onHome ? 28f : 22f);
+        }
+        if (topBarSubtitleView != null) {
+            topBarSubtitleView.setText(page.subtitle);
+            topBarSubtitleView.setVisibility(TextUtils.isEmpty(page.subtitle) ? View.GONE : View.VISIBLE);
+        }
+    }
+
+    private void showMoreMenu(View anchor) {
+        PopupMenu popup = new PopupMenu(this, anchor);
+        popup.getMenu().add(0, MENU_ABOUT, 0, "关于与支持");
+        popup.getMenu().add(0, MENU_RESTART, 1, "重启 SystemUI");
+        popup.setOnMenuItemClickListener(item -> {
+            int id = item.getItemId();
+            if (id == MENU_ABOUT) {
+                performTapHaptic(anchor);
+                openPage(Page.ABOUT);
+                return true;
+            }
+            if (id == MENU_RESTART) {
+                performTapHaptic(anchor);
+                restartSystemUi();
+                return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+    private boolean handleBackNavigation() {
+        if (currentPage != Page.HOME || !navigationStack.isEmpty()) {
+            navigationStack.clear();
+            showPage(Page.HOME);
+            return true;
+        }
+        return false;
+    }
+
+    private void registerSystemBackCallback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || systemBackCallback != null) {
+            return;
+        }
+        systemBackCallback = this::handleSystemBackInvoked;
+        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                systemBackCallback);
+    }
+
+    private void unregisterSystemBackCallback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || systemBackCallback == null) {
+            return;
+        }
+        getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(systemBackCallback);
+        systemBackCallback = null;
+    }
+
+    private void handleSystemBackInvoked() {
+        if (!handleBackNavigation()) {
+            finish();
         }
     }
 
@@ -1041,31 +1227,11 @@ public class MainActivity extends Activity {
     }
 
     private void showTelephonyDebugPage() {
-        if (telephonyDebugPage == null || mainPages == null || mainTabs == null) {
-            return;
-        }
-        bindSettingsPageTabs(mainPages, mainTabs, 2);
-        for (View page : mainPages) {
-            page.setVisibility(View.GONE);
-        }
-        if (positionTuningPage != null) {
-            positionTuningPage.setVisibility(View.GONE);
-        }
-        telephonyDebugPage.setVisibility(View.VISIBLE);
+        openPage(Page.TELEPHONY_DEBUG);
     }
 
     private void showPositionTuningPage() {
-        if (positionTuningPage == null || mainPages == null || mainTabs == null) {
-            return;
-        }
-        bindSettingsPageTabs(mainPages, mainTabs, 2);
-        for (View page : mainPages) {
-            page.setVisibility(View.GONE);
-        }
-        if (telephonyDebugPage != null) {
-            telephonyDebugPage.setVisibility(View.GONE);
-        }
-        positionTuningPage.setVisibility(View.VISIBLE);
+        openPage(Page.POSITION_TUNING);
     }
 
     private View buildTimeCard() {
@@ -1261,6 +1427,7 @@ public class MainActivity extends Activity {
         textColumn.addView(subtitle, matchWrap());
 
         Switch toggle = new Switch(this);
+        styleSwitch(toggle);
         toggle.setChecked(SettingsStore.readBoolean(prefs, key, defaultValue));
         toggle.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) -> {
             if (buttonView.isPressed()) {
@@ -1331,6 +1498,7 @@ public class MainActivity extends Activity {
         subtitle.setPadding(0, dp(4), 0, 0);
 
         SeekBar seekBar = new SeekBar(this);
+        styleSeekBar(seekBar);
         seekBar.setMax(max - min);
         seekBar.setProgress(clamped - min);
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -1415,6 +1583,7 @@ public class MainActivity extends Activity {
         subtitle.setPadding(0, dp(4), 0, 0);
 
         SeekBar seekBar = new SeekBar(this);
+        styleSeekBar(seekBar);
         seekBar.setMax((maxTenthDp - minTenthDp) / 10);
         PositionOffsetSliderBinding binding =
                 new PositionOffsetSliderBinding(valueView, seekBar, minTenthDp, maxTenthDp);
@@ -1512,6 +1681,7 @@ public class MainActivity extends Activity {
         subtitle.setPadding(0, dp(4), 0, 0);
 
         SeekBar seekBar = new SeekBar(this);
+        styleSeekBar(seekBar);
         seekBar.setMax((maxTenthDp - minTenthDp) / 10);
         PositionOffsetSliderBinding binding =
                 new PositionOffsetSliderBinding(valueView, seekBar, minTenthDp, maxTenthDp);
@@ -1622,6 +1792,7 @@ public class MainActivity extends Activity {
         subtitle.setPadding(0, dp(4), 0, 0);
 
         SeekBar seekBar = new SeekBar(this);
+        styleSeekBar(seekBar);
         seekBar.setMax(max - min);
         seekBar.setProgress(clamped - min);
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -3132,6 +3303,35 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void styleSwitch(Switch toggle) {
+        if (toggle == null) {
+            return;
+        }
+        int[][] states = new int[][]{
+                new int[]{android.R.attr.state_checked},
+                new int[]{-android.R.attr.state_checked}
+        };
+        toggle.setTrackTintList(new ColorStateList(
+                states,
+                new int[]{colorPrimaryContainer, colorSurfaceStrong}));
+        toggle.setThumbTintList(new ColorStateList(
+                states,
+                new int[]{Color.WHITE, Color.WHITE}));
+        toggle.setShowText(false);
+    }
+
+    private void styleSeekBar(SeekBar seekBar) {
+        if (seekBar == null) {
+            return;
+        }
+        ColorStateList activeTint = ColorStateList.valueOf(colorPrimary);
+        ColorStateList inactiveTint = ColorStateList.valueOf(colorSurfaceStrong);
+        seekBar.setThumbTintList(activeTint);
+        seekBar.setProgressTintList(activeTint);
+        seekBar.setSecondaryProgressTintList(inactiveTint);
+        seekBar.setProgressBackgroundTintList(inactiveTint);
+    }
+
     private void performTapHaptic(View view) {
         if (view == null) {
             return;
@@ -3283,6 +3483,470 @@ public class MainActivity extends Activity {
         return drawable;
     }
 
+    int backgroundColor() {
+        return colorBackground;
+    }
+
+    int surfaceColor() {
+        return colorSurface;
+    }
+
+    int surfaceSoftColor() {
+        return colorSurfaceSoft;
+    }
+
+    int featureSurfaceColor() {
+        return colorFeatureSurface;
+    }
+
+    int featureStrokeColor() {
+        return colorFeatureStroke;
+    }
+
+    int textColor() {
+        return colorText;
+    }
+
+    int subtextColor() {
+        return colorSubtext;
+    }
+
+    int primaryColor() {
+        return colorPrimary;
+    }
+
+    int primaryContainerColor() {
+        return colorPrimaryContainer;
+    }
+
+    int primaryDeepColor() {
+        return colorPrimaryDeep;
+    }
+
+    int secondaryColor() {
+        return 0xFF006688;
+    }
+
+    int tertiaryColor() {
+        return 0xFF964500;
+    }
+
+    int errorColor() {
+        return 0xFFBA1A1A;
+    }
+
+    int strokeColor() {
+        return colorStroke;
+    }
+
+    String githubUrl() {
+        return GITHUB_URL;
+    }
+
+    String qqGroupUrl() {
+        return QQ_GROUP_URL;
+    }
+
+    String qqGroupNumber() {
+        return QQ_GROUP_NUMBER;
+    }
+
+    String supportedScopesSummary() {
+        return "android / com.android.systemui / 主流输入法";
+    }
+
+    void openExternalLink(String url) {
+        if (TextUtils.isEmpty(url)) {
+            return;
+        }
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Throwable t) {
+            showToast("无法打开链接：" + url);
+        }
+    }
+
+    View createIconSizingCard() {
+        return buildStatusBarIconScaleCard();
+    }
+
+    View createBatterySettingsCard() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+
+        addSwitchRow(content, "代码绘制电池图标",
+                "关闭后恢复系统原来的电池图标，不再接管这一项的绘制和尺寸。",
+                SettingsStore.KEY_BATTERY_CODE_DRAW_ENABLED,
+                SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED);
+        addDivider(content);
+        addChoiceRow(content, "电池图标样式",
+                "当前保留类 IOS 和类 One UI 两套代码绘制样式。",
+                SettingsStore.KEY_BATTERY_ICON_STYLE,
+                SettingsStore.DEFAULT_BATTERY_ICON_STYLE,
+                new int[]{SettingsStore.BATTERY_STYLE_IOS, SettingsStore.BATTERY_STYLE_ONEUI},
+                new String[]{"类 IOS", "类 One UI"});
+        addDivider(content);
+        addSwitchRow(content, "电池内显示电量数字",
+                "关闭后只保留图形电池，不在电池内部绘制剩余电量数字。",
+                SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
+                SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED);
+        addDivider(content);
+        LinearLayout hollowOptions = buildBatteryHollowOptions();
+        hollowOptions.setVisibility(SettingsStore.readBoolean(
+                prefs,
+                SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
+                SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED) ? View.VISIBLE : View.GONE);
+        addSwitchRow(content, "镂空电池",
+                "开启后使用镂空电池样式，下面可以继续控制内部填充是否跟随电量缩短。",
+                SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
+                SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED,
+                (buttonView, isChecked) -> hollowOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
+        LinearLayout.LayoutParams hollowOptionsLp = matchWrapWithTop(10);
+        hollowOptionsLp.leftMargin = dp(12);
+        content.addView(hollowOptions, hollowOptionsLp);
+        addDivider(content);
+        int[] batteryTextFontOptions = BatteryTextFontHelper.getAvailableFontOptions(this);
+        addChoiceRow(content, "电池数字字体",
+                "会列出系统可用字体，也包含模块自带的 MiSansLatinVFNumber。",
+                SettingsStore.KEY_BATTERY_TEXT_FONT,
+                SettingsStore.DEFAULT_BATTERY_TEXT_FONT,
+                batteryTextFontOptions,
+                BatteryTextFontHelper.getFontLabels(batteryTextFontOptions));
+        return buildSectionCard(
+                "电池样式",
+                "状态栏电池绘制、数字样式和镂空细节都集中在这里。",
+                content);
+    }
+
+    View createNotificationSettingsCard() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout appIconOptions = buildNotificationAppIconOptions();
+        appIconOptions.setVisibility(SettingsStore.readBoolean(
+                prefs,
+                SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
+                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED) ? View.VISIBLE : View.GONE);
+        addSwitchRow(content, "通知使用应用图标",
+                "开启后把第三方应用的状态栏通知图标改成应用自身图标，不再使用 Flyme 统一通知图标。",
+                SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
+                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED,
+                (buttonView, isChecked) -> appIconOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
+        LinearLayout.LayoutParams optionsLp = matchWrapWithTop(10);
+        optionsLp.leftMargin = dp(12);
+        content.addView(appIconOptions, optionsLp);
+        return buildSectionCard(
+                "通知图标",
+                "这里只改第三方应用通知图标的来源、尺寸和内边距。",
+                content);
+    }
+
+    View createSignalSettingsCard() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+
+        addSwitchRow(content, "代码绘制信号图标",
+                "关闭后恢复系统原来的移动信号和 Wi-Fi 图标，不再替换相关槽位和尺寸。",
+                SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
+                SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED);
+        addDivider(content);
+        addSwitchRow(content, "重绘 Wi-Fi 图标",
+                "在信号总开关开启时，单独控制是否继续接管 Wi-Fi 图标。",
+                SettingsStore.KEY_WIFI_CODE_DRAW_ENABLED,
+                SettingsStore.DEFAULT_WIFI_CODE_DRAW_ENABLED);
+        addDivider(content);
+        addProfileSectionHeader(content, "说明",
+                "移动信号由模块统一接管，5G/5GA 标识仍然跟随系统真实网络状态或 Telephony 调试结果。");
+        return buildSectionCard(
+                "信号与 Wi-Fi",
+                "移动网络图标统一由模块接管，同时保留 Wi-Fi 的独立开关。",
+                content);
+    }
+
+    View createConnectionRateSettingsCard() {
+        return buildSectionCard(
+                "实时网速",
+                "保留系统原采样，只在这里调节阈值显隐和确认次数。",
+                buildConnectionRateThresholdPage());
+    }
+
+    View createTimeExpressionSettingsCard() {
+        return buildSectionCard(
+                "时间表达式",
+                "通过按钮组合表达式，并在当前页完成拖动排序和应用。",
+                buildTimeExpressionPage());
+    }
+
+    View createTimeTypographySettingsCard() {
+        return buildSectionCard(
+                "时间字体",
+                "集中控制状态栏时间、追加日期和锁屏运营商的字重与字号。",
+                buildTimeTypographyPage());
+    }
+
+    View createMBackActionSettingsCard() {
+        return buildSectionCard(
+                "MBack 长触动作",
+                "只接管长按分支，保留单击和系统其他来源。",
+                buildMBackActionPage());
+    }
+
+    View createMBackNavigationSettingsCard() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.addView(buildMBackImmersivePage(), matchWrap());
+        addDivider(content);
+        content.addView(buildMBackHeightPage(), matchWrapWithTop(16));
+        return buildSectionCard(
+                "导航栏沉浸与高度",
+                "透明背景、隐藏小白条、Inset 抬高和导航栏高度在同一页平铺展示。",
+                content);
+    }
+
+    View createImeToolbarSettingsCard() {
+        return buildSectionCard(
+                "IME 控制栏",
+                "统一接管输入法控制栏，并保留图标缩放、透明度、抬高和按钮草稿应用逻辑。",
+                buildImeToolbarSettingsContent());
+    }
+
+    View createAdvancedToolsCard() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        addActionButtonRow(content, "布局微调",
+                "进入独立工具页，微调时钟、电池、信号、Wi-Fi 与输入法控制栏的位置。",
+                "进入", this::showPositionTuningPage);
+        addDivider(content);
+        addActionButtonRow(content, "Telephony 调试",
+                "进入独立调试页，伪造插卡数量、默认数据卡、网络类型和信号等级。",
+                "进入", this::showTelephonyDebugPage);
+        return buildSectionCard(
+                "高阶工具",
+                "面向需要进一步验证布局或 Telephony 行为的场景。",
+                content);
+    }
+
+    View createConfigManagementCard() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        addActionButtonRow(content, "导入配置",
+                "从 JSON 文件恢复当前模块配置，会直接覆盖现有设置。",
+                "导入", () -> startImportConfig());
+        addDivider(content);
+        addActionButtonRow(content, "导出配置",
+                "把当前可备份的设置项导出到 JSON，便于备份或跨设备迁移。",
+                "导出", () -> startExportConfig());
+        addDivider(content);
+        addActionButtonRow(content, "恢复默认",
+                "清空当前 SharedPreferences，并重新按默认值初始化界面。",
+                "恢复", this::resetAllSettings);
+        return buildSectionCard(
+                "配置管理",
+                "原来藏在悬浮菜单里的导入、导出和恢复默认，现在都放到主页面里。",
+                content);
+    }
+
+    View createPerformanceDebugCard() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        addSwitchRow(content, "启用 WIFI 性能打点",
+                "打开后会给 Wi-Fi 更新链路输出详细耗时日志，方便在 logcat 里分析刷新开销。",
+                SettingsStore.KEY_WIFI_PERF_LOGGING_ENABLED,
+                SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED);
+        return buildSectionCard(
+                "性能调试",
+                "只保留和现有模块实现直接相关的 Wi-Fi 链路打点开关。",
+                content);
+    }
+
+    View createPositionTuningSettingsCard() {
+        positionTuningSliderBindings.clear();
+
+        LinearLayout card = card(colorSurface, colorStroke, 28);
+        addProfileSectionHeader(card, "时钟与通知图区",
+                "改的是状态栏 clock View 的右侧 padding，会直接影响时间和右侧通知图标区之间的间距。");
+        addPositionOffsetSliderRow(card, "时钟右边距",
+                "基于系统默认间距做增减。系统原本的右侧边距为 2dp。正数增大间距，负数减小间距。",
+                SettingsStore.KEY_CLOCK_RIGHT_PADDING_OFFSET_DP,
+                SettingsStore.DEFAULT_CLOCK_RIGHT_PADDING_OFFSET_DP * 10);
+
+        addDivider(card);
+        addProfileSectionHeader(card, "电池",
+                "下面 3 项只在模块接管电池绘制后生效。");
+        addPositionOffsetSliderRow(card, "电池图标",
+                "整体电池轮廓的 Y 轴位置。默认 0dp。",
+                SettingsStore.KEY_BATTERY_ICON_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10);
+        addDivider(card);
+        addPositionOffsetSliderRow(card, "电池内数字数显",
+                "只改电池内部数字的基线高度。默认 0dp。",
+                SettingsStore.KEY_BATTERY_TEXT_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP * 10);
+        addDivider(card);
+        addPositionOffsetSliderRow(card, "闪电图标",
+                "只改充电 / 快充闪电图标的 Y 轴位置。默认 0dp。",
+                SettingsStore.KEY_BATTERY_BOLT_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10);
+
+        addDivider(card);
+        addProfileSectionHeader(card, "移动网络",
+                "这些项只影响模块自绘的移动信号和 5G/5GA 标识。");
+        addPositionOffsetSliderRow(card, "单层信号图标",
+                "单卡场景下信号柱的 Y 轴位置。默认 0dp。",
+                SettingsStore.KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP * 10);
+        addDivider(card);
+        addPositionOffsetSliderRow(card, "5G / 5GA 标识",
+                "只改 5G / 5GA 文本标识的 Y 轴位置。默认 0dp。",
+                SettingsStore.KEY_SIGNAL_BADGE_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP * 10);
+        addDivider(card);
+        addPositionOffsetSliderRow(card, "双层信号图标",
+                "双卡合一场景下整组信号图形的 Y 轴位置。默认 0dp。",
+                SettingsStore.KEY_SIGNAL_DUAL_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP * 10);
+
+        addDivider(card);
+        addProfileSectionHeader(card, "Wi-Fi",
+                "只改模块自绘的 Wi-Fi 图标。默认 0dp。");
+        addPositionOffsetSliderRow(card, "Wi-Fi 图标",
+                "Wi-Fi 图标整体的 Y 轴位置。默认 0dp。",
+                SettingsStore.KEY_WIFI_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP * 10);
+
+        addDivider(card);
+        addProfileSectionHeader(card, "输入法控制栏",
+                "这里单独保留输入法控制栏整体抬高的细调项。");
+        addPositionOffsetSliderRow(card, "输入法控制栏抬高",
+                "正数向上、负数向下；滑块按 1dp 粗调，点右侧数值可输入 0.1dp。",
+                SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10);
+
+        addDivider(card);
+        addActionButtonRow(card, "应用当前微调",
+                "把这个页面里的待应用微调值一次性写入配置，并通知当前状态栏刷新。",
+                "应用", this::applyAllPositionOffsets);
+        addDivider(card);
+        addActionButtonRow(card, "全部归零",
+                "先把这个页面里的待应用微调值都改成 0.0dp；改完后再点上面的应用写入状态栏。",
+                "归零", this::resetAllPositionOffsets);
+        return card;
+    }
+
+    View createTelephonyDebugSettingsCard() {
+        LinearLayout card = card(colorSurface, colorStroke, 28);
+        addProfileSectionHeader(card, "调试开关",
+                "打开后，远端偏好会立即同步到 SystemUI。你可以先设好两张测试卡的状态，再切换插卡数量和默认数据卡。");
+        addSwitchRow(card, "启用 Telephony 伪造",
+                "关闭后恢复真实 Telephony 结果，但下面保存的调试预设会保留。",
+                SettingsStore.KEY_TELEPHONY_DEBUG_ENABLED,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED);
+        addDivider(card);
+        addChoiceRow(card, "模拟插卡数量",
+                "用于测试 0 卡、单卡和双卡时你的自绘信号图标是否按预期切换布局和可见性。",
+                SettingsStore.KEY_TELEPHONY_DEBUG_SIM_COUNT,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT,
+                new int[]{0, 1, 2},
+                new String[]{"0 张", "1 张", "2 张"});
+        addDivider(card);
+        addChoiceRow(card, "默认上网卡",
+                "双卡场景下，移动网络类型和 5G 标识会跟随这里选择的那张卡。",
+                SettingsStore.KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
+                new int[]{
+                        SettingsStore.TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_NONE,
+                        SettingsStore.TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_CARD1,
+                        SettingsStore.TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_CARD2
+                },
+                new String[]{"无", "卡 1", "卡 2"});
+
+        addDivider(card);
+        addTelephonyDebugSlotSection(card,
+                "卡 1",
+                "第一张测试卡。单卡场景默认看它；双卡合并图标时，上层柱读取它的信号等级。",
+                SettingsStore.KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
+                SettingsStore.KEY_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL);
+
+        addDivider(card);
+        addTelephonyDebugSlotSection(card,
+                "卡 2",
+                "第二张测试卡。只有插卡数量切到 2 张时才会参与模拟；双卡合并图标时，下层圆点读取它的信号等级。",
+                SettingsStore.KEY_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE,
+                SettingsStore.KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL,
+                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL);
+
+        addDivider(card);
+        addActionButtonRow(card, "恢复真实系统",
+                "只关闭 Telephony 伪造，不清空你刚才配好的两张测试卡参数。",
+                "恢复", this::disableTelephonyDebug);
+        return card;
+    }
+
+    private LinearLayout buildImeToolbarSettingsContent() {
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+
+        addSwitchRow(details, "替换原生输入法控制栏",
+                "打开后统一接管输入法控制栏：替换当前控制栏、去掉深灰背景、同步输入法背景，并把工具按钮合并进控制栏。",
+                SettingsStore.KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
+                SettingsStore.DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR);
+        addDivider(details);
+        addApplySliderRow(details, "输入法图标大小",
+                "调节底部 7 格里图标的占位比例。数值越大，图标越大，也更接近铺满整条控制栏。",
+                SettingsStore.KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
+                SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
+                60, 180, "%");
+        addDivider(details);
+        addApplySliderRow(details, "输入法图标透明度",
+                "调节输入法控制栏图标透明度。100% 完全不透明，数值越小越淡。",
+                SettingsStore.KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
+                SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
+                10, 100, "%");
+        addDivider(details);
+        addProfileSectionHeader(details, "按钮位置与显隐",
+                "长按按钮拖到下面 7 个固定槽位里就会显示；拖回按钮池就会隐藏。");
+
+        TextView hint = new TextView(this);
+        hint.setText("从左到右就是输入法控制栏里的实际位置；拖拽后先保存在页面草稿里，点击应用才会写入配置并刷新当前输入法界面。");
+        hint.setTextColor(colorSubtext);
+        hint.setTextSize(13);
+        hint.setPadding(0, dp(10), 0, 0);
+        details.addView(hint, matchWrap());
+
+        imeControlBarButtonContainer = new LinearLayout(this);
+        imeControlBarButtonContainer.setOrientation(LinearLayout.VERTICAL);
+        imeControlBarButtonContainer.setPadding(0, dp(12), 0, 0);
+        details.addView(imeControlBarButtonContainer, matchWrap());
+        loadImeControlBarButtonConfig();
+        renderImeControlBarButtonEditor();
+        return details;
+    }
+
+    View buildSectionCard(String titleText, String subtitleText, View content) {
+        LinearLayout card = card(colorSurface, colorStroke, 28);
+
+        TextView title = new TextView(this);
+        title.setText(titleText);
+        title.setTextColor(colorText);
+        title.setTextSize(20);
+        card.addView(title, matchWrap());
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText(subtitleText);
+        subtitle.setTextColor(colorSubtext);
+        subtitle.setTextSize(14);
+        subtitle.setPadding(0, dp(6), 0, 0);
+        card.addView(subtitle, matchWrap());
+
+        if (content != null) {
+            card.addView(content, matchWrapWithTop(16));
+        }
+        return card;
+    }
+
     private static final class ImeControlBarDragState {
         private final View sourceView;
         private final String button;
@@ -3330,18 +3994,18 @@ public class MainActivity extends Activity {
     }
 
     private void initPalette() {
-        colorBackground = resolveMonetColor("system_neutral1_10", FALLBACK_BACKGROUND);
-        colorSurface = resolveMonetColor("system_neutral1_0", FALLBACK_SURFACE);
-        colorSurfaceSoft = resolveMonetColor("system_neutral2_50", FALLBACK_SURFACE_SOFT);
-        colorSurfaceStrong = resolveMonetColor("system_accent1_100", FALLBACK_SURFACE_STRONG);
-        colorFeatureSurface = resolveMonetColor("system_accent2_50", FALLBACK_FEATURE_SURFACE);
-        colorFeatureStroke = resolveMonetColor("system_accent1_200", FALLBACK_FEATURE_STROKE);
-        colorText = resolveMonetColor("system_neutral1_900", FALLBACK_TEXT);
-        colorSubtext = resolveMonetColor("system_neutral2_700", FALLBACK_SUBTEXT);
-        colorPrimary = resolveMonetColor("system_accent1_600", FALLBACK_PRIMARY);
-        colorPrimaryContainer = resolveMonetColor("system_accent1_300", FALLBACK_PRIMARY_CONTAINER);
-        colorPrimaryDeep = resolveMonetColor("system_accent1_800", FALLBACK_PRIMARY_DEEP);
-        colorStroke = resolveMonetColor("system_neutral2_200", FALLBACK_STROKE);
+        colorBackground = FALLBACK_BACKGROUND;
+        colorSurface = FALLBACK_SURFACE;
+        colorSurfaceSoft = FALLBACK_SURFACE_SOFT;
+        colorSurfaceStrong = FALLBACK_SURFACE_STRONG;
+        colorFeatureSurface = FALLBACK_FEATURE_SURFACE;
+        colorFeatureStroke = FALLBACK_FEATURE_STROKE;
+        colorText = FALLBACK_TEXT;
+        colorSubtext = FALLBACK_SUBTEXT;
+        colorPrimary = FALLBACK_PRIMARY;
+        colorPrimaryContainer = FALLBACK_PRIMARY_CONTAINER;
+        colorPrimaryDeep = FALLBACK_PRIMARY_DEEP;
+        colorStroke = FALLBACK_STROKE;
     }
 
     private void configureSystemBars() {
