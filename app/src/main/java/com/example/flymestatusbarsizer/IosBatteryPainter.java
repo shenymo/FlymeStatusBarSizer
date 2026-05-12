@@ -61,7 +61,7 @@ final class IosBatteryPainter {
     static void draw(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
             boolean quickCharging,
             int fillColor, int textColor, boolean showLevelText, float textScale, Typeface typeface,
-            int bodyYOffsetPx, int textYOffsetPx, int boltYOffsetPx,
+            float bodyYOffsetPx, float textYOffsetPx, float boltYOffsetPx,
             boolean hollow, boolean hollowFillFollowsLevel) {
         if (bounds.width() <= 0 || bounds.height() <= 0) {
             return;
@@ -143,7 +143,7 @@ final class IosBatteryPainter {
 
     private static void drawHollowBattery(Canvas canvas, float contentRadius, float capContentRadius,
             int emptyColor, int fillColor, int level, String levelText, float textSize,
-            int textYOffsetPx, boolean showLevelText, boolean showBolt, int boltColor,
+            float textYOffsetPx, boolean showLevelText, boolean showBolt, int boltColor,
             boolean quickCharging,
             boolean fillFollowsLevel) {
         if (!showLevelText) {
@@ -180,8 +180,8 @@ final class IosBatteryPainter {
         canvas.restoreToCount(layer);
     }
 
-    private static void applyBodyVerticalOffset(int bodyYOffsetPx) {
-        if (bodyYOffsetPx == 0) {
+    private static void applyBodyVerticalOffset(float bodyYOffsetPx) {
+        if (bodyYOffsetPx == 0f) {
             return;
         }
         float offsetY = -bodyYOffsetPx;

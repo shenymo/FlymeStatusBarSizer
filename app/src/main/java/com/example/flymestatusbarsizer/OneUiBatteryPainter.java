@@ -55,7 +55,7 @@ final class OneUiBatteryPainter {
     static void draw(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
             boolean quickCharging,
             int fillColor, int textColor, boolean showLevelText, float textScale, Typeface typeface,
-            int bodyYOffsetPx, int textYOffsetPx, int boltYOffsetPx,
+            float bodyYOffsetPx, float textYOffsetPx, float boltYOffsetPx,
             boolean hollow, boolean hollowFillFollowsLevel) {
         if (bounds.width() <= 0 || bounds.height() <= 0) {
             return;
@@ -126,7 +126,7 @@ final class OneUiBatteryPainter {
     }
 
     private static void drawHollowBattery(Canvas canvas, float contentRadius, int emptyColor, int fillColor,
-            int level, String levelText, float textSize, int textYOffsetPx,
+            int level, String levelText, float textSize, float textYOffsetPx,
             boolean showLevelText, boolean showBolt,
             int boltColor, boolean quickCharging, boolean fillFollowsLevel) {
         if (!showLevelText) {
@@ -163,8 +163,8 @@ final class OneUiBatteryPainter {
         canvas.restoreToCount(layer);
     }
 
-    private static void applyBodyVerticalOffset(int bodyYOffsetPx) {
-        if (bodyYOffsetPx == 0) {
+    private static void applyBodyVerticalOffset(float bodyYOffsetPx) {
+        if (bodyYOffsetPx == 0f) {
             return;
         }
         float offsetY = -bodyYOffsetPx;

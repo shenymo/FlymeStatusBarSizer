@@ -69,6 +69,11 @@ final class IconMetrics {
         return resolveVisualCanvas(bounds, aspectRatio, HorizontalAlignment.CENTER, outCanvas);
     }
 
+    static VisualCanvas resolveCenteredVisualCanvas(RectF bounds, float aspectRatio,
+                                                    VisualCanvas outCanvas) {
+        return resolveVisualCanvas(bounds, aspectRatio, HorizontalAlignment.CENTER, outCanvas);
+    }
+
     static VisualCanvas resolveCenteredHeightVisualCanvas(Rect bounds, float aspectRatio,
                                                           VisualCanvas outCanvas) {
         VisualCanvas target = outCanvas == null ? new VisualCanvas() : outCanvas;
@@ -116,11 +121,41 @@ final class IconMetrics {
         return resolveVisualCanvas(bounds, aspectRatio, HorizontalAlignment.START, outCanvas);
     }
 
+    static VisualCanvas resolveStartVisualCanvas(RectF bounds, float aspectRatio,
+                                                 VisualCanvas outCanvas) {
+        return resolveVisualCanvas(bounds, aspectRatio, HorizontalAlignment.START, outCanvas);
+    }
+
     private static VisualCanvas resolveVisualCanvas(Rect bounds, float aspectRatio,
                                                     HorizontalAlignment horizontalAlignment,
                                                     VisualCanvas outCanvas) {
         VisualCanvas target = outCanvas == null ? new VisualCanvas() : outCanvas;
         if (bounds == null || bounds.width() <= 0 || bounds.height() <= 0) {
+            target.setEmpty();
+            return target;
+        }
+        float safeAspectRatio = aspectRatio <= 0f ? SIGNAL_BOX_ASPECT_RATIO : aspectRatio;
+        float side = Math.min(bounds.width(), bounds.height());
+        float squareLeft = horizontalAlignment == HorizontalAlignment.START
+                ? bounds.left
+                : bounds.left + (bounds.width() - side) / 2f;
+        float squareTop = bounds.top + (bounds.height() - side) / 2f;
+        float canvasHeight = side * VISUAL_CANVAS_HEIGHT_RATIO;
+        float canvasWidth = canvasHeight * safeAspectRatio;
+        float left = horizontalAlignment == HorizontalAlignment.START
+                ? squareLeft
+                : squareLeft + (side - canvasWidth) / 2f;
+        float top = squareTop + (side - canvasHeight) / 2f;
+        target.rect.set(left, top, left + canvasWidth, top + canvasHeight);
+        target.baselineY = target.rect.bottom - BASELINE_OFFSET_PX;
+        return target;
+    }
+
+    private static VisualCanvas resolveVisualCanvas(RectF bounds, float aspectRatio,
+                                                    HorizontalAlignment horizontalAlignment,
+                                                    VisualCanvas outCanvas) {
+        VisualCanvas target = outCanvas == null ? new VisualCanvas() : outCanvas;
+        if (bounds == null || bounds.width() <= 0f || bounds.height() <= 0f) {
             target.setEmpty();
             return target;
         }

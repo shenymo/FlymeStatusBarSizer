@@ -1680,15 +1680,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         boolean hollow = config != null && config.batteryHollowEnabled;
         boolean hollowFillFollowsLevel = config != null && config.batteryHollowFillFollowsLevel;
         Context densityContext = ModuleConfig.getSystemUiContext();
-        int bodyYOffsetPx = resolveIconOffsetPx(densityContext, config == null
-                ? SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP
-                : config.batteryIconYOffsetDp);
-        int textYOffsetPx = resolveIconOffsetPx(densityContext, config == null
-                ? SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP
-                : config.batteryTextYOffsetDp);
-        int boltYOffsetPx = resolveIconOffsetPx(densityContext, config == null
-                ? SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP
-                : config.batteryBoltYOffsetDp);
+        float bodyYOffsetPx = resolveIconOffsetPx(densityContext, config == null
+                ? SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10
+                : config.batteryIconYOffsetTenthDp);
+        float textYOffsetPx = resolveIconOffsetPx(densityContext, config == null
+                ? SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP * 10
+                : config.batteryTextYOffsetTenthDp);
+        float boltYOffsetPx = resolveIconOffsetPx(densityContext, config == null
+                ? SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10
+                : config.batteryBoltYOffsetTenthDp);
         if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
             OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, quickCharging,
                     fillColor, textColor, showLevelText, textScale, typeface,
@@ -1702,12 +1702,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                 hollowFillFollowsLevel);
     }
 
-    private static int resolveIconOffsetPx(Context context, int offsetDp) {
-        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
-        if (context == null) {
-            return normalized;
-        }
-        return Math.round(normalized * context.getResources().getDisplayMetrics().density);
+    private static float resolveIconOffsetPx(Context context, int offsetTenthDp) {
+        return SettingsStore.positionOffsetTenthDpToPx(context, offsetTenthDp);
     }
 
     private static boolean resolveBatteryQuickCharging(Object target) {

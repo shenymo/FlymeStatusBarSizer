@@ -7,6 +7,11 @@ import java.util.Map;
 
 final class SettingsStore {
     static final String PREFS = "status_bar_sizer";
+    static final String KEY_POSITION_OFFSET_STORAGE_VERSION = "__position_offset_storage_version";
+    static final int POSITION_OFFSET_STORAGE_VERSION_LEGACY_DP = 0;
+    static final int POSITION_OFFSET_STORAGE_VERSION_TENTH_DP = 1;
+    static final int POSITION_OFFSET_MIN_TENTH_DP = -240;
+    static final int POSITION_OFFSET_MAX_TENTH_DP = 240;
 
     static final String KEY_ENABLED = "enabled";
     static final String KEY_BATTERY_CODE_DRAW_ENABLED = "battery_code_draw_enabled";
@@ -121,6 +126,7 @@ final class SettingsStore {
     static final int DEFAULT_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE = TELEPHONY_DEBUG_NETWORK_PROFILE_4G;
     static final int DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL = 2;
     static final String[] INT_KEYS = {
+            KEY_POSITION_OFFSET_STORAGE_VERSION,
             KEY_BATTERY_ICON_STYLE,
             KEY_BATTERY_TEXT_FONT,
             KEY_STATUS_BAR_ICON_SCALE_PERCENT,
@@ -175,6 +181,16 @@ final class SettingsStore {
             KEY_IME_TOOLBAR_ORDER
     };
 
+    static final String[] POSITION_OFFSET_KEYS = {
+            KEY_BATTERY_ICON_Y_OFFSET_DP,
+            KEY_BATTERY_TEXT_Y_OFFSET_DP,
+            KEY_BATTERY_BOLT_Y_OFFSET_DP,
+            KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
+            KEY_SIGNAL_BADGE_Y_OFFSET_DP,
+            KEY_SIGNAL_DUAL_Y_OFFSET_DP,
+            KEY_WIFI_Y_OFFSET_DP
+    };
+
     private SettingsStore() {
     }
 
@@ -196,6 +212,7 @@ final class SettingsStore {
     }
 
     static void prepareRemoteSync(Context context) {
+        migratePositionOffsetStorageIfNeeded(context);
         RemoteSettingsSync.prepare(context);
     }
 
@@ -280,6 +297,8 @@ final class SettingsStore {
 
     static int defaultInt(String key) {
         switch (key) {
+            case KEY_POSITION_OFFSET_STORAGE_VERSION:
+                return POSITION_OFFSET_STORAGE_VERSION_TENTH_DP;
             case KEY_BATTERY_ICON_STYLE:
                 return DEFAULT_BATTERY_ICON_STYLE;
             case KEY_BATTERY_TEXT_FONT:
@@ -417,6 +436,93 @@ final class SettingsStore {
         return Math.max(-24, Math.min(24, value));
     }
 
+    static int normalizeIconYOffsetTenthDp(int value) {
+        return Math.max(POSITION_OFFSET_MIN_TENTH_DP, Math.min(POSITION_OFFSET_MAX_TENTH_DP, value));
+    }
+
+    static float positionOffsetTenthDpToDp(int value) {
+        return normalizeIconYOffsetTenthDp(value) / 10f;
+    }
+
+    static float positionOffsetTenthDpToPx(Context context, int value) {
+        float offsetDp = positionOffsetTenthDpToDp(value);
+        if (context == null) {
+            return offsetDp;
+        }
+        return offsetDp * context.getResources().getDisplayMetrics().density;
+    }
+
+    static boolean isPositionOffsetKey(String key) {
+        if (key == null) {
+            return false;
+        }
+        for (String candidate : POSITION_OFFSET_KEYS) {
+            if (key.equals(candidate)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static int readPositionOffsetStorageVersion(SharedPreferences prefs) {
+        return readInt(prefs, KEY_POSITION_OFFSET_STORAGE_VERSION, POSITION_OFFSET_STORAGE_VERSION_LEGACY_DP);
+    }
+
+    static int readPositionOffsetTenthDp(SharedPreferences prefs, String key, int defaultValue) {
+        int normalizedDefault = normalizeIconYOffsetTenthDp(defaultValue);
+        if (prefs == null || key == null) {
+            return normalizedDefault;
+        }
+        Object raw = getRawValue(prefs, key);
+        if (raw == null) {
+            return normalizedDefault;
+        }
+        int rawValue;
+        if (raw instanceof Number) {
+            rawValue = ((Number) raw).intValue();
+        } else if (raw instanceof String) {
+            try {
+                rawValue = Integer.parseInt(((String) raw).trim());
+            } catch (NumberFormatException ignored) {
+                return normalizedDefault;
+            }
+        } else {
+            return normalizedDefault;
+        }
+        if (readPositionOffsetStorageVersion(prefs) >= POSITION_OFFSET_STORAGE_VERSION_TENTH_DP) {
+            return normalizeIconYOffsetTenthDp(rawValue);
+        }
+        return normalizeIconYOffsetTenthDp(rawValue * 10);
+    }
+
+    static void markPositionOffsetStorageVersion(SharedPreferences.Editor editor) {
+        if (editor == null) {
+            return;
+        }
+        editor.putInt(KEY_POSITION_OFFSET_STORAGE_VERSION, POSITION_OFFSET_STORAGE_VERSION_TENTH_DP);
+    }
+
+    static void migratePositionOffsetStorageIfNeeded(Context context) {
+        SharedPreferences prefs = prefs(context);
+        if (prefs == null) {
+            return;
+        }
+        if (readPositionOffsetStorageVersion(prefs) >= POSITION_OFFSET_STORAGE_VERSION_TENTH_DP) {
+            return;
+        }
+        SharedPreferences.Editor editor = prefs.edit();
+        Map<String, ?> all = prefs.getAll();
+        for (String key : POSITION_OFFSET_KEYS) {
+            if (all == null || !all.containsKey(key)) {
+                continue;
+            }
+            int legacyValueDp = readInt(prefs, key, defaultInt(key));
+            editor.putInt(key, normalizeIconYOffsetTenthDp(legacyValueDp * 10));
+        }
+        markPositionOffsetStorageVersion(editor);
+        editor.apply();
+    }
+
     static int normalizeNotificationAppIconSizeDp(int value) {
         return Math.max(12, Math.min(28, value));
     }
@@ -455,6 +561,6 @@ final class SettingsStore {
     }
 
     static boolean includeInBackup(String key) {
-        return key != null;
+        return key != null && !KEY_POSITION_OFFSET_STORAGE_VERSION.equals(key);
     }
 }

@@ -27,8 +27,8 @@ final class SignalPreviewPainter {
     private static final RectF BAR = new RectF();
     private static final RectF DOT = new RectF();
     private static final IconMetrics.VisualCanvas VISUAL_CANVAS = new IconMetrics.VisualCanvas();
-    private static final Rect SHIFTED_SIGNAL_BOUNDS = new Rect();
-    private static final Rect SIGNAL_BOX = new Rect();
+    private static final RectF SHIFTED_SIGNAL_BOUNDS = new RectF();
+    private static final RectF SIGNAL_BOX = new RectF();
     private static final Rect BADGE_MAIN_TEXT_BOUNDS = new Rect();
     private static final Rect BADGE_SUB_TEXT_BOUNDS = new Rect();
     private static final RectF MOBILE_TYPE_BOX = new RectF();
@@ -65,8 +65,8 @@ final class SignalPreviewPainter {
     }
 
     static void drawSingleSim(Canvas canvas, Rect bounds, int color, ColorFilter colorFilter,
-                              int mobileTypeBadge, int signalLevel, int signalYOffsetPx,
-                              int badgeYOffsetPx) {
+                              int mobileTypeBadge, int signalLevel, float signalYOffsetPx,
+                              float badgeYOffsetPx) {
         drawSignal(canvas, bounds, false, color, colorFilter, mobileTypeBadge,
                 signalLevel, signalLevel, signalYOffsetPx, badgeYOffsetPx);
     }
@@ -105,8 +105,8 @@ final class SignalPreviewPainter {
 
     static void drawMergedDualSim(Canvas canvas, Rect bounds, int color, ColorFilter colorFilter,
                                   int mobileTypeBadge, int primarySignalLevel,
-                                  int secondarySignalLevel, int signalYOffsetPx,
-                                  int badgeYOffsetPx) {
+                                  int secondarySignalLevel, float signalYOffsetPx,
+                                  float badgeYOffsetPx) {
         drawSignal(canvas, bounds, true, color, colorFilter, mobileTypeBadge,
                 primarySignalLevel, secondarySignalLevel, signalYOffsetPx, badgeYOffsetPx);
     }
@@ -159,7 +159,7 @@ final class SignalPreviewPainter {
     private static void drawSignal(Canvas canvas, Rect bounds, boolean mergedDual, int color,
                                    ColorFilter colorFilter, int mobileTypeBadge,
                                    int primarySignalLevel, int secondarySignalLevel,
-                                   int signalYOffsetPx, int badgeYOffsetPx) {
+                                   float signalYOffsetPx, float badgeYOffsetPx) {
         int drawColor = modulateColorAlpha(color, SIGNAL_DRAW_ALPHA);
         int inactiveColor = scaleAlpha(drawColor, INACTIVE_SIGNAL_ALPHA_RATIO);
         if (mobileTypeBadge == MOBILE_TYPE_BADGE_NONE) {
@@ -185,11 +185,7 @@ final class SignalPreviewPainter {
         float left = bounds.left + (bounds.width() - contentWidth) / 2f;
         float signalTop = applyVerticalOffset(bounds.top + (bounds.height() - boxSize) / 2f,
                 signalYOffsetPx);
-        SIGNAL_BOX.set(
-                Math.round(left),
-                Math.round(signalTop),
-                Math.round(left + boxSize),
-                Math.round(signalTop + boxSize));
+        SIGNAL_BOX.set(left, signalTop, left + boxSize, signalTop + boxSize);
         SignalGeometry geometry = buildGeometry(SIGNAL_BOX, mergedDual);
         drawBars(canvas, geometry, drawColor, inactiveColor, colorFilter, primarySignalLevel);
         if (mergedDual) {
@@ -202,19 +198,19 @@ final class SignalPreviewPainter {
         drawMobileTypeBadge(canvas, MOBILE_TYPE_BOX, layout);
     }
 
-    private static Rect resolveShiftedSignalBounds(Rect bounds, int signalYOffsetPx) {
+    private static RectF resolveShiftedSignalBounds(Rect bounds, float signalYOffsetPx) {
         if (bounds == null) {
             SHIFTED_SIGNAL_BOUNDS.setEmpty();
             return SHIFTED_SIGNAL_BOUNDS;
         }
         SHIFTED_SIGNAL_BOUNDS.set(bounds);
-        if (signalYOffsetPx != 0) {
+        if (signalYOffsetPx != 0f) {
             SHIFTED_SIGNAL_BOUNDS.offset(0, -signalYOffsetPx);
         }
         return SHIFTED_SIGNAL_BOUNDS;
     }
 
-    private static float applyVerticalOffset(float value, int offsetPx) {
+    private static float applyVerticalOffset(float value, float offsetPx) {
         return value - offsetPx;
     }
 
@@ -463,7 +459,7 @@ final class SignalPreviewPainter {
         return metrics;
     }
 
-    private static SignalGeometry buildGeometry(Rect bounds, boolean mergedDual) {
+    private static SignalGeometry buildGeometry(RectF bounds, boolean mergedDual) {
         IconMetrics.resolveCenteredVisualCanvas(bounds, SIGNAL_ASPECT_RATIO, VISUAL_CANVAS);
         if (VISUAL_CANVAS.isEmpty()) {
             return null;

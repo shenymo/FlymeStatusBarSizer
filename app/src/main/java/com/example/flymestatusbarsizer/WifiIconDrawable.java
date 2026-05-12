@@ -125,14 +125,14 @@ final class WifiIconDrawable extends Drawable {
     }
 
     static void drawPreview(Canvas canvas, Rect bounds, int color, int alpha, ColorFilter colorFilter,
-            int level, boolean showSecondaryBadge, int secondaryLevel, int verticalOffsetPx) {
+            int level, boolean showSecondaryBadge, int secondaryLevel, float verticalOffsetPx) {
         int baseColor = SignalPreviewPainter.modulateColorAlpha(color, alpha);
         drawIcon(canvas, bounds, baseColor, colorFilter, level, showSecondaryBadge, secondaryLevel,
                 verticalOffsetPx);
     }
 
     private static void drawIcon(Canvas canvas, Rect bounds, int baseColor, ColorFilter colorFilter,
-            int level, boolean showSecondaryBadge, int secondaryLevel, int verticalOffsetPx) {
+            int level, boolean showSecondaryBadge, int secondaryLevel, float verticalOffsetPx) {
         if (canvas == null || bounds == null || bounds.isEmpty()) {
             return;
         }
@@ -146,7 +146,7 @@ final class WifiIconDrawable extends Drawable {
         if (VISUAL_CANVAS.isEmpty()) {
             return;
         }
-        if (verticalOffsetPx != 0) {
+        if (verticalOffsetPx != 0f) {
             VISUAL_CANVAS.rect.offset(0f, -verticalOffsetPx);
             VISUAL_CANVAS.baselineY -= verticalOffsetPx;
         }
@@ -196,15 +196,12 @@ final class WifiIconDrawable extends Drawable {
         }
     }
 
-    private static int resolveVerticalOffsetPx(ModuleConfig config, View ownerView) {
-        int offsetDp = config == null
-                ? SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP
-                : SettingsStore.normalizeIconYOffsetDp(config.wifiYOffsetDp);
+    private static float resolveVerticalOffsetPx(ModuleConfig config, View ownerView) {
+        int offsetTenthDp = config == null
+                ? SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP * 10
+                : SettingsStore.normalizeIconYOffsetTenthDp(config.wifiYOffsetTenthDp);
         Context context = ownerView == null ? ModuleConfig.getSystemUiContext() : ownerView.getContext();
-        if (context == null) {
-            return offsetDp;
-        }
-        return Math.round(offsetDp * context.getResources().getDisplayMetrics().density);
+        return SettingsStore.positionOffsetTenthDpToPx(context, offsetTenthDp);
     }
 
     @Override

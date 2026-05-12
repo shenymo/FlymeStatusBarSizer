@@ -37,13 +37,13 @@ public final class RightIconGroupPreviewView extends View {
     private int batteryTextFont = SettingsStore.DEFAULT_BATTERY_TEXT_FONT;
     private int iconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
     private int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
-    private int batteryIconYOffsetDp = SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP;
-    private int batteryTextYOffsetDp = SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP;
-    private int batteryBoltYOffsetDp = SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP;
-    private int signalSingleYOffsetDp = SettingsStore.DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP;
-    private int signalBadgeYOffsetDp = SettingsStore.DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP;
-    private int signalDualYOffsetDp = SettingsStore.DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP;
-    private int wifiYOffsetDp = SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP;
+    private int batteryIconYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10;
+    private int batteryTextYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP * 10;
+    private int batteryBoltYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10;
+    private int signalSingleYOffsetTenthDp = SettingsStore.DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP * 10;
+    private int signalBadgeYOffsetTenthDp = SettingsStore.DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP * 10;
+    private int signalDualYOffsetTenthDp = SettingsStore.DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP * 10;
+    private int wifiYOffsetTenthDp = SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP * 10;
 
     public RightIconGroupPreviewView(Context context) {
         super(context);
@@ -137,66 +137,66 @@ public final class RightIconGroupPreviewView extends View {
         invalidate();
     }
 
-    public void setBatteryIconYOffsetDp(int offsetDp) {
-        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
-        if (batteryIconYOffsetDp == normalized) {
+    public void setBatteryIconYOffsetTenthDp(int offsetTenthDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetTenthDp(offsetTenthDp);
+        if (batteryIconYOffsetTenthDp == normalized) {
             return;
         }
-        batteryIconYOffsetDp = normalized;
+        batteryIconYOffsetTenthDp = normalized;
         invalidate();
     }
 
-    public void setBatteryTextYOffsetDp(int offsetDp) {
-        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
-        if (batteryTextYOffsetDp == normalized) {
+    public void setBatteryTextYOffsetTenthDp(int offsetTenthDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetTenthDp(offsetTenthDp);
+        if (batteryTextYOffsetTenthDp == normalized) {
             return;
         }
-        batteryTextYOffsetDp = normalized;
+        batteryTextYOffsetTenthDp = normalized;
         invalidate();
     }
 
-    public void setBatteryBoltYOffsetDp(int offsetDp) {
-        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
-        if (batteryBoltYOffsetDp == normalized) {
+    public void setBatteryBoltYOffsetTenthDp(int offsetTenthDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetTenthDp(offsetTenthDp);
+        if (batteryBoltYOffsetTenthDp == normalized) {
             return;
         }
-        batteryBoltYOffsetDp = normalized;
+        batteryBoltYOffsetTenthDp = normalized;
         invalidate();
     }
 
-    public void setSignalSingleYOffsetDp(int offsetDp) {
-        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
-        if (signalSingleYOffsetDp == normalized) {
+    public void setSignalSingleYOffsetTenthDp(int offsetTenthDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetTenthDp(offsetTenthDp);
+        if (signalSingleYOffsetTenthDp == normalized) {
             return;
         }
-        signalSingleYOffsetDp = normalized;
+        signalSingleYOffsetTenthDp = normalized;
         invalidate();
     }
 
-    public void setSignalBadgeYOffsetDp(int offsetDp) {
-        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
-        if (signalBadgeYOffsetDp == normalized) {
+    public void setSignalBadgeYOffsetTenthDp(int offsetTenthDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetTenthDp(offsetTenthDp);
+        if (signalBadgeYOffsetTenthDp == normalized) {
             return;
         }
-        signalBadgeYOffsetDp = normalized;
+        signalBadgeYOffsetTenthDp = normalized;
         invalidate();
     }
 
-    public void setSignalDualYOffsetDp(int offsetDp) {
-        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
-        if (signalDualYOffsetDp == normalized) {
+    public void setSignalDualYOffsetTenthDp(int offsetTenthDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetTenthDp(offsetTenthDp);
+        if (signalDualYOffsetTenthDp == normalized) {
             return;
         }
-        signalDualYOffsetDp = normalized;
+        signalDualYOffsetTenthDp = normalized;
         invalidate();
     }
 
-    public void setWifiYOffsetDp(int offsetDp) {
-        int normalized = SettingsStore.normalizeIconYOffsetDp(offsetDp);
-        if (wifiYOffsetDp == normalized) {
+    public void setWifiYOffsetTenthDp(int offsetTenthDp) {
+        int normalized = SettingsStore.normalizeIconYOffsetTenthDp(offsetTenthDp);
+        if (wifiYOffsetTenthDp == normalized) {
             return;
         }
-        wifiYOffsetDp = normalized;
+        wifiYOffsetTenthDp = normalized;
         invalidate();
     }
 
@@ -271,8 +271,8 @@ public final class RightIconGroupPreviewView extends View {
                     mobileTypeBadge,
                     PREVIEW_MERGED_PRIMARY_SIGNAL_LEVEL,
                     PREVIEW_MERGED_SECONDARY_SIGNAL_LEVEL,
-                    offsetPx(signalDualYOffsetDp),
-                    offsetPx(signalBadgeYOffsetDp));
+                    offsetPx(signalDualYOffsetTenthDp),
+                    offsetPx(signalBadgeYOffsetTenthDp));
         } else {
             SignalPreviewPainter.drawSingleSim(
                     canvas,
@@ -281,14 +281,14 @@ public final class RightIconGroupPreviewView extends View {
                     null,
                     mobileTypeBadge,
                     PREVIEW_MERGED_PRIMARY_SIGNAL_LEVEL,
-                    offsetPx(signalSingleYOffsetDp),
-                    offsetPx(signalBadgeYOffsetDp));
+                    offsetPx(signalSingleYOffsetTenthDp),
+                    offsetPx(signalBadgeYOffsetTenthDp));
         }
         currentRight = signalLeft - dp(8);
         int wifiLeft = Math.round(currentRight - iconSize);
         wifiRect.set(wifiLeft, iconTop, wifiLeft + iconSize, iconTop + iconSize);
         WifiIconDrawable.drawPreview(canvas, wifiRect, previewTintColor, 255, null,
-                4, false, 0, offsetPx(wifiYOffsetDp));
+                4, false, 0, offsetPx(wifiYOffsetTenthDp));
     }
 
     private void drawPreviewNotes(Canvas canvas) {
@@ -312,15 +312,15 @@ public final class RightIconGroupPreviewView extends View {
         if (SettingsStore.normalizeBatteryStyle(batteryStyle) == SettingsStore.BATTERY_STYLE_ONEUI) {
             OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, false,
                     fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
-                    offsetPx(batteryIconYOffsetDp), offsetPx(batteryTextYOffsetDp),
-                    offsetPx(batteryBoltYOffsetDp),
+                    offsetPx(batteryIconYOffsetTenthDp), offsetPx(batteryTextYOffsetTenthDp),
+                    offsetPx(batteryBoltYOffsetTenthDp),
                     batteryHollowEnabled, batteryHollowFillFollowsLevel);
             return;
         }
         IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, false,
                 fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
-                offsetPx(batteryIconYOffsetDp), offsetPx(batteryTextYOffsetDp),
-                offsetPx(batteryBoltYOffsetDp),
+                offsetPx(batteryIconYOffsetTenthDp), offsetPx(batteryTextYOffsetTenthDp),
+                offsetPx(batteryBoltYOffsetTenthDp),
                 batteryHollowEnabled, batteryHollowFillFollowsLevel);
     }
 
@@ -332,7 +332,7 @@ public final class RightIconGroupPreviewView extends View {
         return Math.max(1, Math.round(px * (iconScalePercent / 100f)));
     }
 
-    private int offsetPx(int dp) {
-        return Math.round(dp * getResources().getDisplayMetrics().density);
+    private float offsetPx(int valueTenthDp) {
+        return SettingsStore.positionOffsetTenthDpToPx(getContext(), valueTenthDp);
     }
 }

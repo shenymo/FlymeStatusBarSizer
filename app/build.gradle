@@ -16,8 +16,8 @@ android {
         applicationId "com.fiyme.statusbarsizer"
         minSdk 26
         targetSdk 36
-        versionCode 2026051101
-        versionName "2026.05.11.01"
+        versionCode 2026051201
+        versionName "2026.05.12.01"
         buildConfigField "String", "BUILD_DATE", "\"${buildDate}\""
     }
 
