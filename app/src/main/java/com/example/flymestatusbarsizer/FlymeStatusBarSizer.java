@@ -526,7 +526,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     if (target instanceof ImageView) {
                         ImageView view = (ImageView) target;
                         syncSignalTintToCustomDrawable(view);
-                        NotificationHooks.clearNotificationAppIconTintIfNeeded(view);
                     }
                     return result;
                 });
@@ -543,7 +542,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                         ImageView view = (ImageView) target;
                         syncSignalColorFilterToCustomDrawable(view,
                                 chain.getArg(0) instanceof ColorFilter ? (ColorFilter) chain.getArg(0) : null);
-                        NotificationHooks.clearNotificationAppIconTintIfNeeded(view);
                     }
                     return result;
                 });

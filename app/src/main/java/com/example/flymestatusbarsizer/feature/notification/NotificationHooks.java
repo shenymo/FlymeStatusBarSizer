@@ -50,6 +50,8 @@ public final class NotificationHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS =
             new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_TINT_CLEAR_SCHEDULED =
+            new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_ACTIVE_STATES =
             new WeakHashMap<>();
     private static final WeakHashMap<View, NotificationAppIconTintState>
@@ -87,8 +89,11 @@ public final class NotificationHooks {
         if (!(target instanceof ImageView)) {
             return;
         }
+        ImageView view = (ImageView) target;
+        if (!isNotificationAppIconTintClearCandidate(view)) {
+            return;
+        }
         try {
-            ImageView view = (ImageView) target;
             if (!shouldKeepNotificationAppIconOriginalColors(view)) {
                 return;
             }
@@ -143,7 +148,7 @@ public final class NotificationHooks {
             setNotificationAppIconActive(view, true);
             if (shouldReuseNotificationAppIconDrawable(view, binding.signature)) {
                 clearNotificationAppIconTintIfNeeded(view);
-                postClearNotificationAppIconTintIfNeeded(view);
+                scheduleNotificationAppIconTintClear(view);
                 applyNotificationAppIconViewStyle(view);
                 return;
             }
@@ -156,7 +161,7 @@ public final class NotificationHooks {
             view.setImageDrawable(drawable);
             rememberNotificationAppIconRenderState(view, binding.signature, drawable);
             clearNotificationAppIconTintIfNeeded(view);
-            postClearNotificationAppIconTintIfNeeded(view);
+            scheduleNotificationAppIconTintClear(view);
             applyNotificationAppIconViewStyle(view);
         } catch (Throwable ignored) {
         } finally {
@@ -268,14 +273,38 @@ public final class NotificationHooks {
         }
     }
 
-    private static void postClearNotificationAppIconTintIfNeeded(ImageView view) {
-        if (view == null) {
+    private static void scheduleNotificationAppIconTintClear(ImageView view) {
+        if (!isNotificationAppIconTintClearCandidate(view)) {
             return;
         }
-        view.post(() -> {
-            clearNotificationAppIconTintIfNeeded(view);
-            view.post(() -> clearNotificationAppIconTintIfNeeded(view));
-        });
+        synchronized (NOTIFICATION_APP_ICON_TINT_CLEAR_SCHEDULED) {
+            if (Boolean.TRUE.equals(NOTIFICATION_APP_ICON_TINT_CLEAR_SCHEDULED.get(view))) {
+                return;
+            }
+            NOTIFICATION_APP_ICON_TINT_CLEAR_SCHEDULED.put(view, Boolean.TRUE);
+        }
+        Runnable clearRunnable = () -> {
+            try {
+                clearNotificationAppIconTintIfNeeded(view);
+            } finally {
+                synchronized (NOTIFICATION_APP_ICON_TINT_CLEAR_SCHEDULED) {
+                    NOTIFICATION_APP_ICON_TINT_CLEAR_SCHEDULED.remove(view);
+                }
+            }
+        };
+        boolean posted;
+        try {
+            posted = view.post(clearRunnable);
+        } catch (Throwable ignored) {
+            posted = false;
+        }
+        if (posted) {
+            return;
+        }
+        synchronized (NOTIFICATION_APP_ICON_TINT_CLEAR_SCHEDULED) {
+            NOTIFICATION_APP_ICON_TINT_CLEAR_SCHEDULED.remove(view);
+        }
+        clearNotificationAppIconTintIfNeeded(view);
     }
 
     private static boolean shouldKeepNotificationAppIconOriginalColors(ImageView view) {
@@ -846,6 +875,10 @@ public final class NotificationHooks {
     private static boolean isNotificationAppIconApplied(View view, Notification notification) {
         return isNotificationAppIconActive(view)
                 || wasNotificationAppIconReplaced(notification);
+    }
+
+    private static boolean isNotificationAppIconTintClearCandidate(ImageView view) {
+        return view != null && isNotificationAppIconActive(view);
     }
 
     private static boolean isNotificationAppIconActive(View view) {
