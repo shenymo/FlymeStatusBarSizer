@@ -73,6 +73,7 @@ public class MainActivity extends Activity {
     private static final int POSITION_OFFSET_MIN_TENTH_DP = POSITION_OFFSET_MIN_DP * 10;
     private static final int POSITION_OFFSET_MAX_TENTH_DP = POSITION_OFFSET_MAX_DP * 10;
     private static final String[] POSITION_TUNING_KEYS = {
+            SettingsStore.KEY_CLOCK_RIGHT_PADDING_OFFSET_DP,
             SettingsStore.KEY_BATTERY_ICON_Y_OFFSET_DP,
             SettingsStore.KEY_BATTERY_TEXT_Y_OFFSET_DP,
             SettingsStore.KEY_BATTERY_BOLT_Y_OFFSET_DP,
@@ -311,7 +312,7 @@ public class MainActivity extends Activity {
         card.setOrientation(LinearLayout.VERTICAL);
 
         TextView title = new TextView(this);
-        title.setText("应用图标尺寸");
+        title.setText("通知图标尺寸");
         title.setTextColor(colorPrimary);
         title.setTextSize(13);
         card.addView(title, matchWrap());
@@ -497,13 +498,13 @@ public class MainActivity extends Activity {
 
         LinearLayout navCard = card(colorFeatureSurface, colorFeatureStroke, 24);
         TextView navTitle = new TextView(this);
-        navTitle.setText("这里只改模块自绘图标的 Y 轴偏移，不影响系统原生图标。");
+        navTitle.setText("这里既可以调模块自绘图标的 Y 轴偏移，也可以调系统时钟右侧和通知图区之间的水平间距。");
         navTitle.setTextColor(colorText);
         navTitle.setTextSize(15);
         navCard.addView(navTitle, matchWrap());
 
         TextView navHint = new TextView(this);
-        navHint.setText("滑块按 1dp 粗调；点右侧数值可输入 0.1dp。正数向上，负数向下；改完后再点应用统一写入并刷新状态栏。");
+        navHint.setText("滑块按 1dp 粗调；点右侧数值可输入 0.1dp。Y 轴项正数向上、负数向下；时钟右边距项正数增大间距、负数减小间距。改完后再点应用统一写入并刷新状态栏。");
         navHint.setTextColor(colorSubtext);
         navHint.setTextSize(13);
         navHint.setPadding(0, dp(6), 0, 0);
@@ -515,6 +516,14 @@ public class MainActivity extends Activity {
         page.addView(navCard, matchWrapWithTop(10));
 
         LinearLayout card = card(colorSurface, 28);
+        addProfileSectionHeader(card, "时钟与通知图区",
+                "改的是状态栏 clock View 的右侧 padding，会直接影响时间和右侧通知图标区之间的间距。");
+        addPositionOffsetSliderRow(card, "时钟右边距",
+                "基于系统默认间距做增减。系统原本的右侧边距为 2dp。正数增大时间和右侧通知图标区的间距，负数减小间距。默认 0dp。",
+                SettingsStore.KEY_CLOCK_RIGHT_PADDING_OFFSET_DP,
+                SettingsStore.DEFAULT_CLOCK_RIGHT_PADDING_OFFSET_DP * 10);
+
+        addDivider(card);
         addProfileSectionHeader(card, "电池",
                 "下面 3 项都只在模块接管电池绘制后生效。电池图标是整体轮廓，数字和闪电可以在它的基础上继续单独偏移。");
         addPositionOffsetSliderRow(card, "电池图标",
@@ -559,13 +568,13 @@ public class MainActivity extends Activity {
                 SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP * 10);
 
         addDivider(card);
-        addActionButtonRow(card, "应用当前偏移",
-                "把这 7 个待应用偏移值一次性写入配置，并通知当前状态栏刷新。",
+        addActionButtonRow(card, "应用当前微调",
+                "把这个页面里的待应用微调值一次性写入配置，并通知当前状态栏刷新。",
                 "应用", this::applyAllPositionOffsets);
 
         addDivider(card);
         addActionButtonRow(card, "全部归零",
-                "先把这个页面里的 7 个待应用偏移值都改成 0.0dp；改完后再点上面的应用写入状态栏。",
+                "先把这个页面里的待应用微调值都改成 0.0dp；改完后再点上面的应用写入状态栏。",
                 "归零", this::resetAllPositionOffsets);
         page.addView(card, matchWrapWithTop(10));
         return page;
@@ -1342,6 +1351,18 @@ public class MainActivity extends Activity {
 
     private void addPositionOffsetSliderRow(LinearLayout root, String titleText, String subtitleText,
             String key, int defaultValueTenthDp) {
+        addPositionOffsetSliderRow(
+                root,
+                titleText,
+                subtitleText,
+                key,
+                defaultValueTenthDp,
+                getPositionOffsetMinTenthDp(key),
+                getPositionOffsetMaxTenthDp(key));
+    }
+
+    private void addPositionOffsetSliderRow(LinearLayout root, String titleText, String subtitleText,
+            String key, int defaultValueTenthDp, int minTenthDp, int maxTenthDp) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
 
@@ -1372,21 +1393,20 @@ public class MainActivity extends Activity {
         subtitle.setPadding(0, dp(4), 0, 0);
 
         SeekBar seekBar = new SeekBar(this);
-        seekBar.setMax(POSITION_OFFSET_MAX_DP - POSITION_OFFSET_MIN_DP);
-        PositionOffsetSliderBinding binding = new PositionOffsetSliderBinding(valueView, seekBar);
-        int current = getPendingPositionOffsetValue(key, defaultValueTenthDp,
-                POSITION_OFFSET_MIN_TENTH_DP, POSITION_OFFSET_MAX_TENTH_DP);
+        seekBar.setMax((maxTenthDp - minTenthDp) / 10);
+        PositionOffsetSliderBinding binding =
+                new PositionOffsetSliderBinding(valueView, seekBar, minTenthDp, maxTenthDp);
+        int current = getPendingPositionOffsetValue(key, defaultValueTenthDp, minTenthDp, maxTenthDp);
         binding.setValue(current);
 
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int value = sliderProgressToPositionOffsetTenthDp(progress);
+                int value = sliderProgressToPositionOffsetTenthDp(progress, minTenthDp, maxTenthDp);
                 valueView.setText(formatOffsetValue(value));
                 if (fromUser) {
                     performSliderHaptic(seekBar);
-                    updatePendingPositionOffsetValue(key, value,
-                            POSITION_OFFSET_MIN_TENTH_DP, POSITION_OFFSET_MAX_TENTH_DP);
+                    updatePendingPositionOffsetValue(key, value, minTenthDp, maxTenthDp);
                 }
             }
 
@@ -1396,20 +1416,24 @@ public class MainActivity extends Activity {
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
-                updatePendingPositionOffsetValue(key, sliderProgressToPositionOffsetTenthDp(seekBar.getProgress()),
-                        POSITION_OFFSET_MIN_TENTH_DP, POSITION_OFFSET_MAX_TENTH_DP);
+                updatePendingPositionOffsetValue(
+                        key,
+                        sliderProgressToPositionOffsetTenthDp(
+                                seekBar.getProgress(),
+                                minTenthDp,
+                                maxTenthDp),
+                        minTenthDp,
+                        maxTenthDp);
             }
         });
         setTapClickListener(valueView, v -> showDecimalInputDialog(
                 titleText,
-                getPendingPositionOffsetValue(key, defaultValueTenthDp,
-                        POSITION_OFFSET_MIN_TENTH_DP, POSITION_OFFSET_MAX_TENTH_DP),
-                POSITION_OFFSET_MIN_TENTH_DP,
-                POSITION_OFFSET_MAX_TENTH_DP,
+                getPendingPositionOffsetValue(key, defaultValueTenthDp, minTenthDp, maxTenthDp),
+                minTenthDp,
+                maxTenthDp,
                 value -> {
                     binding.setValue(value);
-                    updatePendingPositionOffsetValue(key, value,
-                            POSITION_OFFSET_MIN_TENTH_DP, POSITION_OFFSET_MAX_TENTH_DP);
+                    updatePendingPositionOffsetValue(key, value, minTenthDp, maxTenthDp);
                 }));
 
         positionTuningSliderBindings.add(binding);
@@ -1650,8 +1674,11 @@ public class MainActivity extends Activity {
     private void applyAllPositionOffsets() {
         SharedPreferences.Editor editor = prefs.edit();
         for (String key : POSITION_TUNING_KEYS) {
-            int value = getPendingPositionOffsetValue(key, 0,
-                    POSITION_OFFSET_MIN_TENTH_DP, POSITION_OFFSET_MAX_TENTH_DP);
+            int value = getPendingPositionOffsetValue(
+                    key,
+                    0,
+                    getPositionOffsetMinTenthDp(key),
+                    getPositionOffsetMaxTenthDp(key));
             editor.putInt(key, value);
         }
         SettingsStore.markPositionOffsetStorageVersion(editor);
@@ -1663,8 +1690,11 @@ public class MainActivity extends Activity {
 
     private void resetAllPositionOffsets() {
         for (String key : POSITION_TUNING_KEYS) {
-            updatePendingPositionOffsetValue(key, 0,
-                    POSITION_OFFSET_MIN_TENTH_DP, POSITION_OFFSET_MAX_TENTH_DP);
+            updatePendingPositionOffsetValue(
+                    key,
+                    0,
+                    getPositionOffsetMinTenthDp(key),
+                    getPositionOffsetMaxTenthDp(key));
         }
         for (PositionOffsetSliderBinding binding : positionTuningSliderBindings) {
             binding.setValue(0);
@@ -1849,6 +1879,20 @@ public class MainActivity extends Activity {
         int normalized = SettingsStore.normalizeIconYOffsetTenthDp(valueTenthDp);
         float offsetDp = SettingsStore.positionOffsetTenthDpToDp(normalized);
         return String.format(Locale.US, "%s%.1fdp", offsetDp > 0f ? "+" : "", offsetDp);
+    }
+
+    private int getPositionOffsetMinTenthDp(String key) {
+        if (SettingsStore.KEY_CLOCK_RIGHT_PADDING_OFFSET_DP.equals(key)) {
+            return SettingsStore.CLOCK_RIGHT_PADDING_OFFSET_MIN_TENTH_DP;
+        }
+        return POSITION_OFFSET_MIN_TENTH_DP;
+    }
+
+    private int getPositionOffsetMaxTenthDp(String key) {
+        if (SettingsStore.KEY_CLOCK_RIGHT_PADDING_OFFSET_DP.equals(key)) {
+            return SettingsStore.CLOCK_RIGHT_PADDING_OFFSET_MAX_TENTH_DP;
+        }
+        return POSITION_OFFSET_MAX_TENTH_DP;
     }
 
     private String formatInsetValue(int value) {
@@ -2696,15 +2740,19 @@ public class MainActivity extends Activity {
         pendingPositionOffsetValues.put(key, Math.max(min, Math.min(max, value)));
     }
 
-    private int sliderProgressToPositionOffsetTenthDp(int progress) {
-        int coarseDp = POSITION_OFFSET_MIN_DP + progress;
-        return SettingsStore.normalizeIconYOffsetTenthDp(coarseDp * 10);
+    private int sliderProgressToPositionOffsetTenthDp(int progress, int minTenthDp, int maxTenthDp) {
+        int minDp = minTenthDp / 10;
+        int maxDp = maxTenthDp / 10;
+        int coarseDp = minDp + progress;
+        return Math.max(minTenthDp, Math.min(maxTenthDp, coarseDp * 10));
     }
 
-    private int positionOffsetTenthDpToSliderProgress(int valueTenthDp) {
-        int coarseDp = Math.max(POSITION_OFFSET_MIN_DP, Math.min(POSITION_OFFSET_MAX_DP,
+    private int positionOffsetTenthDpToSliderProgress(int valueTenthDp, int minTenthDp, int maxTenthDp) {
+        int minDp = minTenthDp / 10;
+        int maxDp = maxTenthDp / 10;
+        int coarseDp = Math.max(minDp, Math.min(maxDp,
                 Math.round(SettingsStore.positionOffsetTenthDpToDp(valueTenthDp))));
-        return coarseDp - POSITION_OFFSET_MIN_DP;
+        return coarseDp - minDp;
     }
 
     private String formatOffsetInputRangeHint(int minTenthDp, int maxTenthDp) {
@@ -2914,16 +2962,27 @@ public class MainActivity extends Activity {
     private final class PositionOffsetSliderBinding {
         private final TextView valueView;
         private final SeekBar seekBar;
+        private final int minTenthDp;
+        private final int maxTenthDp;
 
-        private PositionOffsetSliderBinding(TextView valueView, SeekBar seekBar) {
+        private PositionOffsetSliderBinding(
+                TextView valueView,
+                SeekBar seekBar,
+                int minTenthDp,
+                int maxTenthDp) {
             this.valueView = valueView;
             this.seekBar = seekBar;
+            this.minTenthDp = minTenthDp;
+            this.maxTenthDp = maxTenthDp;
         }
 
         private void setValue(int value) {
-            int normalized = SettingsStore.normalizeIconYOffsetTenthDp(value);
+            int normalized = Math.max(minTenthDp, Math.min(maxTenthDp, value));
             valueView.setText(formatOffsetValue(normalized));
-            int progress = positionOffsetTenthDpToSliderProgress(normalized);
+            int progress = positionOffsetTenthDpToSliderProgress(
+                    normalized,
+                    minTenthDp,
+                    maxTenthDp);
             if (seekBar.getProgress() != progress) {
                 seekBar.setProgress(progress);
             }

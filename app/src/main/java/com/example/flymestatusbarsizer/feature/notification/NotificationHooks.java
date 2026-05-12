@@ -141,7 +141,7 @@ public final class NotificationHooks {
                 clearNotificationAppIconReplacementState(
                         view,
                         resolveNotificationViewNotification(view));
-                applyNotificationAppIconViewStyle(view);
+                applyNotificationStatusBarIconViewStyle(view);
                 return;
             }
             markNotificationAppIconReplacement(binding.notification, true);
@@ -149,20 +149,20 @@ public final class NotificationHooks {
             if (shouldReuseNotificationAppIconDrawable(view, binding.signature)) {
                 clearNotificationAppIconTintIfNeeded(view);
                 scheduleNotificationAppIconTintClear(view);
-                applyNotificationAppIconViewStyle(view);
+                applyNotificationStatusBarIconViewStyle(view);
                 return;
             }
             Drawable drawable = resolveNotificationStatusBarIconDrawable(view, binding);
             if (drawable == null) {
                 clearNotificationAppIconReplacementState(view, binding.notification);
-                applyNotificationAppIconViewStyle(view);
+                applyNotificationStatusBarIconViewStyle(view);
                 return;
             }
             view.setImageDrawable(drawable);
             rememberNotificationAppIconRenderState(view, binding.signature, drawable);
             clearNotificationAppIconTintIfNeeded(view);
             scheduleNotificationAppIconTintClear(view);
-            applyNotificationAppIconViewStyle(view);
+            applyNotificationStatusBarIconViewStyle(view);
         } catch (Throwable ignored) {
         } finally {
             synchronized (NOTIFICATION_APP_ICON_APPLY_GUARDS) {
@@ -722,7 +722,7 @@ public final class NotificationHooks {
         }
     }
 
-    private static void applyNotificationAppIconViewStyle(ImageView view) {
+    private static void applyNotificationStatusBarIconViewStyle(ImageView view) {
         if (view == null) {
             return;
         }
@@ -735,7 +735,7 @@ public final class NotificationHooks {
 
         FlymeStatusBarSizer.NotificationConfigSnapshot config =
                 FlymeStatusBarSizer.loadNotificationConfig(view.getContext());
-        boolean customize = shouldCustomizeNotificationAppIconView(view, config);
+        boolean customize = shouldCustomizeNotificationStatusBarIconView(view, config);
         boolean changed = false;
 
         int[] originalSize = FlymeStatusBarSizer.getOriginalSizeCompat(view);
@@ -788,14 +788,15 @@ public final class NotificationHooks {
         }
     }
 
-    private static boolean shouldCustomizeNotificationAppIconView(
+    private static boolean shouldCustomizeNotificationStatusBarIconView(
             ImageView view, FlymeStatusBarSizer.NotificationConfigSnapshot config) {
-        if (view == null || config == null || !config.enabled || !config.notificationAppIconEnabled) {
+        if (view == null
+                || config == null
+                || !config.enabled
+                || !config.notificationAppIconEnabled) {
             return false;
         }
-        return isNotificationAppIconApplied(
-                view,
-                resolveNotificationViewNotification(view));
+        return isNotificationBackedStatusBarIconView(view);
     }
 
     private static Bitmap createBitmapFromDrawable(Drawable drawable, int sizePx) {

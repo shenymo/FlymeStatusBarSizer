@@ -279,7 +279,7 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     public static ClockConfigSnapshot loadClockConfig(Context context) {
         ModuleConfig config = ModuleConfig.load(context);
-        return new ClockConfigSnapshot(config);
+        return new ClockConfigSnapshot(config, context);
     }
 
     public static NotificationConfigSnapshot loadNotificationConfig(Context context) {
@@ -6436,12 +6436,18 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final String clockCustomFormat;
         public final int clockFontWeight;
         public final float clockAndCarrierTextScale;
+        public final int clockRightPaddingOffsetPx;
 
-        private ClockConfigSnapshot(ModuleConfig config) {
+        private ClockConfigSnapshot(ModuleConfig config, Context context) {
             enabled = config != null && config.enabled;
             clockCustomFormat = config == null ? "" : config.clockCustomFormat;
             clockFontWeight = resolveClockFontWeight(config);
             clockAndCarrierTextScale = enabled ? resolveClockAndCarrierTextScale(config) : 1f;
+            clockRightPaddingOffsetPx = enabled && config != null
+                    ? Math.round(SettingsStore.positionOffsetTenthDpToPx(
+                            context,
+                            config.clockRightPaddingOffsetTenthDp))
+                    : 0;
         }
     }
 

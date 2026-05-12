@@ -31,6 +31,7 @@ final class SettingsStore {
     static final String KEY_SIGNAL_BADGE_Y_OFFSET_DP = "signal_badge_y_offset_dp";
     static final String KEY_SIGNAL_DUAL_Y_OFFSET_DP = "signal_dual_y_offset_dp";
     static final String KEY_WIFI_Y_OFFSET_DP = "wifi_y_offset_dp";
+    static final String KEY_CLOCK_RIGHT_PADDING_OFFSET_DP = "clock_right_padding_offset_dp";
     static final String KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED = "connection_rate_auto_visibility_enabled";
     static final String KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB = "connection_rate_show_threshold_kb";
     static final String KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB = "connection_rate_hide_threshold_kb";
@@ -86,6 +87,9 @@ final class SettingsStore {
     static final int DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP = 0;
     static final int DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP = 0;
     static final int DEFAULT_WIFI_Y_OFFSET_DP = 0;
+    static final int DEFAULT_CLOCK_RIGHT_PADDING_OFFSET_DP = 0;
+    static final int CLOCK_RIGHT_PADDING_OFFSET_MIN_TENTH_DP = -30;
+    static final int CLOCK_RIGHT_PADDING_OFFSET_MAX_TENTH_DP = 240;
     static final boolean DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED = false;
     static final int DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB = 100;
     static final int DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB = 32;
@@ -138,6 +142,7 @@ final class SettingsStore {
             KEY_SIGNAL_BADGE_Y_OFFSET_DP,
             KEY_SIGNAL_DUAL_Y_OFFSET_DP,
             KEY_WIFI_Y_OFFSET_DP,
+            KEY_CLOCK_RIGHT_PADDING_OFFSET_DP,
             KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB,
             KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB,
             KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT,
@@ -188,7 +193,8 @@ final class SettingsStore {
             KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
             KEY_SIGNAL_BADGE_Y_OFFSET_DP,
             KEY_SIGNAL_DUAL_Y_OFFSET_DP,
-            KEY_WIFI_Y_OFFSET_DP
+            KEY_WIFI_Y_OFFSET_DP,
+            KEY_CLOCK_RIGHT_PADDING_OFFSET_DP
     };
 
     private SettingsStore() {
@@ -321,6 +327,8 @@ final class SettingsStore {
                 return DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP;
             case KEY_WIFI_Y_OFFSET_DP:
                 return DEFAULT_WIFI_Y_OFFSET_DP;
+            case KEY_CLOCK_RIGHT_PADDING_OFFSET_DP:
+                return DEFAULT_CLOCK_RIGHT_PADDING_OFFSET_DP;
             case KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB:
                 return DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB;
             case KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB:
@@ -438,6 +446,12 @@ final class SettingsStore {
 
     static int normalizeIconYOffsetTenthDp(int value) {
         return Math.max(POSITION_OFFSET_MIN_TENTH_DP, Math.min(POSITION_OFFSET_MAX_TENTH_DP, value));
+    }
+
+    static int normalizeClockRightPaddingOffsetTenthDp(int value) {
+        return Math.max(
+                CLOCK_RIGHT_PADDING_OFFSET_MIN_TENTH_DP,
+                Math.min(CLOCK_RIGHT_PADDING_OFFSET_MAX_TENTH_DP, value));
     }
 
     static float positionOffsetTenthDpToDp(int value) {

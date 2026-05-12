@@ -44,6 +44,7 @@ public final class ClockHooks {
         }
         hookClockWeekday(module, loader);
         hookClockAndCarrierTextSize(module, loader);
+        hookClockPaddingRefresh(module, loader);
     }
 
     public static void refreshTrackedViews() {
@@ -110,6 +111,25 @@ public final class ClockHooks {
                 applyClockAndCarrierTextSize(textView);
             }
         });
+    }
+
+    private static void hookClockPaddingRefresh(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName("com.android.systemui.statusbar.policy.Clock", false, loader);
+            Method method = clazz.getDeclaredMethod("reloadDimens");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof TextView) {
+                    applyClockFontWeight((TextView) thisObject);
+                    applyClockAndCarrierTextSize((TextView) thisObject);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning("Failed to hook Clock.reloadDimens", t);
+        }
     }
 
     private static void hookConstructors(
@@ -405,9 +425,9 @@ public final class ClockHooks {
             return;
         }
         ORIGINAL_PADDINGS.put(view, new int[]{
-                view.getPaddingLeft(),
+                view.getPaddingStart(),
                 view.getPaddingTop(),
-                view.getPaddingRight(),
+                view.getPaddingEnd(),
                 view.getPaddingBottom()
         });
     }
@@ -441,6 +461,9 @@ public final class ClockHooks {
             changed = true;
         }
         if (restoreOriginalClockAndCarrierFontPadding(view)) {
+            changed = true;
+        }
+        if (applyPrimaryStatusBarClockEndPadding(view)) {
             changed = true;
         }
         if (applyClockAndCarrierTextMetrics(view)) {
@@ -602,6 +625,30 @@ public final class ClockHooks {
             return false;
         }
         view.setTranslationY(targetTranslationY);
+        return true;
+    }
+
+    private static boolean applyPrimaryStatusBarClockEndPadding(TextView view) {
+        if (!isPrimaryStatusBarClockView(view)) {
+            return false;
+        }
+        int[] originalPadding = ORIGINAL_PADDINGS.get(view);
+        if (originalPadding == null || originalPadding.length < 4) {
+            return false;
+        }
+        FlymeStatusBarSizer.ClockConfigSnapshot config =
+                FlymeStatusBarSizer.loadClockConfig(view.getContext());
+        int targetPaddingStart = Math.max(0, originalPadding[0]);
+        int targetPaddingEnd = Math.max(0, originalPadding[2] + config.clockRightPaddingOffsetPx);
+        if (view.getPaddingStart() == targetPaddingStart
+                && view.getPaddingEnd() == targetPaddingEnd) {
+            return false;
+        }
+        view.setPaddingRelative(
+                targetPaddingStart,
+                view.getPaddingTop(),
+                targetPaddingEnd,
+                view.getPaddingBottom());
         return true;
     }
 

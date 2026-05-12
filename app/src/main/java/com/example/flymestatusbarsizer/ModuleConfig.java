@@ -41,6 +41,7 @@ final class ModuleConfig {
     int signalBadgeYOffsetTenthDp = SettingsStore.DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP * 10;
     int signalDualYOffsetTenthDp = SettingsStore.DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP * 10;
     int wifiYOffsetTenthDp = SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP * 10;
+    int clockRightPaddingOffsetTenthDp = SettingsStore.DEFAULT_CLOCK_RIGHT_PADDING_OFFSET_DP * 10;
     boolean connectionRateThresholdEnabled = SettingsStore.DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED;
     int connectionRateShowThresholdKb = SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB;
     int connectionRateHideThresholdKb = SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB;
@@ -238,6 +239,12 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WIFI_Y_OFFSET_DP,
                     SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP * 10);
+            config.clockRightPaddingOffsetTenthDp =
+                    SettingsStore.normalizeClockRightPaddingOffsetTenthDp(
+                            SettingsStore.readPositionOffsetTenthDp(
+                                    prefs,
+                                    SettingsStore.KEY_CLOCK_RIGHT_PADDING_OFFSET_DP,
+                                    SettingsStore.DEFAULT_CLOCK_RIGHT_PADDING_OFFSET_DP * 10));
             config.connectionRateThresholdEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
