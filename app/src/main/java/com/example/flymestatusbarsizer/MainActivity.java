@@ -356,7 +356,7 @@ public class MainActivity extends Activity {
                 new String[]{"左对齐", "右对齐", "两端对齐"});
         addDivider(details);
         addProfileSectionHeader(details, "按钮显示与顺序",
-                "这里控制替换后控制栏里的 6 个按钮，包括返回。开关决定是否显示，长按拖动调整顺序，至少保留 1 个按钮。");
+                "这里控制替换后控制栏里的 7 个按钮，包括返回和撤销。开关决定是否显示，长按拖动调整顺序，至少保留 1 个按钮。");
 
         TextView hint = new TextView(this);
         hint.setText("返回按钮也在下面这组里；改动会立即写入配置并刷新当前输入法界面。");
@@ -2544,11 +2544,7 @@ public class MainActivity extends Activity {
                         SettingsStore.KEY_IME_CONTROL_BAR_BUTTON_ORDER,
                         SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_ORDER),
                 imeControlBarButtonOrder);
-        for (String button : ImeToolbarSpec.copyDefaultButtonOrder()) {
-            if (!imeControlBarButtonOrder.contains(button)) {
-                imeControlBarButtonOrder.add(button);
-            }
-        }
+        ImeToolbarSpec.normalizeButtonOrder(imeControlBarButtonOrder);
         loadImeControlBarButtonList(
                 readStringSetting(
                         SettingsStore.KEY_IME_CONTROL_BAR_HIDDEN_BUTTONS,

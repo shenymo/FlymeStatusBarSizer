@@ -9,10 +9,10 @@ import java.util.ArrayList;
 public final class ImeToolbarSpec {
     static final String STOCK_CONTROL_BAR_BACK = "stock_back";
     private static final String[] ACTION_BUTTONS = {
-            "paste", "delete", "select_all", "copy", "switch_ime"
+            "paste", "undo", "delete", "select_all", "copy", "switch_ime"
     };
     private static final String[] ALL_BUTTONS = {
-            "paste", "delete", "select_all", "copy", "switch_ime", STOCK_CONTROL_BAR_BACK
+            "paste", "undo", "delete", "select_all", "copy", "switch_ime", STOCK_CONTROL_BAR_BACK
     };
     private static final String STOCK_CONTROL_BAR_BUTTON_SIZE = "[1WC]";
     private static final int ALIGN_LEFT = 0;
@@ -22,12 +22,16 @@ public final class ImeToolbarSpec {
     private ImeToolbarSpec() {
     }
 
-    public static ArrayList<String> copyDefaultButtonOrder() {
-        ArrayList<String> result = new ArrayList<>();
-        for (String button : ALL_BUTTONS) {
-            result.add(button);
+    public static void normalizeButtonOrder(ArrayList<String> result) {
+        if (result == null) {
+            return;
         }
-        return result;
+        for (int i = 0; i < ALL_BUTTONS.length; i++) {
+            String button = ALL_BUTTONS[i];
+            if (!result.contains(button)) {
+                result.add(Math.min(i, result.size()), button);
+            }
+        }
     }
 
     public static boolean isValidActionName(String action) {
@@ -41,6 +45,9 @@ public final class ImeToolbarSpec {
     public static String getButtonLabel(String button) {
         if ("paste".equals(button)) {
             return "粘贴";
+        }
+        if ("undo".equals(button)) {
+            return "撤销";
         }
         if ("delete".equals(button)) {
             return "删除";
@@ -68,11 +75,7 @@ public final class ImeToolbarSpec {
 
     static ArrayList<String> resolveButtonOrder(FlymeStatusBarSizer.ImeConfigSnapshot config) {
         ArrayList<String> result = parseButtonList(config == null ? "" : config.imeControlBarButtonOrder);
-        for (String button : ALL_BUTTONS) {
-            if (!result.contains(button)) {
-                result.add(button);
-            }
-        }
+        normalizeButtonOrder(result);
         return result;
     }
 

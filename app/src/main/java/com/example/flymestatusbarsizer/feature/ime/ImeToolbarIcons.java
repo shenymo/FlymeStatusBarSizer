@@ -39,6 +39,9 @@ final class ImeToolbarIcons {
     }
 
     static Drawable createIconDrawable(Context context, String iconType) {
+        if ("undo".equals(iconType)) {
+            return createModuleDrawable(context, R.drawable.undo_24px, "ime undo drawable");
+        }
         String pathData = getIconPathData(iconType);
         if (TextUtils.isEmpty(pathData) || context == null) {
             return null;
@@ -52,6 +55,11 @@ final class ImeToolbarIcons {
     }
 
     static Drawable createKeyboardDismissDrawable(Context context) {
+        return createModuleDrawable(context, R.drawable.keyboard_double_arrow_down_24px,
+                "keyboard dismiss drawable");
+    }
+
+    private static Drawable createModuleDrawable(Context context, int drawableRes, String logLabel) {
         if (context == null) {
             return null;
         }
@@ -60,10 +68,10 @@ final class ImeToolbarIcons {
             if (resourceContext == null) {
                 return null;
             }
-            Drawable drawable = resourceContext.getDrawable(R.drawable.keyboard_double_arrow_down_24px);
+            Drawable drawable = resourceContext.getDrawable(drawableRes);
             return cloneDrawable(drawable, context.getResources());
         } catch (Throwable t) {
-            FlymeStatusBarSizer.logImeWarning("Failed to load keyboard dismiss drawable", t);
+            FlymeStatusBarSizer.logImeWarning("Failed to load " + logLabel, t);
             return null;
         }
     }

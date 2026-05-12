@@ -72,6 +72,11 @@ final class ImeToolbarActions {
                 performActionHapticFeedback(v);
                 performPasteAction(inputMethodService, v.getContext());
             });
+        } else if ("undo".equals(action)) {
+            button.setOnClickListener(v -> {
+                performActionHapticFeedback(v);
+                performEditorAction(inputMethodService, android.R.id.undo);
+            });
         } else if ("delete".equals(action)) {
             button.setOnClickListener(v -> {
                 performActionHapticFeedback(v);

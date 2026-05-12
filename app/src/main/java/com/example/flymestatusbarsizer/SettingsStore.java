@@ -112,7 +112,7 @@ final class SettingsStore {
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
     static final boolean DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR = false;
     static final String DEFAULT_IME_CONTROL_BAR_BUTTON_ORDER =
-            "paste,delete,select_all,copy,switch_ime,stock_back";
+            "paste,undo,delete,select_all,copy,switch_ime,stock_back";
     static final String DEFAULT_IME_CONTROL_BAR_HIDDEN_BUTTONS = "";
     static final boolean DEFAULT_TELEPHONY_DEBUG_ENABLED = false;
     static final boolean DEFAULT_WIFI_PERF_LOGGING_ENABLED = false;
