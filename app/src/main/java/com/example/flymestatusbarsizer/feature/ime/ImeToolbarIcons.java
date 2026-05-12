@@ -1,11 +1,8 @@
 package com.example.flymestatusbarsizer.feature.ime;
 
-import com.example.flymestatusbarsizer.BuildConfig;
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
-import com.example.flymestatusbarsizer.R;
 
 import android.content.Context;
-import android.content.res.Resources;
 import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -16,6 +13,7 @@ import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
+import android.view.View;
 
 final class ImeToolbarIcons {
     private static final float IME_TOOLBAR_ICON_VIEWPORT = 960f;
@@ -36,15 +34,15 @@ final class ImeToolbarIcons {
     }
 
     static Drawable createIconDrawable(Context context, String iconType) {
-        if ("undo".equals(iconType)) {
-            return createModuleDrawable(context, R.drawable.undo_24px, "ime undo drawable");
-        }
         String pathData = getIconPathData(iconType);
         if (TextUtils.isEmpty(pathData) || context == null) {
             return null;
         }
         try {
-            return new PathDrawable(pathData, Math.max(1, FlymeStatusBarSizer.dp(context, 24)));
+            return new PathDrawable(
+                    pathData,
+                    Math.max(1, FlymeStatusBarSizer.dp(context, 24)),
+                    "undo".equals(iconType));
         } catch (Throwable t) {
             FlymeStatusBarSizer.logImeWarning("Failed to create ime toolbar drawable: " + iconType, t);
             return null;
@@ -52,23 +50,17 @@ final class ImeToolbarIcons {
     }
 
     static Drawable createKeyboardDismissDrawable(Context context) {
-        return createModuleDrawable(context, R.drawable.keyboard_double_arrow_down_24px,
-                "keyboard dismiss drawable");
-    }
-
-    private static Drawable createModuleDrawable(Context context, int drawableRes, String logLabel) {
-        if (context == null) {
+        String pathData = getKeyboardDismissPathData();
+        if (TextUtils.isEmpty(pathData) || context == null) {
             return null;
         }
         try {
-            Context resourceContext = resolveModuleResourceContext(context);
-            if (resourceContext == null) {
-                return null;
-            }
-            Drawable drawable = resourceContext.getDrawable(drawableRes);
-            return cloneDrawable(drawable, context.getResources());
+            return new PathDrawable(
+                    pathData,
+                    Math.max(1, FlymeStatusBarSizer.dp(context, 24)),
+                    false);
         } catch (Throwable t) {
-            FlymeStatusBarSizer.logImeWarning("Failed to load " + logLabel, t);
+            FlymeStatusBarSizer.logImeWarning("Failed to create keyboard dismiss drawable", t);
             return null;
         }
     }
@@ -80,6 +72,8 @@ final class ImeToolbarIcons {
         switch (iconType) {
             case "paste":
                 return "M720,840L664,783L727,720L480,720L480,640L727,640L664,576L720,520L880,680L720,840ZM840,440L760,440L760,200Q760,200 760,200Q760,200 760,200L680,200L680,320L280,320L280,200L200,200Q200,200 200,200Q200,200 200,200L200,760Q200,760 200,760Q200,760 200,760L400,760L400,840L200,840Q167,840 143.5,816.5Q120,793 120,760L120,200Q120,167 143.5,143.5Q167,120 200,120L367,120Q378,85 410,62.5Q442,40 480,40Q520,40 551.5,62.5Q583,85 594,120L760,120Q793,120 816.5,143.5Q840,167 840,200L840,440ZM508.5,188.5Q520,177 520,160Q520,143 508.5,131.5Q497,120 480,120Q463,120 451.5,131.5Q440,143 440,160Q440,177 451.5,188.5Q463,200 480,200Q497,200 508.5,188.5Z";
+            case "undo":
+                return "M280,760L280,680L564,680Q627,680 673.5,640Q720,600 720,540Q720,480 673.5,440Q627,400 564,400L312,400L416,504L360,560L160,360L360,160L416,216L312,320L564,320Q661,320 730.5,383Q800,446 800,540Q800,634 730.5,697Q661,760 564,760L280,760Z";
             case "delete":
                 return "M280,840Q247,840 223.5,816.5Q200,793 200,760L200,240L160,240L160,160L360,160L360,120L600,120L600,160L800,160L800,240L760,240L760,760Q760,793 736.5,816.5Q713,840 680,840L280,840ZM680,240L280,240L280,760Q280,760 280,760Q280,760 280,760L680,760Q680,760 680,760Q680,760 680,760L680,240ZM360,680L440,680L440,320L360,320L360,680ZM520,680L600,680L600,320L520,320L520,680ZM280,240L280,240L280,760Q280,760 280,760Q280,760 280,760L280,760Q280,760 280,760Q280,760 280,760L280,240Z";
             case "select_all":
@@ -93,48 +87,21 @@ final class ImeToolbarIcons {
         }
     }
 
-    private static Context resolveModuleResourceContext(Context context) {
-        if (context == null) {
-            return null;
-        }
-        Context appContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
-        if (BuildConfig.APPLICATION_ID.equals(appContext.getPackageName())) {
-            return appContext;
-        }
-        try {
-            return appContext.createPackageContext(
-                    BuildConfig.APPLICATION_ID,
-                    Context.CONTEXT_IGNORE_SECURITY);
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private static Drawable cloneDrawable(Drawable drawable, Resources resources) {
-        if (drawable == null) {
-            return null;
-        }
-        Drawable.ConstantState constantState = drawable.getConstantState();
-        if (constantState != null) {
-            Drawable cloned = resources != null
-                    ? constantState.newDrawable(resources)
-                    : constantState.newDrawable();
-            if (cloned != null) {
-                return cloned.mutate();
-            }
-        }
-        return drawable.mutate();
+    private static String getKeyboardDismissPathData() {
+        return "M480,760L240,520L296,464L480,647L664,464L720,520L480,760ZM480,520L240,280L296,224L480,407L664,224L720,280L480,520Z";
     }
 
     private static final class PathDrawable extends Drawable {
         private final Path path;
         private final Paint paint;
         private final int intrinsicSize;
+        private final boolean autoMirrorInRtl;
         private int alpha = 255;
 
-        PathDrawable(String pathData, int intrinsicSize) {
+        PathDrawable(String pathData, int intrinsicSize, boolean autoMirrorInRtl) {
             this.path = PathDataParser.parse(pathData);
             this.intrinsicSize = intrinsicSize;
+            this.autoMirrorInRtl = autoMirrorInRtl;
             this.paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             this.paint.setStyle(Paint.Style.FILL);
             this.paint.setColor(Color.WHITE);
@@ -150,9 +117,16 @@ final class ImeToolbarIcons {
                 return;
             }
             int save = canvas.save();
+            float scaleX = bounds.width() / IME_TOOLBAR_ICON_VIEWPORT;
+            float scaleY = bounds.height() / IME_TOOLBAR_ICON_VIEWPORT;
             canvas.translate(bounds.left, bounds.top);
-            canvas.scale(bounds.width() / IME_TOOLBAR_ICON_VIEWPORT,
-                    bounds.height() / IME_TOOLBAR_ICON_VIEWPORT);
+            if (autoMirrorInRtl && getLayoutDirection() == View.LAYOUT_DIRECTION_RTL) {
+                // Match the old vector drawable's autoMirrored behavior for undo.
+                canvas.translate(bounds.width(), 0f);
+                canvas.scale(-scaleX, scaleY);
+            } else {
+                canvas.scale(scaleX, scaleY);
+            }
             canvas.drawPath(path, paint);
             canvas.restoreToCount(save);
         }
@@ -173,6 +147,19 @@ final class ImeToolbarIcons {
         @Override
         public int getOpacity() {
             return alpha < 255 ? PixelFormat.TRANSLUCENT : PixelFormat.OPAQUE;
+        }
+
+        @Override
+        public boolean isAutoMirrored() {
+            return autoMirrorInRtl;
+        }
+
+        @Override
+        public boolean onLayoutDirectionChanged(int layoutDirection) {
+            if (autoMirrorInRtl) {
+                invalidateSelf();
+            }
+            return autoMirrorInRtl;
         }
 
         @Override
