@@ -41,7 +41,7 @@ public final class ImeHooks {
             hookNavigationBarInflaterOnFinishInflate(module, loader);
             hookNavigationBarViewSetNavbarFlags(module, loader);
             hookNavigationBarInsetsVisibility(module, loader);
-            hookNavigationBarLegacyBackground(module, loader);
+            hookNavigationBarBackgroundRefresh(module, loader);
             hookInputMethodService(module, loader);
         }
         if (PACKAGE_ANDROID.equals(packageName)) {
@@ -191,7 +191,7 @@ public final class ImeHooks {
         }
     }
 
-    private static void hookNavigationBarLegacyBackground(
+    private static void hookNavigationBarBackgroundRefresh(
             FlymeStatusBarSizer module, ClassLoader loader) {
         try {
             Class<?> clazz = Class.forName(
@@ -210,7 +210,7 @@ public final class ImeHooks {
                 if (thisObject == null) {
                     return Boolean.FALSE;
                 }
-                setBooleanField(thisObject, "mDrawLegacyNavigationBarBackground", false);
+                Object result = chain.proceed();
                 Object navigationBarFrame = getField(thisObject, "mNavigationBarFrame");
                 Object inputMethodService = getField(thisObject, "mService");
                 syncImeWindowNavigationBarAppearance(inputMethodService);
@@ -226,7 +226,7 @@ public final class ImeHooks {
                         "onSystemBarAppearanceChanged",
                         new Class[]{int.class},
                         getIntField(thisObject, "mAppearance", 0));
-                return Boolean.TRUE;
+                return result;
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logImeWarning(
@@ -405,7 +405,6 @@ public final class ImeHooks {
                     new Class[0]);
         }
         if (forceStock) {
-            setBooleanField(callbackImpl, "mDrawLegacyNavigationBarBackground", false);
             syncImeWindowNavigationBarAppearance(inputMethodService);
         }
         FlymeStatusBarSizer.invokeMethodCompat(
@@ -601,20 +600,6 @@ public final class ImeHooks {
     private static int getIntField(Object target, String name, int fallback) {
         Object value = getField(target, name);
         return value instanceof Integer ? (Integer) value : fallback;
-    }
-
-    private static void setBooleanField(Object target, String name, boolean value) {
-        if (target == null || name == null) {
-            return;
-        }
-        Field field = findField(target.getClass(), name);
-        if (field == null) {
-            return;
-        }
-        try {
-            field.setBoolean(target, value);
-        } catch (Throwable ignored) {
-        }
     }
 
     private static void setIntField(Object target, String name, int value) {
