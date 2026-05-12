@@ -3,7 +3,11 @@ package com.example.flymestatusbarsizer.feature.ime;
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import android.content.Context;
+import android.content.res.Resources;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowInsets;
 
 import java.lang.reflect.Field;
@@ -37,6 +41,7 @@ public final class ImeHooks {
             hookNavigationBarInflaterOnFinishInflate(module, loader);
             hookNavigationBarViewSetNavbarFlags(module, loader);
             hookNavigationBarInsetsVisibility(module, loader);
+            hookNavigationBarLegacyBackground(module, loader);
             hookInputMethodService(module, loader);
         }
         if (PACKAGE_ANDROID.equals(packageName)) {
@@ -182,6 +187,50 @@ public final class ImeHooks {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logImeWarning(
                     "Failed to hook NavigationBarController$Impl IME nav visibility",
+                    t);
+        }
+    }
+
+    private static void hookNavigationBarLegacyBackground(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "android.inputmethodservice.NavigationBarController$Impl",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod(
+                    "onDrawLegacyNavigationBarBackgroundChanged",
+                    boolean.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                if (!shouldForceStockImeControlBar()) {
+                    return chain.proceed();
+                }
+                Object thisObject = chain.getThisObject();
+                if (thisObject == null) {
+                    return Boolean.FALSE;
+                }
+                setBooleanField(thisObject, "mDrawLegacyNavigationBarBackground", false);
+                Object navigationBarFrame = getField(thisObject, "mNavigationBarFrame");
+                Object inputMethodService = getField(thisObject, "mService");
+                syncImeWindowNavigationBarAppearance(inputMethodService);
+                if (navigationBarFrame instanceof View) {
+                    syncNavigationBarFrameBackgroundNow((View) navigationBarFrame, inputMethodService);
+                    FlymeStatusBarSizer.invokeMethodCompat(
+                            thisObject,
+                            "scheduleRelayout",
+                            new Class[0]);
+                }
+                FlymeStatusBarSizer.invokeMethodCompat(
+                        thisObject,
+                        "onSystemBarAppearanceChanged",
+                        new Class[]{int.class},
+                        getIntField(thisObject, "mAppearance", 0));
+                return Boolean.TRUE;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logImeWarning(
+                    "Failed to hook NavigationBarController$Impl.onDrawLegacyNavigationBarBackgroundChanged",
                     t);
         }
     }
@@ -355,6 +404,10 @@ public final class ImeHooks {
                     "uninstallNavigationBarFrameIfNecessary",
                     new Class[0]);
         }
+        if (forceStock) {
+            setBooleanField(callbackImpl, "mDrawLegacyNavigationBarBackground", false);
+            syncImeWindowNavigationBarAppearance(inputMethodService);
+        }
         FlymeStatusBarSizer.invokeMethodCompat(
                 navigationBarController,
                 "onNavButtonFlagsChanged",
@@ -362,6 +415,9 @@ public final class ImeHooks {
                 resolveCurrentImeNavButtonFlags(callbackImpl));
         Object navigationBarFrame = getField(callbackImpl, "mNavigationBarFrame");
         if (navigationBarFrame instanceof View) {
+            if (forceStock) {
+                syncNavigationBarFrameBackgroundNow((View) navigationBarFrame, inputMethodService);
+            }
             ((View) navigationBarFrame).requestApplyInsets();
         }
         LAST_STOCK_CONTROL_BAR_STATES.put(inputMethodService, forceStock);
@@ -547,6 +603,20 @@ public final class ImeHooks {
         return value instanceof Integer ? (Integer) value : fallback;
     }
 
+    private static void setBooleanField(Object target, String name, boolean value) {
+        if (target == null || name == null) {
+            return;
+        }
+        Field field = findField(target.getClass(), name);
+        if (field == null) {
+            return;
+        }
+        try {
+            field.setBoolean(target, value);
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static void setIntField(Object target, String name, int value) {
         if (target == null || name == null) {
             return;
@@ -594,5 +664,100 @@ public final class ImeHooks {
             Object... args) {
         Object value = FlymeStatusBarSizer.invokeMethodCompat(target, name, parameterTypes, args);
         return value instanceof Boolean ? (Boolean) value : fallback;
+    }
+
+    private static void syncNavigationBarFrameBackgroundNow(
+            View navigationBarFrame, Object inputMethodService) {
+        if (navigationBarFrame == null) {
+            return;
+        }
+        Drawable background = findImeBackgroundDrawable(inputMethodService);
+        Drawable cloned = cloneDrawable(background, navigationBarFrame.getResources());
+        navigationBarFrame.setBackground(cloned);
+    }
+
+    private static void syncImeWindowNavigationBarAppearance(Object inputMethodService) {
+        if (inputMethodService == null) {
+            return;
+        }
+        Object softInputWindow = getField(inputMethodService, "mWindow");
+        if (softInputWindow == null) {
+            return;
+        }
+        Object window = FlymeStatusBarSizer.invokeMethodCompat(
+                softInputWindow,
+                "getWindow",
+                new Class[0]);
+        if (window == null) {
+            return;
+        }
+        FlymeStatusBarSizer.invokeMethodCompat(
+                window,
+                "setNavigationBarContrastEnforced",
+                new Class[]{boolean.class},
+                false);
+        FlymeStatusBarSizer.invokeMethodCompat(
+                window,
+                "setNavigationBarColor",
+                new Class[]{int.class},
+                0);
+    }
+
+    private static Drawable findImeBackgroundDrawable(Object inputMethodService) {
+        View trackedInputView = TRACKED_INPUT_METHOD_VIEWS.get(inputMethodService);
+        Drawable background = trackedInputView != null ? trackedInputView.getBackground() : null;
+        if (background != null) {
+            return background;
+        }
+        ViewGroup inputFrame = asViewGroup(FlymeStatusBarSizer.getFieldCompat(inputMethodService, "mInputFrame"));
+        if (inputFrame == null) {
+            return null;
+        }
+        if (inputFrame.getBackground() != null) {
+            return inputFrame.getBackground();
+        }
+        if (inputFrame.getChildCount() == 0) {
+            return null;
+        }
+        return findPrimaryInputBackground(inputFrame.getChildAt(0));
+    }
+
+    private static Drawable findPrimaryInputBackground(View view) {
+        if (view == null) {
+            return null;
+        }
+        if (view.getBackground() != null) {
+            return view.getBackground();
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            if (group.getChildCount() > 0) {
+                return findPrimaryInputBackground(group.getChildAt(0));
+            }
+        }
+        return null;
+    }
+
+    private static Drawable cloneDrawable(Drawable drawable, Resources resources) {
+        if (drawable == null) {
+            return null;
+        }
+        Drawable.ConstantState constantState = drawable.getConstantState();
+        if (constantState != null) {
+            Drawable cloned = resources != null
+                    ? constantState.newDrawable(resources)
+                    : constantState.newDrawable();
+            if (cloned != null) {
+                return cloned.mutate();
+            }
+        }
+        if (drawable instanceof ColorDrawable) {
+            return new ColorDrawable(((ColorDrawable) drawable).getColor());
+        }
+        return null;
+    }
+
+    private static ViewGroup asViewGroup(Object object) {
+        return object instanceof ViewGroup ? (ViewGroup) object : null;
     }
 }
