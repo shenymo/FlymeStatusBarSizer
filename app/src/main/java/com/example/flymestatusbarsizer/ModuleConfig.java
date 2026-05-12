@@ -61,9 +61,9 @@ final class ModuleConfig {
     int mbackInsetSize = SettingsStore.DEFAULT_MBACK_INSET_SIZE;
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
     boolean imeReplaceOriginalControlBar = SettingsStore.DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR;
-    int imeControlBarAlignment = SettingsStore.DEFAULT_IME_CONTROL_BAR_ALIGNMENT;
-    String imeControlBarButtonOrder = SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_ORDER;
-    String imeControlBarHiddenButtons = SettingsStore.DEFAULT_IME_CONTROL_BAR_HIDDEN_BUTTONS;
+    String imeControlBarButtonSlots = SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;
+    int imeControlBarIconScalePercent = SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT;
+    int imeControlBarIconAlphaPercent = SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT;
     boolean telephonyDebugEnabled = SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED;
     boolean wifiPerfLoggingEnabled = SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED;
     int telephonyDebugSimCount = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
@@ -327,19 +327,20 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
                     SettingsStore.DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR);
-            config.imeControlBarAlignment = SettingsStore.normalizeImeControlBarAlignment(
+            config.imeControlBarButtonSlots = SettingsStore.readString(
+                    prefs,
+                    SettingsStore.KEY_IME_CONTROL_BAR_BUTTON_SLOTS,
+                    SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS);
+            config.imeControlBarIconScalePercent = SettingsStore.normalizeImeControlBarIconScalePercent(
                     SettingsStore.readInt(
                             prefs,
-                            SettingsStore.KEY_IME_CONTROL_BAR_ALIGNMENT,
-                            SettingsStore.DEFAULT_IME_CONTROL_BAR_ALIGNMENT));
-            config.imeControlBarButtonOrder = SettingsStore.readString(
-                    prefs,
-                    SettingsStore.KEY_IME_CONTROL_BAR_BUTTON_ORDER,
-                    SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_ORDER);
-            config.imeControlBarHiddenButtons = SettingsStore.readString(
-                    prefs,
-                    SettingsStore.KEY_IME_CONTROL_BAR_HIDDEN_BUTTONS,
-                    SettingsStore.DEFAULT_IME_CONTROL_BAR_HIDDEN_BUTTONS);
+                            SettingsStore.KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
+                            SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT));
+            config.imeControlBarIconAlphaPercent = SettingsStore.normalizeImeControlBarIconAlphaPercent(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
+                            SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT));
             config.telephonyDebugEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_TELEPHONY_DEBUG_ENABLED,

@@ -6422,18 +6422,22 @@ public class FlymeStatusBarSizer extends XposedModule {
     public static final class ImeConfigSnapshot {
         public final boolean enabled;
         public final boolean imeReplaceOriginalControlBar;
-        public final int imeControlBarAlignment;
-        public final String imeControlBarButtonOrder;
-        public final String imeControlBarHiddenButtons;
+        public final String imeControlBarButtonSlots;
+        public final int imeControlBarIconScalePercent;
+        public final int imeControlBarIconAlphaPercent;
 
         private ImeConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
             imeReplaceOriginalControlBar = config != null && config.imeReplaceOriginalControlBar;
-            imeControlBarAlignment = config == null
-                    ? SettingsStore.DEFAULT_IME_CONTROL_BAR_ALIGNMENT
-                    : config.imeControlBarAlignment;
-            imeControlBarButtonOrder = config == null ? "" : config.imeControlBarButtonOrder;
-            imeControlBarHiddenButtons = config == null ? "" : config.imeControlBarHiddenButtons;
+            imeControlBarButtonSlots = config == null
+                    ? SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS
+                    : config.imeControlBarButtonSlots;
+            imeControlBarIconScalePercent = config == null
+                    ? SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT
+                    : config.imeControlBarIconScalePercent;
+            imeControlBarIconAlphaPercent = config == null
+                    ? SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT
+                    : config.imeControlBarIconAlphaPercent;
         }
     }
 

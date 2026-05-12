@@ -8,30 +8,29 @@ import java.util.ArrayList;
 
 public final class ImeToolbarSpec {
     static final String STOCK_CONTROL_BAR_BACK = "stock_back";
+    static final String STOCK_CONTROL_BAR_PLACEHOLDER = "stock_placeholder";
     private static final String[] ACTION_BUTTONS = {
             "paste", "undo", "delete", "select_all", "copy", "switch_ime"
     };
     private static final String[] ALL_BUTTONS = {
             "paste", "undo", "delete", "select_all", "copy", "switch_ime", STOCK_CONTROL_BAR_BACK
     };
-    private static final String STOCK_CONTROL_BAR_BUTTON_SIZE = "[1WC]";
-    private static final int ALIGN_LEFT = 0;
-    private static final int ALIGN_RIGHT = 1;
-    private static final int ALIGN_JUSTIFY = 2;
+    private static final String STOCK_CONTROL_BAR_BUTTON_SIZE = "[7WC]";
+    private static final String SLOT_EMPTY_TOKEN = "__empty__";
 
     private ImeToolbarSpec() {
     }
 
-    public static void normalizeButtonOrder(ArrayList<String> result) {
-        if (result == null) {
-            return;
+    public static int getButtonSlotCount() {
+        return ALL_BUTTONS.length;
+    }
+
+    public static ArrayList<String> getAllButtons() {
+        ArrayList<String> result = new ArrayList<>(ALL_BUTTONS.length);
+        for (String button : ALL_BUTTONS) {
+            result.add(button);
         }
-        for (int i = 0; i < ALL_BUTTONS.length; i++) {
-            String button = ALL_BUTTONS[i];
-            if (!result.contains(button)) {
-                result.add(Math.min(i, result.size()), button);
-            }
-        }
+        return result;
     }
 
     public static boolean isValidActionName(String action) {
@@ -40,6 +39,10 @@ public final class ImeToolbarSpec {
 
     public static boolean isValidButtonName(String button) {
         return isValidAction(button) || STOCK_CONTROL_BAR_BACK.equals(button);
+    }
+
+    public static boolean isPlaceholderName(String button) {
+        return STOCK_CONTROL_BAR_PLACEHOLDER.equals(button);
     }
 
     public static String getButtonLabel(String button) {
@@ -73,88 +76,97 @@ public final class ImeToolbarSpec {
                 && config.imeReplaceOriginalControlBar;
     }
 
-    static ArrayList<String> resolveButtonOrder(FlymeStatusBarSizer.ImeConfigSnapshot config) {
-        ArrayList<String> result = parseButtonList(config == null ? "" : config.imeControlBarButtonOrder);
-        normalizeButtonOrder(result);
-        return result;
+    static ArrayList<String> resolveButtonSlots(FlymeStatusBarSizer.ImeConfigSnapshot config) {
+        if (config == null) {
+            return defaultButtonSlots();
+        }
+        return parseButtonSlots(config.imeControlBarButtonSlots);
     }
 
-    static ArrayList<String> resolveVisibleButtons(FlymeStatusBarSizer.ImeConfigSnapshot config) {
-        ArrayList<String> visibleButtons = resolveButtonOrder(config);
-        ArrayList<String> hiddenButtons = parseButtonList(
-                config == null ? "" : config.imeControlBarHiddenButtons);
-        for (int i = visibleButtons.size() - 1; i >= 0; i--) {
-            if (hiddenButtons.contains(visibleButtons.get(i))) {
-                visibleButtons.remove(i);
-            }
+    public static ArrayList<String> resolveButtonSlots(String slotRaw) {
+        if (TextUtils.isEmpty(slotRaw)) {
+            return defaultButtonSlots();
         }
-        if (visibleButtons.isEmpty()) {
-            ArrayList<String> fallback = resolveButtonOrder(config);
-            if (!fallback.isEmpty()) {
-                visibleButtons.add(fallback.get(0));
-            }
-        }
-        return visibleButtons;
+        return parseButtonSlots(slotRaw);
     }
 
     static String buildStockControlBarLayout(FlymeStatusBarSizer.ImeConfigSnapshot config) {
-        ArrayList<String> visibleButtons = resolveVisibleButtons(config);
-        if (visibleButtons.isEmpty()) {
-            return null;
-        }
-        int alignment = config == null ? ALIGN_JUSTIFY : config.imeControlBarAlignment;
-        switch (alignment) {
-            case ALIGN_LEFT:
-                return buildLayout(visibleButtons, null, null);
-            case ALIGN_RIGHT:
-                return buildLayout(null, null, visibleButtons);
-            case ALIGN_JUSTIFY:
-            default:
-                if (visibleButtons.size() <= 1) {
-                    return buildLayout(visibleButtons, null, null);
-                }
-                ArrayList<String> startButtons = new ArrayList<>(
-                        visibleButtons.subList(0, visibleButtons.size() - 1));
-                ArrayList<String> endButtons = new ArrayList<>();
-                endButtons.add(visibleButtons.get(visibleButtons.size() - 1));
-                return buildLayout(startButtons, null, endButtons);
-        }
+        return buildFixedSlotLayout(resolveButtonSlots(config));
     }
 
-    private static String buildLayout(
-            ArrayList<String> startButtons,
-            ArrayList<String> centerButtons,
-            ArrayList<String> endButtons) {
-        return buildSegment(startButtons) + ';'
-                + buildSegment(centerButtons) + ';'
-                + buildSegment(endButtons);
-    }
-
-    private static String buildSegment(ArrayList<String> buttons) {
-        if (buttons == null || buttons.isEmpty()) {
-            return "";
-        }
+    public static String serializeButtonSlots(ArrayList<String> slots) {
+        ArrayList<String> normalized = normalizeButtonSlots(slots);
         StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < buttons.size(); i++) {
+        for (int i = 0; i < normalized.size(); i++) {
             if (i > 0) {
                 builder.append(',');
             }
-            builder.append(buttons.get(i)).append(STOCK_CONTROL_BAR_BUTTON_SIZE);
+            String button = normalized.get(i);
+            builder.append(TextUtils.isEmpty(button) ? SLOT_EMPTY_TOKEN : button);
         }
         return builder.toString();
     }
 
-    private static ArrayList<String> parseButtonList(String raw) {
-        ArrayList<String> result = new ArrayList<>();
+    private static String buildFixedSlotLayout(ArrayList<String> slots) {
+        ArrayList<String> normalized = normalizeButtonSlots(slots);
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < normalized.size(); i++) {
+            if (i > 0) {
+                builder.append(',');
+            }
+            String button = normalized.get(i);
+            builder.append(TextUtils.isEmpty(button) ? STOCK_CONTROL_BAR_PLACEHOLDER : button)
+                    .append(STOCK_CONTROL_BAR_BUTTON_SIZE);
+        }
+        return builder.append(";;").toString();
+    }
+
+    private static ArrayList<String> parseButtonSlots(String raw) {
+        ArrayList<String> result = emptySlotList();
         if (TextUtils.isEmpty(raw)) {
             return result;
         }
-        String[] parts = raw.split(",");
-        for (String part : parts) {
-            String button = part == null ? "" : part.trim();
-            if (isValidButtonName(button) && !result.contains(button)) {
-                result.add(button);
+        String[] parts = raw.split(",", -1);
+        int slotCount = Math.min(parts.length, result.size());
+        for (int i = 0; i < slotCount; i++) {
+            String token = parts[i] == null ? "" : parts[i].trim();
+            if (TextUtils.isEmpty(token) || SLOT_EMPTY_TOKEN.equals(token)) {
+                continue;
             }
+            if (isValidButtonName(token) && !result.contains(token)) {
+                result.set(i, token);
+            }
+        }
+        return result;
+    }
+
+    private static ArrayList<String> normalizeButtonSlots(ArrayList<String> slots) {
+        ArrayList<String> normalized = emptySlotList();
+        if (slots == null) {
+            return normalized;
+        }
+        int slotCount = Math.min(slots.size(), normalized.size());
+        for (int i = 0; i < slotCount; i++) {
+            String button = slots.get(i);
+            if (isValidButtonName(button) && !normalized.contains(button)) {
+                normalized.set(i, button);
+            }
+        }
+        return normalized;
+    }
+
+    private static ArrayList<String> defaultButtonSlots() {
+        ArrayList<String> result = emptySlotList();
+        for (int i = 0; i < ALL_BUTTONS.length; i++) {
+            result.set(i, ALL_BUTTONS[i]);
+        }
+        return result;
+    }
+
+    private static ArrayList<String> emptySlotList() {
+        ArrayList<String> result = new ArrayList<>(ALL_BUTTONS.length);
+        for (int i = 0; i < ALL_BUTTONS.length; i++) {
+            result.add(null);
         }
         return result;
     }

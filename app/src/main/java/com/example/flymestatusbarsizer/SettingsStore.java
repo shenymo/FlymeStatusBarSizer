@@ -51,6 +51,9 @@ final class SettingsStore {
     static final String KEY_MBACK_NAV_BAR_HEIGHT = "mback_nav_bar_height";
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
     static final String KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR = "ime_force_stock_control_bar";
+    static final String KEY_IME_CONTROL_BAR_BUTTON_SLOTS = "ime_control_bar_button_slots";
+    static final String KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT = "ime_control_bar_icon_scale_percent";
+    static final String KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT = "ime_control_bar_icon_alpha_percent";
     static final String KEY_IME_CONTROL_BAR_BUTTON_ORDER = "ime_toolbar_order";
     static final String KEY_IME_CONTROL_BAR_HIDDEN_BUTTONS = "ime_control_bar_hidden_buttons";
     static final String KEY_IME_CONTROL_BAR_ALIGNMENT = "ime_control_bar_alignment";
@@ -111,9 +114,10 @@ final class SettingsStore {
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
     static final boolean DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR = false;
-    static final String DEFAULT_IME_CONTROL_BAR_BUTTON_ORDER =
+    static final String DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS =
             "paste,undo,delete,select_all,copy,switch_ime,stock_back";
-    static final String DEFAULT_IME_CONTROL_BAR_HIDDEN_BUTTONS = "";
+    static final int DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT = 100;
+    static final int DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT = 100;
     static final boolean DEFAULT_TELEPHONY_DEBUG_ENABLED = false;
     static final boolean DEFAULT_WIFI_PERF_LOGGING_ENABLED = false;
     static final int DEFAULT_TELEPHONY_DEBUG_SIM_COUNT = 2;
@@ -129,10 +133,6 @@ final class SettingsStore {
     static final int TELEPHONY_DEBUG_NETWORK_PROFILE_5G_CA = 5;
     static final int TELEPHONY_DEBUG_NETWORK_PROFILE_5GA = 6;
     static final int TELEPHONY_DEBUG_NETWORK_PROFILE_5G_PLUS = 7;
-    static final int IME_CONTROL_BAR_ALIGNMENT_LEFT = 0;
-    static final int IME_CONTROL_BAR_ALIGNMENT_RIGHT = 1;
-    static final int IME_CONTROL_BAR_ALIGNMENT_JUSTIFY = 2;
-    static final int DEFAULT_IME_CONTROL_BAR_ALIGNMENT = IME_CONTROL_BAR_ALIGNMENT_JUSTIFY;
     static final int DEFAULT_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE = TELEPHONY_DEBUG_NETWORK_PROFILE_5G;
     static final int DEFAULT_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL = 4;
     static final int DEFAULT_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE = TELEPHONY_DEBUG_NETWORK_PROFILE_4G;
@@ -161,7 +161,8 @@ final class SettingsStore {
             KEY_NOTIFICATION_APP_ICON_PADDING_DP,
             KEY_MBACK_INSET_SIZE,
             KEY_MBACK_NAV_BAR_HEIGHT,
-            KEY_IME_CONTROL_BAR_ALIGNMENT,
+            KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
+            KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
             KEY_TELEPHONY_DEBUG_SIM_COUNT,
             KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
             KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
@@ -192,8 +193,7 @@ final class SettingsStore {
     static final String[] STRING_KEYS = {
             KEY_CLOCK_CUSTOM_FORMAT,
             KEY_MBACK_LONG_TOUCH_INTENT_URI,
-            KEY_IME_CONTROL_BAR_BUTTON_ORDER,
-            KEY_IME_CONTROL_BAR_HIDDEN_BUTTONS
+            KEY_IME_CONTROL_BAR_BUTTON_SLOTS
     };
 
     static final String[] POSITION_OFFSET_KEYS = {
@@ -359,8 +359,10 @@ final class SettingsStore {
                 return DEFAULT_MBACK_INSET_SIZE;
             case KEY_MBACK_NAV_BAR_HEIGHT:
                 return DEFAULT_MBACK_NAV_BAR_HEIGHT;
-            case KEY_IME_CONTROL_BAR_ALIGNMENT:
-                return DEFAULT_IME_CONTROL_BAR_ALIGNMENT;
+            case KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT:
+                return DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT;
+            case KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT:
+                return DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT;
             case KEY_TELEPHONY_DEBUG_SIM_COUNT:
                 return DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
             case KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT:
@@ -424,11 +426,8 @@ final class SettingsStore {
         if (KEY_MBACK_LONG_TOUCH_INTENT_URI.equals(key)) {
             return DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
         }
-        if (KEY_IME_CONTROL_BAR_BUTTON_ORDER.equals(key)) {
-            return DEFAULT_IME_CONTROL_BAR_BUTTON_ORDER;
-        }
-        if (KEY_IME_CONTROL_BAR_HIDDEN_BUTTONS.equals(key)) {
-            return DEFAULT_IME_CONTROL_BAR_HIDDEN_BUTTONS;
+        if (KEY_IME_CONTROL_BAR_BUTTON_SLOTS.equals(key)) {
+            return DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;
         }
         return "";
     }
@@ -560,6 +559,14 @@ final class SettingsStore {
         return Math.max(0, Math.min(8, value));
     }
 
+    static int normalizeImeControlBarIconScalePercent(int value) {
+        return Math.max(60, Math.min(180, value));
+    }
+
+    static int normalizeImeControlBarIconAlphaPercent(int value) {
+        return Math.max(10, Math.min(100, value));
+    }
+
     static int normalizeTelephonyDebugSimCount(int value) {
         return Math.max(0, Math.min(2, value));
     }
@@ -586,17 +593,6 @@ final class SettingsStore {
                 return value;
             default:
                 return TELEPHONY_DEBUG_NETWORK_PROFILE_4G;
-        }
-    }
-
-    static int normalizeImeControlBarAlignment(int value) {
-        switch (value) {
-            case IME_CONTROL_BAR_ALIGNMENT_LEFT:
-            case IME_CONTROL_BAR_ALIGNMENT_RIGHT:
-            case IME_CONTROL_BAR_ALIGNMENT_JUSTIFY:
-                return value;
-            default:
-                return DEFAULT_IME_CONTROL_BAR_ALIGNMENT;
         }
     }
 

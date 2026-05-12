@@ -33,6 +33,8 @@ public final class ImeHooks {
     private static final String PACKAGE_FLYME_INPUTMETHOD = "flyme.inputmethod";
     private static final String PACKAGE_GOOGLE_LATIN = "com.google.android.inputmethod.latin";
     private static final String PACKAGE_TENCENT_WETYPE = "com.tencent.wetype";
+    private static final int DEFAULT_IME_ICON_SCALE_PERCENT = 100;
+    private static final int DEFAULT_IME_ICON_ALPHA_PERCENT = 100;
 
     private static final WeakHashMap<Object, View> TRACKED_INPUT_METHOD_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<Object, Boolean> TRACKED_INPUT_METHOD_MANAGER_SERVICES =
@@ -148,6 +150,9 @@ public final class ImeHooks {
                 if (ImeToolbarSpec.isValidActionName(action)) {
                     return createStockControlBarActionButton(((ViewGroup) parentArg).getContext(), action);
                 }
+                if (ImeToolbarSpec.isPlaceholderName(action)) {
+                    return createStockControlBarPlaceholderView(((ViewGroup) parentArg).getContext());
+                }
                 if (!STOCK_CONTROL_BAR_BACK.equals(action)) {
                     return chain.proceed();
                 }
@@ -209,7 +214,10 @@ public final class ImeHooks {
                 Object thisObject = chain.getThisObject();
                 Object intensityArg = chain.getArg(0);
                 if (thisObject instanceof View && intensityArg instanceof Float) {
-                    applyStockControlBarButtonTint((View) thisObject, (Float) intensityArg);
+                    applyStockControlBarButtonTint(
+                            (View) thisObject,
+                            (Float) intensityArg,
+                            FlymeStatusBarSizer.loadImeConfig(null));
                 }
                 return result;
             });
@@ -933,6 +941,18 @@ public final class ImeHooks {
                 ImeToolbarSpec.getButtonLabel(STOCK_CONTROL_BAR_BACK));
     }
 
+    private static View createStockControlBarPlaceholderView(Context context) {
+        View placeholder = new View(context);
+        placeholder.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER));
+        placeholder.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        placeholder.setClickable(false);
+        placeholder.setFocusable(false);
+        return placeholder;
+    }
+
     private static View createBaseStockControlBarButton(
             Context context, String tag, Drawable drawable, String contentDescription) {
         ImageButton button = new ImageButton(context);
@@ -942,11 +962,10 @@ public final class ImeHooks {
                 Gravity.CENTER));
         button.setTag(tag);
         button.setImageDrawable(drawable);
-        button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        button.setScaleType(ImageView.ScaleType.FIT_CENTER);
         button.setContentDescription(contentDescription);
         button.setBackground(resolveBorderlessSelectableBackground(context));
-        int padding = FlymeStatusBarSizer.dp(context, 8);
-        button.setPadding(padding, padding, padding, padding);
+        applyStockControlBarButtonVisualStyle(button, FlymeStatusBarSizer.loadImeConfig(null));
         button.setClickable(true);
         button.setFocusable(true);
         return button;
@@ -973,36 +992,69 @@ public final class ImeHooks {
         if (navigationBarFrame == null) {
             return;
         }
+        FlymeStatusBarSizer.ImeConfigSnapshot config = FlymeStatusBarSizer.loadImeConfig(null);
         ImeToolbarActions.bindActionButtons(inputMethodService, navigationBarFrame);
         ImeToolbarActions.refreshActionButtonStates(inputMethodService, navigationBarFrame);
         bindStockControlBarBackButtons(inputMethodService, navigationBarFrame);
-        applyStockControlBarButtonTint(navigationBarFrame, darkIntensity);
+        applyStockControlBarButtonTint(navigationBarFrame, darkIntensity, config);
     }
 
-    private static void applyStockControlBarButtonTint(View root, float darkIntensity) {
+    private static void applyStockControlBarButtonTint(
+            View root, float darkIntensity, FlymeStatusBarSizer.ImeConfigSnapshot config) {
         if (root == null) {
             return;
         }
-        int color = ImeToolbarIcons.resolveStockControlBarIconColor(darkIntensity);
-        applyStockControlBarButtonTintRecursive(root, color);
+        int color = ImeToolbarIcons.resolveStockControlBarIconColor(root.getContext());
+        int alpha = resolveStockControlBarIconAlpha(config);
+        applyStockControlBarButtonTintRecursive(root, color, alpha, config);
     }
 
-    private static void applyStockControlBarButtonTintRecursive(View root, int color) {
+    private static void applyStockControlBarButtonTintRecursive(
+            View root,
+            int color,
+            int alpha,
+            FlymeStatusBarSizer.ImeConfigSnapshot config) {
         if (root == null) {
             return;
         }
         if (root.getTag() instanceof String
                 && ImeToolbarSpec.isValidButtonName((String) root.getTag())
                 && root instanceof ImageView) {
-            ((ImageView) root).setColorFilter(color);
+            ImageView imageView = (ImageView) root;
+            imageView.setColorFilter(color);
+            imageView.setImageAlpha(alpha);
+            applyStockControlBarButtonVisualStyle(imageView, config);
         }
         if (!(root instanceof ViewGroup)) {
             return;
         }
         ViewGroup group = (ViewGroup) root;
         for (int i = 0; i < group.getChildCount(); i++) {
-            applyStockControlBarButtonTintRecursive(group.getChildAt(i), color);
+            applyStockControlBarButtonTintRecursive(group.getChildAt(i), color, alpha, config);
         }
+    }
+
+    private static int resolveStockControlBarIconAlpha(FlymeStatusBarSizer.ImeConfigSnapshot config) {
+        int percent = config == null
+                ? DEFAULT_IME_ICON_ALPHA_PERCENT
+                : config.imeControlBarIconAlphaPercent;
+        percent = Math.max(10, Math.min(100, percent));
+        return Math.round((percent / 100f) * 255f);
+    }
+
+    private static void applyStockControlBarButtonVisualStyle(
+            ImageView imageView, FlymeStatusBarSizer.ImeConfigSnapshot config) {
+        if (imageView == null) {
+            return;
+        }
+        imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int scalePercent = config == null
+                ? DEFAULT_IME_ICON_SCALE_PERCENT
+                : config.imeControlBarIconScalePercent;
+        scalePercent = Math.max(60, Math.min(180, scalePercent));
+        float density = imageView.getResources().getDisplayMetrics().density;
+        int padding = Math.max(0, Math.round((8f * 100f / scalePercent) * density));
+        imageView.setPadding(padding, padding, padding, padding);
     }
 
     private static void bindStockControlBarBackButtons(Object inputMethodService, View root) {
