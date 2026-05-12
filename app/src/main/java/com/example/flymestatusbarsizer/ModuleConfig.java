@@ -61,6 +61,7 @@ final class ModuleConfig {
     int mbackInsetSize = SettingsStore.DEFAULT_MBACK_INSET_SIZE;
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
     boolean imeToolbarEnabled = SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED;
+    boolean imeForceStockControlBar = SettingsStore.DEFAULT_IME_FORCE_STOCK_CONTROL_BAR;
     String imeToolbarOrder = SettingsStore.DEFAULT_IME_TOOLBAR_ORDER;
     boolean telephonyDebugEnabled = SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED;
     boolean wifiPerfLoggingEnabled = SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED;
@@ -325,6 +326,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_IME_TOOLBAR_ENABLED,
                     SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED);
+            config.imeForceStockControlBar = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_IME_FORCE_STOCK_CONTROL_BAR,
+                    SettingsStore.DEFAULT_IME_FORCE_STOCK_CONTROL_BAR);
             config.imeToolbarOrder = SettingsStore.readString(
                     prefs,
                     SettingsStore.KEY_IME_TOOLBAR_ORDER,

@@ -336,6 +336,11 @@ public class MainActivity extends Activity {
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
 
+        addSwitchRow(details, "强制原生输入法控制栏",
+                "屏蔽 Flyme 对 framework IME 控制栏的注入修改，尽量回退到系统自带的 back / home_handle / ime_switcher 控制栏。这个开关不影响下面这排模块自定义工具按钮。",
+                SettingsStore.KEY_IME_FORCE_STOCK_CONTROL_BAR,
+                SettingsStore.DEFAULT_IME_FORCE_STOCK_CONTROL_BAR);
+        addDivider(details);
         addSwitchRow(details, "启用输入法工具栏",
                 "开启后会在输入法界面加一排工具按钮。关闭后恢复原来的输入法视图，不再显示这排按钮。",
                 SettingsStore.KEY_IME_TOOLBAR_ENABLED,
@@ -363,8 +368,8 @@ public class MainActivity extends Activity {
                 "保存这五个按钮的新顺序，并通知当前输入法界面马上刷新。",
                 "应用", this::applyImeToolbarOrder);
         return buildExpandableInfoCard(
-                "输入法工具栏",
-                "可以控制输入法工具栏开关，也可以拖动调整这五个按钮的顺序。",
+                "输入法",
+                "可以单独控制 framework IME 控制栏回退原生，以及模块自定义输入法工具栏和按钮顺序。",
                 details);
     }
 

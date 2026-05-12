@@ -198,7 +198,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (SYSTEM_UI.equals(packageName)) {
             hookSystemUi(loader);
         }
-        ImeHooks.install(this, loader);
+        ImeHooks.install(this, loader, packageName);
     }
 
     private void hookSystemUi(ClassLoader loader) {
@@ -6422,11 +6422,13 @@ public class FlymeStatusBarSizer extends XposedModule {
     public static final class ImeConfigSnapshot {
         public final boolean enabled;
         public final boolean imeToolbarEnabled;
+        public final boolean imeForceStockControlBar;
         public final String imeToolbarOrder;
 
         private ImeConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
             imeToolbarEnabled = config != null && config.imeToolbarEnabled;
+            imeForceStockControlBar = config != null && config.imeForceStockControlBar;
             imeToolbarOrder = config == null ? "" : config.imeToolbarOrder;
         }
     }

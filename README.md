@@ -15,13 +15,14 @@
 - 可把第三方应用的状态栏通知图标替换为应用自身图标，并单独调节图标尺寸和内边距
 - 接管 `mBack` 长按动作，可改为启动自定义 `URL` 或 `Intent URI`，并支持直接测试启动
 - 提供 `mBack` 导航栏透明、隐藏小白条、背景抬高（`inset`）和导航栏高度调节
+- 可屏蔽 Flyme 对 IME 控制栏的注入修改，强制回退到系统原生输入法控制栏
 - 可在输入法内容区下方加入工具栏，包含粘贴、删除、全选、复制、切换输入法，并支持拖动调整按钮顺序
 - 支持配置导入、导出、恢复默认和重启 `SystemUI`
 
 ## 作用域
 
 - 主要作用于 `com.android.systemui`
-- 输入法工具栏相关 Hook 当前作用于 `android`、`com.android.inputmethod.latin`、`com.google.android.inputmethod.latin`、`com.tencent.wetype`
+- 输入法工具栏和 IME 控制栏相关 Hook 当前作用于 `android`、`com.android.inputmethod.latin`、`com.google.android.inputmethod.latin`、`com.tencent.wetype`、`flyme.inputmethod`
 
 ## 实现方式
 
