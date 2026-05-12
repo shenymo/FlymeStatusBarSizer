@@ -9,6 +9,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
+import android.window.BackEvent;
+import android.window.OnBackAnimationCallback;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -151,6 +153,9 @@ public class MainActivity extends Activity {
     private TextView topBarSubtitleView;
     private FrameLayout pageHostView;
     private OnBackInvokedCallback systemBackCallback;
+    private boolean systemBackCallbackRegistered;
+    private View predictiveBackCurrentView;
+    private View predictiveBackHomeView;
     private final Map<Page, View> pageViews = new LinkedHashMap<>();
     private final ArrayDeque<Page> navigationStack = new ArrayDeque<>();
     private Page currentPage = Page.HOME;
@@ -196,7 +201,6 @@ public class MainActivity extends Activity {
         bindHostViews();
         bindPages();
         showPage(Page.HOME);
-        registerSystemBackCallback();
     }
 
     @Override
@@ -296,7 +300,9 @@ public class MainActivity extends Activity {
         for (Map.Entry<Page, View> entry : pageViews.entrySet()) {
             entry.getValue().setVisibility(entry.getKey() == page ? View.VISIBLE : View.GONE);
         }
+        resetPageTransforms();
         updateTopBar(page);
+        updateSystemBackCallbackRegistration();
     }
 
     private void updateTopBar(Page page) {
@@ -358,28 +364,140 @@ public class MainActivity extends Activity {
         return false;
     }
 
-    private void registerSystemBackCallback() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || systemBackCallback != null) {
+    private void updateSystemBackCallbackRegistration() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             return;
         }
-        systemBackCallback = this::handleSystemBackInvoked;
+        boolean shouldIntercept = currentPage != Page.HOME;
+        if (shouldIntercept) {
+            registerSystemBackCallback();
+        } else {
+            unregisterSystemBackCallback();
+        }
+    }
+
+    private void registerSystemBackCallback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || systemBackCallbackRegistered) {
+            return;
+        }
+        if (systemBackCallback == null) {
+            systemBackCallback = createSystemBackCallback();
+        }
         getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                 OnBackInvokedDispatcher.PRIORITY_DEFAULT,
                 systemBackCallback);
+        systemBackCallbackRegistered = true;
     }
 
     private void unregisterSystemBackCallback() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || systemBackCallback == null) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || !systemBackCallbackRegistered
+                || systemBackCallback == null) {
             return;
         }
         getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(systemBackCallback);
-        systemBackCallback = null;
+        systemBackCallbackRegistered = false;
     }
 
     private void handleSystemBackInvoked() {
         if (!handleBackNavigation()) {
             finish();
         }
+    }
+
+    private OnBackInvokedCallback createSystemBackCallback() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            return new OnBackAnimationCallback() {
+                @Override
+                public void onBackStarted(BackEvent backEvent) {
+                    startPredictiveBackPreview(backEvent);
+                }
+
+                @Override
+                public void onBackProgressed(BackEvent backEvent) {
+                    updatePredictiveBackPreview(backEvent);
+                }
+
+                @Override
+                public void onBackCancelled() {
+                    cancelPredictiveBackPreview();
+                }
+
+                @Override
+                public void onBackInvoked() {
+                    commitPredictiveBackPreview();
+                }
+            };
+        }
+        return this::handleSystemBackInvoked;
+    }
+
+    private void startPredictiveBackPreview(BackEvent backEvent) {
+        if (currentPage == Page.HOME) {
+            return;
+        }
+        predictiveBackCurrentView = pageViews.get(currentPage);
+        predictiveBackHomeView = pageViews.get(Page.HOME);
+        if (predictiveBackCurrentView == null || predictiveBackHomeView == null) {
+            return;
+        }
+        predictiveBackHomeView.setVisibility(View.VISIBLE);
+        predictiveBackCurrentView.bringToFront();
+        applyPredictiveBackProgress(backEvent);
+    }
+
+    private void updatePredictiveBackPreview(BackEvent backEvent) {
+        if (predictiveBackCurrentView == null || predictiveBackHomeView == null) {
+            startPredictiveBackPreview(backEvent);
+            return;
+        }
+        applyPredictiveBackProgress(backEvent);
+    }
+
+    private void cancelPredictiveBackPreview() {
+        showPage(currentPage);
+    }
+
+    private void commitPredictiveBackPreview() {
+        handleBackNavigation();
+    }
+
+    private void applyPredictiveBackProgress(BackEvent backEvent) {
+        if (predictiveBackCurrentView == null || predictiveBackHomeView == null) {
+            return;
+        }
+        float progress = Math.max(0f, Math.min(1f, backEvent.getProgress()));
+        int width = pageHostView != null && pageHostView.getWidth() > 0
+                ? pageHostView.getWidth()
+                : predictiveBackCurrentView.getWidth();
+        if (width <= 0) {
+            return;
+        }
+        int direction = backEvent.getSwipeEdge() == BackEvent.EDGE_RIGHT ? -1 : 1;
+        float currentTranslation = direction * width * 0.28f * progress;
+        float homeOffset = direction * width * 0.06f * (1f - progress);
+
+        predictiveBackCurrentView.setTranslationX(currentTranslation);
+        predictiveBackCurrentView.setScaleX(1f - 0.06f * progress);
+        predictiveBackCurrentView.setScaleY(1f - 0.06f * progress);
+        predictiveBackCurrentView.setAlpha(1f - 0.18f * progress);
+
+        predictiveBackHomeView.setTranslationX(-homeOffset);
+        predictiveBackHomeView.setScaleX(0.98f + 0.02f * progress);
+        predictiveBackHomeView.setScaleY(0.98f + 0.02f * progress);
+        predictiveBackHomeView.setAlpha(0.92f + 0.08f * progress);
+    }
+
+    private void resetPageTransforms() {
+        for (View pageView : pageViews.values()) {
+            pageView.setTranslationX(0f);
+            pageView.setTranslationY(0f);
+            pageView.setScaleX(1f);
+            pageView.setScaleY(1f);
+            pageView.setAlpha(1f);
+        }
+        predictiveBackCurrentView = null;
+        predictiveBackHomeView = null;
     }
 
     private View buildTopBar() {
