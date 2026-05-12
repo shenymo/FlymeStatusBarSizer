@@ -1,5 +1,7 @@
 package com.example.flymestatusbarsizer;
 
+import com.example.flymestatusbarsizer.feature.ime.ImeToolbarSpec;
+
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
@@ -113,13 +115,14 @@ public class MainActivity extends Activity {
     private View positionTuningPage;
     private View[] mainPages;
     private TextView[] mainTabs;
-    private final ArrayList<String> imeToolbarDraftOrder = new ArrayList<>();
+    private final ArrayList<String> imeControlBarButtonOrder = new ArrayList<>();
+    private final ArrayList<String> imeControlBarHiddenButtons = new ArrayList<>();
     private final ArrayList<String> clockExpressionDraftTokens = new ArrayList<>();
     private final ArrayList<PositionOffsetSliderBinding> positionTuningSliderBindings = new ArrayList<>();
     private final HashMap<String, TextView> clockExpressionButtons = new HashMap<>();
     private final HashMap<String, Integer> pendingIntSliderValues = new HashMap<>();
     private final HashMap<String, Integer> pendingPositionOffsetValues = new HashMap<>();
-    private LinearLayout imeToolbarOrderContainer;
+    private LinearLayout imeControlBarButtonContainer;
     private LinearLayout clockExpressionOrderContainer;
     private TextView clockExpressionPreviewView;
     @Override
@@ -336,45 +339,41 @@ public class MainActivity extends Activity {
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
 
-        addSwitchRow(details, "强制原生输入法控制栏",
-                "屏蔽 Flyme 对 framework IME 控制栏的注入修改，尽量回退到系统自带的 back / home_handle / ime_switcher 控制栏。这个开关不影响下面这排模块自定义工具按钮。",
-                SettingsStore.KEY_IME_FORCE_STOCK_CONTROL_BAR,
-                SettingsStore.DEFAULT_IME_FORCE_STOCK_CONTROL_BAR);
+        addSwitchRow(details, "替换原生输入法控制栏",
+                "打开后统一接管输入法控制栏：替换当前控制栏、去掉深灰背景、同步输入法背景，并把工具按钮合并进控制栏。",
+                SettingsStore.KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
+                SettingsStore.DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR);
         addDivider(details);
-        addSwitchRow(details, "控制栏去深灰并同步输入法背景",
-                "去掉输入法控制栏那层深灰 scrim，并把控制栏背景同步成输入法背景。这个开关可以独立开启，不要求同时强制回退原生控制栏。",
-                SettingsStore.KEY_IME_CONTROL_BAR_BLEND_ENABLED,
-                SettingsStore.DEFAULT_IME_CONTROL_BAR_BLEND_ENABLED);
+        addChoiceRow(details, "按钮对齐方式",
+                "左对齐会把全部按钮贴左；右对齐会把全部按钮贴右；两端对齐会把当前顺序最后一个按钮贴到右侧，其余按钮留在左侧。",
+                SettingsStore.KEY_IME_CONTROL_BAR_ALIGNMENT,
+                SettingsStore.DEFAULT_IME_CONTROL_BAR_ALIGNMENT,
+                new int[]{
+                        SettingsStore.IME_CONTROL_BAR_ALIGNMENT_LEFT,
+                        SettingsStore.IME_CONTROL_BAR_ALIGNMENT_RIGHT,
+                        SettingsStore.IME_CONTROL_BAR_ALIGNMENT_JUSTIFY
+                },
+                new String[]{"左对齐", "右对齐", "两端对齐"});
         addDivider(details);
-        addSwitchRow(details, "启用输入法工具栏",
-                "开启后启用这五个工具按钮。强制原生输入法控制栏开启时，这五个按钮会并入原生控制栏；否则仍显示在输入法界面下方。",
-                SettingsStore.KEY_IME_TOOLBAR_ENABLED,
-                SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED);
-        addDivider(details);
-        addProfileSectionHeader(details, "按钮顺序",
-                "长按某个按钮项后拖到目标位置，再点应用。这里只改五个按钮的左右顺序，不改按钮功能。");
+        addProfileSectionHeader(details, "按钮显示与顺序",
+                "这里控制替换后控制栏里的 6 个按钮，包括返回。开关决定是否显示，长按拖动调整顺序，至少保留 1 个按钮。");
 
         TextView hint = new TextView(this);
-        hint.setText("按住列表项拖动，松手后会插到对应位置。");
+        hint.setText("返回按钮也在下面这组里；改动会立即写入配置并刷新当前输入法界面。");
         hint.setTextColor(colorSubtext);
         hint.setTextSize(13);
         hint.setPadding(0, dp(10), 0, 0);
         details.addView(hint, matchWrap());
 
-        imeToolbarOrderContainer = new LinearLayout(this);
-        imeToolbarOrderContainer.setOrientation(LinearLayout.VERTICAL);
-        imeToolbarOrderContainer.setPadding(0, dp(12), 0, 0);
-        details.addView(imeToolbarOrderContainer, matchWrap());
-        loadImeToolbarDraftOrder();
-        renderImeToolbarOrderEditor();
-
-        addDivider(details);
-        addActionButtonRow(details, "应用当前顺序",
-                "保存这五个按钮的新顺序，并通知当前输入法界面马上刷新。",
-                "应用", this::applyImeToolbarOrder);
+        imeControlBarButtonContainer = new LinearLayout(this);
+        imeControlBarButtonContainer.setOrientation(LinearLayout.VERTICAL);
+        imeControlBarButtonContainer.setPadding(0, dp(12), 0, 0);
+        details.addView(imeControlBarButtonContainer, matchWrap());
+        loadImeControlBarButtonConfig();
+        renderImeControlBarButtonEditor();
         return buildExpandableInfoCard(
                 "输入法",
-                "可以单独控制 framework IME 控制栏回退原生，以及模块自定义输入法工具栏和按钮顺序。",
+                "把输入法控制栏相关逻辑收口到一个总开关，并单独配置按钮显示、顺序和对齐。",
                 details);
     }
 
@@ -2537,67 +2536,73 @@ public class MainActivity extends Activity {
                 || "mm".equals(token) || "ss".equals(token);
     }
 
-    private void loadImeToolbarDraftOrder() {
-        imeToolbarDraftOrder.clear();
-        String raw = readStringSetting(
-                SettingsStore.KEY_IME_TOOLBAR_ORDER,
-                SettingsStore.DEFAULT_IME_TOOLBAR_ORDER);
-        if (!TextUtils.isEmpty(raw)) {
-            String[] parts = raw.split(",");
-            for (String part : parts) {
-                String action = part == null ? "" : part.trim();
-                if (isValidImeToolbarAction(action) && !imeToolbarDraftOrder.contains(action)) {
-                    imeToolbarDraftOrder.add(action);
-                }
+    private void loadImeControlBarButtonConfig() {
+        imeControlBarButtonOrder.clear();
+        imeControlBarHiddenButtons.clear();
+        loadImeControlBarButtonList(
+                readStringSetting(
+                        SettingsStore.KEY_IME_CONTROL_BAR_BUTTON_ORDER,
+                        SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_ORDER),
+                imeControlBarButtonOrder);
+        for (String button : ImeToolbarSpec.copyDefaultButtonOrder()) {
+            if (!imeControlBarButtonOrder.contains(button)) {
+                imeControlBarButtonOrder.add(button);
             }
         }
-        addMissingImeToolbarActions(imeToolbarDraftOrder);
+        loadImeControlBarButtonList(
+                readStringSetting(
+                        SettingsStore.KEY_IME_CONTROL_BAR_HIDDEN_BUTTONS,
+                        SettingsStore.DEFAULT_IME_CONTROL_BAR_HIDDEN_BUTTONS),
+                imeControlBarHiddenButtons);
+        ensureImeControlBarHasVisibleButton();
     }
 
-    private void addMissingImeToolbarActions(ArrayList<String> target) {
-        String[] defaults = new String[]{"paste", "delete", "select_all", "copy", "switch_ime"};
-        for (String action : defaults) {
-            if (!target.contains(action)) {
-                target.add(action);
-            }
-        }
-    }
-
-    private boolean isValidImeToolbarAction(String action) {
-        return "paste".equals(action)
-                || "delete".equals(action)
-                || "select_all".equals(action)
-                || "copy".equals(action)
-                || "switch_ime".equals(action);
-    }
-
-    private void renderImeToolbarOrderEditor() {
-        if (imeToolbarOrderContainer == null) {
+    private void loadImeControlBarButtonList(String raw, ArrayList<String> target) {
+        if (target == null || TextUtils.isEmpty(raw)) {
             return;
         }
-        imeToolbarOrderContainer.removeAllViews();
-        for (int i = 0; i < imeToolbarDraftOrder.size(); i++) {
-            String action = imeToolbarDraftOrder.get(i);
-            imeToolbarOrderContainer.addView(buildImeToolbarOrderRow(action), matchWrap());
-            if (i < imeToolbarDraftOrder.size() - 1) {
+        String[] parts = raw.split(",");
+        for (String part : parts) {
+            String button = part == null ? "" : part.trim();
+            if (ImeToolbarSpec.isValidButtonName(button) && !target.contains(button)) {
+                target.add(button);
+            }
+        }
+    }
+
+    private void ensureImeControlBarHasVisibleButton() {
+        if (countVisibleImeControlBarButtons() > 0 || imeControlBarButtonOrder.isEmpty()) {
+            return;
+        }
+        imeControlBarHiddenButtons.remove(imeControlBarButtonOrder.get(0));
+    }
+
+    private void renderImeControlBarButtonEditor() {
+        if (imeControlBarButtonContainer == null) {
+            return;
+        }
+        imeControlBarButtonContainer.removeAllViews();
+        for (int i = 0; i < imeControlBarButtonOrder.size(); i++) {
+            String button = imeControlBarButtonOrder.get(i);
+            imeControlBarButtonContainer.addView(buildImeControlBarButtonRow(button), matchWrap());
+            if (i < imeControlBarButtonOrder.size() - 1) {
                 View divider = new View(this);
                 divider.setBackgroundColor(colorStroke);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
                 lp.topMargin = dp(8);
                 lp.bottomMargin = dp(8);
-                imeToolbarOrderContainer.addView(divider, lp);
+                imeControlBarButtonContainer.addView(divider, lp);
             }
         }
     }
 
-    private View buildImeToolbarOrderRow(String action) {
+    private View buildImeControlBarButtonRow(String button) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(14), dp(12), dp(14), dp(12));
         row.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
-        row.setTag(action);
 
         TextView drag = new TextView(this);
         drag.setText("≡");
@@ -2608,21 +2613,27 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
         TextView title = new TextView(this);
-        title.setText(getImeToolbarActionLabel(action));
         title.setTextColor(colorText);
         title.setTextSize(15);
         title.setPadding(dp(12), 0, 0, 0);
         row.addView(title, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView summary = chip("长按拖动", colorSurfaceStrong, colorPrimary);
-        row.addView(summary, new LinearLayout.LayoutParams(
+        TextView state = chip("", colorSurfaceStrong, colorPrimary);
+        LinearLayout.LayoutParams stateLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        stateLp.rightMargin = dp(12);
+        row.addView(state, stateLp);
+
+        Switch toggle = new Switch(this);
+        row.addView(toggle, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
         row.setOnLongClickListener(v -> {
-            String currentAction = v.getTag() instanceof String ? (String) v.getTag() : "";
-            ClipData data = ClipData.newPlainText("ime_toolbar_action", currentAction);
+            String currentButton = v.getTag() instanceof String ? (String) v.getTag() : "";
+            ClipData data = ClipData.newPlainText("ime_control_bar_button", currentButton);
             View.DragShadowBuilder shadow = new View.DragShadowBuilder(v);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 v.startDragAndDrop(data, shadow, v, 0);
@@ -2632,11 +2643,49 @@ public class MainActivity extends Activity {
             v.setAlpha(0.55f);
             return true;
         });
-        row.setOnDragListener((v, event) -> handleImeToolbarRowDrag(v, event));
+        row.setOnDragListener((v, event) -> handleImeControlBarButtonRowDrag(v, event));
+        bindImeControlBarButtonRow(row, button);
         return row;
     }
 
-    private boolean handleImeToolbarRowDrag(View target, DragEvent event) {
+    private void bindImeControlBarButtonRow(LinearLayout row, String button) {
+        if (row == null) {
+            return;
+        }
+        boolean visible = isImeControlBarButtonVisible(button);
+        row.setTag(button);
+        row.setAlpha(visible ? 1f : 0.55f);
+        row.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
+
+        View titleView = row.getChildCount() > 1 ? row.getChildAt(1) : null;
+        if (titleView instanceof TextView) {
+            ((TextView) titleView).setText(ImeToolbarSpec.getButtonLabel(button));
+        }
+        View stateView = row.getChildCount() > 2 ? row.getChildAt(2) : null;
+        if (stateView instanceof TextView) {
+            ((TextView) stateView).setText(visible ? "显示" : "隐藏");
+        }
+        View toggleView = row.getChildCount() > 3 ? row.getChildAt(3) : null;
+        if (toggleView instanceof Switch) {
+            Switch toggle = (Switch) toggleView;
+            toggle.setOnCheckedChangeListener(null);
+            toggle.setChecked(visible);
+            toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                if (!isChecked
+                        && isImeControlBarButtonVisible(button)
+                        && countVisibleImeControlBarButtons() <= 1) {
+                    showToast("至少保留 1 个按钮");
+                    syncImeControlBarButtonRows();
+                    return;
+                }
+                setImeControlBarButtonVisible(button, isChecked);
+                saveImeControlBarButtonConfig();
+                syncImeControlBarButtonRows();
+            });
+        }
+    }
+
+    private boolean handleImeControlBarButtonRowDrag(View target, DragEvent event) {
         if (!(target.getTag() instanceof String)) {
             return false;
         }
@@ -2656,8 +2705,11 @@ public class MainActivity extends Activity {
                 if (!(localState instanceof View) || !((((View) localState).getTag()) instanceof String)) {
                     return false;
                 }
-                moveImeToolbarAction((String) ((View) localState).getTag(), (String) target.getTag());
-                syncImeToolbarOrderEditorRows();
+                moveImeControlBarButton(
+                        (String) ((View) localState).getTag(),
+                        (String) target.getTag());
+                saveImeControlBarButtonConfig();
+                syncImeControlBarButtonRows();
                 return true;
             case DragEvent.ACTION_DRAG_ENDED:
                 target.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
@@ -2665,55 +2717,65 @@ public class MainActivity extends Activity {
                 if (draggedView instanceof View) {
                     ((View) draggedView).setAlpha(1f);
                 }
-                syncImeToolbarOrderEditorRows();
+                syncImeControlBarButtonRows();
                 return true;
             default:
                 return true;
         }
     }
 
-    private void moveImeToolbarAction(String fromAction, String toAction) {
-        if (TextUtils.isEmpty(fromAction) || TextUtils.isEmpty(toAction) || fromAction.equals(toAction)) {
+    private void moveImeControlBarButton(String fromButton, String toButton) {
+        if (TextUtils.isEmpty(fromButton) || TextUtils.isEmpty(toButton) || fromButton.equals(toButton)) {
             return;
         }
-        int fromIndex = imeToolbarDraftOrder.indexOf(fromAction);
-        int toIndex = imeToolbarDraftOrder.indexOf(toAction);
+        int fromIndex = imeControlBarButtonOrder.indexOf(fromButton);
+        int toIndex = imeControlBarButtonOrder.indexOf(toButton);
         if (fromIndex < 0 || toIndex < 0) {
             return;
         }
-        imeToolbarDraftOrder.remove(fromIndex);
+        imeControlBarButtonOrder.remove(fromIndex);
         if (fromIndex < toIndex) {
             toIndex--;
         }
-        imeToolbarDraftOrder.add(toIndex, fromAction);
+        imeControlBarButtonOrder.add(toIndex, fromButton);
     }
 
-    private String getImeToolbarActionLabel(String action) {
-        if ("paste".equals(action)) {
-            return "粘贴";
-        }
-        if ("delete".equals(action)) {
-            return "删除";
-        }
-        if ("select_all".equals(action)) {
-            return "全选";
-        }
-        if ("copy".equals(action)) {
-            return "复制";
-        }
-        if ("switch_ime".equals(action)) {
-            return "切换输入法";
-        }
-        return action;
+    private boolean isImeControlBarButtonVisible(String button) {
+        return !imeControlBarHiddenButtons.contains(button);
     }
 
-    private void applyImeToolbarOrder() {
-        if (imeToolbarDraftOrder.size() != 5) {
-            showToast("按钮顺序数据不完整");
+    private void setImeControlBarButtonVisible(String button, boolean visible) {
+        if (visible) {
+            imeControlBarHiddenButtons.remove(button);
             return;
         }
-        putStringSetting(SettingsStore.KEY_IME_TOOLBAR_ORDER, TextUtils.join(",", imeToolbarDraftOrder));
-        showToast("输入法工具栏顺序已应用");
+        if (!imeControlBarHiddenButtons.contains(button)) {
+            imeControlBarHiddenButtons.add(button);
+        }
+    }
+
+    private int countVisibleImeControlBarButtons() {
+        int count = 0;
+        for (String button : imeControlBarButtonOrder) {
+            if (isImeControlBarButtonVisible(button)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void saveImeControlBarButtonConfig() {
+        ensureImeControlBarHasVisibleButton();
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putString(
+                SettingsStore.KEY_IME_CONTROL_BAR_BUTTON_ORDER,
+                TextUtils.join(",", imeControlBarButtonOrder));
+        editor.putString(
+                SettingsStore.KEY_IME_CONTROL_BAR_HIDDEN_BUTTONS,
+                TextUtils.join(",", imeControlBarHiddenButtons));
+        editor.apply();
+        SettingsStore.notifyChanged(this);
+        invalidatePreview();
     }
 
     private int getPendingIntSliderValue(String key, int defaultValue, int min, int max) {
@@ -2785,25 +2847,18 @@ public class MainActivity extends Activity {
         return insetValue ? formatInsetValue(value) : formatValue(value, suffix);
     }
 
-    private void syncImeToolbarOrderEditorRows() {
-        if (imeToolbarOrderContainer == null) {
+    private void syncImeControlBarButtonRows() {
+        if (imeControlBarButtonContainer == null) {
             return;
         }
         int orderIndex = 0;
-        for (int i = 0; i < imeToolbarOrderContainer.getChildCount(); i++) {
-            View child = imeToolbarOrderContainer.getChildAt(i);
-            if (!(child instanceof LinearLayout) || orderIndex >= imeToolbarDraftOrder.size()) {
+        for (int i = 0; i < imeControlBarButtonContainer.getChildCount(); i++) {
+            View child = imeControlBarButtonContainer.getChildAt(i);
+            if (!(child instanceof LinearLayout) || orderIndex >= imeControlBarButtonOrder.size()) {
                 continue;
             }
             LinearLayout row = (LinearLayout) child;
-            String action = imeToolbarDraftOrder.get(orderIndex++);
-            row.setTag(action);
-            row.setAlpha(1f);
-            row.setBackground(outlinedRect(colorSurface, colorStroke, 1, 20));
-            View titleView = row.getChildCount() > 1 ? row.getChildAt(1) : null;
-            if (titleView instanceof TextView) {
-                ((TextView) titleView).setText(getImeToolbarActionLabel(action));
-            }
+            bindImeControlBarButtonRow(row, imeControlBarButtonOrder.get(orderIndex++));
         }
     }
 

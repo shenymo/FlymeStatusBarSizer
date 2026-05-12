@@ -60,10 +60,10 @@ final class ModuleConfig {
     boolean mbackHidePill = SettingsStore.DEFAULT_MBACK_HIDE_PILL;
     int mbackInsetSize = SettingsStore.DEFAULT_MBACK_INSET_SIZE;
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
-    boolean imeToolbarEnabled = SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED;
-    boolean imeForceStockControlBar = SettingsStore.DEFAULT_IME_FORCE_STOCK_CONTROL_BAR;
-    boolean imeControlBarBlendEnabled = SettingsStore.DEFAULT_IME_CONTROL_BAR_BLEND_ENABLED;
-    String imeToolbarOrder = SettingsStore.DEFAULT_IME_TOOLBAR_ORDER;
+    boolean imeReplaceOriginalControlBar = SettingsStore.DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR;
+    int imeControlBarAlignment = SettingsStore.DEFAULT_IME_CONTROL_BAR_ALIGNMENT;
+    String imeControlBarButtonOrder = SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_ORDER;
+    String imeControlBarHiddenButtons = SettingsStore.DEFAULT_IME_CONTROL_BAR_HIDDEN_BUTTONS;
     boolean telephonyDebugEnabled = SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED;
     boolean wifiPerfLoggingEnabled = SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED;
     int telephonyDebugSimCount = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
@@ -323,22 +323,23 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT,
                     SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT);
-            config.imeToolbarEnabled = SettingsStore.readBoolean(
+            config.imeReplaceOriginalControlBar = SettingsStore.readBoolean(
                     prefs,
-                    SettingsStore.KEY_IME_TOOLBAR_ENABLED,
-                    SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED);
-            config.imeForceStockControlBar = SettingsStore.readBoolean(
+                    SettingsStore.KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
+                    SettingsStore.DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR);
+            config.imeControlBarAlignment = SettingsStore.normalizeImeControlBarAlignment(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_IME_CONTROL_BAR_ALIGNMENT,
+                            SettingsStore.DEFAULT_IME_CONTROL_BAR_ALIGNMENT));
+            config.imeControlBarButtonOrder = SettingsStore.readString(
                     prefs,
-                    SettingsStore.KEY_IME_FORCE_STOCK_CONTROL_BAR,
-                    SettingsStore.DEFAULT_IME_FORCE_STOCK_CONTROL_BAR);
-            config.imeControlBarBlendEnabled = SettingsStore.readBoolean(
+                    SettingsStore.KEY_IME_CONTROL_BAR_BUTTON_ORDER,
+                    SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_ORDER);
+            config.imeControlBarHiddenButtons = SettingsStore.readString(
                     prefs,
-                    SettingsStore.KEY_IME_CONTROL_BAR_BLEND_ENABLED,
-                    SettingsStore.DEFAULT_IME_CONTROL_BAR_BLEND_ENABLED);
-            config.imeToolbarOrder = SettingsStore.readString(
-                    prefs,
-                    SettingsStore.KEY_IME_TOOLBAR_ORDER,
-                    SettingsStore.DEFAULT_IME_TOOLBAR_ORDER);
+                    SettingsStore.KEY_IME_CONTROL_BAR_HIDDEN_BUTTONS,
+                    SettingsStore.DEFAULT_IME_CONTROL_BAR_HIDDEN_BUTTONS);
             config.telephonyDebugEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_TELEPHONY_DEBUG_ENABLED,

@@ -39,8 +39,6 @@ public final class ImeHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<Object, Boolean> LAST_STOCK_CONTROL_BAR_STATES =
             new WeakHashMap<>();
-    private static final WeakHashMap<Object, Boolean> LAST_CONTROL_BAR_BACKGROUND_TWEAK_STATES =
-            new WeakHashMap<>();
     private static final WeakHashMap<Object, String> LAST_STOCK_CONTROL_BAR_LAYOUT_SPECS =
             new WeakHashMap<>();
     private static final WeakHashMap<Object, ImeWindowAppearanceState> IME_WINDOW_APPEARANCE_STATES =
@@ -79,7 +77,6 @@ public final class ImeHooks {
                 if (inputView == null) {
                     continue;
                 }
-                ImeToolbarController.refreshToolbarNow(inputMethodService, inputView);
                 refreshImeControlBarNow(inputMethodService);
             }
             refreshTrackedInputMethodManagerServices();
@@ -98,22 +95,8 @@ public final class ImeHooks {
                 || PACKAGE_FLYME_INPUTMETHOD.equals(packageName);
     }
 
-    private static boolean shouldForceStockImeControlBar() {
-        FlymeStatusBarSizer.ImeConfigSnapshot config = FlymeStatusBarSizer.loadImeConfig(null);
-        return config.enabled && config.imeForceStockControlBar;
-    }
-
-    private static boolean shouldEmbedToolbarInStockControlBar() {
-        return ImeToolbarSpec.shouldEmbedInStockControlBar(FlymeStatusBarSizer.loadImeConfig(null));
-    }
-
-    private static boolean shouldBlendImeControlBarBackground() {
-        FlymeStatusBarSizer.ImeConfigSnapshot config = FlymeStatusBarSizer.loadImeConfig(null);
-        return config.enabled && config.imeControlBarBlendEnabled;
-    }
-
-    private static boolean shouldApplyImeControlBarBackgroundTweaks() {
-        return shouldForceStockImeControlBar() || shouldBlendImeControlBarBackground();
+    private static boolean shouldReplaceOriginalImeControlBar() {
+        return ImeToolbarSpec.shouldReplaceOriginalControlBar(FlymeStatusBarSizer.loadImeConfig(null));
     }
 
     private static void hookNavigationBarInflaterOnFinishInflate(
@@ -127,7 +110,7 @@ public final class ImeHooks {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object result = chain.proceed();
-                if (!shouldForceStockImeControlBar()) {
+                if (!shouldReplaceOriginalImeControlBar()) {
                     return result;
                 }
                 rebuildStockNavigationBarLayout(chain.getThisObject());
@@ -156,7 +139,7 @@ public final class ImeHooks {
             module.intercept(method, chain -> {
                 Object specArg = chain.getArg(0);
                 Object parentArg = chain.getArg(1);
-                if (!shouldEmbedToolbarInStockControlBar()
+                if (!shouldReplaceOriginalImeControlBar()
                         || !(specArg instanceof String)
                         || !(parentArg instanceof ViewGroup)) {
                     return chain.proceed();
@@ -189,7 +172,7 @@ public final class ImeHooks {
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
                 Object arg = chain.getArg(0);
-                if (!shouldForceStockImeControlBar()
+                if (!shouldReplaceOriginalImeControlBar()
                         || thisObject == null
                         || !(arg instanceof Integer)) {
                     return chain.proceed();
@@ -250,7 +233,7 @@ public final class ImeHooks {
                     WindowInsets.class);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                if (!shouldForceStockImeControlBar()) {
+                if (!shouldReplaceOriginalImeControlBar()) {
                     return chain.proceed();
                 }
                 Object thisObject = chain.getThisObject();
@@ -296,7 +279,7 @@ public final class ImeHooks {
                     boolean.class);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                if (!shouldApplyImeControlBarBackgroundTweaks()) {
+                if (!shouldReplaceOriginalImeControlBar()) {
                     return chain.proceed();
                 }
                 Object thisObject = chain.getThisObject();
@@ -349,10 +332,7 @@ public final class ImeHooks {
                 FlymeStatusBarSizer.rememberSystemUiContext(context);
                 FlymeStatusBarSizer.ensureConfigRefreshObserver(context);
                 TRACKED_INPUT_METHOD_VIEWS.put(thisObject, inputView);
-                inputView.post(() -> {
-                    ImeToolbarController.attachToolbarIfNeeded(thisObject, inputView);
-                    refreshImeControlBarNow(thisObject);
-                });
+                inputView.post(() -> refreshImeControlBarNow(thisObject));
                 return result;
             });
 
@@ -364,10 +344,7 @@ public final class ImeHooks {
                 Object thisObject = chain.getThisObject();
                 View inputView = TRACKED_INPUT_METHOD_VIEWS.get(thisObject);
                 if (inputView != null) {
-                    inputView.post(() -> {
-                        ImeToolbarController.attachToolbarIfNeeded(thisObject, inputView);
-                        refreshImeControlBarNow(thisObject);
-                    });
+                    inputView.post(() -> refreshImeControlBarNow(thisObject));
                 }
                 return result;
             });
@@ -379,10 +356,7 @@ public final class ImeHooks {
                 Object thisObject = chain.getThisObject();
                 View inputView = TRACKED_INPUT_METHOD_VIEWS.get(thisObject);
                 if (inputView != null) {
-                    inputView.post(() -> {
-                        ImeToolbarController.attachToolbarIfNeeded(thisObject, inputView);
-                        refreshImeControlBarNow(thisObject);
-                    });
+                    inputView.post(() -> refreshImeControlBarNow(thisObject));
                 }
                 return result;
             });
@@ -409,7 +383,7 @@ public final class ImeHooks {
                 if (service != null) {
                     TRACKED_INPUT_METHOD_MANAGER_SERVICES.put(service, Boolean.TRUE);
                 }
-                if (!shouldForceStockImeControlBar()) {
+                if (!shouldReplaceOriginalImeControlBar()) {
                     return chain.proceed();
                 }
                 Object userData = chain.getArg(0);
@@ -444,7 +418,7 @@ public final class ImeHooks {
                 if (service != null) {
                     TRACKED_INPUT_METHOD_MANAGER_SERVICES.put(service, Boolean.TRUE);
                 }
-                if (!shouldForceStockImeControlBar() || service == null) {
+                if (!shouldReplaceOriginalImeControlBar() || service == null) {
                     return result;
                 }
                 applyStockImeWindowStatus(
@@ -478,7 +452,7 @@ public final class ImeHooks {
                 navigationBarInflaterView,
                 "getDefaultLayout",
                 new Class[0]);
-        String layoutSpec = ImeToolbarSpec.shouldEmbedInStockControlBar(config)
+        String layoutSpec = ImeToolbarSpec.shouldReplaceOriginalControlBar(config)
                 ? ImeToolbarSpec.buildStockControlBarLayout(config)
                 : (defaultLayout instanceof String ? (String) defaultLayout : null);
         FlymeStatusBarSizer.invokeMethodCompat(
@@ -497,25 +471,23 @@ public final class ImeHooks {
         if (navigationBarController == null || callbackImpl == null) {
             return;
         }
-        boolean forceStock = shouldForceStockImeControlBar();
-        boolean applyBackgroundTweaks = shouldApplyImeControlBarBackgroundTweaks();
+        boolean replaceControlBar = shouldReplaceOriginalImeControlBar();
         String desiredLayoutSpec = resolveEmbeddedStockControlBarLayoutSpec();
         Boolean lastAppliedState = LAST_STOCK_CONTROL_BAR_STATES.get(inputMethodService);
-        Boolean lastBlendState = LAST_CONTROL_BAR_BACKGROUND_TWEAK_STATES.get(inputMethodService);
         String lastLayoutSpec = LAST_STOCK_CONTROL_BAR_LAYOUT_SPECS.get(inputMethodService);
         if (lastAppliedState == null
-                || lastAppliedState.booleanValue() != forceStock
+                || lastAppliedState.booleanValue() != replaceControlBar
                 || !Objects.equals(lastLayoutSpec, desiredLayoutSpec)) {
             FlymeStatusBarSizer.invokeMethodCompat(
                     callbackImpl,
                     "uninstallNavigationBarFrameIfNecessary",
                     new Class[0]);
         }
-        boolean blendStateChanged =
-                lastBlendState == null || lastBlendState.booleanValue() != applyBackgroundTweaks;
-        if (applyBackgroundTweaks) {
+        boolean replaceStateChanged =
+                lastAppliedState == null || lastAppliedState.booleanValue() != replaceControlBar;
+        if (replaceControlBar) {
             applyImeWindowNavigationBarAppearance(inputMethodService);
-        } else if (blendStateChanged) {
+        } else if (replaceStateChanged) {
             restoreImeWindowNavigationBarAppearance(inputMethodService);
         }
         FlymeStatusBarSizer.invokeMethodCompat(
@@ -529,9 +501,9 @@ public final class ImeHooks {
                     (View) navigationBarFrame,
                     inputMethodService,
                     getFloatField(callbackImpl, "mDarkIntensity", 0f));
-            if (applyBackgroundTweaks) {
+            if (replaceControlBar) {
                 syncNavigationBarFrameBackgroundNow((View) navigationBarFrame, inputMethodService);
-            } else if (blendStateChanged) {
+            } else if (replaceStateChanged) {
                 FlymeStatusBarSizer.invokeMethodCompat(
                         callbackImpl,
                         "onDrawLegacyNavigationBarBackgroundChanged",
@@ -540,8 +512,7 @@ public final class ImeHooks {
             }
             ((View) navigationBarFrame).requestApplyInsets();
         }
-        LAST_STOCK_CONTROL_BAR_STATES.put(inputMethodService, forceStock);
-        LAST_CONTROL_BAR_BACKGROUND_TWEAK_STATES.put(inputMethodService, applyBackgroundTweaks);
+        LAST_STOCK_CONTROL_BAR_STATES.put(inputMethodService, replaceControlBar);
         LAST_STOCK_CONTROL_BAR_LAYOUT_SPECS.put(inputMethodService, desiredLayoutSpec);
     }
 
@@ -926,7 +897,7 @@ public final class ImeHooks {
 
     private static String resolveEmbeddedStockControlBarLayoutSpec() {
         FlymeStatusBarSizer.ImeConfigSnapshot config = FlymeStatusBarSizer.loadImeConfig(null);
-        if (!ImeToolbarSpec.shouldEmbedInStockControlBar(config)) {
+        if (!ImeToolbarSpec.shouldReplaceOriginalControlBar(config)) {
             return null;
         }
         return ImeToolbarSpec.buildStockControlBarLayout(config);
@@ -948,7 +919,7 @@ public final class ImeHooks {
                 context,
                 action,
                 ImeToolbarIcons.createIconDrawable(context, action),
-                ImeToolbarSpec.getActionLabel(action));
+                ImeToolbarSpec.getButtonLabel(action));
     }
 
     private static View createStockControlBarBackButton(Context context) {
@@ -959,7 +930,7 @@ public final class ImeHooks {
                 context,
                 STOCK_CONTROL_BAR_BACK,
                 ImeToolbarIcons.createKeyboardDismissDrawable(context),
-                "返回");
+                ImeToolbarSpec.getButtonLabel(STOCK_CONTROL_BAR_BACK));
     }
 
     private static View createBaseStockControlBarButton(
@@ -1021,8 +992,7 @@ public final class ImeHooks {
             return;
         }
         if (root.getTag() instanceof String
-                && (ImeToolbarSpec.isValidActionName((String) root.getTag())
-                || STOCK_CONTROL_BAR_BACK.equals(root.getTag()))
+                && ImeToolbarSpec.isValidButtonName((String) root.getTag())
                 && root instanceof ImageView) {
             ((ImageView) root).setColorFilter(color);
         }

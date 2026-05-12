@@ -11,14 +11,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
-import android.widget.LinearLayout;
 
 final class ImeToolbarActions {
     private ImeToolbarActions() {
-    }
-
-    static void bindButtonActions(Object inputMethodService, LinearLayout bar) {
-        bindActionButtons(inputMethodService, bar);
     }
 
     static void bindActionButtons(Object inputMethodService, View root) {

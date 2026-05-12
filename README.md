@@ -15,14 +15,14 @@
 - 可把第三方应用的状态栏通知图标替换为应用自身图标，并单独调节图标尺寸和内边距
 - 接管 `mBack` 长按动作，可改为启动自定义 `URL` 或 `Intent URI`，并支持直接测试启动
 - 提供 `mBack` 导航栏透明、隐藏小白条、背景抬高（`inset`）和导航栏高度调节
-- 可屏蔽 Flyme 对 IME 控制栏的注入修改，强制回退到系统原生输入法控制栏
-- 可在输入法内容区下方加入工具栏，包含粘贴、删除、全选、复制、切换输入法，并支持拖动调整按钮顺序
+- 可用一个总开关接管输入法控制栏：替换当前控制栏、去掉深灰背景并同步输入法背景
+- 替换后的输入法控制栏支持配置返回 / 粘贴 / 删除 / 全选 / 复制 / 切换输入法 6 个按钮的显示状态、顺序和对齐方式
 - 支持配置导入、导出、恢复默认和重启 `SystemUI`
 
 ## 作用域
 
 - 主要作用于 `com.android.systemui`
-- 输入法工具栏和 IME 控制栏相关 Hook 当前作用于 `android`、`com.android.inputmethod.latin`、`com.google.android.inputmethod.latin`、`com.tencent.wetype`、`flyme.inputmethod`
+- 输入法控制栏相关 Hook 当前作用于 `android`、`com.android.inputmethod.latin`、`com.google.android.inputmethod.latin`、`com.tencent.wetype`、`flyme.inputmethod`
 
 ## 实现方式
 
@@ -31,5 +31,5 @@
 - `ModuleConfig` 在运行时读取远端配置，并保留最近一次成功配置作为兜底
 - `FlymeStatusBarSizer.java` 是 Xposed 入口，当前按状态栏、信号、电池、通知、时间、`mBack`、输入法几组逻辑分别注册 Hook
 - 状态栏部分当前主要接管电池绘制、`mobile_signal`、通知图标、时间文字、网速视图和 `mBack` 相关类
-- 输入法工具栏是在 `InputMethodService.setInputView(...)` 之后，把自定义按钮栏挂到输入视图下方
+- 输入法部分当前直接重建 `NavigationBarInflaterView` 的按钮布局，并把背景同步到输入法内容视图
 - 配置变化后通过 `Remote Preferences` 监听刷新运行中的 `SystemUI` 和输入法界面

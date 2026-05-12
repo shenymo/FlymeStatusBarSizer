@@ -6421,17 +6421,19 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     public static final class ImeConfigSnapshot {
         public final boolean enabled;
-        public final boolean imeToolbarEnabled;
-        public final boolean imeForceStockControlBar;
-        public final boolean imeControlBarBlendEnabled;
-        public final String imeToolbarOrder;
+        public final boolean imeReplaceOriginalControlBar;
+        public final int imeControlBarAlignment;
+        public final String imeControlBarButtonOrder;
+        public final String imeControlBarHiddenButtons;
 
         private ImeConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
-            imeToolbarEnabled = config != null && config.imeToolbarEnabled;
-            imeForceStockControlBar = config != null && config.imeForceStockControlBar;
-            imeControlBarBlendEnabled = config != null && config.imeControlBarBlendEnabled;
-            imeToolbarOrder = config == null ? "" : config.imeToolbarOrder;
+            imeReplaceOriginalControlBar = config != null && config.imeReplaceOriginalControlBar;
+            imeControlBarAlignment = config == null
+                    ? SettingsStore.DEFAULT_IME_CONTROL_BAR_ALIGNMENT
+                    : config.imeControlBarAlignment;
+            imeControlBarButtonOrder = config == null ? "" : config.imeControlBarButtonOrder;
+            imeControlBarHiddenButtons = config == null ? "" : config.imeControlBarHiddenButtons;
         }
     }
 
