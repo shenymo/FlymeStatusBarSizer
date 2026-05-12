@@ -10,6 +10,7 @@ final class ImeToolbarSpec {
     private static final String[] ACTIONS = {
             "paste", "delete", "select_all", "copy", "switch_ime"
     };
+    private static final String STOCK_CONTROL_BAR_BUTTON_SIZE = "[1WC]";
 
     private ImeToolbarSpec() {
     }
@@ -31,6 +32,30 @@ final class ImeToolbarSpec {
             }
         }
         return result;
+    }
+
+    static boolean isValidActionName(String action) {
+        return isValidAction(action);
+    }
+
+    static boolean shouldEmbedInStockControlBar(FlymeStatusBarSizer.ImeConfigSnapshot config) {
+        return config != null
+                && config.enabled
+                && config.imeToolbarEnabled
+                && config.imeForceStockControlBar;
+    }
+
+    static String buildStockControlBarLayout(FlymeStatusBarSizer.ImeConfigSnapshot config) {
+        ArrayList<String> actions = resolveToolbarOrder(config);
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < actions.size(); i++) {
+            if (i > 0) {
+                builder.append(',');
+            }
+            builder.append(actions.get(i)).append(STOCK_CONTROL_BAR_BUTTON_SIZE);
+        }
+        builder.append(";;back").append(STOCK_CONTROL_BAR_BUTTON_SIZE);
+        return builder.toString();
     }
 
     static String getActionLabel(String action) {

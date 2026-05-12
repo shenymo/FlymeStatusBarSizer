@@ -4,11 +4,18 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import android.content.Context;
 import android.content.res.Resources;
+import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.widget.FrameLayout;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -31,6 +38,8 @@ public final class ImeHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<Object, Boolean> LAST_CONTROL_BAR_BACKGROUND_TWEAK_STATES =
             new WeakHashMap<>();
+    private static final WeakHashMap<Object, String> LAST_STOCK_CONTROL_BAR_LAYOUT_SPECS =
+            new WeakHashMap<>();
     private static final WeakHashMap<Object, ImeWindowAppearanceState> IME_WINDOW_APPEARANCE_STATES =
             new WeakHashMap<>();
 
@@ -43,7 +52,9 @@ public final class ImeHooks {
         }
         if (isImeClientPackage(packageName)) {
             hookNavigationBarInflaterOnFinishInflate(module, loader);
+            hookNavigationBarInflaterCreateView(module, loader);
             hookNavigationBarViewSetNavbarFlags(module, loader);
+            hookNavigationBarViewSetDarkIntensity(module, loader);
             hookNavigationBarInsetsVisibility(module, loader);
             hookNavigationBarBackgroundRefresh(module, loader);
             hookInputMethodService(module, loader);
@@ -89,6 +100,10 @@ public final class ImeHooks {
         return config.enabled && config.imeForceStockControlBar;
     }
 
+    private static boolean shouldEmbedToolbarInStockControlBar() {
+        return ImeToolbarSpec.shouldEmbedInStockControlBar(FlymeStatusBarSizer.loadImeConfig(null));
+    }
+
     private static boolean shouldBlendImeControlBarBackground() {
         FlymeStatusBarSizer.ImeConfigSnapshot config = FlymeStatusBarSizer.loadImeConfig(null);
         return config.enabled && config.imeControlBarBlendEnabled;
@@ -118,6 +133,40 @@ public final class ImeHooks {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logImeWarning(
                     "Failed to hook NavigationBarInflaterView.onFinishInflate",
+                    t);
+        }
+    }
+
+    private static void hookNavigationBarInflaterCreateView(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "android.inputmethodservice.navigationbar.NavigationBarInflaterView",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod(
+                    "createView",
+                    String.class,
+                    ViewGroup.class,
+                    LayoutInflater.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object specArg = chain.getArg(0);
+                Object parentArg = chain.getArg(1);
+                if (!shouldEmbedToolbarInStockControlBar()
+                        || !(specArg instanceof String)
+                        || !(parentArg instanceof ViewGroup)) {
+                    return chain.proceed();
+                }
+                String action = extractButtonName((String) specArg);
+                if (!ImeToolbarSpec.isValidActionName(action)) {
+                    return chain.proceed();
+                }
+                return createStockControlBarActionButton(((ViewGroup) parentArg).getContext(), action);
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logImeWarning(
+                    "Failed to hook NavigationBarInflaterView.createView",
                     t);
         }
     }
@@ -153,6 +202,31 @@ public final class ImeHooks {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logImeWarning(
                     "Failed to hook NavigationBarView.setNavbarFlags",
+                    t);
+        }
+    }
+
+    private static void hookNavigationBarViewSetDarkIntensity(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "android.inputmethodservice.navigationbar.NavigationBarView",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("setDarkIntensity", float.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object thisObject = chain.getThisObject();
+                Object intensityArg = chain.getArg(0);
+                if (thisObject instanceof View && intensityArg instanceof Float) {
+                    applyStockControlBarButtonTint((View) thisObject, (Float) intensityArg);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logImeWarning(
+                    "Failed to hook NavigationBarView.setDarkIntensity",
                     t);
         }
     }
@@ -228,6 +302,10 @@ public final class ImeHooks {
                 Object inputMethodService = getField(thisObject, "mService");
                 applyImeWindowNavigationBarAppearance(inputMethodService);
                 if (navigationBarFrame instanceof View) {
+                    syncStockControlBarButtonsNow(
+                            (View) navigationBarFrame,
+                            inputMethodService,
+                            getFloatField(thisObject, "mDarkIntensity", 0f));
                     syncNavigationBarFrameBackgroundNow((View) navigationBarFrame, inputMethodService);
                     FlymeStatusBarSizer.invokeMethodCompat(
                             thisObject,
@@ -381,6 +459,7 @@ public final class ImeHooks {
         if (navigationBarInflaterView == null) {
             return;
         }
+        FlymeStatusBarSizer.ImeConfigSnapshot config = FlymeStatusBarSizer.loadImeConfig(null);
         FlymeStatusBarSizer.invokeMethodCompat(
                 navigationBarInflaterView,
                 "inflateChildren",
@@ -393,11 +472,14 @@ public final class ImeHooks {
                 navigationBarInflaterView,
                 "getDefaultLayout",
                 new Class[0]);
+        String layoutSpec = ImeToolbarSpec.shouldEmbedInStockControlBar(config)
+                ? ImeToolbarSpec.buildStockControlBarLayout(config)
+                : (defaultLayout instanceof String ? (String) defaultLayout : null);
         FlymeStatusBarSizer.invokeMethodCompat(
                 navigationBarInflaterView,
                 "inflateLayout",
                 new Class[]{String.class},
-                defaultLayout instanceof String ? (String) defaultLayout : null);
+                layoutSpec);
     }
 
     private static void refreshImeControlBarNow(Object inputMethodService) {
@@ -411,9 +493,13 @@ public final class ImeHooks {
         }
         boolean forceStock = shouldForceStockImeControlBar();
         boolean applyBackgroundTweaks = shouldApplyImeControlBarBackgroundTweaks();
+        String desiredLayoutSpec = resolveEmbeddedStockControlBarLayoutSpec();
         Boolean lastAppliedState = LAST_STOCK_CONTROL_BAR_STATES.get(inputMethodService);
         Boolean lastBlendState = LAST_CONTROL_BAR_BACKGROUND_TWEAK_STATES.get(inputMethodService);
-        if (lastAppliedState == null || lastAppliedState.booleanValue() != forceStock) {
+        String lastLayoutSpec = LAST_STOCK_CONTROL_BAR_LAYOUT_SPECS.get(inputMethodService);
+        if (lastAppliedState == null
+                || lastAppliedState.booleanValue() != forceStock
+                || !Objects.equals(lastLayoutSpec, desiredLayoutSpec)) {
             FlymeStatusBarSizer.invokeMethodCompat(
                     callbackImpl,
                     "uninstallNavigationBarFrameIfNecessary",
@@ -433,6 +519,10 @@ public final class ImeHooks {
                 resolveCurrentImeNavButtonFlags(callbackImpl));
         Object navigationBarFrame = getField(callbackImpl, "mNavigationBarFrame");
         if (navigationBarFrame instanceof View) {
+            syncStockControlBarButtonsNow(
+                    (View) navigationBarFrame,
+                    inputMethodService,
+                    getFloatField(callbackImpl, "mDarkIntensity", 0f));
             if (applyBackgroundTweaks) {
                 syncNavigationBarFrameBackgroundNow((View) navigationBarFrame, inputMethodService);
             } else if (blendStateChanged) {
@@ -446,6 +536,7 @@ public final class ImeHooks {
         }
         LAST_STOCK_CONTROL_BAR_STATES.put(inputMethodService, forceStock);
         LAST_CONTROL_BAR_BACKGROUND_TWEAK_STATES.put(inputMethodService, applyBackgroundTweaks);
+        LAST_STOCK_CONTROL_BAR_LAYOUT_SPECS.put(inputMethodService, desiredLayoutSpec);
     }
 
     private static int resolveCurrentImeNavButtonFlags(Object callbackImpl) {
@@ -667,6 +758,11 @@ public final class ImeHooks {
         return value instanceof Integer ? (Integer) value : fallback;
     }
 
+    private static float getFloatField(Object target, String name, float fallback) {
+        Object value = getField(target, name);
+        return value instanceof Float ? (Float) value : fallback;
+    }
+
     private static boolean invokeBooleanMethod(
             Object target,
             String name,
@@ -820,6 +916,95 @@ public final class ImeHooks {
 
     private static ViewGroup asViewGroup(Object object) {
         return object instanceof ViewGroup ? (ViewGroup) object : null;
+    }
+
+    private static String resolveEmbeddedStockControlBarLayoutSpec() {
+        FlymeStatusBarSizer.ImeConfigSnapshot config = FlymeStatusBarSizer.loadImeConfig(null);
+        if (!ImeToolbarSpec.shouldEmbedInStockControlBar(config)) {
+            return null;
+        }
+        return ImeToolbarSpec.buildStockControlBarLayout(config);
+    }
+
+    private static String extractButtonName(String buttonSpec) {
+        if (buttonSpec == null) {
+            return "";
+        }
+        int sizeIndex = buttonSpec.indexOf('[');
+        return sizeIndex >= 0 ? buttonSpec.substring(0, sizeIndex) : buttonSpec;
+    }
+
+    private static View createStockControlBarActionButton(Context context, String action) {
+        if (context == null || !ImeToolbarSpec.isValidActionName(action)) {
+            return null;
+        }
+        ImageButton button = new ImageButton(context);
+        button.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER));
+        button.setTag(action);
+        button.setImageDrawable(ImeToolbarIcons.createIconDrawable(context, action));
+        button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        button.setContentDescription(ImeToolbarSpec.getActionLabel(action));
+        button.setBackground(resolveBorderlessSelectableBackground(context));
+        int padding = FlymeStatusBarSizer.dp(context, 8);
+        button.setPadding(padding, padding, padding, padding);
+        button.setClickable(true);
+        button.setFocusable(true);
+        return button;
+    }
+
+    private static Drawable resolveBorderlessSelectableBackground(Context context) {
+        if (context != null) {
+            TypedValue typedValue = new TypedValue();
+            if (context.getTheme().resolveAttribute(
+                    android.R.attr.selectableItemBackgroundBorderless,
+                    typedValue,
+                    true)) {
+                try {
+                    return context.getDrawable(typedValue.resourceId);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return new ColorDrawable(Color.TRANSPARENT);
+    }
+
+    private static void syncStockControlBarButtonsNow(
+            View navigationBarFrame, Object inputMethodService, float darkIntensity) {
+        if (navigationBarFrame == null) {
+            return;
+        }
+        ImeToolbarActions.bindActionButtons(inputMethodService, navigationBarFrame);
+        ImeToolbarActions.refreshActionButtonStates(inputMethodService, navigationBarFrame);
+        applyStockControlBarButtonTint(navigationBarFrame, darkIntensity);
+    }
+
+    private static void applyStockControlBarButtonTint(View root, float darkIntensity) {
+        if (root == null) {
+            return;
+        }
+        int color = ImeToolbarIcons.resolveStockControlBarIconColor(darkIntensity);
+        applyStockControlBarButtonTintRecursive(root, color);
+    }
+
+    private static void applyStockControlBarButtonTintRecursive(View root, int color) {
+        if (root == null) {
+            return;
+        }
+        if (root.getTag() instanceof String
+                && ImeToolbarSpec.isValidActionName((String) root.getTag())
+                && root instanceof ImageView) {
+            ((ImageView) root).setColorFilter(color);
+        }
+        if (!(root instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) root;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            applyStockControlBarButtonTintRecursive(group.getChildAt(i), color);
+        }
     }
 
     private static final class ImeWindowAppearanceState {

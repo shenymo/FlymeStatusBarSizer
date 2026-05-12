@@ -32,7 +32,9 @@ final class ImeToolbarController {
             return;
         }
         FlymeStatusBarSizer.ImeConfigSnapshot config = FlymeStatusBarSizer.loadImeConfig(context);
-        if (!config.enabled || !config.imeToolbarEnabled) {
+        if (!config.enabled
+                || !config.imeToolbarEnabled
+                || ImeToolbarSpec.shouldEmbedInStockControlBar(config)) {
             detachToolbarIfPresent(inputMethodService);
             return;
         }

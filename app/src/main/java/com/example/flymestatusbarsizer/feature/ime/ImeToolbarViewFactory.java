@@ -37,22 +37,9 @@ final class ImeToolbarViewFactory {
             bar.addView(button, new LinearLayout.LayoutParams(buttonParams));
         }
         applyToolbarIconTint(bar, ImeToolbarIcons.resolveIconColor(context));
-        ImeToolbarActions.bindButtonActions(inputMethodService, bar);
-        ImeToolbarActions.updatePasteButtonEnabled(inputMethodService, findToolbarButton(bar, "paste"));
+        ImeToolbarActions.bindActionButtons(inputMethodService, bar);
+        ImeToolbarActions.refreshActionButtonStates(inputMethodService, bar);
         return bar;
-    }
-
-    private static View findToolbarButton(LinearLayout bar, String action) {
-        if (bar == null || action == null || action.isEmpty()) {
-            return null;
-        }
-        for (int i = 0; i < bar.getChildCount(); i++) {
-            View child = bar.getChildAt(i);
-            if (child != null && action.equals(child.getTag())) {
-                return child;
-            }
-        }
-        return null;
     }
 
     private static void applyToolbarBackground(LinearLayout bar, View inputView) {

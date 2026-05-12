@@ -6,7 +6,9 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.text.TextUtils;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.LinearLayout;
@@ -16,28 +18,44 @@ final class ImeToolbarActions {
     }
 
     static void bindButtonActions(Object inputMethodService, LinearLayout bar) {
-        if (bar == null) {
+        bindActionButtons(inputMethodService, bar);
+    }
+
+    static void bindActionButtons(Object inputMethodService, View root) {
+        if (root == null) {
             return;
         }
-        for (int i = 0; i < bar.getChildCount(); i++) {
-            View button = bar.getChildAt(i);
-            if (button == null || !(button.getTag() instanceof String)) {
-                continue;
-            }
-            String action = (String) button.getTag();
+        if (root.getTag() instanceof String) {
+            bindActionButton(inputMethodService, root, (String) root.getTag());
+        }
+        if (!(root instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) root;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            bindActionButtons(inputMethodService, group.getChildAt(i));
+        }
+    }
+
+    static void refreshActionButtonStates(Object inputMethodService, View root) {
+        if (root == null) {
+            return;
+        }
+        if (root.getTag() instanceof String) {
+            String action = (String) root.getTag();
             if ("paste".equals(action)) {
-                button.setOnClickListener(v -> performPasteAction(inputMethodService, v.getContext()));
-            } else if ("delete".equals(action)) {
-                button.setOnClickListener(v -> performDeleteAction(inputMethodService));
-            } else if ("select_all".equals(action)) {
-                button.setOnClickListener(v ->
-                        performEditorAction(inputMethodService, android.R.id.selectAll));
-            } else if ("copy".equals(action)) {
-                button.setOnClickListener(v ->
-                        performEditorAction(inputMethodService, android.R.id.copy));
-            } else if ("switch_ime".equals(action)) {
-                button.setOnClickListener(v -> showInputMethodPicker(v.getContext()));
+                updatePasteButtonEnabled(inputMethodService, root);
+            } else if (ImeToolbarSpec.isValidActionName(action)) {
+                root.setEnabled(true);
+                root.setAlpha(1f);
             }
+        }
+        if (!(root instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) root;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            refreshActionButtonStates(inputMethodService, group.getChildAt(i));
         }
     }
 
@@ -48,6 +66,48 @@ final class ImeToolbarActions {
         boolean enabled = getCurrentInputConnectionCompat(inputMethodService) != null;
         pasteButton.setEnabled(enabled);
         pasteButton.setAlpha(enabled ? 1f : 0.55f);
+    }
+
+    private static void bindActionButton(Object inputMethodService, View button, String action) {
+        if (!ImeToolbarSpec.isValidActionName(action) || button == null) {
+            return;
+        }
+        if ("paste".equals(action)) {
+            button.setOnClickListener(v -> {
+                performActionHapticFeedback(v);
+                performPasteAction(inputMethodService, v.getContext());
+            });
+        } else if ("delete".equals(action)) {
+            button.setOnClickListener(v -> {
+                performActionHapticFeedback(v);
+                performDeleteAction(inputMethodService);
+            });
+        } else if ("select_all".equals(action)) {
+            button.setOnClickListener(v -> {
+                performActionHapticFeedback(v);
+                performEditorAction(inputMethodService, android.R.id.selectAll);
+            });
+        } else if ("copy".equals(action)) {
+            button.setOnClickListener(v -> {
+                performActionHapticFeedback(v);
+                performEditorAction(inputMethodService, android.R.id.copy);
+            });
+        } else if ("switch_ime".equals(action)) {
+            button.setOnClickListener(v -> {
+                performActionHapticFeedback(v);
+                showInputMethodPicker(v.getContext());
+            });
+        }
+    }
+
+    private static void performActionHapticFeedback(View button) {
+        if (button == null) {
+            return;
+        }
+        try {
+            button.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+        } catch (Throwable ignored) {
+        }
     }
 
     private static void showInputMethodPicker(Context context) {

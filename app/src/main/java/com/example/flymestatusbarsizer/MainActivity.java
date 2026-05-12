@@ -347,7 +347,7 @@ public class MainActivity extends Activity {
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_BLEND_ENABLED);
         addDivider(details);
         addSwitchRow(details, "启用输入法工具栏",
-                "开启后会在输入法界面加一排工具按钮。关闭后恢复原来的输入法视图，不再显示这排按钮。",
+                "开启后启用这五个工具按钮。强制原生输入法控制栏开启时，这五个按钮会并入原生控制栏；否则仍显示在输入法界面下方。",
                 SettingsStore.KEY_IME_TOOLBAR_ENABLED,
                 SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED);
         addDivider(details);

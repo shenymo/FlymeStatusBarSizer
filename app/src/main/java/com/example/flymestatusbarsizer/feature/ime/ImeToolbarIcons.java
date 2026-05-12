@@ -16,6 +16,8 @@ import android.text.TextUtils;
 
 final class ImeToolbarIcons {
     private static final float IME_TOOLBAR_ICON_VIEWPORT = 960f;
+    private static final int STOCK_CONTROL_BAR_LIGHT_ICON_COLOR = Color.WHITE;
+    private static final int STOCK_CONTROL_BAR_DARK_ICON_COLOR = -1728053248;
 
     private ImeToolbarIcons() {
     }
@@ -26,6 +28,11 @@ final class ImeToolbarIcons {
         }
         int nightMode = context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
         return nightMode == Configuration.UI_MODE_NIGHT_YES ? Color.WHITE : Color.BLACK;
+    }
+
+    static int resolveStockControlBarIconColor(float darkIntensity) {
+        float fraction = Math.max(0f, Math.min(1f, darkIntensity));
+        return blendArgb(STOCK_CONTROL_BAR_LIGHT_ICON_COLOR, STOCK_CONTROL_BAR_DARK_ICON_COLOR, fraction);
     }
 
     static Drawable createIconDrawable(Context context, String iconType) {
@@ -59,6 +66,22 @@ final class ImeToolbarIcons {
             default:
                 return null;
         }
+    }
+
+    private static int blendArgb(int startColor, int endColor, float fraction) {
+        int startA = Color.alpha(startColor);
+        int startR = Color.red(startColor);
+        int startG = Color.green(startColor);
+        int startB = Color.blue(startColor);
+        int endA = Color.alpha(endColor);
+        int endR = Color.red(endColor);
+        int endG = Color.green(endColor);
+        int endB = Color.blue(endColor);
+        int a = Math.round(startA + ((endA - startA) * fraction));
+        int r = Math.round(startR + ((endR - startR) * fraction));
+        int g = Math.round(startG + ((endG - startG) * fraction));
+        int b = Math.round(startB + ((endB - startB) * fraction));
+        return Color.argb(a, r, g, b);
     }
 
     private static final class PathDrawable extends Drawable {
