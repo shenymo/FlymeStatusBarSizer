@@ -7,6 +7,7 @@ import android.text.TextUtils;
 import java.util.ArrayList;
 
 final class ImeToolbarSpec {
+    static final String STOCK_CONTROL_BAR_BACK = "stock_back";
     private static final String[] ACTIONS = {
             "paste", "delete", "select_all", "copy", "switch_ime"
     };
@@ -54,7 +55,7 @@ final class ImeToolbarSpec {
             }
             builder.append(actions.get(i)).append(STOCK_CONTROL_BAR_BUTTON_SIZE);
         }
-        builder.append(";;back").append(STOCK_CONTROL_BAR_BUTTON_SIZE);
+        builder.append(";;").append(STOCK_CONTROL_BAR_BACK).append(STOCK_CONTROL_BAR_BUTTON_SIZE);
         return builder.toString();
     }
 

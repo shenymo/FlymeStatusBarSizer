@@ -1,8 +1,11 @@
 package com.example.flymestatusbarsizer.feature.ime;
 
+import com.example.flymestatusbarsizer.BuildConfig;
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
+import com.example.flymestatusbarsizer.R;
 
 import android.content.Context;
+import android.content.res.Resources;
 import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -48,6 +51,23 @@ final class ImeToolbarIcons {
         }
     }
 
+    static Drawable createKeyboardDismissDrawable(Context context) {
+        if (context == null) {
+            return null;
+        }
+        try {
+            Context resourceContext = resolveModuleResourceContext(context);
+            if (resourceContext == null) {
+                return null;
+            }
+            Drawable drawable = resourceContext.getDrawable(R.drawable.keyboard_double_arrow_down_24px);
+            return cloneDrawable(drawable, context.getResources());
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logImeWarning("Failed to load keyboard dismiss drawable", t);
+            return null;
+        }
+    }
+
     private static String getIconPathData(String iconType) {
         if (TextUtils.isEmpty(iconType)) {
             return null;
@@ -82,6 +102,39 @@ final class ImeToolbarIcons {
         int g = Math.round(startG + ((endG - startG) * fraction));
         int b = Math.round(startB + ((endB - startB) * fraction));
         return Color.argb(a, r, g, b);
+    }
+
+    private static Context resolveModuleResourceContext(Context context) {
+        if (context == null) {
+            return null;
+        }
+        Context appContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+        if (BuildConfig.APPLICATION_ID.equals(appContext.getPackageName())) {
+            return appContext;
+        }
+        try {
+            return appContext.createPackageContext(
+                    BuildConfig.APPLICATION_ID,
+                    Context.CONTEXT_IGNORE_SECURITY);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static Drawable cloneDrawable(Drawable drawable, Resources resources) {
+        if (drawable == null) {
+            return null;
+        }
+        Drawable.ConstantState constantState = drawable.getConstantState();
+        if (constantState != null) {
+            Drawable cloned = resources != null
+                    ? constantState.newDrawable(resources)
+                    : constantState.newDrawable();
+            if (cloned != null) {
+                return cloned.mutate();
+            }
+        }
+        return drawable.mutate();
     }
 
     private static final class PathDrawable extends Drawable {

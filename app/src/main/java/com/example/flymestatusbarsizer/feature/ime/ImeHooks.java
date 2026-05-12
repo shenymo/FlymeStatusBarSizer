@@ -7,8 +7,10 @@ import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
+import android.inputmethodservice.InputMethodService;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -25,6 +27,7 @@ import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class ImeHooks {
+    private static final String STOCK_CONTROL_BAR_BACK = ImeToolbarSpec.STOCK_CONTROL_BAR_BACK;
     private static final String PACKAGE_ANDROID = "android";
     private static final String PACKAGE_ANDROID_LATIN = "com.android.inputmethod.latin";
     private static final String PACKAGE_FLYME_INPUTMETHOD = "flyme.inputmethod";
@@ -159,10 +162,13 @@ public final class ImeHooks {
                     return chain.proceed();
                 }
                 String action = extractButtonName((String) specArg);
-                if (!ImeToolbarSpec.isValidActionName(action)) {
+                if (ImeToolbarSpec.isValidActionName(action)) {
+                    return createStockControlBarActionButton(((ViewGroup) parentArg).getContext(), action);
+                }
+                if (!STOCK_CONTROL_BAR_BACK.equals(action)) {
                     return chain.proceed();
                 }
-                return createStockControlBarActionButton(((ViewGroup) parentArg).getContext(), action);
+                return createStockControlBarBackButton(((ViewGroup) parentArg).getContext());
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logImeWarning(
@@ -938,15 +944,35 @@ public final class ImeHooks {
         if (context == null || !ImeToolbarSpec.isValidActionName(action)) {
             return null;
         }
+        return createBaseStockControlBarButton(
+                context,
+                action,
+                ImeToolbarIcons.createIconDrawable(context, action),
+                ImeToolbarSpec.getActionLabel(action));
+    }
+
+    private static View createStockControlBarBackButton(Context context) {
+        if (context == null) {
+            return null;
+        }
+        return createBaseStockControlBarButton(
+                context,
+                STOCK_CONTROL_BAR_BACK,
+                ImeToolbarIcons.createKeyboardDismissDrawable(context),
+                "返回");
+    }
+
+    private static View createBaseStockControlBarButton(
+            Context context, String tag, Drawable drawable, String contentDescription) {
         ImageButton button = new ImageButton(context);
         button.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 Gravity.CENTER));
-        button.setTag(action);
-        button.setImageDrawable(ImeToolbarIcons.createIconDrawable(context, action));
+        button.setTag(tag);
+        button.setImageDrawable(drawable);
         button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        button.setContentDescription(ImeToolbarSpec.getActionLabel(action));
+        button.setContentDescription(contentDescription);
         button.setBackground(resolveBorderlessSelectableBackground(context));
         int padding = FlymeStatusBarSizer.dp(context, 8);
         button.setPadding(padding, padding, padding, padding);
@@ -978,6 +1004,7 @@ public final class ImeHooks {
         }
         ImeToolbarActions.bindActionButtons(inputMethodService, navigationBarFrame);
         ImeToolbarActions.refreshActionButtonStates(inputMethodService, navigationBarFrame);
+        bindStockControlBarBackButtons(inputMethodService, navigationBarFrame);
         applyStockControlBarButtonTint(navigationBarFrame, darkIntensity);
     }
 
@@ -994,7 +1021,8 @@ public final class ImeHooks {
             return;
         }
         if (root.getTag() instanceof String
-                && ImeToolbarSpec.isValidActionName((String) root.getTag())
+                && (ImeToolbarSpec.isValidActionName((String) root.getTag())
+                || STOCK_CONTROL_BAR_BACK.equals(root.getTag()))
                 && root instanceof ImageView) {
             ((ImageView) root).setColorFilter(color);
         }
@@ -1005,6 +1033,67 @@ public final class ImeHooks {
         for (int i = 0; i < group.getChildCount(); i++) {
             applyStockControlBarButtonTintRecursive(group.getChildAt(i), color);
         }
+    }
+
+    private static void bindStockControlBarBackButtons(Object inputMethodService, View root) {
+        if (root == null) {
+            return;
+        }
+        if (STOCK_CONTROL_BAR_BACK.equals(root.getTag())) {
+            root.setEnabled(true);
+            root.setAlpha(1f);
+            root.setOnClickListener(v -> {
+                performStockControlBarButtonHapticFeedback(v);
+                sendBackToHideKeyboard(inputMethodService);
+            });
+        }
+        if (!(root instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) root;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            bindStockControlBarBackButtons(inputMethodService, group.getChildAt(i));
+        }
+    }
+
+    private static void performStockControlBarButtonHapticFeedback(View button) {
+        if (button == null) {
+            return;
+        }
+        try {
+            button.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void sendBackToHideKeyboard(Object inputMethodService) {
+        if (inputMethodService instanceof InputMethodService) {
+            try {
+                ((InputMethodService) inputMethodService).requestHideSelf(0);
+                return;
+            } catch (Throwable ignored) {
+            }
+        }
+        Object hideResult = FlymeStatusBarSizer.invokeMethodCompat(
+                inputMethodService,
+                "requestHideSelf",
+                new Class[]{int.class},
+                0);
+        if (hideResult != null || inputMethodService == null) {
+            return;
+        }
+        Object handled = FlymeStatusBarSizer.invokeMethodCompat(
+                inputMethodService,
+                "handleBack",
+                new Class[]{boolean.class},
+                true);
+        if (Boolean.TRUE.equals(handled)) {
+            return;
+        }
+        FlymeStatusBarSizer.invokeMethodCompat(
+                inputMethodService,
+                "hideWindow",
+                new Class[0]);
     }
 
     private static final class ImeWindowAppearanceState {
