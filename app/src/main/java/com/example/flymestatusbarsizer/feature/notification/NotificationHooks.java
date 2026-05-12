@@ -49,6 +49,8 @@ public final class NotificationHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_ACTIVE_STATES =
             new WeakHashMap<>();
+    private static final WeakHashMap<View, NotificationAppIconTintState>
+            NOTIFICATION_APP_ICON_TINT_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, NotificationAppIconViewSignature>
             NOTIFICATION_APP_ICON_LAST_SIGNATURES = new WeakHashMap<>();
     private static final WeakHashMap<View, Drawable> NOTIFICATION_APP_ICON_LAST_DRAWABLES =
@@ -82,6 +84,7 @@ public final class NotificationHooks {
                 NOTIFICATION_APP_ICON_TINT_CLEAR_GUARDS.put(view, Boolean.TRUE);
             }
             try {
+                rememberNotificationAppIconTintState(view);
                 clearDrawableColorState(view.getDrawable());
                 if (view.getImageTintList() != null) {
                     view.setImageTintList((ColorStateList) null);
@@ -608,6 +611,7 @@ public final class NotificationHooks {
         try {
             clearNotificationAppIconReplacementState(view, notification);
             FlymeStatusBarSizer.invokeNoArgCompat(view, "updateDrawable");
+            restoreNotificationAppIconTintState(view);
             return true;
         } catch (Throwable ignored) {
             setNotificationAppIconActive(view, true);
@@ -801,6 +805,47 @@ public final class NotificationHooks {
         markNotificationAppIconReplacement(notification, false);
     }
 
+    private static void rememberNotificationAppIconTintState(ImageView view) {
+        if (view == null) {
+            return;
+        }
+        ColorStateList tintList = view.getImageTintList();
+        ColorFilter colorFilter = view.getColorFilter();
+        synchronized (NOTIFICATION_APP_ICON_TINT_STATES) {
+            if (tintList == null
+                    && colorFilter == null
+                    && NOTIFICATION_APP_ICON_TINT_STATES.containsKey(view)) {
+                return;
+            }
+            NOTIFICATION_APP_ICON_TINT_STATES.put(
+                    view,
+                    new NotificationAppIconTintState(tintList, colorFilter));
+        }
+    }
+
+    private static void restoreNotificationAppIconTintState(ImageView view) {
+        if (view == null) {
+            return;
+        }
+        NotificationAppIconTintState tintState;
+        synchronized (NOTIFICATION_APP_ICON_TINT_STATES) {
+            tintState = NOTIFICATION_APP_ICON_TINT_STATES.remove(view);
+        }
+        if (tintState == null
+                || (tintState.tintList == null && tintState.colorFilter == null)) {
+            FlymeStatusBarSizer.invokeNoArgCompat(view, "updateIconColor");
+            return;
+        }
+        try {
+            view.setImageTintList(tintState.tintList);
+        } catch (Throwable ignored) {
+        }
+        try {
+            view.setColorFilter(tintState.colorFilter);
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static boolean shouldReuseNotificationAppIconDrawable(
             ImageView view, NotificationAppIconViewSignature signature) {
         if (view == null || signature == null || !isNotificationAppIconActive(view)) {
@@ -953,6 +998,16 @@ public final class NotificationHooks {
             result = 31 * result + paddingPx;
             result = 31 * result + nightMode;
             return result;
+        }
+    }
+
+    private static final class NotificationAppIconTintState {
+        final ColorStateList tintList;
+        final ColorFilter colorFilter;
+
+        NotificationAppIconTintState(ColorStateList tintList, ColorFilter colorFilter) {
+            this.tintList = tintList;
+            this.colorFilter = colorFilter;
         }
     }
 }
