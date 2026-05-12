@@ -34,25 +34,37 @@ final class ImeToolbarActions {
         }
     }
 
+    static void bindActionButtonView(Object inputMethodService, View button) {
+        if (button == null || !(button.getTag() instanceof String)) {
+            return;
+        }
+        bindActionButton(inputMethodService, button, (String) button.getTag());
+    }
+
     static void refreshActionButtonStates(Object inputMethodService, View root) {
         if (root == null) {
             return;
         }
-        if (root.getTag() instanceof String) {
-            String action = (String) root.getTag();
-            if ("paste".equals(action)) {
-                updatePasteButtonEnabled(inputMethodService, root);
-            } else if (ImeToolbarSpec.isValidActionName(action)) {
-                root.setEnabled(true);
-                root.setAlpha(1f);
-            }
-        }
+        refreshActionButtonState(inputMethodService, root);
         if (!(root instanceof ViewGroup)) {
             return;
         }
         ViewGroup group = (ViewGroup) root;
         for (int i = 0; i < group.getChildCount(); i++) {
             refreshActionButtonStates(inputMethodService, group.getChildAt(i));
+        }
+    }
+
+    static void refreshActionButtonState(Object inputMethodService, View button) {
+        if (button == null || !(button.getTag() instanceof String)) {
+            return;
+        }
+        String action = (String) button.getTag();
+        if ("paste".equals(action)) {
+            updatePasteButtonEnabled(inputMethodService, button);
+        } else if (ImeToolbarSpec.isValidActionName(action)) {
+            button.setEnabled(true);
+            button.setAlpha(1f);
         }
     }
 

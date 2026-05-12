@@ -43,8 +43,13 @@ public final class ImeHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<Object, String> LAST_STOCK_CONTROL_BAR_LAYOUT_SPECS =
             new WeakHashMap<>();
+    private static final WeakHashMap<Object, Boolean> PENDING_IME_CONTROL_BAR_REFRESHES =
+            new WeakHashMap<>();
     private static final WeakHashMap<Object, ImeWindowAppearanceState> IME_WINDOW_APPEARANCE_STATES =
             new WeakHashMap<>();
+    private static final WeakHashMap<View, StockControlBarFrameState> STOCK_CONTROL_BAR_FRAME_STATES =
+            new WeakHashMap<>();
+    private static final Object IME_CONTROL_BAR_REFRESH_LOCK = new Object();
 
     private ImeHooks() {
     }
@@ -214,8 +219,10 @@ public final class ImeHooks {
                 Object thisObject = chain.getThisObject();
                 Object intensityArg = chain.getArg(0);
                 if (thisObject instanceof View && intensityArg instanceof Float) {
+                    View navigationBarView = (View) thisObject;
                     applyStockControlBarButtonTint(
-                            (View) thisObject,
+                            getOrCreateStockControlBarFrameState(navigationBarView),
+                            navigationBarView,
                             (Float) intensityArg,
                             FlymeStatusBarSizer.loadImeConfig(null));
                 }
@@ -340,7 +347,7 @@ public final class ImeHooks {
                 FlymeStatusBarSizer.rememberSystemUiContext(context);
                 FlymeStatusBarSizer.ensureConfigRefreshObserver(context);
                 TRACKED_INPUT_METHOD_VIEWS.put(thisObject, inputView);
-                inputView.post(() -> refreshImeControlBarNow(thisObject));
+                scheduleImeControlBarRefresh(thisObject, inputView);
                 return result;
             });
 
@@ -352,7 +359,7 @@ public final class ImeHooks {
                 Object thisObject = chain.getThisObject();
                 View inputView = TRACKED_INPUT_METHOD_VIEWS.get(thisObject);
                 if (inputView != null) {
-                    inputView.post(() -> refreshImeControlBarNow(thisObject));
+                    scheduleImeControlBarRefresh(thisObject, inputView);
                 }
                 return result;
             });
@@ -364,13 +371,42 @@ public final class ImeHooks {
                 Object thisObject = chain.getThisObject();
                 View inputView = TRACKED_INPUT_METHOD_VIEWS.get(thisObject);
                 if (inputView != null) {
-                    inputView.post(() -> refreshImeControlBarNow(thisObject));
+                    scheduleImeControlBarRefresh(thisObject, inputView);
                 }
                 return result;
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logImeWarning("Failed to hook InputMethodService.setInputView", t);
         }
+    }
+
+    private static void scheduleImeControlBarRefresh(Object inputMethodService, View anchorView) {
+        if (inputMethodService == null) {
+            return;
+        }
+        synchronized (IME_CONTROL_BAR_REFRESH_LOCK) {
+            if (Boolean.TRUE.equals(PENDING_IME_CONTROL_BAR_REFRESHES.get(inputMethodService))) {
+                return;
+            }
+            PENDING_IME_CONTROL_BAR_REFRESHES.put(inputMethodService, Boolean.TRUE);
+        }
+        Runnable refreshRunnable = () -> {
+            try {
+                refreshImeControlBarNow(inputMethodService);
+            } finally {
+                synchronized (IME_CONTROL_BAR_REFRESH_LOCK) {
+                    PENDING_IME_CONTROL_BAR_REFRESHES.remove(inputMethodService);
+                }
+            }
+        };
+        if (anchorView != null && anchorView.post(refreshRunnable)) {
+            return;
+        }
+        if (FlymeStatusBarSizer.getMainHandler() != null) {
+            FlymeStatusBarSizer.postToMainHandler(refreshRunnable);
+            return;
+        }
+        refreshRunnable.run();
     }
 
     private static void hookInputMethodManagerServiceNavFlags(
@@ -483,16 +519,16 @@ public final class ImeHooks {
         String desiredLayoutSpec = resolveEmbeddedStockControlBarLayoutSpec();
         Boolean lastAppliedState = LAST_STOCK_CONTROL_BAR_STATES.get(inputMethodService);
         String lastLayoutSpec = LAST_STOCK_CONTROL_BAR_LAYOUT_SPECS.get(inputMethodService);
-        if (lastAppliedState == null
-                || lastAppliedState.booleanValue() != replaceControlBar
-                || !Objects.equals(lastLayoutSpec, desiredLayoutSpec)) {
+        boolean replaceStateChanged =
+                lastAppliedState == null || lastAppliedState.booleanValue() != replaceControlBar;
+        boolean layoutSpecChanged = !Objects.equals(lastLayoutSpec, desiredLayoutSpec);
+        boolean layoutNeedsRefresh = replaceStateChanged || layoutSpecChanged;
+        if (layoutNeedsRefresh) {
             FlymeStatusBarSizer.invokeMethodCompat(
                     callbackImpl,
                     "uninstallNavigationBarFrameIfNecessary",
                     new Class[0]);
         }
-        boolean replaceStateChanged =
-                lastAppliedState == null || lastAppliedState.booleanValue() != replaceControlBar;
         if (replaceControlBar) {
             applyImeWindowNavigationBarAppearance(inputMethodService);
         } else if (replaceStateChanged) {
@@ -505,6 +541,9 @@ public final class ImeHooks {
                 resolveCurrentImeNavButtonFlags(callbackImpl));
         Object navigationBarFrame = getField(callbackImpl, "mNavigationBarFrame");
         if (navigationBarFrame instanceof View) {
+            if (layoutNeedsRefresh) {
+                clearStockControlBarFrameStateCache((View) navigationBarFrame);
+            }
             syncStockControlBarButtonsNow(
                     (View) navigationBarFrame,
                     inputMethodService,
@@ -764,8 +803,14 @@ public final class ImeHooks {
             return;
         }
         Drawable background = findImeBackgroundDrawable(inputMethodService);
+        BackgroundSignature signature = BackgroundSignature.fromDrawable(background);
+        StockControlBarFrameState frameState = getOrCreateStockControlBarFrameState(navigationBarFrame);
+        if (signature.equals(frameState.backgroundSignature)) {
+            return;
+        }
         Drawable cloned = cloneDrawable(background, navigationBarFrame.getResources());
         navigationBarFrame.setBackground(cloned);
+        frameState.backgroundSignature = signature;
     }
 
     private static void applyImeWindowNavigationBarAppearance(Object inputMethodService) {
@@ -993,11 +1038,11 @@ public final class ImeHooks {
             return;
         }
         FlymeStatusBarSizer.ImeConfigSnapshot config = FlymeStatusBarSizer.loadImeConfig(null);
-        ImeToolbarActions.bindActionButtons(inputMethodService, navigationBarFrame);
-        ImeToolbarActions.refreshActionButtonStates(inputMethodService, navigationBarFrame);
-        bindStockControlBarBackButtons(inputMethodService, navigationBarFrame);
+        StockControlBarFrameState frameState = getOrCreateStockControlBarFrameState(navigationBarFrame);
+        bindStockControlBarButtonsIfNeeded(frameState, inputMethodService);
+        refreshStockControlBarButtonStates(frameState, inputMethodService);
         applyStockControlBarVerticalOffset(navigationBarFrame, config);
-        applyStockControlBarButtonTint(navigationBarFrame, darkIntensity, config);
+        applyStockControlBarButtonTint(frameState, navigationBarFrame, darkIntensity, config);
     }
 
     private static void applyStockControlBarVerticalOffset(
@@ -1024,38 +1069,31 @@ public final class ImeHooks {
     }
 
     private static void applyStockControlBarButtonTint(
-            View root, float darkIntensity, FlymeStatusBarSizer.ImeConfigSnapshot config) {
+            StockControlBarFrameState frameState,
+            View root,
+            float darkIntensity,
+            FlymeStatusBarSizer.ImeConfigSnapshot config) {
         if (root == null) {
             return;
         }
         int color = ImeToolbarIcons.resolveStockControlBarIconColor(root.getContext());
         int alpha = resolveStockControlBarIconAlpha(config);
-        applyStockControlBarButtonTintRecursive(root, color, alpha, config);
-    }
-
-    private static void applyStockControlBarButtonTintRecursive(
-            View root,
-            int color,
-            int alpha,
-            FlymeStatusBarSizer.ImeConfigSnapshot config) {
-        if (root == null) {
+        int padding = resolveStockControlBarButtonPaddingPx(root, config);
+        ButtonRenderSignature signature = new ButtonRenderSignature(color, alpha, padding);
+        if (signature.equals(frameState.buttonRenderSignature)) {
             return;
         }
-        if (root.getTag() instanceof String
-                && ImeToolbarSpec.isValidButtonName((String) root.getTag())
-                && root instanceof ImageView) {
-            ImageView imageView = (ImageView) root;
+        for (int i = 0; i < frameState.buttonRefs.size(); i++) {
+            View button = frameState.buttonRefs.get(i).view;
+            if (!(button instanceof ImageView)) {
+                continue;
+            }
+            ImageView imageView = (ImageView) button;
             imageView.setColorFilter(color);
             imageView.setImageAlpha(alpha);
             applyStockControlBarButtonVisualStyle(imageView, config);
         }
-        if (!(root instanceof ViewGroup)) {
-            return;
-        }
-        ViewGroup group = (ViewGroup) root;
-        for (int i = 0; i < group.getChildCount(); i++) {
-            applyStockControlBarButtonTintRecursive(group.getChildAt(i), color, alpha, config);
-        }
+        frameState.buttonRenderSignature = signature;
     }
 
     private static int resolveStockControlBarIconAlpha(FlymeStatusBarSizer.ImeConfigSnapshot config) {
@@ -1072,33 +1110,150 @@ public final class ImeHooks {
             return;
         }
         imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int padding = resolveStockControlBarButtonPaddingPx(imageView, config);
+        if (imageView.getPaddingLeft() == padding
+                && imageView.getPaddingTop() == padding
+                && imageView.getPaddingRight() == padding
+                && imageView.getPaddingBottom() == padding) {
+            return;
+        }
+        imageView.setPadding(padding, padding, padding, padding);
+    }
+
+    private static int resolveStockControlBarButtonPaddingPx(
+            View view, FlymeStatusBarSizer.ImeConfigSnapshot config) {
+        if (view == null) {
+            return 0;
+        }
         int scalePercent = config == null
                 ? DEFAULT_IME_ICON_SCALE_PERCENT
                 : config.imeControlBarIconScalePercent;
         scalePercent = Math.max(60, Math.min(180, scalePercent));
-        float density = imageView.getResources().getDisplayMetrics().density;
-        int padding = Math.max(0, Math.round((8f * 100f / scalePercent) * density));
-        imageView.setPadding(padding, padding, padding, padding);
+        float density = view.getResources().getDisplayMetrics().density;
+        return Math.max(0, Math.round((8f * 100f / scalePercent) * density));
     }
 
-    private static void bindStockControlBarBackButtons(Object inputMethodService, View root) {
-        if (root == null) {
+    private static void bindStockControlBarButtonsIfNeeded(
+            StockControlBarFrameState frameState, Object inputMethodService) {
+        if (frameState == null || frameState.boundInputMethodService == inputMethodService) {
             return;
         }
-        if (STOCK_CONTROL_BAR_BACK.equals(root.getTag())) {
-            root.setEnabled(true);
-            root.setAlpha(1f);
-            root.setOnClickListener(v -> {
-                performStockControlBarButtonHapticFeedback(v);
-                sendBackToHideKeyboard(inputMethodService);
-            });
+        for (int i = 0; i < frameState.buttonRefs.size(); i++) {
+            StockControlBarButtonRef buttonRef = frameState.buttonRefs.get(i);
+            if (STOCK_CONTROL_BAR_BACK.equals(buttonRef.tag)) {
+                buttonRef.view.setOnClickListener(v -> {
+                    performStockControlBarButtonHapticFeedback(v);
+                    sendBackToHideKeyboard(inputMethodService);
+                });
+            } else {
+                ImeToolbarActions.bindActionButtonView(inputMethodService, buttonRef.view);
+            }
+        }
+        frameState.boundInputMethodService = inputMethodService;
+    }
+
+    private static void refreshStockControlBarButtonStates(
+            StockControlBarFrameState frameState, Object inputMethodService) {
+        if (frameState == null) {
+            return;
+        }
+        for (int i = 0; i < frameState.buttonRefs.size(); i++) {
+            StockControlBarButtonRef buttonRef = frameState.buttonRefs.get(i);
+            if (STOCK_CONTROL_BAR_BACK.equals(buttonRef.tag)) {
+                buttonRef.view.setEnabled(true);
+                buttonRef.view.setAlpha(1f);
+            } else {
+                ImeToolbarActions.refreshActionButtonState(inputMethodService, buttonRef.view);
+            }
+        }
+    }
+
+    private static StockControlBarFrameState getOrCreateStockControlBarFrameState(View root) {
+        StockControlBarFrameState state = STOCK_CONTROL_BAR_FRAME_STATES.get(root);
+        if (state == null) {
+            state = new StockControlBarFrameState();
+            STOCK_CONTROL_BAR_FRAME_STATES.put(root, state);
+        }
+        ensureStockControlBarButtonCache(root, state);
+        return state;
+    }
+
+    private static void ensureStockControlBarButtonCache(View root, StockControlBarFrameState state) {
+        if (root == null || state == null) {
+            return;
+        }
+        if (state.buttonCacheInitialized && areCachedStockControlBarButtonsAlive(root, state)) {
+            return;
+        }
+        state.buttonRefs.clear();
+        collectStockControlBarButtons(root, state.buttonRefs);
+        state.buttonCacheInitialized = true;
+        state.boundInputMethodService = null;
+        state.buttonRenderSignature = null;
+    }
+
+    private static boolean areCachedStockControlBarButtonsAlive(
+            View root, StockControlBarFrameState state) {
+        if (!state.buttonCacheInitialized) {
+            return false;
+        }
+        for (int i = 0; i < state.buttonRefs.size(); i++) {
+            StockControlBarButtonRef buttonRef = state.buttonRefs.get(i);
+            if (buttonRef == null
+                    || buttonRef.view == null
+                    || !buttonRef.tag.equals(buttonRef.view.getTag())
+                    || !isDescendantOrSelf(root, buttonRef.view)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static void collectStockControlBarButtons(
+            View root, ArrayList<StockControlBarButtonRef> outRefs) {
+        if (root == null || outRefs == null) {
+            return;
+        }
+        if (root.getTag() instanceof String) {
+            String tag = (String) root.getTag();
+            if (ImeToolbarSpec.isValidButtonName(tag)) {
+                outRefs.add(new StockControlBarButtonRef(tag, root));
+            }
         }
         if (!(root instanceof ViewGroup)) {
             return;
         }
         ViewGroup group = (ViewGroup) root;
         for (int i = 0; i < group.getChildCount(); i++) {
-            bindStockControlBarBackButtons(inputMethodService, group.getChildAt(i));
+            collectStockControlBarButtons(group.getChildAt(i), outRefs);
+        }
+    }
+
+    private static boolean isDescendantOrSelf(View root, View candidate) {
+        View current = candidate;
+        while (current != null) {
+            if (current == root) {
+                return true;
+            }
+            if (!(current.getParent() instanceof View)) {
+                return false;
+            }
+            current = (View) current.getParent();
+        }
+        return false;
+    }
+
+    private static void clearStockControlBarFrameStateCache(View root) {
+        if (root == null) {
+            return;
+        }
+        STOCK_CONTROL_BAR_FRAME_STATES.remove(root);
+        if (!(root instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) root;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            clearStockControlBarFrameStateCache(group.getChildAt(i));
         }
     }
 
@@ -1146,5 +1301,117 @@ public final class ImeHooks {
         boolean captured;
         boolean navigationBarContrastEnforced;
         int navigationBarColor;
+    }
+
+    private static final class StockControlBarFrameState {
+        final ArrayList<StockControlBarButtonRef> buttonRefs =
+                new ArrayList<>(ImeToolbarSpec.getButtonSlotCount());
+        boolean buttonCacheInitialized;
+        Object boundInputMethodService;
+        ButtonRenderSignature buttonRenderSignature;
+        BackgroundSignature backgroundSignature;
+    }
+
+    private static final class StockControlBarButtonRef {
+        final String tag;
+        final View view;
+
+        StockControlBarButtonRef(String tag, View view) {
+            this.tag = tag;
+            this.view = view;
+        }
+    }
+
+    private static final class ButtonRenderSignature {
+        final int color;
+        final int alpha;
+        final int padding;
+
+        ButtonRenderSignature(int color, int alpha, int padding) {
+            this.color = color;
+            this.alpha = alpha;
+            this.padding = padding;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) {
+                return true;
+            }
+            if (!(other instanceof ButtonRenderSignature)) {
+                return false;
+            }
+            ButtonRenderSignature signature = (ButtonRenderSignature) other;
+            return color == signature.color
+                    && alpha == signature.alpha
+                    && padding == signature.padding;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(color, alpha, padding);
+        }
+    }
+
+    private static final class BackgroundSignature {
+        private static final BackgroundSignature EMPTY = new BackgroundSignature(null, 0, null, 0);
+
+        final Drawable.ConstantState constantState;
+        final int color;
+        final String drawableClassName;
+        final int identityHash;
+
+        BackgroundSignature(
+                Drawable.ConstantState constantState,
+                int color,
+                String drawableClassName,
+                int identityHash) {
+            this.constantState = constantState;
+            this.color = color;
+            this.drawableClassName = drawableClassName;
+            this.identityHash = identityHash;
+        }
+
+        static BackgroundSignature empty() {
+            return EMPTY;
+        }
+
+        static BackgroundSignature fromDrawable(Drawable drawable) {
+            if (drawable == null) {
+                return EMPTY;
+            }
+            Drawable.ConstantState constantState = drawable.getConstantState();
+            int color = drawable instanceof ColorDrawable ? ((ColorDrawable) drawable).getColor() : 0;
+            int identityHash = constantState == null ? System.identityHashCode(drawable) : 0;
+            return new BackgroundSignature(
+                    constantState,
+                    color,
+                    drawable.getClass().getName(),
+                    identityHash);
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) {
+                return true;
+            }
+            if (!(other instanceof BackgroundSignature)) {
+                return false;
+            }
+            BackgroundSignature signature = (BackgroundSignature) other;
+            return constantState == signature.constantState
+                    && color == signature.color
+                    && identityHash == signature.identityHash
+                    && Objects.equals(drawableClassName, signature.drawableClassName);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(
+                    System.identityHashCode(constantState),
+                    color,
+                    drawableClassName,
+                    identityHash);
+        }
     }
 }
