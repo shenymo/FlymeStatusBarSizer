@@ -996,7 +996,31 @@ public final class ImeHooks {
         ImeToolbarActions.bindActionButtons(inputMethodService, navigationBarFrame);
         ImeToolbarActions.refreshActionButtonStates(inputMethodService, navigationBarFrame);
         bindStockControlBarBackButtons(inputMethodService, navigationBarFrame);
+        applyStockControlBarVerticalOffset(navigationBarFrame, config);
         applyStockControlBarButtonTint(navigationBarFrame, darkIntensity, config);
+    }
+
+    private static void applyStockControlBarVerticalOffset(
+            View navigationBarFrame, FlymeStatusBarSizer.ImeConfigSnapshot config) {
+        if (navigationBarFrame == null) {
+            return;
+        }
+        float targetTranslationY = 0f;
+        if (config != null && config.enabled) {
+            targetTranslationY = -positionOffsetTenthDpToPx(
+                    navigationBarFrame,
+                    config.imeControlBarYOffsetTenthDp);
+        }
+        if (navigationBarFrame.getTranslationY() != targetTranslationY) {
+            navigationBarFrame.setTranslationY(targetTranslationY);
+        }
+    }
+
+    private static float positionOffsetTenthDpToPx(View view, int valueTenthDp) {
+        if (view == null) {
+            return 0f;
+        }
+        return (valueTenthDp / 10f) * view.getResources().getDisplayMetrics().density;
     }
 
     private static void applyStockControlBarButtonTint(

@@ -363,6 +363,11 @@ public class MainActivity extends Activity {
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
                 10, 100, "%");
         addDivider(details);
+        addApplyPositionOffsetSliderRow(details, "输入法控制栏抬高",
+                "整体调节当前输入法控制栏的竖直位置。正数向上、负数向下；滑块按 1dp 粗调，点右侧数值可输入 0.1dp。",
+                SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10);
+        addDivider(details);
         addProfileSectionHeader(details, "按钮位置与显隐",
                 "长按上面的按钮拖到下面 7 个固定槽位里就会显示；拖回上面的按钮池就会隐藏。下方 7 格会固定保留，空槽位也会占位。");
 
@@ -1457,6 +1462,119 @@ public class MainActivity extends Activity {
         row.addView(header, matchWrap());
         row.addView(subtitle, matchWrap());
         row.addView(seekBar, matchWrapWithTop(8));
+        root.addView(row, matchWrap());
+    }
+
+    private void addApplyPositionOffsetSliderRow(LinearLayout root, String titleText,
+            String subtitleText, String key, int defaultValueTenthDp) {
+        addApplyPositionOffsetSliderRow(
+                root,
+                titleText,
+                subtitleText,
+                key,
+                defaultValueTenthDp,
+                getPositionOffsetMinTenthDp(key),
+                getPositionOffsetMaxTenthDp(key));
+    }
+
+    private void addApplyPositionOffsetSliderRow(LinearLayout root, String titleText,
+            String subtitleText, String key, int defaultValueTenthDp,
+            int minTenthDp, int maxTenthDp) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView title = new TextView(this);
+        title.setText(titleText);
+        title.setTextColor(colorText);
+        title.setTextSize(16);
+        header.addView(title, new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f));
+
+        TextView valueView = new TextView(this);
+        valueView.setTextColor(colorPrimary);
+        valueView.setTextSize(14);
+        valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 999));
+        header.addView(valueView, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText(subtitleText);
+        subtitle.setTextColor(colorSubtext);
+        subtitle.setTextSize(13);
+        subtitle.setPadding(0, dp(4), 0, 0);
+
+        SeekBar seekBar = new SeekBar(this);
+        seekBar.setMax((maxTenthDp - minTenthDp) / 10);
+        PositionOffsetSliderBinding binding =
+                new PositionOffsetSliderBinding(valueView, seekBar, minTenthDp, maxTenthDp);
+        int current = getPendingPositionOffsetValue(key, defaultValueTenthDp, minTenthDp, maxTenthDp);
+        binding.setValue(current);
+
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int value = sliderProgressToPositionOffsetTenthDp(progress, minTenthDp, maxTenthDp);
+                valueView.setText(formatOffsetValue(value));
+                if (fromUser) {
+                    performSliderHaptic(seekBar);
+                    updatePendingPositionOffsetValue(key, value, minTenthDp, maxTenthDp);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                updatePendingPositionOffsetValue(
+                        key,
+                        sliderProgressToPositionOffsetTenthDp(
+                                seekBar.getProgress(),
+                                minTenthDp,
+                                maxTenthDp),
+                        minTenthDp,
+                        maxTenthDp);
+            }
+        });
+        setTapClickListener(valueView, v -> showDecimalInputDialog(
+                titleText,
+                getPendingPositionOffsetValue(key, defaultValueTenthDp, minTenthDp, maxTenthDp),
+                minTenthDp,
+                maxTenthDp,
+                value -> {
+                    binding.setValue(value);
+                    updatePendingPositionOffsetValue(key, value, minTenthDp, maxTenthDp);
+                }));
+
+        LinearLayout actionRow = new LinearLayout(this);
+        actionRow.setOrientation(LinearLayout.HORIZONTAL);
+        actionRow.setGravity(Gravity.END);
+
+        TextView applyButton = filledButton("应用", colorPrimary, Color.WHITE);
+        setTapClickListener(applyButton,
+                v -> applyPendingPositionOffsetValue(
+                        key,
+                        defaultValueTenthDp,
+                        minTenthDp,
+                        maxTenthDp,
+                        titleText));
+        actionRow.addView(applyButton, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        row.addView(header, matchWrap());
+        row.addView(subtitle, matchWrap());
+        row.addView(seekBar, matchWrapWithTop(8));
+        row.addView(actionRow, matchWrapWithTop(10));
         root.addView(row, matchWrap());
     }
 
@@ -2943,6 +3061,13 @@ public class MainActivity extends Activity {
 
     private void applyPendingIntSliderValue(String key, int defaultValue, int min, int max, String titleText) {
         int value = getPendingIntSliderValue(key, defaultValue, min, max);
+        putIntSetting(key, value);
+        showToast(titleText + "已应用");
+    }
+
+    private void applyPendingPositionOffsetValue(String key, int defaultValueTenthDp,
+            int minTenthDp, int maxTenthDp, String titleText) {
+        int value = getPendingPositionOffsetValue(key, defaultValueTenthDp, minTenthDp, maxTenthDp);
         putIntSetting(key, value);
         showToast(titleText + "已应用");
     }

@@ -54,6 +54,7 @@ final class SettingsStore {
     static final String KEY_IME_CONTROL_BAR_BUTTON_SLOTS = "ime_control_bar_button_slots";
     static final String KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT = "ime_control_bar_icon_scale_percent";
     static final String KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT = "ime_control_bar_icon_alpha_percent";
+    static final String KEY_IME_CONTROL_BAR_Y_OFFSET_DP = "ime_control_bar_y_offset_dp";
     static final String KEY_IME_CONTROL_BAR_BUTTON_ORDER = "ime_toolbar_order";
     static final String KEY_IME_CONTROL_BAR_HIDDEN_BUTTONS = "ime_control_bar_hidden_buttons";
     static final String KEY_IME_CONTROL_BAR_ALIGNMENT = "ime_control_bar_alignment";
@@ -118,6 +119,7 @@ final class SettingsStore {
             "paste,undo,delete,select_all,copy,switch_ime,stock_back";
     static final int DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT = 100;
     static final int DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT = 100;
+    static final int DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP = 0;
     static final boolean DEFAULT_TELEPHONY_DEBUG_ENABLED = false;
     static final boolean DEFAULT_WIFI_PERF_LOGGING_ENABLED = false;
     static final int DEFAULT_TELEPHONY_DEBUG_SIM_COUNT = 2;
@@ -163,6 +165,7 @@ final class SettingsStore {
             KEY_MBACK_NAV_BAR_HEIGHT,
             KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
             KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
+            KEY_IME_CONTROL_BAR_Y_OFFSET_DP,
             KEY_TELEPHONY_DEBUG_SIM_COUNT,
             KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
             KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
@@ -204,7 +207,8 @@ final class SettingsStore {
             KEY_SIGNAL_BADGE_Y_OFFSET_DP,
             KEY_SIGNAL_DUAL_Y_OFFSET_DP,
             KEY_WIFI_Y_OFFSET_DP,
-            KEY_CLOCK_RIGHT_PADDING_OFFSET_DP
+            KEY_CLOCK_RIGHT_PADDING_OFFSET_DP,
+            KEY_IME_CONTROL_BAR_Y_OFFSET_DP
     };
 
     private SettingsStore() {
@@ -363,6 +367,8 @@ final class SettingsStore {
                 return DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT;
             case KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT:
                 return DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT;
+            case KEY_IME_CONTROL_BAR_Y_OFFSET_DP:
+                return DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP;
             case KEY_TELEPHONY_DEBUG_SIM_COUNT:
                 return DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
             case KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT:

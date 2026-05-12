@@ -5,8 +5,10 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import android.view.HapticFeedbackConstants;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputConnection;
@@ -75,7 +77,7 @@ final class ImeToolbarActions {
         } else if ("undo".equals(action)) {
             button.setOnClickListener(v -> {
                 performActionHapticFeedback(v);
-                performEditorAction(inputMethodService, android.R.id.undo);
+                performUndoAction(inputMethodService);
             });
         } else if ("delete".equals(action)) {
             button.setOnClickListener(v -> {
@@ -145,15 +147,56 @@ final class ImeToolbarActions {
         }
     }
 
-    private static void performEditorAction(Object inputMethodService, int actionId) {
+    private static void performUndoAction(Object inputMethodService) {
         InputConnection connection = getCurrentInputConnectionCompat(inputMethodService);
         if (connection == null) {
             return;
         }
+        if (performContextMenuAction(connection, android.R.id.undo)) {
+            return;
+        }
+        sendCtrlZUndoFallback(connection);
+    }
+
+    private static boolean performEditorAction(Object inputMethodService, int actionId) {
+        InputConnection connection = getCurrentInputConnectionCompat(inputMethodService);
+        return performContextMenuAction(connection, actionId);
+    }
+
+    private static boolean performContextMenuAction(InputConnection connection, int actionId) {
+        if (connection == null) {
+            return false;
+        }
         try {
-            connection.performContextMenuAction(actionId);
+            return connection.performContextMenuAction(actionId);
         } catch (Throwable t) {
             FlymeStatusBarSizer.logImeWarning("Failed to perform editor action: " + actionId, t);
+            return false;
+        }
+    }
+
+    private static void sendCtrlZUndoFallback(InputConnection connection) {
+        if (connection == null) {
+            return;
+        }
+        long downTime = SystemClock.uptimeMillis();
+        try {
+            connection.sendKeyEvent(new KeyEvent(
+                    downTime,
+                    downTime,
+                    KeyEvent.ACTION_DOWN,
+                    KeyEvent.KEYCODE_Z,
+                    0,
+                    KeyEvent.META_CTRL_ON));
+            connection.sendKeyEvent(new KeyEvent(
+                    downTime,
+                    SystemClock.uptimeMillis(),
+                    KeyEvent.ACTION_UP,
+                    KeyEvent.KEYCODE_Z,
+                    0,
+                    KeyEvent.META_CTRL_ON));
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logImeWarning("Failed to send Ctrl+Z fallback", t);
         }
     }
 
@@ -162,11 +205,8 @@ final class ImeToolbarActions {
         if (connection == null || context == null) {
             return;
         }
-        try {
-            if (connection.performContextMenuAction(android.R.id.paste)) {
-                return;
-            }
-        } catch (Throwable ignored) {
+        if (performContextMenuAction(connection, android.R.id.paste)) {
+            return;
         }
         try {
             ClipboardManager clipboard =

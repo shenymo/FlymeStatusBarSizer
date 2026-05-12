@@ -6425,6 +6425,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final String imeControlBarButtonSlots;
         public final int imeControlBarIconScalePercent;
         public final int imeControlBarIconAlphaPercent;
+        public final int imeControlBarYOffsetTenthDp;
 
         private ImeConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
@@ -6438,6 +6439,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             imeControlBarIconAlphaPercent = config == null
                     ? SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT
                     : config.imeControlBarIconAlphaPercent;
+            imeControlBarYOffsetTenthDp = config == null
+                    ? SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10
+                    : config.imeControlBarYOffsetTenthDp;
         }
     }
 

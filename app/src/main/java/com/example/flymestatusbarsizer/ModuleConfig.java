@@ -64,6 +64,7 @@ final class ModuleConfig {
     String imeControlBarButtonSlots = SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;
     int imeControlBarIconScalePercent = SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT;
     int imeControlBarIconAlphaPercent = SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT;
+    int imeControlBarYOffsetTenthDp = SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10;
     boolean telephonyDebugEnabled = SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED;
     boolean wifiPerfLoggingEnabled = SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED;
     int telephonyDebugSimCount = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
@@ -341,6 +342,10 @@ final class ModuleConfig {
                             prefs,
                             SettingsStore.KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
                             SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT));
+            config.imeControlBarYOffsetTenthDp = SettingsStore.readPositionOffsetTenthDp(
+                    prefs,
+                    SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP,
+                    SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10);
             config.telephonyDebugEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_TELEPHONY_DEBUG_ENABLED,
