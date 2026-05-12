@@ -5787,6 +5787,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void scheduleConfigChangedRefresh() {
+        NotificationHooks.clearRenderedNotificationAppIconCache();
         Handler handler = MAIN_HANDLER;
         if (handler == null) {
             refreshTrackedRuntimeViews();
