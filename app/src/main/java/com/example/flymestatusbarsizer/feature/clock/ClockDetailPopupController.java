@@ -8,12 +8,14 @@ import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.PixelFormat;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.LayerDrawable;
+import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
 import android.os.SystemClock;
@@ -23,6 +25,9 @@ import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
+import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.WindowManager;
 import android.view.animation.OvershootInterpolator;
 import android.view.animation.PathInterpolator;
@@ -32,6 +37,7 @@ import android.widget.PopupWindow;
 import android.widget.TextView;
 
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
@@ -57,8 +63,21 @@ final class ClockDetailPopupController {
     private static final int POPUP_BACKGROUND_BLUR_RADIUS_DP = 32;
     private static final int POPUP_BACKGROUND_BLUR_Z_ORDER_BOTTOM = -1;
     private static final int WINDOW_FLAG_BLUR_BEHIND = 4;
-    private static final int CLOCK_HIGHLIGHT_VERTICAL_INSET_DP = 3;
-    private static final int CLOCK_HIGHLIGHT_HORIZONTAL_INSET_DP = 1;
+    private static final int INTERNAL_WINDOW_TYPE_STATUS_BAR_SUB_PANEL = 2017;
+    private static final int INTERNAL_WINDOW_TYPE_NOTIFICATION_SHADE = 2040;
+    private static final int INTERNAL_WINDOW_TYPE_STATUS_BAR_ADDITIONAL = 2041;
+    private static final int INTERNAL_WINDOW_PRIVATE_FLAG_TRUSTED_OVERLAY = 16777216;
+    private static final int[] INTERNAL_WINDOW_TYPE_CANDIDATES = new int[]{
+            INTERNAL_WINDOW_TYPE_STATUS_BAR_ADDITIONAL,
+            INTERNAL_WINDOW_TYPE_STATUS_BAR_SUB_PANEL,
+            INTERNAL_WINDOW_TYPE_NOTIFICATION_SHADE
+    };
+    private static final String INTERNAL_WINDOW_TITLE = "ClockDetailPanel";
+    private static final int CLOCK_HIGHLIGHT_VERTICAL_INSET_DP = 1;
+    private static final int CLOCK_HIGHLIGHT_HORIZONTAL_INSET_DP = 0;
+    private static final int CLOCK_HIGHLIGHT_EXTRA_START_PADDING_DP = 6;
+    private static final int CLOCK_HIGHLIGHT_EXTRA_END_PADDING_DP = 10;
+    private static final int CLOCK_HIGHLIGHT_EXTRA_VERTICAL_PADDING_DP = 2;
     private static final OvershootInterpolator POPUP_SCALE_IN_INTERPOLATOR =
             new OvershootInterpolator(0.72f);
     private static final PathInterpolator POPUP_ALPHA_IN_INTERPOLATOR =
@@ -70,6 +89,7 @@ final class ClockDetailPopupController {
 
     private final WeakReference<TextView> anchorRef;
     private final Handler handler;
+    private final FrameLayout overlayView;
     private final FrameLayout popupRootView;
     private final View popupBackgroundView;
     private final LinearLayout contentView;
@@ -80,19 +100,28 @@ final class ClockDetailPopupController {
     private final LinearLayout statusGridView;
     private final MemoryStatTile memoryTile;
     private final StatTile thermalPowerTile;
-    private final PopupWindow popupWindow;
     private final ClockDetailSystemStatusProvider systemStatusProvider;
     private final Runnable refreshRunnable = this::refreshVisibleContent;
     private final Runnable thermalPowerRefreshRunnable = this::refreshVisibleThermalPowerStatus;
     private final Runnable memoryRefreshRunnable = this::refreshVisibleMemoryStatus;
     private final Runnable autoDismissRunnable = this::dismiss;
+    private final Runnable panelLongPressRunnable = this::handlePanelLongPressTimeout;
+    private final int dragTouchSlop;
 
     private boolean enabled;
     private boolean showMilliseconds = false;
     private boolean thermalPowerQueryInFlight;
     private boolean memoryQueryInFlight;
     private boolean dismissAnimationRunning;
+    private boolean enterAnimationRunning;
     private boolean popupTargetShowing;
+    private boolean overlayAttached;
+    private boolean popupLayoutUpdatePending;
+    private boolean panelPinned;
+    private boolean manualPositionActive;
+    private boolean panelTouchActive;
+    private boolean panelLongPressTriggered;
+    private boolean dragGestureActive;
     private Palette currentPalette;
     private ClockDetailSystemStatusSnapshot latestSystemStatusSnapshot =
             ClockDetailSystemStatusSnapshot.EMPTY;
@@ -107,11 +136,20 @@ final class ClockDetailPopupController {
     private long lastRenderedDateKey = Long.MIN_VALUE;
     private int popupWidth;
     private int popupHeight;
+    private int popupLeft;
+    private int popupTop;
     private Animator popupAnimator;
     private Drawable originalAnchorBackground;
     private int[] originalAnchorPadding;
     private boolean originalAnchorBackgroundCaptured;
     private boolean anchorHighlighted;
+    private ViewGroup overlayHostView;
+    private WindowManager overlayWindowManager;
+    private WindowManager.LayoutParams overlayWindowLayoutParams;
+    private float panelTouchDownRawX;
+    private float panelTouchDownRawY;
+    private int dragStartPopupLeft;
+    private int dragStartPopupTop;
 
     ClockDetailPopupController(TextView anchor) {
         this.anchorRef = new WeakReference<>(anchor);
@@ -123,6 +161,7 @@ final class ClockDetailPopupController {
         this.contentView = buildContentView(context);
         this.popupBackgroundView = buildPopupBackgroundView(context);
         this.popupRootView = buildPopupRootView(context, popupBackgroundView, contentView);
+        this.overlayView = buildOverlayView(context, popupRootView);
         this.timeRowView = buildTimeRowView(context);
         this.timeView = buildTimeView(context);
         this.millisecondsView = buildMillisecondsView(context);
@@ -138,22 +177,10 @@ final class ClockDetailPopupController {
         this.contentView.addView(timeRowView, matchWidth());
         this.contentView.addView(dateView, matchWidthWithTop(context, 5));
         this.contentView.addView(statusGridView, matchWidthWithTop(context, 12));
-        this.popupWindow = new PopupWindow(
-                popupRootView,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                false);
         this.systemStatusProvider = new ClockDetailSystemStatusProvider(context);
-        popupWindow.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        popupWindow.setAnimationStyle(0);
-        popupWindow.setFocusable(false);
-        popupWindow.setOutsideTouchable(false);
-        popupWindow.setTouchable(true);
-        popupWindow.setClippingEnabled(true);
-        popupWindow.setInputMethodMode(PopupWindow.INPUT_METHOD_NOT_NEEDED);
-        popupWindow.setElevation(0f);
-        popupWindow.setOnDismissListener(this::handlePopupDismissed);
-        disableTouchModal(popupWindow);
+        this.dragTouchSlop = Math.max(
+                dp(context, 4),
+                ViewConfiguration.get(context).getScaledTouchSlop());
         timeView.setOnTouchListener(this::handleTimeTextTouch);
         millisecondsView.setOnTouchListener(this::handleTimeTextTouch);
         anchor.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
@@ -167,7 +194,7 @@ final class ClockDetailPopupController {
             }
         });
         anchor.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
-            if (!popupWindow.isShowing() || dismissAnimationRunning) {
+            if (!isPopupShowing() || dismissAnimationRunning) {
                 return;
             }
             if (left == oldLeft && top == oldTop && right == oldRight && bottom == oldBottom) {
@@ -209,14 +236,19 @@ final class ClockDetailPopupController {
         handler.removeCallbacks(thermalPowerRefreshRunnable);
         handler.removeCallbacks(memoryRefreshRunnable);
         handler.removeCallbacks(autoDismissRunnable);
+        cancelPanelLongPress();
+        panelTouchActive = false;
+        panelLongPressTriggered = false;
+        dragGestureActive = false;
         popupTargetShowing = false;
-        if (!popupWindow.isShowing()) {
+        if (!isPopupShowing()) {
             clearPopupUiState();
             return;
         }
         if (!animate || !popupRootView.isLaidOut()) {
             cancelPopupAnimator();
-            popupWindow.dismiss();
+            detachOverlay();
+            handlePopupDismissed();
             return;
         }
         animatePopupOut();
@@ -226,7 +258,7 @@ final class ClockDetailPopupController {
         if (!enabled) {
             return;
         }
-        if (popupWindow.isShowing() && popupTargetShowing) {
+        if (isPopupShowing() && popupTargetShowing) {
             dismiss();
             return;
         }
@@ -241,8 +273,16 @@ final class ClockDetailPopupController {
         if (!enabled || !anchor.isAttachedToWindow()) {
             return;
         }
+        boolean wasShowing = isPopupShowing();
+        if (!attachOverlay(anchor)) {
+            return;
+        }
         popupTargetShowing = true;
         dismissAnimationRunning = false;
+        popupLayoutUpdatePending = false;
+        if (!wasShowing) {
+            resetTransientPopupState();
+        }
         FlymeStatusBarSizer.disableAncestorClipping(anchor, 6);
         applyPalette(resolvePalette());
         showMilliseconds = false;
@@ -253,17 +293,11 @@ final class ClockDetailPopupController {
         updateSystemStatusViews(latestSystemStatusSnapshot);
         measureContent();
         applyAnchorHighlight(anchor);
-        if (!popupWindow.isShowing()) {
-            preparePopupEnterVisualState(anchor);
-            int xOffset = calculateXOffset();
-            int yOffset = calculatePopupWindowYOffset(anchor);
-            popupWindow.setWidth(popupWidth);
-            popupWindow.setHeight(popupHeight);
-            popupWindow.showAsDropDown(anchor, xOffset, yOffset, Gravity.START);
-            installNativePopupBlurIfPossible();
-            requestThermalPowerRefresh();
-            requestMemoryStatusRefresh();
-        }
+        updatePopupPosition();
+        preparePopupEnterVisualState(anchor);
+        installNativePopupBlurIfPossible();
+        requestThermalPowerRefresh();
+        requestMemoryStatusRefresh();
         animatePopupIn();
         scheduleAutoDismiss();
         scheduleRefresh();
@@ -277,7 +311,7 @@ final class ClockDetailPopupController {
             dismissImmediately();
             return;
         }
-        if (!popupWindow.isShowing() || !anchor.isAttachedToWindow()) {
+        if (!isPopupShowing() || !anchor.isAttachedToWindow()) {
             dismissImmediately();
             return;
         }
@@ -285,9 +319,8 @@ final class ClockDetailPopupController {
         long nowMillis = System.currentTimeMillis();
         refreshTimeText(nowMillis, formattersChanged);
         boolean dateChanged = refreshDateTextIfNeeded(nowMillis, formattersChanged);
-        if ((formattersChanged || dateChanged) && popupWindow.isShowing()) {
-            measureContent();
-            updatePopupPosition();
+        if (formattersChanged || dateChanged) {
+            requestPopupLayoutRefresh();
         }
         scheduleRefresh();
     }
@@ -298,7 +331,7 @@ final class ClockDetailPopupController {
             dismissImmediately();
             return;
         }
-        if (!popupWindow.isShowing() || !anchor.isAttachedToWindow()) {
+        if (!isPopupShowing() || !anchor.isAttachedToWindow()) {
             dismissImmediately();
             return;
         }
@@ -314,7 +347,7 @@ final class ClockDetailPopupController {
             dismissImmediately();
             return;
         }
-        if (!popupWindow.isShowing() || !anchor.isAttachedToWindow()) {
+        if (!isPopupShowing() || !anchor.isAttachedToWindow()) {
             dismissImmediately();
             return;
         }
@@ -416,7 +449,7 @@ final class ClockDetailPopupController {
 
     private void scheduleRefresh() {
         handler.removeCallbacks(refreshRunnable);
-        if (!popupWindow.isShowing()) {
+        if (!isPopupShowing()) {
             return;
         }
         long next;
@@ -432,7 +465,7 @@ final class ClockDetailPopupController {
 
     private void scheduleThermalPowerRefresh() {
         handler.removeCallbacks(thermalPowerRefreshRunnable);
-        if (!popupWindow.isShowing()) {
+        if (!isPopupShowing()) {
             return;
         }
         handler.postAtTime(
@@ -442,7 +475,7 @@ final class ClockDetailPopupController {
 
     private void scheduleMemoryRefresh() {
         handler.removeCallbacks(memoryRefreshRunnable);
-        if (!popupWindow.isShowing()) {
+        if (!isPopupShowing()) {
             return;
         }
         handler.postAtTime(
@@ -452,10 +485,23 @@ final class ClockDetailPopupController {
 
     private void scheduleAutoDismiss() {
         handler.removeCallbacks(autoDismissRunnable);
-        if (!popupWindow.isShowing() || AUTO_DISMISS_DELAY_MS <= 0L) {
+        if (!isPopupShowing() || AUTO_DISMISS_DELAY_MS <= 0L || panelPinned) {
             return;
         }
         handler.postDelayed(autoDismissRunnable, AUTO_DISMISS_DELAY_MS);
+    }
+
+    private void requestPopupLayoutRefresh() {
+        if (!isPopupShowing()) {
+            return;
+        }
+        measureContent();
+        if (enterAnimationRunning) {
+            popupLayoutUpdatePending = true;
+            return;
+        }
+        popupLayoutUpdatePending = false;
+        updatePopupPosition();
     }
 
     private void updatePopupPosition() {
@@ -464,48 +510,109 @@ final class ClockDetailPopupController {
             dismissImmediately();
             return;
         }
-        if (!popupWindow.isShowing() || dismissAnimationRunning) {
+        if (!isPopupShowing() || dismissAnimationRunning) {
             return;
         }
-        popupWindow.update(
-                anchor,
-                calculateXOffset(),
-                calculatePopupWindowYOffset(anchor),
-                popupWidth,
-                popupHeight);
+        applyPopupPosition(
+                resolveTargetPopupLeft(anchor),
+                resolveTargetPopupTop(anchor));
         updatePopupAnimationPivot(anchor);
     }
 
     private void measureContent() {
         Context context = popupRootView.getContext();
         int margin = dp(context, HORIZONTAL_MARGIN_DP);
-        popupWidth = Math.max(
-                1,
-                context.getResources().getDisplayMetrics().widthPixels - (margin * 2));
+        int maxWidth = overlayHostView != null && overlayHostView.getWidth() > 0
+                ? overlayHostView.getWidth()
+                : context.getResources().getDisplayMetrics().widthPixels;
+        maxWidth = Math.max(1, maxWidth - (margin * 2));
         popupRootView.measure(
-                View.MeasureSpec.makeMeasureSpec(popupWidth, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(maxWidth, View.MeasureSpec.AT_MOST),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        popupWidth = Math.max(1, popupRootView.getMeasuredWidth());
         popupHeight = Math.max(popupRootView.getMeasuredHeight(), 0);
     }
 
-    private int calculateXOffset() {
-        TextView anchor = getAnchor();
-        if (anchor == null) {
-            return 0;
-        }
-        int[] anchorLocation = new int[2];
-        anchor.getLocationOnScreen(anchorLocation);
-        int screenWidth = anchor.getResources().getDisplayMetrics().widthPixels;
-        int margin = dp(anchor.getContext(), HORIZONTAL_MARGIN_DP);
-        int desiredLeft = anchorLocation[0];
-        int maxLeft = Math.max(margin, screenWidth - margin - popupWidth);
-        int clampedLeft = Math.max(margin, Math.min(desiredLeft, maxLeft));
-        return clampedLeft - desiredLeft;
+    private int resolveTargetPopupLeft(TextView anchor) {
+        return manualPositionActive
+                ? clampPopupLeft(popupLeft)
+                : calculateAnchoredPopupLeft(anchor);
     }
 
-    private int calculatePopupWindowYOffset(TextView anchor) {
-        return dp(anchor.getContext(), POPUP_SURFACE_OFFSET_Y_DP)
+    private int resolveTargetPopupTop(TextView anchor) {
+        return manualPositionActive
+                ? clampPopupTop(popupTop)
+                : calculateAnchoredPopupTop(anchor);
+    }
+
+    private int calculateAnchoredPopupLeft(TextView anchor) {
+        if (anchor == null) {
+            return clampPopupLeft(0);
+        }
+        int[] anchorLocation = new int[2];
+        int[] hostLocation = new int[2];
+        anchor.getLocationOnScreen(anchorLocation);
+        if (overlayHostView != null) {
+            overlayHostView.getLocationOnScreen(hostLocation);
+        }
+        return clampPopupLeft(anchorLocation[0] - hostLocation[0]);
+    }
+
+    private int calculateAnchoredPopupTop(TextView anchor) {
+        if (anchor == null) {
+            return clampPopupTop(0);
+        }
+        int[] anchorLocation = new int[2];
+        int[] hostLocation = new int[2];
+        anchor.getLocationOnScreen(anchorLocation);
+        if (overlayHostView != null) {
+            overlayHostView.getLocationOnScreen(hostLocation);
+        }
+        int desiredTop = anchorLocation[1]
+                - hostLocation[1]
+                + anchor.getHeight()
+                + dp(anchor.getContext(), POPUP_SURFACE_OFFSET_Y_DP)
                 - dp(anchor.getContext(), POPUP_SHADOW_PADDING_DP);
+        return clampPopupTop(desiredTop);
+    }
+
+    private int clampPopupLeft(int desiredLeft) {
+        Context context = popupRootView.getContext();
+        int margin = dp(context, HORIZONTAL_MARGIN_DP);
+        int hostWidth = overlayHostView != null && overlayHostView.getWidth() > 0
+                ? overlayHostView.getWidth()
+                : context.getResources().getDisplayMetrics().widthPixels;
+        int maxLeft = Math.max(margin, hostWidth - margin - popupWidth);
+        return Math.max(margin, Math.min(desiredLeft, maxLeft));
+    }
+
+    private int clampPopupTop(int desiredTop) {
+        Context context = popupRootView.getContext();
+        int topInset = overlayHostView != null ? overlayHostView.getPaddingTop() : 0;
+        int bottomInset = overlayHostView != null ? overlayHostView.getPaddingBottom() : 0;
+        int hostHeight = overlayHostView != null && overlayHostView.getHeight() > 0
+                ? overlayHostView.getHeight()
+                : context.getResources().getDisplayMetrics().heightPixels;
+        int minTop = Math.max(0, topInset);
+        int maxTop = Math.max(
+                minTop,
+                hostHeight - bottomInset - popupHeight - dp(context, HORIZONTAL_MARGIN_DP));
+        return Math.max(minTop, Math.min(desiredTop, maxTop));
+    }
+
+    private void applyPopupPosition(int desiredLeft, int desiredTop) {
+        popupLeft = clampPopupLeft(desiredLeft);
+        popupTop = clampPopupTop(desiredTop);
+        FrameLayout.LayoutParams params = popupRootView.getLayoutParams()
+                instanceof FrameLayout.LayoutParams
+                ? (FrameLayout.LayoutParams) popupRootView.getLayoutParams()
+                : framePopupContent();
+        params.width = popupWidth;
+        params.height = popupHeight;
+        params.gravity = Gravity.START | Gravity.TOP;
+        params.leftMargin = popupLeft;
+        params.topMargin = popupTop;
+        popupRootView.setLayoutParams(params);
     }
 
     private void animatePopupIn() {
@@ -514,10 +621,11 @@ final class ClockDetailPopupController {
             return;
         }
         runPopupAnimationWhenReady(() -> {
-            if (!popupWindow.isShowing() || !popupTargetShowing) {
+            if (!isPopupShowing() || !popupTargetShowing) {
                 return;
             }
             dismissAnimationRunning = false;
+            enterAnimationRunning = true;
             updatePopupAnimationPivot(anchor);
             float startScaleX = popupRootView.getScaleX();
             float startScaleY = popupRootView.getScaleY();
@@ -546,19 +654,29 @@ final class ClockDetailPopupController {
 
             AnimatorSet animator = new AnimatorSet();
             animator.playTogether(scaleX, scaleY, alpha, translationY);
-            startPopupAnimation(animator, null);
+            startPopupAnimation(animator, () -> {
+                enterAnimationRunning = false;
+                if (popupLayoutUpdatePending && popupTargetShowing) {
+                    popupLayoutUpdatePending = false;
+                    requestPopupLayoutRefresh();
+                } else {
+                    popupLayoutUpdatePending = false;
+                }
+            });
         });
     }
 
     private void animatePopupOut() {
         TextView anchor = getAnchor();
         if (anchor == null) {
-            popupWindow.dismiss();
+            detachOverlay();
+            handlePopupDismissed();
             return;
         }
         dismissAnimationRunning = true;
+        enterAnimationRunning = false;
         runPopupAnimationWhenReady(() -> {
-            if (!popupWindow.isShowing()) {
+            if (!isPopupShowing()) {
                 dismissAnimationRunning = false;
                 clearPopupUiState();
                 return;
@@ -607,11 +725,8 @@ final class ClockDetailPopupController {
             AnimatorSet animator = new AnimatorSet();
             animator.playTogether(scaleX, scaleY, alpha, translationY);
             startPopupAnimation(animator, () -> {
-                if (popupWindow.isShowing()) {
-                    popupWindow.dismiss();
-                } else {
-                    handlePopupDismissed();
-                }
+                detachOverlay();
+                handlePopupDismissed();
             });
         });
     }
@@ -654,12 +769,16 @@ final class ClockDetailPopupController {
             return;
         }
         int[] anchorLocation = new int[2];
+        int[] hostLocation = new int[2];
         anchor.getLocationOnScreen(anchorLocation);
-        float popupLeft = anchorLocation[0] + calculateXOffset();
+        if (overlayHostView != null) {
+            overlayHostView.getLocationOnScreen(hostLocation);
+        }
+        float popupLeftOnScreen = hostLocation[0] + popupLeft;
         float anchorCenterX = anchorLocation[0] + (anchor.getWidth() * 0.5f);
         float shadowPadding = dp(anchor.getContext(), POPUP_SHADOW_PADDING_DP);
         float maxPivot = Math.max(shadowPadding, popupVisualWidth - shadowPadding);
-        float pivotX = clamp(anchorCenterX - popupLeft, shadowPadding, maxPivot);
+        float pivotX = clamp(anchorCenterX - popupLeftOnScreen, shadowPadding, maxPivot);
         popupRootView.setPivotX(pivotX);
         popupRootView.setPivotY(shadowPadding);
     }
@@ -762,11 +881,11 @@ final class ClockDetailPopupController {
     }
 
     private void installNativePopupBlurIfPossible() {
-        if (!popupWindow.isShowing() || currentPalette == null) {
+        if (!isPopupShowing() || currentPalette == null) {
             return;
         }
         popupBackgroundView.post(() -> {
-            if (!popupWindow.isShowing() || currentPalette == null) {
+            if (!isPopupShowing() || currentPalette == null) {
                 return;
             }
             Drawable blurBackground = buildPopupBackgroundDrawable(
@@ -774,18 +893,16 @@ final class ClockDetailPopupController {
                     currentPalette,
                     true);
             popupBackgroundView.setBackground(blurBackground);
-            if (blurBackground == null || blurBackground instanceof GradientDrawable) {
-                applyPopupWindowBlurBehind(
-                        popupRootView,
-                        dp(popupRootView.getContext(), POPUP_BACKGROUND_BLUR_RADIUS_DP));
-            }
         });
     }
 
     private void handlePopupDismissed() {
         popupTargetShowing = false;
         dismissAnimationRunning = false;
+        enterAnimationRunning = false;
+        popupLayoutUpdatePending = false;
         cancelPopupAnimator();
+        resetTransientPopupState();
         clearPopupUiState();
     }
 
@@ -838,10 +955,15 @@ final class ClockDetailPopupController {
             originalAnchorPadding = captureAnchorPadding(anchor);
             originalAnchorBackgroundCaptured = true;
         }
+        int extraStart = dp(context, CLOCK_HIGHLIGHT_EXTRA_START_PADDING_DP);
+        int extraEnd = dp(context, CLOCK_HIGHLIGHT_EXTRA_END_PADDING_DP);
+        int extraVertical = dp(context, CLOCK_HIGHLIGHT_EXTRA_VERTICAL_PADDING_DP);
         GradientDrawable capsule = new GradientDrawable();
         capsule.setShape(GradientDrawable.RECTANGLE);
         capsule.setColor(resolveAnchorHighlightFillColor(anchor.getCurrentTextColor()));
-        capsule.setCornerRadius(Math.max(anchor.getHeight(), dp(context, 18)));
+        capsule.setCornerRadius(Math.max(
+                anchor.getHeight() + (extraVertical * 2),
+                dp(context, 20)));
         capsule.setStroke(
                 Math.max(1, dp(context, 1)),
                 resolveAnchorHighlightStrokeColor(anchor.getCurrentTextColor()));
@@ -852,8 +974,17 @@ final class ClockDetailPopupController {
                 dp(context, CLOCK_HIGHLIGHT_HORIZONTAL_INSET_DP),
                 dp(context, CLOCK_HIGHLIGHT_VERTICAL_INSET_DP));
         anchor.setBackground(highlight);
-        restoreAnchorPadding(anchor);
+        if (originalAnchorPadding != null && originalAnchorPadding.length >= 4) {
+            anchor.setPaddingRelative(
+                    originalAnchorPadding[0] + extraStart,
+                    originalAnchorPadding[1] + extraVertical,
+                    originalAnchorPadding[2] + extraEnd,
+                    originalAnchorPadding[3] + extraVertical);
+        } else {
+            restoreAnchorPadding(anchor);
+        }
         anchorHighlighted = true;
+        anchor.requestLayout();
         anchor.invalidate();
     }
 
@@ -982,6 +1113,16 @@ final class ClockDetailPopupController {
         }
     }
 
+    private static void performLongPressHaptic(View view) {
+        if (view == null) {
+            return;
+        }
+        try {
+            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        } catch (Throwable ignored) {
+        }
+    }
+
     private Palette resolvePalette() {
         TextView anchor = getAnchor();
         if (anchor == null) {
@@ -1055,17 +1196,433 @@ final class ClockDetailPopupController {
         return TimeZone.getDefault();
     }
 
-    private static FrameLayout buildPopupRootView(
+    private boolean isPopupShowing() {
+        return overlayAttached;
+    }
+
+    private boolean attachOverlay(TextView anchor) {
+        if (anchor == null) {
+            return false;
+        }
+        if (overlayAttached) {
+            if (overlayView.isAttachedToWindow()) {
+                overlayHostView = overlayView;
+                return true;
+            }
+            detachOverlay();
+        }
+        Object windowManagerObject = anchor.getContext().getSystemService(Context.WINDOW_SERVICE);
+        if (!(windowManagerObject instanceof WindowManager)) {
+            return false;
+        }
+        removeOverlayFromViewGroupParent();
+        WindowManager windowManager = (WindowManager) windowManagerObject;
+        Throwable lastError = null;
+        for (int windowType : INTERNAL_WINDOW_TYPE_CANDIDATES) {
+            WindowManager.LayoutParams params =
+                    buildInternalOverlayLayoutParams(anchor.getContext(), windowType);
+            try {
+                windowManager.addView(overlayView, params);
+                overlayWindowManager = windowManager;
+                overlayWindowLayoutParams = params;
+                overlayHostView = overlayView;
+                overlayAttached = true;
+                return true;
+            } catch (Throwable throwable) {
+                lastError = throwable;
+                try {
+                    windowManager.removeViewImmediate(overlayView);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        FlymeStatusBarSizer.logClockWarning(
+                "Failed to attach clock detail panel internal window",
+                lastError);
+        overlayWindowManager = null;
+        overlayWindowLayoutParams = null;
+        overlayHostView = null;
+        overlayAttached = false;
+        return false;
+    }
+
+    private void detachOverlay() {
+        WindowManager windowManager = overlayWindowManager;
+        overlayWindowManager = null;
+        overlayWindowLayoutParams = null;
+        if (windowManager != null) {
+            try {
+                windowManager.removeViewImmediate(overlayView);
+            } catch (Throwable ignored) {
+            }
+        }
+        removeOverlayFromViewGroupParent();
+        overlayAttached = false;
+        overlayHostView = null;
+    }
+
+    private void removeOverlayFromViewGroupParent() {
+        ViewParent parent = overlayView.getParent();
+        if (parent instanceof ViewGroup) {
+            ((ViewGroup) parent).removeView(overlayView);
+        }
+    }
+
+    private WindowManager.LayoutParams buildInternalOverlayLayoutParams(
+            Context context,
+            int windowType) {
+        int flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_SPLIT_TOUCH
+                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                | WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS;
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                windowType,
+                flags,
+                PixelFormat.TRANSLUCENT);
+        applyTrustedOverlayFlags(params);
+        params.token = new Binder();
+        params.gravity = Gravity.TOP | Gravity.START;
+        params.setFitInsetsTypes(0);
+        params.setTitle(INTERNAL_WINDOW_TITLE);
+        params.packageName = context.getPackageName();
+        params.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+        return params;
+    }
+
+    private void applyTrustedOverlayFlags(WindowManager.LayoutParams params) {
+        if (params == null) {
+            return;
+        }
+        FlymeStatusBarSizer.invokeNoArgCompat(params, "setTrustedOverlay");
+        try {
+            Field privateFlagsField = WindowManager.LayoutParams.class.getDeclaredField("privateFlags");
+            privateFlagsField.setAccessible(true);
+            int currentFlags = privateFlagsField.getInt(params);
+            privateFlagsField.setInt(
+                    params,
+                    currentFlags | INTERNAL_WINDOW_PRIVATE_FLAG_TRUSTED_OVERLAY);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private ViewGroup resolveOverlayHost(TextView anchor) {
+        if (anchor == null) {
+            return null;
+        }
+        ViewGroup notificationShadeHost = resolveNotificationShadeOverlayHost(anchor);
+        if (notificationShadeHost != null) {
+            return notificationShadeHost;
+        }
+        ViewGroup statusBarWindowView = findAncestorViewGroupByClassName(
+                anchor,
+                "com.android.systemui.statusbar.window.StatusBarWindowView");
+        ViewGroup host = findPreferredOverlayHost(statusBarWindowView);
+        if (host != null) {
+            return host;
+        }
+        View topMostView = findTopMostView(anchor);
+        host = findPreferredOverlayHost(topMostView);
+        if (host != null) {
+            return host;
+        }
+        return topMostView instanceof ViewGroup ? (ViewGroup) topMostView : null;
+    }
+
+    private ViewGroup resolveNotificationShadeOverlayHost(TextView anchor) {
+        if (anchor == null) {
+            return null;
+        }
+        ClassLoader classLoader = anchor.getClass().getClassLoader();
+        if (classLoader == null) {
+            classLoader = anchor.getContext() != null
+                    ? anchor.getContext().getClassLoader()
+                    : null;
+        }
+        if (classLoader == null) {
+            return null;
+        }
+        try {
+            Class<?> dependencyClass = Class.forName(
+                    "com.android.systemui.Dependency",
+                    false,
+                    classLoader);
+            Class<?> centralSurfaceUtilClass = Class.forName(
+                    "com.flyme.systemui.statusbar.CentralSurfaceUtil",
+                    false,
+                    classLoader);
+            Method getMethod = dependencyClass.getDeclaredMethod("get", Class.class);
+            getMethod.setAccessible(true);
+            Object centralSurfaceUtil = getMethod.invoke(null, centralSurfaceUtilClass);
+            Object centralSurfaces = FlymeStatusBarSizer.invokeNoArgCompat(
+                    centralSurfaceUtil,
+                    "getCentralSurfacesImpl");
+            Object notificationShadeWindowView = FlymeStatusBarSizer.invokeNoArgCompat(
+                    centralSurfaces,
+                    "getNotificationShadeWindowView");
+            if (!(notificationShadeWindowView instanceof ViewGroup)) {
+                return null;
+            }
+            return (ViewGroup) notificationShadeWindowView;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private ViewGroup findPreferredOverlayHost(View searchRoot) {
+        if (!(searchRoot instanceof ViewGroup)) {
+            return null;
+        }
+        View host = FlymeStatusBarSizer.findSystemUiChildCompat(
+                searchRoot,
+                "live_notification_capsule_anim_container_on_statusbar");
+        if (host instanceof ViewGroup) {
+            return (ViewGroup) host;
+        }
+        host = FlymeStatusBarSizer.findSystemUiChildCompat(
+                searchRoot,
+                "status_bar_launch_animation_container");
+        if (host instanceof ViewGroup) {
+            return (ViewGroup) host;
+        }
+        if (searchRoot instanceof ViewGroup) {
+            return (ViewGroup) searchRoot;
+        }
+        return null;
+    }
+
+    private ViewGroup findAncestorViewGroupByClassName(View view, String className) {
+        View current = view;
+        while (current != null) {
+            if (className.equals(current.getClass().getName()) && current instanceof ViewGroup) {
+                return (ViewGroup) current;
+            }
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return null;
+    }
+
+    private View findTopMostView(View view) {
+        View current = view;
+        View last = view;
+        while (current != null) {
+            last = current;
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return last;
+    }
+
+    private void resetTransientPopupState() {
+        cancelPanelLongPress();
+        panelPinned = false;
+        manualPositionActive = false;
+        panelTouchActive = false;
+        panelLongPressTriggered = false;
+        dragGestureActive = false;
+        popupLeft = 0;
+        popupTop = 0;
+        dragStartPopupLeft = 0;
+        dragStartPopupTop = 0;
+    }
+
+    private void cancelPanelLongPress() {
+        handler.removeCallbacks(panelLongPressRunnable);
+    }
+
+    private void handlePanelLongPressTimeout() {
+        if (!panelTouchActive || !isPopupShowing()) {
+            return;
+        }
+        panelLongPressTriggered = true;
+        panelPinned = !panelPinned;
+        performLongPressHaptic(popupRootView);
+        if (panelPinned) {
+            dragGestureActive = true;
+            manualPositionActive = true;
+            dragStartPopupLeft = popupLeft;
+            dragStartPopupTop = popupTop;
+            handler.removeCallbacks(autoDismissRunnable);
+        } else {
+            dragGestureActive = false;
+            scheduleAutoDismiss();
+        }
+    }
+
+    private void observePanelTouch(MotionEvent event) {
+        if (event == null || !isPopupShowing()) {
+            return;
+        }
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                panelTouchActive = true;
+                panelLongPressTriggered = false;
+                dragGestureActive = false;
+                panelTouchDownRawX = event.getRawX();
+                panelTouchDownRawY = event.getRawY();
+                dragStartPopupLeft = popupLeft;
+                dragStartPopupTop = popupTop;
+                cancelPanelLongPress();
+                handler.postDelayed(
+                        panelLongPressRunnable,
+                        ViewConfiguration.getLongPressTimeout());
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (!panelTouchActive) {
+                    return;
+                }
+                if (dragGestureActive) {
+                    return;
+                }
+                if (hasDragMovedEnough(event)) {
+                    cancelPanelLongPress();
+                    if (panelPinned) {
+                        dragGestureActive = true;
+                        manualPositionActive = true;
+                    }
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                cancelPanelLongPress();
+                break;
+            default:
+                break;
+        }
+    }
+
+    private boolean shouldInterceptPanelTouch(MotionEvent event) {
+        if (event == null) {
+            return false;
+        }
+        int action = event.getActionMasked();
+        if (!panelTouchActive && action != MotionEvent.ACTION_CANCEL) {
+            return false;
+        }
+        return dragGestureActive || panelLongPressTriggered || action == MotionEvent.ACTION_CANCEL;
+    }
+
+    private boolean handlePanelTouchEvent(MotionEvent event) {
+        if (event == null) {
+            return false;
+        }
+        int action = event.getActionMasked();
+        switch (action) {
+            case MotionEvent.ACTION_MOVE:
+                if (dragGestureActive) {
+                    updateDraggedPopupPosition(event);
+                    return true;
+                }
+                return panelLongPressTriggered;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                boolean handled = dragGestureActive || panelLongPressTriggered;
+                finishPanelTouchGesture();
+                return handled;
+            default:
+                return dragGestureActive || panelLongPressTriggered;
+        }
+    }
+
+    private void finishPanelTouchGesture() {
+        cancelPanelLongPress();
+        panelTouchActive = false;
+        panelLongPressTriggered = false;
+        dragGestureActive = false;
+        if (!panelPinned) {
+            scheduleAutoDismiss();
+        }
+    }
+
+    private boolean hasDragMovedEnough(MotionEvent event) {
+        if (event == null) {
+            return false;
+        }
+        float dx = event.getRawX() - panelTouchDownRawX;
+        float dy = event.getRawY() - panelTouchDownRawY;
+        return Math.max(Math.abs(dx), Math.abs(dy)) >= dragTouchSlop;
+    }
+
+    private void updateDraggedPopupPosition(MotionEvent event) {
+        if (event == null) {
+            return;
+        }
+        int desiredLeft = dragStartPopupLeft + Math.round(event.getRawX() - panelTouchDownRawX);
+        int desiredTop = dragStartPopupTop + Math.round(event.getRawY() - panelTouchDownRawY);
+        manualPositionActive = true;
+        applyPopupPosition(desiredLeft, desiredTop);
+    }
+
+    private boolean handleOverlayTouch(MotionEvent event) {
+        if (event == null || !isPopupShowing() || panelPinned) {
+            return false;
+        }
+        int action = event.getActionMasked();
+        if (action != MotionEvent.ACTION_DOWN && action != MotionEvent.ACTION_OUTSIDE) {
+            return false;
+        }
+        if (isPointInsidePopup(event.getX(), event.getY())) {
+            return false;
+        }
+        dismiss();
+        return true;
+    }
+
+    private boolean isPointInsidePopup(float x, float y) {
+        return x >= popupRootView.getLeft()
+                && x <= popupRootView.getRight()
+                && y >= popupRootView.getTop()
+                && y <= popupRootView.getBottom();
+    }
+
+    private FrameLayout buildOverlayView(
+            Context context,
+            View popupContentView) {
+        FrameLayout overlay = new FrameLayout(context) {
+            @Override
+            public boolean dispatchTouchEvent(MotionEvent event) {
+                if (handleOverlayTouch(event)) {
+                    return true;
+                }
+                return super.dispatchTouchEvent(event);
+            }
+        };
+        overlay.setClipChildren(false);
+        overlay.setClipToPadding(false);
+        overlay.addView(popupContentView, framePopupContent());
+        return overlay;
+    }
+
+    private FrameLayout buildPopupRootView(
             Context context,
             View backgroundView,
             LinearLayout contentView) {
-        FrameLayout root = new FrameLayout(context);
+        FrameLayout root = new FrameLayout(context) {
+            @Override
+            public boolean dispatchTouchEvent(MotionEvent event) {
+                observePanelTouch(event);
+                return super.dispatchTouchEvent(event);
+            }
+
+            @Override
+            public boolean onInterceptTouchEvent(MotionEvent event) {
+                return shouldInterceptPanelTouch(event) || super.onInterceptTouchEvent(event);
+            }
+
+            @Override
+            public boolean onTouchEvent(MotionEvent event) {
+                return handlePanelTouchEvent(event) || super.onTouchEvent(event);
+            }
+        };
         root.setClipChildren(false);
         root.setClipToPadding(false);
         int shadowPadding = dp(context, POPUP_SHADOW_PADDING_DP);
         root.setPadding(shadowPadding, shadowPadding, shadowPadding, shadowPadding);
         root.addView(backgroundView, frameMatchParent());
-        root.addView(contentView, frameMatchWidth());
+        root.addView(contentView, frameWrapContent());
         return root;
     }
 
@@ -1128,7 +1685,7 @@ final class ClockDetailPopupController {
         if (event.getAction() != MotionEvent.ACTION_UP) {
             return false;
         }
-        if (!popupWindow.isShowing()) {
+        if (!isPopupShowing()) {
             return false;
         }
         boolean tappedMilliseconds = view == millisecondsView;
@@ -1146,10 +1703,7 @@ final class ClockDetailPopupController {
         long nowMillis = System.currentTimeMillis();
         refreshTimeText(nowMillis, true);
         refreshDateTextIfNeeded(nowMillis, false);
-        if (popupWindow.isShowing()) {
-            measureContent();
-            updatePopupPosition();
-        }
+        requestPopupLayoutRefresh();
         scheduleRefresh();
         scheduleAutoDismiss();
     }
@@ -1182,7 +1736,7 @@ final class ClockDetailPopupController {
                     temperatureValue,
                     powerValue);
             thermalPowerQueryInFlight = false;
-            if (!popupWindow.isShowing()) {
+            if (!isPopupShowing()) {
                 return;
             }
             updateSystemStatusViews(latestSystemStatusSnapshot);
@@ -1197,7 +1751,7 @@ final class ClockDetailPopupController {
         systemStatusProvider.requestMemoryRows(handler, memoryRows -> {
             latestSystemStatusSnapshot = latestSystemStatusSnapshot.withMemoryRows(memoryRows);
             memoryQueryInFlight = false;
-            if (!popupWindow.isShowing()) {
+            if (!isPopupShowing()) {
                 return;
             }
             updateSystemStatusViews(latestSystemStatusSnapshot);
@@ -1432,10 +1986,26 @@ final class ClockDetailPopupController {
                 FrameLayout.LayoutParams.WRAP_CONTENT);
     }
 
+    private static FrameLayout.LayoutParams frameWrapContent() {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        params.gravity = Gravity.START | Gravity.TOP;
+        return params;
+    }
+
     private static FrameLayout.LayoutParams frameMatchParent() {
         return new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT);
+    }
+
+    private static FrameLayout.LayoutParams framePopupContent() {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        params.gravity = Gravity.START | Gravity.TOP;
+        return params;
     }
 
     private static LinearLayout.LayoutParams matchWidth() {
