@@ -33,12 +33,10 @@ import android.view.animation.OvershootInterpolator;
 import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.PopupWindow;
 import android.widget.TextView;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
@@ -62,7 +60,6 @@ final class ClockDetailPopupController {
     private static final int POPUP_SHADOW_TRANSLATION_Z_DP = 6;
     private static final int POPUP_BACKGROUND_BLUR_RADIUS_DP = 32;
     private static final int POPUP_BACKGROUND_BLUR_Z_ORDER_BOTTOM = -1;
-    private static final int WINDOW_FLAG_BLUR_BEHIND = 4;
     private static final int INTERNAL_WINDOW_TYPE_STATUS_BAR_SUB_PANEL = 2017;
     private static final int INTERNAL_WINDOW_TYPE_NOTIFICATION_SHADE = 2040;
     private static final int INTERNAL_WINDOW_TYPE_STATUS_BAR_ADDITIONAL = 2041;
@@ -145,7 +142,6 @@ final class ClockDetailPopupController {
     private boolean anchorHighlighted;
     private ViewGroup overlayHostView;
     private WindowManager overlayWindowManager;
-    private WindowManager.LayoutParams overlayWindowLayoutParams;
     private float panelTouchDownRawX;
     private float panelTouchDownRawY;
     private int dragStartPopupLeft;
@@ -1024,35 +1020,6 @@ final class ClockDetailPopupController {
                 originalAnchorPadding[3]);
     }
 
-    private void applyPopupWindowBlurBehind(View popupContentRoot, int blurRadiusPx) {
-        if (popupContentRoot == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            return;
-        }
-        View decorView = popupContentRoot.getRootView();
-        if (decorView == null) {
-            return;
-        }
-        Object layoutParamsObject = decorView.getLayoutParams();
-        if (!(layoutParamsObject instanceof WindowManager.LayoutParams)) {
-            return;
-        }
-        WindowManager.LayoutParams params = (WindowManager.LayoutParams) layoutParamsObject;
-        params.flags |= WINDOW_FLAG_BLUR_BEHIND;
-        try {
-            params.setBlurBehindRadius(Math.max(0, blurRadiusPx));
-        } catch (Throwable ignored) {
-            return;
-        }
-        Object windowManager = popupContentRoot.getContext().getSystemService(Context.WINDOW_SERVICE);
-        if (!(windowManager instanceof WindowManager)) {
-            return;
-        }
-        try {
-            ((WindowManager) windowManager).updateViewLayout(decorView, params);
-        } catch (Throwable ignored) {
-        }
-    }
-
     private Drawable tryCreateNativePopupBlurDrawable(View targetView, Palette palette) {
         if (targetView == null || palette == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return null;
@@ -1224,7 +1191,6 @@ final class ClockDetailPopupController {
             try {
                 windowManager.addView(overlayView, params);
                 overlayWindowManager = windowManager;
-                overlayWindowLayoutParams = params;
                 overlayHostView = overlayView;
                 overlayAttached = true;
                 return true;
@@ -1240,7 +1206,6 @@ final class ClockDetailPopupController {
                 "Failed to attach clock detail panel internal window",
                 lastError);
         overlayWindowManager = null;
-        overlayWindowLayoutParams = null;
         overlayHostView = null;
         overlayAttached = false;
         return false;
@@ -1249,7 +1214,6 @@ final class ClockDetailPopupController {
     private void detachOverlay() {
         WindowManager windowManager = overlayWindowManager;
         overlayWindowManager = null;
-        overlayWindowLayoutParams = null;
         if (windowManager != null) {
             try {
                 windowManager.removeViewImmediate(overlayView);
@@ -1306,114 +1270,6 @@ final class ClockDetailPopupController {
                     currentFlags | INTERNAL_WINDOW_PRIVATE_FLAG_TRUSTED_OVERLAY);
         } catch (Throwable ignored) {
         }
-    }
-
-    private ViewGroup resolveOverlayHost(TextView anchor) {
-        if (anchor == null) {
-            return null;
-        }
-        ViewGroup notificationShadeHost = resolveNotificationShadeOverlayHost(anchor);
-        if (notificationShadeHost != null) {
-            return notificationShadeHost;
-        }
-        ViewGroup statusBarWindowView = findAncestorViewGroupByClassName(
-                anchor,
-                "com.android.systemui.statusbar.window.StatusBarWindowView");
-        ViewGroup host = findPreferredOverlayHost(statusBarWindowView);
-        if (host != null) {
-            return host;
-        }
-        View topMostView = findTopMostView(anchor);
-        host = findPreferredOverlayHost(topMostView);
-        if (host != null) {
-            return host;
-        }
-        return topMostView instanceof ViewGroup ? (ViewGroup) topMostView : null;
-    }
-
-    private ViewGroup resolveNotificationShadeOverlayHost(TextView anchor) {
-        if (anchor == null) {
-            return null;
-        }
-        ClassLoader classLoader = anchor.getClass().getClassLoader();
-        if (classLoader == null) {
-            classLoader = anchor.getContext() != null
-                    ? anchor.getContext().getClassLoader()
-                    : null;
-        }
-        if (classLoader == null) {
-            return null;
-        }
-        try {
-            Class<?> dependencyClass = Class.forName(
-                    "com.android.systemui.Dependency",
-                    false,
-                    classLoader);
-            Class<?> centralSurfaceUtilClass = Class.forName(
-                    "com.flyme.systemui.statusbar.CentralSurfaceUtil",
-                    false,
-                    classLoader);
-            Method getMethod = dependencyClass.getDeclaredMethod("get", Class.class);
-            getMethod.setAccessible(true);
-            Object centralSurfaceUtil = getMethod.invoke(null, centralSurfaceUtilClass);
-            Object centralSurfaces = FlymeStatusBarSizer.invokeNoArgCompat(
-                    centralSurfaceUtil,
-                    "getCentralSurfacesImpl");
-            Object notificationShadeWindowView = FlymeStatusBarSizer.invokeNoArgCompat(
-                    centralSurfaces,
-                    "getNotificationShadeWindowView");
-            if (!(notificationShadeWindowView instanceof ViewGroup)) {
-                return null;
-            }
-            return (ViewGroup) notificationShadeWindowView;
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private ViewGroup findPreferredOverlayHost(View searchRoot) {
-        if (!(searchRoot instanceof ViewGroup)) {
-            return null;
-        }
-        View host = FlymeStatusBarSizer.findSystemUiChildCompat(
-                searchRoot,
-                "live_notification_capsule_anim_container_on_statusbar");
-        if (host instanceof ViewGroup) {
-            return (ViewGroup) host;
-        }
-        host = FlymeStatusBarSizer.findSystemUiChildCompat(
-                searchRoot,
-                "status_bar_launch_animation_container");
-        if (host instanceof ViewGroup) {
-            return (ViewGroup) host;
-        }
-        if (searchRoot instanceof ViewGroup) {
-            return (ViewGroup) searchRoot;
-        }
-        return null;
-    }
-
-    private ViewGroup findAncestorViewGroupByClassName(View view, String className) {
-        View current = view;
-        while (current != null) {
-            if (className.equals(current.getClass().getName()) && current instanceof ViewGroup) {
-                return (ViewGroup) current;
-            }
-            ViewParent parent = current.getParent();
-            current = parent instanceof View ? (View) parent : null;
-        }
-        return null;
-    }
-
-    private View findTopMostView(View view) {
-        View current = view;
-        View last = view;
-        while (current != null) {
-            last = current;
-            ViewParent parent = current.getParent();
-            current = parent instanceof View ? (View) parent : null;
-        }
-        return last;
     }
 
     private void resetTransientPopupState() {
@@ -1756,22 +1612,6 @@ final class ClockDetailPopupController {
             }
             updateSystemStatusViews(latestSystemStatusSnapshot);
         });
-    }
-
-    private static void disableTouchModal(PopupWindow popupWindow) {
-        if (popupWindow == null) {
-            return;
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            popupWindow.setTouchModal(false);
-            return;
-        }
-        try {
-            Method method = PopupWindow.class.getDeclaredMethod("setTouchModal", boolean.class);
-            method.setAccessible(true);
-            method.invoke(popupWindow, false);
-        } catch (Throwable ignored) {
-        }
     }
 
     private void applyStatTilePalette(StatTile tile, Palette palette) {
