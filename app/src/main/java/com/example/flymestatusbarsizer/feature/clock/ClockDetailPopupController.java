@@ -321,11 +321,14 @@ final class ClockDetailPopupController {
         if (!enabled) {
             return;
         }
-        if (isPopupShowing() && popupTargetShowing) {
-            dismiss();
+        if (!isPopupShowing()) {
+            show();
             return;
         }
-        show();
+        if (dismissAnimationRunning) {
+            return;
+        }
+        dismiss();
     }
 
     private void show() {
