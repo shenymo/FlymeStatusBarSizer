@@ -33,6 +33,9 @@ final class ClockDetailSystemStatusProvider {
     private static final String THERMAL_AIDL_DESCRIPTOR = "android.hardware.thermal.IThermal";
     private static final String THERMAL_AIDL_SERVICE = THERMAL_AIDL_DESCRIPTOR + "/default";
     private static final String MEM_INFO_READER_CLASS = "com.android.internal.util.MemInfoReader";
+    private static final long CHARGE_COUNTER_MICROAMP_HOURS_FALLBACK_THRESHOLD = 20000L;
+    private static final double MIN_REASONABLE_PHONE_CAPACITY_MAH = 500.0d;
+    private static final double MAX_REASONABLE_PHONE_CAPACITY_MAH = 15000.0d;
     private static final int TEMPERATURE_TYPE_BATTERY = 2;
     private static final int TEMPERATURE_TYPE_SKIN = 3;
     private static final int FIRST_THROTTLING_STATUS_INDEX = 1;
@@ -397,7 +400,7 @@ final class ClockDetailSystemStatusProvider {
                         EXTRA_CHARGE_COUNTER,
                         Integer.MIN_VALUE);
                 if (chargeCounter != Integer.MIN_VALUE) {
-                    snapshot.chargeCounterMicroampHours = chargeCounter;
+                    snapshot.chargeCounterValue = chargeCounter;
                 }
                 snapshot.batteryLevel = batteryIntent.getIntExtra(
                         BatteryManager.EXTRA_LEVEL,
@@ -414,7 +417,7 @@ final class ClockDetailSystemStatusProvider {
             snapshot.currentAverageMicroamps = queryLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_AVERAGE);
             long chargeCounter = queryLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER);
             if (chargeCounter != Long.MIN_VALUE) {
-                snapshot.chargeCounterMicroampHours = chargeCounter;
+                snapshot.chargeCounterValue = chargeCounter;
             }
             int chargePercentage = queryIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
             if (isValidBatteryPercent(chargePercentage)) {
@@ -486,23 +489,25 @@ final class ClockDetailSystemStatusProvider {
     private String formatPowerValue(BatterySnapshot snapshot) {
         double maxChargeWatts = readMaxChargeWatts(snapshot);
         long currentMicroamps = selectCurrentMicroamps(snapshot);
+        boolean charging = isChargingStatus(snapshot.status);
+        boolean discharging = isDischargingStatus(snapshot.status);
         if (currentMicroamps != Long.MIN_VALUE && snapshot.voltageMillivolts > 0) {
             double watts = toWattsFromCurrentAndVoltage(currentMicroamps, snapshot.voltageMillivolts);
-            if (currentMicroamps > 0L) {
+            if (charging) {
                 return formatChargingWatts(watts, maxChargeWatts);
             }
             if (currentMicroamps < 0L) {
-                return formatSignedWatts(-1, watts);
+                return formatSignedWattsWithUnit(-1, watts);
             }
-            if (isChargingStatus(snapshot.status)) {
-                return formatChargingWatts(watts, maxChargeWatts);
+            if (discharging) {
+                return formatSignedWattsWithUnit(-1, watts);
             }
-            if (isDischargingStatus(snapshot.status)) {
-                return formatSignedWatts(-1, watts);
+            if (currentMicroamps > 0L) {
+                return formatSignedWattsWithUnit(1, watts);
             }
-            return formatSignedWatts(0, watts);
+            return formatSignedWattsWithUnit(0, watts);
         }
-        if (isChargingStatus(snapshot.status) && maxChargeWatts > 0.0d) {
+        if (charging && maxChargeWatts > 0.0d) {
             return formatMaxWatts(maxChargeWatts);
         }
         return POWER_UNAVAILABLE;
@@ -529,7 +534,7 @@ final class ClockDetailSystemStatusProvider {
         if (!Double.isFinite(estimatedFullMilliampHours) || estimatedFullMilliampHours <= 0.0d) {
             return ESTIMATED_CAPACITY_UNAVAILABLE;
         }
-        return formatCapacityMagnitude(estimatedFullMilliampHours);
+        return formatCapacityIntegerMagnitude(estimatedFullMilliampHours);
     }
 
     private long selectCurrentMicroamps(BatterySnapshot snapshot) {
@@ -561,12 +566,16 @@ final class ClockDetailSystemStatusProvider {
     }
 
     private String formatMaxWatts(double watts) {
-        return formatWattMagnitude(watts) + " W Max";
+        return formatWattMagnitude(watts) + " W";
     }
 
     private String formatSignedWatts(int sign, double watts) {
         String prefix = sign > 0 ? "+" : sign < 0 ? "-" : "";
-        return prefix + formatWattMagnitude(watts) + " W";
+        return prefix + formatWattMagnitude(watts);
+    }
+
+    private String formatSignedWattsWithUnit(int sign, double watts) {
+        return formatSignedWatts(sign, watts) + " W";
     }
 
     private String formatWattMagnitude(double watts) {
@@ -589,6 +598,11 @@ final class ClockDetailSystemStatusProvider {
         return String.format(locale, "%.1f mAh", absMilliampHours);
     }
 
+    private String formatCapacityIntegerMagnitude(double milliampHours) {
+        Locale locale = resolveLocale();
+        return String.format(locale, "%.0f mAh", Math.rint(Math.abs(milliampHours)));
+    }
+
     private double readMaxChargeWatts(BatterySnapshot snapshot) {
         if (snapshot.maxChargingCurrentMicroamps <= 0 || snapshot.maxChargingVoltageMicrovolts <= 0) {
             return 0.0d;
@@ -599,10 +613,36 @@ final class ClockDetailSystemStatusProvider {
     }
 
     private double resolveRemainingCapacityMilliampHours(BatterySnapshot snapshot) {
-        if (snapshot == null || snapshot.chargeCounterMicroampHours == Long.MIN_VALUE) {
+        if (snapshot == null || snapshot.chargeCounterValue == Long.MIN_VALUE) {
             return Double.NaN;
         }
-        return snapshot.chargeCounterMicroampHours / 1000.0d;
+        return normalizeChargeCounterMilliampHours(
+                snapshot.chargeCounterValue,
+                snapshot.chargePercentage);
+    }
+
+    private double normalizeChargeCounterMilliampHours(long rawChargeCounter, int chargePercent) {
+        double milliampHoursFromMicro = rawChargeCounter / 1000.0d;
+        double milliampHoursDirect = rawChargeCounter;
+        if (isValidBatteryPercent(chargePercent) && chargePercent > 0) {
+            double estimatedFullFromMicro = (milliampHoursFromMicro * 100.0d) / chargePercent;
+            double estimatedFullFromDirect = (milliampHoursDirect * 100.0d) / chargePercent;
+            boolean microLooksCorrect = isPlausiblePhoneBatteryCapacity(estimatedFullFromMicro);
+            boolean directLooksCorrect = isPlausiblePhoneBatteryCapacity(estimatedFullFromDirect);
+            if (microLooksCorrect != directLooksCorrect) {
+                return microLooksCorrect ? milliampHoursFromMicro : milliampHoursDirect;
+            }
+        }
+        // Some vendors already return mAh for charge_counter instead of uAh.
+        return rawChargeCounter >= CHARGE_COUNTER_MICROAMP_HOURS_FALLBACK_THRESHOLD
+                ? milliampHoursFromMicro
+                : milliampHoursDirect;
+    }
+
+    private boolean isPlausiblePhoneBatteryCapacity(double milliampHours) {
+        return Double.isFinite(milliampHours)
+                && milliampHours >= MIN_REASONABLE_PHONE_CAPACITY_MAH
+                && milliampHours <= MAX_REASONABLE_PHONE_CAPACITY_MAH;
     }
 
     private boolean isValidBatteryPercent(int percent) {
@@ -1107,7 +1147,7 @@ final class ClockDetailSystemStatusProvider {
         int chargePercentage = Integer.MIN_VALUE;
         long currentNowMicroamps = Long.MIN_VALUE;
         long currentAverageMicroamps = Long.MIN_VALUE;
-        long chargeCounterMicroampHours = Long.MIN_VALUE;
+        long chargeCounterValue = Long.MIN_VALUE;
     }
 
     private static final class MemoryCompressionSnapshot {

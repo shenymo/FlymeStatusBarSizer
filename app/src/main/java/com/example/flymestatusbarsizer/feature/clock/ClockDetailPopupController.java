@@ -2231,11 +2231,11 @@ final class ClockDetailPopupController {
     }
 
     private static String buildThermalPowerValue(String temperatureValue, String powerValue) {
-        return "温度 " + sanitizeStatusText(
+        return sanitizeStatusText(
                 temperatureValue,
                 ClockDetailSystemStatusSnapshot.EMPTY.temperatureValue)
                 + "\n"
-                + "功率 " + sanitizeStatusText(
+                + sanitizeStatusText(
                         powerValue,
                         ClockDetailSystemStatusSnapshot.EMPTY.powerValue);
     }
@@ -2243,13 +2243,45 @@ final class ClockDetailPopupController {
     private static String buildBatteryCapacityValue(
             String remainingCapacityValue,
             String estimatedFullCapacityValue) {
-        return sanitizeStatusText(
+        String remainingValue = sanitizeStatusText(
                 remainingCapacityValue,
-                ClockDetailSystemStatusSnapshot.EMPTY.remainingCapacityValue)
+                ClockDetailSystemStatusSnapshot.EMPTY.remainingCapacityValue);
+        String estimatedValue = sanitizeStatusText(
+                estimatedFullCapacityValue,
+                ClockDetailSystemStatusSnapshot.EMPTY.estimatedFullCapacityValue);
+        return formatBatteryCapacityLine(remainingValue)
                 + "\n"
-                + sanitizeStatusText(
-                        estimatedFullCapacityValue,
-                        ClockDetailSystemStatusSnapshot.EMPTY.estimatedFullCapacityValue);
+                + formatBatteryCapacityLine(estimatedValue);
+    }
+
+    private static String stripBatteryCapacityUnit(String value) {
+        if (value == null) {
+            return "";
+        }
+        String trimmed = value.trim();
+        if (!trimmed.endsWith("mAh")) {
+            return trimmed;
+        }
+        return trimmed.substring(0, trimmed.length() - 3).trim();
+    }
+
+    private static boolean isUnavailableBatteryCapacityValue(String value) {
+        if (value == null) {
+            return true;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() || "--".equals(trimmed) || "不可用".equals(trimmed);
+    }
+
+    private static String formatBatteryCapacityLine(String value) {
+        if (isUnavailableBatteryCapacityValue(value)) {
+            return "--";
+        }
+        String numberOnly = stripBatteryCapacityUnit(value);
+        if (!numberOnly.equals(value)) {
+            return numberOnly + "mAh";
+        }
+        return value;
     }
 
     private static LinearLayout buildStatusGrid(
@@ -2373,8 +2405,8 @@ final class ClockDetailPopupController {
         LinearLayout rightColumn = buildBatteryInfoColumn(context);
         TextView rightLabelView = buildBatteryInfoLabelView(
                 context,
-                "当前电池剩余容量\n当前折算满充容量",
-                false);
+                "电池容量",
+                true);
         TextView rightValueView = buildBatteryInfoValueView(context);
         rightValueView.setText(buildBatteryCapacityValue(
                 ClockDetailSystemStatusSnapshot.EMPTY.remainingCapacityValue,
