@@ -61,6 +61,8 @@ final class ClockDetailPopupController {
     private static final long POPUP_COLLAPSE_DURATION_MS = 220L;
     private static final long DETAILS_EXPAND_DURATION_MS = 240L;
     private static final long DETAILS_COLLAPSE_DURATION_MS = 200L;
+    private static final long RECENT_APPS_SWAP_OUT_DURATION_MS = 90L;
+    private static final long RECENT_APPS_SWAP_IN_DURATION_MS = 140L;
     private static final int HORIZONTAL_MARGIN_DP = 16;
     private static final int STATUS_TILE_GAP_DP = 8;
     private static final int DETAILS_TOP_MARGIN_DP = 12;
@@ -69,6 +71,7 @@ final class ClockDetailPopupController {
     private static final int RECENT_APP_ITEM_SIZE_DP = 40;
     private static final int RECENT_APP_ICON_PADDING_DP = 4;
     private static final int RECENT_APP_GAP_DP = 10;
+    private static final int RECENT_APPS_SWAP_OFFSET_DP = 6;
     private static final int DETAILS_SWIPE_TRIGGER_DP = 20;
     private static final int POPUP_SURFACE_OFFSET_Y_DP = 8;
     private static final int POPUP_SURFACE_RADIUS_DP = 24;
@@ -174,6 +177,7 @@ final class ClockDetailPopupController {
     private String latestEstimatedFullCapacityValue =
             ClockDetailSystemStatusSnapshot.EMPTY.estimatedFullCapacityValue;
     private ClockDetailRecentApp[] latestRecentApps = ClockDetailRecentApp.EMPTY_ARRAY;
+    private ClockDetailRecentApp[] renderedRecentApps = ClockDetailRecentApp.EMPTY_ARRAY;
     private Locale cachedLocale;
     private TimeZone cachedTimeZone;
     private boolean cached24HourMode;
@@ -1088,6 +1092,8 @@ final class ClockDetailPopupController {
     private void clearPopupUiState() {
         dismissAnimationRunning = false;
         cancelDetailsAnimator();
+        cancelRecentAppsStripAnimations();
+        resetRecentAppsStripVisualState();
         if (currentPalette != null) {
             popupBackgroundView.setBackground(
                     buildPopupBackgroundDrawable(popupBackgroundView.getContext(), currentPalette));
@@ -1586,6 +1592,8 @@ final class ClockDetailPopupController {
         swipeRevealTargetHeight = 0;
         popupDismissGestureProgress = 0f;
         cancelDetailsAnimator();
+        cancelRecentAppsStripAnimations();
+        resetRecentAppsStripVisualState();
         refreshPinToggleView();
         refreshPinToggleVisibility();
         applyDetailsExpandedState(detailsExpanded, false);
@@ -2514,7 +2522,7 @@ final class ClockDetailPopupController {
     }
 
     private void applyLatestRecentAppsView() {
-        updateRecentAppsView(latestRecentApps);
+        updateRecentAppsView(latestRecentApps, false);
     }
 
     private void updateMemoryStatusView(ClockDetailSystemStatusSnapshot.MemoryRow[] rows) {
@@ -2603,14 +2611,18 @@ final class ClockDetailPopupController {
             }
             recentAppsQueryInFlight = false;
             recentAppsRequestSessionId = INVALID_POPUP_SESSION_ID;
-            latestRecentApps = recentApps != null && recentApps.length > 0
+            ClockDetailRecentApp[] resolvedRecentApps = recentApps != null && recentApps.length > 0
                     ? recentApps
+                    : latestRecentApps;
+            latestRecentApps = resolvedRecentApps != null && resolvedRecentApps.length > 0
+                    ? resolvedRecentApps
                     : ClockDetailRecentApp.EMPTY_ARRAY;
             if (!isPopupShowing()) {
                 return;
             }
-            updateRecentAppsView(latestRecentApps);
-            requestPopupLayoutRefresh();
+            if (updateRecentAppsView(latestRecentApps, shouldAnimateRecentAppsRefresh())) {
+                requestPopupLayoutRefresh();
+            }
         });
     }
 
@@ -2687,7 +2699,46 @@ final class ClockDetailPopupController {
         }
     }
 
-    private void updateRecentAppsView(ClockDetailRecentApp[] recentApps) {
+    private boolean shouldAnimateRecentAppsRefresh() {
+        return popupTargetShowing
+                && !dismissAnimationRunning
+                && !enterAnimationRunning;
+    }
+
+    private boolean updateRecentAppsView(ClockDetailRecentApp[] recentApps, boolean animate) {
+        if (recentAppsStrip == null) {
+            return false;
+        }
+        ClockDetailRecentApp[] safeRecentApps = recentApps != null && recentApps.length > 0
+                ? recentApps
+                : ClockDetailRecentApp.EMPTY_ARRAY;
+        if (areRecentAppsEquivalent(renderedRecentApps, safeRecentApps)) {
+            resetRecentAppsStripVisualState();
+            boolean hasApps = safeRecentApps.length > 0;
+            boolean visibilityChanged = setVisibilityIfChanged(
+                    recentAppsStrip.root,
+                    hasApps ? View.VISIBLE : View.GONE);
+            if (!hasApps) {
+                recentAppsStrip.scrollView.scrollTo(0, 0);
+            }
+            return visibilityChanged;
+        }
+        boolean hasApps = safeRecentApps.length > 0;
+        if (!animate || !hasApps || !recentAppsStrip.root.isLaidOut()) {
+            applyRecentAppsContent(safeRecentApps);
+            return true;
+        }
+        animateRecentAppsViewChange(safeRecentApps);
+        return true;
+    }
+
+    private void applyRecentAppsContent(ClockDetailRecentApp[] recentApps) {
+        cancelRecentAppsStripAnimations();
+        resetRecentAppsStripVisualState();
+        bindRecentAppsContent(recentApps);
+    }
+
+    private void bindRecentAppsContent(ClockDetailRecentApp[] recentApps) {
         if (recentAppsStrip == null) {
             return;
         }
@@ -2697,6 +2748,7 @@ final class ClockDetailPopupController {
         boolean hasApps = safeRecentApps.length > 0;
         setVisibilityIfChanged(recentAppsStrip.root, hasApps ? View.VISIBLE : View.GONE);
         recentAppsStrip.contentView.removeAllViews();
+        renderedRecentApps = safeRecentApps;
         if (!hasApps) {
             recentAppsStrip.scrollView.scrollTo(0, 0);
             return;
@@ -2718,6 +2770,99 @@ final class ClockDetailPopupController {
                             : recentAppItemLayoutParamsWithStart(context, RECENT_APP_GAP_DP));
         }
         recentAppsStrip.scrollView.scrollTo(0, 0);
+    }
+
+    private void animateRecentAppsViewChange(ClockDetailRecentApp[] recentApps) {
+        if (recentAppsStrip == null) {
+            return;
+        }
+        ClockDetailRecentApp[] safeRecentApps = recentApps != null && recentApps.length > 0
+                ? recentApps
+                : ClockDetailRecentApp.EMPTY_ARRAY;
+        boolean hadApps = renderedRecentApps != null && renderedRecentApps.length > 0;
+        float offset = dp(recentAppsStrip.root.getContext(), RECENT_APPS_SWAP_OFFSET_DP);
+        cancelRecentAppsStripAnimations();
+        resetRecentAppsStripVisualState();
+        if (!hadApps) {
+            bindRecentAppsContent(safeRecentApps);
+            recentAppsStrip.root.setAlpha(0f);
+            recentAppsStrip.root.setTranslationY(offset);
+            recentAppsStrip.root.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(RECENT_APPS_SWAP_IN_DURATION_MS)
+                    .setInterpolator(POPUP_ALPHA_IN_INTERPOLATOR)
+                    .start();
+            return;
+        }
+        recentAppsStrip.contentView.animate()
+                .alpha(0f)
+                .translationY(offset * 0.35f)
+                .setDuration(RECENT_APPS_SWAP_OUT_DURATION_MS)
+                .setInterpolator(POPUP_OUT_INTERPOLATOR)
+                .withEndAction(() -> {
+                    bindRecentAppsContent(safeRecentApps);
+                    recentAppsStrip.contentView.setAlpha(0f);
+                    recentAppsStrip.contentView.setTranslationY(-offset * 0.3f);
+                    recentAppsStrip.contentView.animate()
+                            .alpha(1f)
+                            .translationY(0f)
+                            .setDuration(RECENT_APPS_SWAP_IN_DURATION_MS)
+                            .setInterpolator(POPUP_ALPHA_IN_INTERPOLATOR)
+                            .start();
+                })
+                .start();
+    }
+
+    private void cancelRecentAppsStripAnimations() {
+        if (recentAppsStrip == null) {
+            return;
+        }
+        recentAppsStrip.root.animate().cancel();
+        recentAppsStrip.contentView.animate().cancel();
+    }
+
+    private void resetRecentAppsStripVisualState() {
+        if (recentAppsStrip == null) {
+            return;
+        }
+        recentAppsStrip.root.setAlpha(1f);
+        recentAppsStrip.root.setTranslationY(0f);
+        recentAppsStrip.contentView.setAlpha(1f);
+        recentAppsStrip.contentView.setTranslationY(0f);
+    }
+
+    private static boolean areRecentAppsEquivalent(
+            ClockDetailRecentApp[] first,
+            ClockDetailRecentApp[] second) {
+        ClockDetailRecentApp[] safeFirst = first != null ? first : ClockDetailRecentApp.EMPTY_ARRAY;
+        ClockDetailRecentApp[] safeSecond = second != null ? second : ClockDetailRecentApp.EMPTY_ARRAY;
+        if (safeFirst.length != safeSecond.length) {
+            return false;
+        }
+        for (int i = 0; i < safeFirst.length; i++) {
+            if (!areRecentAppsEquivalent(safeFirst[i], safeSecond[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean areRecentAppsEquivalent(
+            ClockDetailRecentApp first,
+            ClockDetailRecentApp second) {
+        if (first == second) {
+            return true;
+        }
+        if (first == null || second == null) {
+            return false;
+        }
+        if (first.taskId != second.taskId || first.userId != second.userId) {
+            return false;
+        }
+        String firstLabel = first.label != null ? first.label.toString() : "";
+        String secondLabel = second.label != null ? second.label.toString() : "";
+        return firstLabel.equals(secondLabel);
     }
 
     private void launchRecentTask(ClockDetailRecentApp app) {
