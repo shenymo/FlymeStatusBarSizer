@@ -1273,6 +1273,12 @@ final class ClockDetailPopupController {
     }
 
     private Palette resolvePalette() {
+        if (hostMode == HostMode.MBACK) {
+            int sourceColor = resolvePaletteSourceTextColor();
+            if (sourceColor != Integer.MIN_VALUE) {
+                return buildPaletteFromSourceTextColor(sourceColor);
+            }
+        }
         View anchor = getAnchor();
         if (!(anchor instanceof TextView)) {
             return new Palette(
@@ -1296,6 +1302,42 @@ final class ClockDetailPopupController {
                         Color.parseColor("#191C1E"),
                         Color.parseColor("#56606C"),
                         Color.parseColor("#005CAE"));
+    }
+
+    private int resolvePaletteSourceTextColor() {
+        TextView primaryClockView = ClockHooks.resolvePrimaryStatusBarClockView();
+        if (primaryClockView != null) {
+            return primaryClockView.getCurrentTextColor();
+        }
+        View anchor = getAnchor();
+        if (anchor instanceof TextView) {
+            return ((TextView) anchor).getCurrentTextColor();
+        }
+        return Integer.MIN_VALUE;
+    }
+
+    private Palette buildPaletteFromSourceTextColor(int sourceTextColor) {
+        boolean lightForeground = isLightForeground(sourceTextColor);
+        int surfaceColor = lightForeground
+                ? Color.parseColor("#20262C")
+                : Color.parseColor("#FCFDFE");
+        int strokeColor = lightForeground
+                ? Color.parseColor("#4F5966")
+                : Color.parseColor("#D6DCE8");
+        int secondaryTextColor = mixColors(
+                sourceTextColor,
+                surfaceColor,
+                lightForeground ? 0.26f : 0.34f);
+        int accentColor = mixColors(
+                sourceTextColor,
+                lightForeground ? Color.parseColor("#7DB7FF") : Color.parseColor("#005CAE"),
+                0.18f);
+        return new Palette(
+                surfaceColor,
+                strokeColor,
+                sourceTextColor,
+                secondaryTextColor,
+                accentColor);
     }
 
     private static boolean isLightForeground(int color) {
@@ -1847,7 +1889,7 @@ final class ClockDetailPopupController {
     private void refreshPinToggleVisibility() {
         setVisibilityIfChanged(
                 pinToggleView,
-                hostMode == HostMode.CLOCK && detailsExpanded ? View.VISIBLE : View.GONE);
+                hostMode == HostMode.CLOCK ? View.VISIBLE : View.GONE);
     }
 
     private boolean isDetailsVisibleByDefault() {
@@ -1855,7 +1897,7 @@ final class ClockDetailPopupController {
     }
 
     private boolean isPanelDragEnabled() {
-        return hostMode == HostMode.CLOCK && detailsExpanded;
+        return hostMode == HostMode.CLOCK;
     }
 
     private boolean shouldDismissFromOutsideTouch() {

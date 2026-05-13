@@ -12,6 +12,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.text.DateFormatSymbols;
@@ -34,6 +35,8 @@ public final class ClockHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<TextView, ClockDetailPopupController> CLOCK_DETAIL_POPUPS =
             new WeakHashMap<>();
+    private static WeakReference<TextView> latestPrimaryStatusBarClockRef =
+            new WeakReference<>(null);
     private static final Runnable CLOCK_SECOND_REFRESH_RUNNABLE =
             ClockHooks::refreshClockViewsForSecondTick;
 
@@ -532,6 +535,7 @@ public final class ClockHooks {
             return;
         }
         TRACKED_CLOCK_AND_CARRIER_TEXT_VIEWS.put(view, Boolean.TRUE);
+        rememberPrimaryStatusBarClockView(view);
         FlymeStatusBarSizer.ensureConfigRefreshObserver(view.getContext());
         updateClockSecondRefreshTracking(view);
         view.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
@@ -547,6 +551,7 @@ public final class ClockHooks {
             @Override
             public void onViewAttachedToWindow(View v) {
                 if (v instanceof TextView) {
+                    rememberPrimaryStatusBarClockView((TextView) v);
                     updateClockSecondRefreshTracking((TextView) v);
                 }
             }
@@ -559,6 +564,18 @@ public final class ClockHooks {
                 }
             }
         });
+    }
+
+    static TextView resolvePrimaryStatusBarClockView() {
+        TextView view = latestPrimaryStatusBarClockRef.get();
+        return isPrimaryStatusBarClockView(view) && view.isAttachedToWindow() ? view : null;
+    }
+
+    private static void rememberPrimaryStatusBarClockView(TextView view) {
+        if (!isPrimaryStatusBarClockView(view)) {
+            return;
+        }
+        latestPrimaryStatusBarClockRef = new WeakReference<>(view);
     }
 
     private static boolean restoreOriginalTextLayoutWidth(TextView view) {
