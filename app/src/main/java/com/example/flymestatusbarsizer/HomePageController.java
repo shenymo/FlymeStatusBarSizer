@@ -15,7 +15,6 @@ final class HomePageController {
         root.addView(buildHeroCard(activity), PageViewUtils.matchWrap());
         root.addView(buildSectionLabel(activity, "功能入口"), PageViewUtils.matchWrapWithTop(activity, 18));
         root.addView(buildEntryCard(activity,
-                "IB",
                 "图标与电池",
                 "图标缩放、电池样式、通知图标和信号接管",
                 activity.primaryColor(),
@@ -23,7 +22,6 @@ final class HomePageController {
                 v -> activity.openPage(MainActivity.Page.ICONS_BATTERY)),
                 PageViewUtils.matchWrapWithTop(activity, 12));
         root.addView(buildEntryCard(activity,
-                "TN",
                 "时间与网络",
                 "实时网速阈值、时间表达式和时间字体",
                 activity.secondaryColor(),
@@ -31,7 +29,6 @@ final class HomePageController {
                 v -> activity.openPage(MainActivity.Page.TIME_NETWORK)),
                 PageViewUtils.matchWrapWithTop(activity, 12));
         root.addView(buildEntryCard(activity,
-                "SI",
                 "系统交互",
                 "MBack 长触、导航栏沉浸和输入法控制栏",
                 activity.tertiaryColor(),
@@ -39,14 +36,12 @@ final class HomePageController {
                 v -> activity.openPage(MainActivity.Page.SYSTEM_INTERACTION)),
                 PageViewUtils.matchWrapWithTop(activity, 12));
         root.addView(buildEntryCard(activity,
-                "AD",
                 "高级与调试",
                 "配置管理、SystemUI 操作、布局微调和 Telephony 调试",
                 activity.errorColor(),
                 0x1ABA1A1A,
                 v -> activity.openPage(MainActivity.Page.ADVANCED_DEBUG)),
                 PageViewUtils.matchWrapWithTop(activity, 12));
-        root.addView(buildFooterCard(activity), PageViewUtils.matchWrapWithTop(activity, 20));
     }
 
     private static View buildHeroCard(MainActivity activity) {
@@ -69,34 +64,35 @@ final class HomePageController {
         title.setPadding(0, PageViewUtils.dp(activity, 14), 0, 0);
         card.addView(title, PageViewUtils.matchWrap());
 
-        TextView summary = new TextView(activity);
-        summary.setText("首页只负责导航、状态信息和轻说明；原有设置键与写回逻辑继续复用。");
-        summary.setTextColor(0xE6FFFFFF);
-        summary.setTextSize(14);
-        summary.setPadding(0, PageViewUtils.dp(activity, 8), 0, 0);
-        card.addView(summary, PageViewUtils.matchWrap());
-
-        TextView detail = new TextView(activity);
-        detail.setText("不提供模块总开关，不改 Hook 结构，只把配置入口收拢成更稳定的二级页。");
-        detail.setTextColor(0xCCFFFFFF);
-        detail.setTextSize(13);
-        detail.setPadding(0, PageViewUtils.dp(activity, 12), 0, 0);
-        card.addView(detail, PageViewUtils.matchWrap());
-
         TextView aboutButton = buildChip(activity, "关于与支持", Color.WHITE, activity.primaryDeepColor());
         aboutButton.setPadding(
                 PageViewUtils.dp(activity, 14),
                 PageViewUtils.dp(activity, 10),
                 PageViewUtils.dp(activity, 14),
                 PageViewUtils.dp(activity, 10));
-        aboutButton.setOnClickListener(v -> activity.openPage(MainActivity.Page.ABOUT));
-        card.addView(aboutButton, PageViewUtils.wrapWrapWithTop(activity, 16));
+        activity.setTapClickListener(aboutButton, v -> activity.openPage(MainActivity.Page.ABOUT));
+
+        TextView restartButton = buildChip(activity, "重启 SystemUI", Color.WHITE, 0x26FFFFFF);
+        restartButton.setPadding(
+                PageViewUtils.dp(activity, 14),
+                PageViewUtils.dp(activity, 10),
+                PageViewUtils.dp(activity, 14),
+                PageViewUtils.dp(activity, 10));
+        activity.setTapClickListener(restartButton, v -> activity.restartSystemUi());
+
+        LinearLayout actionRow = new LinearLayout(activity);
+        actionRow.setOrientation(LinearLayout.HORIZONTAL);
+        actionRow.setGravity(Gravity.CENTER_VERTICAL);
+        actionRow.addView(aboutButton, PageViewUtils.wrapWrap());
+        LinearLayout.LayoutParams restartLp = PageViewUtils.wrapWrap();
+        restartLp.leftMargin = PageViewUtils.dp(activity, 10);
+        actionRow.addView(restartButton, restartLp);
+        card.addView(actionRow, PageViewUtils.wrapWrapWithTop(activity, 18));
         return card;
     }
 
     private static View buildEntryCard(
             MainActivity activity,
-            String monogram,
             String titleText,
             String summaryText,
             int accentColor,
@@ -118,24 +114,12 @@ final class HomePageController {
                 activity));
         card.setOnClickListener(listener);
 
-        TextView badge = new TextView(activity);
-        badge.setText(monogram);
-        badge.setTextColor(accentColor);
-        badge.setTextSize(14);
-        badge.setGravity(Gravity.CENTER);
-        badge.setBackground(buildSolidBackground(accentBackground, 14, activity));
-        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(
-                PageViewUtils.dp(activity, 44),
-                PageViewUtils.dp(activity, 44));
-        card.addView(badge, badgeLp);
-
         LinearLayout textGroup = new LinearLayout(activity);
         textGroup.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 1f);
-        textLp.leftMargin = PageViewUtils.dp(activity, 14);
 
         TextView title = new TextView(activity);
         title.setText(titleText);
@@ -166,43 +150,6 @@ final class HomePageController {
         arrow.setTextColor(accentColor);
         arrow.setTextSize(24);
         card.addView(arrow, PageViewUtils.wrapWrap());
-        return card;
-    }
-
-    private static View buildFooterCard(MainActivity activity) {
-        LinearLayout card = new LinearLayout(activity);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(
-                PageViewUtils.dp(activity, 16),
-                PageViewUtils.dp(activity, 16),
-                PageViewUtils.dp(activity, 16),
-                PageViewUtils.dp(activity, 16));
-        card.setBackground(buildOutlinedBackground(
-                activity.featureSurfaceColor(),
-                activity.featureStrokeColor(),
-                18,
-                activity));
-
-        TextView scopeChip = buildChip(
-                activity,
-                "LSPosed 作用域：" + activity.supportedScopesSummary(),
-                activity.primaryColor(),
-                0x14FFFFFF);
-        card.addView(scopeChip, PageViewUtils.matchWrap());
-
-        TextView version = new TextView(activity);
-        version.setText("版本 " + BuildConfig.VERSION_NAME + "  ·  构建 " + BuildConfig.BUILD_DATE);
-        version.setTextColor(activity.textColor());
-        version.setTextSize(14);
-        version.setPadding(0, PageViewUtils.dp(activity, 12), 0, 0);
-        card.addView(version, PageViewUtils.matchWrap());
-
-        TextView summary = new TextView(activity);
-        summary.setText("当前首页展示的是静态构建信息与目标作用域说明，不额外声明运行时激活状态。");
-        summary.setTextColor(activity.subtextColor());
-        summary.setTextSize(13);
-        summary.setPadding(0, PageViewUtils.dp(activity, 6), 0, 0);
-        card.addView(summary, PageViewUtils.matchWrap());
         return card;
     }
 

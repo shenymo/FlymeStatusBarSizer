@@ -135,7 +135,7 @@ public class MainActivity extends Activity {
     private final SettingsUiFactory settingsUiFactory = new SettingsUiFactory(this);
 
     enum Page {
-        HOME("Flyme Status Bar", "重构后的总览入口，保留原有配置逻辑，只调整信息架构与视觉层级。", "Flyme 模块", true),
+        HOME("Flyme Status Bar", null, "Flyme 模块", true),
         ICONS_BATTERY("图标与电池", "状态栏图标缩放、电池样式、通知图标以及信号与 Wi-Fi 接管设置。", null, true),
         TIME_NETWORK("时间与网络", "实时网速显隐阈值、时间表达式编辑，以及时间字重字号设置。", null, true),
         SYSTEM_INTERACTION("系统交互", "MBack 长触、导航栏沉浸与高度，以及输入法控制栏接管。", null, true),
@@ -1533,7 +1533,7 @@ public class MainActivity extends Activity {
         };
         toggle.setTrackTintList(new ColorStateList(
                 states,
-                new int[]{colorPrimaryContainer, colorSurfaceStrong}));
+                new int[]{colorPrimary, colorSurfaceStrong}));
         toggle.setThumbTintList(new ColorStateList(
                 states,
                 new int[]{Color.WHITE, Color.WHITE}));

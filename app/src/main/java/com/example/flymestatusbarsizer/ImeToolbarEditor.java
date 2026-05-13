@@ -52,7 +52,7 @@ final class ImeToolbarEditor {
                 10, 100, "%");
         activity.addDivider(details);
         activity.addProfileSectionHeader(details, "按钮位置与显隐",
-                "长按按钮拖到下面 7 个固定槽位里就会显示；拖回按钮池就会隐藏。");
+                "长按按钮拖到下面固定槽位里就会显示；拖回按钮池就会隐藏。");
 
         TextView hint = new TextView(activity);
         hint.setText("从左到右就是输入法控制栏里的实际位置；拖拽后先保存在页面草稿里，点击应用才会写入配置并刷新当前输入法界面。");
@@ -111,7 +111,7 @@ final class ImeToolbarEditor {
         buttonContainer.addView(slotTitle, activity.matchWrap());
 
         TextView slotHint = new TextView(activity);
-        slotHint.setText("1 到 7 从左到右对应输入法控制栏的实际位置；空槽位会保留占位。");
+        slotHint.setText("从左到右对应输入法控制栏的实际位置；空槽位会保留占位。");
         slotHint.setTextColor(activity.subtextColor());
         slotHint.setTextSize(12);
         slotHint.setPadding(0, activity.dp(6), 0, 0);
@@ -237,18 +237,11 @@ final class ImeToolbarEditor {
             slot.setOnLongClickListener(v -> startDrag(v, button, slotIndex));
         }
 
-        TextView index = new TextView(activity);
-        index.setText(String.valueOf(slotIndex + 1));
-        index.setTextColor(activity.primaryColor());
-        index.setTextSize(12);
-        slot.addView(index, activity.matchWrap());
-
         TextView label = new TextView(activity);
         label.setText(TextUtils.isEmpty(button) ? "空槽" : ImeToolbarSpec.getButtonLabel(button));
         label.setTextColor(TextUtils.isEmpty(button) ? activity.subtextColor() : activity.textColor());
-        label.setTextSize(TextUtils.isEmpty(button) ? 11 : 12);
+        label.setTextSize(TextUtils.isEmpty(button) ? 11 : 13);
         label.setGravity(Gravity.CENTER);
-        label.setPadding(0, activity.dp(6), 0, 0);
         label.setMaxLines(2);
         slot.addView(label, activity.matchWrap());
         return slot;
