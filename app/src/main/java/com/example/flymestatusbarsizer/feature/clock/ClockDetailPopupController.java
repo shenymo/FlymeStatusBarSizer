@@ -2,11 +2,19 @@ package com.example.flymestatusbarsizer.feature.clock;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
-import android.os.Build;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
+import android.graphics.drawable.LayerDrawable;
+import android.os.Build;
 import android.os.Handler;
 import android.os.SystemClock;
 import android.text.Layout;
@@ -17,8 +25,13 @@ import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowManager;
+import android.view.animation.OvershootInterpolator;
+import android.view.animation.PathInterpolator;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
@@ -36,11 +49,33 @@ final class ClockDetailPopupController {
     private static final long MILLIS_REFRESH_INTERVAL_MS = 33L;
     private static final long SECOND_REFRESH_INTERVAL_MS = 1000L;
     private static final long SYSTEM_STATUS_REFRESH_INTERVAL_MS = 2000L;
+    private static final long POPUP_EXPAND_DURATION_MS = 320L;
+    private static final long POPUP_COLLAPSE_DURATION_MS = 220L;
     private static final int HORIZONTAL_MARGIN_DP = 16;
     private static final int STATUS_TILE_GAP_DP = 8;
+    private static final int POPUP_SURFACE_OFFSET_Y_DP = 8;
+    private static final int POPUP_SURFACE_RADIUS_DP = 24;
+    private static final int POPUP_SHADOW_PADDING_DP = 10;
+    private static final int POPUP_SHADOW_ELEVATION_DP = 26;
+    private static final int POPUP_SHADOW_TRANSLATION_Z_DP = 6;
+    private static final int POPUP_BACKGROUND_BLUR_RADIUS_DP = 32;
+    private static final int POPUP_BACKGROUND_BLUR_Z_ORDER_BOTTOM = -1;
+    private static final int WINDOW_FLAG_BLUR_BEHIND = 4;
+    private static final int CLOCK_HIGHLIGHT_VERTICAL_INSET_DP = 3;
+    private static final int CLOCK_HIGHLIGHT_HORIZONTAL_INSET_DP = 1;
+    private static final OvershootInterpolator POPUP_SCALE_IN_INTERPOLATOR =
+            new OvershootInterpolator(0.72f);
+    private static final PathInterpolator POPUP_ALPHA_IN_INTERPOLATOR =
+            new PathInterpolator(0.18f, 0f, 0.12f, 1f);
+    private static final PathInterpolator POPUP_TRANSLATION_IN_INTERPOLATOR =
+            new PathInterpolator(0.16f, 1f, 0.28f, 1f);
+    private static final PathInterpolator POPUP_OUT_INTERPOLATOR =
+            new PathInterpolator(0.4f, 0f, 0.82f, 0.72f);
 
     private final WeakReference<TextView> anchorRef;
     private final Handler handler;
+    private final FrameLayout popupRootView;
+    private final View popupBackgroundView;
     private final LinearLayout contentView;
     private final TextView timeView;
     private final TextView dateView;
@@ -56,6 +91,7 @@ final class ClockDetailPopupController {
     private boolean enabled;
     private boolean showMilliseconds = true;
     private boolean systemStatusQueryInFlight;
+    private boolean dismissAnimationRunning;
     private Palette currentPalette;
     private ClockDetailSystemStatusSnapshot latestSystemStatusSnapshot =
             ClockDetailSystemStatusSnapshot.EMPTY;
@@ -68,6 +104,11 @@ final class ClockDetailPopupController {
     private int lastMillisecondsEnd = -1;
     private int popupWidth;
     private int popupHeight;
+    private Animator popupAnimator;
+    private Drawable originalAnchorBackground;
+    private int[] originalAnchorPadding;
+    private boolean originalAnchorBackgroundCaptured;
+    private boolean anchorHighlighted;
 
     ClockDetailPopupController(TextView anchor) {
         this.anchorRef = new WeakReference<>(anchor);
@@ -75,31 +116,36 @@ final class ClockDetailPopupController {
         this.handler = mainHandler != null
                 ? mainHandler
                 : new Handler(anchor.getContext().getMainLooper());
-        this.contentView = buildContentView(anchor.getContext());
-        this.timeView = buildTimeView(anchor.getContext());
-        this.dateView = buildDateView(anchor.getContext());
+        Context context = anchor.getContext();
+        this.contentView = buildContentView(context);
+        this.popupBackgroundView = buildPopupBackgroundView(context);
+        this.popupRootView = buildPopupRootView(context, popupBackgroundView, contentView);
+        this.timeView = buildTimeView(context);
+        this.dateView = buildDateView(context);
         this.memoryTile = buildMemoryStatTile(
-                anchor.getContext(),
+                context,
                 "系统内存",
                 ClockDetailSystemStatusSnapshot.EMPTY.memoryRows);
-        this.thermalPowerTile = buildStatTile(anchor.getContext(), "电池温度 / 功率", true);
-        this.statusGridView = buildStatusGrid(anchor.getContext(), memoryTile, thermalPowerTile);
+        this.thermalPowerTile = buildStatTile(context, "电池温度 / 功率", true);
+        this.statusGridView = buildStatusGrid(context, memoryTile, thermalPowerTile);
         this.contentView.addView(timeView, matchWidth());
-        this.contentView.addView(dateView, matchWidthWithTop(anchor.getContext(), 5));
-        this.contentView.addView(statusGridView, matchWidthWithTop(anchor.getContext(), 12));
+        this.contentView.addView(dateView, matchWidthWithTop(context, 5));
+        this.contentView.addView(statusGridView, matchWidthWithTop(context, 12));
         this.popupWindow = new PopupWindow(
-                contentView,
+                popupRootView,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 false);
-        this.systemStatusProvider = new ClockDetailSystemStatusProvider(anchor.getContext());
+        this.systemStatusProvider = new ClockDetailSystemStatusProvider(context);
         popupWindow.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        popupWindow.setAnimationStyle(0);
         popupWindow.setFocusable(false);
         popupWindow.setOutsideTouchable(false);
         popupWindow.setTouchable(true);
         popupWindow.setClippingEnabled(true);
         popupWindow.setInputMethodMode(PopupWindow.INPUT_METHOD_NOT_NEEDED);
-        popupWindow.setElevation(dp(anchor.getContext(), 18));
+        popupWindow.setElevation(0f);
+        popupWindow.setOnDismissListener(this::handlePopupDismissed);
         disableTouchModal(popupWindow);
         timeView.setOnTouchListener(this::handleTimeViewTouch);
         anchor.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
@@ -109,11 +155,11 @@ final class ClockDetailPopupController {
 
             @Override
             public void onViewDetachedFromWindow(View v) {
-                dismiss();
+                dismissImmediately();
             }
         });
         anchor.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
-            if (!popupWindow.isShowing()) {
+            if (!popupWindow.isShowing() || dismissAnimationRunning) {
                 return;
             }
             if (left == oldLeft && top == oldTop && right == oldRight && bottom == oldBottom) {
@@ -126,31 +172,51 @@ final class ClockDetailPopupController {
     void syncWithConfig(FlymeStatusBarSizer.ClockConfigSnapshot config) {
         TextView anchor = getAnchor();
         if (anchor == null) {
-            dismiss();
+            dismissImmediately();
             return;
         }
         boolean shouldEnable = config != null && config.clockDetailPopupEnabled;
         enabled = shouldEnable;
         anchor.setHapticFeedbackEnabled(shouldEnable);
         anchor.setClickable(shouldEnable);
-        anchor.setOnClickListener(shouldEnable ? v -> toggle() : null);
+        anchor.setOnClickListener(shouldEnable ? v -> {
+            performClockHaptic(v);
+            toggle();
+        } : null);
         if (!shouldEnable) {
-            dismiss();
+            dismissImmediately();
         }
     }
 
     void dismiss() {
+        dismissInternal(true);
+    }
+
+    private void dismissImmediately() {
+        dismissInternal(false);
+    }
+
+    private void dismissInternal(boolean animate) {
         handler.removeCallbacks(refreshRunnable);
         handler.removeCallbacks(systemStatusRefreshRunnable);
         handler.removeCallbacks(autoDismissRunnable);
-        contentView.animate().cancel();
-        if (popupWindow.isShowing()) {
-            popupWindow.dismiss();
+        if (!popupWindow.isShowing()) {
+            clearPopupUiState();
+            return;
         }
+        if (dismissAnimationRunning) {
+            return;
+        }
+        cancelPopupAnimator();
+        if (!animate || !popupRootView.isLaidOut()) {
+            popupWindow.dismiss();
+            return;
+        }
+        animatePopupOut();
     }
 
     private void toggle() {
-        if (!enabled) {
+        if (!enabled || dismissAnimationRunning) {
             return;
         }
         if (popupWindow.isShowing()) {
@@ -168,16 +234,20 @@ final class ClockDetailPopupController {
         if (!enabled || !anchor.isAttachedToWindow()) {
             return;
         }
+        dismissAnimationRunning = false;
+        cancelPopupAnimator();
         FlymeStatusBarSizer.disableAncestorClipping(anchor, 6);
         applyPalette(resolvePalette());
         refreshContent();
         updateSystemStatusViews(latestSystemStatusSnapshot);
         measureContent();
         int xOffset = calculateXOffset();
-        int yOffset = dp(anchor.getContext(), 8);
+        int yOffset = calculatePopupWindowYOffset(anchor);
         popupWindow.setWidth(popupWidth);
         popupWindow.setHeight(popupHeight);
+        applyAnchorHighlight(anchor);
         popupWindow.showAsDropDown(anchor, xOffset, yOffset, Gravity.START);
+        installNativePopupBlurIfPossible();
         requestSystemStatusRefresh();
         animatePopupIn();
         scheduleAutoDismiss();
@@ -188,11 +258,11 @@ final class ClockDetailPopupController {
     private void refreshVisibleContent() {
         TextView anchor = getAnchor();
         if (anchor == null) {
-            dismiss();
+            dismissImmediately();
             return;
         }
         if (!popupWindow.isShowing() || !anchor.isAttachedToWindow()) {
-            dismiss();
+            dismissImmediately();
             return;
         }
         refreshContent();
@@ -202,11 +272,11 @@ final class ClockDetailPopupController {
     private void refreshVisibleSystemStatus() {
         TextView anchor = getAnchor();
         if (anchor == null) {
-            dismiss();
+            dismissImmediately();
             return;
         }
         if (!popupWindow.isShowing() || !anchor.isAttachedToWindow()) {
-            dismiss();
+            dismissImmediately();
             return;
         }
         requestSystemStatusRefresh();
@@ -329,28 +399,31 @@ final class ClockDetailPopupController {
     private void updatePopupPosition() {
         TextView anchor = getAnchor();
         if (anchor == null) {
-            dismiss();
+            dismissImmediately();
             return;
         }
-        if (!popupWindow.isShowing()) {
+        if (!popupWindow.isShowing() || dismissAnimationRunning) {
             return;
         }
         popupWindow.update(
                 anchor,
                 calculateXOffset(),
-                dp(anchor.getContext(), 8),
+                calculatePopupWindowYOffset(anchor),
                 popupWidth,
                 popupHeight);
+        updatePopupAnimationPivot(anchor);
     }
 
     private void measureContent() {
-        android.content.Context context = contentView.getContext();
+        Context context = popupRootView.getContext();
         int margin = dp(context, HORIZONTAL_MARGIN_DP);
-        popupWidth = Math.max(1, context.getResources().getDisplayMetrics().widthPixels - (margin * 2));
-        contentView.measure(
+        popupWidth = Math.max(
+                1,
+                context.getResources().getDisplayMetrics().widthPixels - (margin * 2));
+        popupRootView.measure(
                 View.MeasureSpec.makeMeasureSpec(popupWidth, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-        popupHeight = Math.max(contentView.getMeasuredHeight(), 0);
+        popupHeight = Math.max(popupRootView.getMeasuredHeight(), 0);
     }
 
     private int calculateXOffset() {
@@ -368,30 +441,454 @@ final class ClockDetailPopupController {
         return clampedLeft - desiredLeft;
     }
 
+    private int calculatePopupWindowYOffset(TextView anchor) {
+        return dp(anchor.getContext(), POPUP_SURFACE_OFFSET_Y_DP)
+                - dp(anchor.getContext(), POPUP_SHADOW_PADDING_DP);
+    }
+
     private void animatePopupIn() {
-        contentView.animate().cancel();
-        contentView.setAlpha(0f);
-        contentView.setTranslationY(-dp(contentView.getContext(), 6));
-        contentView.animate()
-                .alpha(1f)
-                .translationY(0f)
-                .setDuration(160L)
-                .start();
+        TextView anchor = getAnchor();
+        if (anchor == null) {
+            return;
+        }
+        popupRootView.post(() -> {
+            if (!popupWindow.isShowing()) {
+                return;
+            }
+            updatePopupAnimationPivot(anchor);
+            float startScaleX = resolveCollapsedScaleX(anchor);
+            float startScaleY = resolveCollapsedScaleY(anchor);
+            float startTranslationY = -dp(anchor.getContext(), 14);
+            popupRootView.setAlpha(0.16f);
+            popupRootView.setScaleX(startScaleX);
+            popupRootView.setScaleY(startScaleY);
+            popupRootView.setTranslationY(startTranslationY);
+
+            ObjectAnimator scaleX = ObjectAnimator.ofFloat(popupRootView, View.SCALE_X, startScaleX, 1f);
+            scaleX.setDuration(POPUP_EXPAND_DURATION_MS);
+            scaleX.setInterpolator(POPUP_SCALE_IN_INTERPOLATOR);
+
+            ObjectAnimator scaleY = ObjectAnimator.ofFloat(popupRootView, View.SCALE_Y, startScaleY, 1f);
+            scaleY.setDuration(POPUP_EXPAND_DURATION_MS);
+            scaleY.setInterpolator(POPUP_SCALE_IN_INTERPOLATOR);
+
+            ObjectAnimator alpha = ObjectAnimator.ofFloat(popupRootView, View.ALPHA, 0.16f, 1f);
+            alpha.setDuration(220L);
+            alpha.setInterpolator(POPUP_ALPHA_IN_INTERPOLATOR);
+
+            ObjectAnimator translationY = ObjectAnimator.ofFloat(
+                    popupRootView,
+                    View.TRANSLATION_Y,
+                    startTranslationY,
+                    0f);
+            translationY.setDuration(POPUP_EXPAND_DURATION_MS);
+            translationY.setInterpolator(POPUP_TRANSLATION_IN_INTERPOLATOR);
+
+            AnimatorSet animator = new AnimatorSet();
+            animator.playTogether(scaleX, scaleY, alpha, translationY);
+            startPopupAnimation(animator, null);
+        });
+    }
+
+    private void animatePopupOut() {
+        TextView anchor = getAnchor();
+        if (anchor == null) {
+            popupWindow.dismiss();
+            return;
+        }
+        dismissAnimationRunning = true;
+        popupRootView.post(() -> {
+            if (!popupWindow.isShowing()) {
+                dismissAnimationRunning = false;
+                clearPopupUiState();
+                return;
+            }
+            updatePopupAnimationPivot(anchor);
+            float endScaleX = resolveCollapsedScaleX(anchor);
+            float endScaleY = resolveCollapsedScaleY(anchor);
+            float endTranslationY = -dp(anchor.getContext(), 12);
+
+            ObjectAnimator scaleX = ObjectAnimator.ofFloat(
+                    popupRootView,
+                    View.SCALE_X,
+                    popupRootView.getScaleX(),
+                    endScaleX);
+            scaleX.setDuration(POPUP_COLLAPSE_DURATION_MS);
+            scaleX.setInterpolator(POPUP_OUT_INTERPOLATOR);
+
+            ObjectAnimator scaleY = ObjectAnimator.ofFloat(
+                    popupRootView,
+                    View.SCALE_Y,
+                    popupRootView.getScaleY(),
+                    endScaleY);
+            scaleY.setDuration(POPUP_COLLAPSE_DURATION_MS);
+            scaleY.setInterpolator(POPUP_OUT_INTERPOLATOR);
+
+            ObjectAnimator alpha = ObjectAnimator.ofFloat(
+                    popupRootView,
+                    View.ALPHA,
+                    popupRootView.getAlpha(),
+                    0f);
+            alpha.setDuration(180L);
+            alpha.setInterpolator(POPUP_OUT_INTERPOLATOR);
+
+            ObjectAnimator translationY = ObjectAnimator.ofFloat(
+                    popupRootView,
+                    View.TRANSLATION_Y,
+                    popupRootView.getTranslationY(),
+                    endTranslationY);
+            translationY.setDuration(POPUP_COLLAPSE_DURATION_MS);
+            translationY.setInterpolator(POPUP_OUT_INTERPOLATOR);
+
+            AnimatorSet animator = new AnimatorSet();
+            animator.playTogether(scaleX, scaleY, alpha, translationY);
+            startPopupAnimation(animator, () -> {
+                if (popupWindow.isShowing()) {
+                    popupWindow.dismiss();
+                } else {
+                    handlePopupDismissed();
+                }
+            });
+        });
+    }
+
+    private void startPopupAnimation(AnimatorSet animator, Runnable onEnd) {
+        cancelPopupAnimator();
+        popupAnimator = animator;
+        animator.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (popupAnimator == animation) {
+                    popupAnimator = null;
+                }
+                if (!cancelled && onEnd != null) {
+                    onEnd.run();
+                }
+            }
+        });
+        animator.start();
+    }
+
+    private void cancelPopupAnimator() {
+        Animator animator = popupAnimator;
+        popupAnimator = null;
+        if (animator != null) {
+            animator.cancel();
+        }
+    }
+
+    private void updatePopupAnimationPivot(TextView anchor) {
+        if (anchor == null || popupRootView.getWidth() <= 0) {
+            return;
+        }
+        int[] anchorLocation = new int[2];
+        anchor.getLocationOnScreen(anchorLocation);
+        float popupLeft = anchorLocation[0] + calculateXOffset();
+        float anchorCenterX = anchorLocation[0] + (anchor.getWidth() * 0.5f);
+        float shadowPadding = dp(anchor.getContext(), POPUP_SHADOW_PADDING_DP);
+        float maxPivot = Math.max(shadowPadding, popupRootView.getWidth() - shadowPadding);
+        float pivotX = clamp(anchorCenterX - popupLeft, shadowPadding, maxPivot);
+        popupRootView.setPivotX(pivotX);
+        popupRootView.setPivotY(shadowPadding);
+    }
+
+    private float resolveCollapsedScaleX(TextView anchor) {
+        if (anchor == null || popupRootView.getWidth() <= 0) {
+            return 0.32f;
+        }
+        return clamp(
+                anchor.getWidth() / (float) popupRootView.getWidth(),
+                0.32f,
+                0.82f);
+    }
+
+    private float resolveCollapsedScaleY(TextView anchor) {
+        if (anchor == null || popupRootView.getHeight() <= 0) {
+            return 0.18f;
+        }
+        return clamp(
+                anchor.getHeight() / (float) popupRootView.getHeight(),
+                0.18f,
+                0.56f);
     }
 
     private void applyPalette(Palette palette) {
-        android.content.Context context = contentView.getContext();
+        Context context = contentView.getContext();
         currentPalette = palette;
-        GradientDrawable background = new GradientDrawable();
-        background.setShape(GradientDrawable.RECTANGLE);
-        background.setColor(palette.surfaceColor);
-        background.setCornerRadius(dp(context, 20));
-        background.setStroke(Math.max(1, dp(context, 1)), palette.strokeColor);
-        contentView.setBackground(background);
+        contentView.setBackground(null);
+        popupBackgroundView.setBackground(buildPopupBackgroundDrawable(context, palette, false));
+        applyPopupShadowStyle(context, palette);
         timeView.setTextColor(palette.primaryTextColor);
         dateView.setTextColor(palette.secondaryTextColor);
         applyMemoryTilePalette(memoryTile, palette);
         applyStatTilePalette(thermalPowerTile, palette);
+    }
+
+    private Drawable buildPopupBackgroundDrawable(
+            Context context,
+            Palette palette,
+            boolean preferNativeBlur) {
+        Drawable nativeBlurDrawable = preferNativeBlur
+                ? tryCreateNativePopupBlurDrawable(popupBackgroundView, palette)
+                : null;
+        if (nativeBlurDrawable == null) {
+            return buildPopupSurfaceDrawable(context, palette);
+        }
+        LayerDrawable layered = new LayerDrawable(new Drawable[]{
+                nativeBlurDrawable,
+                buildPopupStrokeDrawable(context, palette)
+        });
+        return layered;
+    }
+
+    private GradientDrawable buildPopupSurfaceDrawable(Context context, Palette palette) {
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setColor(adjustAlpha(palette.surfaceColor, 0.88f));
+        background.setCornerRadius(dp(context, POPUP_SURFACE_RADIUS_DP));
+        background.setStroke(
+                Math.max(1, dp(context, 1)),
+                adjustAlpha(palette.strokeColor, 0.86f));
+        return background;
+    }
+
+    private GradientDrawable buildPopupStrokeDrawable(Context context, Palette palette) {
+        GradientDrawable stroke = new GradientDrawable();
+        stroke.setShape(GradientDrawable.RECTANGLE);
+        stroke.setColor(Color.TRANSPARENT);
+        stroke.setCornerRadius(dp(context, POPUP_SURFACE_RADIUS_DP));
+        stroke.setStroke(
+                Math.max(1, dp(context, 1)),
+                adjustAlpha(palette.strokeColor, 0.86f));
+        return stroke;
+    }
+
+    private void applyPopupShadowStyle(Context context, Palette palette) {
+        float backgroundElevation = dp(context, POPUP_SHADOW_ELEVATION_DP);
+        float backgroundTranslationZ = dp(context, POPUP_SHADOW_TRANSLATION_Z_DP);
+        popupBackgroundView.setElevation(backgroundElevation);
+        popupBackgroundView.setTranslationZ(backgroundTranslationZ);
+        contentView.setElevation(backgroundElevation + dp(context, 2));
+        contentView.setTranslationZ(backgroundTranslationZ + dp(context, 2));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            int ambientShadow = adjustAlpha(
+                    isLightForeground(palette.primaryTextColor)
+                            ? Color.parseColor("#120902")
+                            : Color.parseColor("#261304"),
+                    0.72f);
+            int spotShadow = adjustAlpha(
+                    isLightForeground(palette.primaryTextColor)
+                            ? Color.parseColor("#201003")
+                            : Color.parseColor("#341906"),
+                    0.88f);
+            popupBackgroundView.setOutlineAmbientShadowColor(ambientShadow);
+            popupBackgroundView.setOutlineSpotShadowColor(spotShadow);
+        }
+    }
+
+    private void installNativePopupBlurIfPossible() {
+        if (!popupWindow.isShowing() || currentPalette == null) {
+            return;
+        }
+        popupBackgroundView.post(() -> {
+            if (!popupWindow.isShowing() || currentPalette == null) {
+                return;
+            }
+            Drawable blurBackground = buildPopupBackgroundDrawable(
+                    popupBackgroundView.getContext(),
+                    currentPalette,
+                    true);
+            popupBackgroundView.setBackground(blurBackground);
+            if (blurBackground == null || blurBackground instanceof GradientDrawable) {
+                applyPopupWindowBlurBehind(
+                        popupRootView,
+                        dp(popupRootView.getContext(), POPUP_BACKGROUND_BLUR_RADIUS_DP));
+            }
+        });
+    }
+
+    private void handlePopupDismissed() {
+        dismissAnimationRunning = false;
+        cancelPopupAnimator();
+        clearPopupUiState();
+    }
+
+    private void clearPopupUiState() {
+        dismissAnimationRunning = false;
+        if (currentPalette != null) {
+            popupBackgroundView.setBackground(
+                    buildPopupBackgroundDrawable(popupBackgroundView.getContext(), currentPalette, false));
+        }
+        clearAnchorHighlight();
+        resetPopupVisualState();
+    }
+
+    private void resetPopupVisualState() {
+        popupRootView.setAlpha(1f);
+        popupRootView.setScaleX(1f);
+        popupRootView.setScaleY(1f);
+        popupRootView.setTranslationY(0f);
+    }
+
+    private void applyAnchorHighlight(TextView anchor) {
+        if (anchor == null) {
+            return;
+        }
+        Context context = anchor.getContext();
+        if (!originalAnchorBackgroundCaptured) {
+            originalAnchorBackground = anchor.getBackground();
+            originalAnchorPadding = captureAnchorPadding(anchor);
+            originalAnchorBackgroundCaptured = true;
+        }
+        GradientDrawable capsule = new GradientDrawable();
+        capsule.setShape(GradientDrawable.RECTANGLE);
+        capsule.setColor(resolveAnchorHighlightFillColor(anchor.getCurrentTextColor()));
+        capsule.setCornerRadius(Math.max(anchor.getHeight(), dp(context, 18)));
+        capsule.setStroke(
+                Math.max(1, dp(context, 1)),
+                resolveAnchorHighlightStrokeColor(anchor.getCurrentTextColor()));
+        InsetDrawable highlight = new InsetDrawable(
+                capsule,
+                dp(context, CLOCK_HIGHLIGHT_HORIZONTAL_INSET_DP),
+                dp(context, CLOCK_HIGHLIGHT_VERTICAL_INSET_DP),
+                dp(context, CLOCK_HIGHLIGHT_HORIZONTAL_INSET_DP),
+                dp(context, CLOCK_HIGHLIGHT_VERTICAL_INSET_DP));
+        anchor.setBackground(highlight);
+        restoreAnchorPadding(anchor);
+        anchorHighlighted = true;
+        anchor.invalidate();
+    }
+
+    private void clearAnchorHighlight() {
+        TextView anchor = getAnchor();
+        if (anchor != null && anchorHighlighted) {
+            anchor.setBackground(originalAnchorBackground);
+            restoreAnchorPadding(anchor);
+            anchor.invalidate();
+        }
+        anchorHighlighted = false;
+        originalAnchorBackground = null;
+        originalAnchorPadding = null;
+        originalAnchorBackgroundCaptured = false;
+    }
+
+    private static int[] captureAnchorPadding(TextView anchor) {
+        if (anchor == null) {
+            return null;
+        }
+        return new int[]{
+                anchor.getPaddingStart(),
+                anchor.getPaddingTop(),
+                anchor.getPaddingEnd(),
+                anchor.getPaddingBottom()
+        };
+    }
+
+    private void restoreAnchorPadding(TextView anchor) {
+        if (anchor == null || originalAnchorPadding == null || originalAnchorPadding.length < 4) {
+            return;
+        }
+        anchor.setPaddingRelative(
+                originalAnchorPadding[0],
+                originalAnchorPadding[1],
+                originalAnchorPadding[2],
+                originalAnchorPadding[3]);
+    }
+
+    private void applyPopupWindowBlurBehind(View popupContentRoot, int blurRadiusPx) {
+        if (popupContentRoot == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return;
+        }
+        View decorView = popupContentRoot.getRootView();
+        if (decorView == null) {
+            return;
+        }
+        Object layoutParamsObject = decorView.getLayoutParams();
+        if (!(layoutParamsObject instanceof WindowManager.LayoutParams)) {
+            return;
+        }
+        WindowManager.LayoutParams params = (WindowManager.LayoutParams) layoutParamsObject;
+        params.flags |= WINDOW_FLAG_BLUR_BEHIND;
+        try {
+            params.setBlurBehindRadius(Math.max(0, blurRadiusPx));
+        } catch (Throwable ignored) {
+            return;
+        }
+        Object windowManager = popupContentRoot.getContext().getSystemService(Context.WINDOW_SERVICE);
+        if (!(windowManager instanceof WindowManager)) {
+            return;
+        }
+        try {
+            ((WindowManager) windowManager).updateViewLayout(decorView, params);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private Drawable tryCreateNativePopupBlurDrawable(View targetView, Palette palette) {
+        if (targetView == null || palette == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return null;
+        }
+        Object viewRoot = FlymeStatusBarSizer.invokeNoArgCompat(targetView, "getViewRootImpl");
+        if (viewRoot == null) {
+            return null;
+        }
+        Object blurDrawable = FlymeStatusBarSizer.invokeNoArgCompat(
+                viewRoot,
+                "createBackgroundBlurDrawable");
+        if (!(blurDrawable instanceof Drawable)) {
+            return null;
+        }
+        Context context = targetView.getContext();
+        FlymeStatusBarSizer.invokeMethodCompat(
+                blurDrawable,
+                "setCornerRadius",
+                new Class[]{float.class},
+                (float) dp(context, POPUP_SURFACE_RADIUS_DP));
+        FlymeStatusBarSizer.invokeMethodCompat(
+                blurDrawable,
+                "setBlurRadius",
+                new Class[]{int.class},
+                dp(context, POPUP_BACKGROUND_BLUR_RADIUS_DP));
+        FlymeStatusBarSizer.invokeMethodCompat(
+                blurDrawable,
+                "setZAdjustment",
+                new Class[]{int.class},
+                POPUP_BACKGROUND_BLUR_Z_ORDER_BOTTOM);
+        FlymeStatusBarSizer.invokeMethodCompat(
+                blurDrawable,
+                "setColor",
+                new Class[]{int.class},
+                adjustAlpha(palette.surfaceColor, 0.52f));
+        return (Drawable) blurDrawable;
+    }
+
+    private static int resolveAnchorHighlightFillColor(int anchorTextColor) {
+        return isLightForeground(anchorTextColor)
+                ? Color.parseColor("#C97515")
+                : Color.parseColor("#F6A623");
+    }
+
+    private static int resolveAnchorHighlightStrokeColor(int anchorTextColor) {
+        return isLightForeground(anchorTextColor)
+                ? Color.parseColor("#FFD796")
+                : Color.parseColor("#FFF2CF");
+    }
+
+    private static void performClockHaptic(View view) {
+        if (view == null) {
+            return;
+        }
+        try {
+            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+        } catch (Throwable ignored) {
+        }
     }
 
     private Palette resolvePalette() {
@@ -433,6 +930,10 @@ final class ClockDetailPopupController {
         return value <= 0.03928d ? value / 12.92d : Math.pow((value + 0.055d) / 1.055d, 2.4d);
     }
 
+    private static float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     private Locale resolveLocale() {
         TextView anchor = getAnchor();
         if (anchor == null) {
@@ -463,7 +964,27 @@ final class ClockDetailPopupController {
         return TimeZone.getDefault();
     }
 
-    private static LinearLayout buildContentView(android.content.Context context) {
+    private static FrameLayout buildPopupRootView(
+            Context context,
+            View backgroundView,
+            LinearLayout contentView) {
+        FrameLayout root = new FrameLayout(context);
+        root.setClipChildren(false);
+        root.setClipToPadding(false);
+        int shadowPadding = dp(context, POPUP_SHADOW_PADDING_DP);
+        root.setPadding(shadowPadding, shadowPadding, shadowPadding, shadowPadding);
+        root.addView(backgroundView, frameMatchParent());
+        root.addView(contentView, frameMatchWidth());
+        return root;
+    }
+
+    private static View buildPopupBackgroundView(Context context) {
+        View background = new View(context);
+        background.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        return background;
+    }
+
+    private static LinearLayout buildContentView(Context context) {
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -475,7 +996,7 @@ final class ClockDetailPopupController {
         return root;
     }
 
-    private static TextView buildTimeView(android.content.Context context) {
+    private static TextView buildTimeView(Context context) {
         TextView view = new TextView(context);
         view.setIncludeFontPadding(false);
         view.setSingleLine(true);
@@ -532,7 +1053,7 @@ final class ClockDetailPopupController {
         scheduleAutoDismiss();
     }
 
-    private static TextView buildDateView(android.content.Context context) {
+    private static TextView buildDateView(Context context) {
         TextView view = new TextView(context);
         view.setIncludeFontPadding(false);
         view.setGravity(Gravity.CENTER);
@@ -587,7 +1108,7 @@ final class ClockDetailPopupController {
         if (tile == null) {
             return;
         }
-        android.content.Context context = tile.root.getContext();
+        Context context = tile.root.getContext();
         GradientDrawable background = new GradientDrawable();
         background.setShape(GradientDrawable.RECTANGLE);
         background.setCornerRadius(dp(context, 14));
@@ -602,7 +1123,7 @@ final class ClockDetailPopupController {
         if (tile == null) {
             return;
         }
-        android.content.Context context = tile.root.getContext();
+        Context context = tile.root.getContext();
         GradientDrawable background = new GradientDrawable();
         background.setShape(GradientDrawable.RECTANGLE);
         background.setCornerRadius(dp(context, 14));
@@ -651,7 +1172,7 @@ final class ClockDetailPopupController {
     }
 
     private static LinearLayout buildStatusGrid(
-            android.content.Context context,
+            Context context,
             MemoryStatTile memoryTile,
             StatTile thermalPowerTile) {
         LinearLayout grid = new LinearLayout(context);
@@ -663,7 +1184,7 @@ final class ClockDetailPopupController {
     }
 
     private static MemoryStatTile buildMemoryStatTile(
-            android.content.Context context,
+            Context context,
             String label,
             ClockDetailSystemStatusSnapshot.MemoryRow[] initialRows) {
         LinearLayout root = new LinearLayout(context);
@@ -713,7 +1234,7 @@ final class ClockDetailPopupController {
         return tile;
     }
 
-    private static MemoryStatRowView buildMemoryStatRowView(android.content.Context context) {
+    private static MemoryStatRowView buildMemoryStatRowView(Context context) {
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -748,12 +1269,12 @@ final class ClockDetailPopupController {
         return new MemoryStatRowView(row, nameView, valueView, percentView);
     }
 
-    private static StatTile buildStatTile(android.content.Context context, String label) {
+    private static StatTile buildStatTile(Context context, String label) {
         return buildStatTile(context, label, false);
     }
 
     private static StatTile buildStatTile(
-            android.content.Context context,
+            Context context,
             String label,
             boolean multiLineValue) {
         LinearLayout root = new LinearLayout(context);
@@ -789,6 +1310,18 @@ final class ClockDetailPopupController {
         return new StatTile(root, labelView, valueView);
     }
 
+    private static FrameLayout.LayoutParams frameMatchWidth() {
+        return new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+    }
+
+    private static FrameLayout.LayoutParams frameMatchParent() {
+        return new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT);
+    }
+
     private static LinearLayout.LayoutParams matchWidth() {
         return new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -796,7 +1329,7 @@ final class ClockDetailPopupController {
     }
 
     private static LinearLayout.LayoutParams matchWidthWithTop(
-            android.content.Context context,
+            Context context,
             int topMarginDp) {
         LinearLayout.LayoutParams params = matchWidth();
         params.topMargin = dp(context, topMarginDp);
@@ -811,7 +1344,7 @@ final class ClockDetailPopupController {
     }
 
     private static LinearLayout.LayoutParams weightCellWithStart(
-            android.content.Context context,
+            Context context,
             int startMarginDp,
             float weight) {
         LinearLayout.LayoutParams params = weightCell(weight);
@@ -833,7 +1366,7 @@ final class ClockDetailPopupController {
         return Color.argb(alpha, red, green, blue);
     }
 
-    private static int dp(android.content.Context context, int value) {
+    private static int dp(Context context, int value) {
         return Math.round(value * context.getResources().getDisplayMetrics().density);
     }
 
