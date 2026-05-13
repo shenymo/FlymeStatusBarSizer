@@ -60,6 +60,7 @@ final class ClockDetailPopupController {
     private static final int POPUP_SHADOW_TRANSLATION_Z_DP = 6;
     private static final int POPUP_BACKGROUND_BLUR_RADIUS_DP = 32;
     private static final int POPUP_BACKGROUND_BLUR_Z_ORDER_BOTTOM = -1;
+    private static final int INVALID_POPUP_SESSION_ID = -1;
     private static final int INTERNAL_WINDOW_TYPE_UNSET = 0;
     private static final int INTERNAL_WINDOW_TYPE_STATUS_BAR_SUB_PANEL = 2017;
     private static final int INTERNAL_WINDOW_TYPE_NOTIFICATION_SHADE = 2040;
@@ -128,6 +129,10 @@ final class ClockDetailPopupController {
     private boolean panelLongPressTriggered;
     private boolean dragGestureActive;
     private Palette currentPalette;
+    private int popupSessionId = INVALID_POPUP_SESSION_ID;
+    private int nextPopupSessionId;
+    private int thermalPowerRequestSessionId = INVALID_POPUP_SESSION_ID;
+    private int memoryRequestSessionId = INVALID_POPUP_SESSION_ID;
     private ClockDetailSystemStatusSnapshot.MemoryRow[] latestMemoryRows =
             ClockDetailSystemStatusSnapshot.EMPTY.memoryRows;
     private String latestTemperatureValue = ClockDetailSystemStatusSnapshot.EMPTY.temperatureValue;
@@ -246,6 +251,7 @@ final class ClockDetailPopupController {
         handler.removeCallbacks(thermalPowerRefreshRunnable);
         handler.removeCallbacks(memoryRefreshRunnable);
         handler.removeCallbacks(autoDismissRunnable);
+        invalidatePopupSession();
         cancelPanelLongPress();
         panelTouchActive = false;
         panelLongPressTriggered = false;
@@ -293,6 +299,7 @@ final class ClockDetailPopupController {
         if (!wasShowing) {
             resetTransientPopupState();
         }
+        startPopupSession();
         FlymeStatusBarSizer.disableAncestorClipping(anchor, 6);
         applyPalette(resolvePalette());
         showMilliseconds = false;
@@ -1435,6 +1442,22 @@ final class ClockDetailPopupController {
         dragStartPopupTop = 0;
     }
 
+    private void startPopupSession() {
+        popupSessionId = nextPopupSessionId++;
+        thermalPowerQueryInFlight = false;
+        memoryQueryInFlight = false;
+        thermalPowerRequestSessionId = INVALID_POPUP_SESSION_ID;
+        memoryRequestSessionId = INVALID_POPUP_SESSION_ID;
+    }
+
+    private void invalidatePopupSession() {
+        popupSessionId = nextPopupSessionId++;
+        thermalPowerQueryInFlight = false;
+        memoryQueryInFlight = false;
+        thermalPowerRequestSessionId = INVALID_POPUP_SESSION_ID;
+        memoryRequestSessionId = INVALID_POPUP_SESSION_ID;
+    }
+
     private void cancelPanelLongPress() {
         handler.removeCallbacks(panelLongPressRunnable);
     }
@@ -1743,9 +1766,15 @@ final class ClockDetailPopupController {
         if (thermalPowerQueryInFlight) {
             return;
         }
+        final int requestSessionId = popupSessionId;
         thermalPowerQueryInFlight = true;
+        thermalPowerRequestSessionId = requestSessionId;
         systemStatusProvider.requestThermalPower(handler, (temperatureValue, powerValue) -> {
+            if (thermalPowerRequestSessionId != requestSessionId) {
+                return;
+            }
             thermalPowerQueryInFlight = false;
+            thermalPowerRequestSessionId = INVALID_POPUP_SESSION_ID;
             latestTemperatureValue = temperatureValue;
             latestPowerValue = powerValue;
             if (!isPopupShowing()) {
@@ -1759,9 +1788,15 @@ final class ClockDetailPopupController {
         if (memoryQueryInFlight) {
             return;
         }
+        final int requestSessionId = popupSessionId;
         memoryQueryInFlight = true;
+        memoryRequestSessionId = requestSessionId;
         systemStatusProvider.requestMemoryRows(handler, memoryRows -> {
+            if (memoryRequestSessionId != requestSessionId) {
+                return;
+            }
             memoryQueryInFlight = false;
+            memoryRequestSessionId = INVALID_POPUP_SESSION_ID;
             latestMemoryRows = memoryRows != null && memoryRows.length > 0
                     ? memoryRows
                     : ClockDetailSystemStatusSnapshot.EMPTY.memoryRows;
