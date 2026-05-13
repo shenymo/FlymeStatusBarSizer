@@ -38,6 +38,7 @@ final class SettingsStore {
     static final String KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT = "connection_rate_show_sample_count";
     static final String KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT = "connection_rate_hide_sample_count";
     static final String KEY_CLOCK_CUSTOM_FORMAT = "clock_custom_format";
+    static final String KEY_CLOCK_EXPRESSION_TOKEN_ORDER = "clock_expression_token_order";
     static final String KEY_CLOCK_BOLD_ENABLED = "clock_bold_enabled";
     static final String KEY_CLOCK_FONT_WEIGHT = "clock_font_weight";
     static final String KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = "clock_and_carrier_text_size_percent";
@@ -102,6 +103,7 @@ final class SettingsStore {
     static final int DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT = 2;
     static final int DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT = 3;
     static final String DEFAULT_CLOCK_CUSTOM_FORMAT = "";
+    static final String DEFAULT_CLOCK_EXPRESSION_TOKEN_ORDER = "";
     static final boolean DEFAULT_CLOCK_BOLD_ENABLED = true;
     static final int DEFAULT_CLOCK_FONT_WEIGHT = 900;
     static final int DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = 100;
@@ -195,6 +197,7 @@ final class SettingsStore {
 
     static final String[] STRING_KEYS = {
             KEY_CLOCK_CUSTOM_FORMAT,
+            KEY_CLOCK_EXPRESSION_TOKEN_ORDER,
             KEY_MBACK_LONG_TOUCH_INTENT_URI,
             KEY_IME_CONTROL_BAR_BUTTON_SLOTS
     };
@@ -428,6 +431,9 @@ final class SettingsStore {
     static String defaultString(String key) {
         if (KEY_CLOCK_CUSTOM_FORMAT.equals(key)) {
             return DEFAULT_CLOCK_CUSTOM_FORMAT;
+        }
+        if (KEY_CLOCK_EXPRESSION_TOKEN_ORDER.equals(key)) {
+            return DEFAULT_CLOCK_EXPRESSION_TOKEN_ORDER;
         }
         if (KEY_MBACK_LONG_TOUCH_INTENT_URI.equals(key)) {
             return DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;

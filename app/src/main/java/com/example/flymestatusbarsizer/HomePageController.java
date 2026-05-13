@@ -1,6 +1,5 @@
 package com.example.flymestatusbarsizer;
 
-import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
@@ -54,14 +53,10 @@ final class HomePageController {
                 PageViewUtils.dp(activity, 20));
         card.setBackground(buildHeroBackground(activity));
 
-        TextView chip = buildChip(activity, "Design Refresh", activity.primaryColor(), Color.WHITE);
-        card.addView(chip, PageViewUtils.matchWrap());
-
         TextView title = new TextView(activity);
         title.setText("FlymeStatusBarSizer");
         title.setTextColor(Color.WHITE);
         title.setTextSize(24);
-        title.setPadding(0, PageViewUtils.dp(activity, 14), 0, 0);
         card.addView(title, PageViewUtils.matchWrap());
 
         TextView aboutButton = buildChip(activity, "关于与支持", Color.WHITE, activity.primaryDeepColor());

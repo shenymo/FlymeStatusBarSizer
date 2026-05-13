@@ -6,8 +6,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
-import android.window.BackEvent;
-import android.window.OnBackAnimationCallback;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -124,8 +122,6 @@ public class MainActivity extends Activity {
     private FrameLayout pageHostView;
     private OnBackInvokedCallback systemBackCallback;
     private boolean systemBackCallbackRegistered;
-    private View predictiveBackCurrentView;
-    private View predictiveBackHomeView;
     private final Map<Page, View> pageViews = new LinkedHashMap<>();
     private final ArrayDeque<Page> navigationStack = new ArrayDeque<>();
     private Page currentPage = Page.HOME;
@@ -135,7 +131,7 @@ public class MainActivity extends Activity {
     private final SettingsUiFactory settingsUiFactory = new SettingsUiFactory(this);
 
     enum Page {
-        HOME("Flyme Status Bar", null, "Flyme 模块", true),
+        HOME(null, null, null, false),
         ICONS_BATTERY("图标与电池", "状态栏图标缩放、电池样式、通知图标以及信号与 Wi-Fi 接管设置。", null, true),
         TIME_NETWORK("时间与网络", "实时网速显隐阈值、时间表达式编辑，以及时间字重字号设置。", null, true),
         SYSTEM_INTERACTION("系统交互", "MBack 长触、导航栏沉浸与高度，以及输入法控制栏接管。", null, true),
@@ -284,11 +280,14 @@ public class MainActivity extends Activity {
             return;
         }
         boolean onHome = page == Page.HOME && navigationStack.isEmpty();
+        if (topBar != null) {
+            topBar.setVisibility(onHome ? View.GONE : View.VISIBLE);
+        }
         if (backButtonView != null) {
             backButtonView.setVisibility(onHome ? View.GONE : View.VISIBLE);
         }
         if (moreButtonView != null) {
-            moreButtonView.setVisibility(page.showMore ? View.VISIBLE : View.GONE);
+            moreButtonView.setVisibility(!onHome && page.showMore ? View.VISIBLE : View.GONE);
         }
         if (topBarEyebrowView != null) {
             if (TextUtils.isEmpty(page.eyebrow)) {
@@ -380,86 +379,7 @@ public class MainActivity extends Activity {
     }
 
     private OnBackInvokedCallback createSystemBackCallback() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            return new OnBackAnimationCallback() {
-                @Override
-                public void onBackStarted(BackEvent backEvent) {
-                    startPredictiveBackPreview(backEvent);
-                }
-
-                @Override
-                public void onBackProgressed(BackEvent backEvent) {
-                    updatePredictiveBackPreview(backEvent);
-                }
-
-                @Override
-                public void onBackCancelled() {
-                    cancelPredictiveBackPreview();
-                }
-
-                @Override
-                public void onBackInvoked() {
-                    commitPredictiveBackPreview();
-                }
-            };
-        }
         return this::handleSystemBackInvoked;
-    }
-
-    private void startPredictiveBackPreview(BackEvent backEvent) {
-        if (currentPage == Page.HOME) {
-            return;
-        }
-        predictiveBackCurrentView = pageViews.get(currentPage);
-        predictiveBackHomeView = pageViews.get(Page.HOME);
-        if (predictiveBackCurrentView == null || predictiveBackHomeView == null) {
-            return;
-        }
-        predictiveBackHomeView.setVisibility(View.VISIBLE);
-        predictiveBackCurrentView.bringToFront();
-        applyPredictiveBackProgress(backEvent);
-    }
-
-    private void updatePredictiveBackPreview(BackEvent backEvent) {
-        if (predictiveBackCurrentView == null || predictiveBackHomeView == null) {
-            startPredictiveBackPreview(backEvent);
-            return;
-        }
-        applyPredictiveBackProgress(backEvent);
-    }
-
-    private void cancelPredictiveBackPreview() {
-        showPage(currentPage);
-    }
-
-    private void commitPredictiveBackPreview() {
-        handleBackNavigation();
-    }
-
-    private void applyPredictiveBackProgress(BackEvent backEvent) {
-        if (predictiveBackCurrentView == null || predictiveBackHomeView == null) {
-            return;
-        }
-        float progress = Math.max(0f, Math.min(1f, backEvent.getProgress()));
-        int width = pageHostView != null && pageHostView.getWidth() > 0
-                ? pageHostView.getWidth()
-                : predictiveBackCurrentView.getWidth();
-        if (width <= 0) {
-            return;
-        }
-        int direction = backEvent.getSwipeEdge() == BackEvent.EDGE_RIGHT ? -1 : 1;
-        float currentTranslation = direction * width * 0.28f * progress;
-        float homeOffset = direction * width * 0.06f * (1f - progress);
-
-        predictiveBackCurrentView.setTranslationX(currentTranslation);
-        predictiveBackCurrentView.setScaleX(1f - 0.06f * progress);
-        predictiveBackCurrentView.setScaleY(1f - 0.06f * progress);
-        predictiveBackCurrentView.setAlpha(1f - 0.18f * progress);
-
-        predictiveBackHomeView.setTranslationX(-homeOffset);
-        predictiveBackHomeView.setScaleX(0.98f + 0.02f * progress);
-        predictiveBackHomeView.setScaleY(0.98f + 0.02f * progress);
-        predictiveBackHomeView.setAlpha(0.92f + 0.08f * progress);
     }
 
     private void resetPageTransforms() {
@@ -470,8 +390,6 @@ public class MainActivity extends Activity {
             pageView.setScaleY(1f);
             pageView.setAlpha(1f);
         }
-        predictiveBackCurrentView = null;
-        predictiveBackHomeView = null;
     }
 
     void showTelephonyDebugPage() {
