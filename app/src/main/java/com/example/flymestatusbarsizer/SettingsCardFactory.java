@@ -125,6 +125,13 @@ final class SettingsCardFactory {
                 activity.clockExpressionEditor().buildPage());
     }
 
+    View createTimeInteractionSettingsCard() {
+        return activity.buildSectionCard(
+                "时间交互",
+                "控制左上角时钟点击后的详细时间弹窗，当前默认 8 秒自动收起。",
+                buildTimeInteractionPage());
+    }
+
     View createTimeTypographySettingsCard() {
         return activity.buildSectionCard(
                 "时间字体",
@@ -497,6 +504,19 @@ final class SettingsCardFactory {
                 "同时控制左上角时间、锁屏界面运营商，以及网速显示文字大小。默认 100%。",
                 SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
                 SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT, 50, 200, "%");
+        return page;
+    }
+
+    private LinearLayout buildTimeInteractionPage() {
+        LinearLayout page = new LinearLayout(activity);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        activity.addProfileSectionHeader(page, "主状态栏时钟",
+                "只作用于左上角主状态栏时钟，不影响锁屏时钟和其他同类时间控件。");
+        activity.addSwitchRow(page, "点击时钟显示详细时间",
+                "点击左上角时钟后弹出日期和毫秒时间详情卡，点击外部或约 8 秒后自动收起。",
+                SettingsStore.KEY_CLOCK_DETAIL_POPUP_ENABLED,
+                SettingsStore.DEFAULT_CLOCK_DETAIL_POPUP_ENABLED);
         return page;
     }
 

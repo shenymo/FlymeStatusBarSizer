@@ -51,6 +51,7 @@ final class ModuleConfig {
     boolean clockBoldEnabled = SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED;
     int clockFontWeight = SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT;
     int clockAndCarrierTextSizePercent = SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT;
+    boolean clockDetailPopupEnabled = SettingsStore.DEFAULT_CLOCK_DETAIL_POPUP_ENABLED;
     boolean mbackLongTouchIntentEnabled = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
     String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
     boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
@@ -286,6 +287,10 @@ final class ModuleConfig {
                             prefs,
                             SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
                             SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT));
+            config.clockDetailPopupEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_CLOCK_DETAIL_POPUP_ENABLED,
+                    SettingsStore.DEFAULT_CLOCK_DETAIL_POPUP_ENABLED);
             config.mbackLongTouchIntentEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,

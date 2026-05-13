@@ -42,6 +42,7 @@ final class SettingsStore {
     static final String KEY_CLOCK_BOLD_ENABLED = "clock_bold_enabled";
     static final String KEY_CLOCK_FONT_WEIGHT = "clock_font_weight";
     static final String KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = "clock_and_carrier_text_size_percent";
+    static final String KEY_CLOCK_DETAIL_POPUP_ENABLED = "clock_detail_popup_enabled";
     static final String KEY_MBACK_LONG_TOUCH_URL_ENABLED = "mback_long_touch_url_enabled";
     static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
     static final String KEY_MBACK_NAV_BAR_TRANSPARENT = "mback_nav_bar_transparent";
@@ -107,6 +108,7 @@ final class SettingsStore {
     static final boolean DEFAULT_CLOCK_BOLD_ENABLED = true;
     static final int DEFAULT_CLOCK_FONT_WEIGHT = 900;
     static final int DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = 100;
+    static final boolean DEFAULT_CLOCK_DETAIL_POPUP_ENABLED = false;
     static final boolean DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED = false;
     static final String DEFAULT_MBACK_LONG_TOUCH_INTENT_URI = "";
     static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
@@ -186,6 +188,7 @@ final class SettingsStore {
             KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL,
             KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
             KEY_CLOCK_BOLD_ENABLED,
+            KEY_CLOCK_DETAIL_POPUP_ENABLED,
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
@@ -409,6 +412,8 @@ final class SettingsStore {
                 return DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED;
             case KEY_CLOCK_BOLD_ENABLED:
                 return DEFAULT_CLOCK_BOLD_ENABLED;
+            case KEY_CLOCK_DETAIL_POPUP_ENABLED:
+                return DEFAULT_CLOCK_DETAIL_POPUP_ENABLED;
             case KEY_MBACK_LONG_TOUCH_URL_ENABLED:
                 return DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
             case KEY_MBACK_NAV_BAR_TRANSPARENT:

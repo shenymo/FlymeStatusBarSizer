@@ -27,7 +27,7 @@ final class HomePageController {
                 PageViewUtils.matchWrapWithTop(activity, 12));
         root.addView(buildEntryCard(activity,
                 "时间与网络",
-                "实时网速阈值、时间表达式和时间字体",
+                "实时网速阈值、时间表达式、时间交互和时间字体",
                 activity.secondaryColor(),
                 0x1A006688,
                 v -> activity.openPage(MainActivity.Page.TIME_NETWORK)),

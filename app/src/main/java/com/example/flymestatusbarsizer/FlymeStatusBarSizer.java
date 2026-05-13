@@ -6451,6 +6451,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final int clockFontWeight;
         public final float clockAndCarrierTextScale;
         public final int clockRightPaddingOffsetPx;
+        public final boolean clockDetailPopupEnabled;
 
         private ClockConfigSnapshot(ModuleConfig config, Context context) {
             enabled = config != null && config.enabled;
@@ -6462,6 +6463,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                             context,
                             config.clockRightPaddingOffsetTenthDp))
                     : 0;
+            clockDetailPopupEnabled = enabled
+                    && config != null
+                    && config.clockDetailPopupEnabled;
         }
     }
 

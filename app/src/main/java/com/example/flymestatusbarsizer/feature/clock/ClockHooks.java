@@ -32,6 +32,8 @@ public final class ClockHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<TextView, Boolean> CLOCK_SECOND_REFRESH_VIEWS =
             new WeakHashMap<>();
+    private static final WeakHashMap<TextView, ClockDetailPopupController> CLOCK_DETAIL_POPUPS =
+            new WeakHashMap<>();
     private static final Runnable CLOCK_SECOND_REFRESH_RUNNABLE =
             ClockHooks::refreshClockViewsForSecondTick;
 
@@ -61,6 +63,7 @@ public final class ClockHooks {
                 }
                 updateClockSecondRefreshTracking(textView);
                 refreshClockTextIfNeeded(textView);
+                syncClockDetailPopup(textView);
                 applyClockFontWeight(textView);
                 applyClockAndCarrierTextSize(textView);
             }
@@ -98,6 +101,7 @@ public final class ClockHooks {
             if (view instanceof TextView) {
                 TextView textView = (TextView) view;
                 trackClockAndCarrierTextView(textView);
+                installClockDetailPopupIfNeeded(textView);
                 scheduleClockAndCarrierTextRelayout(textView);
                 applyClockFontWeight(textView);
                 applyClockAndCarrierTextSize(textView);
@@ -122,6 +126,7 @@ public final class ClockHooks {
                 Object result = chain.proceed();
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof TextView) {
+                    syncClockDetailPopup((TextView) thisObject);
                     applyClockFontWeight((TextView) thisObject);
                     applyClockAndCarrierTextSize((TextView) thisObject);
                 }
@@ -731,6 +736,30 @@ public final class ClockHooks {
             return "keyguard_carrier_text".equals(idName) || "carrier_text".equals(idName);
         }
         return false;
+    }
+
+    private static void installClockDetailPopupIfNeeded(TextView view) {
+        if (!isPrimaryStatusBarClockView(view)) {
+            return;
+        }
+        ClockDetailPopupController controller = CLOCK_DETAIL_POPUPS.get(view);
+        if (controller == null) {
+            controller = new ClockDetailPopupController(view);
+            CLOCK_DETAIL_POPUPS.put(view, controller);
+        }
+        controller.syncWithConfig(FlymeStatusBarSizer.loadClockConfig(view.getContext()));
+    }
+
+    private static void syncClockDetailPopup(TextView view) {
+        if (!isPrimaryStatusBarClockView(view)) {
+            return;
+        }
+        ClockDetailPopupController controller = CLOCK_DETAIL_POPUPS.get(view);
+        if (controller == null) {
+            installClockDetailPopupIfNeeded(view);
+            return;
+        }
+        controller.syncWithConfig(FlymeStatusBarSizer.loadClockConfig(view.getContext()));
     }
 
     private static void refreshClockTextIfNeeded(TextView textView) {

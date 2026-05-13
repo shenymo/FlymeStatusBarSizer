@@ -134,7 +134,7 @@ public class MainActivity extends Activity {
     enum Page {
         HOME(null, null, null, false),
         ICONS_BATTERY("图标与电池", "状态栏图标缩放、电池样式、通知图标以及信号与 Wi-Fi 接管设置。", null, true),
-        TIME_NETWORK("时间与网络", "实时网速显隐阈值、时间表达式编辑，以及时间字重字号设置。", null, true),
+        TIME_NETWORK("时间与网络", "实时网速显隐阈值、时间表达式、时钟详情弹窗，以及时间字重字号设置。", null, true),
         SYSTEM_INTERACTION("系统交互", "MBack 长触、导航栏沉浸与高度，以及输入法控制栏接管。", null, true),
         ADVANCED_DEBUG("高级与调试", "配置管理、WIFI 性能打点，以及高阶工具入口。", null, true),
         ABOUT("关于与支持", "项目地址、交流群、版本构建信息和目标作用域说明。", null, false),
@@ -1764,6 +1764,10 @@ public class MainActivity extends Activity {
 
     View createTimeExpressionSettingsCard() {
         return settingsCardFactory.createTimeExpressionSettingsCard();
+    }
+
+    View createTimeInteractionSettingsCard() {
+        return settingsCardFactory.createTimeInteractionSettingsCard();
     }
 
     View createTimeTypographySettingsCard() {
