@@ -2,12 +2,15 @@ package com.example.flymestatusbarsizer;
 
 import android.content.ClipData;
 import android.content.SharedPreferences;
-import android.graphics.Color;
 import android.os.Build;
 import android.text.TextUtils;
 import android.view.DragEvent;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
+import android.view.ViewParent;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -15,9 +18,13 @@ import java.util.ArrayList;
 import java.util.regex.Matcher;
 
 final class ClockExpressionEditor {
+    private static final int TOKEN_COLUMN_COUNT = 3;
+    private static final long QUICK_SWIPE_MAX_DURATION_MS = 220L;
+
     private final MainActivity activity;
     private final ArrayList<String> tokenOrder = new ArrayList<>();
     private final ArrayList<String> enabledTokens = new ArrayList<>();
+    private int dragTouchSlop;
 
     private LinearLayout orderContainer;
     private TextView previewView;
@@ -31,7 +38,8 @@ final class ClockExpressionEditor {
         page.setOrientation(LinearLayout.VERTICAL);
 
         activity.addProfileSectionHeader(page, "表达式编辑",
-                "长按拖动表达式排序，点击表达式切换启用。小时、分钟、秒连续排列时会自动补冒号，不需要单独插入。");
+                "长按表达式拖动排序，点击切换启用；24 小时、12 小时和星期支持快速左右滑动切换不同写法。");
+        ensureDragTouchSlop();
         TextView hint = new TextView(activity);
         hint.setText("当前支持：小时、分钟、秒、星期、AM/PM、时段词、十二时辰地支和传统别称。");
         hint.setTextColor(activity.subtextColor());
@@ -47,7 +55,7 @@ final class ClockExpressionEditor {
         page.addView(orderTitle, activity.matchWrap());
 
         TextView orderHint = new TextView(activity);
-        orderHint.setText("长按可拖动排序；单击即可启用或停用。启用项会按当前顺序生成下面的时间表达式。");
+        orderHint.setText("单击切换启用；快速左右滑动切换 24 小时、12 小时、星期写法；长按可拖动排序。");
         orderHint.setTextColor(activity.subtextColor());
         orderHint.setTextSize(12);
         orderHint.setPadding(0, activity.dp(4), 0, 0);
@@ -100,7 +108,10 @@ final class ClockExpressionEditor {
         if (tokenOrder.isEmpty()) {
             tokenOrder.addAll(enabledTokens);
         }
+        normalizeTokenOrder();
+        syncTokenOrderToEnabledVariants();
         appendMissingTokens(tokenOrder);
+        normalizeEnabledTokens();
     }
 
     private void renderEditor() {
@@ -112,80 +123,127 @@ final class ClockExpressionEditor {
         if (tokenOrder.isEmpty()) {
             return;
         }
-        for (int i = 0; i < tokenOrder.size(); i++) {
-            String token = tokenOrder.get(i);
-            orderContainer.addView(buildOrderRow(token), activity.matchWrap());
-            if (i < tokenOrder.size() - 1) {
-                View divider = new View(activity);
-                divider.setBackgroundColor(activity.strokeColor());
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT, activity.dp(1));
-                lp.topMargin = activity.dp(8);
-                lp.bottomMargin = activity.dp(8);
-                orderContainer.addView(divider, lp);
+        for (int i = 0; i < tokenOrder.size(); i += TOKEN_COLUMN_COUNT) {
+            LinearLayout row = new LinearLayout(activity);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            if (i > 0) {
+                row.setPadding(0, activity.dp(6), 0, 0);
             }
+            for (int j = 0; j < TOKEN_COLUMN_COUNT; j++) {
+                int index = i + j;
+                LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                if (j > 0) {
+                    chipLp.leftMargin = activity.dp(6);
+                }
+                if (index >= tokenOrder.size()) {
+                    View spacer = new View(activity);
+                    row.addView(spacer, chipLp);
+                    continue;
+                }
+                row.addView(buildOrderChip(tokenOrder.get(index)), chipLp);
+            }
+            orderContainer.addView(row, activity.matchWrap());
         }
     }
 
-    private View buildOrderRow(String token) {
+    private View buildOrderChip(String token) {
         boolean enabled = enabledTokens.contains(token);
-        LinearLayout row = new LinearLayout(activity);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(activity.dp(14), activity.dp(12), activity.dp(14), activity.dp(12));
-        row.setBackground(buildRowBackground(enabled, false));
-        row.setTag(token);
+        RowTouchState touchState = new RowTouchState();
+        TextView chip = new TextView(activity);
+        chip.setText(getTokenLabel(token));
+        chip.setTextColor(enabled ? activity.textColor() : activity.subtextColor());
+        chip.setTextSize(12);
+        chip.setGravity(Gravity.CENTER);
+        chip.setPadding(activity.dp(8), activity.dp(8), activity.dp(8), activity.dp(8));
+        chip.setMinHeight(activity.dp(40));
+        chip.setBackground(buildChipBackground(enabled, false));
+        chip.setTag(token);
 
-        TextView drag = new TextView(activity);
-        drag.setText("≡");
-        drag.setTextColor(activity.primaryColor());
-        drag.setTextSize(18);
-        row.addView(drag, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
+        activity.setTapClickListener(chip, v -> toggleToken(token));
+        chip.setOnLongClickListener(this::startRowDrag);
+        chip.setOnTouchListener((v, event) -> handleRowTouch(v, event, touchState));
+        chip.setOnDragListener(this::handleRowDrag);
+        return chip;
+    }
 
-        LinearLayout textColumn = new LinearLayout(activity);
-        textColumn.setOrientation(LinearLayout.VERTICAL);
-        textColumn.setPadding(activity.dp(12), 0, 0, 0);
+    private boolean handleRowTouch(View view, MotionEvent event, RowTouchState state) {
+        if (view == null || event == null || state == null) {
+            return false;
+        }
+        ensureDragTouchSlop();
+        ViewParent parent = view.getParent();
+        String token = view.getTag() instanceof String ? (String) view.getTag() : "";
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                state.downX = event.getX();
+                state.downY = event.getY();
+                state.downTimeMs = event.getEventTime();
+                state.swipeDirection = 0;
+                return false;
+            case MotionEvent.ACTION_MOVE:
+                if (state.swipeDirection != 0) {
+                    return true;
+                }
+                float dx = Math.abs(event.getX() - state.downX);
+                float dy = Math.abs(event.getY() - state.downY);
+                if (Math.max(dx, dy) < dragTouchSlop) {
+                    return false;
+                }
+                if (supportsVariantSwitch(token)
+                        && dx > dy
+                        && event.getEventTime() - state.downTimeMs <= QUICK_SWIPE_MAX_DURATION_MS) {
+                    if (parent != null) {
+                        parent.requestDisallowInterceptTouchEvent(true);
+                    }
+                    state.swipeDirection = event.getX() > state.downX ? 1 : -1;
+                    return true;
+                }
+                return false;
+            case MotionEvent.ACTION_UP:
+                if (state.swipeDirection != 0) {
+                    if (parent != null) {
+                        parent.requestDisallowInterceptTouchEvent(false);
+                    }
+                    int direction = state.swipeDirection;
+                    state.swipeDirection = 0;
+                    if (cycleTokenVariant(token, direction > 0)) {
+                        activity.performTapHaptic(view);
+                    }
+                    return true;
+                }
+            case MotionEvent.ACTION_CANCEL:
+                state.swipeDirection = 0;
+                if (parent != null) {
+                    parent.requestDisallowInterceptTouchEvent(false);
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
 
-        TextView title = new TextView(activity);
-        title.setText(getTokenLabel(token));
-        title.setTextColor(enabled ? activity.textColor() : activity.subtextColor());
-        title.setTextSize(15);
-        textColumn.addView(title, activity.matchWrap());
+    private void ensureDragTouchSlop() {
+        if (dragTouchSlop <= 0) {
+            dragTouchSlop = Math.max(activity.dp(4), ViewConfiguration.get(activity).getScaledTouchSlop() / 2);
+        }
+    }
 
-        TextView value = new TextView(activity);
-        value.setText("{" + token + "}");
-        value.setTextColor(enabled ? activity.primaryColor() : activity.subtextColor());
-        value.setTextSize(12);
-        value.setPadding(0, activity.dp(4), 0, 0);
-        textColumn.addView(value, activity.matchWrap());
-        row.addView(textColumn, new LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-
-        TextView state = activity.chip(
-                enabled ? "已启用" : "未启用",
-                enabled ? activity.primaryColor() : activity.surfaceStrongColor(),
-                enabled ? Color.WHITE : activity.primaryColor());
-        row.addView(state, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        activity.setTapClickListener(row, v -> toggleToken(token));
-        row.setOnLongClickListener(v -> {
-            String currentToken = v.getTag() instanceof String ? (String) v.getTag() : "";
-            ClipData data = ClipData.newPlainText("clock_expression_token", currentToken);
-            View.DragShadowBuilder shadow = new View.DragShadowBuilder(v);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                v.startDragAndDrop(data, shadow, v, 0);
-            } else {
-                v.startDrag(data, shadow, v, 0);
-            }
-            v.setAlpha(0.55f);
-            return true;
-        });
-        row.setOnDragListener(this::handleRowDrag);
-        return row;
+    private boolean startRowDrag(View view) {
+        String currentToken = view != null && view.getTag() instanceof String ? (String) view.getTag() : "";
+        if (TextUtils.isEmpty(currentToken)) {
+            return false;
+        }
+        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        ClipData data = ClipData.newPlainText("clock_expression_token", currentToken);
+        View.DragShadowBuilder shadow = new View.DragShadowBuilder(view);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            view.startDragAndDrop(data, shadow, view, 0);
+        } else {
+            view.startDrag(data, shadow, view, 0);
+        }
+        view.setAlpha(0.55f);
+        return true;
     }
 
     private boolean handleRowDrag(View target, DragEvent event) {
@@ -197,13 +255,13 @@ final class ClockExpressionEditor {
                 return event.getLocalState() instanceof View
                         && ((View) event.getLocalState()).getTag() instanceof String;
             case DragEvent.ACTION_DRAG_ENTERED:
-                target.setBackground(buildRowBackground(enabledTokens.contains(target.getTag()), true));
+                target.setBackground(buildChipBackground(enabledTokens.contains(target.getTag()), true));
                 return true;
             case DragEvent.ACTION_DRAG_EXITED:
-                target.setBackground(buildRowBackground(enabledTokens.contains(target.getTag()), false));
+                target.setBackground(buildChipBackground(enabledTokens.contains(target.getTag()), false));
                 return true;
             case DragEvent.ACTION_DROP:
-                target.setBackground(buildRowBackground(enabledTokens.contains(target.getTag()), false));
+                target.setBackground(buildChipBackground(enabledTokens.contains(target.getTag()), false));
                 Object localState = event.getLocalState();
                 if (!(localState instanceof View) || !((((View) localState).getTag()) instanceof String)) {
                     return false;
@@ -211,7 +269,7 @@ final class ClockExpressionEditor {
                 moveToken((String) ((View) localState).getTag(), (String) target.getTag());
                 return true;
             case DragEvent.ACTION_DRAG_ENDED:
-                target.setBackground(buildRowBackground(enabledTokens.contains(target.getTag()), false));
+                target.setBackground(buildChipBackground(enabledTokens.contains(target.getTag()), false));
                 Object draggedView = event.getLocalState();
                 if (draggedView instanceof View) {
                     ((View) draggedView).setAlpha(1f);
@@ -251,6 +309,25 @@ final class ClockExpressionEditor {
             enabledTokens.add(token);
         }
         renderEditor();
+    }
+
+    private boolean cycleTokenVariant(String token, boolean forward) {
+        String nextToken = resolveAdjacentVariantToken(token, forward);
+        if (TextUtils.isEmpty(nextToken) || TextUtils.equals(nextToken, token)) {
+            return false;
+        }
+        int index = tokenOrder.indexOf(token);
+        if (index >= 0) {
+            tokenOrder.set(index, nextToken);
+        }
+        if (enabledTokens.contains(token)) {
+            enabledTokens.remove(token);
+            if (!enabledTokens.contains(nextToken)) {
+                enabledTokens.add(nextToken);
+            }
+        }
+        renderEditor();
+        return true;
     }
 
     private void updatePreview() {
@@ -332,11 +409,47 @@ final class ClockExpressionEditor {
     }
 
     private void appendMissingTokens(ArrayList<String> order) {
-        for (String[] rowTokens : MainActivity.CLOCK_EXPRESSION_TOKEN_ROWS) {
-            for (String token : rowTokens) {
-                if (isValidToken(token) && !order.contains(token)) {
-                    order.add(token);
-                }
+        String[] defaults = new String[]{
+                "HH", "hh", "mm", "ss", "week", "ampm", "period", "branch", "branch_alias"
+        };
+        for (String token : defaults) {
+            if (isValidToken(token) && !containsTokenGroup(order, token)) {
+                order.add(token);
+            }
+        }
+    }
+
+    private void normalizeTokenOrder() {
+        ArrayList<String> normalized = new ArrayList<>();
+        for (int i = 0; i < tokenOrder.size(); i++) {
+            String token = tokenOrder.get(i);
+            if (!isValidToken(token) || containsTokenGroup(normalized, token)) {
+                continue;
+            }
+            normalized.add(token);
+        }
+        tokenOrder.clear();
+        tokenOrder.addAll(normalized);
+    }
+
+    private void normalizeEnabledTokens() {
+        ArrayList<String> normalized = new ArrayList<>();
+        for (int i = 0; i < tokenOrder.size(); i++) {
+            String token = tokenOrder.get(i);
+            if (!TextUtils.isEmpty(findEnabledVariantForGroup(token)) && !normalized.contains(token)) {
+                normalized.add(token);
+            }
+        }
+        enabledTokens.clear();
+        enabledTokens.addAll(normalized);
+    }
+
+    private void syncTokenOrderToEnabledVariants() {
+        for (int i = 0; i < tokenOrder.size(); i++) {
+            String token = tokenOrder.get(i);
+            String enabledVariant = findEnabledVariantForGroup(token);
+            if (!TextUtils.isEmpty(enabledVariant)) {
+                tokenOrder.set(i, enabledVariant);
             }
         }
     }
@@ -359,14 +472,101 @@ final class ClockExpressionEditor {
         return builder.toString();
     }
 
-    private android.graphics.drawable.GradientDrawable buildRowBackground(boolean enabled, boolean active) {
+    private android.graphics.drawable.GradientDrawable buildChipBackground(boolean enabled, boolean active) {
         int background = active
                 ? activity.surfaceStrongColor()
                 : (enabled ? activity.featureSurfaceColor() : activity.surfaceColor());
         int stroke = active
                 ? activity.featureStrokeColor()
                 : (enabled ? activity.primaryColor() : activity.strokeColor());
-        return activity.outlinedRect(background, stroke, 1, 20);
+        return activity.outlinedRect(background, stroke, 1, 16);
+    }
+
+    private boolean supportsVariantSwitch(String token) {
+        return is24HourToken(token) || is12HourToken(token) || isWeekToken(token);
+    }
+
+    private String resolveAdjacentVariantToken(String token, boolean forward) {
+        String[] variants = resolveVariantGroup(token);
+        if (variants == null || variants.length <= 1) {
+            return token;
+        }
+        int currentIndex = -1;
+        for (int i = 0; i < variants.length; i++) {
+            if (TextUtils.equals(variants[i], token)) {
+                currentIndex = i;
+                break;
+            }
+        }
+        if (currentIndex < 0) {
+            return token;
+        }
+        int nextIndex = forward
+                ? (currentIndex + 1) % variants.length
+                : (currentIndex - 1 + variants.length) % variants.length;
+        return variants[nextIndex];
+    }
+
+    private String[] resolveVariantGroup(String token) {
+        if (is24HourToken(token)) {
+            return new String[]{"HH", "H"};
+        }
+        if (is12HourToken(token)) {
+            return new String[]{"hh", "h"};
+        }
+        if (isWeekToken(token)) {
+            return new String[]{"week", "week_short", "week_1"};
+        }
+        return null;
+    }
+
+    private boolean containsTokenGroup(ArrayList<String> tokens, String candidate) {
+        if (tokens == null || TextUtils.isEmpty(candidate)) {
+            return false;
+        }
+        for (int i = 0; i < tokens.size(); i++) {
+            if (isSameTokenGroup(tokens.get(i), candidate)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String findEnabledVariantForGroup(String token) {
+        if (TextUtils.isEmpty(token)) {
+            return null;
+        }
+        for (int i = 0; i < enabledTokens.size(); i++) {
+            String enabledToken = enabledTokens.get(i);
+            if (isSameTokenGroup(enabledToken, token)) {
+                return enabledToken;
+            }
+        }
+        return null;
+    }
+
+    private boolean isSameTokenGroup(String first, String second) {
+        if (TextUtils.isEmpty(first) || TextUtils.isEmpty(second)) {
+            return false;
+        }
+        if (TextUtils.equals(first, second)) {
+            return true;
+        }
+        return is24HourToken(first) && is24HourToken(second)
+                || is12HourToken(first) && is12HourToken(second)
+                || isWeekToken(first) && isWeekToken(second);
+    }
+
+    private boolean is24HourToken(String token) {
+        return "HH".equals(token) || "H".equals(token);
+    }
+
+    private boolean is12HourToken(String token) {
+        return "hh".equals(token) || "h".equals(token);
+    }
+
+    private boolean isWeekToken(String token) {
+        return "week".equals(token) || "week_short".equals(token) || "week_1".equals(token);
     }
 
     private String resolveSeparator(String previous, String current) {
@@ -422,5 +622,12 @@ final class ClockExpressionEditor {
         if ("branch".equals(token)) return "地支";
         if ("branch_alias".equals(token)) return "传统别称";
         return token;
+    }
+
+    private static final class RowTouchState {
+        private float downX;
+        private float downY;
+        private long downTimeMs;
+        private int swipeDirection;
     }
 }
