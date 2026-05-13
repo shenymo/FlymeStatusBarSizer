@@ -2205,15 +2205,27 @@ final class ClockDetailPopupController {
     }
 
     private void launchRecentTask(ClockDetailRecentApp app) {
-        if (app == null || app.taskId < 0 || activityManager == null) {
+        if (app == null
+                || app.taskId < 0
+                || activityManager == null
+                || !isPopupShowing()
+                || !popupTargetShowing
+                || dismissAnimationRunning) {
+            return;
+        }
+        dismiss();
+        moveRecentTaskToFront(app.taskId);
+    }
+
+    private void moveRecentTaskToFront(int taskId) {
+        if (taskId < 0 || activityManager == null) {
             return;
         }
         try {
-            activityManager.moveTaskToFront(app.taskId, 0);
-            dismissImmediately();
+            activityManager.moveTaskToFront(taskId, 0);
         } catch (Throwable t) {
             FlymeStatusBarSizer.logClockWarning(
-                    "Failed to move recent task to front: " + app.taskId,
+                    "Failed to move recent task to front: " + taskId,
                     t);
         }
     }
