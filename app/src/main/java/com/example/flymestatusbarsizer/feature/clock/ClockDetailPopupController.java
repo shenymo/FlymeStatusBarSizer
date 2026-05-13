@@ -9,6 +9,7 @@ import android.animation.ObjectAnimator;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.graphics.Region;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -28,6 +29,7 @@ import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.WindowManager;
+import android.view.ViewTreeObserver;
 import android.view.animation.OvershootInterpolator;
 import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
@@ -37,6 +39,7 @@ import android.widget.TextView;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
@@ -58,6 +61,7 @@ final class ClockDetailPopupController {
     private static final int POPUP_SHADOW_PADDING_DP = 10;
     private static final int POPUP_SHADOW_ELEVATION_DP = 26;
     private static final int POPUP_SHADOW_TRANSLATION_Z_DP = 6;
+    private static final int POPUP_HEADER_MIN_HEIGHT_DP = 56;
     private static final int POPUP_BACKGROUND_BLUR_RADIUS_DP = 32;
     private static final int POPUP_BACKGROUND_BLUR_Z_ORDER_BOTTOM = -1;
     private static final int INVALID_POPUP_SESSION_ID = -1;
@@ -98,9 +102,11 @@ final class ClockDetailPopupController {
     private final FrameLayout popupRootView;
     private final View popupBackgroundView;
     private final LinearLayout contentView;
+    private final FrameLayout headerView;
     private final LinearLayout timeRowView;
     private final TextView timeView;
     private final TextView millisecondsView;
+    private final TextView pinToggleView;
     private final TextView dateView;
     private final LinearLayout statusGridView;
     private final MemoryStatTile memoryTile;
@@ -165,6 +171,14 @@ final class ClockDetailPopupController {
     private boolean nativePopupBlurCapabilityResolved;
     private boolean nativePopupBlurSupported;
     private boolean nativePopupBlurCheckPending;
+    private boolean overlayInsetsListenerAttached;
+    private boolean overlayInsetsReflectionResolved;
+    private Object overlayInsetsListener;
+    private Method addOverlayInsetsListenerMethod;
+    private Method removeOverlayInsetsListenerMethod;
+    private Method overlayInsetsSetTouchableInsetsMethod;
+    private Field overlayInsetsTouchableRegionField;
+    private int overlayTouchableInsetsRegionValue;
 
     ClockDetailPopupController(TextView anchor) {
         this.anchorRef = new WeakReference<>(anchor);
@@ -177,9 +191,11 @@ final class ClockDetailPopupController {
         this.popupBackgroundView = buildPopupBackgroundView(context);
         this.popupRootView = buildPopupRootView(context, popupBackgroundView, contentView);
         this.overlayView = buildOverlayView(context, popupRootView);
+        this.headerView = buildHeaderView(context);
         this.timeRowView = buildTimeRowView(context);
         this.timeView = buildTimeView(context);
         this.millisecondsView = buildMillisecondsView(context);
+        this.pinToggleView = buildPinToggleView(context);
         this.dateView = buildDateView(context);
         this.memoryTile = buildMemoryStatTile(
                 context,
@@ -189,7 +205,9 @@ final class ClockDetailPopupController {
         this.statusGridView = buildStatusGrid(context, memoryTile, thermalPowerTile);
         this.timeRowView.addView(timeView, wrapContent());
         this.timeRowView.addView(millisecondsView, wrapContentWithStart(context, 2));
-        this.contentView.addView(timeRowView, matchWidth());
+        this.headerView.addView(timeRowView, frameCentered());
+        this.headerView.addView(pinToggleView, frameTopEnd(context, 2));
+        this.contentView.addView(headerView, matchWidth());
         this.contentView.addView(dateView, matchWidthWithTop(context, 5));
         this.contentView.addView(statusGridView, matchWidthWithTop(context, 12));
         this.systemStatusProvider = new ClockDetailSystemStatusProvider(context);
@@ -198,6 +216,11 @@ final class ClockDetailPopupController {
                 ViewConfiguration.get(context).getScaledTouchSlop());
         timeView.setOnTouchListener(this::handleTimeTextTouch);
         millisecondsView.setOnTouchListener(this::handleTimeTextTouch);
+        pinToggleView.setOnClickListener(v -> {
+            performClockHaptic(v);
+            setPanelPinned(!panelPinned);
+        });
+        refreshPinToggleView();
         anchor.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
             @Override
             public void onViewAttachedToWindow(View v) {
@@ -302,6 +325,7 @@ final class ClockDetailPopupController {
         startPopupSession();
         FlymeStatusBarSizer.disableAncestorClipping(anchor, 6);
         applyPalette(resolvePalette());
+        refreshPinToggleView();
         showMilliseconds = false;
         long nowMillis = System.currentTimeMillis();
         ensureFormattersForTimestamp(nowMillis, true);
@@ -554,12 +578,18 @@ final class ClockDetailPopupController {
     private void measureContent() {
         Context context = popupRootView.getContext();
         int margin = dp(context, HORIZONTAL_MARGIN_DP);
-        int maxWidth = Math.max(1, getOverlayWidth() - (margin * 2));
-        popupRootView.measure(
-                View.MeasureSpec.makeMeasureSpec(maxWidth, View.MeasureSpec.AT_MOST),
+        int rootHorizontalPadding = popupRootView.getPaddingLeft() + popupRootView.getPaddingRight();
+        int rootVerticalPadding = popupRootView.getPaddingTop() + popupRootView.getPaddingBottom();
+        int popupMaxWidth = Math.max(1, getOverlayWidth() - (margin * 2));
+        int contentWidth = Math.max(1, popupMaxWidth - rootHorizontalPadding);
+        contentView.measure(
+                View.MeasureSpec.makeMeasureSpec(contentWidth, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-        popupWidth = Math.max(1, popupRootView.getMeasuredWidth());
-        popupHeight = Math.max(popupRootView.getMeasuredHeight(), 0);
+        popupWidth = Math.max(1, contentView.getMeasuredWidth() + rootHorizontalPadding);
+        popupHeight = Math.max(1, contentView.getMeasuredHeight() + rootVerticalPadding);
+        popupRootView.measure(
+                View.MeasureSpec.makeMeasureSpec(popupWidth, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(popupHeight, View.MeasureSpec.EXACTLY));
     }
 
     private int resolveTargetPopupLeft(TextView anchor) {
@@ -831,8 +861,31 @@ final class ClockDetailPopupController {
         timeView.setTextColor(palette.primaryTextColor);
         millisecondsView.setTextColor(palette.accentColor);
         dateView.setTextColor(palette.secondaryTextColor);
+        applyPinTogglePalette(context, palette);
         applyMemoryTilePalette(memoryTile, palette);
         applyStatTilePalette(thermalPowerTile, palette);
+    }
+
+    private void applyPinTogglePalette(Context context, Palette palette) {
+        if (pinToggleView == null || palette == null) {
+            return;
+        }
+        int fillColor = panelPinned
+                ? adjustAlpha(palette.accentColor, 0.96f)
+                : mixColors(palette.surfaceColor, palette.strokeColor, 0.24f);
+        int strokeColor = panelPinned
+                ? adjustAlpha(palette.accentColor, 1f)
+                : adjustAlpha(palette.strokeColor, 0.9f);
+        int textColor = panelPinned
+                ? (isLightForeground(fillColor) ? Color.parseColor("#16202B") : Color.WHITE)
+                : palette.primaryTextColor;
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setCornerRadius(dp(context, 12));
+        background.setColor(fillColor);
+        background.setStroke(Math.max(1, dp(context, 1)), strokeColor);
+        pinToggleView.setBackground(background);
+        pinToggleView.setTextColor(textColor);
     }
 
     private Drawable buildPopupBackgroundDrawable(Context context, Palette palette) {
@@ -1000,14 +1053,11 @@ final class ClockDetailPopupController {
             originalAnchorPadding = captureAnchorPadding(anchor);
             originalAnchorBackgroundCaptured = true;
         }
-        int extraStart = dp(context, CLOCK_HIGHLIGHT_EXTRA_START_PADDING_DP);
-        int extraEnd = dp(context, CLOCK_HIGHLIGHT_EXTRA_END_PADDING_DP);
-        int extraVertical = dp(context, CLOCK_HIGHLIGHT_EXTRA_VERTICAL_PADDING_DP);
         GradientDrawable capsule = new GradientDrawable();
         capsule.setShape(GradientDrawable.RECTANGLE);
         capsule.setColor(resolveAnchorHighlightFillColor(anchor.getCurrentTextColor()));
         capsule.setCornerRadius(Math.max(
-                anchor.getHeight() + (extraVertical * 2),
+                anchor.getHeight(),
                 dp(context, 20)));
         capsule.setStroke(
                 Math.max(1, dp(context, 1)),
@@ -1019,17 +1069,8 @@ final class ClockDetailPopupController {
                 dp(context, CLOCK_HIGHLIGHT_HORIZONTAL_INSET_DP),
                 dp(context, CLOCK_HIGHLIGHT_VERTICAL_INSET_DP));
         anchor.setBackground(highlight);
-        if (originalAnchorPadding != null && originalAnchorPadding.length >= 4) {
-            anchor.setPaddingRelative(
-                    originalAnchorPadding[0] + extraStart,
-                    originalAnchorPadding[1] + extraVertical,
-                    originalAnchorPadding[2] + extraEnd,
-                    originalAnchorPadding[3] + extraVertical);
-        } else {
-            restoreAnchorPadding(anchor);
-        }
+        restoreAnchorPadding(anchor);
         anchorHighlighted = true;
-        anchor.requestLayout();
         anchor.invalidate();
     }
 
@@ -1323,6 +1364,7 @@ final class ClockDetailPopupController {
             overlayWindowManager = windowManager;
             overlayAttached = true;
             cachedInternalWindowType = windowType;
+            attachOverlayTouchableInsetsListener();
             return null;
         } catch (Throwable throwable) {
             overlayWindowManager = null;
@@ -1336,6 +1378,7 @@ final class ClockDetailPopupController {
     }
 
     private void detachOverlay() {
+        detachOverlayTouchableInsetsListener();
         WindowManager windowManager = overlayWindowManager;
         overlayWindowManager = null;
         if (windowManager != null) {
@@ -1359,8 +1402,10 @@ final class ClockDetailPopupController {
             Context context,
             int windowType) {
         int flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                 | WindowManager.LayoutParams.FLAG_SPLIT_TOUCH
                 | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
                 | WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS;
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -1440,6 +1485,7 @@ final class ClockDetailPopupController {
         popupTop = 0;
         dragStartPopupLeft = 0;
         dragStartPopupTop = 0;
+        refreshPinToggleView();
     }
 
     private void startPopupSession() {
@@ -1467,18 +1513,11 @@ final class ClockDetailPopupController {
             return;
         }
         panelLongPressTriggered = true;
-        panelPinned = !panelPinned;
+        dragGestureActive = true;
+        dragStartPopupLeft = popupLeft;
+        dragStartPopupTop = popupTop;
+        handler.removeCallbacks(autoDismissRunnable);
         performLongPressHaptic(popupRootView);
-        if (panelPinned) {
-            dragGestureActive = true;
-            manualPositionActive = true;
-            dragStartPopupLeft = popupLeft;
-            dragStartPopupTop = popupTop;
-            handler.removeCallbacks(autoDismissRunnable);
-        } else {
-            dragGestureActive = false;
-            scheduleAutoDismiss();
-        }
     }
 
     private void observePanelTouch(MotionEvent event) {
@@ -1508,10 +1547,6 @@ final class ClockDetailPopupController {
                 }
                 if (hasDragMovedEnough(event)) {
                     cancelPanelLongPress();
-                    if (panelPinned) {
-                        dragGestureActive = true;
-                        manualPositionActive = true;
-                    }
                 }
                 break;
             case MotionEvent.ACTION_UP:
@@ -1586,11 +1621,17 @@ final class ClockDetailPopupController {
     }
 
     private boolean handleOverlayTouch(MotionEvent event) {
-        if (event == null || !isPopupShowing() || panelPinned) {
+        if (event == null || !isPopupShowing()) {
             return false;
         }
         int action = event.getActionMasked();
-        if (action != MotionEvent.ACTION_DOWN && action != MotionEvent.ACTION_OUTSIDE) {
+        if (action == MotionEvent.ACTION_OUTSIDE) {
+            if (!panelPinned) {
+                dismiss();
+            }
+            return false;
+        }
+        if (panelPinned || action != MotionEvent.ACTION_DOWN) {
             return false;
         }
         if (isPointInsidePopup(event.getX(), event.getY())) {
@@ -1598,6 +1639,147 @@ final class ClockDetailPopupController {
         }
         dismiss();
         return true;
+    }
+
+    private void setPanelPinned(boolean pinned) {
+        if (panelPinned == pinned) {
+            return;
+        }
+        panelPinned = pinned;
+        if (panelPinned) {
+            handler.removeCallbacks(autoDismissRunnable);
+        } else {
+            scheduleAutoDismiss();
+        }
+        refreshPinToggleView();
+    }
+
+    private void refreshPinToggleView() {
+        if (pinToggleView == null) {
+            return;
+        }
+        setTextIfChanged(pinToggleView, panelPinned ? "固定" : "自动");
+        pinToggleView.setActivated(panelPinned);
+        if (currentPalette != null) {
+            applyPinTogglePalette(pinToggleView.getContext(), currentPalette);
+        }
+    }
+
+    private void attachOverlayTouchableInsetsListener() {
+        ensureOverlayInsetsReflectionResolved();
+        if (overlayInsetsListener == null || addOverlayInsetsListenerMethod == null) {
+            return;
+        }
+        if (overlayInsetsListenerAttached) {
+            return;
+        }
+        ViewTreeObserver observer = overlayView.getViewTreeObserver();
+        if (observer == null || !observer.isAlive()) {
+            return;
+        }
+        try {
+            addOverlayInsetsListenerMethod.invoke(observer, overlayInsetsListener);
+            overlayInsetsListenerAttached = true;
+            overlayView.requestLayout();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void detachOverlayTouchableInsetsListener() {
+        if (!overlayInsetsListenerAttached) {
+            return;
+        }
+        ensureOverlayInsetsReflectionResolved();
+        ViewTreeObserver observer = overlayView.getViewTreeObserver();
+        if (observer != null
+                && observer.isAlive()
+                && overlayInsetsListener != null
+                && removeOverlayInsetsListenerMethod != null) {
+            try {
+                removeOverlayInsetsListenerMethod.invoke(observer, overlayInsetsListener);
+            } catch (Throwable ignored) {
+            }
+        }
+        overlayInsetsListenerAttached = false;
+    }
+
+    private void ensureOverlayInsetsReflectionResolved() {
+        if (overlayInsetsReflectionResolved) {
+            return;
+        }
+        overlayInsetsReflectionResolved = true;
+        try {
+            Class<?> listenerClass =
+                    Class.forName("android.view.ViewTreeObserver$OnComputeInternalInsetsListener");
+            Class<?> infoClass =
+                    Class.forName("android.view.ViewTreeObserver$InternalInsetsInfo");
+            addOverlayInsetsListenerMethod = ViewTreeObserver.class.getDeclaredMethod(
+                    "addOnComputeInternalInsetsListener",
+                    listenerClass);
+            removeOverlayInsetsListenerMethod = ViewTreeObserver.class.getDeclaredMethod(
+                    "removeOnComputeInternalInsetsListener",
+                    listenerClass);
+            addOverlayInsetsListenerMethod.setAccessible(true);
+            removeOverlayInsetsListenerMethod.setAccessible(true);
+            overlayInsetsSetTouchableInsetsMethod =
+                    infoClass.getDeclaredMethod("setTouchableInsets", int.class);
+            overlayInsetsSetTouchableInsetsMethod.setAccessible(true);
+            overlayInsetsTouchableRegionField = infoClass.getDeclaredField("touchableRegion");
+            overlayInsetsTouchableRegionField.setAccessible(true);
+            Field touchableInsetsRegionField =
+                    infoClass.getDeclaredField("TOUCHABLE_INSETS_REGION");
+            touchableInsetsRegionField.setAccessible(true);
+            overlayTouchableInsetsRegionValue =
+                    touchableInsetsRegionField.getInt(null);
+            ClassLoader proxyClassLoader = ClockDetailPopupController.class.getClassLoader();
+            overlayInsetsListener = Proxy.newProxyInstance(
+                    proxyClassLoader != null ? proxyClassLoader : listenerClass.getClassLoader(),
+                    new Class<?>[]{listenerClass},
+                    (proxy, method, args) -> {
+                        if ("onComputeInternalInsets".equals(method.getName())
+                                && args != null
+                                && args.length > 0) {
+                            applyOverlayTouchableInsetsCompat(args[0]);
+                        }
+                        return null;
+                    });
+        } catch (Throwable ignored) {
+            overlayInsetsListener = null;
+            addOverlayInsetsListenerMethod = null;
+            removeOverlayInsetsListenerMethod = null;
+            overlayInsetsSetTouchableInsetsMethod = null;
+            overlayInsetsTouchableRegionField = null;
+        }
+    }
+
+    private void applyOverlayTouchableInsetsCompat(Object infoObject) {
+        if (infoObject == null
+                || overlayInsetsSetTouchableInsetsMethod == null
+                || overlayInsetsTouchableRegionField == null) {
+            return;
+        }
+        try {
+            overlayInsetsSetTouchableInsetsMethod.invoke(
+                    infoObject,
+                    overlayTouchableInsetsRegionValue);
+            Object regionObject = overlayInsetsTouchableRegionField.get(infoObject);
+            if (!(regionObject instanceof Region)) {
+                return;
+            }
+            Region touchableRegion = (Region) regionObject;
+            if (!isPopupShowing()
+                    || popupRootView.getWidth() <= 0
+                    || popupRootView.getHeight() <= 0) {
+                touchableRegion.setEmpty();
+                return;
+            }
+            touchableRegion.set(
+                    popupRootView.getLeft(),
+                    popupRootView.getTop(),
+                    popupRootView.getRight(),
+                    popupRootView.getBottom());
+        } catch (Throwable ignored) {
+        }
     }
 
     private boolean isPointInsidePopup(float x, float y) {
@@ -1646,12 +1828,13 @@ final class ClockDetailPopupController {
                 return handlePanelTouchEvent(event) || super.onTouchEvent(event);
             }
         };
+        root.setClickable(true);
         root.setClipChildren(false);
         root.setClipToPadding(false);
         int shadowPadding = dp(context, POPUP_SHADOW_PADDING_DP);
         root.setPadding(shadowPadding, shadowPadding, shadowPadding, shadowPadding);
         root.addView(backgroundView, frameMatchParent());
-        root.addView(contentView, frameWrapContent());
+        root.addView(contentView, frameMatchWidthWrapContent());
         return root;
     }
 
@@ -1671,6 +1854,14 @@ final class ClockDetailPopupController {
                 dp(context, 18),
                 dp(context, 14));
         return root;
+    }
+
+    private static FrameLayout buildHeaderView(Context context) {
+        FrameLayout header = new FrameLayout(context);
+        header.setMinimumHeight(dp(context, POPUP_HEADER_MIN_HEIGHT_DP));
+        header.setClipChildren(false);
+        header.setClipToPadding(false);
+        return header;
     }
 
     private static LinearLayout buildTimeRowView(Context context) {
@@ -1704,6 +1895,25 @@ final class ClockDetailPopupController {
         view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f);
         view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         view.setLetterSpacing(-0.01f);
+        return view;
+    }
+
+    private static TextView buildPinToggleView(Context context) {
+        TextView view = new TextView(context);
+        view.setIncludeFontPadding(false);
+        view.setSingleLine(true);
+        view.setClickable(true);
+        view.setGravity(Gravity.CENTER);
+        view.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        view.setMinHeight(dp(context, 24));
+        view.setPadding(
+                dp(context, 10),
+                dp(context, 5),
+                dp(context, 10),
+                dp(context, 5));
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        view.setText("自动");
         return view;
     }
 
@@ -2018,10 +2228,31 @@ final class ClockDetailPopupController {
         return params;
     }
 
+    private static FrameLayout.LayoutParams frameCentered() {
+        FrameLayout.LayoutParams params = frameWrapContent();
+        params.gravity = Gravity.CENTER;
+        return params;
+    }
+
+    private static FrameLayout.LayoutParams frameTopEnd(Context context, int topMarginDp) {
+        FrameLayout.LayoutParams params = frameWrapContent();
+        params.gravity = Gravity.TOP | Gravity.END;
+        params.topMargin = dp(context, topMarginDp);
+        return params;
+    }
+
     private static FrameLayout.LayoutParams frameMatchParent() {
         return new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT);
+    }
+
+    private static FrameLayout.LayoutParams frameMatchWidthWrapContent() {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        params.gravity = Gravity.START | Gravity.TOP;
+        return params;
     }
 
     private static LinearLayout.LayoutParams matchWidth() {
