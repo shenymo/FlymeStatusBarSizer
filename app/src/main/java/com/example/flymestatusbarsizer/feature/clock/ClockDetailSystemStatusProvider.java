@@ -12,10 +12,6 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.SystemClock;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -34,15 +30,6 @@ final class ClockDetailSystemStatusProvider {
     private static final String THERMAL_AIDL_DESCRIPTOR = "android.hardware.thermal.IThermal";
     private static final String THERMAL_AIDL_SERVICE = THERMAL_AIDL_DESCRIPTOR + "/default";
     private static final String MEM_INFO_READER_CLASS = "com.android.internal.util.MemInfoReader";
-    private static final String SYS_BLOCK_PATH = "/sys/block";
-    private static final String ZRAM_DEVICE_PREFIX = "zram";
-    private static final String ZRAM_WRITEBACK_DISABLED = "none";
-    private static final String ZRAM_WRITEBACK_STATS_FILE = "bd_stat";
-    private static final String ZRAM_BACKING_DEVICE_FILE = "backing_dev";
-    private static final String ANDROID_SYSTEM_OS_CLASS = "android.system.Os";
-    private static final String ANDROID_SYSTEM_OS_CONSTANTS_CLASS = "android.system.OsConstants";
-    private static final String OS_SYSCONF_METHOD = "sysconf";
-    private static final String OS_PAGE_SIZE_FIELD = "_SC_PAGE_SIZE";
     private static final int TEMPERATURE_TYPE_BATTERY = 2;
     private static final int TEMPERATURE_TYPE_SKIN = 3;
     private static final int FIRST_THROTTLING_STATUS_INDEX = 1;
@@ -56,7 +43,6 @@ final class ClockDetailSystemStatusProvider {
     private static Handler backgroundHandler;
     private static boolean memInfoReaderReflectionResolved;
     private static boolean memInfoReaderReflectionAvailable;
-    private static boolean osPageSizeReflectionResolved;
     private static boolean thermalServiceReflectionResolved;
     private static boolean thermalServiceReflectionAvailable;
     private static boolean thermalReflectionResolved;
@@ -68,15 +54,12 @@ final class ClockDetailSystemStatusProvider {
             TemperatureThresholdProfile.UNAVAILABLE;
     private static Object frameworkThermalService;
     private static Object thermalAidlService;
-    private static File zramDeviceDirectory;
-    private static boolean zramDeviceDirectoryResolved;
     private static Constructor<?> memInfoReaderConstructor;
     private static Method memInfoReaderReadMemInfoMethod;
     private static Method memInfoReaderGetSwapTotalSizeKbMethod;
     private static Method memInfoReaderGetSwapFreeSizeKbMethod;
     private static Method memInfoReaderGetZramTotalSizeKbMethod;
     private static Method debugGetZramFreeKbMethod;
-    private static Method osSysconfMethod;
     private static Method getServiceMethod;
     private static Method thermalServiceAsInterfaceMethod;
     private static Method getCurrentTemperaturesWithTypeMethod;
@@ -87,7 +70,6 @@ final class ClockDetailSystemStatusProvider {
     private static Method getTemperatureThresholdsWithTypeMethod;
     private static Field temperatureThresholdNameField;
     private static Field temperatureThresholdHotThresholdsField;
-    private static Object osPageSizeConstant;
 
     private final Context context;
     private final ActivityManager activityManager;
@@ -95,8 +77,12 @@ final class ClockDetailSystemStatusProvider {
     private final IntentFilter batteryChangedFilter;
     private final ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
 
-    interface SnapshotCallback {
-        void onSnapshot(ClockDetailSystemStatusSnapshot snapshot);
+    interface MemoryRowsCallback {
+        void onMemoryRows(ClockDetailSystemStatusSnapshot.MemoryRow[] memoryRows);
+    }
+
+    interface ThermalPowerCallback {
+        void onThermalPower(String temperatureValue, String powerValue);
     }
 
     ClockDetailSystemStatusProvider(Context context) {
@@ -113,27 +99,45 @@ final class ClockDetailSystemStatusProvider {
         this.batteryChangedFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
     }
 
-    void requestSnapshot(Handler resultHandler, SnapshotCallback callback) {
+    void requestMemoryRows(Handler resultHandler, MemoryRowsCallback callback) {
         if (callback == null) {
             return;
         }
         Handler workerHandler = getBackgroundHandler();
         if (workerHandler == null) {
-            deliverSnapshot(resultHandler, callback, ClockDetailSystemStatusSnapshot.EMPTY);
+            deliverMemoryRows(
+                    resultHandler,
+                    callback,
+                    ClockDetailSystemStatusSnapshot.EMPTY.memoryRows);
             return;
         }
         workerHandler.post(() -> {
-            ClockDetailSystemStatusSnapshot snapshot = querySnapshot();
-            deliverSnapshot(resultHandler, callback, snapshot);
+            ClockDetailSystemStatusSnapshot.MemoryRow[] memoryRows = readMemoryRows();
+            deliverMemoryRows(resultHandler, callback, memoryRows);
         });
     }
 
-    ClockDetailSystemStatusSnapshot querySnapshot() {
-        BatterySnapshot batterySnapshot = readBatterySnapshot();
-        return new ClockDetailSystemStatusSnapshot(
-                readMemoryRows(),
-                formatTemperatureValue(batterySnapshot),
-                formatPowerValue(batterySnapshot));
+    void requestThermalPower(Handler resultHandler, ThermalPowerCallback callback) {
+        if (callback == null) {
+            return;
+        }
+        Handler workerHandler = getBackgroundHandler();
+        if (workerHandler == null) {
+            deliverThermalPower(
+                    resultHandler,
+                    callback,
+                    ClockDetailSystemStatusSnapshot.EMPTY.temperatureValue,
+                    ClockDetailSystemStatusSnapshot.EMPTY.powerValue);
+            return;
+        }
+        workerHandler.post(() -> {
+            BatterySnapshot batterySnapshot = readBatterySnapshot();
+            deliverThermalPower(
+                    resultHandler,
+                    callback,
+                    formatTemperatureValue(batterySnapshot),
+                    formatPowerValue(batterySnapshot));
+        });
     }
 
     private ClockDetailSystemStatusSnapshot.MemoryRow[] readMemoryRows() {
@@ -169,10 +173,9 @@ final class ClockDetailSystemStatusProvider {
             long ramTotalBytes,
             MemoryCompressionSnapshot snapshot,
             Locale locale) {
-        ArrayList<ClockDetailSystemStatusSnapshot.MemoryRow> rows = new ArrayList<>(3);
+        ArrayList<ClockDetailSystemStatusSnapshot.MemoryRow> rows = new ArrayList<>(2);
         rows.add(buildUsageRow("RAM", ramUsedBytes, ramTotalBytes, locale));
         rows.add(buildZramRow(snapshot, locale));
-        rows.add(buildWritebackRow(snapshot, locale));
         return rows.toArray(new ClockDetailSystemStatusSnapshot.MemoryRow[0]);
     }
 
@@ -212,25 +215,6 @@ final class ClockDetailSystemStatusProvider {
         return new ClockDetailSystemStatusSnapshot.MemoryRow("ZRAM", "-- / --", "--");
     }
 
-    private ClockDetailSystemStatusSnapshot.MemoryRow buildWritebackRow(
-            MemoryCompressionSnapshot snapshot,
-            Locale locale) {
-        if (snapshot == null || !snapshot.writebackAvailable) {
-            return new ClockDetailSystemStatusSnapshot.MemoryRow("WB", "-- / --", "--");
-        }
-        String state = snapshot.writebackEnabled ? "开" : "关";
-        String amount = "--";
-        if (snapshot.writebackEnabled && snapshot.writebackWrittenBytes >= 0L) {
-            amount = formatCompactBytes(snapshot.writebackWrittenBytes, locale);
-        } else if (snapshot.writebackEnabled && snapshot.writebackWrittenPages >= 0L) {
-            amount = String.format(locale, "%d页", snapshot.writebackWrittenPages);
-        }
-        return new ClockDetailSystemStatusSnapshot.MemoryRow(
-                "WB",
-                state + " / " + amount,
-                "--");
-    }
-
     private String formatUsageValue(long usedBytes, long totalBytes, Locale locale) {
         return formatCompactBytes(usedBytes, locale)
                 + " / "
@@ -248,7 +232,6 @@ final class ClockDetailSystemStatusProvider {
     private MemoryCompressionSnapshot readMemoryCompressionSnapshot() {
         MemoryCompressionSnapshot snapshot = new MemoryCompressionSnapshot();
         populateMemInfoSnapshot(snapshot);
-        populateWritebackSnapshot(snapshot);
         return snapshot;
     }
 
@@ -299,81 +282,6 @@ final class ClockDetailSystemStatusProvider {
         }
     }
 
-    private void populateWritebackSnapshot(MemoryCompressionSnapshot snapshot) {
-        if (snapshot == null) {
-            return;
-        }
-        File deviceDirectory = resolveZramDeviceDirectory();
-        if (deviceDirectory == null) {
-            return;
-        }
-        String backingDevice = readTrimmedTextFile(new File(deviceDirectory, ZRAM_BACKING_DEVICE_FILE));
-        if (backingDevice == null) {
-            return;
-        }
-        snapshot.writebackAvailable = true;
-        snapshot.writebackEnabled = !backingDevice.isEmpty()
-                && !ZRAM_WRITEBACK_DISABLED.equalsIgnoreCase(backingDevice);
-        if (!snapshot.writebackEnabled) {
-            return;
-        }
-        String stats = readTrimmedTextFile(new File(deviceDirectory, ZRAM_WRITEBACK_STATS_FILE));
-        if (stats == null || stats.isEmpty()) {
-            return;
-        }
-        String[] tokens = stats.split("\\s+");
-        if (tokens.length < 3) {
-            return;
-        }
-        try {
-            snapshot.writebackWrittenPages = Long.parseLong(tokens[2]);
-            snapshot.writebackWrittenBytes = pagesToBytes(snapshot.writebackWrittenPages);
-        } catch (NumberFormatException t) {
-            FlymeStatusBarSizer.logClockWarning(
-                    "Failed to parse zram writeback stats",
-                    t);
-        }
-    }
-
-    private static File resolveZramDeviceDirectory() {
-        synchronized (MEMORY_INFO_LOCK) {
-            if (zramDeviceDirectoryResolved) {
-                return zramDeviceDirectory;
-            }
-            File sysBlockDirectory = new File(SYS_BLOCK_PATH);
-            File[] children = sysBlockDirectory.listFiles();
-            if (children != null) {
-                for (File child : children) {
-                    if (child == null || !child.isDirectory()) {
-                        continue;
-                    }
-                    if (!child.getName().startsWith(ZRAM_DEVICE_PREFIX)) {
-                        continue;
-                    }
-                    zramDeviceDirectory = child;
-                    break;
-                }
-            }
-            zramDeviceDirectoryResolved = true;
-            return zramDeviceDirectory;
-        }
-    }
-
-    private static String readTrimmedTextFile(File file) {
-        if (file == null || !file.exists() || !file.isFile()) {
-            return null;
-        }
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-            String line = reader.readLine();
-            return line != null ? line.trim() : "";
-        } catch (IOException t) {
-            FlymeStatusBarSizer.logClockWarning(
-                    "Failed to read file " + file.getAbsolutePath(),
-                    t);
-            return null;
-        }
-    }
-
     private static boolean ensureMemInfoReaderReflectionLocked() {
         if (memInfoReaderReflectionResolved) {
             return memInfoReaderReflectionAvailable;
@@ -390,7 +298,6 @@ final class ClockDetailSystemStatusProvider {
                     "getZramTotalSizeKb");
             Class<?> debugClass = Class.forName("android.os.Debug");
             debugGetZramFreeKbMethod = debugClass.getMethod("getZramFreeKb");
-            resolveOsPageSizeReflectionLocked();
             memInfoReaderReflectionAvailable = true;
         } catch (Throwable t) {
             FlymeStatusBarSizer.logClockWarning(
@@ -400,26 +307,6 @@ final class ClockDetailSystemStatusProvider {
         }
         memInfoReaderReflectionResolved = true;
         return memInfoReaderReflectionAvailable;
-    }
-
-    private static void resolveOsPageSizeReflectionLocked() {
-        if (osPageSizeReflectionResolved) {
-            return;
-        }
-        try {
-            Class<?> osClass = Class.forName(ANDROID_SYSTEM_OS_CLASS);
-            osSysconfMethod = osClass.getMethod(OS_SYSCONF_METHOD, int.class);
-            Class<?> osConstantsClass = Class.forName(ANDROID_SYSTEM_OS_CONSTANTS_CLASS);
-            Field pageSizeField = osConstantsClass.getField(OS_PAGE_SIZE_FIELD);
-            osPageSizeConstant = pageSizeField.get(null);
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logClockWarning(
-                    "Failed to resolve OS page size accessors",
-                    t);
-            osSysconfMethod = null;
-            osPageSizeConstant = null;
-        }
-        osPageSizeReflectionResolved = true;
     }
 
     private static long invokeLongMethod(Object target, Method method, String methodName) {
@@ -458,29 +345,6 @@ final class ClockDetailSystemStatusProvider {
 
     private static long kibToBytes(long kib) {
         return kib < 0L ? -1L : kib * 1024L;
-    }
-
-    private static long pagesToBytes(long pages) {
-        if (pages < 0L) {
-            return -1L;
-        }
-        long pageSizeBytes = resolvePageSizeBytes();
-        if (pageSizeBytes <= 0L) {
-            return -1L;
-        }
-        return pages * pageSizeBytes;
-    }
-
-    private static long resolvePageSizeBytes() {
-        synchronized (MEMORY_INFO_LOCK) {
-            if (!osPageSizeReflectionResolved) {
-                resolveOsPageSizeReflectionLocked();
-            }
-            if (osSysconfMethod == null || !(osPageSizeConstant instanceof Integer)) {
-                return -1L;
-            }
-            return invokeLongMethod(null, osSysconfMethod, OS_SYSCONF_METHOD, (Integer) osPageSizeConstant);
-        }
     }
 
     private String formatCompactBytes(long bytes, Locale locale) {
@@ -1087,18 +951,37 @@ final class ClockDetailSystemStatusProvider {
         }
     }
 
-    private static void deliverSnapshot(
+    private static void deliverMemoryRows(
             Handler resultHandler,
-            SnapshotCallback callback,
-            ClockDetailSystemStatusSnapshot snapshot) {
-        ClockDetailSystemStatusSnapshot safeSnapshot = snapshot != null
-                ? snapshot
-                : ClockDetailSystemStatusSnapshot.EMPTY;
+            MemoryRowsCallback callback,
+            ClockDetailSystemStatusSnapshot.MemoryRow[] memoryRows) {
+        ClockDetailSystemStatusSnapshot.MemoryRow[] safeRows =
+                memoryRows != null && memoryRows.length > 0
+                        ? memoryRows
+                        : ClockDetailSystemStatusSnapshot.EMPTY.memoryRows;
         if (resultHandler == null) {
-            callback.onSnapshot(safeSnapshot);
+            callback.onMemoryRows(safeRows);
             return;
         }
-        resultHandler.post(() -> callback.onSnapshot(safeSnapshot));
+        resultHandler.post(() -> callback.onMemoryRows(safeRows));
+    }
+
+    private static void deliverThermalPower(
+            Handler resultHandler,
+            ThermalPowerCallback callback,
+            String temperatureValue,
+            String powerValue) {
+        String safeTemperature = temperatureValue != null
+                ? temperatureValue
+                : ClockDetailSystemStatusSnapshot.EMPTY.temperatureValue;
+        String safePower = powerValue != null
+                ? powerValue
+                : ClockDetailSystemStatusSnapshot.EMPTY.powerValue;
+        if (resultHandler == null) {
+            callback.onThermalPower(safeTemperature, safePower);
+            return;
+        }
+        resultHandler.post(() -> callback.onThermalPower(safeTemperature, safePower));
     }
 
     private static final class BatterySnapshot {
@@ -1116,9 +999,5 @@ final class ClockDetailSystemStatusProvider {
         long swapUsedBytes = -1L;
         long zramUsedBytes = -1L;
         long zramFreeBytes = -1L;
-        boolean writebackAvailable;
-        boolean writebackEnabled;
-        long writebackWrittenPages = -1L;
-        long writebackWrittenBytes = -1L;
     }
 }

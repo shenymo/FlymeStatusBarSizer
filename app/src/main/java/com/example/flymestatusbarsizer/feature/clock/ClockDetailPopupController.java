@@ -17,12 +17,7 @@ import android.graphics.drawable.LayerDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.SystemClock;
-import android.text.Layout;
-import android.text.SpannableStringBuilder;
-import android.text.Spanned;
 import android.text.format.DateFormat;
-import android.text.style.ForegroundColorSpan;
-import android.text.style.RelativeSizeSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -46,9 +41,10 @@ import java.util.TimeZone;
 
 final class ClockDetailPopupController {
     private static final long AUTO_DISMISS_DELAY_MS = 8000L;
-    private static final long MILLIS_REFRESH_INTERVAL_MS = 33L;
+    private static final long MILLIS_REFRESH_INTERVAL_MS = 100L;
     private static final long SECOND_REFRESH_INTERVAL_MS = 1000L;
-    private static final long SYSTEM_STATUS_REFRESH_INTERVAL_MS = 2000L;
+    private static final long THERMAL_POWER_REFRESH_INTERVAL_MS = 2000L;
+    private static final long MEMORY_REFRESH_INTERVAL_MS = 10000L;
     private static final long POPUP_EXPAND_DURATION_MS = 320L;
     private static final long POPUP_COLLAPSE_DURATION_MS = 220L;
     private static final int HORIZONTAL_MARGIN_DP = 16;
@@ -77,7 +73,9 @@ final class ClockDetailPopupController {
     private final FrameLayout popupRootView;
     private final View popupBackgroundView;
     private final LinearLayout contentView;
+    private final LinearLayout timeRowView;
     private final TextView timeView;
+    private final TextView millisecondsView;
     private final TextView dateView;
     private final LinearLayout statusGridView;
     private final MemoryStatTile memoryTile;
@@ -85,12 +83,14 @@ final class ClockDetailPopupController {
     private final PopupWindow popupWindow;
     private final ClockDetailSystemStatusProvider systemStatusProvider;
     private final Runnable refreshRunnable = this::refreshVisibleContent;
-    private final Runnable systemStatusRefreshRunnable = this::refreshVisibleSystemStatus;
+    private final Runnable thermalPowerRefreshRunnable = this::refreshVisibleThermalPowerStatus;
+    private final Runnable memoryRefreshRunnable = this::refreshVisibleMemoryStatus;
     private final Runnable autoDismissRunnable = this::dismiss;
 
     private boolean enabled;
     private boolean showMilliseconds = true;
-    private boolean systemStatusQueryInFlight;
+    private boolean thermalPowerQueryInFlight;
+    private boolean memoryQueryInFlight;
     private boolean dismissAnimationRunning;
     private Palette currentPalette;
     private ClockDetailSystemStatusSnapshot latestSystemStatusSnapshot =
@@ -100,8 +100,10 @@ final class ClockDetailPopupController {
     private boolean cached24HourMode;
     private SimpleDateFormat timeFormatter;
     private SimpleDateFormat dateFormatter;
-    private int lastMillisecondsStart = -1;
-    private int lastMillisecondsEnd = -1;
+    private long lastRenderedSecond = Long.MIN_VALUE;
+    private int lastRenderedMillisBucket = Integer.MIN_VALUE;
+    private long lastDateRefreshSecond = Long.MIN_VALUE;
+    private long lastRenderedDateKey = Long.MIN_VALUE;
     private int popupWidth;
     private int popupHeight;
     private Animator popupAnimator;
@@ -120,7 +122,9 @@ final class ClockDetailPopupController {
         this.contentView = buildContentView(context);
         this.popupBackgroundView = buildPopupBackgroundView(context);
         this.popupRootView = buildPopupRootView(context, popupBackgroundView, contentView);
+        this.timeRowView = buildTimeRowView(context);
         this.timeView = buildTimeView(context);
+        this.millisecondsView = buildMillisecondsView(context);
         this.dateView = buildDateView(context);
         this.memoryTile = buildMemoryStatTile(
                 context,
@@ -128,7 +132,9 @@ final class ClockDetailPopupController {
                 ClockDetailSystemStatusSnapshot.EMPTY.memoryRows);
         this.thermalPowerTile = buildStatTile(context, "电池温度 / 功率", true);
         this.statusGridView = buildStatusGrid(context, memoryTile, thermalPowerTile);
-        this.contentView.addView(timeView, matchWidth());
+        this.timeRowView.addView(timeView, wrapContent());
+        this.timeRowView.addView(millisecondsView, wrapContentWithStart(context, 2));
+        this.contentView.addView(timeRowView, matchWidth());
         this.contentView.addView(dateView, matchWidthWithTop(context, 5));
         this.contentView.addView(statusGridView, matchWidthWithTop(context, 12));
         this.popupWindow = new PopupWindow(
@@ -147,7 +153,8 @@ final class ClockDetailPopupController {
         popupWindow.setElevation(0f);
         popupWindow.setOnDismissListener(this::handlePopupDismissed);
         disableTouchModal(popupWindow);
-        timeView.setOnTouchListener(this::handleTimeViewTouch);
+        timeView.setOnTouchListener(this::handleTimeTextTouch);
+        millisecondsView.setOnTouchListener(this::handleTimeTextTouch);
         anchor.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
             @Override
             public void onViewAttachedToWindow(View v) {
@@ -198,7 +205,8 @@ final class ClockDetailPopupController {
 
     private void dismissInternal(boolean animate) {
         handler.removeCallbacks(refreshRunnable);
-        handler.removeCallbacks(systemStatusRefreshRunnable);
+        handler.removeCallbacks(thermalPowerRefreshRunnable);
+        handler.removeCallbacks(memoryRefreshRunnable);
         handler.removeCallbacks(autoDismissRunnable);
         if (!popupWindow.isShowing()) {
             clearPopupUiState();
@@ -238,7 +246,10 @@ final class ClockDetailPopupController {
         cancelPopupAnimator();
         FlymeStatusBarSizer.disableAncestorClipping(anchor, 6);
         applyPalette(resolvePalette());
-        refreshContent();
+        ensureFormatters();
+        long nowMillis = System.currentTimeMillis();
+        refreshTimeText(nowMillis, true);
+        refreshDateTextIfNeeded(nowMillis, true);
         updateSystemStatusViews(latestSystemStatusSnapshot);
         measureContent();
         int xOffset = calculateXOffset();
@@ -248,11 +259,13 @@ final class ClockDetailPopupController {
         applyAnchorHighlight(anchor);
         popupWindow.showAsDropDown(anchor, xOffset, yOffset, Gravity.START);
         installNativePopupBlurIfPossible();
-        requestSystemStatusRefresh();
+        requestThermalPowerRefresh();
+        requestMemoryStatusRefresh();
         animatePopupIn();
         scheduleAutoDismiss();
         scheduleRefresh();
-        scheduleSystemStatusRefresh();
+        scheduleThermalPowerRefresh();
+        scheduleMemoryRefresh();
     }
 
     private void refreshVisibleContent() {
@@ -265,11 +278,18 @@ final class ClockDetailPopupController {
             dismissImmediately();
             return;
         }
-        refreshContent();
+        boolean formattersChanged = ensureFormatters();
+        long nowMillis = System.currentTimeMillis();
+        refreshTimeText(nowMillis, formattersChanged);
+        boolean dateChanged = refreshDateTextIfNeeded(nowMillis, formattersChanged);
+        if ((formattersChanged || dateChanged) && popupWindow.isShowing()) {
+            measureContent();
+            updatePopupPosition();
+        }
         scheduleRefresh();
     }
 
-    private void refreshVisibleSystemStatus() {
+    private void refreshVisibleThermalPowerStatus() {
         TextView anchor = getAnchor();
         if (anchor == null) {
             dismissImmediately();
@@ -279,21 +299,26 @@ final class ClockDetailPopupController {
             dismissImmediately();
             return;
         }
-        requestSystemStatusRefresh();
+        requestThermalPowerRefresh();
         handler.postAtTime(
-                systemStatusRefreshRunnable,
-                SystemClock.uptimeMillis() + SYSTEM_STATUS_REFRESH_INTERVAL_MS);
+                thermalPowerRefreshRunnable,
+                SystemClock.uptimeMillis() + THERMAL_POWER_REFRESH_INTERVAL_MS);
     }
 
-    private void refreshContent() {
-        boolean formattersChanged = ensureFormatters();
-        Date now = new Date(System.currentTimeMillis());
-        timeView.setText(buildTimeText(now));
-        dateView.setText(dateFormatter != null ? dateFormatter.format(now) : "");
-        if (formattersChanged && popupWindow.isShowing()) {
-            measureContent();
-            updatePopupPosition();
+    private void refreshVisibleMemoryStatus() {
+        TextView anchor = getAnchor();
+        if (anchor == null) {
+            dismissImmediately();
+            return;
         }
+        if (!popupWindow.isShowing() || !anchor.isAttachedToWindow()) {
+            dismissImmediately();
+            return;
+        }
+        requestMemoryStatusRefresh();
+        handler.postAtTime(
+                memoryRefreshRunnable,
+                SystemClock.uptimeMillis() + MEMORY_REFRESH_INTERVAL_MS);
     }
 
     private boolean ensureFormatters() {
@@ -327,39 +352,63 @@ final class ClockDetailPopupController {
         return true;
     }
 
-    private CharSequence buildTimeText(Date now) {
-        String baseTime = timeFormatter != null ? timeFormatter.format(now) : "";
-        if (!showMilliseconds) {
-            lastMillisecondsStart = -1;
-            lastMillisecondsEnd = -1;
-            return baseTime;
+    private boolean refreshTimeText(long nowMillis, boolean force) {
+        long secondKey = nowMillis / SECOND_REFRESH_INTERVAL_MS;
+        int millisBucket = showMilliseconds
+                ? (int) ((nowMillis % SECOND_REFRESH_INTERVAL_MS) / MILLIS_REFRESH_INTERVAL_MS)
+                : -1;
+        if (!force && secondKey == lastRenderedSecond && millisBucket == lastRenderedMillisBucket) {
+            return false;
         }
+        boolean changed = false;
+        if (force || secondKey != lastRenderedSecond) {
+            String baseTime = timeFormatter != null
+                    ? timeFormatter.format(new Date(nowMillis))
+                    : "";
+            changed |= setTextIfChanged(timeView, baseTime);
+        }
+        if (showMilliseconds) {
+            changed |= setVisibilityIfChanged(millisecondsView, View.VISIBLE);
+            changed |= setTextIfChanged(millisecondsView, formatMilliseconds(nowMillis));
+        } else {
+            changed |= setVisibilityIfChanged(millisecondsView, View.GONE);
+            changed |= setTextIfChanged(millisecondsView, "");
+        }
+        lastRenderedSecond = secondKey;
+        lastRenderedMillisBucket = millisBucket;
+        return changed;
+    }
+
+    private boolean refreshDateTextIfNeeded(long nowMillis, boolean force) {
+        long secondKey = nowMillis / SECOND_REFRESH_INTERVAL_MS;
+        if (!force && secondKey == lastDateRefreshSecond) {
+            return false;
+        }
+        lastDateRefreshSecond = secondKey;
+        long dateKey = resolveDateKey(nowMillis);
+        if (!force && dateKey == lastRenderedDateKey) {
+            return false;
+        }
+        String dateText = dateFormatter != null
+                ? dateFormatter.format(new Date(nowMillis))
+                : "";
+        boolean changed = setTextIfChanged(dateView, dateText);
+        lastRenderedDateKey = dateKey;
+        return changed;
+    }
+
+    private long resolveDateKey(long nowMillis) {
         Calendar calendar = Calendar.getInstance(
                 cachedTimeZone != null ? cachedTimeZone : TimeZone.getDefault(),
                 cachedLocale != null ? cachedLocale : Locale.getDefault());
-        calendar.setTime(now);
-        String millis = String.format(
-                cachedLocale != null ? cachedLocale : Locale.getDefault(),
-                "%03d",
-                calendar.get(Calendar.MILLISECOND));
-        String fullText = baseTime + "." + millis;
-        SpannableStringBuilder builder = new SpannableStringBuilder(fullText);
-        int millisStart = baseTime.length();
-        lastMillisecondsStart = millisStart;
-        lastMillisecondsEnd = fullText.length();
-        builder.setSpan(
-                new RelativeSizeSpan(0.52f),
-                millisStart,
-                fullText.length(),
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        builder.setSpan(
-                new ForegroundColorSpan(currentPalette != null
-                        ? currentPalette.accentColor
-                        : Color.parseColor("#005CAE")),
-                millisStart,
-                fullText.length(),
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        return builder;
+        calendar.setTimeInMillis(nowMillis);
+        return (calendar.get(Calendar.YEAR) * 1000L) + calendar.get(Calendar.DAY_OF_YEAR);
+    }
+
+    private String formatMilliseconds(long nowMillis) {
+        int milliseconds = (int) (nowMillis % SECOND_REFRESH_INTERVAL_MS);
+        Locale locale = cachedLocale != null ? cachedLocale : Locale.getDefault();
+        return String.format(locale, ".%03d", milliseconds);
     }
 
     private void scheduleRefresh() {
@@ -370,7 +419,7 @@ final class ClockDetailPopupController {
         long next;
         long now = SystemClock.uptimeMillis();
         if (showMilliseconds) {
-            next = now + MILLIS_REFRESH_INTERVAL_MS;
+            next = ((now / MILLIS_REFRESH_INTERVAL_MS) + 1L) * MILLIS_REFRESH_INTERVAL_MS;
         } else {
             next = ((now / SECOND_REFRESH_INTERVAL_MS) * SECOND_REFRESH_INTERVAL_MS)
                     + SECOND_REFRESH_INTERVAL_MS;
@@ -378,14 +427,24 @@ final class ClockDetailPopupController {
         handler.postAtTime(refreshRunnable, next);
     }
 
-    private void scheduleSystemStatusRefresh() {
-        handler.removeCallbacks(systemStatusRefreshRunnable);
+    private void scheduleThermalPowerRefresh() {
+        handler.removeCallbacks(thermalPowerRefreshRunnable);
         if (!popupWindow.isShowing()) {
             return;
         }
         handler.postAtTime(
-                systemStatusRefreshRunnable,
-                SystemClock.uptimeMillis() + SYSTEM_STATUS_REFRESH_INTERVAL_MS);
+                thermalPowerRefreshRunnable,
+                SystemClock.uptimeMillis() + THERMAL_POWER_REFRESH_INTERVAL_MS);
+    }
+
+    private void scheduleMemoryRefresh() {
+        handler.removeCallbacks(memoryRefreshRunnable);
+        if (!popupWindow.isShowing()) {
+            return;
+        }
+        handler.postAtTime(
+                memoryRefreshRunnable,
+                SystemClock.uptimeMillis() + MEMORY_REFRESH_INTERVAL_MS);
     }
 
     private void scheduleAutoDismiss() {
@@ -626,6 +685,7 @@ final class ClockDetailPopupController {
         popupBackgroundView.setBackground(buildPopupBackgroundDrawable(context, palette, false));
         applyPopupShadowStyle(context, palette);
         timeView.setTextColor(palette.primaryTextColor);
+        millisecondsView.setTextColor(palette.accentColor);
         dateView.setTextColor(palette.secondaryTextColor);
         applyMemoryTilePalette(memoryTile, palette);
         applyStatTilePalette(thermalPowerTile, palette);
@@ -996,6 +1056,14 @@ final class ClockDetailPopupController {
         return root;
     }
 
+    private static LinearLayout buildTimeRowView(Context context) {
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
+        row.setBaselineAligned(true);
+        return row;
+    }
+
     private static TextView buildTimeView(Context context) {
         TextView view = new TextView(context);
         view.setIncludeFontPadding(false);
@@ -1009,46 +1077,48 @@ final class ClockDetailPopupController {
         return view;
     }
 
-    private boolean handleTimeViewTouch(View view, MotionEvent event) {
+    private static TextView buildMillisecondsView(Context context) {
+        TextView view = new TextView(context);
+        view.setIncludeFontPadding(false);
+        view.setSingleLine(true);
+        view.setClickable(true);
+        view.setGravity(Gravity.BOTTOM);
+        view.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f);
+        view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        view.setLetterSpacing(-0.01f);
+        return view;
+    }
+
+    private boolean handleTimeTextTouch(View view, MotionEvent event) {
         if (!(view instanceof TextView) || event == null) {
             return false;
         }
         if (event.getAction() != MotionEvent.ACTION_UP) {
             return false;
         }
-        TextView textView = (TextView) view;
-        if (!shouldToggleMilliseconds(textView, event)) {
+        if (!popupWindow.isShowing()) {
             return false;
         }
-        textView.performClick();
+        boolean tappedMilliseconds = view == millisecondsView;
+        if (showMilliseconds != tappedMilliseconds) {
+            return false;
+        }
+        ((TextView) view).performClick();
         toggleMillisecondsVisibility();
         return true;
     }
 
-    private boolean shouldToggleMilliseconds(TextView view, MotionEvent event) {
-        if (!popupWindow.isShowing()) {
-            return false;
-        }
-        Layout layout = view.getLayout();
-        if (layout == null) {
-            return false;
-        }
-        int line = layout.getLineForVertical((int) event.getY());
-        float textX = event.getX() - view.getTotalPaddingLeft() + view.getScrollX();
-        if (textX < layout.getLineLeft(line) || textX > layout.getLineRight(line)) {
-            return false;
-        }
-        if (!showMilliseconds) {
-            return true;
-        }
-        int offset = layout.getOffsetForHorizontal(line, textX);
-        return offset >= lastMillisecondsStart
-                && offset < lastMillisecondsEnd;
-    }
-
     private void toggleMillisecondsVisibility() {
         showMilliseconds = !showMilliseconds;
-        refreshContent();
+        ensureFormatters();
+        long nowMillis = System.currentTimeMillis();
+        refreshTimeText(nowMillis, true);
+        refreshDateTextIfNeeded(nowMillis, false);
+        if (popupWindow.isShowing()) {
+            measureContent();
+            updatePopupPosition();
+        }
         scheduleRefresh();
         scheduleAutoDismiss();
     }
@@ -1068,19 +1138,34 @@ final class ClockDetailPopupController {
                 ? snapshot
                 : ClockDetailSystemStatusSnapshot.EMPTY;
         updateMemoryTileRows(memoryTile, safeSnapshot.memoryRows);
-        thermalPowerTile.valueView.setText(buildThermalPowerValue(safeSnapshot));
+        setTextIfChanged(thermalPowerTile.valueView, buildThermalPowerValue(safeSnapshot));
     }
 
-    private void requestSystemStatusRefresh() {
-        if (systemStatusQueryInFlight) {
+    private void requestThermalPowerRefresh() {
+        if (thermalPowerQueryInFlight) {
             return;
         }
-        systemStatusQueryInFlight = true;
-        systemStatusProvider.requestSnapshot(handler, snapshot -> {
-            latestSystemStatusSnapshot = snapshot != null
-                    ? snapshot
-                    : ClockDetailSystemStatusSnapshot.EMPTY;
-            systemStatusQueryInFlight = false;
+        thermalPowerQueryInFlight = true;
+        systemStatusProvider.requestThermalPower(handler, (temperatureValue, powerValue) -> {
+            latestSystemStatusSnapshot = latestSystemStatusSnapshot.withThermalPower(
+                    temperatureValue,
+                    powerValue);
+            thermalPowerQueryInFlight = false;
+            if (!popupWindow.isShowing()) {
+                return;
+            }
+            updateSystemStatusViews(latestSystemStatusSnapshot);
+        });
+    }
+
+    private void requestMemoryStatusRefresh() {
+        if (memoryQueryInFlight) {
+            return;
+        }
+        memoryQueryInFlight = true;
+        systemStatusProvider.requestMemoryRows(handler, memoryRows -> {
+            latestSystemStatusSnapshot = latestSystemStatusSnapshot.withMemoryRows(memoryRows);
+            memoryQueryInFlight = false;
             if (!popupWindow.isShowing()) {
                 return;
             }
@@ -1152,12 +1237,12 @@ final class ClockDetailPopupController {
             MemoryStatRowView rowView = tile.rowViews[i];
             if (i < count) {
                 ClockDetailSystemStatusSnapshot.MemoryRow row = safeRows[i];
-                rowView.root.setVisibility(View.VISIBLE);
-                rowView.nameView.setText(row.label);
-                rowView.valueView.setText(row.value);
-                rowView.percentView.setText(row.percent);
+                setVisibilityIfChanged(rowView.root, View.VISIBLE);
+                setTextIfChanged(rowView.nameView, row.label);
+                setTextIfChanged(rowView.valueView, row.value);
+                setTextIfChanged(rowView.percentView, row.percent);
             } else {
-                rowView.root.setVisibility(View.GONE);
+                setVisibilityIfChanged(rowView.root, View.GONE);
             }
         }
     }
@@ -1336,6 +1421,20 @@ final class ClockDetailPopupController {
         return params;
     }
 
+    private static LinearLayout.LayoutParams wrapContent() {
+        return new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+    }
+
+    private static LinearLayout.LayoutParams wrapContentWithStart(
+            Context context,
+            int startMarginDp) {
+        LinearLayout.LayoutParams params = wrapContent();
+        params.leftMargin = dp(context, startMarginDp);
+        return params;
+    }
+
     private static LinearLayout.LayoutParams weightCell(float weight) {
         return new LinearLayout.LayoutParams(
                 0,
@@ -1368,6 +1467,27 @@ final class ClockDetailPopupController {
 
     private static int dp(Context context, int value) {
         return Math.round(value * context.getResources().getDisplayMetrics().density);
+    }
+
+    private static boolean setTextIfChanged(TextView view, CharSequence text) {
+        if (view == null) {
+            return false;
+        }
+        CharSequence target = text != null ? text : "";
+        CharSequence current = view.getText();
+        if (current != null && current.toString().contentEquals(target)) {
+            return false;
+        }
+        view.setText(target);
+        return true;
+    }
+
+    private static boolean setVisibilityIfChanged(View view, int visibility) {
+        if (view == null || view.getVisibility() == visibility) {
+            return false;
+        }
+        view.setVisibility(visibility);
+        return true;
     }
 
     private TextView getAnchor() {

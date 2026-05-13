@@ -5,8 +5,7 @@ final class ClockDetailSystemStatusSnapshot {
             new ClockDetailSystemStatusSnapshot(
                     new MemoryRow[] {
                             new MemoryRow("RAM", "-- / --", "--"),
-                            new MemoryRow("ZRAM", "-- / --", "--"),
-                            new MemoryRow("WB", "-- / --", "--")
+                            new MemoryRow("ZRAM", "-- / --", "--")
                     },
                     "--",
                     "不可用");
@@ -22,6 +21,14 @@ final class ClockDetailSystemStatusSnapshot {
         this.memoryRows = sanitizeRows(memoryRows);
         this.temperatureValue = sanitize(temperatureValue, "--");
         this.powerValue = sanitize(powerValue, "不可用");
+    }
+
+    ClockDetailSystemStatusSnapshot withMemoryRows(MemoryRow[] rows) {
+        return new ClockDetailSystemStatusSnapshot(rows, temperatureValue, powerValue);
+    }
+
+    ClockDetailSystemStatusSnapshot withThermalPower(String temperatureValue, String powerValue) {
+        return new ClockDetailSystemStatusSnapshot(memoryRows, temperatureValue, powerValue);
     }
 
     private static MemoryRow[] sanitizeRows(MemoryRow[] rows) {
