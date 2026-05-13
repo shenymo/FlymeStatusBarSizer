@@ -61,15 +61,15 @@ public class MainActivity extends Activity {
 
     private static final int MENU_ABOUT = 1;
     private static final int MENU_RESTART = 5;
-    private static final String IME_CONTROL_BAR_DRAG_LABEL = "ime_control_bar_button";
-    private static final int IME_CONTROL_BAR_POOL_ROW_ITEM_COUNT = 3;
+    static final String IME_CONTROL_BAR_DRAG_LABEL = "ime_control_bar_button";
+    static final int IME_CONTROL_BAR_POOL_ROW_ITEM_COUNT = 3;
     private static final String PACKAGE_SYSTEM_UI = "com.android.systemui";
     private static final long SYSTEM_UI_RESTART_DELAY_MS = 600L;
     private static final String GITHUB_URL = "https://github.com/shenymo/FlymeStatusBarSizer";
     private static final String QQ_GROUP_URL = "https://qun.qq.com/universal-share/share?ac=1&authKey=WuaHYIEHdI6Y%2Fvn7SvcFMtyuUX%2Bwp%2FMedY0eMgPLq9Bbrz%2FPMRsiIgDttNOMbPWW&busi_data=eyJncm91cENvZGUiOiIxMTAyMTM4MzgxIiwidG9rZW4iOiJIb1hmV2xvaVUxWFk2YjAyOXl5MmIwelljU3A5bFRYejQrb3JtUlJwOXRMK1BLU3pnWWRaSG9VdHZ4M3Fld2xqIiwidWluIjoiMjI4OTU3MTk5MCJ9&data=O3ClX619ry0x93elARpxRoHiwSavPU_N00zhT1jj5d_rR0feICi-g7gudqIpU6sbrKtr1_CCPBpNQ-APojGliw&svctype=4&tempid=h5_group_info";
     private static final String QQ_GROUP_NUMBER = "1102138381";
-    private static final Pattern CLOCK_EXPRESSION_TOKEN_PATTERN = Pattern.compile("\\{([A-Za-z0-9_]+)\\}");
-    private static final String[][] CLOCK_EXPRESSION_TOKEN_ROWS = {
+    static final Pattern CLOCK_EXPRESSION_TOKEN_PATTERN = Pattern.compile("\\{([A-Za-z0-9_]+)\\}");
+    static final String[][] CLOCK_EXPRESSION_TOKEN_ROWS = {
             {"HH", "H", "hh", "h"},
             {"mm", "ss", "ampm", "period"},
             {"week", "week_short", "week_1"},
@@ -146,6 +146,9 @@ public class MainActivity extends Activity {
     private final Map<Page, View> pageViews = new LinkedHashMap<>();
     private final ArrayDeque<Page> navigationStack = new ArrayDeque<>();
     private Page currentPage = Page.HOME;
+    private final ClockExpressionEditor clockExpressionEditor = new ClockExpressionEditor(this);
+    private final ImeToolbarEditor imeToolbarEditor = new ImeToolbarEditor(this);
+    private final SettingsCardFactory settingsCardFactory = new SettingsCardFactory(this);
 
     enum Page {
         HOME("Flyme Status Bar", "重构后的总览入口，保留原有配置逻辑，只调整信息架构与视觉层级。", "Flyme 模块", true),
@@ -665,11 +668,11 @@ public class MainActivity extends Activity {
         return page;
     }
 
-    private void showTelephonyDebugPage() {
+    void showTelephonyDebugPage() {
         openPage(Page.TELEPHONY_DEBUG);
     }
 
-    private void showPositionTuningPage() {
+    void showPositionTuningPage() {
         openPage(Page.POSITION_TUNING);
     }
 
@@ -748,12 +751,12 @@ public class MainActivity extends Activity {
         return page;
     }
 
-    private void addSwitchRow(LinearLayout root, String titleText, String subtitleText,
+    void addSwitchRow(LinearLayout root, String titleText, String subtitleText,
             String key, boolean defaultValue) {
         addSwitchRow(root, titleText, subtitleText, key, defaultValue, null);
     }
 
-    private void addSwitchRow(LinearLayout root, String titleText, String subtitleText,
+    void addSwitchRow(LinearLayout root, String titleText, String subtitleText,
             String key, boolean defaultValue, CompoundButton.OnCheckedChangeListener extraListener) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -796,7 +799,7 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
-    private LinearLayout buildBatteryHollowOptions() {
+    LinearLayout buildBatteryHollowOptions() {
         LinearLayout card = card(colorSurfaceSoft, colorStroke, 22);
         TextView title = new TextView(this);
         title.setText("镂空电池");
@@ -811,7 +814,7 @@ public class MainActivity extends Activity {
         return card;
     }
 
-    private void addSliderRow(LinearLayout root, String titleText, String subtitleText, String key,
+    void addSliderRow(LinearLayout root, String titleText, String subtitleText, String key,
             int defaultValue, int min, int max, String suffix) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
@@ -888,7 +891,7 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
-    private void addPositionOffsetSliderRow(LinearLayout root, String titleText, String subtitleText,
+    void addPositionOffsetSliderRow(LinearLayout root, String titleText, String subtitleText,
             String key, int defaultValueTenthDp) {
         addPositionOffsetSliderRow(
                 root,
@@ -900,7 +903,7 @@ public class MainActivity extends Activity {
                 getPositionOffsetMaxTenthDp(key));
     }
 
-    private void addPositionOffsetSliderRow(LinearLayout root, String titleText, String subtitleText,
+    void addPositionOffsetSliderRow(LinearLayout root, String titleText, String subtitleText,
             String key, int defaultValueTenthDp, int minTenthDp, int maxTenthDp) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
@@ -983,7 +986,7 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
-    private void addApplyPositionOffsetSliderRow(LinearLayout root, String titleText,
+    void addApplyPositionOffsetSliderRow(LinearLayout root, String titleText,
             String subtitleText, String key, int defaultValueTenthDp) {
         addApplyPositionOffsetSliderRow(
                 root,
@@ -995,7 +998,7 @@ public class MainActivity extends Activity {
                 getPositionOffsetMaxTenthDp(key));
     }
 
-    private void addApplyPositionOffsetSliderRow(LinearLayout root, String titleText,
+    void addApplyPositionOffsetSliderRow(LinearLayout root, String titleText,
             String subtitleText, String key, int defaultValueTenthDp,
             int minTenthDp, int maxTenthDp) {
         LinearLayout row = new LinearLayout(this);
@@ -1097,17 +1100,17 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
-    private void addApplySliderRow(LinearLayout root, String titleText, String subtitleText, String key,
+    void addApplySliderRow(LinearLayout root, String titleText, String subtitleText, String key,
             int defaultValue, int min, int max, String suffix) {
         addApplySliderRowInternal(root, titleText, subtitleText, key, defaultValue, min, max, suffix, false);
     }
 
-    private void addApplyInsetSliderRow(LinearLayout root, String titleText, String subtitleText,
+    void addApplyInsetSliderRow(LinearLayout root, String titleText, String subtitleText,
             String key, int defaultValue, int min, int max) {
         addApplySliderRowInternal(root, titleText, subtitleText, key, defaultValue, min, max, "", true);
     }
 
-    private void addApplySliderRowInternal(LinearLayout root, String titleText, String subtitleText, String key,
+    void addApplySliderRowInternal(LinearLayout root, String titleText, String subtitleText, String key,
             int defaultValue, int min, int max, String suffix, boolean insetValue) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
@@ -1194,18 +1197,18 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
-    private void addSliderRowWithFallback(LinearLayout root, String titleText, String subtitleText, String key,
+    void addSliderRowWithFallback(LinearLayout root, String titleText, String subtitleText, String key,
             int defaultValue, String fallbackKey, int fallbackDefaultValue, int min, int max, String suffix) {
         int initialValue = getIntValueWithFallback(key, defaultValue, fallbackKey, fallbackDefaultValue);
         addSliderRow(root, titleText, subtitleText, key, initialValue, min, max, suffix);
     }
 
-    private void addTextSettingRow(LinearLayout root, String titleText, String subtitleText,
+    void addTextSettingRow(LinearLayout root, String titleText, String subtitleText,
             String key, String defaultValue, String emptyLabel) {
         addTextSettingRow(root, titleText, subtitleText, key, defaultValue, emptyLabel, null, false);
     }
 
-    private void addTextSettingRow(LinearLayout root, String titleText, String subtitleText,
+    void addTextSettingRow(LinearLayout root, String titleText, String subtitleText,
             String key, String defaultValue, String emptyLabel, String inputHint, boolean plainTextInput) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -1254,7 +1257,7 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
-    private void addChoiceRow(LinearLayout root, String titleText, String subtitleText,
+    void addChoiceRow(LinearLayout root, String titleText, String subtitleText,
             String key, int defaultValue, int[] values, String[] labels) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -1293,7 +1296,7 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
-    private void addActionButtonRow(LinearLayout root, String titleText, String subtitleText,
+    void addActionButtonRow(LinearLayout root, String titleText, String subtitleText,
             String buttonText, Runnable action) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -1326,7 +1329,7 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
-    private void applyAllPositionOffsets() {
+    void applyAllPositionOffsets() {
         SharedPreferences.Editor editor = prefs.edit();
         for (String key : POSITION_TUNING_KEYS) {
             int value = getPendingPositionOffsetValue(
@@ -1343,7 +1346,7 @@ public class MainActivity extends Activity {
         showToast("个性化位置微调已应用");
     }
 
-    private void resetAllPositionOffsets() {
+    void resetAllPositionOffsets() {
         for (String key : POSITION_TUNING_KEYS) {
             updatePendingPositionOffsetValue(
                     key,
@@ -1357,7 +1360,7 @@ public class MainActivity extends Activity {
         showToast("个性化位置微调已归零为 0.0dp，点应用后写入状态栏");
     }
 
-    private void addDivider(LinearLayout root) {
+    void addDivider(LinearLayout root) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
         lp.topMargin = dp(14);
@@ -1365,13 +1368,13 @@ public class MainActivity extends Activity {
         root.addView(buildDividerView(), lp);
     }
 
-    private View buildDividerView() {
+    View buildDividerView() {
         View divider = new View(this);
         divider.setBackgroundColor(colorStroke);
         return divider;
     }
 
-    private void addProfileSectionHeader(LinearLayout root, String titleText, String subtitleText) {
+    void addProfileSectionHeader(LinearLayout root, String titleText, String subtitleText) {
         TextView title = new TextView(this);
         title.setText(titleText);
         title.setTextColor(colorPrimary);
@@ -1386,7 +1389,7 @@ public class MainActivity extends Activity {
         root.addView(subtitle, matchWrapWithTop(2));
     }
 
-    private void showChoiceMenu(View anchor, String key, int defaultValue,
+    void showChoiceMenu(View anchor, String key, int defaultValue,
             int[] values, String[] labels, TextView valueView) {
         PopupMenu popup = new PopupMenu(this, anchor);
         int currentValue = readIntSetting(key, defaultValue);
@@ -1404,15 +1407,15 @@ public class MainActivity extends Activity {
         valueView.setText(resolveChoiceLabel(currentValue, values, labels));
     }
 
-    private int readIntSetting(String key, int defaultValue) {
+    int readIntSetting(String key, int defaultValue) {
         return SettingsStore.readInt(prefs, key, defaultValue);
     }
 
-    private int readPositionOffsetTenthDpSetting(String key, int defaultValue) {
+    int readPositionOffsetTenthDpSetting(String key, int defaultValue) {
         return SettingsStore.readPositionOffsetTenthDp(prefs, key, defaultValue);
     }
 
-    private String resolveChoiceLabel(int value, int[] values, String[] labels) {
+    String resolveChoiceLabel(int value, int[] values, String[] labels) {
         for (int i = 0; i < values.length && i < labels.length; i++) {
             if (values[i] == value) {
                 return labels[i];
@@ -1421,24 +1424,24 @@ public class MainActivity extends Activity {
         return labels.length > 0 ? labels[0] : "";
     }
 
-    private String readStringSetting(String key, String defaultValue) {
+    String readStringSetting(String key, String defaultValue) {
         return SettingsStore.readString(prefs, key, defaultValue);
     }
 
-    private int getIntValueWithFallback(String key, int defaultValue, String fallbackKey, int fallbackDefaultValue) {
+    int getIntValueWithFallback(String key, int defaultValue, String fallbackKey, int fallbackDefaultValue) {
         if (prefs.contains(key)) {
             return SettingsStore.readInt(prefs, key, defaultValue);
         }
         return SettingsStore.readInt(prefs, fallbackKey, fallbackDefaultValue);
     }
 
-    private void putBooleanSetting(String key, boolean value) {
+    void putBooleanSetting(String key, boolean value) {
         prefs.edit().putBoolean(key, value).apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
     }
 
-    private void putIntSetting(String key, int value) {
+    void putIntSetting(String key, int value) {
         SharedPreferences.Editor editor = prefs.edit().putInt(key, value);
         if (SettingsStore.isPositionOffsetKey(key)) {
             SettingsStore.markPositionOffsetStorageVersion(editor);
@@ -1448,20 +1451,20 @@ public class MainActivity extends Activity {
         invalidatePreview();
     }
 
-    private void putStringSetting(String key, String value) {
+    void putStringSetting(String key, String value) {
         prefs.edit().putString(key, value == null ? "" : value).apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
     }
 
-    private void disableTelephonyDebug() {
+    void disableTelephonyDebug() {
         prefs.edit().putBoolean(SettingsStore.KEY_TELEPHONY_DEBUG_ENABLED, false).apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
         showToast("已恢复真实 Telephony");
     }
 
-    private void testLaunchMBackIntent() {
+    void testLaunchMBackIntent() {
         String raw = readStringSetting(
                 SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI,
                 SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI);
@@ -1485,10 +1488,10 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void invalidatePreview() {
+    void invalidatePreview() {
     }
 
-    private void resetAllSettings() {
+    void resetAllSettings() {
         prefs.edit().clear().apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
@@ -1496,35 +1499,35 @@ public class MainActivity extends Activity {
         recreate();
     }
 
-    private String formatValue(int value, String suffix) {
+    String formatValue(int value, String suffix) {
         return suffix == null || suffix.length() == 0 ? Integer.toString(value) : value + suffix;
     }
 
-    private String formatOffsetValue(int valueTenthDp) {
+    String formatOffsetValue(int valueTenthDp) {
         int normalized = SettingsStore.normalizeIconYOffsetTenthDp(valueTenthDp);
         float offsetDp = SettingsStore.positionOffsetTenthDpToDp(normalized);
         return String.format(Locale.US, "%s%.1fdp", offsetDp > 0f ? "+" : "", offsetDp);
     }
 
-    private int getPositionOffsetMinTenthDp(String key) {
+    int getPositionOffsetMinTenthDp(String key) {
         if (SettingsStore.KEY_CLOCK_RIGHT_PADDING_OFFSET_DP.equals(key)) {
             return SettingsStore.CLOCK_RIGHT_PADDING_OFFSET_MIN_TENTH_DP;
         }
         return POSITION_OFFSET_MIN_TENTH_DP;
     }
 
-    private int getPositionOffsetMaxTenthDp(String key) {
+    int getPositionOffsetMaxTenthDp(String key) {
         if (SettingsStore.KEY_CLOCK_RIGHT_PADDING_OFFSET_DP.equals(key)) {
             return SettingsStore.CLOCK_RIGHT_PADDING_OFFSET_MAX_TENTH_DP;
         }
         return POSITION_OFFSET_MAX_TENTH_DP;
     }
 
-    private String formatInsetValue(int value) {
+    String formatInsetValue(int value) {
         return value < 0 ? "系统默认" : value + "dp";
     }
 
-    private void startExportConfig() {
+    void startExportConfig() {
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("application/json");
@@ -1532,7 +1535,7 @@ public class MainActivity extends Activity {
         startActivityForResult(intent, REQUEST_EXPORT_CONFIG);
     }
 
-    private void startImportConfig() {
+    void startImportConfig() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("application/json");
@@ -1627,7 +1630,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private String readText(InputStream input) throws java.io.IOException {
+    String readText(InputStream input) throws java.io.IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         byte[] buffer = new byte[4096];
         int read;
@@ -1637,7 +1640,7 @@ public class MainActivity extends Activity {
         return output.toString(StandardCharsets.UTF_8.name());
     }
 
-    private void showIntInputDialog(String titleText, int currentValue, int min, int max, String suffix,
+    void showIntInputDialog(String titleText, int currentValue, int min, int max, String suffix,
             IntValueConsumer consumer) {
         EditText input = new EditText(this);
         input.setText(String.valueOf(currentValue));
@@ -1672,7 +1675,7 @@ public class MainActivity extends Activity {
         attachDialogButtonHaptics(dialog);
     }
 
-    private void showDecimalInputDialog(String titleText, int currentValueTenthDp,
+    void showDecimalInputDialog(String titleText, int currentValueTenthDp,
             int minTenthDp, int maxTenthDp, IntValueConsumer consumer) {
         EditText input = new EditText(this);
         input.setText(String.format(Locale.US, "%.1f",
@@ -1712,7 +1715,7 @@ public class MainActivity extends Activity {
         attachDialogButtonHaptics(dialog);
     }
 
-    private void showTextInputDialog(String titleText, String currentValue, String message,
+    void showTextInputDialog(String titleText, String currentValue, String message,
             String inputHint, boolean plainTextInput, TextValueConsumer consumer) {
         EditText input = new EditText(this);
         input.setText(currentValue == null ? "" : currentValue);
@@ -1743,7 +1746,7 @@ public class MainActivity extends Activity {
         attachDialogButtonHaptics(dialog);
     }
 
-    private void updateTextSettingLabel(TextView valueView, String value, String emptyLabel) {
+    void updateTextSettingLabel(TextView valueView, String value, String emptyLabel) {
         if (TextUtils.isEmpty(value)) {
             valueView.setText(emptyLabel);
             return;
@@ -2535,7 +2538,7 @@ public class MainActivity extends Activity {
         invalidatePreview();
     }
 
-    private int getPendingIntSliderValue(String key, int defaultValue, int min, int max) {
+    int getPendingIntSliderValue(String key, int defaultValue, int min, int max) {
         Integer pending = pendingIntSliderValues.get(key);
         if (pending != null) {
             return Math.max(min, Math.min(max, pending));
@@ -2545,24 +2548,24 @@ public class MainActivity extends Activity {
         return clamped;
     }
 
-    private void updatePendingIntSliderValue(String key, int value, int min, int max) {
+    void updatePendingIntSliderValue(String key, int value, int min, int max) {
         pendingIntSliderValues.put(key, Math.max(min, Math.min(max, value)));
     }
 
-    private void applyPendingIntSliderValue(String key, int defaultValue, int min, int max, String titleText) {
+    void applyPendingIntSliderValue(String key, int defaultValue, int min, int max, String titleText) {
         int value = getPendingIntSliderValue(key, defaultValue, min, max);
         putIntSetting(key, value);
         showToast(titleText + "已应用");
     }
 
-    private void applyPendingPositionOffsetValue(String key, int defaultValueTenthDp,
+    void applyPendingPositionOffsetValue(String key, int defaultValueTenthDp,
             int minTenthDp, int maxTenthDp, String titleText) {
         int value = getPendingPositionOffsetValue(key, defaultValueTenthDp, minTenthDp, maxTenthDp);
         putIntSetting(key, value);
         showToast(titleText + "已应用");
     }
 
-    private int getPendingPositionOffsetValue(String key, int defaultValue, int min, int max) {
+    int getPendingPositionOffsetValue(String key, int defaultValue, int min, int max) {
         Integer pending = pendingPositionOffsetValues.get(key);
         if (pending != null) {
             return Math.max(min, Math.min(max, pending));
@@ -2572,18 +2575,18 @@ public class MainActivity extends Activity {
         return clamped;
     }
 
-    private void updatePendingPositionOffsetValue(String key, int value, int min, int max) {
+    void updatePendingPositionOffsetValue(String key, int value, int min, int max) {
         pendingPositionOffsetValues.put(key, Math.max(min, Math.min(max, value)));
     }
 
-    private int sliderProgressToPositionOffsetTenthDp(int progress, int minTenthDp, int maxTenthDp) {
+    int sliderProgressToPositionOffsetTenthDp(int progress, int minTenthDp, int maxTenthDp) {
         int minDp = minTenthDp / 10;
         int maxDp = maxTenthDp / 10;
         int coarseDp = minDp + progress;
         return Math.max(minTenthDp, Math.min(maxTenthDp, coarseDp * 10));
     }
 
-    private int positionOffsetTenthDpToSliderProgress(int valueTenthDp, int minTenthDp, int maxTenthDp) {
+    int positionOffsetTenthDpToSliderProgress(int valueTenthDp, int minTenthDp, int maxTenthDp) {
         int minDp = minTenthDp / 10;
         int maxDp = maxTenthDp / 10;
         int coarseDp = Math.max(minDp, Math.min(maxDp,
@@ -2591,13 +2594,13 @@ public class MainActivity extends Activity {
         return coarseDp - minDp;
     }
 
-    private String formatOffsetInputRangeHint(int minTenthDp, int maxTenthDp) {
+    String formatOffsetInputRangeHint(int minTenthDp, int maxTenthDp) {
         return String.format(Locale.US, "%.1f ~ %.1f",
                 SettingsStore.positionOffsetTenthDpToDp(minTenthDp),
                 SettingsStore.positionOffsetTenthDpToDp(maxTenthDp));
     }
 
-    private int parseOffsetInputToTenthDp(String text) {
+    int parseOffsetInputToTenthDp(String text) {
         String normalized = text == null ? "" : text.trim().replace(',', '.');
         if (normalized.length() == 0) {
             throw new NumberFormatException("empty");
@@ -2611,7 +2614,7 @@ public class MainActivity extends Activity {
         return insetValue ? formatInsetValue(value) : formatValue(value, suffix);
     }
 
-    private void setTapClickListener(View view, View.OnClickListener listener) {
+    void setTapClickListener(View view, View.OnClickListener listener) {
         if (view == null || listener == null) {
             return;
         }
@@ -2622,7 +2625,7 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void styleSwitch(Switch toggle) {
+    void styleSwitch(Switch toggle) {
         if (toggle == null) {
             return;
         }
@@ -2639,7 +2642,7 @@ public class MainActivity extends Activity {
         toggle.setShowText(false);
     }
 
-    private void styleSeekBar(SeekBar seekBar) {
+    void styleSeekBar(SeekBar seekBar) {
         if (seekBar == null) {
             return;
         }
@@ -2651,21 +2654,21 @@ public class MainActivity extends Activity {
         seekBar.setProgressBackgroundTintList(inactiveTint);
     }
 
-    private void performTapHaptic(View view) {
+    void performTapHaptic(View view) {
         if (view == null) {
             return;
         }
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
     }
 
-    private void performSliderHaptic(View view) {
+    void performSliderHaptic(View view) {
         if (view == null) {
             return;
         }
         view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
     }
 
-    private void attachDialogButtonHaptics(AlertDialog dialog) {
+    void attachDialogButtonHaptics(AlertDialog dialog) {
         if (dialog == null) {
             return;
         }
@@ -2674,7 +2677,7 @@ public class MainActivity extends Activity {
         attachPressHaptic(dialog.getButton(AlertDialog.BUTTON_NEUTRAL));
     }
 
-    private void attachPressHaptic(View view) {
+    void attachPressHaptic(View view) {
         if (view == null) {
             return;
         }
@@ -2687,11 +2690,11 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void showToast(String message) {
+    void showToast(String message) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 
-    private void restartSystemUi() {
+    void restartSystemUi() {
         Intent homeIntent = new Intent(Intent.ACTION_MAIN);
         homeIntent.addCategory(Intent.CATEGORY_HOME);
         homeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -2756,7 +2759,7 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    private LinearLayout card(int color, int radiusDp) {
+    LinearLayout card(int color, int radiusDp) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(18), dp(18), dp(18), dp(18));
@@ -2764,7 +2767,7 @@ public class MainActivity extends Activity {
         return card;
     }
 
-    private LinearLayout card(int color, int strokeColor, int radiusDp) {
+    LinearLayout card(int color, int strokeColor, int radiusDp) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(18), dp(18), dp(18), dp(18));
@@ -2772,7 +2775,7 @@ public class MainActivity extends Activity {
         return card;
     }
 
-    private TextView chip(String text, int backgroundColor, int textColor) {
+    TextView chip(String text, int backgroundColor, int textColor) {
         TextView view = new TextView(this);
         view.setText(text);
         view.setTextColor(textColor);
@@ -2783,7 +2786,7 @@ public class MainActivity extends Activity {
         return view;
     }
 
-    private TextView filledButton(String text, int backgroundColor, int textColor) {
+    TextView filledButton(String text, int backgroundColor, int textColor) {
         TextView view = new TextView(this);
         view.setText(text);
         view.setTextColor(textColor);
@@ -2794,7 +2797,7 @@ public class MainActivity extends Activity {
         return view;
     }
 
-    private GradientDrawable gradientCard() {
+    GradientDrawable gradientCard() {
         GradientDrawable drawable = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 new int[]{colorPrimaryContainer, colorPrimary, colorPrimaryDeep});
@@ -2812,6 +2815,10 @@ public class MainActivity extends Activity {
 
     int surfaceSoftColor() {
         return colorSurfaceSoft;
+    }
+
+    int surfaceStrongColor() {
+        return colorSurfaceStrong;
     }
 
     int featureSurfaceColor() {
@@ -2874,6 +2881,22 @@ public class MainActivity extends Activity {
         return "android / com.android.systemui / 主流输入法";
     }
 
+    SharedPreferences prefs() {
+        return prefs;
+    }
+
+    ClockExpressionEditor clockExpressionEditor() {
+        return clockExpressionEditor;
+    }
+
+    ImeToolbarEditor imeToolbarEditor() {
+        return imeToolbarEditor;
+    }
+
+    ArrayList<PositionOffsetSliderBinding> positionTuningSliderBindings() {
+        return positionTuningSliderBindings;
+    }
+
     void openExternalLink(String url) {
         if (TextUtils.isEmpty(url)) {
             return;
@@ -2886,362 +2909,63 @@ public class MainActivity extends Activity {
     }
 
     View createIconSizingCard() {
-        return buildStatusBarIconScaleCard();
+        return settingsCardFactory.createIconSizingCard();
     }
 
     View createBatterySettingsCard() {
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-
-        addSwitchRow(content, "代码绘制电池图标",
-                "关闭后恢复系统原来的电池图标，不再接管这一项的绘制和尺寸。",
-                SettingsStore.KEY_BATTERY_CODE_DRAW_ENABLED,
-                SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED);
-        addDivider(content);
-        addChoiceRow(content, "电池图标样式",
-                "当前保留类 IOS 和类 One UI 两套代码绘制样式。",
-                SettingsStore.KEY_BATTERY_ICON_STYLE,
-                SettingsStore.DEFAULT_BATTERY_ICON_STYLE,
-                new int[]{SettingsStore.BATTERY_STYLE_IOS, SettingsStore.BATTERY_STYLE_ONEUI},
-                new String[]{"类 IOS", "类 One UI"});
-        addDivider(content);
-        addSwitchRow(content, "电池内显示电量数字",
-                "关闭后只保留图形电池，不在电池内部绘制剩余电量数字。",
-                SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
-                SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED);
-        addDivider(content);
-        LinearLayout hollowOptions = buildBatteryHollowOptions();
-        hollowOptions.setVisibility(SettingsStore.readBoolean(
-                prefs,
-                SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
-                SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED) ? View.VISIBLE : View.GONE);
-        addSwitchRow(content, "镂空电池",
-                "开启后使用镂空电池样式，下面可以继续控制内部填充是否跟随电量缩短。",
-                SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
-                SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED,
-                (buttonView, isChecked) -> hollowOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
-        LinearLayout.LayoutParams hollowOptionsLp = matchWrapWithTop(10);
-        hollowOptionsLp.leftMargin = dp(12);
-        content.addView(hollowOptions, hollowOptionsLp);
-        addDivider(content);
-        int[] batteryTextFontOptions = BatteryTextFontHelper.getAvailableFontOptions(this);
-        addChoiceRow(content, "电池数字字体",
-                "会列出系统可用字体，也包含模块自带的 MiSansLatinVFNumber。",
-                SettingsStore.KEY_BATTERY_TEXT_FONT,
-                SettingsStore.DEFAULT_BATTERY_TEXT_FONT,
-                batteryTextFontOptions,
-                BatteryTextFontHelper.getFontLabels(batteryTextFontOptions));
-        return buildSectionCard(
-                "电池样式",
-                "状态栏电池绘制、数字样式和镂空细节都集中在这里。",
-                content);
+        return settingsCardFactory.createBatterySettingsCard();
     }
 
     View createNotificationSettingsCard() {
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-
-        LinearLayout appIconOptions = buildNotificationAppIconOptions();
-        appIconOptions.setVisibility(SettingsStore.readBoolean(
-                prefs,
-                SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
-                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED) ? View.VISIBLE : View.GONE);
-        addSwitchRow(content, "通知使用应用图标",
-                "开启后把第三方应用的状态栏通知图标改成应用自身图标，不再使用 Flyme 统一通知图标。",
-                SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
-                SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED,
-                (buttonView, isChecked) -> appIconOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
-        LinearLayout.LayoutParams optionsLp = matchWrapWithTop(10);
-        optionsLp.leftMargin = dp(12);
-        content.addView(appIconOptions, optionsLp);
-        return buildSectionCard(
-                "通知图标",
-                "这里只改第三方应用通知图标的来源、尺寸和内边距。",
-                content);
+        return settingsCardFactory.createNotificationSettingsCard();
     }
 
     View createSignalSettingsCard() {
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-
-        addSwitchRow(content, "代码绘制信号图标",
-                "关闭后恢复系统原来的移动信号和 Wi-Fi 图标，不再替换相关槽位和尺寸。",
-                SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
-                SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED);
-        addDivider(content);
-        addSwitchRow(content, "重绘 Wi-Fi 图标",
-                "在信号总开关开启时，单独控制是否继续接管 Wi-Fi 图标。",
-                SettingsStore.KEY_WIFI_CODE_DRAW_ENABLED,
-                SettingsStore.DEFAULT_WIFI_CODE_DRAW_ENABLED);
-        addDivider(content);
-        addProfileSectionHeader(content, "说明",
-                "移动信号由模块统一接管，5G/5GA 标识仍然跟随系统真实网络状态或 Telephony 调试结果。");
-        return buildSectionCard(
-                "信号与 Wi-Fi",
-                "移动网络图标统一由模块接管，同时保留 Wi-Fi 的独立开关。",
-                content);
+        return settingsCardFactory.createSignalSettingsCard();
     }
 
     View createConnectionRateSettingsCard() {
-        return buildSectionCard(
-                "实时网速",
-                "保留系统原采样，只在这里调节阈值显隐和确认次数。",
-                buildConnectionRateThresholdPage());
+        return settingsCardFactory.createConnectionRateSettingsCard();
     }
 
     View createTimeExpressionSettingsCard() {
-        return buildSectionCard(
-                "时间表达式",
-                "通过按钮组合表达式，并在当前页完成拖动排序和应用。",
-                buildTimeExpressionPage());
+        return settingsCardFactory.createTimeExpressionSettingsCard();
     }
 
     View createTimeTypographySettingsCard() {
-        return buildSectionCard(
-                "时间字体",
-                "集中控制状态栏时间、追加日期和锁屏运营商的字重与字号。",
-                buildTimeTypographyPage());
+        return settingsCardFactory.createTimeTypographySettingsCard();
     }
 
     View createMBackActionSettingsCard() {
-        return buildSectionCard(
-                "MBack 长触动作",
-                "只接管长按分支，保留单击和系统其他来源。",
-                buildMBackActionPage());
+        return settingsCardFactory.createMBackActionSettingsCard();
     }
 
     View createMBackNavigationSettingsCard() {
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.addView(buildMBackImmersivePage(), matchWrap());
-        addDivider(content);
-        content.addView(buildMBackHeightPage(), matchWrapWithTop(16));
-        return buildSectionCard(
-                "导航栏沉浸与高度",
-                "透明背景、隐藏小白条、Inset 抬高和导航栏高度在同一页平铺展示。",
-                content);
+        return settingsCardFactory.createMBackNavigationSettingsCard();
     }
 
     View createImeToolbarSettingsCard() {
-        return buildSectionCard(
-                "IME 控制栏",
-                "统一接管输入法控制栏，并保留图标缩放、透明度、抬高和按钮草稿应用逻辑。",
-                buildImeToolbarSettingsContent());
+        return settingsCardFactory.createImeToolbarSettingsCard();
     }
 
     View createAdvancedToolsCard() {
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        addActionButtonRow(content, "布局微调",
-                "进入独立工具页，微调时钟、电池、信号、Wi-Fi 与输入法控制栏的位置。",
-                "进入", this::showPositionTuningPage);
-        addDivider(content);
-        addActionButtonRow(content, "Telephony 调试",
-                "进入独立调试页，伪造插卡数量、默认数据卡、网络类型和信号等级。",
-                "进入", this::showTelephonyDebugPage);
-        return buildSectionCard(
-                "高阶工具",
-                "面向需要进一步验证布局或 Telephony 行为的场景。",
-                content);
+        return settingsCardFactory.createAdvancedToolsCard();
     }
 
     View createConfigManagementCard() {
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        addActionButtonRow(content, "导入配置",
-                "从 JSON 文件恢复当前模块配置，会直接覆盖现有设置。",
-                "导入", () -> startImportConfig());
-        addDivider(content);
-        addActionButtonRow(content, "导出配置",
-                "把当前可备份的设置项导出到 JSON，便于备份或跨设备迁移。",
-                "导出", () -> startExportConfig());
-        addDivider(content);
-        addActionButtonRow(content, "恢复默认",
-                "清空当前 SharedPreferences，并重新按默认值初始化界面。",
-                "恢复", this::resetAllSettings);
-        return buildSectionCard(
-                "配置管理",
-                "原来藏在悬浮菜单里的导入、导出和恢复默认，现在都放到主页面里。",
-                content);
+        return settingsCardFactory.createConfigManagementCard();
     }
 
     View createPerformanceDebugCard() {
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        addSwitchRow(content, "启用 WIFI 性能打点",
-                "打开后会给 Wi-Fi 更新链路输出详细耗时日志，方便在 logcat 里分析刷新开销。",
-                SettingsStore.KEY_WIFI_PERF_LOGGING_ENABLED,
-                SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED);
-        return buildSectionCard(
-                "性能调试",
-                "只保留和现有模块实现直接相关的 Wi-Fi 链路打点开关。",
-                content);
+        return settingsCardFactory.createPerformanceDebugCard();
     }
 
     View createPositionTuningSettingsCard() {
-        positionTuningSliderBindings.clear();
-
-        LinearLayout card = card(colorSurface, colorStroke, 28);
-        addProfileSectionHeader(card, "时钟与通知图区",
-                "改的是状态栏 clock View 的右侧 padding，会直接影响时间和右侧通知图标区之间的间距。");
-        addPositionOffsetSliderRow(card, "时钟右边距",
-                "基于系统默认间距做增减。系统原本的右侧边距为 2dp。正数增大间距，负数减小间距。",
-                SettingsStore.KEY_CLOCK_RIGHT_PADDING_OFFSET_DP,
-                SettingsStore.DEFAULT_CLOCK_RIGHT_PADDING_OFFSET_DP * 10);
-
-        addDivider(card);
-        addProfileSectionHeader(card, "电池",
-                "下面 3 项只在模块接管电池绘制后生效。");
-        addPositionOffsetSliderRow(card, "电池图标",
-                "整体电池轮廓的 Y 轴位置。默认 0dp。",
-                SettingsStore.KEY_BATTERY_ICON_Y_OFFSET_DP,
-                SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10);
-        addDivider(card);
-        addPositionOffsetSliderRow(card, "电池内数字数显",
-                "只改电池内部数字的基线高度。默认 0dp。",
-                SettingsStore.KEY_BATTERY_TEXT_Y_OFFSET_DP,
-                SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP * 10);
-        addDivider(card);
-        addPositionOffsetSliderRow(card, "闪电图标",
-                "只改充电 / 快充闪电图标的 Y 轴位置。默认 0dp。",
-                SettingsStore.KEY_BATTERY_BOLT_Y_OFFSET_DP,
-                SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10);
-
-        addDivider(card);
-        addProfileSectionHeader(card, "移动网络",
-                "这些项只影响模块自绘的移动信号和 5G/5GA 标识。");
-        addPositionOffsetSliderRow(card, "单层信号图标",
-                "单卡场景下信号柱的 Y 轴位置。默认 0dp。",
-                SettingsStore.KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
-                SettingsStore.DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP * 10);
-        addDivider(card);
-        addPositionOffsetSliderRow(card, "5G / 5GA 标识",
-                "只改 5G / 5GA 文本标识的 Y 轴位置。默认 0dp。",
-                SettingsStore.KEY_SIGNAL_BADGE_Y_OFFSET_DP,
-                SettingsStore.DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP * 10);
-        addDivider(card);
-        addPositionOffsetSliderRow(card, "双层信号图标",
-                "双卡合一场景下整组信号图形的 Y 轴位置。默认 0dp。",
-                SettingsStore.KEY_SIGNAL_DUAL_Y_OFFSET_DP,
-                SettingsStore.DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP * 10);
-
-        addDivider(card);
-        addProfileSectionHeader(card, "Wi-Fi",
-                "只改模块自绘的 Wi-Fi 图标。默认 0dp。");
-        addPositionOffsetSliderRow(card, "Wi-Fi 图标",
-                "Wi-Fi 图标整体的 Y 轴位置。默认 0dp。",
-                SettingsStore.KEY_WIFI_Y_OFFSET_DP,
-                SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP * 10);
-
-        addDivider(card);
-        addProfileSectionHeader(card, "输入法控制栏",
-                "这里单独保留输入法控制栏整体抬高的细调项。");
-        addPositionOffsetSliderRow(card, "输入法控制栏抬高",
-                "正数向上、负数向下；滑块按 1dp 粗调，点右侧数值可输入 0.1dp。",
-                SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP,
-                SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10);
-
-        addDivider(card);
-        addActionButtonRow(card, "应用当前微调",
-                "把这个页面里的待应用微调值一次性写入配置，并通知当前状态栏刷新。",
-                "应用", this::applyAllPositionOffsets);
-        addDivider(card);
-        addActionButtonRow(card, "全部归零",
-                "先把这个页面里的待应用微调值都改成 0.0dp；改完后再点上面的应用写入状态栏。",
-                "归零", this::resetAllPositionOffsets);
-        return card;
+        return settingsCardFactory.createPositionTuningSettingsCard();
     }
 
     View createTelephonyDebugSettingsCard() {
-        LinearLayout card = card(colorSurface, colorStroke, 28);
-        addProfileSectionHeader(card, "调试开关",
-                "打开后，远端偏好会立即同步到 SystemUI。你可以先设好两张测试卡的状态，再切换插卡数量和默认数据卡。");
-        addSwitchRow(card, "启用 Telephony 伪造",
-                "关闭后恢复真实 Telephony 结果，但下面保存的调试预设会保留。",
-                SettingsStore.KEY_TELEPHONY_DEBUG_ENABLED,
-                SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED);
-        addDivider(card);
-        addChoiceRow(card, "模拟插卡数量",
-                "用于测试 0 卡、单卡和双卡时你的自绘信号图标是否按预期切换布局和可见性。",
-                SettingsStore.KEY_TELEPHONY_DEBUG_SIM_COUNT,
-                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT,
-                new int[]{0, 1, 2},
-                new String[]{"0 张", "1 张", "2 张"});
-        addDivider(card);
-        addChoiceRow(card, "默认上网卡",
-                "双卡场景下，移动网络类型和 5G 标识会跟随这里选择的那张卡。",
-                SettingsStore.KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
-                SettingsStore.DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
-                new int[]{
-                        SettingsStore.TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_NONE,
-                        SettingsStore.TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_CARD1,
-                        SettingsStore.TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_CARD2
-                },
-                new String[]{"无", "卡 1", "卡 2"});
-
-        addDivider(card);
-        addTelephonyDebugSlotSection(card,
-                "卡 1",
-                "第一张测试卡。单卡场景默认看它；双卡合并图标时，上层柱读取它的信号等级。",
-                SettingsStore.KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
-                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
-                SettingsStore.KEY_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL,
-                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL);
-
-        addDivider(card);
-        addTelephonyDebugSlotSection(card,
-                "卡 2",
-                "第二张测试卡。只有插卡数量切到 2 张时才会参与模拟；双卡合并图标时，下层圆点读取它的信号等级。",
-                SettingsStore.KEY_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE,
-                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE,
-                SettingsStore.KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL,
-                SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL);
-
-        addDivider(card);
-        addActionButtonRow(card, "恢复真实系统",
-                "只关闭 Telephony 伪造，不清空你刚才配好的两张测试卡参数。",
-                "恢复", this::disableTelephonyDebug);
-        return card;
-    }
-
-    private LinearLayout buildImeToolbarSettingsContent() {
-        LinearLayout details = new LinearLayout(this);
-        details.setOrientation(LinearLayout.VERTICAL);
-
-        addSwitchRow(details, "替换原生输入法控制栏",
-                "打开后统一接管输入法控制栏：替换当前控制栏、去掉深灰背景、同步输入法背景，并把工具按钮合并进控制栏。",
-                SettingsStore.KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
-                SettingsStore.DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR);
-        addDivider(details);
-        addApplySliderRow(details, "输入法图标大小",
-                "调节底部 7 格里图标的占位比例。数值越大，图标越大，也更接近铺满整条控制栏。",
-                SettingsStore.KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
-                SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
-                60, 180, "%");
-        addDivider(details);
-        addApplySliderRow(details, "输入法图标透明度",
-                "调节输入法控制栏图标透明度。100% 完全不透明，数值越小越淡。",
-                SettingsStore.KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
-                SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
-                10, 100, "%");
-        addDivider(details);
-        addProfileSectionHeader(details, "按钮位置与显隐",
-                "长按按钮拖到下面 7 个固定槽位里就会显示；拖回按钮池就会隐藏。");
-
-        TextView hint = new TextView(this);
-        hint.setText("从左到右就是输入法控制栏里的实际位置；拖拽后先保存在页面草稿里，点击应用才会写入配置并刷新当前输入法界面。");
-        hint.setTextColor(colorSubtext);
-        hint.setTextSize(13);
-        hint.setPadding(0, dp(10), 0, 0);
-        details.addView(hint, matchWrap());
-
-        imeControlBarButtonContainer = new LinearLayout(this);
-        imeControlBarButtonContainer.setOrientation(LinearLayout.VERTICAL);
-        imeControlBarButtonContainer.setPadding(0, dp(12), 0, 0);
-        details.addView(imeControlBarButtonContainer, matchWrap());
-        loadImeControlBarButtonConfig();
-        renderImeControlBarButtonEditor();
-        return details;
+        return settingsCardFactory.createTelephonyDebugSettingsCard();
     }
 
     View buildSectionCard(String titleText, String subtitleText, View content) {
@@ -3356,32 +3080,32 @@ public class MainActivity extends Activity {
         return fallback;
     }
 
-    private GradientDrawable roundRect(int color, int radiusDp) {
+    GradientDrawable roundRect(int color, int radiusDp) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
         drawable.setCornerRadius(dp(radiusDp));
         return drawable;
     }
 
-    private GradientDrawable outlinedRect(int color, int strokeColor, int strokeWidthDp, int radiusDp) {
+    GradientDrawable outlinedRect(int color, int strokeColor, int strokeWidthDp, int radiusDp) {
         GradientDrawable drawable = roundRect(color, radiusDp);
         drawable.setStroke(dp(strokeWidthDp), strokeColor);
         return drawable;
     }
 
-    private LinearLayout.LayoutParams matchWrap() {
+    LinearLayout.LayoutParams matchWrap() {
         return new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
     }
 
-    private LinearLayout.LayoutParams matchWrapWithTop(int topDp) {
+    LinearLayout.LayoutParams matchWrapWithTop(int topDp) {
         LinearLayout.LayoutParams lp = matchWrap();
         lp.topMargin = dp(topDp);
         return lp;
     }
 
-    private int dp(int value) {
+    int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
