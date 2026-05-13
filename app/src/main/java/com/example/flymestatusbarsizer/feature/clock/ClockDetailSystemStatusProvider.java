@@ -23,6 +23,9 @@ import java.util.Locale;
 final class ClockDetailSystemStatusProvider {
     private static final String TEMPERATURE_UNAVAILABLE = "--";
     private static final String POWER_UNAVAILABLE = "不可用";
+    private static final String CAPACITY_UNAVAILABLE = "--";
+    private static final String ESTIMATED_CAPACITY_UNAVAILABLE = "不可用";
+    private static final String EXTRA_CHARGE_COUNTER = "charge_counter";
     private static final String EXTRA_MAX_CHARGING_CURRENT = "max_charging_current";
     private static final String EXTRA_MAX_CHARGING_VOLTAGE = "max_charging_voltage";
     private static final String THERMAL_SERVICE_NAME = "thermalservice";
@@ -81,8 +84,12 @@ final class ClockDetailSystemStatusProvider {
         void onMemoryRows(ClockDetailSystemStatusSnapshot.MemoryRow[] memoryRows);
     }
 
-    interface ThermalPowerCallback {
-        void onThermalPower(String temperatureValue, String powerValue);
+    interface BatteryStatusCallback {
+        void onBatteryStatus(
+                String temperatureValue,
+                String powerValue,
+                String remainingCapacityValue,
+                String estimatedFullCapacityValue);
     }
 
     ClockDetailSystemStatusProvider(Context context) {
@@ -117,26 +124,30 @@ final class ClockDetailSystemStatusProvider {
         });
     }
 
-    void requestThermalPower(Handler resultHandler, ThermalPowerCallback callback) {
+    void requestBatteryStatus(Handler resultHandler, BatteryStatusCallback callback) {
         if (callback == null) {
             return;
         }
         Handler workerHandler = getBackgroundHandler();
         if (workerHandler == null) {
-            deliverThermalPower(
+            deliverBatteryStatus(
                     resultHandler,
                     callback,
                     ClockDetailSystemStatusSnapshot.EMPTY.temperatureValue,
-                    ClockDetailSystemStatusSnapshot.EMPTY.powerValue);
+                    ClockDetailSystemStatusSnapshot.EMPTY.powerValue,
+                    ClockDetailSystemStatusSnapshot.EMPTY.remainingCapacityValue,
+                    ClockDetailSystemStatusSnapshot.EMPTY.estimatedFullCapacityValue);
             return;
         }
         workerHandler.post(() -> {
             BatterySnapshot batterySnapshot = readBatterySnapshot();
-            deliverThermalPower(
+            deliverBatteryStatus(
                     resultHandler,
                     callback,
                     formatTemperatureValue(batterySnapshot),
-                    formatPowerValue(batterySnapshot));
+                    formatPowerValue(batterySnapshot),
+                    formatRemainingCapacityValue(batterySnapshot),
+                    formatEstimatedFullCapacityValue(batterySnapshot));
         });
     }
 
@@ -382,6 +393,18 @@ final class ClockDetailSystemStatusProvider {
                 snapshot.maxChargingVoltageMicrovolts = batteryIntent.getIntExtra(
                         EXTRA_MAX_CHARGING_VOLTAGE,
                         Integer.MIN_VALUE);
+                int chargeCounter = batteryIntent.getIntExtra(
+                        EXTRA_CHARGE_COUNTER,
+                        Integer.MIN_VALUE);
+                if (chargeCounter != Integer.MIN_VALUE) {
+                    snapshot.chargeCounterMicroampHours = chargeCounter;
+                }
+                snapshot.batteryLevel = batteryIntent.getIntExtra(
+                        BatteryManager.EXTRA_LEVEL,
+                        Integer.MIN_VALUE);
+                snapshot.batteryScale = batteryIntent.getIntExtra(
+                        BatteryManager.EXTRA_SCALE,
+                        Integer.MIN_VALUE);
             }
         } catch (Throwable t) {
             FlymeStatusBarSizer.logClockWarning("Failed to read sticky battery intent", t);
@@ -389,9 +412,23 @@ final class ClockDetailSystemStatusProvider {
         if (batteryManager != null) {
             snapshot.currentNowMicroamps = queryLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW);
             snapshot.currentAverageMicroamps = queryLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_AVERAGE);
+            long chargeCounter = queryLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER);
+            if (chargeCounter != Long.MIN_VALUE) {
+                snapshot.chargeCounterMicroampHours = chargeCounter;
+            }
+            int chargePercentage = queryIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+            if (isValidBatteryPercent(chargePercentage)) {
+                snapshot.chargePercentage = chargePercentage;
+            }
             if (snapshot.status == Integer.MIN_VALUE) {
                 snapshot.status = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_STATUS);
             }
+        }
+        if (!isValidBatteryPercent(snapshot.chargePercentage)
+                && snapshot.batteryLevel != Integer.MIN_VALUE
+                && snapshot.batteryScale > 0) {
+            double percent = (snapshot.batteryLevel * 100.0d) / snapshot.batteryScale;
+            snapshot.chargePercentage = Math.max(0, Math.min(100, (int) Math.round(percent)));
         }
         return snapshot;
     }
@@ -407,6 +444,20 @@ final class ClockDetailSystemStatusProvider {
                     "Failed to read battery long property " + propertyId,
                     t);
             return Long.MIN_VALUE;
+        }
+    }
+
+    private int queryIntProperty(int propertyId) {
+        if (batteryManager == null) {
+            return Integer.MIN_VALUE;
+        }
+        try {
+            return batteryManager.getIntProperty(propertyId);
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning(
+                    "Failed to read battery int property " + propertyId,
+                    t);
+            return Integer.MIN_VALUE;
         }
     }
 
@@ -457,6 +508,30 @@ final class ClockDetailSystemStatusProvider {
         return POWER_UNAVAILABLE;
     }
 
+    private String formatRemainingCapacityValue(BatterySnapshot snapshot) {
+        double remainingMilliampHours = resolveRemainingCapacityMilliampHours(snapshot);
+        if (!Double.isFinite(remainingMilliampHours) || remainingMilliampHours < 0.0d) {
+            return CAPACITY_UNAVAILABLE;
+        }
+        return formatCapacityMagnitude(remainingMilliampHours);
+    }
+
+    private String formatEstimatedFullCapacityValue(BatterySnapshot snapshot) {
+        double remainingMilliampHours = resolveRemainingCapacityMilliampHours(snapshot);
+        int chargePercent = snapshot.chargePercentage;
+        if (!Double.isFinite(remainingMilliampHours)
+                || remainingMilliampHours < 0.0d
+                || !isValidBatteryPercent(chargePercent)
+                || chargePercent <= 0) {
+            return ESTIMATED_CAPACITY_UNAVAILABLE;
+        }
+        double estimatedFullMilliampHours = (remainingMilliampHours * 100.0d) / chargePercent;
+        if (!Double.isFinite(estimatedFullMilliampHours) || estimatedFullMilliampHours <= 0.0d) {
+            return ESTIMATED_CAPACITY_UNAVAILABLE;
+        }
+        return formatCapacityMagnitude(estimatedFullMilliampHours);
+    }
+
     private long selectCurrentMicroamps(BatterySnapshot snapshot) {
         if (snapshot.currentNowMicroamps != Long.MIN_VALUE) {
             return snapshot.currentNowMicroamps;
@@ -504,6 +579,16 @@ final class ClockDetailSystemStatusProvider {
         return String.format(locale, "%.1f", absWatts);
     }
 
+    private String formatCapacityMagnitude(double milliampHours) {
+        Locale locale = resolveLocale();
+        double absMilliampHours = Math.abs(milliampHours);
+        double roundedInteger = Math.rint(absMilliampHours);
+        if (Math.abs(absMilliampHours - roundedInteger) < 0.05d) {
+            return String.format(locale, "%.0f mAh", roundedInteger);
+        }
+        return String.format(locale, "%.1f mAh", absMilliampHours);
+    }
+
     private double readMaxChargeWatts(BatterySnapshot snapshot) {
         if (snapshot.maxChargingCurrentMicroamps <= 0 || snapshot.maxChargingVoltageMicrovolts <= 0) {
             return 0.0d;
@@ -511,6 +596,17 @@ final class ClockDetailSystemStatusProvider {
         return toWattsFromChargeLimits(
                 snapshot.maxChargingCurrentMicroamps,
                 snapshot.maxChargingVoltageMicrovolts);
+    }
+
+    private double resolveRemainingCapacityMilliampHours(BatterySnapshot snapshot) {
+        if (snapshot == null || snapshot.chargeCounterMicroampHours == Long.MIN_VALUE) {
+            return Double.NaN;
+        }
+        return snapshot.chargeCounterMicroampHours / 1000.0d;
+    }
+
+    private boolean isValidBatteryPercent(int percent) {
+        return percent >= 0 && percent <= 100;
     }
 
     private Locale resolveLocale() {
@@ -966,22 +1062,38 @@ final class ClockDetailSystemStatusProvider {
         resultHandler.post(() -> callback.onMemoryRows(safeRows));
     }
 
-    private static void deliverThermalPower(
+    private static void deliverBatteryStatus(
             Handler resultHandler,
-            ThermalPowerCallback callback,
+            BatteryStatusCallback callback,
             String temperatureValue,
-            String powerValue) {
+            String powerValue,
+            String remainingCapacityValue,
+            String estimatedFullCapacityValue) {
         String safeTemperature = temperatureValue != null
                 ? temperatureValue
                 : ClockDetailSystemStatusSnapshot.EMPTY.temperatureValue;
         String safePower = powerValue != null
                 ? powerValue
                 : ClockDetailSystemStatusSnapshot.EMPTY.powerValue;
+        String safeRemainingCapacity = remainingCapacityValue != null
+                ? remainingCapacityValue
+                : ClockDetailSystemStatusSnapshot.EMPTY.remainingCapacityValue;
+        String safeEstimatedFullCapacity = estimatedFullCapacityValue != null
+                ? estimatedFullCapacityValue
+                : ClockDetailSystemStatusSnapshot.EMPTY.estimatedFullCapacityValue;
         if (resultHandler == null) {
-            callback.onThermalPower(safeTemperature, safePower);
+            callback.onBatteryStatus(
+                    safeTemperature,
+                    safePower,
+                    safeRemainingCapacity,
+                    safeEstimatedFullCapacity);
             return;
         }
-        resultHandler.post(() -> callback.onThermalPower(safeTemperature, safePower));
+        resultHandler.post(() -> callback.onBatteryStatus(
+                safeTemperature,
+                safePower,
+                safeRemainingCapacity,
+                safeEstimatedFullCapacity));
     }
 
     private static final class BatterySnapshot {
@@ -990,8 +1102,12 @@ final class ClockDetailSystemStatusProvider {
         int voltageMillivolts = Integer.MIN_VALUE;
         int maxChargingCurrentMicroamps = Integer.MIN_VALUE;
         int maxChargingVoltageMicrovolts = Integer.MIN_VALUE;
+        int batteryLevel = Integer.MIN_VALUE;
+        int batteryScale = Integer.MIN_VALUE;
+        int chargePercentage = Integer.MIN_VALUE;
         long currentNowMicroamps = Long.MIN_VALUE;
         long currentAverageMicroamps = Long.MIN_VALUE;
+        long chargeCounterMicroampHours = Long.MIN_VALUE;
     }
 
     private static final class MemoryCompressionSnapshot {

@@ -6,6 +6,7 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
+import android.app.ActivityManager;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
@@ -33,6 +34,8 @@ import android.view.ViewTreeObserver;
 import android.view.animation.OvershootInterpolator;
 import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -56,6 +59,11 @@ final class ClockDetailPopupController {
     private static final long POPUP_COLLAPSE_DURATION_MS = 220L;
     private static final int HORIZONTAL_MARGIN_DP = 16;
     private static final int STATUS_TILE_GAP_DP = 8;
+    private static final int RECENT_APPS_TOP_MARGIN_DP = 10;
+    private static final int RECENT_APP_ICON_SIZE_DP = 32;
+    private static final int RECENT_APP_ITEM_SIZE_DP = 40;
+    private static final int RECENT_APP_ICON_PADDING_DP = 4;
+    private static final int RECENT_APP_GAP_DP = 10;
     private static final int POPUP_SURFACE_OFFSET_Y_DP = 8;
     private static final int POPUP_SURFACE_RADIUS_DP = 24;
     private static final int POPUP_SHADOW_PADDING_DP = 10;
@@ -110,8 +118,11 @@ final class ClockDetailPopupController {
     private final TextView dateView;
     private final LinearLayout statusGridView;
     private final MemoryStatTile memoryTile;
-    private final StatTile thermalPowerTile;
+    private final BatteryInfoTile batteryInfoTile;
+    private final RecentAppsStrip recentAppsStrip;
     private final ClockDetailSystemStatusProvider systemStatusProvider;
+    private final ClockDetailRecentAppsProvider recentAppsProvider;
+    private final ActivityManager activityManager;
     private final Runnable refreshRunnable = this::refreshVisibleContent;
     private final Runnable thermalPowerRefreshRunnable = this::refreshVisibleThermalPowerStatus;
     private final Runnable memoryRefreshRunnable = this::refreshVisibleMemoryStatus;
@@ -124,6 +135,7 @@ final class ClockDetailPopupController {
     private boolean showMilliseconds = false;
     private boolean thermalPowerQueryInFlight;
     private boolean memoryQueryInFlight;
+    private boolean recentAppsQueryInFlight;
     private boolean dismissAnimationRunning;
     private boolean enterAnimationRunning;
     private boolean popupTargetShowing;
@@ -139,10 +151,16 @@ final class ClockDetailPopupController {
     private int nextPopupSessionId;
     private int thermalPowerRequestSessionId = INVALID_POPUP_SESSION_ID;
     private int memoryRequestSessionId = INVALID_POPUP_SESSION_ID;
+    private int recentAppsRequestSessionId = INVALID_POPUP_SESSION_ID;
     private ClockDetailSystemStatusSnapshot.MemoryRow[] latestMemoryRows =
             ClockDetailSystemStatusSnapshot.EMPTY.memoryRows;
     private String latestTemperatureValue = ClockDetailSystemStatusSnapshot.EMPTY.temperatureValue;
     private String latestPowerValue = ClockDetailSystemStatusSnapshot.EMPTY.powerValue;
+    private String latestRemainingCapacityValue =
+            ClockDetailSystemStatusSnapshot.EMPTY.remainingCapacityValue;
+    private String latestEstimatedFullCapacityValue =
+            ClockDetailSystemStatusSnapshot.EMPTY.estimatedFullCapacityValue;
+    private ClockDetailRecentApp[] latestRecentApps = ClockDetailRecentApp.EMPTY_ARRAY;
     private Locale cachedLocale;
     private TimeZone cachedTimeZone;
     private boolean cached24HourMode;
@@ -201,8 +219,9 @@ final class ClockDetailPopupController {
                 context,
                 "系统内存",
                 ClockDetailSystemStatusSnapshot.EMPTY.memoryRows);
-        this.thermalPowerTile = buildStatTile(context, "电池温度 / 功率", true);
-        this.statusGridView = buildStatusGrid(context, memoryTile, thermalPowerTile);
+        this.batteryInfoTile = buildBatteryInfoTile(context);
+        this.statusGridView = buildStatusGrid(context, memoryTile, batteryInfoTile);
+        this.recentAppsStrip = buildRecentAppsStrip(context);
         this.timeRowView.addView(timeView, wrapContent());
         this.timeRowView.addView(millisecondsView, wrapContentWithStart(context, 2));
         this.headerView.addView(timeRowView, frameCentered());
@@ -210,7 +229,12 @@ final class ClockDetailPopupController {
         this.contentView.addView(headerView, matchWidth());
         this.contentView.addView(dateView, matchWidthWithTop(context, 5));
         this.contentView.addView(statusGridView, matchWidthWithTop(context, 12));
+        this.contentView.addView(
+                recentAppsStrip.root,
+                matchWidthWithTop(context, RECENT_APPS_TOP_MARGIN_DP));
         this.systemStatusProvider = new ClockDetailSystemStatusProvider(context);
+        this.recentAppsProvider = new ClockDetailRecentAppsProvider(context);
+        this.activityManager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
         this.dragTouchSlop = Math.max(
                 dp(context, 4),
                 ViewConfiguration.get(context).getScaledTouchSlop());
@@ -332,6 +356,7 @@ final class ClockDetailPopupController {
         refreshTimeText(nowMillis, true);
         refreshDateTextIfNeeded(nowMillis, true);
         applyLatestSystemStatusViews();
+        applyLatestRecentAppsView();
         measureContent();
         applyAnchorHighlight(anchor);
         updatePopupPosition();
@@ -339,6 +364,7 @@ final class ClockDetailPopupController {
         installNativePopupBlurIfPossible();
         requestThermalPowerRefresh();
         requestMemoryStatusRefresh();
+        requestRecentAppsRefresh();
         animatePopupIn();
         scheduleAutoDismiss();
         scheduleRefresh();
@@ -863,7 +889,8 @@ final class ClockDetailPopupController {
         dateView.setTextColor(palette.secondaryTextColor);
         applyPinTogglePalette(context, palette);
         applyMemoryTilePalette(memoryTile, palette);
-        applyStatTilePalette(thermalPowerTile, palette);
+        applyBatteryInfoTilePalette(batteryInfoTile, palette);
+        applyRecentAppsStripPalette(recentAppsStrip, palette);
     }
 
     private void applyPinTogglePalette(Context context, Palette palette) {
@@ -1492,16 +1519,20 @@ final class ClockDetailPopupController {
         popupSessionId = nextPopupSessionId++;
         thermalPowerQueryInFlight = false;
         memoryQueryInFlight = false;
+        recentAppsQueryInFlight = false;
         thermalPowerRequestSessionId = INVALID_POPUP_SESSION_ID;
         memoryRequestSessionId = INVALID_POPUP_SESSION_ID;
+        recentAppsRequestSessionId = INVALID_POPUP_SESSION_ID;
     }
 
     private void invalidatePopupSession() {
         popupSessionId = nextPopupSessionId++;
         thermalPowerQueryInFlight = false;
         memoryQueryInFlight = false;
+        recentAppsQueryInFlight = false;
         thermalPowerRequestSessionId = INVALID_POPUP_SESSION_ID;
         memoryRequestSessionId = INVALID_POPUP_SESSION_ID;
+        recentAppsRequestSessionId = INVALID_POPUP_SESSION_ID;
     }
 
     private void cancelPanelLongPress() {
@@ -1959,17 +1990,32 @@ final class ClockDetailPopupController {
 
     private void applyLatestSystemStatusViews() {
         updateMemoryStatusView(latestMemoryRows);
-        updateThermalPowerStatusView(latestTemperatureValue, latestPowerValue);
+        updateBatteryInfoStatusView(
+                latestTemperatureValue,
+                latestPowerValue,
+                latestRemainingCapacityValue,
+                latestEstimatedFullCapacityValue);
+    }
+
+    private void applyLatestRecentAppsView() {
+        updateRecentAppsView(latestRecentApps);
     }
 
     private void updateMemoryStatusView(ClockDetailSystemStatusSnapshot.MemoryRow[] rows) {
         updateMemoryTileRows(memoryTile, rows);
     }
 
-    private void updateThermalPowerStatusView(String temperatureValue, String powerValue) {
+    private void updateBatteryInfoStatusView(
+            String temperatureValue,
+            String powerValue,
+            String remainingCapacityValue,
+            String estimatedFullCapacityValue) {
         setTextIfChanged(
-                thermalPowerTile.valueView,
+                batteryInfoTile.leftValueView,
                 buildThermalPowerValue(temperatureValue, powerValue));
+        setTextIfChanged(
+                batteryInfoTile.rightValueView,
+                buildBatteryCapacityValue(remainingCapacityValue, estimatedFullCapacityValue));
     }
 
     private void requestThermalPowerRefresh() {
@@ -1979,7 +2025,12 @@ final class ClockDetailPopupController {
         final int requestSessionId = popupSessionId;
         thermalPowerQueryInFlight = true;
         thermalPowerRequestSessionId = requestSessionId;
-        systemStatusProvider.requestThermalPower(handler, (temperatureValue, powerValue) -> {
+        systemStatusProvider.requestBatteryStatus(
+                handler,
+                (temperatureValue,
+                        powerValue,
+                        remainingCapacityValue,
+                        estimatedFullCapacityValue) -> {
             if (thermalPowerRequestSessionId != requestSessionId) {
                 return;
             }
@@ -1987,10 +2038,16 @@ final class ClockDetailPopupController {
             thermalPowerRequestSessionId = INVALID_POPUP_SESSION_ID;
             latestTemperatureValue = temperatureValue;
             latestPowerValue = powerValue;
+            latestRemainingCapacityValue = remainingCapacityValue;
+            latestEstimatedFullCapacityValue = estimatedFullCapacityValue;
             if (!isPopupShowing()) {
                 return;
             }
-            updateThermalPowerStatusView(latestTemperatureValue, latestPowerValue);
+            updateBatteryInfoStatusView(
+                    latestTemperatureValue,
+                    latestPowerValue,
+                    latestRemainingCapacityValue,
+                    latestEstimatedFullCapacityValue);
         });
     }
 
@@ -2017,7 +2074,31 @@ final class ClockDetailPopupController {
         });
     }
 
-    private void applyStatTilePalette(StatTile tile, Palette palette) {
+    private void requestRecentAppsRefresh() {
+        if (recentAppsQueryInFlight) {
+            return;
+        }
+        final int requestSessionId = popupSessionId;
+        recentAppsQueryInFlight = true;
+        recentAppsRequestSessionId = requestSessionId;
+        recentAppsProvider.requestRecentApps(handler, recentApps -> {
+            if (recentAppsRequestSessionId != requestSessionId) {
+                return;
+            }
+            recentAppsQueryInFlight = false;
+            recentAppsRequestSessionId = INVALID_POPUP_SESSION_ID;
+            latestRecentApps = recentApps != null && recentApps.length > 0
+                    ? recentApps
+                    : ClockDetailRecentApp.EMPTY_ARRAY;
+            if (!isPopupShowing()) {
+                return;
+            }
+            updateRecentAppsView(latestRecentApps);
+            requestPopupLayoutRefresh();
+        });
+    }
+
+    private void applyBatteryInfoTilePalette(BatteryInfoTile tile, Palette palette) {
         if (tile == null) {
             return;
         }
@@ -2028,8 +2109,10 @@ final class ClockDetailPopupController {
         background.setColor(mixColors(palette.surfaceColor, palette.strokeColor, 0.22f));
         background.setStroke(Math.max(1, dp(context, 1)), adjustAlpha(palette.strokeColor, 0.9f));
         tile.root.setBackground(background);
-        tile.labelView.setTextColor(palette.secondaryTextColor);
-        tile.valueView.setTextColor(palette.primaryTextColor);
+        tile.leftLabelView.setTextColor(palette.secondaryTextColor);
+        tile.leftValueView.setTextColor(palette.primaryTextColor);
+        tile.rightLabelView.setTextColor(palette.secondaryTextColor);
+        tile.rightValueView.setTextColor(palette.primaryTextColor);
     }
 
     private void applyMemoryTilePalette(MemoryStatTile tile, Palette palette) {
@@ -2049,6 +2132,19 @@ final class ClockDetailPopupController {
             rowView.valueView.setTextColor(palette.primaryTextColor);
             rowView.percentView.setTextColor(palette.primaryTextColor);
         }
+    }
+
+    private void applyRecentAppsStripPalette(RecentAppsStrip strip, Palette palette) {
+        if (strip == null) {
+            return;
+        }
+        Context context = strip.root.getContext();
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setCornerRadius(dp(context, 14));
+        background.setColor(mixColors(palette.surfaceColor, palette.strokeColor, 0.22f));
+        background.setStroke(Math.max(1, dp(context, 1)), adjustAlpha(palette.strokeColor, 0.9f));
+        strip.root.setBackground(background);
     }
 
     private void updateMemoryTileRows(
@@ -2075,6 +2171,53 @@ final class ClockDetailPopupController {
         }
     }
 
+    private void updateRecentAppsView(ClockDetailRecentApp[] recentApps) {
+        if (recentAppsStrip == null) {
+            return;
+        }
+        ClockDetailRecentApp[] safeRecentApps = recentApps != null && recentApps.length > 0
+                ? recentApps
+                : ClockDetailRecentApp.EMPTY_ARRAY;
+        boolean hasApps = safeRecentApps.length > 0;
+        setVisibilityIfChanged(recentAppsStrip.root, hasApps ? View.VISIBLE : View.GONE);
+        recentAppsStrip.contentView.removeAllViews();
+        if (!hasApps) {
+            recentAppsStrip.scrollView.scrollTo(0, 0);
+            return;
+        }
+        Context context = recentAppsStrip.root.getContext();
+        for (int i = 0; i < safeRecentApps.length; i++) {
+            ClockDetailRecentApp app = safeRecentApps[i];
+            ImageView iconView = buildRecentAppIconView(context);
+            iconView.setImageDrawable(app.icon);
+            iconView.setContentDescription(app.label);
+            iconView.setOnClickListener(v -> {
+                performClockHaptic(v);
+                launchRecentTask(app);
+            });
+            recentAppsStrip.contentView.addView(
+                    iconView,
+                    i == 0
+                            ? recentAppItemLayoutParams(context)
+                            : recentAppItemLayoutParamsWithStart(context, RECENT_APP_GAP_DP));
+        }
+        recentAppsStrip.scrollView.scrollTo(0, 0);
+    }
+
+    private void launchRecentTask(ClockDetailRecentApp app) {
+        if (app == null || app.taskId < 0 || activityManager == null) {
+            return;
+        }
+        try {
+            activityManager.moveTaskToFront(app.taskId, 0);
+            dismissImmediately();
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning(
+                    "Failed to move recent task to front: " + app.taskId,
+                    t);
+        }
+    }
+
     private static String buildThermalPowerValue(String temperatureValue, String powerValue) {
         return "温度 " + sanitizeStatusText(
                 temperatureValue,
@@ -2085,15 +2228,27 @@ final class ClockDetailPopupController {
                         ClockDetailSystemStatusSnapshot.EMPTY.powerValue);
     }
 
+    private static String buildBatteryCapacityValue(
+            String remainingCapacityValue,
+            String estimatedFullCapacityValue) {
+        return sanitizeStatusText(
+                remainingCapacityValue,
+                ClockDetailSystemStatusSnapshot.EMPTY.remainingCapacityValue)
+                + "\n"
+                + sanitizeStatusText(
+                        estimatedFullCapacityValue,
+                        ClockDetailSystemStatusSnapshot.EMPTY.estimatedFullCapacityValue);
+    }
+
     private static LinearLayout buildStatusGrid(
             Context context,
             MemoryStatTile memoryTile,
-            StatTile thermalPowerTile) {
+            BatteryInfoTile batteryInfoTile) {
         LinearLayout grid = new LinearLayout(context);
         grid.setOrientation(LinearLayout.VERTICAL);
 
         grid.addView(memoryTile.root, matchWidth());
-        grid.addView(thermalPowerTile.root, matchWidthWithTop(context, STATUS_TILE_GAP_DP));
+        grid.addView(batteryInfoTile.root, matchWidthWithTop(context, STATUS_TILE_GAP_DP));
         return grid;
     }
 
@@ -2183,13 +2338,10 @@ final class ClockDetailPopupController {
         return new MemoryStatRowView(row, nameView, valueView, percentView);
     }
 
-    private static StatTile buildStatTile(
-            Context context,
-            String label,
-            boolean multiLineValue) {
+    private static BatteryInfoTile buildBatteryInfoTile(Context context) {
         LinearLayout root = new LinearLayout(context);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        root.setOrientation(LinearLayout.HORIZONTAL);
+        root.setGravity(Gravity.CENTER_VERTICAL);
         root.setMinimumHeight(dp(context, 64));
         root.setPadding(
                 dp(context, 12),
@@ -2197,27 +2349,124 @@ final class ClockDetailPopupController {
                 dp(context, 12),
                 dp(context, 10));
 
-        TextView labelView = new TextView(context);
-        labelView.setIncludeFontPadding(false);
-        labelView.setSingleLine(true);
-        labelView.setText(label);
-        labelView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
-        labelView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        LinearLayout leftColumn = buildBatteryInfoColumn(context);
+        TextView leftLabelView = buildBatteryInfoLabelView(context, "电池温度 / 功率", true);
+        TextView leftValueView = buildBatteryInfoValueView(context);
+        leftValueView.setText(buildThermalPowerValue(
+                ClockDetailSystemStatusSnapshot.EMPTY.temperatureValue,
+                ClockDetailSystemStatusSnapshot.EMPTY.powerValue));
+        leftColumn.addView(leftLabelView, matchWidth());
+        leftColumn.addView(leftValueView, matchWidthWithTop(context, 4));
 
-        TextView valueView = new TextView(context);
-        valueView.setIncludeFontPadding(false);
-        valueView.setSingleLine(!multiLineValue);
-        if (multiLineValue) {
-            valueView.setMaxLines(4);
-            valueView.setLineSpacing(0f, 1.08f);
+        LinearLayout rightColumn = buildBatteryInfoColumn(context);
+        TextView rightLabelView = buildBatteryInfoLabelView(
+                context,
+                "当前电池剩余容量\n当前折算满充容量",
+                false);
+        TextView rightValueView = buildBatteryInfoValueView(context);
+        rightValueView.setText(buildBatteryCapacityValue(
+                ClockDetailSystemStatusSnapshot.EMPTY.remainingCapacityValue,
+                ClockDetailSystemStatusSnapshot.EMPTY.estimatedFullCapacityValue));
+        rightColumn.addView(rightLabelView, matchWidth());
+        rightColumn.addView(rightValueView, matchWidthWithTop(context, 4));
+
+        root.addView(leftColumn, weightCell(1.08f));
+        root.addView(rightColumn, weightCellWithStart(context, 10, 0.92f));
+        return new BatteryInfoTile(
+                root,
+                leftLabelView,
+                leftValueView,
+                rightLabelView,
+                rightValueView);
+    }
+
+    private static LinearLayout buildBatteryInfoColumn(Context context) {
+        LinearLayout column = new LinearLayout(context);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        return column;
+    }
+
+    private static TextView buildBatteryInfoLabelView(
+            Context context,
+            String text,
+            boolean singleLine) {
+        TextView view = new TextView(context);
+        view.setIncludeFontPadding(false);
+        view.setSingleLine(singleLine);
+        if (!singleLine) {
+            view.setMaxLines(2);
+            view.setLineSpacing(0f, 1.08f);
         }
-        valueView.setText("--");
-        valueView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
-        valueView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        view.setText(text);
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        return view;
+    }
 
-        root.addView(labelView, matchWidth());
-        root.addView(valueView, matchWidthWithTop(context, 4));
-        return new StatTile(root, labelView, valueView);
+    private static TextView buildBatteryInfoValueView(Context context) {
+        TextView view = new TextView(context);
+        view.setIncludeFontPadding(false);
+        view.setMaxLines(4);
+        view.setLineSpacing(0f, 1.08f);
+        view.setText("--");
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+        view.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        return view;
+    }
+
+    private static RecentAppsStrip buildRecentAppsStrip(Context context) {
+        LinearLayout root = new LinearLayout(context);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER_VERTICAL);
+        root.setPadding(
+                dp(context, 12),
+                dp(context, 10),
+                dp(context, 12),
+                dp(context, 10));
+        root.setVisibility(View.GONE);
+
+        HorizontalScrollView scrollView = new HorizontalScrollView(context);
+        scrollView.setHorizontalScrollBarEnabled(false);
+        scrollView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        scrollView.setFillViewport(false);
+
+        LinearLayout content = new LinearLayout(context);
+        content.setOrientation(LinearLayout.HORIZONTAL);
+        content.setGravity(Gravity.CENTER_VERTICAL);
+
+        scrollView.addView(
+                content,
+                new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT));
+        root.addView(scrollView, matchWidth());
+        return new RecentAppsStrip(root, scrollView, content);
+    }
+
+    private static ImageView buildRecentAppIconView(Context context) {
+        ImageView iconView = new ImageView(context);
+        iconView.setAdjustViewBounds(false);
+        iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int maxSize = dp(context, RECENT_APP_ICON_SIZE_DP);
+        iconView.setMaxWidth(maxSize);
+        iconView.setMaxHeight(maxSize);
+        int padding = dp(context, RECENT_APP_ICON_PADDING_DP);
+        iconView.setPadding(padding, padding, padding, padding);
+        return iconView;
+    }
+
+    private static LinearLayout.LayoutParams recentAppItemLayoutParams(Context context) {
+        int size = dp(context, RECENT_APP_ITEM_SIZE_DP);
+        return new LinearLayout.LayoutParams(size, size);
+    }
+
+    private static LinearLayout.LayoutParams recentAppItemLayoutParamsWithStart(
+            Context context,
+            int startMarginDp) {
+        LinearLayout.LayoutParams params = recentAppItemLayoutParams(context);
+        params.leftMargin = dp(context, startMarginDp);
+        return params;
     }
 
     private static FrameLayout.LayoutParams frameWrapContent() {
@@ -2399,15 +2648,39 @@ final class ClockDetailPopupController {
         }
     }
 
-    private static final class StatTile {
+    private static final class BatteryInfoTile {
         final LinearLayout root;
-        final TextView labelView;
-        final TextView valueView;
+        final TextView leftLabelView;
+        final TextView leftValueView;
+        final TextView rightLabelView;
+        final TextView rightValueView;
 
-        StatTile(LinearLayout root, TextView labelView, TextView valueView) {
+        BatteryInfoTile(
+                LinearLayout root,
+                TextView leftLabelView,
+                TextView leftValueView,
+                TextView rightLabelView,
+                TextView rightValueView) {
             this.root = root;
-            this.labelView = labelView;
-            this.valueView = valueView;
+            this.leftLabelView = leftLabelView;
+            this.leftValueView = leftValueView;
+            this.rightLabelView = rightLabelView;
+            this.rightValueView = rightValueView;
+        }
+    }
+
+    private static final class RecentAppsStrip {
+        final LinearLayout root;
+        final HorizontalScrollView scrollView;
+        final LinearLayout contentView;
+
+        RecentAppsStrip(
+                LinearLayout root,
+                HorizontalScrollView scrollView,
+                LinearLayout contentView) {
+            this.root = root;
+            this.scrollView = scrollView;
+            this.contentView = contentView;
         }
     }
 

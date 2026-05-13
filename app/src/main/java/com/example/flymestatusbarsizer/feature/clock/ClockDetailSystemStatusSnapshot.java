@@ -8,19 +8,27 @@ final class ClockDetailSystemStatusSnapshot {
                             new MemoryRow("ZRAM", "-- / --", "--")
                     },
                     "--",
+                    "不可用",
+                    "--",
                     "不可用");
 
     final MemoryRow[] memoryRows;
     final String temperatureValue;
     final String powerValue;
+    final String remainingCapacityValue;
+    final String estimatedFullCapacityValue;
 
     ClockDetailSystemStatusSnapshot(
             MemoryRow[] memoryRows,
             String temperatureValue,
-            String powerValue) {
+            String powerValue,
+            String remainingCapacityValue,
+            String estimatedFullCapacityValue) {
         this.memoryRows = sanitizeRows(memoryRows);
         this.temperatureValue = sanitize(temperatureValue, "--");
         this.powerValue = sanitize(powerValue, "不可用");
+        this.remainingCapacityValue = sanitize(remainingCapacityValue, "--");
+        this.estimatedFullCapacityValue = sanitize(estimatedFullCapacityValue, "不可用");
     }
 
     private static MemoryRow[] sanitizeRows(MemoryRow[] rows) {
