@@ -23,14 +23,6 @@ final class ClockDetailSystemStatusSnapshot {
         this.powerValue = sanitize(powerValue, "不可用");
     }
 
-    ClockDetailSystemStatusSnapshot withMemoryRows(MemoryRow[] rows) {
-        return new ClockDetailSystemStatusSnapshot(rows, temperatureValue, powerValue);
-    }
-
-    ClockDetailSystemStatusSnapshot withThermalPower(String temperatureValue, String powerValue) {
-        return new ClockDetailSystemStatusSnapshot(memoryRows, temperatureValue, powerValue);
-    }
-
     private static MemoryRow[] sanitizeRows(MemoryRow[] rows) {
         if (rows == null || rows.length == 0) {
             return EMPTY.memoryRows;

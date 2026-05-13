@@ -10,7 +10,6 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
-import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.InsetDrawable;
@@ -75,6 +74,7 @@ final class ClockDetailPopupController {
     private static final int CLOCK_HIGHLIGHT_EXTRA_START_PADDING_DP = 6;
     private static final int CLOCK_HIGHLIGHT_EXTRA_END_PADDING_DP = 10;
     private static final int CLOCK_HIGHLIGHT_EXTRA_VERTICAL_PADDING_DP = 2;
+    private static final String[] MILLISECOND_TEXT_CACHE = buildMillisecondTextCache();
     private static final OvershootInterpolator POPUP_SCALE_IN_INTERPOLATOR =
             new OvershootInterpolator(0.72f);
     private static final PathInterpolator POPUP_ALPHA_IN_INTERPOLATOR =
@@ -104,6 +104,7 @@ final class ClockDetailPopupController {
     private final Runnable autoDismissRunnable = this::dismiss;
     private final Runnable panelLongPressRunnable = this::handlePanelLongPressTimeout;
     private final int dragTouchSlop;
+    private final Date reusableDate = new Date();
 
     private boolean enabled;
     private boolean showMilliseconds = false;
@@ -120,13 +121,16 @@ final class ClockDetailPopupController {
     private boolean panelLongPressTriggered;
     private boolean dragGestureActive;
     private Palette currentPalette;
-    private ClockDetailSystemStatusSnapshot latestSystemStatusSnapshot =
-            ClockDetailSystemStatusSnapshot.EMPTY;
+    private ClockDetailSystemStatusSnapshot.MemoryRow[] latestMemoryRows =
+            ClockDetailSystemStatusSnapshot.EMPTY.memoryRows;
+    private String latestTemperatureValue = ClockDetailSystemStatusSnapshot.EMPTY.temperatureValue;
+    private String latestPowerValue = ClockDetailSystemStatusSnapshot.EMPTY.powerValue;
     private Locale cachedLocale;
     private TimeZone cachedTimeZone;
     private boolean cached24HourMode;
     private SimpleDateFormat timeFormatter;
     private SimpleDateFormat dateFormatter;
+    private Calendar reusableDateKeyCalendar;
     private long lastRenderedSecond = Long.MIN_VALUE;
     private int lastRenderedMillisBucket = Integer.MIN_VALUE;
     private long lastDateRefreshSecond = Long.MIN_VALUE;
@@ -140,7 +144,6 @@ final class ClockDetailPopupController {
     private int[] originalAnchorPadding;
     private boolean originalAnchorBackgroundCaptured;
     private boolean anchorHighlighted;
-    private ViewGroup overlayHostView;
     private WindowManager overlayWindowManager;
     private float panelTouchDownRawX;
     private float panelTouchDownRawY;
@@ -286,7 +289,7 @@ final class ClockDetailPopupController {
         long nowMillis = System.currentTimeMillis();
         refreshTimeText(nowMillis, true);
         refreshDateTextIfNeeded(nowMillis, true);
-        updateSystemStatusViews(latestSystemStatusSnapshot);
+        applyLatestSystemStatusViews();
         measureContent();
         applyAnchorHighlight(anchor);
         updatePopupPosition();
@@ -381,6 +384,7 @@ final class ClockDetailPopupController {
         dateFormatter = new SimpleDateFormat(datePattern, locale);
         timeFormatter.setTimeZone(timeZone);
         dateFormatter.setTimeZone(timeZone);
+        reusableDateKeyCalendar = Calendar.getInstance(timeZone, locale);
         return true;
     }
 
@@ -394,8 +398,9 @@ final class ClockDetailPopupController {
         }
         boolean changed = false;
         if (force || secondKey != lastRenderedSecond) {
+            reusableDate.setTime(nowMillis);
             String baseTime = timeFormatter != null
-                    ? timeFormatter.format(new Date(nowMillis))
+                    ? timeFormatter.format(reusableDate)
                     : "";
             changed |= setTextIfChanged(timeView, baseTime);
         }
@@ -421,8 +426,9 @@ final class ClockDetailPopupController {
         if (!force && dateKey == lastRenderedDateKey) {
             return false;
         }
+        reusableDate.setTime(nowMillis);
         String dateText = dateFormatter != null
-                ? dateFormatter.format(new Date(nowMillis))
+                ? dateFormatter.format(reusableDate)
                 : "";
         boolean changed = setTextIfChanged(dateView, dateText);
         lastRenderedDateKey = dateKey;
@@ -430,17 +436,20 @@ final class ClockDetailPopupController {
     }
 
     private long resolveDateKey(long nowMillis) {
-        Calendar calendar = Calendar.getInstance(
-                cachedTimeZone != null ? cachedTimeZone : TimeZone.getDefault(),
-                cachedLocale != null ? cachedLocale : Locale.getDefault());
+        Calendar calendar = reusableDateKeyCalendar;
+        if (calendar == null) {
+            calendar = Calendar.getInstance(
+                    cachedTimeZone != null ? cachedTimeZone : TimeZone.getDefault(),
+                    cachedLocale != null ? cachedLocale : Locale.getDefault());
+            reusableDateKeyCalendar = calendar;
+        }
         calendar.setTimeInMillis(nowMillis);
         return (calendar.get(Calendar.YEAR) * 1000L) + calendar.get(Calendar.DAY_OF_YEAR);
     }
 
     private String formatMilliseconds(long nowMillis) {
         int milliseconds = (int) (nowMillis % SECOND_REFRESH_INTERVAL_MS);
-        Locale locale = cachedLocale != null ? cachedLocale : Locale.getDefault();
-        return String.format(locale, ".%03d", milliseconds);
+        return MILLISECOND_TEXT_CACHE[milliseconds];
     }
 
     private void scheduleRefresh() {
@@ -518,10 +527,7 @@ final class ClockDetailPopupController {
     private void measureContent() {
         Context context = popupRootView.getContext();
         int margin = dp(context, HORIZONTAL_MARGIN_DP);
-        int maxWidth = overlayHostView != null && overlayHostView.getWidth() > 0
-                ? overlayHostView.getWidth()
-                : context.getResources().getDisplayMetrics().widthPixels;
-        maxWidth = Math.max(1, maxWidth - (margin * 2));
+        int maxWidth = Math.max(1, getOverlayWidth() - (margin * 2));
         popupRootView.measure(
                 View.MeasureSpec.makeMeasureSpec(maxWidth, View.MeasureSpec.AT_MOST),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
@@ -548,9 +554,7 @@ final class ClockDetailPopupController {
         int[] anchorLocation = new int[2];
         int[] hostLocation = new int[2];
         anchor.getLocationOnScreen(anchorLocation);
-        if (overlayHostView != null) {
-            overlayHostView.getLocationOnScreen(hostLocation);
-        }
+        fillOverlayLocationOnScreen(hostLocation);
         return clampPopupLeft(anchorLocation[0] - hostLocation[0]);
     }
 
@@ -561,9 +565,7 @@ final class ClockDetailPopupController {
         int[] anchorLocation = new int[2];
         int[] hostLocation = new int[2];
         anchor.getLocationOnScreen(anchorLocation);
-        if (overlayHostView != null) {
-            overlayHostView.getLocationOnScreen(hostLocation);
-        }
+        fillOverlayLocationOnScreen(hostLocation);
         int desiredTop = anchorLocation[1]
                 - hostLocation[1]
                 + anchor.getHeight()
@@ -575,20 +577,15 @@ final class ClockDetailPopupController {
     private int clampPopupLeft(int desiredLeft) {
         Context context = popupRootView.getContext();
         int margin = dp(context, HORIZONTAL_MARGIN_DP);
-        int hostWidth = overlayHostView != null && overlayHostView.getWidth() > 0
-                ? overlayHostView.getWidth()
-                : context.getResources().getDisplayMetrics().widthPixels;
-        int maxLeft = Math.max(margin, hostWidth - margin - popupWidth);
+        int maxLeft = Math.max(margin, getOverlayWidth() - margin - popupWidth);
         return Math.max(margin, Math.min(desiredLeft, maxLeft));
     }
 
     private int clampPopupTop(int desiredTop) {
         Context context = popupRootView.getContext();
-        int topInset = overlayHostView != null ? overlayHostView.getPaddingTop() : 0;
-        int bottomInset = overlayHostView != null ? overlayHostView.getPaddingBottom() : 0;
-        int hostHeight = overlayHostView != null && overlayHostView.getHeight() > 0
-                ? overlayHostView.getHeight()
-                : context.getResources().getDisplayMetrics().heightPixels;
+        int topInset = overlayView.getPaddingTop();
+        int bottomInset = overlayView.getPaddingBottom();
+        int hostHeight = getOverlayHeight();
         int minTop = Math.max(0, topInset);
         int maxTop = Math.max(
                 minTop,
@@ -767,9 +764,7 @@ final class ClockDetailPopupController {
         int[] anchorLocation = new int[2];
         int[] hostLocation = new int[2];
         anchor.getLocationOnScreen(anchorLocation);
-        if (overlayHostView != null) {
-            overlayHostView.getLocationOnScreen(hostLocation);
-        }
+        fillOverlayLocationOnScreen(hostLocation);
         float popupLeftOnScreen = hostLocation[0] + popupLeft;
         float anchorCenterX = anchorLocation[0] + (anchor.getWidth() * 0.5f);
         float shadowPadding = dp(anchor.getContext(), POPUP_SHADOW_PADDING_DP);
@@ -1133,6 +1128,26 @@ final class ClockDetailPopupController {
         return Math.max(min, Math.min(max, value));
     }
 
+    private static String sanitizeStatusText(String value, String fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? fallback : trimmed;
+    }
+
+    private static String[] buildMillisecondTextCache() {
+        String[] cache = new String[1000];
+        char[] chars = new char[]{'.', '0', '0', '0'};
+        for (int milliseconds = 0; milliseconds < cache.length; milliseconds++) {
+            chars[1] = (char) ('0' + (milliseconds / 100));
+            chars[2] = (char) ('0' + ((milliseconds / 10) % 10));
+            chars[3] = (char) ('0' + (milliseconds % 10));
+            cache[milliseconds] = new String(chars);
+        }
+        return cache;
+    }
+
     private Locale resolveLocale() {
         TextView anchor = getAnchor();
         if (anchor == null) {
@@ -1163,6 +1178,33 @@ final class ClockDetailPopupController {
         return TimeZone.getDefault();
     }
 
+    private int getOverlayWidth() {
+        int width = overlayView.getWidth();
+        if (width > 0) {
+            return width;
+        }
+        return popupRootView.getContext().getResources().getDisplayMetrics().widthPixels;
+    }
+
+    private int getOverlayHeight() {
+        int height = overlayView.getHeight();
+        if (height > 0) {
+            return height;
+        }
+        return popupRootView.getContext().getResources().getDisplayMetrics().heightPixels;
+    }
+
+    private void fillOverlayLocationOnScreen(int[] location) {
+        if (location == null || location.length < 2) {
+            return;
+        }
+        location[0] = 0;
+        location[1] = 0;
+        if (overlayView.isAttachedToWindow()) {
+            overlayView.getLocationOnScreen(location);
+        }
+    }
+
     private boolean isPopupShowing() {
         return overlayAttached;
     }
@@ -1173,7 +1215,6 @@ final class ClockDetailPopupController {
         }
         if (overlayAttached) {
             if (overlayView.isAttachedToWindow()) {
-                overlayHostView = overlayView;
                 return true;
             }
             detachOverlay();
@@ -1191,7 +1232,6 @@ final class ClockDetailPopupController {
             try {
                 windowManager.addView(overlayView, params);
                 overlayWindowManager = windowManager;
-                overlayHostView = overlayView;
                 overlayAttached = true;
                 return true;
             } catch (Throwable throwable) {
@@ -1206,7 +1246,6 @@ final class ClockDetailPopupController {
                 "Failed to attach clock detail panel internal window",
                 lastError);
         overlayWindowManager = null;
-        overlayHostView = null;
         overlayAttached = false;
         return false;
     }
@@ -1222,7 +1261,6 @@ final class ClockDetailPopupController {
         }
         removeOverlayFromViewGroupParent();
         overlayAttached = false;
-        overlayHostView = null;
     }
 
     private void removeOverlayFromViewGroupParent() {
@@ -1574,12 +1612,19 @@ final class ClockDetailPopupController {
         return view;
     }
 
-    private void updateSystemStatusViews(ClockDetailSystemStatusSnapshot snapshot) {
-        ClockDetailSystemStatusSnapshot safeSnapshot = snapshot != null
-                ? snapshot
-                : ClockDetailSystemStatusSnapshot.EMPTY;
-        updateMemoryTileRows(memoryTile, safeSnapshot.memoryRows);
-        setTextIfChanged(thermalPowerTile.valueView, buildThermalPowerValue(safeSnapshot));
+    private void applyLatestSystemStatusViews() {
+        updateMemoryStatusView(latestMemoryRows);
+        updateThermalPowerStatusView(latestTemperatureValue, latestPowerValue);
+    }
+
+    private void updateMemoryStatusView(ClockDetailSystemStatusSnapshot.MemoryRow[] rows) {
+        updateMemoryTileRows(memoryTile, rows);
+    }
+
+    private void updateThermalPowerStatusView(String temperatureValue, String powerValue) {
+        setTextIfChanged(
+                thermalPowerTile.valueView,
+                buildThermalPowerValue(temperatureValue, powerValue));
     }
 
     private void requestThermalPowerRefresh() {
@@ -1588,14 +1633,13 @@ final class ClockDetailPopupController {
         }
         thermalPowerQueryInFlight = true;
         systemStatusProvider.requestThermalPower(handler, (temperatureValue, powerValue) -> {
-            latestSystemStatusSnapshot = latestSystemStatusSnapshot.withThermalPower(
-                    temperatureValue,
-                    powerValue);
             thermalPowerQueryInFlight = false;
+            latestTemperatureValue = temperatureValue;
+            latestPowerValue = powerValue;
             if (!isPopupShowing()) {
                 return;
             }
-            updateSystemStatusViews(latestSystemStatusSnapshot);
+            updateThermalPowerStatusView(latestTemperatureValue, latestPowerValue);
         });
     }
 
@@ -1605,12 +1649,14 @@ final class ClockDetailPopupController {
         }
         memoryQueryInFlight = true;
         systemStatusProvider.requestMemoryRows(handler, memoryRows -> {
-            latestSystemStatusSnapshot = latestSystemStatusSnapshot.withMemoryRows(memoryRows);
             memoryQueryInFlight = false;
+            latestMemoryRows = memoryRows != null && memoryRows.length > 0
+                    ? memoryRows
+                    : ClockDetailSystemStatusSnapshot.EMPTY.memoryRows;
             if (!isPopupShowing()) {
                 return;
             }
-            updateSystemStatusViews(latestSystemStatusSnapshot);
+            updateMemoryStatusView(latestMemoryRows);
         });
     }
 
@@ -1672,13 +1718,14 @@ final class ClockDetailPopupController {
         }
     }
 
-    private String buildThermalPowerValue(ClockDetailSystemStatusSnapshot snapshot) {
-        ClockDetailSystemStatusSnapshot safeSnapshot = snapshot != null
-                ? snapshot
-                : ClockDetailSystemStatusSnapshot.EMPTY;
-        return "温度 " + safeSnapshot.temperatureValue
+    private static String buildThermalPowerValue(String temperatureValue, String powerValue) {
+        return "温度 " + sanitizeStatusText(
+                temperatureValue,
+                ClockDetailSystemStatusSnapshot.EMPTY.temperatureValue)
                 + "\n"
-                + "功率 " + safeSnapshot.powerValue;
+                + "功率 " + sanitizeStatusText(
+                        powerValue,
+                        ClockDetailSystemStatusSnapshot.EMPTY.powerValue);
     }
 
     private static LinearLayout buildStatusGrid(
@@ -1818,12 +1865,6 @@ final class ClockDetailPopupController {
         root.addView(labelView, matchWidth());
         root.addView(valueView, matchWidthWithTop(context, 4));
         return new StatTile(root, labelView, valueView);
-    }
-
-    private static FrameLayout.LayoutParams frameMatchWidth() {
-        return new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT);
     }
 
     private static FrameLayout.LayoutParams frameWrapContent() {
