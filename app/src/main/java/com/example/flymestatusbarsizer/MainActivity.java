@@ -132,6 +132,7 @@ public class MainActivity extends Activity {
     private final ClockExpressionEditor clockExpressionEditor = new ClockExpressionEditor(this);
     private final ImeToolbarEditor imeToolbarEditor = new ImeToolbarEditor(this);
     private final SettingsCardFactory settingsCardFactory = new SettingsCardFactory(this);
+    private final SettingsUiFactory settingsUiFactory = new SettingsUiFactory(this);
 
     enum Page {
         HOME("Flyme Status Bar", "重构后的总览入口，保留原有配置逻辑，只调整信息架构与视觉层级。", "Flyme 模块", true),
@@ -1028,35 +1029,7 @@ public class MainActivity extends Activity {
 
     void addActionButtonRow(LinearLayout root, String titleText, String subtitleText,
             String buttonText, Runnable action) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-
-        LinearLayout textColumn = new LinearLayout(this);
-        textColumn.setOrientation(LinearLayout.VERTICAL);
-
-        TextView title = new TextView(this);
-        title.setText(titleText);
-        title.setTextColor(colorText);
-        title.setTextSize(16);
-        textColumn.addView(title, matchWrap());
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(13);
-        subtitle.setPadding(0, dp(4), dp(10), 0);
-        textColumn.addView(subtitle, matchWrap());
-
-        TextView button = filledButton(buttonText, colorPrimary, Color.WHITE);
-        setTapClickListener(button, v -> action.run());
-
-        row.addView(textColumn, new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        row.addView(button, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-        root.addView(row, matchWrap());
+        settingsUiFactory.addActionButtonRow(root, titleText, subtitleText, buttonText, action);
     }
 
     void applyAllPositionOffsets() {
@@ -1091,32 +1064,11 @@ public class MainActivity extends Activity {
     }
 
     void addDivider(LinearLayout root) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
-        lp.topMargin = dp(14);
-        lp.bottomMargin = dp(14);
-        root.addView(buildDividerView(), lp);
-    }
-
-    View buildDividerView() {
-        View divider = new View(this);
-        divider.setBackgroundColor(colorStroke);
-        return divider;
+        settingsUiFactory.addDivider(root);
     }
 
     void addProfileSectionHeader(LinearLayout root, String titleText, String subtitleText) {
-        TextView title = new TextView(this);
-        title.setText(titleText);
-        title.setTextColor(colorPrimary);
-        title.setTextSize(15);
-        root.addView(title, matchWrap());
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(12);
-        subtitle.setPadding(0, dp(4), 0, 0);
-        root.addView(subtitle, matchWrapWithTop(2));
+        settingsUiFactory.addProfileSectionHeader(root, titleText, subtitleText);
     }
 
     void showChoiceMenu(View anchor, String key, int defaultValue,
@@ -1722,25 +1674,11 @@ public class MainActivity extends Activity {
     }
 
     TextView chip(String text, int backgroundColor, int textColor) {
-        TextView view = new TextView(this);
-        view.setText(text);
-        view.setTextColor(textColor);
-        view.setTextSize(12);
-        view.setGravity(Gravity.CENTER);
-        view.setPadding(dp(12), dp(6), dp(12), dp(6));
-        view.setBackground(roundRect(backgroundColor, 99));
-        return view;
+        return settingsUiFactory.chip(text, backgroundColor, textColor);
     }
 
     TextView filledButton(String text, int backgroundColor, int textColor) {
-        TextView view = new TextView(this);
-        view.setText(text);
-        view.setTextColor(textColor);
-        view.setTextSize(14);
-        view.setGravity(Gravity.CENTER);
-        view.setPadding(dp(14), dp(10), dp(14), dp(10));
-        view.setBackground(roundRect(backgroundColor, 999));
-        return view;
+        return settingsUiFactory.filledButton(text, backgroundColor, textColor);
     }
 
     GradientDrawable gradientCard() {
@@ -2015,32 +1953,23 @@ public class MainActivity extends Activity {
     }
 
     GradientDrawable roundRect(int color, int radiusDp) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(color);
-        drawable.setCornerRadius(dp(radiusDp));
-        return drawable;
+        return settingsUiFactory.roundRect(color, radiusDp);
     }
 
     GradientDrawable outlinedRect(int color, int strokeColor, int strokeWidthDp, int radiusDp) {
-        GradientDrawable drawable = roundRect(color, radiusDp);
-        drawable.setStroke(dp(strokeWidthDp), strokeColor);
-        return drawable;
+        return settingsUiFactory.outlinedRect(color, strokeColor, strokeWidthDp, radiusDp);
     }
 
     LinearLayout.LayoutParams matchWrap() {
-        return new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
+        return settingsUiFactory.matchWrap();
     }
 
     LinearLayout.LayoutParams matchWrapWithTop(int topDp) {
-        LinearLayout.LayoutParams lp = matchWrap();
-        lp.topMargin = dp(topDp);
-        return lp;
+        return settingsUiFactory.matchWrapWithTop(topDp);
     }
 
     int dp(int value) {
-        return Math.round(value * getResources().getDisplayMetrics().density);
+        return settingsUiFactory.dp(value);
     }
 
     private int getStatusBarInset() {
