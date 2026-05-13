@@ -30,6 +30,7 @@ import java.util.TimeZone;
 final class ClockDetailPopupController {
     private static final long AUTO_DISMISS_DELAY_MS = 8000L;
     private static final long REFRESH_INTERVAL_MS = 33L;
+    private static final int HORIZONTAL_MARGIN_DP = 16;
 
     private final WeakReference<TextView> anchorRef;
     private final Handler handler;
@@ -59,8 +60,8 @@ final class ClockDetailPopupController {
         this.contentView = buildContentView(anchor.getContext());
         this.timeView = buildTimeView(anchor.getContext());
         this.dateView = buildDateView(anchor.getContext());
-        this.contentView.addView(timeView, wrapContent());
-        this.contentView.addView(dateView, wrapContentWithTop(anchor.getContext(), 5));
+        this.contentView.addView(timeView, matchWidth());
+        this.contentView.addView(dateView, matchWidthWithTop(anchor.getContext(), 5));
         this.popupWindow = new PopupWindow(
                 contentView,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -270,14 +271,11 @@ final class ClockDetailPopupController {
 
     private void measureContent() {
         android.content.Context context = contentView.getContext();
-        int margin = dp(context, 12);
-        int maxWidth = Math.max(1, context.getResources().getDisplayMetrics().widthPixels - (margin * 2));
+        int margin = dp(context, HORIZONTAL_MARGIN_DP);
+        popupWidth = Math.max(1, context.getResources().getDisplayMetrics().widthPixels - (margin * 2));
         contentView.measure(
-                View.MeasureSpec.makeMeasureSpec(maxWidth, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(popupWidth, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-        popupWidth = Math.min(
-                maxWidth,
-                Math.max(contentView.getMeasuredWidth(), dp(context, 220)));
         popupHeight = Math.max(contentView.getMeasuredHeight(), 0);
     }
 
@@ -289,7 +287,7 @@ final class ClockDetailPopupController {
         int[] anchorLocation = new int[2];
         anchor.getLocationOnScreen(anchorLocation);
         int screenWidth = anchor.getResources().getDisplayMetrics().widthPixels;
-        int margin = dp(anchor.getContext(), 12);
+        int margin = dp(anchor.getContext(), HORIZONTAL_MARGIN_DP);
         int desiredLeft = anchorLocation[0];
         int maxLeft = Math.max(margin, screenWidth - margin - popupWidth);
         int clampedLeft = Math.max(margin, Math.min(desiredLeft, maxLeft));
@@ -392,13 +390,12 @@ final class ClockDetailPopupController {
     private static LinearLayout buildContentView(android.content.Context context) {
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_VERTICAL);
+        root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setPadding(
-                dp(context, 16),
+                dp(context, 18),
                 dp(context, 14),
-                dp(context, 16),
+                dp(context, 18),
                 dp(context, 14));
-        root.setMinimumWidth(dp(context, 220));
         root.setClickable(true);
         root.setFocusable(true);
         return root;
@@ -408,6 +405,8 @@ final class ClockDetailPopupController {
         TextView view = new TextView(context);
         view.setIncludeFontPadding(false);
         view.setSingleLine(true);
+        view.setGravity(Gravity.CENTER);
+        view.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 36f);
         view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         view.setLetterSpacing(-0.01f);
@@ -417,21 +416,23 @@ final class ClockDetailPopupController {
     private static TextView buildDateView(android.content.Context context) {
         TextView view = new TextView(context);
         view.setIncludeFontPadding(false);
+        view.setGravity(Gravity.CENTER);
+        view.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
         view.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         return view;
     }
 
-    private static LinearLayout.LayoutParams wrapContent() {
+    private static LinearLayout.LayoutParams matchWidth() {
         return new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
     }
 
-    private static LinearLayout.LayoutParams wrapContentWithTop(
+    private static LinearLayout.LayoutParams matchWidthWithTop(
             android.content.Context context,
             int topMarginDp) {
-        LinearLayout.LayoutParams params = wrapContent();
+        LinearLayout.LayoutParams params = matchWidth();
         params.topMargin = dp(context, topMarginDp);
         return params;
     }
