@@ -209,15 +209,16 @@ final class ClockExpressionEditor {
                     return false;
                 }
                 moveToken((String) ((View) localState).getTag(), (String) target.getTag());
-                renderEditor();
                 return true;
             case DragEvent.ACTION_DRAG_ENDED:
                 target.setBackground(buildRowBackground(enabledTokens.contains(target.getTag()), false));
                 Object draggedView = event.getLocalState();
                 if (draggedView instanceof View) {
                     ((View) draggedView).setAlpha(1f);
+                    if (target == draggedView) {
+                        scheduleRenderEditor();
+                    }
                 }
-                renderEditor();
                 return true;
             default:
                 return true;
@@ -258,6 +259,15 @@ final class ClockExpressionEditor {
         }
         String format = buildFormat();
         previewView.setText(TextUtils.isEmpty(format) ? "未设置" : format);
+    }
+
+    private void scheduleRenderEditor() {
+        View host = orderContainer != null ? orderContainer : previewView;
+        if (host != null) {
+            host.post(this::renderEditor);
+        } else {
+            renderEditor();
+        }
     }
 
     private void applyDraft() {

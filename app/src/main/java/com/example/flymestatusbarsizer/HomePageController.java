@@ -1,5 +1,6 @@
 package com.example.flymestatusbarsizer;
 
+import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
@@ -11,8 +12,12 @@ final class HomePageController {
     }
 
     static void bind(MainActivity activity, LinearLayout root) {
+        root.setPadding(
+                root.getPaddingLeft(),
+                root.getPaddingTop() + activity.statusBarInset(),
+                root.getPaddingRight(),
+                root.getPaddingBottom());
         root.addView(buildHeroCard(activity), PageViewUtils.matchWrap());
-        root.addView(buildSectionLabel(activity, "功能入口"), PageViewUtils.matchWrapWithTop(activity, 18));
         root.addView(buildEntryCard(activity,
                 "图标与电池",
                 "图标缩放、电池样式、通知图标和信号接管",
@@ -41,6 +46,13 @@ final class HomePageController {
                 0x1ABA1A1A,
                 v -> activity.openPage(MainActivity.Page.ADVANCED_DEBUG)),
                 PageViewUtils.matchWrapWithTop(activity, 12));
+        root.addView(buildEntryCard(activity,
+                "关于与支持",
+                "项目地址、交流群、版本构建信息和目标作用域说明",
+                activity.primaryDeepColor(),
+                0x1A003B73,
+                v -> activity.openPage(MainActivity.Page.ABOUT)),
+                PageViewUtils.matchWrapWithTop(activity, 12));
     }
 
     private static View buildHeroCard(MainActivity activity) {
@@ -54,18 +66,10 @@ final class HomePageController {
         card.setBackground(buildHeroBackground(activity));
 
         TextView title = new TextView(activity);
-        title.setText("FlymeStatusBarSizer");
+        title.setText("FlymeBarSizer");
         title.setTextColor(Color.WHITE);
         title.setTextSize(24);
         card.addView(title, PageViewUtils.matchWrap());
-
-        TextView aboutButton = buildChip(activity, "关于与支持", Color.WHITE, activity.primaryDeepColor());
-        aboutButton.setPadding(
-                PageViewUtils.dp(activity, 14),
-                PageViewUtils.dp(activity, 10),
-                PageViewUtils.dp(activity, 14),
-                PageViewUtils.dp(activity, 10));
-        activity.setTapClickListener(aboutButton, v -> activity.openPage(MainActivity.Page.ABOUT));
 
         TextView restartButton = buildChip(activity, "重启 SystemUI", Color.WHITE, 0x26FFFFFF);
         restartButton.setPadding(
@@ -74,15 +78,7 @@ final class HomePageController {
                 PageViewUtils.dp(activity, 14),
                 PageViewUtils.dp(activity, 10));
         activity.setTapClickListener(restartButton, v -> activity.restartSystemUi());
-
-        LinearLayout actionRow = new LinearLayout(activity);
-        actionRow.setOrientation(LinearLayout.HORIZONTAL);
-        actionRow.setGravity(Gravity.CENTER_VERTICAL);
-        actionRow.addView(aboutButton, PageViewUtils.wrapWrap());
-        LinearLayout.LayoutParams restartLp = PageViewUtils.wrapWrap();
-        restartLp.leftMargin = PageViewUtils.dp(activity, 10);
-        actionRow.addView(restartButton, restartLp);
-        card.addView(actionRow, PageViewUtils.wrapWrapWithTop(activity, 18));
+        card.addView(restartButton, PageViewUtils.wrapWrapWithTop(activity, 18));
         return card;
     }
 
@@ -107,7 +103,7 @@ final class HomePageController {
                 accentColor,
                 18,
                 activity));
-        card.setOnClickListener(listener);
+        activity.setTapClickListener(card, listener);
 
         LinearLayout textGroup = new LinearLayout(activity);
         textGroup.setOrientation(LinearLayout.VERTICAL);
@@ -161,14 +157,6 @@ final class HomePageController {
                 PageViewUtils.dp(activity, 6));
         chip.setBackground(buildSolidBackground(backgroundColor, 999, activity));
         return chip;
-    }
-
-    private static View buildSectionLabel(MainActivity activity, String text) {
-        TextView label = new TextView(activity);
-        label.setText(text);
-        label.setTextColor(activity.primaryColor());
-        label.setTextSize(13);
-        return label;
     }
 
     private static GradientDrawable buildHeroBackground(MainActivity activity) {

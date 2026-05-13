@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Flyme Status Bar Sizer</string>
+    <string name="app_name">FlymeBarSizer</string>
     <string name="module_description">Enlarge Flyme SystemUI status bar icons.</string>
 </resources>

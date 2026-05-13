@@ -8,6 +8,7 @@ import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -1445,17 +1446,14 @@ public class MainActivity extends Activity {
         if (toggle == null) {
             return;
         }
-        int[][] states = new int[][]{
-                new int[]{android.R.attr.state_checked},
-                new int[]{-android.R.attr.state_checked}
-        };
-        toggle.setTrackTintList(new ColorStateList(
-                states,
-                new int[]{colorPrimary, colorSurfaceStrong}));
-        toggle.setThumbTintList(new ColorStateList(
-                states,
-                new int[]{Color.WHITE, Color.WHITE}));
         toggle.setShowText(false);
+        toggle.setSplitTrack(false);
+        toggle.setSwitchMinWidth(dp(52));
+        toggle.setMinWidth(dp(52));
+        toggle.setTrackTintList(null);
+        toggle.setThumbTintList(null);
+        toggle.setTrackDrawable(buildSwitchTrackDrawable());
+        toggle.setThumbDrawable(buildSwitchThumbDrawable());
     }
 
     void styleSeekBar(SeekBar seekBar) {
@@ -1468,6 +1466,40 @@ public class MainActivity extends Activity {
         seekBar.setProgressTintList(activeTint);
         seekBar.setSecondaryProgressTintList(inactiveTint);
         seekBar.setProgressBackgroundTintList(inactiveTint);
+    }
+
+    private StateListDrawable buildSwitchTrackDrawable() {
+        StateListDrawable drawable = new StateListDrawable();
+        drawable.addState(new int[]{android.R.attr.state_checked},
+                buildSwitchTrackShape(colorPrimary));
+        drawable.addState(new int[0], buildSwitchTrackShape(colorSurfaceStrong));
+        return drawable;
+    }
+
+    private StateListDrawable buildSwitchThumbDrawable() {
+        StateListDrawable drawable = new StateListDrawable();
+        drawable.addState(new int[]{android.R.attr.state_checked},
+                buildSwitchThumbShape(Color.WHITE, colorPrimary));
+        drawable.addState(new int[0], buildSwitchThumbShape(Color.WHITE, colorStroke));
+        return drawable;
+    }
+
+    private GradientDrawable buildSwitchTrackShape(int color) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.RECTANGLE);
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(999));
+        drawable.setSize(dp(44), dp(24));
+        return drawable;
+    }
+
+    private GradientDrawable buildSwitchThumbShape(int color, int strokeColor) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.OVAL);
+        drawable.setColor(color);
+        drawable.setStroke(dp(1), strokeColor);
+        drawable.setSize(dp(20), dp(20));
+        return drawable;
     }
 
     void performTapHaptic(View view) {
@@ -1888,6 +1920,10 @@ public class MainActivity extends Activity {
 
     int dp(int value) {
         return settingsUiFactory.dp(value);
+    }
+
+    int statusBarInset() {
+        return getStatusBarInset();
     }
 
     private int getStatusBarInset() {
