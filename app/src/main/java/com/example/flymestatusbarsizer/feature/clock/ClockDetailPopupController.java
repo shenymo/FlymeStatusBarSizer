@@ -2,12 +2,14 @@ package com.example.flymestatusbarsizer.feature.clock;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
+import android.os.Build;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.SystemClock;
+import android.text.Layout;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.format.DateFormat;
@@ -15,12 +17,14 @@ import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
 
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
@@ -29,8 +33,9 @@ import java.util.TimeZone;
 
 final class ClockDetailPopupController {
     private static final long AUTO_DISMISS_DELAY_MS = 8000L;
-    private static final long REFRESH_INTERVAL_MS = 33L;
-    private static final long SYSTEM_STATUS_REFRESH_INTERVAL_MS = 1000L;
+    private static final long MILLIS_REFRESH_INTERVAL_MS = 33L;
+    private static final long SECOND_REFRESH_INTERVAL_MS = 1000L;
+    private static final long SYSTEM_STATUS_REFRESH_INTERVAL_MS = 2000L;
     private static final int HORIZONTAL_MARGIN_DP = 16;
     private static final int STATUS_TILE_GAP_DP = 8;
 
@@ -41,8 +46,7 @@ final class ClockDetailPopupController {
     private final TextView dateView;
     private final LinearLayout statusGridView;
     private final StatTile memoryTile;
-    private final StatTile temperatureTile;
-    private final StatTile powerTile;
+    private final StatTile thermalPowerTile;
     private final PopupWindow popupWindow;
     private final ClockDetailSystemStatusProvider systemStatusProvider;
     private final Runnable refreshRunnable = this::refreshVisibleContent;
@@ -50,12 +54,18 @@ final class ClockDetailPopupController {
     private final Runnable autoDismissRunnable = this::dismiss;
 
     private boolean enabled;
+    private boolean showMilliseconds = true;
+    private boolean systemStatusQueryInFlight;
     private Palette currentPalette;
+    private ClockDetailSystemStatusSnapshot latestSystemStatusSnapshot =
+            ClockDetailSystemStatusSnapshot.EMPTY;
     private Locale cachedLocale;
     private TimeZone cachedTimeZone;
     private boolean cached24HourMode;
     private SimpleDateFormat timeFormatter;
     private SimpleDateFormat dateFormatter;
+    private int lastMillisecondsStart = -1;
+    private int lastMillisecondsEnd = -1;
     private int popupWidth;
     private int popupHeight;
 
@@ -69,9 +79,8 @@ final class ClockDetailPopupController {
         this.timeView = buildTimeView(anchor.getContext());
         this.dateView = buildDateView(anchor.getContext());
         this.memoryTile = buildStatTile(anchor.getContext(), "系统内存");
-        this.temperatureTile = buildStatTile(anchor.getContext(), "电池温度");
-        this.powerTile = buildStatTile(anchor.getContext(), "当前功率");
-        this.statusGridView = buildStatusGrid(anchor.getContext(), memoryTile, temperatureTile, powerTile);
+        this.thermalPowerTile = buildStatTile(anchor.getContext(), "电池温度 / 功率", true);
+        this.statusGridView = buildStatusGrid(anchor.getContext(), memoryTile, thermalPowerTile);
         this.contentView.addView(timeView, matchWidth());
         this.contentView.addView(dateView, matchWidthWithTop(anchor.getContext(), 5));
         this.contentView.addView(statusGridView, matchWidthWithTop(anchor.getContext(), 12));
@@ -79,14 +88,17 @@ final class ClockDetailPopupController {
                 contentView,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                true);
+                false);
         this.systemStatusProvider = new ClockDetailSystemStatusProvider(anchor.getContext());
         popupWindow.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        popupWindow.setOutsideTouchable(true);
+        popupWindow.setFocusable(false);
+        popupWindow.setOutsideTouchable(false);
         popupWindow.setTouchable(true);
         popupWindow.setClippingEnabled(true);
         popupWindow.setInputMethodMode(PopupWindow.INPUT_METHOD_NOT_NEEDED);
         popupWindow.setElevation(dp(anchor.getContext(), 18));
+        disableTouchModal(popupWindow);
+        timeView.setOnTouchListener(this::handleTimeViewTouch);
         anchor.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
             @Override
             public void onViewAttachedToWindow(View v) {
@@ -156,13 +168,14 @@ final class ClockDetailPopupController {
         FlymeStatusBarSizer.disableAncestorClipping(anchor, 6);
         applyPalette(resolvePalette());
         refreshContent();
-        refreshSystemStatus();
+        updateSystemStatusViews(latestSystemStatusSnapshot);
         measureContent();
         int xOffset = calculateXOffset();
         int yOffset = dp(anchor.getContext(), 8);
         popupWindow.setWidth(popupWidth);
         popupWindow.setHeight(popupHeight);
         popupWindow.showAsDropDown(anchor, xOffset, yOffset, Gravity.START);
+        requestSystemStatusRefresh();
         animatePopupIn();
         scheduleAutoDismiss();
         scheduleRefresh();
@@ -180,7 +193,7 @@ final class ClockDetailPopupController {
             return;
         }
         refreshContent();
-        handler.postAtTime(refreshRunnable, SystemClock.uptimeMillis() + REFRESH_INTERVAL_MS);
+        scheduleRefresh();
     }
 
     private void refreshVisibleSystemStatus() {
@@ -193,7 +206,7 @@ final class ClockDetailPopupController {
             dismiss();
             return;
         }
-        refreshSystemStatus();
+        requestSystemStatusRefresh();
         handler.postAtTime(
                 systemStatusRefreshRunnable,
                 SystemClock.uptimeMillis() + SYSTEM_STATUS_REFRESH_INTERVAL_MS);
@@ -243,6 +256,11 @@ final class ClockDetailPopupController {
 
     private CharSequence buildTimeText(Date now) {
         String baseTime = timeFormatter != null ? timeFormatter.format(now) : "";
+        if (!showMilliseconds) {
+            lastMillisecondsStart = -1;
+            lastMillisecondsEnd = -1;
+            return baseTime;
+        }
         Calendar calendar = Calendar.getInstance(
                 cachedTimeZone != null ? cachedTimeZone : TimeZone.getDefault(),
                 cachedLocale != null ? cachedLocale : Locale.getDefault());
@@ -254,6 +272,8 @@ final class ClockDetailPopupController {
         String fullText = baseTime + "." + millis;
         SpannableStringBuilder builder = new SpannableStringBuilder(fullText);
         int millisStart = baseTime.length();
+        lastMillisecondsStart = millisStart;
+        lastMillisecondsEnd = fullText.length();
         builder.setSpan(
                 new RelativeSizeSpan(0.52f),
                 millisStart,
@@ -274,7 +294,15 @@ final class ClockDetailPopupController {
         if (!popupWindow.isShowing()) {
             return;
         }
-        handler.postAtTime(refreshRunnable, SystemClock.uptimeMillis() + REFRESH_INTERVAL_MS);
+        long next;
+        long now = SystemClock.uptimeMillis();
+        if (showMilliseconds) {
+            next = now + MILLIS_REFRESH_INTERVAL_MS;
+        } else {
+            next = ((now / SECOND_REFRESH_INTERVAL_MS) * SECOND_REFRESH_INTERVAL_MS)
+                    + SECOND_REFRESH_INTERVAL_MS;
+        }
+        handler.postAtTime(refreshRunnable, next);
     }
 
     private void scheduleSystemStatusRefresh() {
@@ -360,8 +388,7 @@ final class ClockDetailPopupController {
         timeView.setTextColor(palette.primaryTextColor);
         dateView.setTextColor(palette.secondaryTextColor);
         applyStatTilePalette(memoryTile, palette);
-        applyStatTilePalette(temperatureTile, palette);
-        applyStatTilePalette(powerTile, palette);
+        applyStatTilePalette(thermalPowerTile, palette);
     }
 
     private Palette resolvePalette() {
@@ -442,8 +469,6 @@ final class ClockDetailPopupController {
                 dp(context, 14),
                 dp(context, 18),
                 dp(context, 14));
-        root.setClickable(true);
-        root.setFocusable(true);
         return root;
     }
 
@@ -451,12 +476,57 @@ final class ClockDetailPopupController {
         TextView view = new TextView(context);
         view.setIncludeFontPadding(false);
         view.setSingleLine(true);
+        view.setClickable(true);
         view.setGravity(Gravity.CENTER);
         view.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 36f);
         view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         view.setLetterSpacing(-0.01f);
         return view;
+    }
+
+    private boolean handleTimeViewTouch(View view, MotionEvent event) {
+        if (!(view instanceof TextView) || event == null) {
+            return false;
+        }
+        if (event.getAction() != MotionEvent.ACTION_UP) {
+            return false;
+        }
+        TextView textView = (TextView) view;
+        if (!shouldToggleMilliseconds(textView, event)) {
+            return false;
+        }
+        textView.performClick();
+        toggleMillisecondsVisibility();
+        return true;
+    }
+
+    private boolean shouldToggleMilliseconds(TextView view, MotionEvent event) {
+        if (!popupWindow.isShowing()) {
+            return false;
+        }
+        Layout layout = view.getLayout();
+        if (layout == null) {
+            return false;
+        }
+        int line = layout.getLineForVertical((int) event.getY());
+        float textX = event.getX() - view.getTotalPaddingLeft() + view.getScrollX();
+        if (textX < layout.getLineLeft(line) || textX > layout.getLineRight(line)) {
+            return false;
+        }
+        if (!showMilliseconds) {
+            return true;
+        }
+        int offset = layout.getOffsetForHorizontal(line, textX);
+        return offset >= lastMillisecondsStart
+                && offset < lastMillisecondsEnd;
+    }
+
+    private void toggleMillisecondsVisibility() {
+        showMilliseconds = !showMilliseconds;
+        refreshContent();
+        scheduleRefresh();
+        scheduleAutoDismiss();
     }
 
     private static TextView buildDateView(android.content.Context context) {
@@ -469,11 +539,45 @@ final class ClockDetailPopupController {
         return view;
     }
 
-    private void refreshSystemStatus() {
-        ClockDetailSystemStatusSnapshot snapshot = systemStatusProvider.querySnapshot();
-        memoryTile.valueView.setText(snapshot.memoryValue);
-        temperatureTile.valueView.setText(snapshot.temperatureValue);
-        powerTile.valueView.setText(snapshot.powerValue);
+    private void updateSystemStatusViews(ClockDetailSystemStatusSnapshot snapshot) {
+        ClockDetailSystemStatusSnapshot safeSnapshot = snapshot != null
+                ? snapshot
+                : ClockDetailSystemStatusSnapshot.EMPTY;
+        memoryTile.valueView.setText(safeSnapshot.memoryValue);
+        thermalPowerTile.valueView.setText(buildThermalPowerValue(safeSnapshot));
+    }
+
+    private void requestSystemStatusRefresh() {
+        if (systemStatusQueryInFlight) {
+            return;
+        }
+        systemStatusQueryInFlight = true;
+        systemStatusProvider.requestSnapshot(handler, snapshot -> {
+            latestSystemStatusSnapshot = snapshot != null
+                    ? snapshot
+                    : ClockDetailSystemStatusSnapshot.EMPTY;
+            systemStatusQueryInFlight = false;
+            if (!popupWindow.isShowing()) {
+                return;
+            }
+            updateSystemStatusViews(latestSystemStatusSnapshot);
+        });
+    }
+
+    private static void disableTouchModal(PopupWindow popupWindow) {
+        if (popupWindow == null) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            popupWindow.setTouchModal(false);
+            return;
+        }
+        try {
+            Method method = PopupWindow.class.getDeclaredMethod("setTouchModal", boolean.class);
+            method.setAccessible(true);
+            method.invoke(popupWindow, false);
+        } catch (Throwable ignored) {
+        }
     }
 
     private void applyStatTilePalette(StatTile tile, Palette palette) {
@@ -491,26 +595,24 @@ final class ClockDetailPopupController {
         tile.valueView.setTextColor(palette.primaryTextColor);
     }
 
+    private String buildThermalPowerValue(ClockDetailSystemStatusSnapshot snapshot) {
+        ClockDetailSystemStatusSnapshot safeSnapshot = snapshot != null
+                ? snapshot
+                : ClockDetailSystemStatusSnapshot.EMPTY;
+        return "温度 " + safeSnapshot.temperatureValue
+                + "\n"
+                + "功率 " + safeSnapshot.powerValue;
+    }
+
     private static LinearLayout buildStatusGrid(
             android.content.Context context,
             StatTile memoryTile,
-            StatTile temperatureTile,
-            StatTile powerTile) {
+            StatTile thermalPowerTile) {
         LinearLayout grid = new LinearLayout(context);
         grid.setOrientation(LinearLayout.VERTICAL);
 
-        LinearLayout topRow = buildStatusRow(context);
-        topRow.addView(memoryTile.root, weightCell());
-        topRow.addView(temperatureTile.root, weightCellWithStart(context, STATUS_TILE_GAP_DP));
-
-        LinearLayout bottomRow = buildStatusRow(context);
-        bottomRow.addView(powerTile.root, weightCell());
-        View placeholder = new View(context);
-        placeholder.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        bottomRow.addView(placeholder, weightCellWithStart(context, STATUS_TILE_GAP_DP));
-
-        grid.addView(topRow, matchWidth());
-        grid.addView(bottomRow, matchWidthWithTop(context, STATUS_TILE_GAP_DP));
+        grid.addView(memoryTile.root, matchWidth());
+        grid.addView(thermalPowerTile.root, matchWidthWithTop(context, STATUS_TILE_GAP_DP));
         return grid;
     }
 
@@ -522,6 +624,13 @@ final class ClockDetailPopupController {
     }
 
     private static StatTile buildStatTile(android.content.Context context, String label) {
+        return buildStatTile(context, label, false);
+    }
+
+    private static StatTile buildStatTile(
+            android.content.Context context,
+            String label,
+            boolean multiLineValue) {
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
@@ -541,7 +650,11 @@ final class ClockDetailPopupController {
 
         TextView valueView = new TextView(context);
         valueView.setIncludeFontPadding(false);
-        valueView.setSingleLine(true);
+        valueView.setSingleLine(!multiLineValue);
+        if (multiLineValue) {
+            valueView.setMaxLines(3);
+            valueView.setLineSpacing(0f, 1.08f);
+        }
         valueView.setText("--");
         valueView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
         valueView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
