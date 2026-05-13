@@ -36,6 +36,7 @@ import android.widget.TextView;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
@@ -59,6 +60,7 @@ final class ClockDetailPopupController {
     private static final int POPUP_SHADOW_TRANSLATION_Z_DP = 6;
     private static final int POPUP_BACKGROUND_BLUR_RADIUS_DP = 32;
     private static final int POPUP_BACKGROUND_BLUR_Z_ORDER_BOTTOM = -1;
+    private static final int INTERNAL_WINDOW_TYPE_UNSET = 0;
     private static final int INTERNAL_WINDOW_TYPE_STATUS_BAR_SUB_PANEL = 2017;
     private static final int INTERNAL_WINDOW_TYPE_NOTIFICATION_SHADE = 2040;
     private static final int INTERNAL_WINDOW_TYPE_STATUS_BAR_ADDITIONAL = 2041;
@@ -83,6 +85,11 @@ final class ClockDetailPopupController {
             new PathInterpolator(0.16f, 1f, 0.28f, 1f);
     private static final PathInterpolator POPUP_OUT_INTERPOLATOR =
             new PathInterpolator(0.4f, 0f, 0.82f, 0.72f);
+    private static int cachedInternalWindowType = INTERNAL_WINDOW_TYPE_UNSET;
+    private static boolean trustedOverlayMethodResolved;
+    private static Method trustedOverlayMethod;
+    private static boolean trustedOverlayPrivateFlagsFieldResolved;
+    private static Field trustedOverlayPrivateFlagsField;
 
     private final WeakReference<TextView> anchorRef;
     private final Handler handler;
@@ -131,6 +138,7 @@ final class ClockDetailPopupController {
     private SimpleDateFormat timeFormatter;
     private SimpleDateFormat dateFormatter;
     private Calendar reusableDateKeyCalendar;
+    private long lastFormatterValidationSecond = Long.MIN_VALUE;
     private long lastRenderedSecond = Long.MIN_VALUE;
     private int lastRenderedMillisBucket = Integer.MIN_VALUE;
     private long lastDateRefreshSecond = Long.MIN_VALUE;
@@ -149,6 +157,9 @@ final class ClockDetailPopupController {
     private float panelTouchDownRawY;
     private int dragStartPopupLeft;
     private int dragStartPopupTop;
+    private boolean nativePopupBlurCapabilityResolved;
+    private boolean nativePopupBlurSupported;
+    private boolean nativePopupBlurCheckPending;
 
     ClockDetailPopupController(TextView anchor) {
         this.anchorRef = new WeakReference<>(anchor);
@@ -285,8 +296,8 @@ final class ClockDetailPopupController {
         FlymeStatusBarSizer.disableAncestorClipping(anchor, 6);
         applyPalette(resolvePalette());
         showMilliseconds = false;
-        ensureFormatters();
         long nowMillis = System.currentTimeMillis();
+        ensureFormattersForTimestamp(nowMillis, true);
         refreshTimeText(nowMillis, true);
         refreshDateTextIfNeeded(nowMillis, true);
         applyLatestSystemStatusViews();
@@ -314,14 +325,23 @@ final class ClockDetailPopupController {
             dismissImmediately();
             return;
         }
-        boolean formattersChanged = ensureFormatters();
         long nowMillis = System.currentTimeMillis();
+        boolean formattersChanged = ensureFormattersForTimestamp(nowMillis, false);
         refreshTimeText(nowMillis, formattersChanged);
         boolean dateChanged = refreshDateTextIfNeeded(nowMillis, formattersChanged);
         if (formattersChanged || dateChanged) {
             requestPopupLayoutRefresh();
         }
         scheduleRefresh();
+    }
+
+    private boolean ensureFormattersForTimestamp(long nowMillis, boolean forceCheck) {
+        long validationSecond = nowMillis / SECOND_REFRESH_INTERVAL_MS;
+        if (!forceCheck && validationSecond == lastFormatterValidationSecond) {
+            return false;
+        }
+        lastFormatterValidationSecond = validationSecond;
+        return ensureFormatters();
     }
 
     private void refreshVisibleThermalPowerStatus() {
@@ -599,7 +619,7 @@ final class ClockDetailPopupController {
         FrameLayout.LayoutParams params = popupRootView.getLayoutParams()
                 instanceof FrameLayout.LayoutParams
                 ? (FrameLayout.LayoutParams) popupRootView.getLayoutParams()
-                : framePopupContent();
+                : frameWrapContent();
         params.width = popupWidth;
         params.height = popupHeight;
         params.gravity = Gravity.START | Gravity.TOP;
@@ -799,8 +819,7 @@ final class ClockDetailPopupController {
     private void applyPalette(Palette palette) {
         Context context = contentView.getContext();
         currentPalette = palette;
-        contentView.setBackground(null);
-        popupBackgroundView.setBackground(buildPopupBackgroundDrawable(context, palette, false));
+        popupBackgroundView.setBackground(buildPopupBackgroundDrawable(context, palette));
         applyPopupShadowStyle(context, palette);
         timeView.setTextColor(palette.primaryTextColor);
         millisecondsView.setTextColor(palette.accentColor);
@@ -809,21 +828,19 @@ final class ClockDetailPopupController {
         applyStatTilePalette(thermalPowerTile, palette);
     }
 
-    private Drawable buildPopupBackgroundDrawable(
-            Context context,
-            Palette palette,
-            boolean preferNativeBlur) {
-        Drawable nativeBlurDrawable = preferNativeBlur
-                ? tryCreateNativePopupBlurDrawable(popupBackgroundView, palette)
-                : null;
+    private Drawable buildPopupBackgroundDrawable(Context context, Palette palette) {
+        return buildPopupSurfaceDrawable(context, palette);
+    }
+
+    private Drawable buildPopupBlurBackgroundDrawable(Context context, Palette palette) {
+        Drawable nativeBlurDrawable = tryCreateNativePopupBlurDrawable(popupBackgroundView, palette);
         if (nativeBlurDrawable == null) {
-            return buildPopupSurfaceDrawable(context, palette);
+            return null;
         }
-        LayerDrawable layered = new LayerDrawable(new Drawable[]{
+        return new LayerDrawable(new Drawable[]{
                 nativeBlurDrawable,
                 buildPopupStrokeDrawable(context, palette)
         });
-        return layered;
     }
 
     private GradientDrawable buildPopupSurfaceDrawable(Context context, Palette palette) {
@@ -875,16 +892,46 @@ final class ClockDetailPopupController {
         if (!isPopupShowing() || currentPalette == null) {
             return;
         }
+        if (nativePopupBlurCapabilityResolved) {
+            if (nativePopupBlurSupported) {
+                applyNativePopupBlurBackground();
+            }
+            return;
+        }
+        if (nativePopupBlurCheckPending) {
+            return;
+        }
+        nativePopupBlurCheckPending = true;
         popupBackgroundView.post(() -> {
+            nativePopupBlurCheckPending = false;
             if (!isPopupShowing() || currentPalette == null) {
                 return;
             }
-            Drawable blurBackground = buildPopupBackgroundDrawable(
+            Drawable blurBackground = buildPopupBlurBackgroundDrawable(
                     popupBackgroundView.getContext(),
-                    currentPalette,
-                    true);
-            popupBackgroundView.setBackground(blurBackground);
+                    currentPalette);
+            nativePopupBlurCapabilityResolved = true;
+            nativePopupBlurSupported = blurBackground != null;
+            if (blurBackground != null) {
+                popupBackgroundView.setBackground(blurBackground);
+            }
         });
+    }
+
+    private void applyNativePopupBlurBackground() {
+        if (currentPalette == null) {
+            return;
+        }
+        Drawable blurBackground = buildPopupBlurBackgroundDrawable(
+                popupBackgroundView.getContext(),
+                currentPalette);
+        if (blurBackground != null) {
+            popupBackgroundView.setBackground(blurBackground);
+            return;
+        }
+        nativePopupBlurCapabilityResolved = false;
+        nativePopupBlurSupported = false;
+        installNativePopupBlurIfPossible();
     }
 
     private void handlePopupDismissed() {
@@ -901,7 +948,7 @@ final class ClockDetailPopupController {
         dismissAnimationRunning = false;
         if (currentPalette != null) {
             popupBackgroundView.setBackground(
-                    buildPopupBackgroundDrawable(popupBackgroundView.getContext(), currentPalette, false));
+                    buildPopupBackgroundDrawable(popupBackgroundView.getContext(), currentPalette));
         }
         clearAnchorHighlight();
         resetPopupVisualState();
@@ -1226,20 +1273,29 @@ final class ClockDetailPopupController {
         removeOverlayFromViewGroupParent();
         WindowManager windowManager = (WindowManager) windowManagerObject;
         Throwable lastError = null;
-        for (int windowType : INTERNAL_WINDOW_TYPE_CANDIDATES) {
-            WindowManager.LayoutParams params =
-                    buildInternalOverlayLayoutParams(anchor.getContext(), windowType);
-            try {
-                windowManager.addView(overlayView, params);
-                overlayWindowManager = windowManager;
-                overlayAttached = true;
+        int preferredWindowType = cachedInternalWindowType;
+        if (preferredWindowType != INTERNAL_WINDOW_TYPE_UNSET) {
+            lastError = tryAttachOverlayWindow(
+                    windowManager,
+                    anchor.getContext(),
+                    preferredWindowType);
+            if (overlayAttached) {
                 return true;
-            } catch (Throwable throwable) {
-                lastError = throwable;
-                try {
-                    windowManager.removeViewImmediate(overlayView);
-                } catch (Throwable ignored) {
-                }
+            }
+            if (cachedInternalWindowType == preferredWindowType) {
+                cachedInternalWindowType = INTERNAL_WINDOW_TYPE_UNSET;
+            }
+        }
+        for (int windowType : INTERNAL_WINDOW_TYPE_CANDIDATES) {
+            if (windowType == preferredWindowType) {
+                continue;
+            }
+            lastError = tryAttachOverlayWindow(
+                    windowManager,
+                    anchor.getContext(),
+                    windowType);
+            if (overlayAttached) {
+                return true;
             }
         }
         FlymeStatusBarSizer.logClockWarning(
@@ -1248,6 +1304,28 @@ final class ClockDetailPopupController {
         overlayWindowManager = null;
         overlayAttached = false;
         return false;
+    }
+
+    private Throwable tryAttachOverlayWindow(
+            WindowManager windowManager,
+            Context context,
+            int windowType) {
+        WindowManager.LayoutParams params = buildInternalOverlayLayoutParams(context, windowType);
+        try {
+            windowManager.addView(overlayView, params);
+            overlayWindowManager = windowManager;
+            overlayAttached = true;
+            cachedInternalWindowType = windowType;
+            return null;
+        } catch (Throwable throwable) {
+            overlayWindowManager = null;
+            overlayAttached = false;
+            try {
+                windowManager.removeViewImmediate(overlayView);
+            } catch (Throwable ignored) {
+            }
+            return throwable;
+        }
     }
 
     private void detachOverlay() {
@@ -1298,16 +1376,50 @@ final class ClockDetailPopupController {
         if (params == null) {
             return;
         }
-        FlymeStatusBarSizer.invokeNoArgCompat(params, "setTrustedOverlay");
+        Method setTrustedOverlay = resolveTrustedOverlayMethod();
+        if (setTrustedOverlay != null) {
+            try {
+                setTrustedOverlay.invoke(params);
+            } catch (Throwable ignored) {
+            }
+        }
+        Field privateFlagsField = resolveTrustedOverlayPrivateFlagsField();
+        if (privateFlagsField == null) {
+            return;
+        }
         try {
-            Field privateFlagsField = WindowManager.LayoutParams.class.getDeclaredField("privateFlags");
-            privateFlagsField.setAccessible(true);
             int currentFlags = privateFlagsField.getInt(params);
             privateFlagsField.setInt(
                     params,
                     currentFlags | INTERNAL_WINDOW_PRIVATE_FLAG_TRUSTED_OVERLAY);
         } catch (Throwable ignored) {
         }
+    }
+
+    private static Method resolveTrustedOverlayMethod() {
+        if (!trustedOverlayMethodResolved) {
+            try {
+                trustedOverlayMethod = WindowManager.LayoutParams.class.getMethod("setTrustedOverlay");
+            } catch (Throwable ignored) {
+                trustedOverlayMethod = null;
+            }
+            trustedOverlayMethodResolved = true;
+        }
+        return trustedOverlayMethod;
+    }
+
+    private static Field resolveTrustedOverlayPrivateFlagsField() {
+        if (!trustedOverlayPrivateFlagsFieldResolved) {
+            try {
+                trustedOverlayPrivateFlagsField =
+                        WindowManager.LayoutParams.class.getDeclaredField("privateFlags");
+                trustedOverlayPrivateFlagsField.setAccessible(true);
+            } catch (Throwable ignored) {
+                trustedOverlayPrivateFlagsField = null;
+            }
+            trustedOverlayPrivateFlagsFieldResolved = true;
+        }
+        return trustedOverlayPrivateFlagsField;
     }
 
     private void resetTransientPopupState() {
@@ -1486,7 +1598,7 @@ final class ClockDetailPopupController {
         };
         overlay.setClipChildren(false);
         overlay.setClipToPadding(false);
-        overlay.addView(popupContentView, framePopupContent());
+        overlay.addView(popupContentView, frameWrapContent());
         return overlay;
     }
 
@@ -1593,8 +1705,8 @@ final class ClockDetailPopupController {
 
     private void toggleMillisecondsVisibility() {
         showMilliseconds = !showMilliseconds;
-        ensureFormatters();
         long nowMillis = System.currentTimeMillis();
+        ensureFormattersForTimestamp(nowMillis, true);
         refreshTimeText(nowMillis, true);
         refreshDateTextIfNeeded(nowMillis, false);
         requestPopupLayoutRefresh();
@@ -1826,10 +1938,6 @@ final class ClockDetailPopupController {
         return new MemoryStatRowView(row, nameView, valueView, percentView);
     }
 
-    private static StatTile buildStatTile(Context context, String label) {
-        return buildStatTile(context, label, false);
-    }
-
     private static StatTile buildStatTile(
             Context context,
             String label,
@@ -1879,14 +1987,6 @@ final class ClockDetailPopupController {
         return new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT);
-    }
-
-    private static FrameLayout.LayoutParams framePopupContent() {
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT);
-        params.gravity = Gravity.START | Gravity.TOP;
-        return params;
     }
 
     private static LinearLayout.LayoutParams matchWidth() {
