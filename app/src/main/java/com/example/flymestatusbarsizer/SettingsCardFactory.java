@@ -399,20 +399,30 @@ final class SettingsCardFactory {
         page.setOrientation(LinearLayout.VERTICAL);
 
         activity.addProfileSectionHeader(page, "长触动作",
-                "只接管 mBack 长触分支，保留单击和系统其他来源。目标可以填 URL、自定义 scheme 或 intent://。");
+                "只接管 mBack 长触分支，保留单击和系统其他来源。现在可以在 URL / Intent 和底部时间弹窗之间切换。");
         activity.addSwitchRow(page, "接管长触 mBack",
-                "拦截 Flyme SystemUI 里原本唤醒 AICY 的 mBack/Home 长触入口，改为发送模块配置的 Intent。",
+                "拦截 Flyme SystemUI 里原本唤醒 AICY 的 mBack/Home 长触入口，改为执行这里配置的长触动作。",
                 SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
                 SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED);
         activity.addDivider(page);
+        activity.addChoiceRow(page, "长触动作",
+                "可选发送 URL / Intent，或者在 mBack 上方直接弹出完整时间窗口。",
+                SettingsStore.KEY_MBACK_LONG_TOUCH_ACTION,
+                SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION,
+                new int[]{
+                        SettingsStore.MBACK_LONG_TOUCH_ACTION_INTENT_URI,
+                        SettingsStore.MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP
+                },
+                new String[]{"URL / Intent", "底部时间弹窗"});
+        activity.addDivider(page);
         activity.addTextSettingRow(page, "目标 URL / Intent URI",
-                "支持 https://、自定义 scheme 和 intent:// URI。点击右侧内容编辑，留空则回退原始 AICY 行为。",
+                "只在“URL / Intent”模式下生效。支持 https://、自定义 scheme 和 intent:// URI。点击右侧内容编辑，留空则回退原始 AICY 行为。",
                 SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI,
                 SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI,
                 "未设置");
         activity.addDivider(page);
-        activity.addActionButtonRow(page, "测试启动",
-                "不需要长按 mBack，直接用当前配置尝试启动一次，方便先验证 URL / Intent URI 是否可用。",
+        activity.addActionButtonRow(page, "测试 URL / Intent",
+                "只测试当前填写的 URL / Intent URI，不测试底部时间弹窗模式。",
                 "立即测试", activity::testLaunchMBackIntent);
         return page;
     }
@@ -514,7 +524,7 @@ final class SettingsCardFactory {
         activity.addProfileSectionHeader(page, "主状态栏时钟",
                 "只作用于左上角主状态栏时钟，不影响锁屏时钟和其他同类时间控件。");
         activity.addSwitchRow(page, "点击时钟显示详细时间",
-                "点击左上角时钟后弹出日期和毫秒时间详情卡，点击外部或约 8 秒后自动收起。",
+                "点击左上角时钟后先显示时间和日期；窗口内下拉再展开内存、电池和最近任务，上拉直接收回。",
                 SettingsStore.KEY_CLOCK_DETAIL_POPUP_ENABLED,
                 SettingsStore.DEFAULT_CLOCK_DETAIL_POPUP_ENABLED);
         return page;

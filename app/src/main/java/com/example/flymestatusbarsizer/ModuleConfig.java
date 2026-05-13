@@ -53,6 +53,7 @@ final class ModuleConfig {
     int clockAndCarrierTextSizePercent = SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT;
     boolean clockDetailPopupEnabled = SettingsStore.DEFAULT_CLOCK_DETAIL_POPUP_ENABLED;
     boolean mbackLongTouchIntentEnabled = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
+    int mbackLongTouchAction = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION;
     String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
     boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
     boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
@@ -295,6 +296,11 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
                     SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED);
+            config.mbackLongTouchAction = SettingsStore.normalizeMBackLongTouchAction(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_MBACK_LONG_TOUCH_ACTION,
+                            SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION));
             config.mbackLongTouchIntentUri = SettingsStore.readString(
                     prefs,
                     SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI,

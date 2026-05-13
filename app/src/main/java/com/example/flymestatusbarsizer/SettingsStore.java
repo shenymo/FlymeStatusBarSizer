@@ -44,6 +44,7 @@ final class SettingsStore {
     static final String KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = "clock_and_carrier_text_size_percent";
     static final String KEY_CLOCK_DETAIL_POPUP_ENABLED = "clock_detail_popup_enabled";
     static final String KEY_MBACK_LONG_TOUCH_URL_ENABLED = "mback_long_touch_url_enabled";
+    static final String KEY_MBACK_LONG_TOUCH_ACTION = "mback_long_touch_action";
     static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
     static final String KEY_MBACK_NAV_BAR_TRANSPARENT = "mback_nav_bar_transparent";
     static final String KEY_NOTIFICATION_APP_ICON_ENABLED = "notification_app_icon_enabled";
@@ -110,6 +111,9 @@ final class SettingsStore {
     static final int DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = 100;
     static final boolean DEFAULT_CLOCK_DETAIL_POPUP_ENABLED = false;
     static final boolean DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED = false;
+    static final int MBACK_LONG_TOUCH_ACTION_INTENT_URI = 0;
+    static final int MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP = 1;
+    static final int DEFAULT_MBACK_LONG_TOUCH_ACTION = MBACK_LONG_TOUCH_ACTION_INTENT_URI;
     static final String DEFAULT_MBACK_LONG_TOUCH_INTENT_URI = "";
     static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
     static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
@@ -163,6 +167,7 @@ final class SettingsStore {
             KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT,
             KEY_CLOCK_FONT_WEIGHT,
             KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
+            KEY_MBACK_LONG_TOUCH_ACTION,
             KEY_NOTIFICATION_APP_ICON_SIZE_DP,
             KEY_NOTIFICATION_APP_ICON_PADDING_DP,
             KEY_MBACK_INSET_SIZE,
@@ -361,6 +366,8 @@ final class SettingsStore {
                 return DEFAULT_CLOCK_FONT_WEIGHT;
             case KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT:
                 return DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT;
+            case KEY_MBACK_LONG_TOUCH_ACTION:
+                return DEFAULT_MBACK_LONG_TOUCH_ACTION;
             case KEY_NOTIFICATION_APP_ICON_SIZE_DP:
                 return DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
             case KEY_NOTIFICATION_APP_ICON_PADDING_DP:
@@ -451,6 +458,12 @@ final class SettingsStore {
 
     static int normalizeBatteryStyle(int value) {
         return value == BATTERY_STYLE_ONEUI ? BATTERY_STYLE_ONEUI : BATTERY_STYLE_IOS;
+    }
+
+    static int normalizeMBackLongTouchAction(int value) {
+        return value == MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP
+                ? MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP
+                : MBACK_LONG_TOUCH_ACTION_INTENT_URI;
     }
 
     static int normalizeBatteryTextFont(int value) {

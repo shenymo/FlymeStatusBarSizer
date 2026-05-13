@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.mback;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
+import com.example.flymestatusbarsizer.feature.clock.ClockDetailPopupBridge;
 
 import android.content.Context;
 import android.content.Intent;
@@ -11,12 +12,17 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 public final class MBackHooks {
+    private static final int MBACK_LONG_TOUCH_ACTION_INTENT_URI = 0;
+    private static final int MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP = 1;
+    private static WeakReference<View> latestMBackButtonRef = new WeakReference<>(null);
+
     private MBackHooks() {
     }
 
@@ -31,7 +37,9 @@ public final class MBackHooks {
 
     public static String resolveLongTouchIntentUri(Context context, String fromWhere) {
         FlymeStatusBarSizer.MBackConfigSnapshot config = FlymeStatusBarSizer.loadMBackConfig(context);
-        if (!config.mbackLongTouchIntentEnabled || !"press_navigation".equals(fromWhere)) {
+        if (!config.mbackLongTouchIntentEnabled
+                || config.mbackLongTouchAction != MBACK_LONG_TOUCH_ACTION_INTENT_URI
+                || !"press_navigation".equals(fromWhere)) {
             return null;
         }
         String intentUri = config.mbackLongTouchIntentUri;
@@ -40,6 +48,25 @@ public final class MBackHooks {
         }
         String trimmed = intentUri.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    public static boolean shouldShowClockPopup(Context context, String fromWhere) {
+        FlymeStatusBarSizer.MBackConfigSnapshot config = FlymeStatusBarSizer.loadMBackConfig(context);
+        return config.mbackLongTouchIntentEnabled
+                && config.mbackLongTouchAction == MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP
+                && "press_navigation".equals(fromWhere);
+    }
+
+    public static void rememberMBackButton(View view) {
+        if (view == null) {
+            return;
+        }
+        latestMBackButtonRef = new WeakReference<>(view);
+    }
+
+    public static View resolveMBackButtonAnchor() {
+        View view = latestMBackButtonRef.get();
+        return view != null && view.isAttachedToWindow() ? view : null;
     }
 
     public static boolean launchConfiguredIntent(Context context, String intentUri) {
@@ -234,6 +261,18 @@ public final class MBackHooks {
                 module.intercept(method, chain -> {
                     Context context = (Context) chain.getArg(0);
                     String fromWhere = (String) chain.getArg(1);
+                    if (shouldShowClockPopup(context, fromWhere)) {
+                        View anchor = resolveMBackButtonAnchor();
+                        if (anchor == null) {
+                            return chain.proceed();
+                        }
+                        try {
+                            cancelMethod.invoke(null, "show mback clock popup from " + fromWhere);
+                        } catch (Throwable ignored) {
+                        }
+                        anchor.post(() -> ClockDetailPopupBridge.showFromMBack(anchor));
+                        return null;
+                    }
                     String intentUri = resolveLongTouchIntentUri(context, fromWhere);
                     if (intentUri == null) {
                         return chain.proceed();
@@ -281,6 +320,7 @@ public final class MBackHooks {
                         return chain.proceed();
                     }
                     View view = (View) thisObject;
+                    rememberMBackButton(view);
                     if (!shouldHidePill(view)) {
                         return chain.proceed();
                     }

@@ -6402,6 +6402,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     public static final class MBackConfigSnapshot {
         public final boolean enabled;
         public final boolean mbackLongTouchIntentEnabled;
+        public final int mbackLongTouchAction;
         public final String mbackLongTouchIntentUri;
         public final boolean mbackNavBarTransparent;
         public final boolean mbackHidePill;
@@ -6411,6 +6412,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         private MBackConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
             mbackLongTouchIntentEnabled = config != null && config.mbackLongTouchIntentEnabled;
+            mbackLongTouchAction = config == null
+                    ? SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION
+                    : config.mbackLongTouchAction;
             mbackLongTouchIntentUri = config == null ? "" : config.mbackLongTouchIntentUri;
             mbackNavBarTransparent = config != null && config.mbackNavBarTransparent;
             mbackHidePill = config != null && config.mbackHidePill;
