@@ -12,14 +12,19 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.SystemClock;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.lang.reflect.Array;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Locale;
 
 final class ClockDetailSystemStatusProvider {
-    private static final String MEMORY_UNAVAILABLE = "--";
     private static final String TEMPERATURE_UNAVAILABLE = "--";
     private static final String POWER_UNAVAILABLE = "不可用";
     private static final String EXTRA_MAX_CHARGING_CURRENT = "max_charging_current";
@@ -28,6 +33,16 @@ final class ClockDetailSystemStatusProvider {
     private static final String THERMAL_SERVICE_DESCRIPTOR = "android.os.IThermalService";
     private static final String THERMAL_AIDL_DESCRIPTOR = "android.hardware.thermal.IThermal";
     private static final String THERMAL_AIDL_SERVICE = THERMAL_AIDL_DESCRIPTOR + "/default";
+    private static final String MEM_INFO_READER_CLASS = "com.android.internal.util.MemInfoReader";
+    private static final String SYS_BLOCK_PATH = "/sys/block";
+    private static final String ZRAM_DEVICE_PREFIX = "zram";
+    private static final String ZRAM_WRITEBACK_DISABLED = "none";
+    private static final String ZRAM_WRITEBACK_STATS_FILE = "bd_stat";
+    private static final String ZRAM_BACKING_DEVICE_FILE = "backing_dev";
+    private static final String ANDROID_SYSTEM_OS_CLASS = "android.system.Os";
+    private static final String ANDROID_SYSTEM_OS_CONSTANTS_CLASS = "android.system.OsConstants";
+    private static final String OS_SYSCONF_METHOD = "sysconf";
+    private static final String OS_PAGE_SIZE_FIELD = "_SC_PAGE_SIZE";
     private static final int TEMPERATURE_TYPE_BATTERY = 2;
     private static final int TEMPERATURE_TYPE_SKIN = 3;
     private static final int FIRST_THROTTLING_STATUS_INDEX = 1;
@@ -36,8 +51,12 @@ final class ClockDetailSystemStatusProvider {
     private static final float TEMPERATURE_COMPARE_EPSILON_C = 0.05f;
     private static final long THERMAL_THRESHOLD_RETRY_INTERVAL_MS = 10000L;
     private static final Object BACKGROUND_LOCK = new Object();
+    private static final Object MEMORY_INFO_LOCK = new Object();
     private static final Object THERMAL_CACHE_LOCK = new Object();
     private static Handler backgroundHandler;
+    private static boolean memInfoReaderReflectionResolved;
+    private static boolean memInfoReaderReflectionAvailable;
+    private static boolean osPageSizeReflectionResolved;
     private static boolean thermalServiceReflectionResolved;
     private static boolean thermalServiceReflectionAvailable;
     private static boolean thermalReflectionResolved;
@@ -49,6 +68,15 @@ final class ClockDetailSystemStatusProvider {
             TemperatureThresholdProfile.UNAVAILABLE;
     private static Object frameworkThermalService;
     private static Object thermalAidlService;
+    private static File zramDeviceDirectory;
+    private static boolean zramDeviceDirectoryResolved;
+    private static Constructor<?> memInfoReaderConstructor;
+    private static Method memInfoReaderReadMemInfoMethod;
+    private static Method memInfoReaderGetSwapTotalSizeKbMethod;
+    private static Method memInfoReaderGetSwapFreeSizeKbMethod;
+    private static Method memInfoReaderGetZramTotalSizeKbMethod;
+    private static Method debugGetZramFreeKbMethod;
+    private static Method osSysconfMethod;
     private static Method getServiceMethod;
     private static Method thermalServiceAsInterfaceMethod;
     private static Method getCurrentTemperaturesWithTypeMethod;
@@ -59,6 +87,7 @@ final class ClockDetailSystemStatusProvider {
     private static Method getTemperatureThresholdsWithTypeMethod;
     private static Field temperatureThresholdNameField;
     private static Field temperatureThresholdHotThresholdsField;
+    private static Object osPageSizeConstant;
 
     private final Context context;
     private final ActivityManager activityManager;
@@ -102,59 +131,369 @@ final class ClockDetailSystemStatusProvider {
     ClockDetailSystemStatusSnapshot querySnapshot() {
         BatterySnapshot batterySnapshot = readBatterySnapshot();
         return new ClockDetailSystemStatusSnapshot(
-                readMemoryValue(),
+                readMemoryRows(),
                 formatTemperatureValue(batterySnapshot),
                 formatPowerValue(batterySnapshot));
     }
 
-    private String readMemoryValue() {
+    private ClockDetailSystemStatusSnapshot.MemoryRow[] readMemoryRows() {
         if (activityManager == null) {
-            return MEMORY_UNAVAILABLE;
+            return ClockDetailSystemStatusSnapshot.EMPTY.memoryRows;
         }
         try {
             activityManager.getMemoryInfo(memoryInfo);
-            long displayTotalBytes = memoryInfo.advertisedMem > 0L
-                    ? memoryInfo.advertisedMem
-                    : memoryInfo.totalMem;
-            long actualTotalBytes = memoryInfo.totalMem > 0L
+            long totalBytes = memoryInfo.totalMem > 0L
                     ? memoryInfo.totalMem
-                    : displayTotalBytes;
-            if (displayTotalBytes <= 0L || actualTotalBytes <= 0L) {
-                return MEMORY_UNAVAILABLE;
+                    : memoryInfo.advertisedMem;
+            if (totalBytes <= 0L) {
+                return ClockDetailSystemStatusSnapshot.EMPTY.memoryRows;
             }
-            long usedBytes = normalizeDisplayUsedBytes(
-                    displayTotalBytes,
-                    actualTotalBytes,
-                    memoryInfo.availMem);
+            long usedBytes = Math.max(
+                    0L,
+                    totalBytes - Math.max(0L, Math.min(memoryInfo.availMem, totalBytes)));
+            MemoryCompressionSnapshot compressionSnapshot = readMemoryCompressionSnapshot();
             Locale locale = resolveLocale();
-            return String.format(
-                    locale,
-                    "%.1f / %.1f GB",
-                    toGigabytes(usedBytes),
-                    toGigabytes(displayTotalBytes));
+            return buildMemoryRows(
+                    usedBytes,
+                    totalBytes,
+                    compressionSnapshot,
+                    locale);
         } catch (Throwable t) {
             FlymeStatusBarSizer.logClockWarning("Failed to read clock detail memory state", t);
-            return MEMORY_UNAVAILABLE;
+            return ClockDetailSystemStatusSnapshot.EMPTY.memoryRows;
         }
     }
 
-    private static long normalizeDisplayUsedBytes(
-            long displayTotalBytes,
-            long actualTotalBytes,
-            long availableBytes) {
-        long safeDisplayTotalBytes = Math.max(0L, displayTotalBytes);
-        long safeActualTotalBytes = Math.max(0L, actualTotalBytes);
-        long safeAvailableBytes = Math.max(0L, availableBytes);
-        if (safeDisplayTotalBytes <= 0L || safeActualTotalBytes <= 0L) {
-            return 0L;
+    private ClockDetailSystemStatusSnapshot.MemoryRow[] buildMemoryRows(
+            long ramUsedBytes,
+            long ramTotalBytes,
+            MemoryCompressionSnapshot snapshot,
+            Locale locale) {
+        ArrayList<ClockDetailSystemStatusSnapshot.MemoryRow> rows = new ArrayList<>(3);
+        rows.add(buildUsageRow("RAM", ramUsedBytes, ramTotalBytes, locale));
+        rows.add(buildZramRow(snapshot, locale));
+        rows.add(buildWritebackRow(snapshot, locale));
+        return rows.toArray(new ClockDetailSystemStatusSnapshot.MemoryRow[0]);
+    }
+
+    private ClockDetailSystemStatusSnapshot.MemoryRow buildUsageRow(
+            String label,
+            long usedBytes,
+            long totalBytes,
+            Locale locale) {
+        if (usedBytes < 0L || totalBytes <= 0L) {
+            return new ClockDetailSystemStatusSnapshot.MemoryRow(label, "-- / --", "--");
         }
-        long clampedAvailableBytes = Math.min(safeAvailableBytes, safeActualTotalBytes);
-        if (safeDisplayTotalBytes == safeActualTotalBytes) {
-            return Math.max(0L, safeDisplayTotalBytes - clampedAvailableBytes);
+        return new ClockDetailSystemStatusSnapshot.MemoryRow(
+                label,
+                formatUsageValue(usedBytes, totalBytes, locale),
+                formatUsagePercent(usedBytes, totalBytes, locale));
+    }
+
+    private ClockDetailSystemStatusSnapshot.MemoryRow buildZramRow(
+            MemoryCompressionSnapshot snapshot,
+            Locale locale) {
+        if (snapshot == null) {
+            return new ClockDetailSystemStatusSnapshot.MemoryRow("ZRAM", "-- / --", "--");
         }
-        double usedRatio = 1.0d - (((double) clampedAvailableBytes) / ((double) safeActualTotalBytes));
-        long scaledUsedBytes = Math.round(safeDisplayTotalBytes * usedRatio);
-        return Math.max(0L, Math.min(safeDisplayTotalBytes, scaledUsedBytes));
+        if (snapshot.swapTotalBytes > 0L && snapshot.swapUsedBytes >= 0L) {
+            return buildUsageRow("ZRAM", snapshot.swapUsedBytes, snapshot.swapTotalBytes, locale);
+        }
+        if (snapshot.zramUsedBytes >= 0L && snapshot.zramFreeBytes >= 0L) {
+            long totalBytes = snapshot.zramUsedBytes + snapshot.zramFreeBytes;
+            return buildUsageRow("ZRAM", snapshot.zramUsedBytes, totalBytes, locale);
+        }
+        if (snapshot.zramUsedBytes >= 0L) {
+            return new ClockDetailSystemStatusSnapshot.MemoryRow(
+                    "ZRAM",
+                    formatCompactBytes(snapshot.zramUsedBytes, locale) + " / --",
+                    "--");
+        }
+        return new ClockDetailSystemStatusSnapshot.MemoryRow("ZRAM", "-- / --", "--");
+    }
+
+    private ClockDetailSystemStatusSnapshot.MemoryRow buildWritebackRow(
+            MemoryCompressionSnapshot snapshot,
+            Locale locale) {
+        if (snapshot == null || !snapshot.writebackAvailable) {
+            return new ClockDetailSystemStatusSnapshot.MemoryRow("WB", "-- / --", "--");
+        }
+        String state = snapshot.writebackEnabled ? "开" : "关";
+        String amount = "--";
+        if (snapshot.writebackEnabled && snapshot.writebackWrittenBytes >= 0L) {
+            amount = formatCompactBytes(snapshot.writebackWrittenBytes, locale);
+        } else if (snapshot.writebackEnabled && snapshot.writebackWrittenPages >= 0L) {
+            amount = String.format(locale, "%d页", snapshot.writebackWrittenPages);
+        }
+        return new ClockDetailSystemStatusSnapshot.MemoryRow(
+                "WB",
+                state + " / " + amount,
+                "--");
+    }
+
+    private String formatUsageValue(long usedBytes, long totalBytes, Locale locale) {
+        return formatCompactBytes(usedBytes, locale)
+                + " / "
+                + formatCompactBytes(totalBytes, locale);
+    }
+
+    private String formatUsagePercent(long usedBytes, long totalBytes, Locale locale) {
+        if (usedBytes < 0L || totalBytes <= 0L) {
+            return "--";
+        }
+        double percent = Math.max(0.0d, Math.min(100.0d, (usedBytes * 100.0d) / totalBytes));
+        return String.format(locale, "%.0f%%", percent);
+    }
+
+    private MemoryCompressionSnapshot readMemoryCompressionSnapshot() {
+        MemoryCompressionSnapshot snapshot = new MemoryCompressionSnapshot();
+        populateMemInfoSnapshot(snapshot);
+        populateWritebackSnapshot(snapshot);
+        return snapshot;
+    }
+
+    private void populateMemInfoSnapshot(MemoryCompressionSnapshot snapshot) {
+        if (snapshot == null) {
+            return;
+        }
+        synchronized (MEMORY_INFO_LOCK) {
+            if (!ensureMemInfoReaderReflectionLocked()) {
+                return;
+            }
+            try {
+                Object memInfoReader = memInfoReaderConstructor.newInstance();
+                memInfoReaderReadMemInfoMethod.invoke(memInfoReader);
+                long swapTotalBytes = kibToBytes(invokeLongMethod(
+                        memInfoReader,
+                        memInfoReaderGetSwapTotalSizeKbMethod,
+                        "getSwapTotalSizeKb"));
+                long swapFreeBytes = kibToBytes(invokeLongMethod(
+                        memInfoReader,
+                        memInfoReaderGetSwapFreeSizeKbMethod,
+                        "getSwapFreeSizeKb"));
+                long zramUsedBytes = kibToBytes(invokeLongMethod(
+                        memInfoReader,
+                        memInfoReaderGetZramTotalSizeKbMethod,
+                        "getZramTotalSizeKb"));
+                if (swapTotalBytes >= 0L) {
+                    snapshot.swapTotalBytes = swapTotalBytes;
+                    snapshot.swapUsedBytes = Math.max(
+                            0L,
+                            swapTotalBytes - Math.max(0L, Math.min(swapFreeBytes, swapTotalBytes)));
+                }
+                if (zramUsedBytes >= 0L) {
+                    snapshot.zramUsedBytes = zramUsedBytes;
+                }
+                long zramFreeBytes = kibToBytes(invokeLongMethod(
+                        null,
+                        debugGetZramFreeKbMethod,
+                        "getZramFreeKb"));
+                if (zramFreeBytes >= 0L) {
+                    snapshot.zramFreeBytes = zramFreeBytes;
+                }
+            } catch (Throwable t) {
+                FlymeStatusBarSizer.logClockWarning(
+                        "Failed to read memory compression details",
+                        t);
+            }
+        }
+    }
+
+    private void populateWritebackSnapshot(MemoryCompressionSnapshot snapshot) {
+        if (snapshot == null) {
+            return;
+        }
+        File deviceDirectory = resolveZramDeviceDirectory();
+        if (deviceDirectory == null) {
+            return;
+        }
+        String backingDevice = readTrimmedTextFile(new File(deviceDirectory, ZRAM_BACKING_DEVICE_FILE));
+        if (backingDevice == null) {
+            return;
+        }
+        snapshot.writebackAvailable = true;
+        snapshot.writebackEnabled = !backingDevice.isEmpty()
+                && !ZRAM_WRITEBACK_DISABLED.equalsIgnoreCase(backingDevice);
+        if (!snapshot.writebackEnabled) {
+            return;
+        }
+        String stats = readTrimmedTextFile(new File(deviceDirectory, ZRAM_WRITEBACK_STATS_FILE));
+        if (stats == null || stats.isEmpty()) {
+            return;
+        }
+        String[] tokens = stats.split("\\s+");
+        if (tokens.length < 3) {
+            return;
+        }
+        try {
+            snapshot.writebackWrittenPages = Long.parseLong(tokens[2]);
+            snapshot.writebackWrittenBytes = pagesToBytes(snapshot.writebackWrittenPages);
+        } catch (NumberFormatException t) {
+            FlymeStatusBarSizer.logClockWarning(
+                    "Failed to parse zram writeback stats",
+                    t);
+        }
+    }
+
+    private static File resolveZramDeviceDirectory() {
+        synchronized (MEMORY_INFO_LOCK) {
+            if (zramDeviceDirectoryResolved) {
+                return zramDeviceDirectory;
+            }
+            File sysBlockDirectory = new File(SYS_BLOCK_PATH);
+            File[] children = sysBlockDirectory.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    if (child == null || !child.isDirectory()) {
+                        continue;
+                    }
+                    if (!child.getName().startsWith(ZRAM_DEVICE_PREFIX)) {
+                        continue;
+                    }
+                    zramDeviceDirectory = child;
+                    break;
+                }
+            }
+            zramDeviceDirectoryResolved = true;
+            return zramDeviceDirectory;
+        }
+    }
+
+    private static String readTrimmedTextFile(File file) {
+        if (file == null || !file.exists() || !file.isFile()) {
+            return null;
+        }
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line = reader.readLine();
+            return line != null ? line.trim() : "";
+        } catch (IOException t) {
+            FlymeStatusBarSizer.logClockWarning(
+                    "Failed to read file " + file.getAbsolutePath(),
+                    t);
+            return null;
+        }
+    }
+
+    private static boolean ensureMemInfoReaderReflectionLocked() {
+        if (memInfoReaderReflectionResolved) {
+            return memInfoReaderReflectionAvailable;
+        }
+        try {
+            Class<?> memInfoReaderClass = Class.forName(MEM_INFO_READER_CLASS);
+            memInfoReaderConstructor = memInfoReaderClass.getDeclaredConstructor();
+            memInfoReaderReadMemInfoMethod = memInfoReaderClass.getMethod("readMemInfo");
+            memInfoReaderGetSwapTotalSizeKbMethod = memInfoReaderClass.getMethod(
+                    "getSwapTotalSizeKb");
+            memInfoReaderGetSwapFreeSizeKbMethod = memInfoReaderClass.getMethod(
+                    "getSwapFreeSizeKb");
+            memInfoReaderGetZramTotalSizeKbMethod = memInfoReaderClass.getMethod(
+                    "getZramTotalSizeKb");
+            Class<?> debugClass = Class.forName("android.os.Debug");
+            debugGetZramFreeKbMethod = debugClass.getMethod("getZramFreeKb");
+            resolveOsPageSizeReflectionLocked();
+            memInfoReaderReflectionAvailable = true;
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning(
+                    "Failed to resolve MemInfoReader reflection accessors",
+                    t);
+            memInfoReaderReflectionAvailable = false;
+        }
+        memInfoReaderReflectionResolved = true;
+        return memInfoReaderReflectionAvailable;
+    }
+
+    private static void resolveOsPageSizeReflectionLocked() {
+        if (osPageSizeReflectionResolved) {
+            return;
+        }
+        try {
+            Class<?> osClass = Class.forName(ANDROID_SYSTEM_OS_CLASS);
+            osSysconfMethod = osClass.getMethod(OS_SYSCONF_METHOD, int.class);
+            Class<?> osConstantsClass = Class.forName(ANDROID_SYSTEM_OS_CONSTANTS_CLASS);
+            Field pageSizeField = osConstantsClass.getField(OS_PAGE_SIZE_FIELD);
+            osPageSizeConstant = pageSizeField.get(null);
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning(
+                    "Failed to resolve OS page size accessors",
+                    t);
+            osSysconfMethod = null;
+            osPageSizeConstant = null;
+        }
+        osPageSizeReflectionResolved = true;
+    }
+
+    private static long invokeLongMethod(Object target, Method method, String methodName) {
+        if (method == null || methodName == null) {
+            return -1L;
+        }
+        try {
+            Object value = method.invoke(target);
+            return value instanceof Long ? (Long) value : -1L;
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning(
+                    "Failed to invoke long method " + methodName,
+                    t);
+            return -1L;
+        }
+    }
+
+    private static long invokeLongMethod(
+            Object target,
+            Method method,
+            String methodName,
+            int intArg) {
+        if (method == null || methodName == null) {
+            return -1L;
+        }
+        try {
+            Object value = method.invoke(target, intArg);
+            return value instanceof Long ? (Long) value : -1L;
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning(
+                    "Failed to invoke long method " + methodName,
+                    t);
+            return -1L;
+        }
+    }
+
+    private static long kibToBytes(long kib) {
+        return kib < 0L ? -1L : kib * 1024L;
+    }
+
+    private static long pagesToBytes(long pages) {
+        if (pages < 0L) {
+            return -1L;
+        }
+        long pageSizeBytes = resolvePageSizeBytes();
+        if (pageSizeBytes <= 0L) {
+            return -1L;
+        }
+        return pages * pageSizeBytes;
+    }
+
+    private static long resolvePageSizeBytes() {
+        synchronized (MEMORY_INFO_LOCK) {
+            if (!osPageSizeReflectionResolved) {
+                resolveOsPageSizeReflectionLocked();
+            }
+            if (osSysconfMethod == null || !(osPageSizeConstant instanceof Integer)) {
+                return -1L;
+            }
+            return invokeLongMethod(null, osSysconfMethod, OS_SYSCONF_METHOD, (Integer) osPageSizeConstant);
+        }
+    }
+
+    private String formatCompactBytes(long bytes, Locale locale) {
+        double gib = bytes / 1073741824.0d;
+        if (gib >= 0.95d) {
+            return String.format(locale, "%.1f GB", gib);
+        }
+        double mib = bytes / 1048576.0d;
+        if (mib >= 0.95d) {
+            return String.format(locale, "%.0f MB", mib);
+        }
+        double kib = bytes / 1024.0d;
+        return String.format(locale, "%.0f KB", kib);
     }
 
     private BatterySnapshot readBatterySnapshot() {
@@ -322,10 +661,6 @@ final class ClockDetailSystemStatusProvider {
         } catch (Throwable ignored) {
         }
         return Locale.getDefault();
-    }
-
-    private static double toGigabytes(long bytes) {
-        return bytes / 1073741824.0d;
     }
 
     private static double toWattsFromCurrentAndVoltage(long currentMicroamps, int voltageMillivolts) {
@@ -774,5 +1109,16 @@ final class ClockDetailSystemStatusProvider {
         int maxChargingVoltageMicrovolts = Integer.MIN_VALUE;
         long currentNowMicroamps = Long.MIN_VALUE;
         long currentAverageMicroamps = Long.MIN_VALUE;
+    }
+
+    private static final class MemoryCompressionSnapshot {
+        long swapTotalBytes = -1L;
+        long swapUsedBytes = -1L;
+        long zramUsedBytes = -1L;
+        long zramFreeBytes = -1L;
+        boolean writebackAvailable;
+        boolean writebackEnabled;
+        long writebackWrittenPages = -1L;
+        long writebackWrittenBytes = -1L;
     }
 }

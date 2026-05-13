@@ -45,7 +45,7 @@ final class ClockDetailPopupController {
     private final TextView timeView;
     private final TextView dateView;
     private final LinearLayout statusGridView;
-    private final StatTile memoryTile;
+    private final MemoryStatTile memoryTile;
     private final StatTile thermalPowerTile;
     private final PopupWindow popupWindow;
     private final ClockDetailSystemStatusProvider systemStatusProvider;
@@ -78,7 +78,10 @@ final class ClockDetailPopupController {
         this.contentView = buildContentView(anchor.getContext());
         this.timeView = buildTimeView(anchor.getContext());
         this.dateView = buildDateView(anchor.getContext());
-        this.memoryTile = buildStatTile(anchor.getContext(), "系统内存");
+        this.memoryTile = buildMemoryStatTile(
+                anchor.getContext(),
+                "系统内存",
+                ClockDetailSystemStatusSnapshot.EMPTY.memoryRows);
         this.thermalPowerTile = buildStatTile(anchor.getContext(), "电池温度 / 功率", true);
         this.statusGridView = buildStatusGrid(anchor.getContext(), memoryTile, thermalPowerTile);
         this.contentView.addView(timeView, matchWidth());
@@ -387,7 +390,7 @@ final class ClockDetailPopupController {
         contentView.setBackground(background);
         timeView.setTextColor(palette.primaryTextColor);
         dateView.setTextColor(palette.secondaryTextColor);
-        applyStatTilePalette(memoryTile, palette);
+        applyMemoryTilePalette(memoryTile, palette);
         applyStatTilePalette(thermalPowerTile, palette);
     }
 
@@ -543,7 +546,7 @@ final class ClockDetailPopupController {
         ClockDetailSystemStatusSnapshot safeSnapshot = snapshot != null
                 ? snapshot
                 : ClockDetailSystemStatusSnapshot.EMPTY;
-        memoryTile.valueView.setText(safeSnapshot.memoryValue);
+        updateMemoryTileRows(memoryTile, safeSnapshot.memoryRows);
         thermalPowerTile.valueView.setText(buildThermalPowerValue(safeSnapshot));
     }
 
@@ -595,6 +598,49 @@ final class ClockDetailPopupController {
         tile.valueView.setTextColor(palette.primaryTextColor);
     }
 
+    private void applyMemoryTilePalette(MemoryStatTile tile, Palette palette) {
+        if (tile == null) {
+            return;
+        }
+        android.content.Context context = tile.root.getContext();
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setCornerRadius(dp(context, 14));
+        background.setColor(mixColors(palette.surfaceColor, palette.strokeColor, 0.22f));
+        background.setStroke(Math.max(1, dp(context, 1)), adjustAlpha(palette.strokeColor, 0.9f));
+        tile.root.setBackground(background);
+        tile.labelView.setTextColor(palette.secondaryTextColor);
+        for (MemoryStatRowView rowView : tile.rowViews) {
+            rowView.nameView.setTextColor(palette.secondaryTextColor);
+            rowView.valueView.setTextColor(palette.primaryTextColor);
+            rowView.percentView.setTextColor(palette.primaryTextColor);
+        }
+    }
+
+    private void updateMemoryTileRows(
+            MemoryStatTile tile,
+            ClockDetailSystemStatusSnapshot.MemoryRow[] rows) {
+        if (tile == null) {
+            return;
+        }
+        ClockDetailSystemStatusSnapshot.MemoryRow[] safeRows = rows != null && rows.length > 0
+                ? rows
+                : ClockDetailSystemStatusSnapshot.EMPTY.memoryRows;
+        int count = Math.min(tile.rowViews.length, safeRows.length);
+        for (int i = 0; i < tile.rowViews.length; i++) {
+            MemoryStatRowView rowView = tile.rowViews[i];
+            if (i < count) {
+                ClockDetailSystemStatusSnapshot.MemoryRow row = safeRows[i];
+                rowView.root.setVisibility(View.VISIBLE);
+                rowView.nameView.setText(row.label);
+                rowView.valueView.setText(row.value);
+                rowView.percentView.setText(row.percent);
+            } else {
+                rowView.root.setVisibility(View.GONE);
+            }
+        }
+    }
+
     private String buildThermalPowerValue(ClockDetailSystemStatusSnapshot snapshot) {
         ClockDetailSystemStatusSnapshot safeSnapshot = snapshot != null
                 ? snapshot
@@ -606,7 +652,7 @@ final class ClockDetailPopupController {
 
     private static LinearLayout buildStatusGrid(
             android.content.Context context,
-            StatTile memoryTile,
+            MemoryStatTile memoryTile,
             StatTile thermalPowerTile) {
         LinearLayout grid = new LinearLayout(context);
         grid.setOrientation(LinearLayout.VERTICAL);
@@ -616,11 +662,90 @@ final class ClockDetailPopupController {
         return grid;
     }
 
-    private static LinearLayout buildStatusRow(android.content.Context context) {
+    private static MemoryStatTile buildMemoryStatTile(
+            android.content.Context context,
+            String label,
+            ClockDetailSystemStatusSnapshot.MemoryRow[] initialRows) {
+        LinearLayout root = new LinearLayout(context);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        root.setMinimumHeight(dp(context, 64));
+        root.setPadding(
+                dp(context, 12),
+                dp(context, 10),
+                dp(context, 12),
+                dp(context, 10));
+
+        TextView labelView = new TextView(context);
+        labelView.setIncludeFontPadding(false);
+        labelView.setSingleLine(true);
+        labelView.setText(label);
+        labelView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        labelView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+
+        ClockDetailSystemStatusSnapshot.MemoryRow[] rows =
+                initialRows != null && initialRows.length > 0
+                        ? initialRows
+                        : ClockDetailSystemStatusSnapshot.EMPTY.memoryRows;
+        LinearLayout rowsContainer = new LinearLayout(context);
+        rowsContainer.setOrientation(LinearLayout.VERTICAL);
+
+        MemoryStatRowView[] rowViews = new MemoryStatRowView[rows.length];
+        for (int i = 0; i < rows.length; i++) {
+            MemoryStatRowView rowView = buildMemoryStatRowView(context);
+            rowViews[i] = rowView;
+            rowsContainer.addView(
+                    rowView.root,
+                    i == 0 ? matchWidth() : matchWidthWithTop(context, 5));
+        }
+        root.addView(labelView, matchWidth());
+        root.addView(rowsContainer, matchWidthWithTop(context, 6));
+
+        MemoryStatTile tile = new MemoryStatTile(root, labelView, rowViews);
+        ClockDetailSystemStatusSnapshot.MemoryRow[] safeRows = rows;
+        for (int i = 0; i < tile.rowViews.length; i++) {
+            MemoryStatRowView rowView = tile.rowViews[i];
+            ClockDetailSystemStatusSnapshot.MemoryRow row = safeRows[i];
+            rowView.nameView.setText(row.label);
+            rowView.valueView.setText(row.value);
+            rowView.percentView.setText(row.percent);
+        }
+        return tile;
+    }
+
+    private static MemoryStatRowView buildMemoryStatRowView(android.content.Context context) {
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        return row;
+
+        TextView nameView = new TextView(context);
+        nameView.setIncludeFontPadding(false);
+        nameView.setSingleLine(true);
+        nameView.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        nameView.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
+        nameView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+        nameView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+
+        TextView valueView = new TextView(context);
+        valueView.setIncludeFontPadding(false);
+        valueView.setSingleLine(true);
+        valueView.setGravity(Gravity.CENTER);
+        valueView.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        valueView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
+        valueView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+
+        TextView percentView = new TextView(context);
+        percentView.setIncludeFontPadding(false);
+        percentView.setSingleLine(true);
+        percentView.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        percentView.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_END);
+        percentView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+        percentView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+
+        row.addView(nameView, weightCell(0.8f));
+        row.addView(valueView, weightCellWithStart(context, 8, 1.4f));
+        row.addView(percentView, weightCellWithStart(context, 8, 0.8f));
+        return new MemoryStatRowView(row, nameView, valueView, percentView);
     }
 
     private static StatTile buildStatTile(android.content.Context context, String label) {
@@ -652,7 +777,7 @@ final class ClockDetailPopupController {
         valueView.setIncludeFontPadding(false);
         valueView.setSingleLine(!multiLineValue);
         if (multiLineValue) {
-            valueView.setMaxLines(3);
+            valueView.setMaxLines(4);
             valueView.setLineSpacing(0f, 1.08f);
         }
         valueView.setText("--");
@@ -678,17 +803,18 @@ final class ClockDetailPopupController {
         return params;
     }
 
-    private static LinearLayout.LayoutParams weightCell() {
+    private static LinearLayout.LayoutParams weightCell(float weight) {
         return new LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f);
+                weight);
     }
 
     private static LinearLayout.LayoutParams weightCellWithStart(
             android.content.Context context,
-            int startMarginDp) {
-        LinearLayout.LayoutParams params = weightCell();
+            int startMarginDp,
+            float weight) {
+        LinearLayout.LayoutParams params = weightCell(weight);
         params.leftMargin = dp(context, startMarginDp);
         return params;
     }
@@ -713,6 +839,39 @@ final class ClockDetailPopupController {
 
     private TextView getAnchor() {
         return anchorRef.get();
+    }
+
+    private static final class MemoryStatTile {
+        final LinearLayout root;
+        final TextView labelView;
+        final MemoryStatRowView[] rowViews;
+
+        MemoryStatTile(
+                LinearLayout root,
+                TextView labelView,
+                MemoryStatRowView[] rowViews) {
+            this.root = root;
+            this.labelView = labelView;
+            this.rowViews = rowViews;
+        }
+    }
+
+    private static final class MemoryStatRowView {
+        final LinearLayout root;
+        final TextView nameView;
+        final TextView valueView;
+        final TextView percentView;
+
+        MemoryStatRowView(
+                LinearLayout root,
+                TextView nameView,
+                TextView valueView,
+                TextView percentView) {
+            this.root = root;
+            this.nameView = nameView;
+            this.valueView = valueView;
+            this.percentView = percentView;
+        }
     }
 
     private static final class StatTile {
