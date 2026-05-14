@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer.feature.clock;
 
 import android.app.PendingIntent;
 import android.graphics.drawable.Drawable;
+import android.media.session.PlaybackState;
 
 import java.util.Objects;
 
@@ -13,6 +14,8 @@ final class ClockDetailMediaSnapshot {
             "",
             "",
             "",
+            PlaybackState.STATE_NONE,
+            0L,
             null,
             "");
 
@@ -22,6 +25,8 @@ final class ClockDetailMediaSnapshot {
     final CharSequence title;
     final CharSequence subtitle;
     final CharSequence playbackStateLabel;
+    final int playbackState;
+    final long availableActions;
     final PendingIntent launchIntent;
     final String packageName;
 
@@ -32,6 +37,8 @@ final class ClockDetailMediaSnapshot {
             CharSequence title,
             CharSequence subtitle,
             CharSequence playbackStateLabel,
+            int playbackState,
+            long availableActions,
             PendingIntent launchIntent,
             String packageName) {
         this.active = active;
@@ -40,6 +47,8 @@ final class ClockDetailMediaSnapshot {
         this.title = sanitize(title);
         this.subtitle = sanitize(subtitle);
         this.playbackStateLabel = sanitize(playbackStateLabel);
+        this.playbackState = playbackState;
+        this.availableActions = Math.max(0L, availableActions);
         this.launchIntent = launchIntent;
         this.packageName = sanitizePackageName(packageName);
     }
@@ -56,6 +65,8 @@ final class ClockDetailMediaSnapshot {
                 && textEquals(title, other.title)
                 && textEquals(subtitle, other.subtitle)
                 && textEquals(playbackStateLabel, other.playbackStateLabel)
+                && playbackState == other.playbackState
+                && availableActions == other.availableActions
                 && packageName.equals(other.packageName)
                 && Objects.equals(launchIntent, other.launchIntent);
     }

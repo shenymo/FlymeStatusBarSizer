@@ -155,6 +155,52 @@ final class ClockDetailMediaProvider {
         this.resultHandler = null;
     }
 
+    boolean skipToPrevious() {
+        return dispatchTransportCommand(
+                PlaybackState.ACTION_SKIP_TO_PREVIOUS,
+                controls -> controls.skipToPrevious(),
+                "skipToPrevious");
+    }
+
+    boolean skipToNext() {
+        return dispatchTransportCommand(
+                PlaybackState.ACTION_SKIP_TO_NEXT,
+                controls -> controls.skipToNext(),
+                "skipToNext");
+    }
+
+    boolean togglePlayPause() {
+        MediaController controller = resolveControllableController();
+        if (controller == null) {
+            return false;
+        }
+        MediaController.TransportControls controls = controller.getTransportControls();
+        if (controls == null) {
+            return false;
+        }
+        PlaybackState playbackStateObject = resolvePlaybackStateObject(controller);
+        int playbackState = playbackStateObject != null
+                ? playbackStateObject.getState()
+                : PlaybackState.STATE_NONE;
+        long actions = playbackStateObject != null ? playbackStateObject.getActions() : 0L;
+        boolean shouldResume = isPausedPlaybackState(playbackState);
+        long primaryAction = shouldResume ? PlaybackState.ACTION_PLAY : PlaybackState.ACTION_PAUSE;
+        if (!supportsAnyAction(actions, primaryAction, PlaybackState.ACTION_PLAY_PAUSE)) {
+            return false;
+        }
+        try {
+            if (shouldResume) {
+                controls.play();
+            } else {
+                controls.pause();
+            }
+            return true;
+        } catch (Throwable t) {
+            logMediaWarning("togglePlayPause failed", t);
+            return false;
+        }
+    }
+
     private SnapshotQueryResult queryNotificationMediaManagerSnapshot() {
         if (!ensureNotificationMediaManagerBridge()) {
             return SnapshotQueryResult.unavailable();
@@ -474,6 +520,47 @@ final class ClockDetailMediaProvider {
         }
     }
 
+    private boolean dispatchTransportCommand(
+            long requiredAction,
+            TransportControlsCommand command,
+            String operationName) {
+        MediaController controller = resolveControllableController();
+        if (controller == null || command == null) {
+            return false;
+        }
+        MediaController.TransportControls controls = controller.getTransportControls();
+        if (controls == null) {
+            return false;
+        }
+        long actions = resolveAvailableActions(controller);
+        if (!supportsAction(actions, requiredAction)) {
+            return false;
+        }
+        try {
+            command.run(controls);
+            return true;
+        } catch (Throwable t) {
+            logMediaWarning(operationName + " failed", t);
+            return false;
+        }
+    }
+
+    private MediaController resolveControllableController() {
+        if (activeController != null) {
+            return activeController;
+        }
+        MediaController controller = choosePrimaryActiveController();
+        if (controller != null) {
+            return controller;
+        }
+        if (!ensureNotificationMediaManagerBridge()) {
+            return null;
+        }
+        return extractNotificationMediaController(
+                notificationMediaManager,
+                notificationMediaControllerField);
+    }
+
     private MediaController extractNotificationMediaController(Object manager, Field mediaControllerField) {
         if (manager == null || mediaControllerField == null) {
             return null;
@@ -518,12 +605,18 @@ final class ClockDetailMediaProvider {
         if (controller == null) {
             return ClockDetailMediaSnapshot.EMPTY;
         }
+        PlaybackState playbackStateObject = resolvePlaybackStateObject(controller);
         int resolvedState = playbackState != INVALID_PLAYBACK_STATE
                 ? playbackState
-                : resolvePlaybackState(controller);
+                : (playbackStateObject != null
+                        ? playbackStateObject.getState()
+                        : PlaybackState.STATE_NONE);
         if (!shouldDisplayPlaybackState(resolvedState)) {
             return ClockDetailMediaSnapshot.EMPTY;
         }
+        long availableActions = playbackStateObject != null
+                ? playbackStateObject.getActions()
+                : 0L;
         MediaMetadata resolvedMetadata = metadata != null ? metadata : controller.getMetadata();
         String packageName = safePackageName(controller.getPackageName());
         CharSequence title = resolveTitle(resolvedMetadata);
@@ -538,6 +631,8 @@ final class ClockDetailMediaProvider {
                 title,
                 subtitle,
                 playbackLabel,
+                resolvedState,
+                availableActions,
                 launchIntent,
                 packageName);
     }
@@ -734,14 +829,18 @@ final class ClockDetailMediaProvider {
     }
 
     private static int resolvePlaybackState(MediaController controller) {
+        PlaybackState playbackState = resolvePlaybackStateObject(controller);
+        return playbackState != null ? playbackState.getState() : PlaybackState.STATE_NONE;
+    }
+
+    private static PlaybackState resolvePlaybackStateObject(MediaController controller) {
         if (controller == null) {
-            return PlaybackState.STATE_NONE;
+            return null;
         }
         try {
-            PlaybackState playbackState = controller.getPlaybackState();
-            return playbackState != null ? playbackState.getState() : PlaybackState.STATE_NONE;
+            return controller.getPlaybackState();
         } catch (Throwable ignored) {
-            return PlaybackState.STATE_NONE;
+            return null;
         }
     }
 
@@ -752,6 +851,8 @@ final class ClockDetailMediaProvider {
             case PlaybackState.STATE_BUFFERING:
             case PlaybackState.STATE_CONNECTING:
                 return 3;
+            case PlaybackState.STATE_PAUSED:
+                return 2;
             case PlaybackState.STATE_FAST_FORWARDING:
             case PlaybackState.STATE_REWINDING:
             case PlaybackState.STATE_SKIPPING_TO_PREVIOUS:
@@ -787,6 +888,7 @@ final class ClockDetailMediaProvider {
     private static boolean shouldDisplayPlaybackState(int playbackState) {
         switch (playbackState) {
             case PlaybackState.STATE_PLAYING:
+            case PlaybackState.STATE_PAUSED:
             case PlaybackState.STATE_FAST_FORWARDING:
             case PlaybackState.STATE_REWINDING:
             case PlaybackState.STATE_BUFFERING:
@@ -802,6 +904,8 @@ final class ClockDetailMediaProvider {
 
     private static CharSequence describePlaybackState(int playbackState) {
         switch (playbackState) {
+            case PlaybackState.STATE_PAUSED:
+                return "已暂停";
             case PlaybackState.STATE_BUFFERING:
             case PlaybackState.STATE_CONNECTING:
                 return "连接中";
@@ -925,9 +1029,39 @@ final class ClockDetailMediaProvider {
         return value != null ? value.toString() : "";
     }
 
+    private static long resolveAvailableActions(MediaController controller) {
+        PlaybackState playbackState = resolvePlaybackStateObject(controller);
+        return playbackState != null ? playbackState.getActions() : 0L;
+    }
+
+    private static boolean supportsAction(long actions, long targetAction) {
+        return actions == 0L || (actions & targetAction) != 0L;
+    }
+
+    private static boolean supportsAnyAction(long actions, long firstAction, long secondAction) {
+        return supportsAction(actions, firstAction) || supportsAction(actions, secondAction);
+    }
+
+    private static boolean isPausedPlaybackState(int playbackState) {
+        switch (playbackState) {
+            case PlaybackState.STATE_PAUSED:
+            case PlaybackState.STATE_STOPPED:
+            case PlaybackState.STATE_NONE:
+            case PlaybackState.STATE_ERROR:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private static void logMediaWarning(String message, Throwable throwable) {
         Log.w(LOG_TAG, "[clock-media] " + message, throwable);
         FlymeStatusBarSizer.logClockWarning("[clock-media] " + message, throwable);
+    }
+
+    @FunctionalInterface
+    private interface TransportControlsCommand {
+        void run(MediaController.TransportControls controls);
     }
 
     private static final class ControllerSelection {

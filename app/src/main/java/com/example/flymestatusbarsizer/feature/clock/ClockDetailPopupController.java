@@ -19,6 +19,7 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.LayerDrawable;
+import android.media.session.PlaybackState;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
@@ -65,6 +66,9 @@ final class ClockDetailPopupController {
     private static final long DETAILS_COLLAPSE_DURATION_MS = 200L;
     private static final long MEDIA_EXPAND_DURATION_MS = 200L;
     private static final long MEDIA_COLLAPSE_DURATION_MS = 160L;
+    private static final long MEDIA_CONTROL_REFRESH_DELAY_MS = 96L;
+    private static final long MEDIA_PLAY_PAUSE_ICON_OUT_DURATION_MS = 90L;
+    private static final long MEDIA_PLAY_PAUSE_ICON_IN_DURATION_MS = 120L;
     private static final long RECENT_APPS_SWAP_OUT_DURATION_MS = 90L;
     private static final long RECENT_APPS_SWAP_IN_DURATION_MS = 140L;
     private static final int HORIZONTAL_MARGIN_DP = 16;
@@ -74,6 +78,11 @@ final class ClockDetailPopupController {
     private static final int RECENT_APPS_TOP_MARGIN_DP = 10;
     private static final int MEDIA_ARTWORK_SIZE_DP = 42;
     private static final int MEDIA_CONTENT_GAP_DP = 12;
+    private static final int MEDIA_CONTROL_BUTTON_SIZE_DP = 34;
+    private static final int MEDIA_CONTROL_BUTTON_ICON_SIZE_DP = 18;
+    private static final int MEDIA_CONTROL_BUTTON_PADDING_DP = 7;
+    private static final int MEDIA_CONTROL_GAP_DP = 6;
+    private static final float MEDIA_PLAY_PAUSE_ICON_SWAP_SCALE = 0.76f;
     private static final int MEDIA_REVEAL_OFFSET_DP = 8;
     private static final int RECENT_APP_ICON_SIZE_DP = 32;
     private static final int RECENT_APP_ITEM_SIZE_DP = 40;
@@ -115,6 +124,9 @@ final class ClockDetailPopupController {
             new PathInterpolator(0.16f, 1f, 0.28f, 1f);
     private static final PathInterpolator POPUP_OUT_INTERPOLATOR =
             new PathInterpolator(0.4f, 0f, 0.82f, 0.72f);
+    private static final int PLAY_PAUSE_ICON_MODE_UNSET = 0;
+    private static final int PLAY_PAUSE_ICON_MODE_PLAY = 1;
+    private static final int PLAY_PAUSE_ICON_MODE_PAUSE = 2;
     private static int cachedInternalWindowType = INTERNAL_WINDOW_TYPE_UNSET;
     private static boolean trustedOverlayMethodResolved;
     private static Method trustedOverlayMethod;
@@ -154,6 +166,7 @@ final class ClockDetailPopupController {
     private final Runnable memoryRefreshRunnable = this::refreshVisibleMemoryStatus;
     private final Runnable autoDismissRunnable = this::dismiss;
     private final Runnable panelLongPressRunnable = this::handlePanelLongPressTimeout;
+    private final Runnable mediaControlRefreshRunnable = this::refreshMediaSnapshotFromProvider;
     private final int dragTouchSlop;
     private final Date reusableDate = new Date();
 
@@ -297,6 +310,18 @@ final class ClockDetailPopupController {
         mediaStrip.root.setOnClickListener(v -> {
             performClockHaptic(v);
             launchActiveMediaApp();
+        });
+        mediaStrip.previousButton.setOnClickListener(v -> {
+            performClockHaptic(v);
+            handleMediaSkipToPrevious();
+        });
+        mediaStrip.playPauseButton.setOnClickListener(v -> {
+            performClockHaptic(v);
+            handleMediaPlayPauseToggle();
+        });
+        mediaStrip.nextButton.setOnClickListener(v -> {
+            performClockHaptic(v);
+            handleMediaSkipToNext();
         });
         pinToggleView.setOnClickListener(v -> {
             performClockHaptic(v);
@@ -2726,6 +2751,7 @@ final class ClockDetailPopupController {
     }
 
     private void stopMediaUpdates() {
+        handler.removeCallbacks(mediaControlRefreshRunnable);
         mediaProvider.stopListening();
     }
 
@@ -2767,6 +2793,7 @@ final class ClockDetailPopupController {
             changed |= setTextIfChanged(mediaStrip.titleView, "");
             changed |= setTextIfChanged(mediaStrip.subtitleView, "");
             changed |= setTextIfChanged(mediaStrip.statusView, "");
+            applyMediaControlsState(ClockDetailMediaSnapshot.EMPTY);
             return changed;
         }
         boolean changed = false;
@@ -2783,6 +2810,7 @@ final class ClockDetailPopupController {
         changed |= setTextIfChanged(mediaStrip.titleView, buildMediaTitleText(safeSnapshot));
         changed |= setTextIfChanged(mediaStrip.subtitleView, buildMediaSubtitleText(safeSnapshot));
         changed |= setTextIfChanged(mediaStrip.statusView, safeSnapshot.playbackStateLabel);
+        applyMediaControlsState(safeSnapshot);
         return changed;
     }
 
@@ -2881,7 +2909,7 @@ final class ClockDetailPopupController {
         if (snapshot.subtitle != null && snapshot.subtitle.length() > 0) {
             return snapshot.subtitle;
         }
-        return "正在播放";
+        return isPausedPlaybackState(snapshot.playbackState) ? "音乐已暂停" : "正在播放";
     }
 
     private static CharSequence buildMediaSubtitleText(ClockDetailMediaSnapshot snapshot) {
@@ -2893,6 +2921,210 @@ final class ClockDetailPopupController {
                 || snapshot.subtitle.length() == 0
                 ? ""
                 : snapshot.subtitle;
+    }
+
+    private void handleMediaSkipToPrevious() {
+        if (!mediaProvider.skipToPrevious()) {
+            return;
+        }
+        scheduleAutoDismiss();
+        requestMediaControlRefresh();
+    }
+
+    private void handleMediaSkipToNext() {
+        if (!mediaProvider.skipToNext()) {
+            return;
+        }
+        scheduleAutoDismiss();
+        requestMediaControlRefresh();
+    }
+
+    private void handleMediaPlayPauseToggle() {
+        if (!mediaProvider.togglePlayPause()) {
+            return;
+        }
+        applyOptimisticPlayPauseButtonState();
+        scheduleAutoDismiss();
+        requestMediaControlRefresh();
+    }
+
+    private void requestMediaControlRefresh() {
+        handler.removeCallbacks(mediaControlRefreshRunnable);
+        handler.postDelayed(mediaControlRefreshRunnable, MEDIA_CONTROL_REFRESH_DELAY_MS);
+    }
+
+    private void refreshMediaSnapshotFromProvider() {
+        if (!isPopupShowing()) {
+            return;
+        }
+        ClockDetailMediaSnapshot snapshot = mediaProvider.peekStartupSnapshot();
+        latestMediaSnapshot = snapshot != null && snapshot.active
+                ? snapshot
+                : ClockDetailMediaSnapshot.EMPTY;
+        if (updateMediaView(latestMediaSnapshot)) {
+            requestPopupLayoutRefresh();
+        }
+    }
+
+    private void applyMediaControlsState(ClockDetailMediaSnapshot snapshot) {
+        if (mediaStrip == null) {
+            return;
+        }
+        ClockDetailMediaSnapshot safeSnapshot = snapshot != null && snapshot.active
+                ? snapshot
+                : ClockDetailMediaSnapshot.EMPTY;
+        boolean paused = isPausedPlaybackState(safeSnapshot.playbackState);
+        updateMediaControlButtonState(
+                mediaStrip.previousButton,
+                safeSnapshot.active
+                        && supportsAction(
+                                safeSnapshot.availableActions,
+                                PlaybackState.ACTION_SKIP_TO_PREVIOUS),
+                "上一曲");
+        updateMediaControlButtonState(
+                mediaStrip.playPauseButton,
+                safeSnapshot.active
+                        && (paused
+                                ? supportsEitherAction(
+                                        safeSnapshot.availableActions,
+                                        PlaybackState.ACTION_PLAY,
+                                        PlaybackState.ACTION_PLAY_PAUSE)
+                                : supportsEitherAction(
+                                        safeSnapshot.availableActions,
+                                        PlaybackState.ACTION_PAUSE,
+                                        PlaybackState.ACTION_PLAY_PAUSE)),
+                paused ? "继续播放" : "暂停播放");
+        updatePlayPauseButtonIcon(
+                mediaStrip,
+                paused ? PLAY_PAUSE_ICON_MODE_PLAY : PLAY_PAUSE_ICON_MODE_PAUSE,
+                safeSnapshot.active
+                        && mediaViewportView.getVisibility() == View.VISIBLE
+                        && mediaStrip.root.getVisibility() == View.VISIBLE);
+        updateMediaControlButtonState(
+                mediaStrip.nextButton,
+                safeSnapshot.active
+                        && supportsAction(
+                                safeSnapshot.availableActions,
+                                PlaybackState.ACTION_SKIP_TO_NEXT),
+                "下一曲");
+    }
+
+    private static void updateMediaControlButtonState(
+            ImageView button,
+            boolean enabled,
+            CharSequence contentDescription) {
+        if (button == null) {
+            return;
+        }
+        button.setEnabled(enabled);
+        button.setAlpha(enabled ? 1f : 0.42f);
+        button.setContentDescription(contentDescription);
+    }
+
+    private static boolean supportsAction(long availableActions, long targetAction) {
+        return availableActions == 0L || (availableActions & targetAction) != 0L;
+    }
+
+    private static boolean supportsEitherAction(
+            long availableActions,
+            long primaryAction,
+            long fallbackAction) {
+        return supportsAction(availableActions, primaryAction)
+                || supportsAction(availableActions, fallbackAction);
+    }
+
+    private static boolean isPausedPlaybackState(int playbackState) {
+        switch (playbackState) {
+            case PlaybackState.STATE_PAUSED:
+            case PlaybackState.STATE_STOPPED:
+            case PlaybackState.STATE_NONE:
+            case PlaybackState.STATE_ERROR:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private void applyOptimisticPlayPauseButtonState() {
+        if (mediaStrip == null || latestMediaSnapshot == null || !latestMediaSnapshot.active) {
+            return;
+        }
+        boolean paused = isPausedPlaybackState(latestMediaSnapshot.playbackState);
+        updateMediaControlButtonState(
+                mediaStrip.playPauseButton,
+                mediaStrip.playPauseButton.isEnabled(),
+                paused ? "暂停播放" : "继续播放");
+        updatePlayPauseButtonIcon(
+                mediaStrip,
+                paused ? PLAY_PAUSE_ICON_MODE_PAUSE : PLAY_PAUSE_ICON_MODE_PLAY,
+                true);
+    }
+
+    private void updatePlayPauseButtonIcon(MediaStrip strip, int targetMode, boolean animate) {
+        if (strip == null || strip.playPauseButton == null) {
+            return;
+        }
+        Drawable targetDrawable = resolvePlayPauseDrawable(strip, targetMode);
+        if (targetDrawable == null) {
+            return;
+        }
+        if (strip.playPauseIconMode == targetMode) {
+            if (strip.playPauseButton.getDrawable() != targetDrawable) {
+                strip.playPauseButton.setImageDrawable(targetDrawable);
+            }
+            return;
+        }
+        if (!animate || !strip.playPauseButton.isLaidOut()) {
+            applyPlayPauseButtonIconImmediately(strip, targetMode, targetDrawable);
+            return;
+        }
+        ImageView button = strip.playPauseButton;
+        float targetAlpha = button.isEnabled() ? 1f : 0.42f;
+        button.animate().cancel();
+        button.animate()
+                .alpha(Math.max(0.18f, targetAlpha * 0.24f))
+                .scaleX(MEDIA_PLAY_PAUSE_ICON_SWAP_SCALE)
+                .scaleY(MEDIA_PLAY_PAUSE_ICON_SWAP_SCALE)
+                .setDuration(MEDIA_PLAY_PAUSE_ICON_OUT_DURATION_MS)
+                .setInterpolator(POPUP_OUT_INTERPOLATOR)
+                .withEndAction(() -> {
+                    applyPlayPauseButtonIconImmediately(strip, targetMode, targetDrawable);
+                    button.setAlpha(Math.max(0.18f, targetAlpha * 0.24f));
+                    button.setScaleX(MEDIA_PLAY_PAUSE_ICON_SWAP_SCALE);
+                    button.setScaleY(MEDIA_PLAY_PAUSE_ICON_SWAP_SCALE);
+                    button.animate()
+                            .alpha(targetAlpha)
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(MEDIA_PLAY_PAUSE_ICON_IN_DURATION_MS)
+                            .setInterpolator(POPUP_ALPHA_IN_INTERPOLATOR)
+                            .start();
+                })
+                .start();
+    }
+
+    private static void applyPlayPauseButtonIconImmediately(
+            MediaStrip strip,
+            int targetMode,
+            Drawable targetDrawable) {
+        if (strip == null || strip.playPauseButton == null || targetDrawable == null) {
+            return;
+        }
+        strip.playPauseButton.animate().cancel();
+        strip.playPauseButton.setImageDrawable(targetDrawable);
+        strip.playPauseButton.setScaleX(1f);
+        strip.playPauseButton.setScaleY(1f);
+        strip.playPauseIconMode = targetMode;
+    }
+
+    private static Drawable resolvePlayPauseDrawable(MediaStrip strip, int targetMode) {
+        if (strip == null) {
+            return null;
+        }
+        if (targetMode == PLAY_PAUSE_ICON_MODE_PAUSE) {
+            return strip.pauseDrawable;
+        }
+        return strip.playDrawable;
     }
 
     private void launchActiveMediaApp() {
@@ -3094,6 +3326,33 @@ final class ClockDetailPopupController {
         strip.titleView.setTextColor(palette.primaryTextColor);
         strip.subtitleView.setTextColor(palette.secondaryTextColor);
         strip.statusView.setTextColor(palette.accentColor);
+        strip.previousButton.setColorFilter(palette.primaryTextColor);
+        strip.playPauseButton.setColorFilter(palette.accentColor);
+        strip.nextButton.setColorFilter(palette.primaryTextColor);
+        strip.previousButton.setBackground(buildMediaControlButtonBackground(context, palette, false));
+        strip.playPauseButton.setBackground(buildMediaControlButtonBackground(context, palette, true));
+        strip.nextButton.setBackground(buildMediaControlButtonBackground(context, palette, false));
+    }
+
+    private static Drawable buildMediaControlButtonBackground(
+            Context context,
+            Palette palette,
+            boolean emphasize) {
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setCornerRadius(dp(context, 12));
+        if (emphasize) {
+            background.setColor(mixColors(palette.surfaceColor, palette.accentColor, 0.14f));
+            background.setStroke(
+                    Math.max(1, dp(context, 1)),
+                    adjustAlpha(palette.accentColor, 0.42f));
+        } else {
+            background.setColor(mixColors(palette.surfaceColor, palette.strokeColor, 0.3f));
+            background.setStroke(
+                    Math.max(1, dp(context, 1)),
+                    adjustAlpha(palette.strokeColor, 0.82f));
+        }
+        return background;
     }
 
     private void updateMemoryTileRows(
@@ -3608,6 +3867,34 @@ final class ClockDetailPopupController {
         statusView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
         statusView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
 
+        LinearLayout controlsContainer = new LinearLayout(context);
+        controlsContainer.setOrientation(LinearLayout.HORIZONTAL);
+        controlsContainer.setGravity(Gravity.CENTER_VERTICAL);
+
+        int iconSize = dp(context, MEDIA_CONTROL_BUTTON_ICON_SIZE_DP);
+        Drawable playDrawable = ClockDetailMediaIcons.createPlayDrawable(iconSize);
+        Drawable pauseDrawable = ClockDetailMediaIcons.createPauseDrawable(iconSize);
+        ImageView previousButton = buildMediaControlButton(
+                context,
+                ClockDetailMediaIcons.createPreviousDrawable(iconSize));
+        previousButton.setContentDescription("上一曲");
+        ImageView playPauseButton = buildMediaControlButton(
+                context,
+                playDrawable);
+        playPauseButton.setContentDescription("继续播放");
+        ImageView nextButton = buildMediaControlButton(
+                context,
+                ClockDetailMediaIcons.createNextDrawable(iconSize));
+        nextButton.setContentDescription("下一曲");
+
+        controlsContainer.addView(previousButton, mediaControlButtonLayoutParams(context));
+        controlsContainer.addView(
+                playPauseButton,
+                mediaControlButtonLayoutParamsWithStart(context, MEDIA_CONTROL_GAP_DP));
+        controlsContainer.addView(
+                nextButton,
+                mediaControlButtonLayoutParamsWithStart(context, MEDIA_CONTROL_GAP_DP));
+
         textContainer.addView(titleView, matchWidth());
         textContainer.addView(subtitleView, matchWidthWithTop(context, 2));
         textContainer.addView(statusView, matchWidthWithTop(context, 3));
@@ -3619,7 +3906,32 @@ final class ClockDetailPopupController {
         root.addView(
                 textContainer,
                 weightCellWithStart(context, MEDIA_CONTENT_GAP_DP, 1f));
-        return new MediaStrip(root, artworkView, titleView, subtitleView, statusView);
+        root.addView(
+                controlsContainer,
+                wrapContentWithStart(context, MEDIA_CONTENT_GAP_DP));
+        return new MediaStrip(
+                root,
+                artworkView,
+                titleView,
+                subtitleView,
+                statusView,
+                playDrawable,
+                pauseDrawable,
+                previousButton,
+                playPauseButton,
+                nextButton);
+    }
+
+    private static ImageView buildMediaControlButton(Context context, Drawable drawable) {
+        ImageView button = new ImageView(context);
+        button.setAdjustViewBounds(false);
+        button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        button.setClickable(true);
+        button.setFocusable(true);
+        int padding = dp(context, MEDIA_CONTROL_BUTTON_PADDING_DP);
+        button.setPadding(padding, padding, padding, padding);
+        button.setImageDrawable(drawable);
+        return button;
     }
 
     private static ImageView buildRecentAppIconView(Context context) {
@@ -3643,6 +3955,19 @@ final class ClockDetailPopupController {
             Context context,
             int startMarginDp) {
         LinearLayout.LayoutParams params = recentAppItemLayoutParams(context);
+        params.leftMargin = dp(context, startMarginDp);
+        return params;
+    }
+
+    private static LinearLayout.LayoutParams mediaControlButtonLayoutParams(Context context) {
+        int size = dp(context, MEDIA_CONTROL_BUTTON_SIZE_DP);
+        return new LinearLayout.LayoutParams(size, size);
+    }
+
+    private static LinearLayout.LayoutParams mediaControlButtonLayoutParamsWithStart(
+            Context context,
+            int startMarginDp) {
+        LinearLayout.LayoutParams params = mediaControlButtonLayoutParams(context);
         params.leftMargin = dp(context, startMarginDp);
         return params;
     }
@@ -3879,18 +4204,34 @@ final class ClockDetailPopupController {
         final TextView titleView;
         final TextView subtitleView;
         final TextView statusView;
+        final Drawable playDrawable;
+        final Drawable pauseDrawable;
+        final ImageView previousButton;
+        final ImageView playPauseButton;
+        final ImageView nextButton;
+        int playPauseIconMode = PLAY_PAUSE_ICON_MODE_PLAY;
 
         MediaStrip(
                 LinearLayout root,
                 ImageView artworkView,
                 TextView titleView,
                 TextView subtitleView,
-                TextView statusView) {
+                TextView statusView,
+                Drawable playDrawable,
+                Drawable pauseDrawable,
+                ImageView previousButton,
+                ImageView playPauseButton,
+                ImageView nextButton) {
             this.root = root;
             this.artworkView = artworkView;
             this.titleView = titleView;
             this.subtitleView = subtitleView;
             this.statusView = statusView;
+            this.playDrawable = playDrawable;
+            this.pauseDrawable = pauseDrawable;
+            this.previousButton = previousButton;
+            this.playPauseButton = playPauseButton;
+            this.nextButton = nextButton;
         }
     }
 
