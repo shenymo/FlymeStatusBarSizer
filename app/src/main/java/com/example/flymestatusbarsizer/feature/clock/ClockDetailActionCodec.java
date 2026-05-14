@@ -6,13 +6,17 @@ import org.json.JSONObject;
 public final class ClockDetailActionCodec {
     public static final String DEFAULT_PRESET_JSON = buildDefaultPresetJson();
 
-    private static final int FORMAT_VERSION = 3;
+    private static final int FORMAT_VERSION = 4;
 
     private ClockDetailActionCodec() {
     }
 
     public static ClockDetailActionSpec[] emptyGrid() {
-        return ClockDetailAssistantActionCatalog.createAssistantPresetGrid();
+        ClockDetailActionSpec[] specs = new ClockDetailActionSpec[ClockDetailActionSpec.SLOT_COUNT];
+        for (int slot = 0; slot < specs.length; slot++) {
+            specs[slot] = ClockDetailActionSpec.empty(slot);
+        }
+        return specs;
     }
 
     public static ClockDetailActionSpec[] decode(String rawJson) {
@@ -45,7 +49,7 @@ public final class ClockDetailActionCodec {
                         item.optString("intentUri", ""));
             }
         } catch (Throwable ignored) {
-            return emptyGrid();
+            return ClockDetailAssistantActionCatalog.createAssistantPresetGrid();
         }
         return ClockDetailAssistantActionCatalog.normalizePresetGrid(specs);
     }
@@ -86,7 +90,7 @@ public final class ClockDetailActionCodec {
             root.put("items", items);
             return root.toString();
         } catch (Throwable ignored) {
-            return "{\"version\":3,\"items\":[]}";
+            return "{\"version\":4,\"items\":[]}";
         }
     }
 

@@ -55,6 +55,8 @@ final class ModuleConfig {
     boolean clockDetailActionGridEnabled = SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED;
     String clockDetailActionGridItemsJson =
             SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON;
+    String clockDetailAssistantActionCacheJson =
+            SettingsStore.DEFAULT_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON;
     boolean mbackLongTouchIntentEnabled = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
     int mbackLongTouchAction = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION;
     String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
@@ -303,6 +305,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON,
                     SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON);
+            config.clockDetailAssistantActionCacheJson = SettingsStore.readString(
+                    prefs,
+                    SettingsStore.KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON,
+                    SettingsStore.DEFAULT_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON);
             config.mbackLongTouchIntentEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,

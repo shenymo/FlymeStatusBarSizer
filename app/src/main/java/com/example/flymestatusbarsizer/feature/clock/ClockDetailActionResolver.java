@@ -12,6 +12,8 @@ import android.content.pm.ResolveInfo;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 
+import java.util.List;
+
 public final class ClockDetailActionResolver {
     private ClockDetailActionResolver() {
     }
@@ -57,7 +59,7 @@ public final class ClockDetailActionResolver {
         Intent launchIntent = ClockDetailAssistantActionCatalog.buildLaunchIntent(
                 context,
                 assistantAction);
-        if (!canResolveIntent(context, launchIntent)) {
+        if (launchIntent == null) {
             return invalidEntry(spec, label, icon);
         }
         return validEntry(spec, label, launchIntent, icon);
@@ -135,8 +137,27 @@ public final class ClockDetailActionResolver {
         if (componentName != null) {
             return !resolveActivityLabel(packageManager, componentName).isEmpty();
         }
-        ResolveInfo resolveInfo = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY);
-        return resolveInfo != null && resolveInfo.activityInfo != null;
+        ResolveInfo resolveInfo = packageManager.resolveActivity(intent, 0);
+        if (resolveInfo == null || resolveInfo.activityInfo == null) {
+            List<ResolveInfo> resolveInfos = packageManager.queryIntentActivities(intent, 0);
+            return resolveInfos != null && !resolveInfos.isEmpty();
+        }
+        return true;
+    }
+
+    private static ResolveInfo resolveActivityInfo(PackageManager packageManager, Intent intent) {
+        if (packageManager == null || intent == null) {
+            return null;
+        }
+        ResolveInfo resolveInfo = packageManager.resolveActivity(intent, 0);
+        if (resolveInfo != null && resolveInfo.activityInfo != null) {
+            return resolveInfo;
+        }
+        return firstResolveInfo(packageManager.queryIntentActivities(intent, 0));
+    }
+
+    private static ResolveInfo firstResolveInfo(List<ResolveInfo> resolveInfos) {
+        return resolveInfos == null || resolveInfos.isEmpty() ? null : resolveInfos.get(0);
     }
 
     private static String resolveIntentLabel(Context context, Intent intent) {
@@ -151,7 +172,7 @@ public final class ClockDetailActionResolver {
                 return activityLabel;
             }
         }
-        ResolveInfo resolveInfo = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY);
+        ResolveInfo resolveInfo = resolveActivityInfo(packageManager, intent);
         if (resolveInfo != null) {
             CharSequence label = resolveInfo.loadLabel(packageManager);
             if (label != null && label.length() > 0) {

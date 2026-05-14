@@ -10,6 +10,7 @@ import android.app.AlertDialog;
 import android.content.ClipData;
 import android.graphics.Outline;
 import android.os.Build;
+import android.text.TextUtils;
 import android.view.DragEvent;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -20,6 +21,10 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 final class ClockDetailActionGridEditor {
     private static final String ACTION_DRAG_LABEL = "clock_detail_action_slot";
@@ -35,8 +40,15 @@ final class ClockDetailActionGridEditor {
                 ClockDetailActionCodec.decode(activity.readStringSetting(
                         SettingsStore.KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON,
                         SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON)));
-        final ActionIconCellView[] cellViews = new ActionIconCellView[ClockDetailActionSpec.SLOT_COUNT];
-        final TextView orderSummaryView = new TextView(activity);
+        final String cachedActionCacheJson = activity.readStringSetting(
+                SettingsStore.KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON,
+                SettingsStore.DEFAULT_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON);
+        final String[] availableActions = ClockDetailAssistantActionCatalog.availableActionValues(
+                activity,
+                cachedActionCacheJson);
+        final SelectedCellViews[] selectedCellViews = new SelectedCellViews[ClockDetailActionSpec.SLOT_COUNT];
+        final LinkedHashMap<String, CandidateRowViews> candidateRows = new LinkedHashMap<>();
+        final TextView selectedSummaryView = new TextView(activity);
 
         ScrollView scrollView = new ScrollView(activity);
         scrollView.setFillViewport(true);
@@ -51,107 +63,325 @@ final class ClockDetailActionGridEditor {
                         ScrollView.LayoutParams.MATCH_PARENT,
                         ScrollView.LayoutParams.WRAP_CONTENT));
 
-        content.addView(buildPresetCard(workingSpecs, cellViews, orderSummaryView), activity.matchWrap());
-        content.addView(buildEditorCard(workingSpecs, cellViews, orderSummaryView), activity.matchWrapWithTop(12));
+        content.addView(
+                buildSelectedCard(
+                        workingSpecs,
+                        selectedCellViews,
+                        selectedSummaryView,
+                        candidateRows),
+                activity.matchWrap());
+        content.addView(
+                buildCandidateCard(
+                        workingSpecs,
+                        availableActions,
+                        selectedCellViews,
+                        selectedSummaryView,
+                        candidateRows),
+                activity.matchWrapWithTop(12));
 
-        refreshViews(workingSpecs, cellViews, orderSummaryView);
+        refreshViews(workingSpecs, selectedCellViews, selectedSummaryView, candidateRows);
 
         AlertDialog dialog = new AlertDialog.Builder(activity)
-                .setTitle("调整时间弹窗一行四列图标入口")
-                .setMessage("长按图标拖到目标位置；拖动只修改草稿，点“应用”后才会保存到配置。")
+                .setTitle("调整时间弹窗图标入口")
+                .setMessage("候选项优先读取本地缓存；点“扫描/刷新”可重新读取 assistant 当前快捷启动列表。最多选择 5 个，长按已选图标拖动排序。")
                 .setView(scrollView)
                 .setNegativeButton("取消", null)
-                .setPositiveButton("应用", (dialogInterface, which) -> {
-                    ClockDetailActionSpec[] normalized =
-                            ClockDetailAssistantActionCatalog.normalizePresetGrid(workingSpecs);
-                    activity.putStringSetting(
-                            SettingsStore.KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON,
-                            ClockDetailActionCodec.encode(normalized));
-                    activity.showToast("时间弹窗图标入口顺序已保存");
-                })
                 .show();
         activity.attachDialogButtonHaptics(dialog);
     }
 
-    private View buildPresetCard(
+    private View buildSelectedCard(
             ClockDetailActionSpec[] workingSpecs,
-            ActionIconCellView[] cellViews,
-            TextView orderSummaryView) {
+            SelectedCellViews[] selectedCellViews,
+            TextView selectedSummaryView,
+            Map<String, CandidateRowViews> candidateRows) {
         LinearLayout card = activity.card(activity.surfaceSoftColor(), activity.strokeColor(), 24);
         activity.addProfileSectionHeader(
                 card,
-                "预设动作",
-                "固定保留微信扫一扫、微信收付款、支付宝扫一扫、支付宝付款码四个入口。");
+                "已选入口",
+                "点图标可移除；长按已选图标拖动排序；恢复默认会按 assistant 的默认优先级重建前 5 项。");
+
         LinearLayout actions = new LinearLayout(activity);
         actions.setOrientation(LinearLayout.HORIZONTAL);
-        actions.addView(buildChipButton("恢复默认顺序", v -> {
+        actions.addView(buildChipButton("恢复默认", v -> {
             activity.performTapHaptic(v);
             applySpecs(workingSpecs, ClockDetailAssistantActionCatalog.createAssistantPresetGrid());
-            refreshViews(workingSpecs, cellViews, orderSummaryView);
-            activity.showToast("已恢复默认顺序");
+            refreshViews(workingSpecs, selectedCellViews, selectedSummaryView, candidateRows);
+            activity.showToast("已恢复默认入口顺序");
         }), chipButtonLayoutParams(false));
+        actions.addView(buildChipButton("保存配置", v -> {
+            activity.performTapHaptic(v);
+            saveWorkingSpecs(workingSpecs);
+        }), chipButtonLayoutParams(true));
         card.addView(actions, activity.matchWrapWithTop(12));
+
+        card.addView(
+                buildSelectedGrid(workingSpecs, selectedCellViews, selectedSummaryView, candidateRows),
+                activity.matchWrapWithTop(12));
+
+        selectedSummaryView.setTextColor(activity.subtextColor());
+        selectedSummaryView.setTextSize(12);
+        selectedSummaryView.setLineSpacing(0f, 1.08f);
+        selectedSummaryView.setPadding(0, activity.dp(12), 0, 0);
+        card.addView(selectedSummaryView, activity.matchWrap());
         return card;
     }
 
-    private View buildEditorCard(
+    private View buildSelectedGrid(
             ClockDetailActionSpec[] workingSpecs,
-            ActionIconCellView[] cellViews,
-            TextView orderSummaryView) {
-        LinearLayout card = activity.card(activity.featureSurfaceColor(), activity.featureStrokeColor(), 24);
-        activity.addProfileSectionHeader(
-                card,
-                "拖动排序",
-                "长按任意图标直接拖到目标位置；灰色表示当前设备还没有解析到可启动目标。");
-        card.addView(buildIconGrid(workingSpecs, cellViews, orderSummaryView), activity.matchWrapWithTop(12));
-        orderSummaryView.setTextColor(activity.subtextColor());
-        orderSummaryView.setTextSize(12);
-        orderSummaryView.setLineSpacing(0f, 1.08f);
-        orderSummaryView.setPadding(0, activity.dp(12), 0, 0);
-        card.addView(orderSummaryView, activity.matchWrap());
-        return card;
-    }
-
-    private View buildIconGrid(
-            ClockDetailActionSpec[] workingSpecs,
-            ActionIconCellView[] cellViews,
-            TextView orderSummaryView) {
-        LinearLayout grid = new LinearLayout(activity);
-        grid.setOrientation(LinearLayout.HORIZONTAL);
-        grid.setGravity(Gravity.CENTER);
+            SelectedCellViews[] selectedCellViews,
+            TextView selectedSummaryView,
+            Map<String, CandidateRowViews> candidateRows) {
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
         for (int slot = 0; slot < ClockDetailActionSpec.SLOT_COUNT; slot++) {
-            ActionIconCellView cell = buildIconCell(workingSpecs, cellViews, orderSummaryView);
-            cellViews[slot] = cell;
+            final int slotIndex = slot;
+            SelectedCellViews cellViews = buildSelectedCell();
+            cellViews.root.setOnClickListener(v -> {
+                String action = actionAt(workingSpecs, slotIndex);
+                if (action.isEmpty()) {
+                    return;
+                }
+                activity.performTapHaptic(v);
+                removeAction(workingSpecs, action);
+                refreshViews(workingSpecs, selectedCellViews, selectedSummaryView, candidateRows);
+            });
+            cellViews.root.setOnLongClickListener(this::startSelectedDrag);
+            cellViews.root.setOnDragListener((target, event) ->
+                    handleSelectedDrag(
+                            workingSpecs,
+                            selectedCellViews,
+                            selectedSummaryView,
+                            candidateRows,
+                            slotIndex,
+                            target,
+                            event));
+            selectedCellViews[slot] = cellViews;
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    0,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT);
+                    1f);
             if (slot > 0) {
-                params.leftMargin = activity.dp(8);
+                params.leftMargin = activity.dp(6);
             }
-            grid.addView(cell.root, params);
+            row.addView(cellViews.root, params);
         }
-        return grid;
+        return row;
     }
 
-    private ActionIconCellView buildIconCell(
-            ClockDetailActionSpec[] workingSpecs,
-            ActionIconCellView[] cellViews,
-            TextView orderSummaryView) {
+    private SelectedCellViews buildSelectedCell() {
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
-        root.setMinimumHeight(activity.dp(44));
-        root.setPadding(activity.dp(4), activity.dp(4), activity.dp(4), activity.dp(4));
-        root.setOnLongClickListener(this::startIconDrag);
-        root.setOnDragListener((target, event) ->
-                handleIconDrag(workingSpecs, cellViews, orderSummaryView, target, event));
+        root.setMinimumHeight(activity.dp(76));
+        root.setPadding(activity.dp(6), activity.dp(8), activity.dp(6), activity.dp(8));
 
         ImageView iconView = new ImageView(activity);
         int iconSize = activity.dp(30);
         iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         styleRoundedIcon(iconView, 10);
         root.addView(iconView, new LinearLayout.LayoutParams(iconSize, iconSize));
-        return new ActionIconCellView(root, iconView);
+
+        TextView titleView = new TextView(activity);
+        titleView.setIncludeFontPadding(false);
+        titleView.setSingleLine(true);
+        titleView.setEllipsize(TextUtils.TruncateAt.END);
+        titleView.setGravity(Gravity.CENTER);
+        titleView.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        titleView.setTextSize(11);
+        titleView.setPadding(0, activity.dp(6), 0, 0);
+        root.addView(titleView, activity.matchWrap());
+        return new SelectedCellViews(root, iconView, titleView);
+    }
+
+    private View buildCandidateCard(
+            ClockDetailActionSpec[] workingSpecs,
+            String[] availableActions,
+            SelectedCellViews[] selectedCellViews,
+            TextView selectedSummaryView,
+            LinkedHashMap<String, CandidateRowViews> candidateRows) {
+        LinearLayout card = activity.card(activity.featureSurfaceColor(), activity.featureStrokeColor(), 24);
+        activity.addProfileSectionHeader(
+                card,
+                "可选快捷启动",
+                "列表优先读取已缓存结果；点“扫描/刷新”重新读取 assistant 当前快捷启动列表。");
+        LinearLayout list = new LinearLayout(activity);
+        list.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout actions = new LinearLayout(activity);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.addView(buildChipButton("扫描/刷新", v -> {
+            activity.performTapHaptic(v);
+            rescanAssistantActions(
+                    v,
+                    workingSpecs,
+                    selectedCellViews,
+                    selectedSummaryView,
+                    candidateRows,
+                    list);
+        }), chipButtonLayoutParams(false));
+        card.addView(actions, activity.matchWrapWithTop(12));
+        populateCandidateList(
+                list,
+                availableActions,
+                workingSpecs,
+                selectedCellViews,
+                selectedSummaryView,
+                candidateRows);
+        card.addView(list, activity.matchWrapWithTop(12));
+        return card;
+    }
+
+    private void populateCandidateList(
+            LinearLayout list,
+            String[] availableActions,
+            ClockDetailActionSpec[] workingSpecs,
+            SelectedCellViews[] selectedCellViews,
+            TextView selectedSummaryView,
+            LinkedHashMap<String, CandidateRowViews> candidateRows) {
+        if (list == null) {
+            return;
+        }
+        list.removeAllViews();
+        if (candidateRows != null) {
+            candidateRows.clear();
+        }
+        if (availableActions != null) {
+            int visibleIndex = 0;
+            for (String value : availableActions) {
+                String action = ClockDetailAssistantActionCatalog.normalizeAction(value);
+                if (action.isEmpty() || (candidateRows != null && candidateRows.containsKey(action))) {
+                    continue;
+                }
+                CandidateRowViews rowViews = buildCandidateRow(
+                        action,
+                        workingSpecs,
+                        selectedCellViews,
+                        selectedSummaryView,
+                        candidateRows);
+                if (candidateRows != null) {
+                    candidateRows.put(action, rowViews);
+                }
+                LinearLayout.LayoutParams params = activity.matchWrap();
+                if (visibleIndex > 0) {
+                    params.topMargin = activity.dp(8);
+                }
+                list.addView(rowViews.root, params);
+                visibleIndex++;
+            }
+        }
+        if (candidateRows == null || candidateRows.isEmpty()) {
+            list.addView(buildCandidateEmptyView(), activity.matchWrap());
+        }
+    }
+
+    private TextView buildCandidateEmptyView() {
+        TextView emptyView = new TextView(activity);
+        emptyView.setText("当前没有缓存到 assistant 快捷启动，请点“扫描/刷新”。");
+        emptyView.setTextColor(activity.subtextColor());
+        emptyView.setTextSize(13);
+        return emptyView;
+    }
+
+    private void rescanAssistantActions(
+            View triggerView,
+            ClockDetailActionSpec[] workingSpecs,
+            SelectedCellViews[] selectedCellViews,
+            TextView selectedSummaryView,
+            LinkedHashMap<String, CandidateRowViews> candidateRows,
+            LinearLayout candidateList) {
+        if (triggerView != null) {
+            triggerView.setEnabled(false);
+            triggerView.setAlpha(0.58f);
+        }
+        activity.showToast("正在扫描 assistant 当前快捷启动...");
+        new Thread(() -> {
+            String cacheJson = ClockDetailAssistantActionCatalog.buildAvailableActionCacheJson(activity);
+            String[] availableActions = ClockDetailAssistantActionCatalog.actionValuesFromCacheJson(cacheJson);
+            activity.runOnUiThread(() -> {
+                if (triggerView != null) {
+                    triggerView.setEnabled(true);
+                    triggerView.setAlpha(1f);
+                }
+                if (availableActions.length == 0 || cacheJson.isEmpty()) {
+                    refreshViews(workingSpecs, selectedCellViews, selectedSummaryView, candidateRows);
+                    activity.showToast("没有扫描到 assistant 快捷启动");
+                    return;
+                }
+                activity.putStringSetting(
+                        SettingsStore.KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON,
+                        cacheJson);
+                populateCandidateList(
+                        candidateList,
+                        availableActions,
+                        workingSpecs,
+                        selectedCellViews,
+                        selectedSummaryView,
+                        candidateRows);
+                refreshViews(workingSpecs, selectedCellViews, selectedSummaryView, candidateRows);
+                activity.showToast("已缓存 " + availableActions.length + " 个快捷启动");
+            });
+        }, "clock-detail-assistant-scan").start();
+    }
+
+    private CandidateRowViews buildCandidateRow(
+            String action,
+            ClockDetailActionSpec[] workingSpecs,
+            SelectedCellViews[] selectedCellViews,
+            TextView selectedSummaryView,
+            LinkedHashMap<String, CandidateRowViews> candidateRows) {
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(activity.dp(12), activity.dp(12), activity.dp(12), activity.dp(12));
+
+        ImageView iconView = new ImageView(activity);
+        int iconSize = activity.dp(28);
+        iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        styleRoundedIcon(iconView, 10);
+        row.addView(iconView, new LinearLayout.LayoutParams(iconSize, iconSize));
+
+        LinearLayout textColumn = new LinearLayout(activity);
+        textColumn.setOrientation(LinearLayout.VERTICAL);
+        textColumn.setPadding(activity.dp(12), 0, activity.dp(12), 0);
+
+        TextView titleView = new TextView(activity);
+        titleView.setTextColor(activity.textColor());
+        titleView.setTextSize(15);
+        textColumn.addView(titleView, activity.matchWrap());
+
+        TextView subtitleView = new TextView(activity);
+        subtitleView.setTextColor(activity.subtextColor());
+        subtitleView.setTextSize(12);
+        subtitleView.setPadding(0, activity.dp(4), 0, 0);
+        textColumn.addView(subtitleView, activity.matchWrap());
+        row.addView(textColumn, new LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f));
+
+        TextView stateChip = activity.chip("添加", activity.surfaceColor(), activity.primaryColor());
+        row.addView(stateChip, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        Runnable toggleAction = () -> {
+            activity.performTapHaptic(row);
+            if (isSelected(workingSpecs, action)) {
+                removeAction(workingSpecs, action);
+                refreshViews(workingSpecs, selectedCellViews, selectedSummaryView, candidateRows);
+                return;
+            }
+            if (selectedCount(workingSpecs) >= ClockDetailActionSpec.SLOT_COUNT) {
+                activity.showToast("最多只能选择 5 个图标入口");
+                return;
+            }
+            addAction(workingSpecs, action);
+            refreshViews(workingSpecs, selectedCellViews, selectedSummaryView, candidateRows);
+        };
+        activity.setTapClickListener(row, v -> toggleAction.run());
+        activity.setTapClickListener(stateChip, v -> toggleAction.run());
+        return new CandidateRowViews(row, iconView, titleView, subtitleView, stateChip, action);
     }
 
     private LinearLayout.LayoutParams chipButtonLayoutParams(boolean withStartMargin) {
@@ -175,72 +405,137 @@ final class ClockDetailActionGridEditor {
         return button;
     }
 
+    private void saveWorkingSpecs(ClockDetailActionSpec[] workingSpecs) {
+        ClockDetailActionSpec[] normalized =
+                ClockDetailAssistantActionCatalog.normalizePresetGrid(workingSpecs);
+        activity.putStringSetting(
+                SettingsStore.KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON,
+                ClockDetailActionCodec.encode(normalized));
+        activity.showToast("时间弹窗图标入口已保存");
+    }
+
     private void refreshViews(
-            ClockDetailActionSpec[] specs,
-            ActionIconCellView[] cellViews,
-            TextView orderSummaryView) {
-        ClockDetailActionEntry[] entries = ClockDetailActionResolver.resolveEntries(activity, specs);
-        StringBuilder orderText = new StringBuilder("当前顺序：");
-        StringBuilder invalidText = new StringBuilder();
+            ClockDetailActionSpec[] workingSpecs,
+            SelectedCellViews[] selectedCellViews,
+            TextView selectedSummaryView,
+            Map<String, CandidateRowViews> candidateRows) {
+        ClockDetailActionEntry[] selectedEntries = ClockDetailActionResolver.resolveEntries(activity, workingSpecs);
+        int selectedCount = 0;
+        ArrayList<String> invalidTitles = new ArrayList<>();
         for (int slot = 0; slot < ClockDetailActionSpec.SLOT_COUNT; slot++) {
-            ClockDetailActionSpec spec = specs[slot];
-            ClockDetailActionEntry entry = entries[slot];
-            if (slot > 0) {
-                orderText.append(" · ");
-            }
-            orderText.append(resolveActionTitle(spec, entry));
-            if (entry == null || !entry.valid) {
-                if (invalidText.length() > 0) {
-                    invalidText.append("、");
+            ClockDetailActionSpec spec = specAt(workingSpecs, slot);
+            ClockDetailActionEntry entry = selectedEntries[slot];
+            if (!spec.assistantAction.isEmpty()) {
+                selectedCount++;
+                if (entry == null || !entry.valid) {
+                    invalidTitles.add(resolveActionTitle(spec, entry));
                 }
-                invalidText.append(resolveActionTitle(spec, entry));
             }
-            updateIconCell(cellViews[slot], spec, entry);
+            updateSelectedCell(selectedCellViews[slot], spec, entry);
         }
-        if (orderSummaryView != null) {
-            if (invalidText.length() > 0) {
-                orderText.append("\n灰色表示当前设备还没有解析到这些入口：")
-                        .append(invalidText);
-            } else {
-                orderText.append("\n当前四个入口都已解析到可启动目标。");
+        if (selectedSummaryView != null) {
+            StringBuilder summary = new StringBuilder();
+            summary.append("已选 ").append(selectedCount).append(" / ").append(ClockDetailActionSpec.SLOT_COUNT);
+            summary.append("。点图标移除，长按拖动排序。");
+            if (!invalidTitles.isEmpty()) {
+                summary.append("\n当前设备上暂不可启动：");
+                for (int index = 0; index < invalidTitles.size(); index++) {
+                    if (index > 0) {
+                        summary.append("、");
+                    }
+                    summary.append(invalidTitles.get(index));
+                }
             }
-            orderSummaryView.setText(orderText);
+            selectedSummaryView.setText(summary);
+        }
+        if (candidateRows != null) {
+            for (Map.Entry<String, CandidateRowViews> entry : candidateRows.entrySet()) {
+                updateCandidateRow(workingSpecs, entry.getValue());
+            }
         }
     }
 
-    private void updateIconCell(
-            ActionIconCellView cell,
+    private void updateSelectedCell(
+            SelectedCellViews cellViews,
             ClockDetailActionSpec spec,
             ClockDetailActionEntry entry) {
-        if (cell == null) {
+        if (cellViews == null) {
             return;
         }
-        boolean valid = entry != null && entry.valid;
         String action = spec == null ? "" : spec.assistantAction;
-        cell.root.setTag(action);
-        cell.root.setContentDescription(resolveActionTitle(spec, entry));
-        cell.root.setAlpha(valid ? 1f : 0.78f);
-        cell.root.setScaleX(1f);
-        cell.root.setScaleY(1f);
-        cell.root.setBackground(null);
-        cell.iconView.setImageDrawable(entry != null && entry.hasIcon()
+        boolean selected = !action.isEmpty();
+        boolean valid = entry != null && entry.valid;
+        cellViews.root.setTag(action);
+        cellViews.root.setBackground(activity.outlinedRect(
+                selected ? activity.surfaceColor() : activity.surfaceSoftColor(),
+                selected
+                        ? (valid ? activity.primaryColor() : activity.strokeColor())
+                        : activity.strokeColor(),
+                1,
+                18));
+        cellViews.root.setAlpha(selected ? 1f : 0.72f);
+        cellViews.root.setScaleX(1f);
+        cellViews.root.setScaleY(1f);
+        if (!selected) {
+            cellViews.iconView.setImageDrawable(null);
+            cellViews.iconView.setAlpha(0.32f);
+            cellViews.titleView.setText("空位");
+            cellViews.titleView.setTextColor(activity.tertiaryColor());
+            cellViews.root.setContentDescription("空位");
+            return;
+        }
+        cellViews.iconView.setImageDrawable(entry != null && entry.hasIcon()
                 ? entry.icon
                 : ClockDetailAssistantActionCatalog.resolveActionIcon(activity, action));
-        cell.iconView.setAlpha(valid ? 1f : 0.58f);
+        cellViews.iconView.setAlpha(valid ? 1f : 0.58f);
+        cellViews.titleView.setText(ClockDetailAssistantActionCatalog.resolveActionName(action));
+        cellViews.titleView.setTextColor(valid ? activity.textColor() : activity.tertiaryColor());
+        cellViews.root.setContentDescription(resolveActionTitle(spec, entry));
     }
 
-    private void styleRoundedIcon(ImageView iconView, int radiusDp) {
-        if (iconView == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+    private void updateCandidateRow(
+            ClockDetailActionSpec[] workingSpecs,
+            CandidateRowViews rowViews) {
+        if (rowViews == null) {
             return;
         }
-        final int radiusPx = activity.dp(radiusDp);
-        iconView.setClipToOutline(true);
-        iconView.setOutlineProvider(new ViewOutlineProvider() {
-            @Override
-            public void getOutline(View view, Outline outline) {
-                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radiusPx);
-            }
-        });
+        String action = rowViews.action;
+        ClockDetailActionSpec spec = ClockDetailAssistantActionCatalog.assistantSpec(
+                0,
+                action,
+                ClockDetailAssistantActionCatalog.resolveActionTitle(action));
+        ClockDetailActionEntry entry = ClockDetailActionResolver.resolveEntry(activity, spec);
+        boolean selected = isSelected(workingSpecs, action);
+        boolean valid = entry != null && entry.valid;
+        rowViews.root.setBackground(activity.outlinedRect(
+                selected ? activity.surfaceColor() : activity.surfaceSoftColor(),
+                selected ? activity.primaryColor() : activity.featureStrokeColor(),
+                1,
+                18));
+        rowViews.root.setAlpha(valid ? 1f : 0.78f);
+        rowViews.iconView.setImageDrawable(entry != null && entry.hasIcon()
+                ? entry.icon
+                : ClockDetailAssistantActionCatalog.resolveActionIcon(activity, action));
+        rowViews.iconView.setAlpha(valid ? 1f : 0.58f);
+        rowViews.titleView.setText(ClockDetailAssistantActionCatalog.resolveActionName(action));
+        rowViews.subtitleView.setText(buildCandidateSubtitle(action, valid));
+        rowViews.stateChip.setText(selected ? "已选" : "添加");
+        rowViews.stateChip.setTextColor(selected ? android.graphics.Color.WHITE : activity.primaryColor());
+        rowViews.stateChip.setBackground(selected
+                ? activity.roundRect(activity.primaryColor(), 99)
+                : activity.outlinedRect(
+                        activity.surfaceColor(),
+                        activity.featureStrokeColor(),
+                        1,
+                        99));
+    }
+
+    private String buildCandidateSubtitle(String action, boolean valid) {
+        String appName = ClockDetailAssistantActionCatalog.resolveActionAppName(action);
+        if (appName.equals(ClockDetailAssistantActionCatalog.resolveActionName(action))) {
+            return valid ? appName : appName + " · 当前不可用";
+        }
+        return valid ? appName : appName + " · 当前不可用";
     }
 
     private String resolveActionTitle(
@@ -252,48 +547,10 @@ final class ClockDetailActionGridEditor {
         if (spec == null) {
             return "";
         }
-        String title = spec.title;
-        if (title != null && !title.trim().isEmpty()) {
-            return title.trim();
-        }
         return ClockDetailAssistantActionCatalog.resolveActionTitle(spec.assistantAction);
     }
 
-    private boolean moveSpec(ClockDetailActionSpec[] specs, String fromAction, String toAction) {
-        if (specs == null
-                || fromAction == null
-                || toAction == null
-                || fromAction.trim().isEmpty()
-                || toAction.trim().isEmpty()
-                || fromAction.equals(toAction)) {
-            return false;
-        }
-        String[] actions = new String[ClockDetailActionSpec.SLOT_COUNT];
-        for (int slot = 0; slot < actions.length; slot++) {
-            ClockDetailActionSpec spec = slot < specs.length ? specs[slot] : null;
-            actions[slot] = spec == null ? "" : spec.assistantAction;
-        }
-        int from = indexOfAction(actions, fromAction);
-        int to = indexOfAction(actions, toAction);
-        if (from < 0 || to < 0 || from == to) {
-            return false;
-        }
-        String moving = actions[from];
-        if (from < to) {
-            for (int slot = from; slot < to; slot++) {
-                actions[slot] = actions[slot + 1];
-            }
-        } else {
-            for (int slot = from; slot > to; slot--) {
-                actions[slot] = actions[slot - 1];
-            }
-        }
-        actions[to] = moving;
-        applySpecs(specs, ClockDetailAssistantActionCatalog.createGridForActionOrder(actions));
-        return true;
-    }
-
-    private boolean startIconDrag(View view) {
+    private boolean startSelectedDrag(View view) {
         String action = view != null && view.getTag() instanceof String
                 ? (String) view.getTag()
                 : "";
@@ -312,82 +569,187 @@ final class ClockDetailActionGridEditor {
         return true;
     }
 
-    private boolean handleIconDrag(
+    private boolean handleSelectedDrag(
             ClockDetailActionSpec[] workingSpecs,
-            ActionIconCellView[] cellViews,
-            TextView orderSummaryView,
+            SelectedCellViews[] selectedCellViews,
+            TextView selectedSummaryView,
+            Map<String, CandidateRowViews> candidateRows,
+            int targetSlot,
             View target,
             DragEvent event) {
-        if (!(target.getTag() instanceof String)) {
-            return false;
-        }
-        ActionIconCellView targetCell = findCell(cellViews, target);
+        SelectedCellViews targetCell = findSelectedCell(selectedCellViews, target);
         switch (event.getAction()) {
             case DragEvent.ACTION_DRAG_STARTED:
                 return event.getLocalState() instanceof View
                         && ((View) event.getLocalState()).getTag() instanceof String;
             case DragEvent.ACTION_DRAG_ENTERED:
-                applyHoverState(targetCell, true);
+                applySelectedHoverState(targetCell, true);
                 return true;
             case DragEvent.ACTION_DRAG_EXITED:
-                applyHoverState(targetCell, false);
+                applySelectedHoverState(targetCell, false);
                 return true;
             case DragEvent.ACTION_DROP:
-                applyHoverState(targetCell, false);
+                applySelectedHoverState(targetCell, false);
                 Object localState = event.getLocalState();
                 if (!(localState instanceof View) || !(((View) localState).getTag() instanceof String)) {
                     return false;
                 }
-                if (moveSpec(
+                if (moveAction(
                         workingSpecs,
                         (String) ((View) localState).getTag(),
-                        (String) target.getTag())) {
-                    refreshViews(workingSpecs, cellViews, orderSummaryView);
+                        targetSlot)) {
+                    refreshViews(workingSpecs, selectedCellViews, selectedSummaryView, candidateRows);
                 }
                 return true;
             case DragEvent.ACTION_DRAG_ENDED:
-                applyHoverState(targetCell, false);
+                applySelectedHoverState(targetCell, false);
                 Object draggedView = event.getLocalState();
                 if (draggedView instanceof View) {
                     ((View) draggedView).setAlpha(1f);
                 }
-                refreshViews(workingSpecs, cellViews, orderSummaryView);
+                refreshViews(workingSpecs, selectedCellViews, selectedSummaryView, candidateRows);
                 return true;
             default:
                 return true;
         }
     }
 
-    private void applyHoverState(ActionIconCellView cell, boolean hovered) {
-        if (cell == null) {
+    private void applySelectedHoverState(SelectedCellViews cellViews, boolean hovered) {
+        if (cellViews == null) {
             return;
         }
-        cell.root.setScaleX(hovered ? 1.05f : 1f);
-        cell.root.setScaleY(hovered ? 1.05f : 1f);
+        cellViews.root.setScaleX(hovered ? 1.04f : 1f);
+        cellViews.root.setScaleY(hovered ? 1.04f : 1f);
     }
 
-    private static ActionIconCellView findCell(ActionIconCellView[] cellViews, View target) {
-        if (cellViews == null || target == null) {
+    private SelectedCellViews findSelectedCell(SelectedCellViews[] selectedCellViews, View target) {
+        if (selectedCellViews == null || target == null) {
             return null;
         }
-        for (ActionIconCellView cellView : cellViews) {
-            if (cellView != null && cellView.root == target) {
-                return cellView;
+        for (SelectedCellViews cellViews : selectedCellViews) {
+            if (cellViews != null && cellViews.root == target) {
+                return cellViews;
             }
         }
         return null;
     }
 
-    private static int indexOfAction(String[] actions, String targetAction) {
-        if (actions == null || targetAction == null || targetAction.trim().isEmpty()) {
+    private boolean isSelected(ClockDetailActionSpec[] specs, String action) {
+        return findSelectedIndex(specs, action) >= 0;
+    }
+
+    private int findSelectedIndex(ClockDetailActionSpec[] specs, String action) {
+        String normalizedAction = ClockDetailAssistantActionCatalog.normalizeAction(action);
+        if (normalizedAction.isEmpty()) {
             return -1;
         }
-        for (int index = 0; index < actions.length; index++) {
-            if (targetAction.equals(actions[index])) {
-                return index;
+        for (int slot = 0; slot < ClockDetailActionSpec.SLOT_COUNT; slot++) {
+            if (normalizedAction.equals(actionAt(specs, slot))) {
+                return slot;
             }
         }
         return -1;
+    }
+
+    private int selectedCount(ClockDetailActionSpec[] specs) {
+        int count = 0;
+        for (int slot = 0; slot < ClockDetailActionSpec.SLOT_COUNT; slot++) {
+            if (!actionAt(specs, slot).isEmpty()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void addAction(ClockDetailActionSpec[] specs, String action) {
+        ArrayList<String> selectedActions = collectSelectedActions(specs);
+        String normalizedAction = ClockDetailAssistantActionCatalog.normalizeAction(action);
+        if (normalizedAction.isEmpty() || selectedActions.contains(normalizedAction)) {
+            return;
+        }
+        selectedActions.add(normalizedAction);
+        rebuildSelectedSpecs(specs, selectedActions);
+    }
+
+    private void removeAction(ClockDetailActionSpec[] specs, String action) {
+        ArrayList<String> selectedActions = collectSelectedActions(specs);
+        selectedActions.remove(ClockDetailAssistantActionCatalog.normalizeAction(action));
+        rebuildSelectedSpecs(specs, selectedActions);
+    }
+
+    private boolean moveAction(ClockDetailActionSpec[] specs, String action, int targetSlot) {
+        ArrayList<String> selectedActions = collectSelectedActions(specs);
+        String normalizedAction = ClockDetailAssistantActionCatalog.normalizeAction(action);
+        int fromIndex = selectedActions.indexOf(normalizedAction);
+        if (fromIndex < 0) {
+            return false;
+        }
+        selectedActions.remove(fromIndex);
+        int insertIndex = Math.max(0, Math.min(targetSlot, selectedActions.size()));
+        selectedActions.add(insertIndex, normalizedAction);
+        rebuildSelectedSpecs(specs, selectedActions);
+        return true;
+    }
+
+    private ArrayList<String> collectSelectedActions(ClockDetailActionSpec[] specs) {
+        ArrayList<String> actions = new ArrayList<>();
+        if (specs == null) {
+            return actions;
+        }
+        for (int slot = 0; slot < ClockDetailActionSpec.SLOT_COUNT; slot++) {
+            String action = actionAt(specs, slot);
+            if (!action.isEmpty() && !actions.contains(action)) {
+                actions.add(action);
+            }
+        }
+        return actions;
+    }
+
+    private void rebuildSelectedSpecs(ClockDetailActionSpec[] specs, ArrayList<String> selectedActions) {
+        if (specs == null) {
+            return;
+        }
+        for (int slot = 0; slot < ClockDetailActionSpec.SLOT_COUNT; slot++) {
+            if (selectedActions != null && slot < selectedActions.size()) {
+                String action = selectedActions.get(slot);
+                specs[slot] = ClockDetailAssistantActionCatalog.assistantSpec(
+                        slot,
+                        action,
+                        ClockDetailAssistantActionCatalog.resolveActionTitle(action));
+            } else {
+                specs[slot] = ClockDetailActionSpec.empty(slot);
+            }
+        }
+    }
+
+    private String actionAt(ClockDetailActionSpec[] specs, int slot) {
+        if (specs == null || slot < 0 || slot >= specs.length) {
+            return "";
+        }
+        ClockDetailActionSpec spec = specs[slot];
+        return spec == null ? "" : ClockDetailAssistantActionCatalog.normalizeAction(spec.assistantAction);
+    }
+
+    private ClockDetailActionSpec specAt(ClockDetailActionSpec[] specs, int slot) {
+        if (specs == null || slot < 0 || slot >= specs.length) {
+            return ClockDetailActionSpec.empty(slot);
+        }
+        ClockDetailActionSpec spec = specs[slot];
+        return spec != null ? spec : ClockDetailActionSpec.empty(slot);
+    }
+
+    private void styleRoundedIcon(ImageView iconView, int radiusDp) {
+        if (iconView == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return;
+        }
+        final int radiusPx = activity.dp(radiusDp);
+        iconView.setClipToOutline(true);
+        iconView.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, Outline outline) {
+                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radiusPx);
+            }
+        });
     }
 
     private static void applySpecs(
@@ -406,13 +768,39 @@ final class ClockDetailActionGridEditor {
         }
     }
 
-    private static final class ActionIconCellView {
+    private static final class SelectedCellViews {
         final LinearLayout root;
         final ImageView iconView;
+        final TextView titleView;
 
-        ActionIconCellView(LinearLayout root, ImageView iconView) {
+        SelectedCellViews(LinearLayout root, ImageView iconView, TextView titleView) {
             this.root = root;
             this.iconView = iconView;
+            this.titleView = titleView;
+        }
+    }
+
+    private static final class CandidateRowViews {
+        final LinearLayout root;
+        final ImageView iconView;
+        final TextView titleView;
+        final TextView subtitleView;
+        final TextView stateChip;
+        final String action;
+
+        CandidateRowViews(
+                LinearLayout root,
+                ImageView iconView,
+                TextView titleView,
+                TextView subtitleView,
+                TextView stateChip,
+                String action) {
+            this.root = root;
+            this.iconView = iconView;
+            this.titleView = titleView;
+            this.subtitleView = subtitleView;
+            this.stateChip = stateChip;
+            this.action = action;
         }
     }
 }

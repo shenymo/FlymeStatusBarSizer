@@ -1,7 +1,7 @@
 package com.example.flymestatusbarsizer.feature.clock;
 
 public final class ClockDetailActionSpec {
-    public static final int SLOT_COUNT = 4;
+    public static final int SLOT_COUNT = 5;
     public static final String TYPE_EMPTY = "empty";
     public static final String TYPE_ASSISTANT_ACTION = "assistant_action";
     public static final String TYPE_APP = "app";

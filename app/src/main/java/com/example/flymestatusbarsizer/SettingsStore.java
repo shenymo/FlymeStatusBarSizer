@@ -47,6 +47,8 @@ final class SettingsStore {
     static final String KEY_CLOCK_DETAIL_POPUP_ENABLED = "clock_detail_popup_enabled";
     static final String KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED = "clock_detail_action_grid_enabled";
     static final String KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON = "clock_detail_action_grid_items_json";
+    static final String KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON =
+            "clock_detail_assistant_action_cache_json";
     static final String KEY_MBACK_LONG_TOUCH_URL_ENABLED = "mback_long_touch_url_enabled";
     static final String KEY_MBACK_LONG_TOUCH_ACTION = "mback_long_touch_action";
     static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
@@ -117,6 +119,7 @@ final class SettingsStore {
     static final boolean DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED = false;
     static final String DEFAULT_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON =
             ClockDetailActionCodec.DEFAULT_PRESET_JSON;
+    static final String DEFAULT_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON = "";
     static final boolean DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED = false;
     static final int MBACK_LONG_TOUCH_ACTION_INTENT_URI = 0;
     static final int MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP = 1;
@@ -215,6 +218,7 @@ final class SettingsStore {
             KEY_CLOCK_CUSTOM_FORMAT,
             KEY_CLOCK_EXPRESSION_TOKEN_ORDER,
             KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON,
+            KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON,
             KEY_MBACK_LONG_TOUCH_INTENT_URI,
             KEY_IME_CONTROL_BAR_BUTTON_SLOTS
     };
@@ -463,6 +467,9 @@ final class SettingsStore {
         }
         if (KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON.equals(key)) {
             return DEFAULT_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON;
+        }
+        if (KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON.equals(key)) {
+            return DEFAULT_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON;
         }
         if (KEY_IME_CONTROL_BAR_BUTTON_SLOTS.equals(key)) {
             return DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;

@@ -2766,6 +2766,9 @@ final class ClockDetailPopupController {
             latestActionEntries = ClockDetailActionEntry.EMPTY_ARRAY;
             return;
         }
+        ClockDetailAssistantActionCatalog.restoreActionCache(
+                contentView.getContext(),
+                config.clockDetailAssistantActionCacheJson);
         latestActionEntries = ClockDetailActionResolver.resolveEntries(
                 contentView.getContext(),
                 ClockDetailActionCodec.decode(config.clockDetailActionGridItemsJson));
@@ -3497,6 +3500,8 @@ final class ClockDetailPopupController {
             ActionGridCellView cellView = actionGrid.cellViews[slot];
             boolean hasLabel = entry != null && entry.hasDisplayLabel();
             boolean hasIcon = entry != null && entry.hasIcon();
+            boolean hasVisualContent = hasLabel || hasIcon;
+            setVisibilityIfChanged(cellView.root, hasVisualContent ? View.VISIBLE : View.GONE);
             setTextIfChanged(cellView.labelView, hasLabel ? entry.resolvedLabel : "");
             setVisibilityIfChanged(cellView.iconView, hasIcon ? View.VISIBLE : View.GONE);
             cellView.iconView.setImageDrawable(hasIcon ? entry.icon : null);
