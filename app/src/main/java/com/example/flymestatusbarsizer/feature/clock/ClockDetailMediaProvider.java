@@ -110,7 +110,11 @@ final class ClockDetailMediaProvider {
             return mediaSessionResult.snapshot;
         }
 
+        ClockDetailMediaSnapshot retainedPausedSnapshot = peekRetainedPausedSnapshot();
         if (notificationResult.sourceAvailable || mediaSessionResult.sourceAvailable) {
+            if (retainedPausedSnapshot.active) {
+                return retainedPausedSnapshot;
+            }
             clearLastActiveSnapshot();
             return ClockDetailMediaSnapshot.EMPTY;
         }
@@ -451,6 +455,13 @@ final class ClockDetailMediaProvider {
             emptySnapshotGraceDeadlineUptimeMs =
                     SystemClock.uptimeMillis() + EMPTY_SNAPSHOT_GRACE_MS;
             deliverSnapshot(safeSnapshot);
+            return;
+        }
+        ClockDetailMediaSnapshot retainedPausedSnapshot = lastDeliveredSnapshot;
+        if (isRetainablePausedSnapshot(retainedPausedSnapshot)) {
+            cancelPendingEmptySnapshot();
+            emptySnapshotGraceDeadlineUptimeMs = 0L;
+            deliverSnapshot(retainedPausedSnapshot);
             return;
         }
         if (shouldDeferEmptySnapshot()) {
@@ -828,6 +839,13 @@ final class ClockDetailMediaProvider {
         }
     }
 
+    private static ClockDetailMediaSnapshot peekRetainedPausedSnapshot() {
+        ClockDetailMediaSnapshot snapshot = peekLastActiveSnapshot();
+        return isRetainablePausedSnapshot(snapshot)
+                ? snapshot
+                : ClockDetailMediaSnapshot.EMPTY;
+    }
+
     private static int resolvePlaybackState(MediaController controller) {
         PlaybackState playbackState = resolvePlaybackStateObject(controller);
         return playbackState != null ? playbackState.getState() : PlaybackState.STATE_NONE;
@@ -900,6 +918,12 @@ final class ClockDetailMediaProvider {
             default:
                 return false;
         }
+    }
+
+    private static boolean isRetainablePausedSnapshot(ClockDetailMediaSnapshot snapshot) {
+        return snapshot != null
+                && snapshot.active
+                && snapshot.playbackState == PlaybackState.STATE_PAUSED;
     }
 
     private static CharSequence describePlaybackState(int playbackState) {
