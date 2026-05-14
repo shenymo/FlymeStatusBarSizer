@@ -24,6 +24,7 @@ import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
 import android.os.SystemClock;
+import android.text.TextUtils;
 import android.text.format.DateFormat;
 import android.view.KeyEvent;
 import android.util.TypedValue;
@@ -75,7 +76,15 @@ final class ClockDetailPopupController {
     private static final int STATUS_TILE_GAP_DP = 8;
     private static final int DETAILS_TOP_MARGIN_DP = 12;
     private static final int MEDIA_TOP_MARGIN_DP = 10;
+    private static final int ACTION_GRID_TOP_MARGIN_DP = 10;
     private static final int RECENT_APPS_TOP_MARGIN_DP = 10;
+    private static final int ACTION_GRID_ROW_GAP_DP = 8;
+    private static final int ACTION_GRID_COLUMN_GAP_DP = 8;
+    private static final int ACTION_GRID_CELL_MIN_HEIGHT_DP = 64;
+    private static final int ACTION_GRID_CELL_HORIZONTAL_PADDING_DP = 8;
+    private static final int ACTION_GRID_CELL_VERTICAL_PADDING_DP = 8;
+    private static final int ACTION_GRID_ICON_SIZE_DP = 24;
+    private static final int ACTION_GRID_LABEL_TOP_MARGIN_DP = 5;
     private static final int MEDIA_ARTWORK_SIZE_DP = 42;
     private static final int MEDIA_CONTENT_GAP_DP = 12;
     private static final int MEDIA_CONTROL_BUTTON_SIZE_DP = 34;
@@ -155,6 +164,7 @@ final class ClockDetailPopupController {
     private final LinearLayout statusGridView;
     private final MemoryStatTile memoryTile;
     private final BatteryInfoTile batteryInfoTile;
+    private final ActionGrid actionGrid;
     private final RecentAppsStrip recentAppsStrip;
     private final ClockDetailLunarDateFormatter lunarDateFormatter;
     private final ClockDetailMediaProvider mediaProvider;
@@ -188,7 +198,7 @@ final class ClockDetailPopupController {
     private boolean dragGestureActive;
     private boolean swipeGestureActive;
     private SwipeMode activeSwipeMode = SwipeMode.NONE;
-    private boolean panelTouchStartedInRecentApps;
+    private boolean panelTouchStartedInInteractiveZone;
     private Palette currentPalette;
     private int popupSessionId = INVALID_POPUP_SESSION_ID;
     private int nextPopupSessionId;
@@ -203,6 +213,8 @@ final class ClockDetailPopupController {
             ClockDetailSystemStatusSnapshot.EMPTY.remainingCapacityValue;
     private String latestEstimatedFullCapacityValue =
             ClockDetailSystemStatusSnapshot.EMPTY.estimatedFullCapacityValue;
+    private ClockDetailActionEntry[] latestActionEntries = ClockDetailActionEntry.EMPTY_ARRAY;
+    private ClockDetailActionEntry[] renderedActionEntries = ClockDetailActionEntry.EMPTY_ARRAY;
     private ClockDetailRecentApp[] latestRecentApps = ClockDetailRecentApp.EMPTY_ARRAY;
     private ClockDetailRecentApp[] renderedRecentApps = ClockDetailRecentApp.EMPTY_ARRAY;
     private ClockDetailMediaSnapshot latestMediaSnapshot = ClockDetailMediaSnapshot.EMPTY;
@@ -280,8 +292,12 @@ final class ClockDetailPopupController {
         this.statusGridView = buildStatusGrid(context, memoryTile, batteryInfoTile);
         this.mediaStrip = buildMediaStrip(context);
         this.mediaViewportView = buildMediaViewportView(context, mediaStrip.root);
+        this.actionGrid = buildActionGrid(context);
         this.recentAppsStrip = buildRecentAppsStrip(context);
         this.detailsContainerView.addView(statusGridView, matchWidth());
+        this.detailsContainerView.addView(
+                actionGrid.root,
+                matchWidthWithTop(context, ACTION_GRID_TOP_MARGIN_DP));
         this.detailsContainerView.addView(
                 recentAppsStrip.root,
                 matchWidthWithTop(context, RECENT_APPS_TOP_MARGIN_DP));
@@ -369,6 +385,11 @@ final class ClockDetailPopupController {
             performClockHaptic(v);
             toggleClockPopup();
         } : null);
+        refreshActionGridConfig(config);
+        if (isPopupShowing()) {
+            applyLatestActionGridView();
+            requestPopupLayoutRefresh();
+        }
         if (!shouldEnable) {
             dismissImmediately();
         }
@@ -444,6 +465,9 @@ final class ClockDetailPopupController {
         popupLayoutUpdatePending = false;
         startPopupSession();
         FlymeStatusBarSizer.disableAncestorClipping(anchor, 6);
+        FlymeStatusBarSizer.ClockConfigSnapshot clockConfig =
+                FlymeStatusBarSizer.loadClockConfig(contentView.getContext());
+        refreshActionGridConfig(clockConfig);
         applyPalette(resolvePalette());
         resetTransientPopupState();
         showMilliseconds = false;
@@ -454,6 +478,7 @@ final class ClockDetailPopupController {
         latestMediaSnapshot = mediaProvider.peekStartupSnapshot();
         applyLatestMediaView();
         applyLatestSystemStatusViews();
+        applyLatestActionGridView();
         applyLatestRecentAppsView();
         applyDetailsExpandedState(isDetailsVisibleByDefault(), false);
         measureContent();
@@ -1015,6 +1040,7 @@ final class ClockDetailPopupController {
         applyMediaStripPalette(mediaStrip, palette);
         applyMemoryTilePalette(memoryTile, palette);
         applyBatteryInfoTilePalette(batteryInfoTile, palette);
+        applyActionGridPalette(actionGrid, palette);
         applyRecentAppsStripPalette(recentAppsStrip, palette);
     }
 
@@ -1697,7 +1723,7 @@ final class ClockDetailPopupController {
         dragGestureActive = false;
         swipeGestureActive = false;
         activeSwipeMode = SwipeMode.NONE;
-        panelTouchStartedInRecentApps = false;
+        panelTouchStartedInInteractiveZone = false;
         popupLeft = 0;
         popupTop = 0;
         dragStartPopupLeft = 0;
@@ -1764,7 +1790,7 @@ final class ClockDetailPopupController {
                 panelLongPressTriggered = false;
                 dragGestureActive = false;
                 swipeGestureActive = false;
-                panelTouchStartedInRecentApps = isPointInsideView(event, recentAppsStrip.root);
+                panelTouchStartedInInteractiveZone = isPointInsideInteractiveZone(event);
                 panelTouchDownRawX = event.getRawX();
                 panelTouchDownRawY = event.getRawY();
                 dragStartPopupLeft = popupLeft;
@@ -1773,7 +1799,7 @@ final class ClockDetailPopupController {
                 popupDismissGestureProgress = 0f;
                 activeSwipeMode = SwipeMode.NONE;
                 cancelPanelLongPress();
-                if (isPanelDragEnabled() && !panelTouchStartedInRecentApps) {
+                if (isPanelDragEnabled() && !panelTouchStartedInInteractiveZone) {
                     handler.postDelayed(
                             panelLongPressRunnable,
                             ViewConfiguration.getLongPressTimeout());
@@ -1868,7 +1894,7 @@ final class ClockDetailPopupController {
         activeSwipeMode = SwipeMode.NONE;
         swipeRevealTargetHeight = 0;
         popupDismissGestureProgress = 0f;
-        panelTouchStartedInRecentApps = false;
+        panelTouchStartedInInteractiveZone = false;
         if (popupTargetShowing && !panelPinned) {
             scheduleAutoDismiss();
         }
@@ -1982,7 +2008,7 @@ final class ClockDetailPopupController {
 
     private SwipeMode resolveSwipeModeForGesture(MotionEvent event) {
         if (event == null
-                || panelTouchStartedInRecentApps
+                || panelTouchStartedInInteractiveZone
                 || detailsAnimator != null
                 || dismissAnimationRunning) {
             return SwipeMode.NONE;
@@ -2477,6 +2503,11 @@ final class ClockDetailPopupController {
                 && y <= popupRootView.getBottom();
     }
 
+    private boolean isPointInsideInteractiveZone(MotionEvent event) {
+        return isPointInsideView(event, actionGrid.root)
+                || isPointInsideView(event, recentAppsStrip.root);
+    }
+
     private static boolean isPointInsideView(MotionEvent event, View targetView) {
         if (event == null || targetView == null || targetView.getVisibility() != View.VISIBLE) {
             return false;
@@ -2726,6 +2757,20 @@ final class ClockDetailPopupController {
                 latestPowerValue,
                 latestRemainingCapacityValue,
                 latestEstimatedFullCapacityValue);
+    }
+
+    private void refreshActionGridConfig(FlymeStatusBarSizer.ClockConfigSnapshot config) {
+        if (config == null || !config.enabled || !config.clockDetailActionGridEnabled) {
+            latestActionEntries = ClockDetailActionEntry.EMPTY_ARRAY;
+            return;
+        }
+        latestActionEntries = ClockDetailActionResolver.resolveEntries(
+                contentView.getContext(),
+                ClockDetailActionCodec.decode(config.clockDetailActionGridItemsJson));
+    }
+
+    private void applyLatestActionGridView() {
+        updateActionGridView(latestActionEntries);
     }
 
     private void applyLatestRecentAppsView() {
@@ -3299,6 +3344,65 @@ final class ClockDetailPopupController {
         }
     }
 
+    private void applyActionGridPalette(ActionGrid grid, Palette palette) {
+        if (grid == null) {
+            return;
+        }
+        Context context = grid.root.getContext();
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setCornerRadius(dp(context, 14));
+        background.setColor(mixColors(palette.surfaceColor, palette.strokeColor, 0.22f));
+        background.setStroke(Math.max(1, dp(context, 1)), adjustAlpha(palette.strokeColor, 0.9f));
+        grid.root.setBackground(background);
+        for (int slot = 0; slot < grid.cellViews.length; slot++) {
+            updateActionGridCellAppearance(grid.cellViews[slot], actionEntryAt(renderedActionEntries, slot), palette);
+        }
+    }
+
+    private void updateActionGridCellAppearance(
+            ActionGridCellView cellView,
+            ClockDetailActionEntry entry,
+            Palette palette) {
+        if (cellView == null || palette == null) {
+            return;
+        }
+        boolean hasLabel = entry != null && entry.hasDisplayLabel();
+        boolean hasIcon = entry != null && entry.hasIcon();
+        boolean hasVisualContent = hasLabel || hasIcon;
+        boolean valid = entry != null && entry.valid;
+        Context context = cellView.root.getContext();
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setCornerRadius(dp(context, 12));
+        if (valid) {
+            background.setColor(mixColors(palette.surfaceColor, palette.accentColor, 0.12f));
+            background.setStroke(
+                    Math.max(1, dp(context, 1)),
+                    adjustAlpha(palette.accentColor, 0.42f));
+            cellView.labelView.setTextColor(palette.primaryTextColor);
+            cellView.iconView.setAlpha(1f);
+            cellView.labelView.setAlpha(1f);
+        } else if (hasVisualContent) {
+            background.setColor(mixColors(palette.surfaceColor, palette.strokeColor, 0.34f));
+            background.setStroke(
+                    Math.max(1, dp(context, 1)),
+                    adjustAlpha(palette.strokeColor, 0.86f));
+            cellView.labelView.setTextColor(palette.secondaryTextColor);
+            cellView.iconView.setAlpha(0.72f);
+            cellView.labelView.setAlpha(0.78f);
+        } else {
+            background.setColor(mixColors(palette.surfaceColor, palette.strokeColor, 0.16f));
+            background.setStroke(
+                    Math.max(1, dp(context, 1)),
+                    adjustAlpha(palette.strokeColor, 0.58f));
+            cellView.labelView.setTextColor(palette.secondaryTextColor);
+            cellView.iconView.setAlpha(0.32f);
+            cellView.labelView.setAlpha(0.38f);
+        }
+        cellView.root.setBackground(background);
+    }
+
     private void applyRecentAppsStripPalette(RecentAppsStrip strip, Palette palette) {
         if (strip == null) {
             return;
@@ -3383,6 +3487,45 @@ final class ClockDetailPopupController {
         return popupTargetShowing
                 && !dismissAnimationRunning
                 && !enterAnimationRunning;
+    }
+
+    private boolean updateActionGridView(ClockDetailActionEntry[] entries) {
+        if (actionGrid == null) {
+            return false;
+        }
+        bindActionGridContent(entries);
+        return true;
+    }
+
+    private void bindActionGridContent(ClockDetailActionEntry[] entries) {
+        if (actionGrid == null) {
+            return;
+        }
+        ClockDetailActionEntry[] safeEntries = normalizeActionEntries(entries);
+        renderedActionEntries = safeEntries;
+        setVisibilityIfChanged(
+                actionGrid.root,
+                hasValidActionEntries(safeEntries) ? View.VISIBLE : View.GONE);
+        for (int slot = 0; slot < actionGrid.cellViews.length; slot++) {
+            final ClockDetailActionEntry entry = safeEntries[slot];
+            ActionGridCellView cellView = actionGrid.cellViews[slot];
+            boolean hasLabel = entry != null && entry.hasDisplayLabel();
+            boolean hasIcon = entry != null && entry.hasIcon();
+            setTextIfChanged(cellView.labelView, hasLabel ? entry.resolvedLabel : "");
+            setVisibilityIfChanged(cellView.iconView, hasIcon ? View.VISIBLE : View.GONE);
+            cellView.iconView.setImageDrawable(hasIcon ? entry.icon : null);
+            cellView.root.setEnabled(entry != null && entry.valid);
+            cellView.root.setClickable(entry != null && entry.valid);
+            cellView.root.setFocusable(entry != null && entry.valid);
+            cellView.root.setContentDescription(hasLabel ? entry.resolvedLabel : "");
+            cellView.root.setOnClickListener(entry != null && entry.valid ? v -> {
+                performClockHaptic(v);
+                launchActionEntry(entry);
+            } : null);
+            if (currentPalette != null) {
+                updateActionGridCellAppearance(cellView, entry, currentPalette);
+            }
+        }
     }
 
     private boolean updateRecentAppsView(ClockDetailRecentApp[] recentApps, boolean animate) {
@@ -3543,6 +3686,60 @@ final class ClockDetailPopupController {
         String firstLabel = first.label != null ? first.label.toString() : "";
         String secondLabel = second.label != null ? second.label.toString() : "";
         return firstLabel.equals(secondLabel);
+    }
+
+    private static ClockDetailActionEntry[] normalizeActionEntries(ClockDetailActionEntry[] entries) {
+        ClockDetailActionEntry[] normalized = new ClockDetailActionEntry[ClockDetailActionSpec.SLOT_COUNT];
+        for (int slot = 0; slot < normalized.length; slot++) {
+            normalized[slot] = actionEntryAt(entries, slot);
+        }
+        return normalized;
+    }
+
+    private static ClockDetailActionEntry actionEntryAt(ClockDetailActionEntry[] entries, int slot) {
+        if (entries == null
+                || slot < 0
+                || slot >= ClockDetailActionSpec.SLOT_COUNT
+                || slot >= entries.length) {
+            return ClockDetailActionEntry.empty(slot);
+        }
+        ClockDetailActionEntry entry = entries[slot];
+        return entry != null ? entry : ClockDetailActionEntry.empty(slot);
+    }
+
+    private static boolean hasValidActionEntries(ClockDetailActionEntry[] entries) {
+        if (entries == null || entries.length == 0) {
+            return false;
+        }
+        for (ClockDetailActionEntry entry : entries) {
+            if (entry != null && entry.valid) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void launchActionEntry(ClockDetailActionEntry entry) {
+        if (entry == null
+                || !entry.valid
+                || entry.launchIntent == null
+                || !isPopupShowing()
+                || !popupTargetShowing
+                || dismissAnimationRunning) {
+            return;
+        }
+        dismissImmediately();
+        try {
+            Context context = contentView.getContext();
+            Context launchContext = context.getApplicationContext() != null
+                    ? context.getApplicationContext()
+                    : context;
+            launchContext.startActivity(new Intent(entry.launchIntent));
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning(
+                    "Failed to launch clock detail action: " + entry.resolvedLabel,
+                    t);
+        }
     }
 
     private void launchRecentTask(ClockDetailRecentApp app) {
@@ -3800,6 +3997,59 @@ final class ClockDetailPopupController {
         return view;
     }
 
+    private static ActionGrid buildActionGrid(Context context) {
+        LinearLayout root = new LinearLayout(context);
+        root.setOrientation(LinearLayout.HORIZONTAL);
+        root.setGravity(Gravity.CENTER_VERTICAL);
+        root.setPadding(
+                dp(context, 12),
+                dp(context, 10),
+                dp(context, 12),
+                dp(context, 10));
+        root.setVisibility(View.GONE);
+
+        ActionGridCellView[] cellViews = new ActionGridCellView[ClockDetailActionSpec.SLOT_COUNT];
+        for (int slot = 0; slot < ClockDetailActionSpec.SLOT_COUNT; slot++) {
+            ActionGridCellView cellView = buildActionGridCellView(context);
+            cellViews[slot] = cellView;
+            root.addView(
+                    cellView.root,
+                    slot == 0
+                            ? actionGridCellLayoutParams()
+                            : actionGridCellLayoutParamsWithStart(
+                                    context,
+                                    ACTION_GRID_COLUMN_GAP_DP));
+        }
+        return new ActionGrid(root, cellViews);
+    }
+
+    private static ActionGridCellView buildActionGridCellView(Context context) {
+        LinearLayout root = new LinearLayout(context);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER);
+        root.setMinimumHeight(dp(context, ACTION_GRID_CELL_MIN_HEIGHT_DP));
+        root.setPadding(
+                dp(context, ACTION_GRID_CELL_HORIZONTAL_PADDING_DP),
+                dp(context, ACTION_GRID_CELL_VERTICAL_PADDING_DP),
+                dp(context, ACTION_GRID_CELL_HORIZONTAL_PADDING_DP),
+                dp(context, ACTION_GRID_CELL_VERTICAL_PADDING_DP));
+        ImageView iconView = new ImageView(context);
+        int iconSize = dp(context, ACTION_GRID_ICON_SIZE_DP);
+        iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        root.addView(iconView, new LinearLayout.LayoutParams(iconSize, iconSize));
+
+        TextView labelView = new TextView(context);
+        labelView.setIncludeFontPadding(false);
+        labelView.setSingleLine(true);
+        labelView.setEllipsize(TextUtils.TruncateAt.END);
+        labelView.setGravity(Gravity.CENTER);
+        labelView.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        labelView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
+        labelView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        root.addView(labelView, matchWidthWithTop(context, ACTION_GRID_LABEL_TOP_MARGIN_DP));
+        return new ActionGridCellView(root, iconView, labelView);
+    }
+
     private static RecentAppsStrip buildRecentAppsStrip(Context context) {
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -3955,6 +4205,21 @@ final class ClockDetailPopupController {
             Context context,
             int startMarginDp) {
         LinearLayout.LayoutParams params = recentAppItemLayoutParams(context);
+        params.leftMargin = dp(context, startMarginDp);
+        return params;
+    }
+
+    private static LinearLayout.LayoutParams actionGridCellLayoutParams() {
+        return new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f);
+    }
+
+    private static LinearLayout.LayoutParams actionGridCellLayoutParamsWithStart(
+            Context context,
+            int startMarginDp) {
+        LinearLayout.LayoutParams params = actionGridCellLayoutParams();
         params.leftMargin = dp(context, startMarginDp);
         return params;
     }
@@ -4180,6 +4445,31 @@ final class ClockDetailPopupController {
             this.leftValueView = leftValueView;
             this.rightLabelView = rightLabelView;
             this.rightValueView = rightValueView;
+        }
+    }
+
+    private static final class ActionGrid {
+        final LinearLayout root;
+        final ActionGridCellView[] cellViews;
+
+        ActionGrid(LinearLayout root, ActionGridCellView[] cellViews) {
+            this.root = root;
+            this.cellViews = cellViews;
+        }
+    }
+
+    private static final class ActionGridCellView {
+        final LinearLayout root;
+        final ImageView iconView;
+        final TextView labelView;
+
+        ActionGridCellView(
+                LinearLayout root,
+                ImageView iconView,
+                TextView labelView) {
+            this.root = root;
+            this.iconView = iconView;
+            this.labelView = labelView;
         }
     }
 

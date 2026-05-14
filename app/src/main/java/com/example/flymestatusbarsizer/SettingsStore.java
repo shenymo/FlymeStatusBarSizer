@@ -1,5 +1,7 @@
 package com.example.flymestatusbarsizer;
 
+import com.example.flymestatusbarsizer.feature.clock.ClockDetailActionCodec;
+
 import android.content.Context;
 import android.content.SharedPreferences;
 
@@ -43,6 +45,8 @@ final class SettingsStore {
     static final String KEY_CLOCK_FONT_WEIGHT = "clock_font_weight";
     static final String KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = "clock_and_carrier_text_size_percent";
     static final String KEY_CLOCK_DETAIL_POPUP_ENABLED = "clock_detail_popup_enabled";
+    static final String KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED = "clock_detail_action_grid_enabled";
+    static final String KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON = "clock_detail_action_grid_items_json";
     static final String KEY_MBACK_LONG_TOUCH_URL_ENABLED = "mback_long_touch_url_enabled";
     static final String KEY_MBACK_LONG_TOUCH_ACTION = "mback_long_touch_action";
     static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
@@ -110,6 +114,9 @@ final class SettingsStore {
     static final int DEFAULT_CLOCK_FONT_WEIGHT = 900;
     static final int DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = 100;
     static final boolean DEFAULT_CLOCK_DETAIL_POPUP_ENABLED = false;
+    static final boolean DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED = false;
+    static final String DEFAULT_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON =
+            ClockDetailActionCodec.DEFAULT_PRESET_JSON;
     static final boolean DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED = false;
     static final int MBACK_LONG_TOUCH_ACTION_INTENT_URI = 0;
     static final int MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP = 1;
@@ -194,6 +201,7 @@ final class SettingsStore {
             KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
             KEY_CLOCK_BOLD_ENABLED,
             KEY_CLOCK_DETAIL_POPUP_ENABLED,
+            KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED,
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
@@ -206,6 +214,7 @@ final class SettingsStore {
     static final String[] STRING_KEYS = {
             KEY_CLOCK_CUSTOM_FORMAT,
             KEY_CLOCK_EXPRESSION_TOKEN_ORDER,
+            KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON,
             KEY_MBACK_LONG_TOUCH_INTENT_URI,
             KEY_IME_CONTROL_BAR_BUTTON_SLOTS
     };
@@ -421,6 +430,8 @@ final class SettingsStore {
                 return DEFAULT_CLOCK_BOLD_ENABLED;
             case KEY_CLOCK_DETAIL_POPUP_ENABLED:
                 return DEFAULT_CLOCK_DETAIL_POPUP_ENABLED;
+            case KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED:
+                return DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED;
             case KEY_MBACK_LONG_TOUCH_URL_ENABLED:
                 return DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
             case KEY_MBACK_NAV_BAR_TRANSPARENT:
@@ -449,6 +460,9 @@ final class SettingsStore {
         }
         if (KEY_MBACK_LONG_TOUCH_INTENT_URI.equals(key)) {
             return DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
+        }
+        if (KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON.equals(key)) {
+            return DEFAULT_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON;
         }
         if (KEY_IME_CONTROL_BAR_BUTTON_SLOTS.equals(key)) {
             return DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;

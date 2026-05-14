@@ -6456,6 +6456,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final float clockAndCarrierTextScale;
         public final int clockRightPaddingOffsetPx;
         public final boolean clockDetailPopupEnabled;
+        public final boolean clockDetailActionGridEnabled;
+        public final String clockDetailActionGridItemsJson;
 
         private ClockConfigSnapshot(ModuleConfig config, Context context) {
             enabled = config != null && config.enabled;
@@ -6470,6 +6472,12 @@ public class FlymeStatusBarSizer extends XposedModule {
             clockDetailPopupEnabled = enabled
                     && config != null
                     && config.clockDetailPopupEnabled;
+            clockDetailActionGridEnabled = enabled
+                    && config != null
+                    && config.clockDetailActionGridEnabled;
+            clockDetailActionGridItemsJson = config == null
+                    ? SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON
+                    : config.clockDetailActionGridItemsJson;
         }
     }
 

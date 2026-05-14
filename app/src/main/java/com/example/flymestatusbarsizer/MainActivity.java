@@ -127,6 +127,8 @@ public class MainActivity extends Activity {
     private final ArrayDeque<Page> navigationStack = new ArrayDeque<>();
     private Page currentPage = Page.HOME;
     private final ClockExpressionEditor clockExpressionEditor = new ClockExpressionEditor(this);
+    private final ClockDetailActionGridEditor clockDetailActionGridEditor =
+            new ClockDetailActionGridEditor(this);
     private final ImeToolbarEditor imeToolbarEditor = new ImeToolbarEditor(this);
     private final SettingsCardFactory settingsCardFactory = new SettingsCardFactory(this);
     private final SettingsUiFactory settingsUiFactory = new SettingsUiFactory(this);
@@ -399,6 +401,10 @@ public class MainActivity extends Activity {
 
     void showPositionTuningPage() {
         openPage(Page.POSITION_TUNING);
+    }
+
+    void showClockDetailActionGridEditor() {
+        clockDetailActionGridEditor.show();
     }
 
     void addSwitchRow(LinearLayout root, String titleText, String subtitleText,

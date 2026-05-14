@@ -527,6 +527,15 @@ final class SettingsCardFactory {
                 "点击左上角时钟后先显示时间和日期；窗口内下拉再展开内存、电池和最近任务，上拉直接收回。",
                 SettingsStore.KEY_CLOCK_DETAIL_POPUP_ENABLED,
                 SettingsStore.DEFAULT_CLOCK_DETAIL_POPUP_ENABLED);
+        activity.addDivider(page);
+        activity.addSwitchRow(page, "显示一行四列图标入口",
+                "在详细区里新增固定四图标快捷入口，只保留已经验证过的微信 / 支付宝 Assistant 动作。",
+                SettingsStore.KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED,
+                SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED);
+        activity.addDivider(page);
+        activity.addActionButtonRow(page, "编辑图标入口顺序",
+                "固定 4 个预设动作，只支持调整从左到右的显示顺序和恢复默认顺序。",
+                "编辑", activity::showClockDetailActionGridEditor);
         return page;
     }
 

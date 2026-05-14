@@ -73,18 +73,11 @@ public final class MBackHooks {
         if (context == null || intentUri == null) {
             return false;
         }
-        String raw = intentUri.trim();
-        if (raw.isEmpty()) {
-            return false;
-        }
         try {
-            Intent intent;
-            if (raw.startsWith("intent:") || raw.contains("#Intent;")) {
-                intent = Intent.parseUri(raw, Intent.URI_INTENT_SCHEME);
-            } else {
-                intent = new Intent(Intent.ACTION_VIEW, Uri.parse(raw));
+            Intent intent = buildConfiguredIntent(intentUri);
+            if (intent == null) {
+                return false;
             }
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             Context launchContext = context.getApplicationContext() != null
                     ? context.getApplicationContext()
                     : context;
@@ -92,10 +85,28 @@ public final class MBackHooks {
             return true;
         } catch (Throwable t) {
             FlymeStatusBarSizer.logMBackWarning(
-                    "Failed to launch mBack long touch intent: " + raw,
+                    "Failed to launch mBack long touch intent: " + intentUri,
                     t);
             return false;
         }
+    }
+
+    public static Intent buildConfiguredIntent(String intentUri) throws Exception {
+        if (intentUri == null) {
+            return null;
+        }
+        String raw = intentUri.trim();
+        if (raw.isEmpty()) {
+            return null;
+        }
+        Intent intent;
+        if (raw.startsWith("intent:") || raw.contains("#Intent;")) {
+            intent = Intent.parseUri(raw, Intent.URI_INTENT_SCHEME);
+        } else {
+            intent = new Intent(Intent.ACTION_VIEW, Uri.parse(raw));
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return intent;
     }
 
     public static boolean shouldHidePill(View view) {
