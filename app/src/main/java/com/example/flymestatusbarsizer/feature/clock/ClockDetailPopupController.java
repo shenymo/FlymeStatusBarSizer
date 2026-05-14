@@ -8,7 +8,9 @@ import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.app.ActivityManager;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Region;
@@ -24,6 +26,7 @@ import android.os.SystemClock;
 import android.text.format.DateFormat;
 import android.view.KeyEvent;
 import android.util.TypedValue;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -52,6 +55,7 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 final class ClockDetailPopupController {
+    private static final String LOG_TAG = "FlymeStatusBarSizer";
     private static final long AUTO_DISMISS_DELAY_MS = 8000L;
     private static final long MILLIS_REFRESH_INTERVAL_MS = 33L;
     private static final long SECOND_REFRESH_INTERVAL_MS = 1000L;
@@ -61,12 +65,18 @@ final class ClockDetailPopupController {
     private static final long POPUP_COLLAPSE_DURATION_MS = 220L;
     private static final long DETAILS_EXPAND_DURATION_MS = 240L;
     private static final long DETAILS_COLLAPSE_DURATION_MS = 200L;
+    private static final long MEDIA_EXPAND_DURATION_MS = 200L;
+    private static final long MEDIA_COLLAPSE_DURATION_MS = 160L;
     private static final long RECENT_APPS_SWAP_OUT_DURATION_MS = 90L;
     private static final long RECENT_APPS_SWAP_IN_DURATION_MS = 140L;
     private static final int HORIZONTAL_MARGIN_DP = 16;
     private static final int STATUS_TILE_GAP_DP = 8;
     private static final int DETAILS_TOP_MARGIN_DP = 12;
+    private static final int MEDIA_TOP_MARGIN_DP = 10;
     private static final int RECENT_APPS_TOP_MARGIN_DP = 10;
+    private static final int MEDIA_ARTWORK_SIZE_DP = 42;
+    private static final int MEDIA_CONTENT_GAP_DP = 12;
+    private static final int MEDIA_REVEAL_OFFSET_DP = 8;
     private static final int RECENT_APP_ICON_SIZE_DP = 32;
     private static final int RECENT_APP_ITEM_SIZE_DP = 40;
     private static final int RECENT_APP_ICON_PADDING_DP = 4;
@@ -125,13 +135,19 @@ final class ClockDetailPopupController {
     private final TextView timeView;
     private final TextView millisecondsView;
     private final TextView pinToggleView;
+    private final LinearLayout dateContainerView;
     private final TextView dateView;
+    private final TextView lunarDateView;
+    private final MediaStrip mediaStrip;
+    private final FrameLayout mediaViewportView;
     private final FrameLayout detailsViewportView;
     private final LinearLayout detailsContainerView;
     private final LinearLayout statusGridView;
     private final MemoryStatTile memoryTile;
     private final BatteryInfoTile batteryInfoTile;
     private final RecentAppsStrip recentAppsStrip;
+    private final ClockDetailLunarDateFormatter lunarDateFormatter;
+    private final ClockDetailMediaProvider mediaProvider;
     private final ClockDetailSystemStatusProvider systemStatusProvider;
     private final ClockDetailRecentAppsProvider recentAppsProvider;
     private final ActivityManager activityManager;
@@ -178,6 +194,7 @@ final class ClockDetailPopupController {
             ClockDetailSystemStatusSnapshot.EMPTY.estimatedFullCapacityValue;
     private ClockDetailRecentApp[] latestRecentApps = ClockDetailRecentApp.EMPTY_ARRAY;
     private ClockDetailRecentApp[] renderedRecentApps = ClockDetailRecentApp.EMPTY_ARRAY;
+    private ClockDetailMediaSnapshot latestMediaSnapshot = ClockDetailMediaSnapshot.EMPTY;
     private Locale cachedLocale;
     private TimeZone cachedTimeZone;
     private boolean cached24HourMode;
@@ -187,13 +204,13 @@ final class ClockDetailPopupController {
     private long lastFormatterValidationSecond = Long.MIN_VALUE;
     private long lastRenderedSecond = Long.MIN_VALUE;
     private int lastRenderedMillisBucket = Integer.MIN_VALUE;
-    private long lastDateRefreshSecond = Long.MIN_VALUE;
     private long lastRenderedDateKey = Long.MIN_VALUE;
     private int popupWidth;
     private int popupHeight;
     private int popupLeft;
     private int popupTop;
     private Animator popupAnimator;
+    private ValueAnimator mediaAnimator;
     private ValueAnimator detailsAnimator;
     private Drawable originalAnchorBackground;
     private int[] originalAnchorPadding;
@@ -239,7 +256,9 @@ final class ClockDetailPopupController {
         this.timeView = buildTimeView(context);
         this.millisecondsView = buildMillisecondsView(context);
         this.pinToggleView = buildPinToggleView(context);
+        this.dateContainerView = buildDateContainerView(context);
         this.dateView = buildDateView(context);
+        this.lunarDateView = buildLunarDateView(context);
         this.detailsContainerView = buildDetailsContainerView(context);
         this.detailsViewportView = buildDetailsViewportView(context, detailsContainerView);
         this.memoryTile = buildMemoryStatTile(
@@ -248,6 +267,8 @@ final class ClockDetailPopupController {
                 ClockDetailSystemStatusSnapshot.EMPTY.memoryRows);
         this.batteryInfoTile = buildBatteryInfoTile(context);
         this.statusGridView = buildStatusGrid(context, memoryTile, batteryInfoTile);
+        this.mediaStrip = buildMediaStrip(context);
+        this.mediaViewportView = buildMediaViewportView(context, mediaStrip.root);
         this.recentAppsStrip = buildRecentAppsStrip(context);
         this.detailsContainerView.addView(statusGridView, matchWidth());
         this.detailsContainerView.addView(
@@ -257,9 +278,14 @@ final class ClockDetailPopupController {
         this.timeRowView.addView(millisecondsView, wrapContentWithStart(context, 2));
         this.headerView.addView(timeRowView, frameCentered());
         this.headerView.addView(pinToggleView, frameTopEnd(context, 2));
+        this.dateContainerView.addView(dateView, matchWidth());
+        this.dateContainerView.addView(lunarDateView, matchWidthWithTop(context, 2));
         this.contentView.addView(headerView, matchWidth());
-        this.contentView.addView(dateView, matchWidthWithTop(context, 5));
+        this.contentView.addView(dateContainerView, matchWidthWithTop(context, 5));
+        this.contentView.addView(mediaViewportView, matchWidthWithTop(context, MEDIA_TOP_MARGIN_DP));
         this.contentView.addView(detailsViewportView, matchWidthWithTop(context, DETAILS_TOP_MARGIN_DP));
+        this.lunarDateFormatter = new ClockDetailLunarDateFormatter(context.getClassLoader());
+        this.mediaProvider = new ClockDetailMediaProvider(context);
         this.systemStatusProvider = new ClockDetailSystemStatusProvider(context);
         this.recentAppsProvider = new ClockDetailRecentAppsProvider(context);
         this.activityManager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
@@ -268,6 +294,10 @@ final class ClockDetailPopupController {
                 ViewConfiguration.get(context).getScaledTouchSlop());
         timeView.setOnTouchListener(this::handleTimeTextTouch);
         millisecondsView.setOnTouchListener(this::handleTimeTextTouch);
+        mediaStrip.root.setOnClickListener(v -> {
+            performClockHaptic(v);
+            launchActiveMediaApp();
+        });
         pinToggleView.setOnClickListener(v -> {
             performClockHaptic(v);
             setPanelPinned(!panelPinned);
@@ -333,6 +363,7 @@ final class ClockDetailPopupController {
         handler.removeCallbacks(memoryRefreshRunnable);
         handler.removeCallbacks(autoDismissRunnable);
         invalidatePopupSession();
+        stopMediaUpdates();
         cancelPanelLongPress();
         panelTouchActive = false;
         panelLongPressTriggered = false;
@@ -395,6 +426,10 @@ final class ClockDetailPopupController {
         ensureFormattersForTimestamp(nowMillis, true);
         refreshTimeText(nowMillis, true);
         refreshDateTextIfNeeded(nowMillis, true);
+        latestMediaSnapshot = mediaProvider.peekStartupSnapshot();
+        logMediaUiDebug("show startupSnapshot=" + describeMediaSnapshot(latestMediaSnapshot)
+                + " hostMode=" + hostMode);
+        applyLatestMediaView();
         applyLatestSystemStatusViews();
         applyLatestRecentAppsView();
         applyDetailsExpandedState(isDetailsVisibleByDefault(), false);
@@ -535,11 +570,6 @@ final class ClockDetailPopupController {
     }
 
     private boolean refreshDateTextIfNeeded(long nowMillis, boolean force) {
-        long secondKey = nowMillis / SECOND_REFRESH_INTERVAL_MS;
-        if (!force && secondKey == lastDateRefreshSecond) {
-            return false;
-        }
-        lastDateRefreshSecond = secondKey;
         long dateKey = resolveDateKey(nowMillis);
         if (!force && dateKey == lastRenderedDateKey) {
             return false;
@@ -548,7 +578,17 @@ final class ClockDetailPopupController {
         String dateText = dateFormatter != null
                 ? dateFormatter.format(reusableDate)
                 : "";
+        String lunarDateText = lunarDateFormatter != null
+                ? lunarDateFormatter.format(nowMillis, cachedTimeZone, cachedLocale)
+                : "";
         boolean changed = setTextIfChanged(dateView, dateText);
+        if (lunarDateText == null || lunarDateText.trim().isEmpty()) {
+            changed |= setTextIfChanged(lunarDateView, "");
+            changed |= setVisibilityIfChanged(lunarDateView, View.GONE);
+        } else {
+            changed |= setVisibilityIfChanged(lunarDateView, View.VISIBLE);
+            changed |= setTextIfChanged(lunarDateView, lunarDateText);
+        }
         lastRenderedDateKey = dateKey;
         return changed;
     }
@@ -791,6 +831,9 @@ final class ClockDetailPopupController {
                 } else {
                     popupLayoutUpdatePending = false;
                 }
+                if (popupTargetShowing && isPopupShowing()) {
+                    startMediaUpdates();
+                }
             });
         });
     }
@@ -944,7 +987,9 @@ final class ClockDetailPopupController {
         timeView.setTextColor(palette.primaryTextColor);
         millisecondsView.setTextColor(palette.accentColor);
         dateView.setTextColor(palette.secondaryTextColor);
+        lunarDateView.setTextColor(palette.secondaryTextColor);
         applyPinTogglePalette(context, palette);
+        applyMediaStripPalette(mediaStrip, palette);
         applyMemoryTilePalette(memoryTile, palette);
         applyBatteryInfoTilePalette(batteryInfoTile, palette);
         applyRecentAppsStripPalette(recentAppsStrip, palette);
@@ -1084,6 +1129,7 @@ final class ClockDetailPopupController {
         enterAnimationRunning = false;
         popupLayoutUpdatePending = false;
         cancelPopupAnimator();
+        cancelMediaAnimator();
         cancelDetailsAnimator();
         resetTransientPopupState();
         clearPopupUiState();
@@ -1091,8 +1137,10 @@ final class ClockDetailPopupController {
 
     private void clearPopupUiState() {
         dismissAnimationRunning = false;
+        cancelMediaAnimator();
         cancelDetailsAnimator();
         cancelRecentAppsStripAnimations();
+        resetMediaStripVisualState();
         resetRecentAppsStripVisualState();
         if (currentPalette != null) {
             popupBackgroundView.setBackground(
@@ -1633,7 +1681,10 @@ final class ClockDetailPopupController {
         dragStartPopupTop = 0;
         swipeRevealTargetHeight = 0;
         popupDismissGestureProgress = 0f;
+        latestMediaSnapshot = ClockDetailMediaSnapshot.EMPTY;
+        cancelMediaAnimator();
         cancelDetailsAnimator();
+        resetMediaStripVisualState();
         cancelRecentAppsStripAnimations();
         resetRecentAppsStripVisualState();
         refreshPinToggleView();
@@ -1647,6 +1698,7 @@ final class ClockDetailPopupController {
         thermalPowerQueryInFlight = false;
         memoryQueryInFlight = false;
         recentAppsQueryInFlight = false;
+        latestMediaSnapshot = ClockDetailMediaSnapshot.EMPTY;
         thermalPowerRequestSessionId = INVALID_POPUP_SESSION_ID;
         memoryRequestSessionId = INVALID_POPUP_SESSION_ID;
         recentAppsRequestSessionId = INVALID_POPUP_SESSION_ID;
@@ -1657,6 +1709,7 @@ final class ClockDetailPopupController {
         thermalPowerQueryInFlight = false;
         memoryQueryInFlight = false;
         recentAppsQueryInFlight = false;
+        latestMediaSnapshot = ClockDetailMediaSnapshot.EMPTY;
         thermalPowerRequestSessionId = INVALID_POPUP_SESSION_ID;
         memoryRequestSessionId = INVALID_POPUP_SESSION_ID;
         recentAppsRequestSessionId = INVALID_POPUP_SESSION_ID;
@@ -2180,6 +2233,63 @@ final class ClockDetailPopupController {
         }
     }
 
+    private void cancelMediaAnimator() {
+        ValueAnimator animator = mediaAnimator;
+        mediaAnimator = null;
+        if (animator != null) {
+            animator.cancel();
+        }
+    }
+
+    private void resetMediaStripVisualState() {
+        resetMediaStripVisualTransform();
+        updateMediaViewportHeight(0);
+        setVisibilityIfChanged(mediaViewportView, View.GONE);
+        setVisibilityIfChanged(mediaStrip.root, View.GONE);
+        bindMediaContent(ClockDetailMediaSnapshot.EMPTY);
+    }
+
+    private void resetMediaStripVisualTransform() {
+        mediaStrip.root.setAlpha(1f);
+        mediaStrip.root.setTranslationY(0f);
+    }
+
+    private int resolveCurrentMediaViewportHeight() {
+        ViewGroup.LayoutParams params = mediaViewportView.getLayoutParams();
+        if (params != null && params.height > 0) {
+            return params.height;
+        }
+        int currentHeight = mediaViewportView.getHeight();
+        if (currentHeight > 0) {
+            return currentHeight;
+        }
+        return mediaViewportView.getMeasuredHeight();
+    }
+
+    private int measureMediaContentHeight() {
+        Context context = mediaViewportView.getContext();
+        int margin = dp(context, HORIZONTAL_MARGIN_DP);
+        int rootHorizontalPadding = popupRootView.getPaddingLeft() + popupRootView.getPaddingRight();
+        int contentWidth = Math.max(1, getOverlayWidth() - (margin * 2) - rootHorizontalPadding);
+        mediaStrip.root.measure(
+                View.MeasureSpec.makeMeasureSpec(contentWidth, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        return Math.max(0, mediaStrip.root.getMeasuredHeight());
+    }
+
+    private void updateMediaViewportHeight(int height) {
+        ViewGroup.LayoutParams params = mediaViewportView.getLayoutParams();
+        if (!(params instanceof LinearLayout.LayoutParams)) {
+            params = matchWidth();
+        }
+        params.height = height;
+        mediaViewportView.setLayoutParams(params);
+        if (isPopupShowing() && !dismissAnimationRunning) {
+            measureContent();
+            updatePopupPosition();
+        }
+    }
+
     private int resolveCurrentDetailsViewportHeight() {
         ViewGroup.LayoutParams params = detailsViewportView.getLayoutParams();
         if (params != null && params.height > 0) {
@@ -2435,6 +2545,22 @@ final class ClockDetailPopupController {
         return root;
     }
 
+    private static LinearLayout buildDateContainerView(Context context) {
+        LinearLayout root = new LinearLayout(context);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER_HORIZONTAL);
+        return root;
+    }
+
+    private static FrameLayout buildMediaViewportView(Context context, LinearLayout mediaRoot) {
+        FrameLayout viewport = new FrameLayout(context);
+        viewport.setClipChildren(true);
+        viewport.setClipToPadding(true);
+        viewport.setVisibility(View.GONE);
+        viewport.addView(mediaRoot, frameMatchWidthWrapContent());
+        return viewport;
+    }
+
     private static LinearLayout buildDetailsContainerView(Context context) {
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -2554,6 +2680,22 @@ final class ClockDetailPopupController {
         return view;
     }
 
+    private static TextView buildLunarDateView(Context context) {
+        TextView view = new TextView(context);
+        view.setIncludeFontPadding(false);
+        view.setGravity(Gravity.CENTER);
+        view.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+        view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        view.setVisibility(View.GONE);
+        return view;
+    }
+
+    private void applyLatestMediaView() {
+        bindMediaContent(latestMediaSnapshot);
+        applyMediaVisibilityState(latestMediaSnapshot.active, false);
+    }
+
     private void applyLatestSystemStatusViews() {
         updateMemoryStatusView(latestMemoryRows);
         updateBatteryInfoStatusView(
@@ -2565,6 +2707,239 @@ final class ClockDetailPopupController {
 
     private void applyLatestRecentAppsView() {
         updateRecentAppsView(latestRecentApps, false);
+    }
+
+    private void startMediaUpdates() {
+        final int requestSessionId = popupSessionId;
+        logMediaUiDebug("startMediaUpdates session=" + requestSessionId
+                + " current=" + describeMediaSnapshot(latestMediaSnapshot));
+        mediaProvider.startListening(handler, mediaSnapshot -> {
+            if (popupSessionId != requestSessionId) {
+                logMediaUiDebug("startMediaUpdates ignore stale session=" + requestSessionId
+                        + " popupSessionId=" + popupSessionId);
+                return;
+            }
+            latestMediaSnapshot = mediaSnapshot != null && mediaSnapshot.active
+                    ? mediaSnapshot
+                    : ClockDetailMediaSnapshot.EMPTY;
+            logMediaUiDebug("startMediaUpdates callback session=" + requestSessionId
+                    + " snapshot=" + describeMediaSnapshot(latestMediaSnapshot)
+                    + " popupShowing=" + isPopupShowing());
+            if (!isPopupShowing()) {
+                return;
+            }
+            if (updateMediaView(latestMediaSnapshot)) {
+                requestPopupLayoutRefresh();
+            }
+        });
+    }
+
+    private void stopMediaUpdates() {
+        logMediaUiDebug("stopMediaUpdates");
+        mediaProvider.stopListening();
+    }
+
+    private boolean updateMediaView(ClockDetailMediaSnapshot snapshot) {
+        if (mediaStrip == null) {
+            return false;
+        }
+        ClockDetailMediaSnapshot safeSnapshot = snapshot != null && snapshot.active
+                ? snapshot
+                : ClockDetailMediaSnapshot.EMPTY;
+        boolean changed = bindMediaContent(safeSnapshot);
+        boolean shouldShow = safeSnapshot.active;
+        boolean currentlyVisible = mediaViewportView.getVisibility() == View.VISIBLE;
+        logMediaUiDebug("updateMediaView snapshot=" + describeMediaSnapshot(safeSnapshot)
+                + " shouldShow=" + shouldShow
+                + " currentlyVisible=" + currentlyVisible
+                + " changed=" + changed
+                + " dismissAnimationRunning=" + dismissAnimationRunning
+                + " popupShowing=" + isPopupShowing());
+        if (shouldShow == currentlyVisible) {
+            return changed;
+        }
+        if (!isPopupShowing() || dismissAnimationRunning) {
+            return applyMediaVisibilityState(shouldShow, true) || changed;
+        }
+        animateMediaVisibilityChange(shouldShow);
+        return true;
+    }
+
+    private boolean bindMediaContent(ClockDetailMediaSnapshot snapshot) {
+        ClockDetailMediaSnapshot safeSnapshot = snapshot != null && snapshot.active
+                ? snapshot
+                : ClockDetailMediaSnapshot.EMPTY;
+        if (!safeSnapshot.active) {
+            boolean changed = false;
+            if (mediaStrip.artworkView.getDrawable() != null) {
+                mediaStrip.artworkView.setImageDrawable(null);
+                changed = true;
+            }
+            changed |= setTextIfChanged(mediaStrip.titleView, "");
+            changed |= setTextIfChanged(mediaStrip.subtitleView, "");
+            changed |= setTextIfChanged(mediaStrip.statusView, "");
+            return changed;
+        }
+        boolean changed = false;
+        if (mediaStrip.artworkView.getDrawable() != safeSnapshot.artwork) {
+            mediaStrip.artworkView.setImageDrawable(safeSnapshot.artwork);
+            changed = true;
+        }
+        changed |= setTextIfChanged(mediaStrip.titleView, buildMediaTitleText(safeSnapshot));
+        changed |= setTextIfChanged(mediaStrip.subtitleView, buildMediaSubtitleText(safeSnapshot));
+        changed |= setTextIfChanged(mediaStrip.statusView, safeSnapshot.playbackStateLabel);
+        return changed;
+    }
+
+    private boolean applyMediaVisibilityState(boolean visible, boolean clearContentWhenHidden) {
+        logMediaUiDebug("applyMediaVisibilityState visible=" + visible
+                + " clearContentWhenHidden=" + clearContentWhenHidden);
+        cancelMediaAnimator();
+        resetMediaStripVisualTransform();
+        if (visible) {
+            setVisibilityIfChanged(mediaStrip.root, View.VISIBLE);
+            setVisibilityIfChanged(mediaViewportView, View.VISIBLE);
+            updateMediaViewportHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
+            return true;
+        }
+        updateMediaViewportHeight(0);
+        setVisibilityIfChanged(mediaViewportView, View.GONE);
+        setVisibilityIfChanged(mediaStrip.root, View.GONE);
+        if (clearContentWhenHidden) {
+            bindMediaContent(ClockDetailMediaSnapshot.EMPTY);
+        }
+        return true;
+    }
+
+    private void animateMediaVisibilityChange(boolean visible) {
+        logMediaUiDebug("animateMediaVisibilityChange visible=" + visible
+                + " startHeight=" + resolveCurrentMediaViewportHeight()
+                + " targetHeight=" + (visible ? measureMediaContentHeight() : 0));
+        cancelMediaAnimator();
+        int startHeight = resolveCurrentMediaViewportHeight();
+        int targetHeight = visible ? measureMediaContentHeight() : 0;
+        if (startHeight == targetHeight) {
+            applyMediaVisibilityState(visible, true);
+            return;
+        }
+        if (visible) {
+            setVisibilityIfChanged(mediaStrip.root, View.VISIBLE);
+            setVisibilityIfChanged(mediaViewportView, View.VISIBLE);
+            mediaStrip.root.setAlpha(0.12f);
+            mediaStrip.root.setTranslationY(-dp(mediaStrip.root.getContext(), MEDIA_REVEAL_OFFSET_DP));
+            updateMediaViewportHeight(0);
+        }
+        ValueAnimator animator = ValueAnimator.ofInt(startHeight, targetHeight);
+        mediaAnimator = animator;
+        animator.setDuration(visible ? MEDIA_EXPAND_DURATION_MS : MEDIA_COLLAPSE_DURATION_MS);
+        animator.setInterpolator(visible
+                ? POPUP_TRANSLATION_IN_INTERPOLATOR
+                : POPUP_OUT_INTERPOLATOR);
+        animator.addUpdateListener(animation -> {
+            int height = (Integer) animation.getAnimatedValue();
+            float fraction = animation.getAnimatedFraction();
+            updateMediaViewportHeight(height);
+            if (visible) {
+                mediaStrip.root.setAlpha(0.12f + (0.88f * fraction));
+                mediaStrip.root.setTranslationY(
+                        -dp(mediaStrip.root.getContext(), MEDIA_REVEAL_OFFSET_DP) * (1f - fraction));
+            } else {
+                mediaStrip.root.setAlpha(Math.max(0f, 1f - fraction));
+                mediaStrip.root.setTranslationY(
+                        -dp(mediaStrip.root.getContext(), MEDIA_REVEAL_OFFSET_DP) * fraction);
+            }
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (mediaAnimator == animation) {
+                    mediaAnimator = null;
+                }
+                if (cancelled) {
+                    logMediaUiDebug("animateMediaVisibilityChange cancelled visible=" + visible);
+                    return;
+                }
+                resetMediaStripVisualTransform();
+                if (visible) {
+                    setVisibilityIfChanged(mediaStrip.root, View.VISIBLE);
+                    updateMediaViewportHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
+                } else {
+                    updateMediaViewportHeight(0);
+                    setVisibilityIfChanged(mediaViewportView, View.GONE);
+                    setVisibilityIfChanged(mediaStrip.root, View.GONE);
+                    bindMediaContent(ClockDetailMediaSnapshot.EMPTY);
+                }
+                logMediaUiDebug("animateMediaVisibilityChange end visible=" + visible
+                        + " viewportVisibility=" + mediaViewportView.getVisibility());
+                requestPopupLayoutRefresh();
+            }
+        });
+        animator.start();
+    }
+
+    private static CharSequence buildMediaTitleText(ClockDetailMediaSnapshot snapshot) {
+        if (snapshot == null) {
+            return "";
+        }
+        if (snapshot.title != null && snapshot.title.length() > 0) {
+            return snapshot.title;
+        }
+        if (snapshot.subtitle != null && snapshot.subtitle.length() > 0) {
+            return snapshot.subtitle;
+        }
+        return "正在播放";
+    }
+
+    private static CharSequence buildMediaSubtitleText(ClockDetailMediaSnapshot snapshot) {
+        if (snapshot == null) {
+            return "";
+        }
+        if (snapshot.subtitle != null && snapshot.subtitle.length() > 0) {
+            return snapshot.subtitle;
+        }
+        return snapshot.packageName;
+    }
+
+    private void launchActiveMediaApp() {
+        ClockDetailMediaSnapshot snapshot = latestMediaSnapshot;
+        if (snapshot == null || !snapshot.active) {
+            return;
+        }
+        dismissImmediately();
+        PendingIntent launchIntent = snapshot.launchIntent;
+        if (launchIntent != null) {
+            try {
+                launchIntent.send();
+                return;
+            } catch (Throwable t) {
+                FlymeStatusBarSizer.logClockWarning("Failed to open media session activity", t);
+            }
+        }
+        String packageName = snapshot.packageName != null ? snapshot.packageName.trim() : "";
+        if (packageName.isEmpty()) {
+            return;
+        }
+        try {
+            Intent launchAppIntent = contentView.getContext()
+                    .getPackageManager()
+                    .getLaunchIntentForPackage(packageName);
+            if (launchAppIntent == null) {
+                return;
+            }
+            launchAppIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            contentView.getContext().startActivity(launchAppIntent);
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning(
+                    "Failed to launch media app: " + packageName,
+                    t);
+        }
     }
 
     private void updateMemoryStatusView(ClockDetailSystemStatusSnapshot.MemoryRow[] rows) {
@@ -2715,6 +3090,22 @@ final class ClockDetailPopupController {
         background.setColor(mixColors(palette.surfaceColor, palette.strokeColor, 0.22f));
         background.setStroke(Math.max(1, dp(context, 1)), adjustAlpha(palette.strokeColor, 0.9f));
         strip.root.setBackground(background);
+    }
+
+    private void applyMediaStripPalette(MediaStrip strip, Palette palette) {
+        if (strip == null) {
+            return;
+        }
+        Context context = strip.root.getContext();
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setCornerRadius(dp(context, 14));
+        background.setColor(mixColors(palette.surfaceColor, palette.strokeColor, 0.22f));
+        background.setStroke(Math.max(1, dp(context, 1)), adjustAlpha(palette.strokeColor, 0.9f));
+        strip.root.setBackground(background);
+        strip.titleView.setTextColor(palette.primaryTextColor);
+        strip.subtitleView.setTextColor(palette.secondaryTextColor);
+        strip.statusView.setTextColor(palette.accentColor);
     }
 
     private void updateMemoryTileRows(
@@ -3191,6 +3582,58 @@ final class ClockDetailPopupController {
         return new RecentAppsStrip(root, scrollView, content);
     }
 
+    private static MediaStrip buildMediaStrip(Context context) {
+        LinearLayout root = new LinearLayout(context);
+        root.setOrientation(LinearLayout.HORIZONTAL);
+        root.setGravity(Gravity.CENTER_VERTICAL);
+        root.setPadding(
+                dp(context, 12),
+                dp(context, 10),
+                dp(context, 12),
+                dp(context, 10));
+        root.setVisibility(View.GONE);
+        root.setClickable(true);
+
+        ImageView artworkView = new ImageView(context);
+        artworkView.setAdjustViewBounds(false);
+        artworkView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+
+        LinearLayout textContainer = new LinearLayout(context);
+        textContainer.setOrientation(LinearLayout.VERTICAL);
+        textContainer.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView titleView = new TextView(context);
+        titleView.setIncludeFontPadding(false);
+        titleView.setSingleLine(true);
+        titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+        titleView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+
+        TextView subtitleView = new TextView(context);
+        subtitleView.setIncludeFontPadding(false);
+        subtitleView.setSingleLine(true);
+        subtitleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+        subtitleView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+
+        TextView statusView = new TextView(context);
+        statusView.setIncludeFontPadding(false);
+        statusView.setSingleLine(true);
+        statusView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        statusView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+
+        textContainer.addView(titleView, matchWidth());
+        textContainer.addView(subtitleView, matchWidthWithTop(context, 2));
+        textContainer.addView(statusView, matchWidthWithTop(context, 3));
+
+        int artworkSize = dp(context, MEDIA_ARTWORK_SIZE_DP);
+        root.addView(
+                artworkView,
+                new LinearLayout.LayoutParams(artworkSize, artworkSize));
+        root.addView(
+                textContainer,
+                weightCellWithStart(context, MEDIA_CONTENT_GAP_DP, 1f));
+        return new MediaStrip(root, artworkView, titleView, subtitleView, statusView);
+    }
+
     private static ImageView buildRecentAppIconView(Context context) {
         ImageView iconView = new ImageView(context);
         iconView.setAdjustViewBounds(false);
@@ -3358,6 +3801,31 @@ final class ClockDetailPopupController {
         return true;
     }
 
+    private static void logMediaUiDebug(String message) {
+        Log.d(LOG_TAG, "[clock-media-ui] " + message);
+    }
+
+    private static String describeMediaSnapshot(ClockDetailMediaSnapshot snapshot) {
+        if (snapshot == null) {
+            return "null";
+        }
+        return "active=" + snapshot.active
+                + ", title=" + sanitizeMediaLogText(snapshot.title)
+                + ", subtitle=" + sanitizeMediaLogText(snapshot.subtitle)
+                + ", stateLabel=" + sanitizeMediaLogText(snapshot.playbackStateLabel)
+                + ", pkg=" + sanitizeMediaLogText(snapshot.packageName)
+                + ", hasArtwork=" + (snapshot.artwork != null)
+                + ", hasIntent=" + (snapshot.launchIntent != null);
+    }
+
+    private static String sanitizeMediaLogText(CharSequence text) {
+        if (text == null) {
+            return "";
+        }
+        String value = text.toString().replace('\n', ' ').trim();
+        return value.isEmpty() ? "" : value;
+    }
+
     private View getAnchor() {
         return anchorRef.get();
     }
@@ -3439,6 +3907,27 @@ final class ClockDetailPopupController {
             this.root = root;
             this.scrollView = scrollView;
             this.contentView = contentView;
+        }
+    }
+
+    private static final class MediaStrip {
+        final LinearLayout root;
+        final ImageView artworkView;
+        final TextView titleView;
+        final TextView subtitleView;
+        final TextView statusView;
+
+        MediaStrip(
+                LinearLayout root,
+                ImageView artworkView,
+                TextView titleView,
+                TextView subtitleView,
+                TextView statusView) {
+            this.root = root;
+            this.artworkView = artworkView;
+            this.titleView = titleView;
+            this.subtitleView = subtitleView;
+            this.statusView = statusView;
         }
     }
 
