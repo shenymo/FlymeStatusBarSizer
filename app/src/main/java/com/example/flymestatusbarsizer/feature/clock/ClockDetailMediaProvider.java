@@ -96,14 +96,32 @@ final class ClockDetailMediaProvider {
     }
 
     ClockDetailMediaSnapshot peekStartupSnapshot() {
-        ClockDetailMediaSnapshot notificationSnapshot = readNotificationMediaManagerSnapshot();
-        if (notificationSnapshot.active) {
-            cacheLastActiveSnapshot(notificationSnapshot);
-            logMediaDebug("peekStartupSnapshot notification=" + describeSnapshot(notificationSnapshot));
-            return notificationSnapshot;
+        SnapshotQueryResult notificationResult = queryNotificationMediaManagerSnapshot();
+        if (notificationResult.snapshot.active) {
+            cacheLastActiveSnapshot(notificationResult.snapshot);
+            logMediaDebug("peekStartupSnapshot notification="
+                    + describeSnapshot(notificationResult.snapshot));
+            return notificationResult.snapshot;
         }
+
+        SnapshotQueryResult mediaSessionResult = queryCurrentMediaSessionSnapshot();
+        if (mediaSessionResult.snapshot.active) {
+            cacheLastActiveSnapshot(mediaSessionResult.snapshot);
+            logMediaDebug("peekStartupSnapshot mediaSession="
+                    + describeSnapshot(mediaSessionResult.snapshot));
+            return mediaSessionResult.snapshot;
+        }
+
+        if (notificationResult.sourceAvailable || mediaSessionResult.sourceAvailable) {
+            clearLastActiveSnapshot();
+            logMediaDebug("peekStartupSnapshot authoritativeEmpty notificationAvailable="
+                    + notificationResult.sourceAvailable
+                    + " mediaSessionAvailable=" + mediaSessionResult.sourceAvailable);
+            return ClockDetailMediaSnapshot.EMPTY;
+        }
+
         ClockDetailMediaSnapshot cachedSnapshot = peekLastActiveSnapshot();
-        logMediaDebug("peekStartupSnapshot cache=" + describeSnapshot(cachedSnapshot));
+        logMediaDebug("peekStartupSnapshot fallbackCache=" + describeSnapshot(cachedSnapshot));
         return cachedSnapshot;
     }
 
@@ -144,15 +162,56 @@ final class ClockDetailMediaProvider {
         this.resultHandler = null;
     }
 
-    private ClockDetailMediaSnapshot readNotificationMediaManagerSnapshot() {
+    private SnapshotQueryResult queryNotificationMediaManagerSnapshot() {
         if (!ensureNotificationMediaManagerBridge()) {
             logMediaDebug("readNotificationMediaManagerSnapshot bridge unavailable");
-            return ClockDetailMediaSnapshot.EMPTY;
+            return SnapshotQueryResult.unavailable();
         }
         ClockDetailMediaSnapshot snapshot =
                 buildSnapshotFromNotificationMediaManager(null, INVALID_PLAYBACK_STATE);
         logMediaDebug("readNotificationMediaManagerSnapshot " + describeSnapshot(snapshot));
-        return snapshot;
+        return SnapshotQueryResult.available(snapshot);
+    }
+
+    private SnapshotQueryResult queryCurrentMediaSessionSnapshot() {
+        if (mediaSessionManager == null) {
+            logMediaDebug("queryCurrentMediaSessionSnapshot manager unavailable");
+            return SnapshotQueryResult.unavailable();
+        }
+        try {
+            List<MediaController> controllers = mediaSessionManager.getActiveSessions(null);
+            if (controllers == null || controllers.isEmpty()) {
+                logMediaDebug("queryCurrentMediaSessionSnapshot activeSessions empty");
+                return SnapshotQueryResult.available(ClockDetailMediaSnapshot.EMPTY);
+            }
+            logMediaDebug("queryCurrentMediaSessionSnapshot activeSessions count=" + controllers.size());
+            MediaController bestController = null;
+            int bestScore = Integer.MIN_VALUE;
+            for (MediaController controller : controllers) {
+                int state = resolvePlaybackState(controller);
+                int score = scorePlaybackState(state);
+                logMediaDebug("queryCurrentMediaSessionSnapshot candidate="
+                        + describeController(controller)
+                        + " score=" + score);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestController = controller;
+                }
+                if (score >= 4) {
+                    break;
+                }
+            }
+            ClockDetailMediaSnapshot snapshot = bestScore > 0
+                    ? buildSnapshotFromController(bestController, null, INVALID_PLAYBACK_STATE, null)
+                    : ClockDetailMediaSnapshot.EMPTY;
+            logMediaDebug("queryCurrentMediaSessionSnapshot result="
+                    + describeSnapshot(snapshot)
+                    + " bestScore=" + bestScore);
+            return SnapshotQueryResult.available(snapshot);
+        } catch (Throwable t) {
+            logMediaWarning("queryCurrentMediaSessionSnapshot failed", t);
+            return SnapshotQueryResult.unavailable();
+        }
     }
 
     private boolean startNotificationMediaManagerListening() {
@@ -709,6 +768,8 @@ final class ClockDetailMediaProvider {
         lastDeliveredSnapshot = safeSnapshot;
         if (safeSnapshot.active) {
             cacheLastActiveSnapshot(safeSnapshot);
+        } else {
+            clearLastActiveSnapshot();
         }
         logMediaDebug("deliverSnapshot " + describeSnapshot(safeSnapshot));
         if (localHandler == null) {
@@ -728,6 +789,13 @@ final class ClockDetailMediaProvider {
                     ? snapshot
                     : ClockDetailMediaSnapshot.EMPTY;
             lastActiveSnapshotUptimeMs = SystemClock.uptimeMillis();
+        }
+    }
+
+    private static void clearLastActiveSnapshot() {
+        synchronized (LAST_ACTIVE_SNAPSHOT_LOCK) {
+            lastActiveSnapshot = ClockDetailMediaSnapshot.EMPTY;
+            lastActiveSnapshotUptimeMs = 0L;
         }
     }
 
@@ -908,5 +976,23 @@ final class ClockDetailMediaProvider {
         }
         String value = text.toString().replace('\n', ' ').trim();
         return value.isEmpty() ? "" : value;
+    }
+
+    private static final class SnapshotQueryResult {
+        final ClockDetailMediaSnapshot snapshot;
+        final boolean sourceAvailable;
+
+        SnapshotQueryResult(ClockDetailMediaSnapshot snapshot, boolean sourceAvailable) {
+            this.snapshot = snapshot != null ? snapshot : ClockDetailMediaSnapshot.EMPTY;
+            this.sourceAvailable = sourceAvailable;
+        }
+
+        static SnapshotQueryResult available(ClockDetailMediaSnapshot snapshot) {
+            return new SnapshotQueryResult(snapshot, true);
+        }
+
+        static SnapshotQueryResult unavailable() {
+            return new SnapshotQueryResult(ClockDetailMediaSnapshot.EMPTY, false);
+        }
     }
 }
