@@ -528,14 +528,24 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_CLOCK_DETAIL_POPUP_ENABLED,
                 SettingsStore.DEFAULT_CLOCK_DETAIL_POPUP_ENABLED);
         activity.addDivider(page);
-        activity.addSwitchRow(page, "显示一行四列图标入口",
-                "在详细区里新增固定四图标快捷入口，只保留已经验证过的微信 / 支付宝 Assistant 动作。",
+        LinearLayout actionGridEditorSection = new LinearLayout(activity);
+        actionGridEditorSection.setOrientation(LinearLayout.VERTICAL);
+        boolean actionGridEnabled = SettingsStore.readBoolean(
+                activity.prefs(),
                 SettingsStore.KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED,
                 SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED);
-        activity.addDivider(page);
-        activity.addActionButtonRow(page, "编辑图标入口顺序",
-                "固定 4 个预设动作，只支持调整从左到右的显示顺序和恢复默认顺序。",
+        actionGridEditorSection.setVisibility(actionGridEnabled ? View.VISIBLE : View.GONE);
+        activity.addSwitchRow(page, "显示一行四列图标入口",
+                "在详细区里新增固定四图标快捷入口；当前预设仍然是微信 / 支付宝四个动作。",
+                SettingsStore.KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED,
+                SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED,
+                (buttonView, isChecked) -> actionGridEditorSection.setVisibility(
+                        isChecked ? View.VISIBLE : View.GONE));
+        activity.addDivider(actionGridEditorSection);
+        activity.addActionButtonRow(actionGridEditorSection, "编辑图标入口顺序",
+                "长按四个图标直接拖动排序；拖完点应用才会保存。",
                 "编辑", activity::showClockDetailActionGridEditor);
+        page.addView(actionGridEditorSection, activity.matchWrap());
         return page;
     }
 

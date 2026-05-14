@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
+import android.net.Uri;
 
 public final class ClockDetailAssistantActionCatalog {
     public static final String ACTION_WECHAT_SCAN = "微信/扫一扫";
@@ -222,14 +223,18 @@ public final class ClockDetailAssistantActionCatalog {
 
     private static Intent buildAlipayShortcutIntent(Context context, int appId, String scheme) {
         ComponentName componentName = new ComponentName(ALIPAY_PACKAGE, ALIPAY_SHORTCUT_ACTIVITY);
-        if (!isExportedActivity(context, componentName)) {
-            return null;
+        if (isExportedActivity(context, componentName)) {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setComponent(componentName);
+            intent.setPackage(ALIPAY_PACKAGE);
+            intent.putExtra(ALIPAY_SHORTCUT_APP_ID, appId);
+            intent.putExtra(ALIPAY_SHORTCUT_SCHEME, scheme);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            return intent;
         }
         Intent intent = new Intent(Intent.ACTION_VIEW);
-        intent.setComponent(componentName);
+        intent.setData(Uri.parse(scheme));
         intent.setPackage(ALIPAY_PACKAGE);
-        intent.putExtra(ALIPAY_SHORTCUT_APP_ID, appId);
-        intent.putExtra(ALIPAY_SHORTCUT_SCHEME, scheme);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         return intent;
     }

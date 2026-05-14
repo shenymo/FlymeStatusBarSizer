@@ -11,6 +11,7 @@ import android.app.ActivityManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Outline;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Region;
@@ -33,6 +34,7 @@ import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
+import android.view.ViewOutlineProvider;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.WindowManager;
@@ -79,11 +81,11 @@ final class ClockDetailPopupController {
     private static final int ACTION_GRID_TOP_MARGIN_DP = 10;
     private static final int RECENT_APPS_TOP_MARGIN_DP = 10;
     private static final int ACTION_GRID_ROW_GAP_DP = 8;
-    private static final int ACTION_GRID_COLUMN_GAP_DP = 8;
-    private static final int ACTION_GRID_CELL_MIN_HEIGHT_DP = 64;
-    private static final int ACTION_GRID_CELL_HORIZONTAL_PADDING_DP = 8;
-    private static final int ACTION_GRID_CELL_VERTICAL_PADDING_DP = 8;
-    private static final int ACTION_GRID_ICON_SIZE_DP = 24;
+    private static final int ACTION_GRID_COLUMN_GAP_DP = 0;
+    private static final int ACTION_GRID_CELL_MIN_HEIGHT_DP = 40;
+    private static final int ACTION_GRID_CELL_HORIZONTAL_PADDING_DP = 0;
+    private static final int ACTION_GRID_CELL_VERTICAL_PADDING_DP = 0;
+    private static final int ACTION_GRID_ICON_SIZE_DP = 32;
     private static final int ACTION_GRID_LABEL_TOP_MARGIN_DP = 5;
     private static final int MEDIA_ARTWORK_SIZE_DP = 42;
     private static final int MEDIA_CONTENT_GAP_DP = 12;
@@ -3371,36 +3373,20 @@ final class ClockDetailPopupController {
         boolean hasIcon = entry != null && entry.hasIcon();
         boolean hasVisualContent = hasLabel || hasIcon;
         boolean valid = entry != null && entry.valid;
-        Context context = cellView.root.getContext();
-        GradientDrawable background = new GradientDrawable();
-        background.setShape(GradientDrawable.RECTANGLE);
-        background.setCornerRadius(dp(context, 12));
         if (valid) {
-            background.setColor(mixColors(palette.surfaceColor, palette.accentColor, 0.12f));
-            background.setStroke(
-                    Math.max(1, dp(context, 1)),
-                    adjustAlpha(palette.accentColor, 0.42f));
             cellView.labelView.setTextColor(palette.primaryTextColor);
             cellView.iconView.setAlpha(1f);
             cellView.labelView.setAlpha(1f);
         } else if (hasVisualContent) {
-            background.setColor(mixColors(palette.surfaceColor, palette.strokeColor, 0.34f));
-            background.setStroke(
-                    Math.max(1, dp(context, 1)),
-                    adjustAlpha(palette.strokeColor, 0.86f));
             cellView.labelView.setTextColor(palette.secondaryTextColor);
             cellView.iconView.setAlpha(0.72f);
             cellView.labelView.setAlpha(0.78f);
         } else {
-            background.setColor(mixColors(palette.surfaceColor, palette.strokeColor, 0.16f));
-            background.setStroke(
-                    Math.max(1, dp(context, 1)),
-                    adjustAlpha(palette.strokeColor, 0.58f));
             cellView.labelView.setTextColor(palette.secondaryTextColor);
             cellView.iconView.setAlpha(0.32f);
             cellView.labelView.setAlpha(0.38f);
         }
-        cellView.root.setBackground(background);
+        cellView.root.setBackground(null);
     }
 
     private void applyRecentAppsStripPalette(RecentAppsStrip strip, Palette palette) {
@@ -4002,10 +3988,10 @@ final class ClockDetailPopupController {
         root.setOrientation(LinearLayout.HORIZONTAL);
         root.setGravity(Gravity.CENTER_VERTICAL);
         root.setPadding(
-                dp(context, 12),
-                dp(context, 10),
-                dp(context, 12),
-                dp(context, 10));
+                dp(context, 8),
+                dp(context, 4),
+                dp(context, 8),
+                dp(context, 4));
         root.setVisibility(View.GONE);
 
         ActionGridCellView[] cellViews = new ActionGridCellView[ClockDetailActionSpec.SLOT_COUNT];
@@ -4036,6 +4022,7 @@ final class ClockDetailPopupController {
         ImageView iconView = new ImageView(context);
         int iconSize = dp(context, ACTION_GRID_ICON_SIZE_DP);
         iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        styleRoundedActionGridIcon(iconView, dp(context, 10));
         root.addView(iconView, new LinearLayout.LayoutParams(iconSize, iconSize));
 
         TextView labelView = new TextView(context);
@@ -4046,8 +4033,22 @@ final class ClockDetailPopupController {
         labelView.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         labelView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
         labelView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        labelView.setVisibility(View.GONE);
         root.addView(labelView, matchWidthWithTop(context, ACTION_GRID_LABEL_TOP_MARGIN_DP));
         return new ActionGridCellView(root, iconView, labelView);
+    }
+
+    private static void styleRoundedActionGridIcon(ImageView iconView, int radiusPx) {
+        if (iconView == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return;
+        }
+        iconView.setClipToOutline(true);
+        iconView.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, Outline outline) {
+                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radiusPx);
+            }
+        });
     }
 
     private static RecentAppsStrip buildRecentAppsStrip(Context context) {
