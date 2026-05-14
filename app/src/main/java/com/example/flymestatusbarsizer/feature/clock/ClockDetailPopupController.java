@@ -26,7 +26,6 @@ import android.os.SystemClock;
 import android.text.format.DateFormat;
 import android.view.KeyEvent;
 import android.util.TypedValue;
-import android.util.Log;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -55,7 +54,6 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 final class ClockDetailPopupController {
-    private static final String LOG_TAG = "FlymeStatusBarSizer";
     private static final long AUTO_DISMISS_DELAY_MS = 8000L;
     private static final long MILLIS_REFRESH_INTERVAL_MS = 33L;
     private static final long SECOND_REFRESH_INTERVAL_MS = 1000L;
@@ -285,7 +283,9 @@ final class ClockDetailPopupController {
         this.contentView.addView(mediaViewportView, matchWidthWithTop(context, MEDIA_TOP_MARGIN_DP));
         this.contentView.addView(detailsViewportView, matchWidthWithTop(context, DETAILS_TOP_MARGIN_DP));
         this.lunarDateFormatter = new ClockDetailLunarDateFormatter(context.getClassLoader());
-        this.mediaProvider = new ClockDetailMediaProvider(context);
+        this.mediaProvider = new ClockDetailMediaProvider(
+                context,
+                dp(context, MEDIA_ARTWORK_SIZE_DP));
         this.systemStatusProvider = new ClockDetailSystemStatusProvider(context);
         this.recentAppsProvider = new ClockDetailRecentAppsProvider(context);
         this.activityManager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
@@ -427,8 +427,6 @@ final class ClockDetailPopupController {
         refreshTimeText(nowMillis, true);
         refreshDateTextIfNeeded(nowMillis, true);
         latestMediaSnapshot = mediaProvider.peekStartupSnapshot();
-        logMediaUiDebug("show startupSnapshot=" + describeMediaSnapshot(latestMediaSnapshot)
-                + " hostMode=" + hostMode);
         applyLatestMediaView();
         applyLatestSystemStatusViews();
         applyLatestRecentAppsView();
@@ -2711,20 +2709,13 @@ final class ClockDetailPopupController {
 
     private void startMediaUpdates() {
         final int requestSessionId = popupSessionId;
-        logMediaUiDebug("startMediaUpdates session=" + requestSessionId
-                + " current=" + describeMediaSnapshot(latestMediaSnapshot));
-        mediaProvider.startListening(handler, mediaSnapshot -> {
+        mediaProvider.startListening(handler, latestMediaSnapshot, mediaSnapshot -> {
             if (popupSessionId != requestSessionId) {
-                logMediaUiDebug("startMediaUpdates ignore stale session=" + requestSessionId
-                        + " popupSessionId=" + popupSessionId);
                 return;
             }
             latestMediaSnapshot = mediaSnapshot != null && mediaSnapshot.active
                     ? mediaSnapshot
                     : ClockDetailMediaSnapshot.EMPTY;
-            logMediaUiDebug("startMediaUpdates callback session=" + requestSessionId
-                    + " snapshot=" + describeMediaSnapshot(latestMediaSnapshot)
-                    + " popupShowing=" + isPopupShowing());
             if (!isPopupShowing()) {
                 return;
             }
@@ -2735,7 +2726,6 @@ final class ClockDetailPopupController {
     }
 
     private void stopMediaUpdates() {
-        logMediaUiDebug("stopMediaUpdates");
         mediaProvider.stopListening();
     }
 
@@ -2749,12 +2739,6 @@ final class ClockDetailPopupController {
         boolean changed = bindMediaContent(safeSnapshot);
         boolean shouldShow = safeSnapshot.active;
         boolean currentlyVisible = mediaViewportView.getVisibility() == View.VISIBLE;
-        logMediaUiDebug("updateMediaView snapshot=" + describeMediaSnapshot(safeSnapshot)
-                + " shouldShow=" + shouldShow
-                + " currentlyVisible=" + currentlyVisible
-                + " changed=" + changed
-                + " dismissAnimationRunning=" + dismissAnimationRunning
-                + " popupShowing=" + isPopupShowing());
         if (shouldShow == currentlyVisible) {
             return changed;
         }
@@ -2775,14 +2759,25 @@ final class ClockDetailPopupController {
                 mediaStrip.artworkView.setImageDrawable(null);
                 changed = true;
             }
+            if (!(mediaStrip.artworkView.getTag() instanceof String)
+                    || !((String) mediaStrip.artworkView.getTag()).isEmpty()) {
+                mediaStrip.artworkView.setTag("");
+                changed = true;
+            }
             changed |= setTextIfChanged(mediaStrip.titleView, "");
             changed |= setTextIfChanged(mediaStrip.subtitleView, "");
             changed |= setTextIfChanged(mediaStrip.statusView, "");
             return changed;
         }
         boolean changed = false;
-        if (mediaStrip.artworkView.getDrawable() != safeSnapshot.artwork) {
+        String currentArtworkKey = mediaStrip.artworkView.getTag() instanceof String
+                ? (String) mediaStrip.artworkView.getTag()
+                : "";
+        if (!currentArtworkKey.equals(safeSnapshot.artworkKey)
+                || (safeSnapshot.artwork != null && mediaStrip.artworkView.getDrawable() == null)
+                || (safeSnapshot.artwork == null && mediaStrip.artworkView.getDrawable() != null)) {
             mediaStrip.artworkView.setImageDrawable(safeSnapshot.artwork);
+            mediaStrip.artworkView.setTag(safeSnapshot.artworkKey);
             changed = true;
         }
         changed |= setTextIfChanged(mediaStrip.titleView, buildMediaTitleText(safeSnapshot));
@@ -2792,8 +2787,6 @@ final class ClockDetailPopupController {
     }
 
     private boolean applyMediaVisibilityState(boolean visible, boolean clearContentWhenHidden) {
-        logMediaUiDebug("applyMediaVisibilityState visible=" + visible
-                + " clearContentWhenHidden=" + clearContentWhenHidden);
         cancelMediaAnimator();
         resetMediaStripVisualTransform();
         if (visible) {
@@ -2812,9 +2805,6 @@ final class ClockDetailPopupController {
     }
 
     private void animateMediaVisibilityChange(boolean visible) {
-        logMediaUiDebug("animateMediaVisibilityChange visible=" + visible
-                + " startHeight=" + resolveCurrentMediaViewportHeight()
-                + " targetHeight=" + (visible ? measureMediaContentHeight() : 0));
         cancelMediaAnimator();
         int startHeight = resolveCurrentMediaViewportHeight();
         int targetHeight = visible ? measureMediaContentHeight() : 0;
@@ -2863,7 +2853,6 @@ final class ClockDetailPopupController {
                     mediaAnimator = null;
                 }
                 if (cancelled) {
-                    logMediaUiDebug("animateMediaVisibilityChange cancelled visible=" + visible);
                     return;
                 }
                 resetMediaStripVisualTransform();
@@ -2876,8 +2865,6 @@ final class ClockDetailPopupController {
                     setVisibilityIfChanged(mediaStrip.root, View.GONE);
                     bindMediaContent(ClockDetailMediaSnapshot.EMPTY);
                 }
-                logMediaUiDebug("animateMediaVisibilityChange end visible=" + visible
-                        + " viewportVisibility=" + mediaViewportView.getVisibility());
                 requestPopupLayoutRefresh();
             }
         });
@@ -2901,10 +2888,11 @@ final class ClockDetailPopupController {
         if (snapshot == null) {
             return "";
         }
-        if (snapshot.subtitle != null && snapshot.subtitle.length() > 0) {
-            return snapshot.subtitle;
-        }
-        return snapshot.packageName;
+        return (snapshot.title == null || snapshot.title.length() == 0)
+                || snapshot.subtitle == null
+                || snapshot.subtitle.length() == 0
+                ? ""
+                : snapshot.subtitle;
     }
 
     private void launchActiveMediaApp() {
@@ -3799,31 +3787,6 @@ final class ClockDetailPopupController {
         }
         view.setVisibility(visibility);
         return true;
-    }
-
-    private static void logMediaUiDebug(String message) {
-        Log.d(LOG_TAG, "[clock-media-ui] " + message);
-    }
-
-    private static String describeMediaSnapshot(ClockDetailMediaSnapshot snapshot) {
-        if (snapshot == null) {
-            return "null";
-        }
-        return "active=" + snapshot.active
-                + ", title=" + sanitizeMediaLogText(snapshot.title)
-                + ", subtitle=" + sanitizeMediaLogText(snapshot.subtitle)
-                + ", stateLabel=" + sanitizeMediaLogText(snapshot.playbackStateLabel)
-                + ", pkg=" + sanitizeMediaLogText(snapshot.packageName)
-                + ", hasArtwork=" + (snapshot.artwork != null)
-                + ", hasIntent=" + (snapshot.launchIntent != null);
-    }
-
-    private static String sanitizeMediaLogText(CharSequence text) {
-        if (text == null) {
-            return "";
-        }
-        String value = text.toString().replace('\n', ' ').trim();
-        return value.isEmpty() ? "" : value;
     }
 
     private View getAnchor() {

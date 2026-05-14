@@ -4,9 +4,10 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import android.app.PendingIntent;
 import android.content.Context;
-import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Icon;
@@ -37,6 +38,7 @@ final class ClockDetailMediaProvider {
     private static long lastActiveSnapshotUptimeMs;
 
     private final Context context;
+    private final int artworkSizePx;
     private final Handler mainHandler;
     private final MediaSessionManager mediaSessionManager;
     private final PackageManager packageManager;
@@ -70,7 +72,6 @@ final class ClockDetailMediaProvider {
     private Method notificationMediaRemoveCallbackMethod;
     private Object notificationMediaListenerProxy;
     private long emptySnapshotGraceDeadlineUptimeMs;
-    private int pendingEmptySnapshotVersion;
     private ClockDetailMediaSnapshot lastDeliveredSnapshot = ClockDetailMediaSnapshot.EMPTY;
     private final Runnable pendingEmptySnapshotRunnable = this::flushPendingEmptySnapshot;
 
@@ -78,11 +79,12 @@ final class ClockDetailMediaProvider {
         void onMediaSnapshot(ClockDetailMediaSnapshot snapshot);
     }
 
-    ClockDetailMediaProvider(Context context) {
+    ClockDetailMediaProvider(Context context, int artworkSizePx) {
         Context appContext = context != null && context.getApplicationContext() != null
                 ? context.getApplicationContext()
                 : context;
         this.context = appContext != null ? appContext : context;
+        this.artworkSizePx = Math.max(1, artworkSizePx);
         Handler handler = FlymeStatusBarSizer.getMainHandler();
         this.mainHandler = handler != null
                 ? handler
@@ -99,60 +101,51 @@ final class ClockDetailMediaProvider {
         SnapshotQueryResult notificationResult = queryNotificationMediaManagerSnapshot();
         if (notificationResult.snapshot.active) {
             cacheLastActiveSnapshot(notificationResult.snapshot);
-            logMediaDebug("peekStartupSnapshot notification="
-                    + describeSnapshot(notificationResult.snapshot));
             return notificationResult.snapshot;
         }
 
         SnapshotQueryResult mediaSessionResult = queryCurrentMediaSessionSnapshot();
         if (mediaSessionResult.snapshot.active) {
             cacheLastActiveSnapshot(mediaSessionResult.snapshot);
-            logMediaDebug("peekStartupSnapshot mediaSession="
-                    + describeSnapshot(mediaSessionResult.snapshot));
             return mediaSessionResult.snapshot;
         }
 
         if (notificationResult.sourceAvailable || mediaSessionResult.sourceAvailable) {
             clearLastActiveSnapshot();
-            logMediaDebug("peekStartupSnapshot authoritativeEmpty notificationAvailable="
-                    + notificationResult.sourceAvailable
-                    + " mediaSessionAvailable=" + mediaSessionResult.sourceAvailable);
             return ClockDetailMediaSnapshot.EMPTY;
         }
 
-        ClockDetailMediaSnapshot cachedSnapshot = peekLastActiveSnapshot();
-        logMediaDebug("peekStartupSnapshot fallbackCache=" + describeSnapshot(cachedSnapshot));
-        return cachedSnapshot;
+        return peekLastActiveSnapshot();
     }
 
-    void startListening(Handler resultHandler, MediaSnapshotCallback callback) {
+    void startListening(
+            Handler resultHandler,
+            ClockDetailMediaSnapshot startupSnapshot,
+            MediaSnapshotCallback callback) {
         stopListening();
         this.resultHandler = resultHandler;
         this.callback = callback;
         this.emptySnapshotGraceDeadlineUptimeMs = 0L;
-        this.pendingEmptySnapshotVersion = 0;
         this.lastDeliveredSnapshot = ClockDetailMediaSnapshot.EMPTY;
         if (callback == null || context == null) {
             return;
         }
 
-        ClockDetailMediaSnapshot startupSnapshot = peekStartupSnapshot();
-        if (startupSnapshot.active) {
-            publishSnapshot("startup", startupSnapshot);
+        ClockDetailMediaSnapshot initialSnapshot = startupSnapshot != null
+                ? startupSnapshot
+                : peekStartupSnapshot();
+        if (initialSnapshot.active) {
+            publishSnapshot(initialSnapshot);
         }
 
         boolean notificationListening = startNotificationMediaManagerListening();
         boolean mediaSessionListening = startMediaSessionListening();
-        logMediaDebug("startListening startup=" + describeSnapshot(startupSnapshot)
-                + " notificationListening=" + notificationListening
-                + " mediaSessionListening=" + mediaSessionListening);
-        if (!notificationListening && !mediaSessionListening && !startupSnapshot.active) {
+        if (!notificationListening && !mediaSessionListening && !initialSnapshot.active) {
             deliverSnapshot(ClockDetailMediaSnapshot.EMPTY);
         }
     }
 
     void stopListening() {
-        logMediaDebug("stopListening");
         cancelPendingEmptySnapshot();
         this.emptySnapshotGraceDeadlineUptimeMs = 0L;
         this.lastDeliveredSnapshot = ClockDetailMediaSnapshot.EMPTY;
@@ -164,49 +157,23 @@ final class ClockDetailMediaProvider {
 
     private SnapshotQueryResult queryNotificationMediaManagerSnapshot() {
         if (!ensureNotificationMediaManagerBridge()) {
-            logMediaDebug("readNotificationMediaManagerSnapshot bridge unavailable");
             return SnapshotQueryResult.unavailable();
         }
         ClockDetailMediaSnapshot snapshot =
                 buildSnapshotFromNotificationMediaManager(null, INVALID_PLAYBACK_STATE);
-        logMediaDebug("readNotificationMediaManagerSnapshot " + describeSnapshot(snapshot));
         return SnapshotQueryResult.available(snapshot);
     }
 
     private SnapshotQueryResult queryCurrentMediaSessionSnapshot() {
         if (mediaSessionManager == null) {
-            logMediaDebug("queryCurrentMediaSessionSnapshot manager unavailable");
             return SnapshotQueryResult.unavailable();
         }
         try {
-            List<MediaController> controllers = mediaSessionManager.getActiveSessions(null);
-            if (controllers == null || controllers.isEmpty()) {
-                logMediaDebug("queryCurrentMediaSessionSnapshot activeSessions empty");
-                return SnapshotQueryResult.available(ClockDetailMediaSnapshot.EMPTY);
-            }
-            logMediaDebug("queryCurrentMediaSessionSnapshot activeSessions count=" + controllers.size());
-            MediaController bestController = null;
-            int bestScore = Integer.MIN_VALUE;
-            for (MediaController controller : controllers) {
-                int state = resolvePlaybackState(controller);
-                int score = scorePlaybackState(state);
-                logMediaDebug("queryCurrentMediaSessionSnapshot candidate="
-                        + describeController(controller)
-                        + " score=" + score);
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestController = controller;
-                }
-                if (score >= 4) {
-                    break;
-                }
-            }
-            ClockDetailMediaSnapshot snapshot = bestScore > 0
-                    ? buildSnapshotFromController(bestController, null, INVALID_PLAYBACK_STATE, null)
+            ControllerSelection selection =
+                    selectPrimaryController(mediaSessionManager.getActiveSessions(null));
+            ClockDetailMediaSnapshot snapshot = selection.controller != null
+                    ? buildSnapshotFromController(selection.controller, null, INVALID_PLAYBACK_STATE, null)
                     : ClockDetailMediaSnapshot.EMPTY;
-            logMediaDebug("queryCurrentMediaSessionSnapshot result="
-                    + describeSnapshot(snapshot)
-                    + " bestScore=" + bestScore);
             return SnapshotQueryResult.available(snapshot);
         } catch (Throwable t) {
             logMediaWarning("queryCurrentMediaSessionSnapshot failed", t);
@@ -231,7 +198,6 @@ final class ClockDetailMediaProvider {
                 notificationMediaListenerProxy = listenerProxy;
             }
             notificationMediaAddCallbackMethod.invoke(notificationMediaManager, listenerProxy);
-            logMediaDebug("startNotificationMediaManagerListening success");
             return true;
         } catch (Throwable t) {
             notificationMediaListenerProxy = null;
@@ -250,7 +216,6 @@ final class ClockDetailMediaProvider {
             notificationMediaRemoveCallbackMethod.invoke(
                     notificationMediaManager,
                     notificationMediaListenerProxy);
-            logMediaDebug("stopNotificationMediaManagerListening success");
         } catch (Throwable t) {
             logMediaWarning("stopNotificationMediaManagerListening failed", t);
         } finally {
@@ -277,9 +242,6 @@ final class ClockDetailMediaProvider {
                     && args[1] instanceof Integer
                     ? (Integer) args[1]
                     : INVALID_PLAYBACK_STATE;
-            logMediaDebug("notification callback state="
-                    + describePlaybackStateForLog(playbackState)
-                    + " metadataTitle=" + describeMetadataTitle(metadata));
             publishNotificationMediaManagerSnapshot(metadata, playbackState);
             return null;
         }
@@ -298,9 +260,7 @@ final class ClockDetailMediaProvider {
     private void publishNotificationMediaManagerSnapshot(
             MediaMetadata metadata,
             int playbackState) {
-        publishSnapshot(
-                "notification-callback state=" + describePlaybackStateForLog(playbackState),
-                buildSnapshotFromNotificationMediaManager(metadata, playbackState));
+        publishSnapshot(buildSnapshotFromNotificationMediaManager(metadata, playbackState));
     }
 
     private ClockDetailMediaSnapshot buildSnapshotFromNotificationMediaManager(
@@ -406,7 +366,6 @@ final class ClockDetailMediaProvider {
                 return false;
             }
         }
-        logMediaDebug("startMediaSessionListening success");
         refreshActiveController();
         return true;
     }
@@ -415,7 +374,6 @@ final class ClockDetailMediaProvider {
         if (mediaSessionManager != null && activeSessionsChangedListener != null) {
             try {
                 mediaSessionManager.removeOnActiveSessionsChangedListener(activeSessionsChangedListener);
-                logMediaDebug("stopMediaSessionListening success");
             } catch (Throwable t) {
                 logMediaWarning("stopMediaSessionListening failed", t);
             }
@@ -426,26 +384,22 @@ final class ClockDetailMediaProvider {
 
     private void refreshActiveController() {
         MediaController nextController = choosePrimaryActiveController();
-        logMediaDebug("refreshActiveController next=" + describeController(nextController));
         swapActiveController(nextController);
         publishControllerSnapshot();
     }
 
     private void publishControllerSnapshot() {
-        publishSnapshot("media-session controller=" + describeController(activeController),
-                buildSnapshotFromController(
+        publishSnapshot(buildSnapshotFromController(
                 activeController,
                 null,
                 INVALID_PLAYBACK_STATE,
                 null));
     }
 
-    private void publishSnapshot(String source, ClockDetailMediaSnapshot snapshot) {
+    private void publishSnapshot(ClockDetailMediaSnapshot snapshot) {
         ClockDetailMediaSnapshot safeSnapshot = snapshot != null && snapshot.active
                 ? snapshot
                 : ClockDetailMediaSnapshot.EMPTY;
-        logMediaDebug("publishSnapshot source=" + source
-                + " snapshot=" + describeSnapshot(safeSnapshot));
         if (safeSnapshot.active) {
             cancelPendingEmptySnapshot();
             emptySnapshotGraceDeadlineUptimeMs =
@@ -454,8 +408,6 @@ final class ClockDetailMediaProvider {
             return;
         }
         if (shouldDeferEmptySnapshot()) {
-            logMediaDebug("publishSnapshot defer-empty source=" + source
-                    + " deadline=" + emptySnapshotGraceDeadlineUptimeMs);
             schedulePendingEmptySnapshot();
             return;
         }
@@ -473,26 +425,19 @@ final class ClockDetailMediaProvider {
         long delayMs = Math.max(
                 0L,
                 emptySnapshotGraceDeadlineUptimeMs - SystemClock.uptimeMillis());
-        pendingEmptySnapshotVersion++;
         mainHandler.removeCallbacks(pendingEmptySnapshotRunnable);
         mainHandler.postDelayed(pendingEmptySnapshotRunnable, delayMs);
-        logMediaDebug("schedulePendingEmptySnapshot delayMs=" + delayMs
-                + " version=" + pendingEmptySnapshotVersion);
     }
 
     private void cancelPendingEmptySnapshot() {
-        pendingEmptySnapshotVersion++;
         mainHandler.removeCallbacks(pendingEmptySnapshotRunnable);
-        logMediaDebug("cancelPendingEmptySnapshot version=" + pendingEmptySnapshotVersion);
     }
 
     private void flushPendingEmptySnapshot() {
         if (shouldDeferEmptySnapshot()) {
-            logMediaDebug("flushPendingEmptySnapshot deferred again");
             schedulePendingEmptySnapshot();
             return;
         }
-        logMediaDebug("flushPendingEmptySnapshot deliver-empty");
         deliverSnapshot(ClockDetailMediaSnapshot.EMPTY);
     }
 
@@ -501,32 +446,7 @@ final class ClockDetailMediaProvider {
             return null;
         }
         try {
-            List<MediaController> controllers = mediaSessionManager.getActiveSessions(null);
-            if (controllers == null || controllers.isEmpty()) {
-                logMediaDebug("choosePrimaryActiveController activeSessions empty");
-                return null;
-            }
-            logMediaDebug("choosePrimaryActiveController activeSessions count=" + controllers.size());
-            MediaController bestController = null;
-            int bestScore = Integer.MIN_VALUE;
-            for (MediaController controller : controllers) {
-                int state = resolvePlaybackState(controller);
-                int score = scorePlaybackState(state);
-                logMediaDebug("choosePrimaryActiveController candidate="
-                        + describeController(controller)
-                        + " score=" + score);
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestController = controller;
-                }
-                if (score >= 4) {
-                    break;
-                }
-            }
-            logMediaDebug("choosePrimaryActiveController picked="
-                    + describeController(bestController)
-                    + " bestScore=" + bestScore);
-            return bestScore > 0 ? bestController : null;
+            return selectPrimaryController(mediaSessionManager.getActiveSessions(null)).controller;
         } catch (Throwable t) {
             logMediaWarning("choosePrimaryActiveController failed", t);
             return null;
@@ -535,8 +455,6 @@ final class ClockDetailMediaProvider {
 
     private void swapActiveController(MediaController nextController) {
         if (sameSessions(activeController, nextController)) {
-            logMediaDebug("swapActiveController unchanged controller="
-                    + describeController(activeController));
             return;
         }
         if (activeController != null) {
@@ -547,7 +465,6 @@ final class ClockDetailMediaProvider {
             }
         }
         activeController = nextController;
-        logMediaDebug("swapActiveController active=" + describeController(activeController));
         if (activeController != null) {
             try {
                 activeController.registerCallback(controllerCallback, mainHandler);
@@ -609,15 +526,15 @@ final class ClockDetailMediaProvider {
         }
         MediaMetadata resolvedMetadata = metadata != null ? metadata : controller.getMetadata();
         String packageName = safePackageName(controller.getPackageName());
-        CharSequence appLabel = resolveAppLabel(packageName);
-        CharSequence title = resolveTitle(resolvedMetadata, appLabel);
-        CharSequence subtitle = resolveSubtitle(resolvedMetadata, appLabel);
+        CharSequence title = resolveTitle(resolvedMetadata);
+        CharSequence subtitle = resolveSubtitle(resolvedMetadata);
         CharSequence playbackLabel = describePlaybackState(resolvedState);
-        Drawable artwork = resolveArtwork(resolvedMetadata, fallbackDrawable, packageName);
+        ResolvedArtwork artwork = resolveArtwork(resolvedMetadata, fallbackDrawable, packageName);
         PendingIntent launchIntent = resolveLaunchIntent(controller);
         return new ClockDetailMediaSnapshot(
                 true,
-                artwork,
+                artwork != null ? artwork.drawable : null,
+                artwork != null ? artwork.key : "",
                 title,
                 subtitle,
                 playbackLabel,
@@ -636,21 +553,21 @@ final class ClockDetailMediaProvider {
         }
     }
 
-    private Drawable resolveArtwork(
+    private ResolvedArtwork resolveArtwork(
             MediaMetadata metadata,
             Drawable fallbackDrawable,
             String packageName) {
-        Drawable artwork = resolveArtworkFromMetadata(metadata);
+        ResolvedArtwork artwork = resolveArtworkFromMetadata(metadata);
         if (artwork != null) {
             return artwork;
         }
         if (fallbackDrawable != null) {
-            return fallbackDrawable;
+            return buildArtworkFromDrawable(fallbackDrawable, "fallback:" + packageName);
         }
-        return resolveApplicationIcon(packageName);
+        return buildArtworkFromDrawable(resolveApplicationIcon(packageName), "app:" + packageName);
     }
 
-    private Drawable resolveArtworkFromMetadata(MediaMetadata metadata) {
+    private ResolvedArtwork resolveArtworkFromMetadata(MediaMetadata metadata) {
         if (metadata == null || context == null) {
             return null;
         }
@@ -659,7 +576,9 @@ final class ClockDetailMediaProvider {
             if (description != null) {
                 Bitmap iconBitmap = description.getIconBitmap();
                 if (iconBitmap != null) {
-                    return new BitmapDrawable(context.getResources(), iconBitmap);
+                    return buildArtworkFromBitmap(
+                            iconBitmap,
+                            "desc:" + stringify(description.getIconUri()));
                 }
             }
             Bitmap artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
@@ -669,7 +588,14 @@ final class ClockDetailMediaProvider {
             if (artwork == null) {
                 artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
             }
-            return artwork != null ? new BitmapDrawable(context.getResources(), artwork) : null;
+            if (artwork == null) {
+                return null;
+            }
+            String artworkKey = firstNonEmpty(
+                    metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI),
+                    metadata.getString(MediaMetadata.METADATA_KEY_ART_URI),
+                    metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI));
+            return buildArtworkFromBitmap(artwork, artworkKey);
         } catch (Throwable ignored) {
             return null;
         }
@@ -686,7 +612,7 @@ final class ClockDetailMediaProvider {
         }
     }
 
-    private CharSequence resolveTitle(MediaMetadata metadata, CharSequence appLabel) {
+    private CharSequence resolveTitle(MediaMetadata metadata) {
         CharSequence title = resolveDescriptionTitle(metadata);
         if (!isEmpty(title)) {
             return title;
@@ -701,10 +627,10 @@ final class ClockDetailMediaProvider {
                 return title;
             }
         }
-        return appLabel;
+        return "";
     }
 
-    private CharSequence resolveSubtitle(MediaMetadata metadata, CharSequence appLabel) {
+    private CharSequence resolveSubtitle(MediaMetadata metadata) {
         if (metadata != null) {
             CharSequence artist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
             if (!isEmpty(artist)) {
@@ -716,7 +642,7 @@ final class ClockDetailMediaProvider {
             }
         }
         CharSequence subtitle = resolveDescriptionSubtitle(metadata);
-        return !isEmpty(subtitle) ? subtitle : appLabel;
+        return !isEmpty(subtitle) ? subtitle : "";
     }
 
     private CharSequence resolveDescriptionTitle(MediaMetadata metadata) {
@@ -743,19 +669,6 @@ final class ClockDetailMediaProvider {
         }
     }
 
-    private CharSequence resolveAppLabel(String packageName) {
-        if (packageManager == null || packageName == null || packageName.isEmpty()) {
-            return "";
-        }
-        try {
-            ApplicationInfo applicationInfo = packageManager.getApplicationInfo(packageName, 0);
-            CharSequence label = applicationInfo.loadLabel(packageManager);
-            return !isEmpty(label) ? label : packageName;
-        } catch (Throwable ignored) {
-            return packageName;
-        }
-    }
-
     private void deliverSnapshot(ClockDetailMediaSnapshot snapshot) {
         MediaSnapshotCallback localCallback = callback;
         Handler localHandler = resultHandler;
@@ -765,13 +678,21 @@ final class ClockDetailMediaProvider {
         ClockDetailMediaSnapshot safeSnapshot = snapshot != null && snapshot.active
                 ? snapshot
                 : ClockDetailMediaSnapshot.EMPTY;
+        if (safeSnapshot.isEquivalentTo(lastDeliveredSnapshot)) {
+            lastDeliveredSnapshot = safeSnapshot;
+            if (safeSnapshot.active) {
+                cacheLastActiveSnapshot(safeSnapshot);
+            } else {
+                clearLastActiveSnapshot();
+            }
+            return;
+        }
         lastDeliveredSnapshot = safeSnapshot;
         if (safeSnapshot.active) {
             cacheLastActiveSnapshot(safeSnapshot);
         } else {
             clearLastActiveSnapshot();
         }
-        logMediaDebug("deliverSnapshot " + describeSnapshot(safeSnapshot));
         if (localHandler == null) {
             localCallback.onMediaSnapshot(safeSnapshot);
             return;
@@ -842,6 +763,27 @@ final class ClockDetailMediaProvider {
         }
     }
 
+    private static ControllerSelection selectPrimaryController(List<MediaController> controllers) {
+        if (controllers == null || controllers.isEmpty()) {
+            return ControllerSelection.EMPTY;
+        }
+        MediaController bestController = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (MediaController controller : controllers) {
+            int score = scorePlaybackState(resolvePlaybackState(controller));
+            if (score > bestScore) {
+                bestScore = score;
+                bestController = controller;
+            }
+            if (score >= 4) {
+                break;
+            }
+        }
+        return bestScore > 0
+                ? new ControllerSelection(bestController)
+                : ControllerSelection.EMPTY;
+    }
+
     private static boolean shouldDisplayPlaybackState(int playbackState) {
         switch (playbackState) {
             case PlaybackState.STATE_PLAYING:
@@ -896,8 +838,91 @@ final class ClockDetailMediaProvider {
         return trimmed.isEmpty() ? "" : trimmed;
     }
 
-    private static void logMediaDebug(String message) {
-        Log.d(LOG_TAG, "[clock-media] " + message);
+    private ResolvedArtwork buildArtworkFromBitmap(Bitmap source, String keyHint) {
+        if (source == null || source.isRecycled() || context == null) {
+            return null;
+        }
+        try {
+            Bitmap scaledBitmap = Bitmap.createBitmap(
+                    artworkSizePx,
+                    artworkSizePx,
+                    Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(scaledBitmap);
+            canvas.drawBitmap(source, null, buildArtworkRect(source.getWidth(), source.getHeight()), null);
+            return new ResolvedArtwork(
+                    new BitmapDrawable(context.getResources(), scaledBitmap),
+                    buildArtworkKey(scaledBitmap, keyHint));
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private ResolvedArtwork buildArtworkFromDrawable(Drawable source, String keyHint) {
+        if (source == null || context == null) {
+            return null;
+        }
+        try {
+            Bitmap scaledBitmap = Bitmap.createBitmap(
+                    artworkSizePx,
+                    artworkSizePx,
+                    Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(scaledBitmap);
+            Rect previousBounds = new Rect(source.getBounds());
+            source.setBounds(buildArtworkRect(source.getIntrinsicWidth(), source.getIntrinsicHeight()));
+            source.draw(canvas);
+            source.setBounds(previousBounds);
+            return new ResolvedArtwork(
+                    new BitmapDrawable(context.getResources(), scaledBitmap),
+                    buildArtworkKey(scaledBitmap, keyHint));
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private Rect buildArtworkRect(int sourceWidth, int sourceHeight) {
+        int safeSourceWidth = Math.max(1, sourceWidth);
+        int safeSourceHeight = Math.max(1, sourceHeight);
+        float scale = Math.min(
+                (float) artworkSizePx / safeSourceWidth,
+                (float) artworkSizePx / safeSourceHeight);
+        int drawWidth = Math.max(1, Math.round(safeSourceWidth * scale));
+        int drawHeight = Math.max(1, Math.round(safeSourceHeight * scale));
+        int left = (artworkSizePx - drawWidth) / 2;
+        int top = (artworkSizePx - drawHeight) / 2;
+        return new Rect(left, top, left + drawWidth, top + drawHeight);
+    }
+
+    private static String buildArtworkKey(Bitmap bitmap, String keyHint) {
+        if (bitmap == null) {
+            return "";
+        }
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        int[] pixels = new int[Math.max(1, width * height)];
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height);
+        long hash = 1125899906842597L;
+        for (int pixel : pixels) {
+            hash = (31L * hash) + pixel;
+        }
+        String prefix = firstNonEmpty(keyHint, "artwork");
+        return prefix + ":" + width + "x" + height + ":" + Long.toHexString(hash);
+    }
+
+    private static String firstNonEmpty(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            String safeValue = safePackageName(value);
+            if (!safeValue.isEmpty()) {
+                return safeValue;
+            }
+        }
+        return "";
+    }
+
+    private static String stringify(Object value) {
+        return value != null ? value.toString() : "";
     }
 
     private static void logMediaWarning(String message, Throwable throwable) {
@@ -905,77 +930,24 @@ final class ClockDetailMediaProvider {
         FlymeStatusBarSizer.logClockWarning("[clock-media] " + message, throwable);
     }
 
-    private static String describeSnapshot(ClockDetailMediaSnapshot snapshot) {
-        if (snapshot == null) {
-            return "null";
-        }
-        return "active=" + snapshot.active
-                + ", title=" + sanitizeForLog(snapshot.title)
-                + ", subtitle=" + sanitizeForLog(snapshot.subtitle)
-                + ", stateLabel=" + sanitizeForLog(snapshot.playbackStateLabel)
-                + ", pkg=" + sanitizeForLog(snapshot.packageName)
-                + ", hasArtwork=" + (snapshot.artwork != null)
-                + ", hasIntent=" + (snapshot.launchIntent != null);
-    }
+    private static final class ControllerSelection {
+        static final ControllerSelection EMPTY = new ControllerSelection(null);
 
-    private static String describeController(MediaController controller) {
-        if (controller == null) {
-            return "null";
-        }
-        return "pkg=" + safePackageName(controller.getPackageName())
-                + ", state=" + describePlaybackStateForLog(resolvePlaybackState(controller));
-    }
+        final MediaController controller;
 
-    private static String describePlaybackStateForLog(int playbackState) {
-        if (playbackState == INVALID_PLAYBACK_STATE) {
-            return "INVALID";
-        }
-        switch (playbackState) {
-            case PlaybackState.STATE_NONE:
-                return "NONE";
-            case PlaybackState.STATE_STOPPED:
-                return "STOPPED";
-            case PlaybackState.STATE_PAUSED:
-                return "PAUSED";
-            case PlaybackState.STATE_PLAYING:
-                return "PLAYING";
-            case PlaybackState.STATE_FAST_FORWARDING:
-                return "FAST_FORWARDING";
-            case PlaybackState.STATE_REWINDING:
-                return "REWINDING";
-            case PlaybackState.STATE_BUFFERING:
-                return "BUFFERING";
-            case PlaybackState.STATE_ERROR:
-                return "ERROR";
-            case PlaybackState.STATE_CONNECTING:
-                return "CONNECTING";
-            case PlaybackState.STATE_SKIPPING_TO_PREVIOUS:
-                return "SKIPPING_TO_PREVIOUS";
-            case PlaybackState.STATE_SKIPPING_TO_NEXT:
-                return "SKIPPING_TO_NEXT";
-            case PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM:
-                return "SKIPPING_TO_QUEUE_ITEM";
-            default:
-                return String.valueOf(playbackState);
+        ControllerSelection(MediaController controller) {
+            this.controller = controller;
         }
     }
 
-    private static String describeMetadataTitle(MediaMetadata metadata) {
-        if (metadata == null) {
-            return "";
-        }
-        CharSequence title = metadata.getDescription() != null
-                ? metadata.getDescription().getTitle()
-                : metadata.getString(MediaMetadata.METADATA_KEY_TITLE);
-        return sanitizeForLog(title);
-    }
+    private static final class ResolvedArtwork {
+        final Drawable drawable;
+        final String key;
 
-    private static String sanitizeForLog(CharSequence text) {
-        if (text == null) {
-            return "";
+        ResolvedArtwork(Drawable drawable, String key) {
+            this.drawable = drawable;
+            this.key = safePackageName(key);
         }
-        String value = text.toString().replace('\n', ' ').trim();
-        return value.isEmpty() ? "" : value;
     }
 
     private static final class SnapshotQueryResult {
