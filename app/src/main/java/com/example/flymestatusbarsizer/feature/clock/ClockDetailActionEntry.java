@@ -10,6 +10,7 @@ public final class ClockDetailActionEntry {
     public final String type;
     public final String resolvedLabel;
     public final Drawable icon;
+    public final String assistantAction;
     public final Intent launchIntent;
     public final boolean valid;
 
@@ -19,7 +20,7 @@ public final class ClockDetailActionEntry {
             String resolvedLabel,
             Intent launchIntent,
             boolean valid) {
-        this(slot, type, resolvedLabel, null, launchIntent, valid);
+        this(slot, type, resolvedLabel, null, "", launchIntent, valid);
     }
 
     public ClockDetailActionEntry(
@@ -29,12 +30,24 @@ public final class ClockDetailActionEntry {
             Drawable icon,
             Intent launchIntent,
             boolean valid) {
+        this(slot, type, resolvedLabel, icon, "", launchIntent, valid);
+    }
+
+    public ClockDetailActionEntry(
+            int slot,
+            String type,
+            String resolvedLabel,
+            Drawable icon,
+            String assistantAction,
+            Intent launchIntent,
+            boolean valid) {
         this.slot = ClockDetailActionSpec.normalizeSlot(slot);
         this.type = ClockDetailActionSpec.normalizeType(type);
         this.resolvedLabel = resolvedLabel == null ? "" : resolvedLabel.trim();
         this.icon = cloneDrawable(icon);
+        this.assistantAction = sanitizeAssistantAction(this.type, assistantAction);
         this.launchIntent = launchIntent == null ? null : new Intent(launchIntent);
-        this.valid = valid && this.launchIntent != null;
+        this.valid = valid;
     }
 
     public static ClockDetailActionEntry empty(int slot) {
@@ -49,6 +62,12 @@ public final class ClockDetailActionEntry {
         return icon != null;
     }
 
+    public boolean canAttemptLaunch() {
+        return launchIntent != null
+                || (ClockDetailActionSpec.TYPE_ASSISTANT_ACTION.equals(type)
+                && !assistantAction.isEmpty());
+    }
+
     private static Drawable cloneDrawable(Drawable drawable) {
         if (drawable == null) {
             return null;
@@ -59,5 +78,13 @@ public final class ClockDetailActionEntry {
             return copy == null ? null : copy.mutate();
         }
         return drawable;
+    }
+
+    private static String sanitizeAssistantAction(String type, String assistantAction) {
+        if (!ClockDetailActionSpec.TYPE_ASSISTANT_ACTION.equals(type) || assistantAction == null) {
+            return "";
+        }
+        String trimmed = assistantAction.trim();
+        return trimmed.isEmpty() ? "" : trimmed;
     }
 }

@@ -59,10 +59,14 @@ public final class ClockDetailActionResolver {
         Intent launchIntent = ClockDetailAssistantActionCatalog.buildLaunchIntent(
                 context,
                 assistantAction);
-        if (launchIntent == null) {
-            return invalidEntry(spec, label, icon);
-        }
-        return validEntry(spec, label, launchIntent, icon);
+        return new ClockDetailActionEntry(
+                spec.slot,
+                spec.type,
+                label,
+                icon,
+                assistantAction,
+                launchIntent,
+                true);
     }
 
     private static ClockDetailActionEntry resolveAppEntry(Context context, ClockDetailActionSpec spec) {

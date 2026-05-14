@@ -536,14 +536,14 @@ final class SettingsCardFactory {
                 SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED);
         actionGridEditorSection.setVisibility(actionGridEnabled ? View.VISIBLE : View.GONE);
         activity.addSwitchRow(page, "显示固定快捷启动图标",
-                "在详细区里新增最多 5 个图标快捷入口；候选项来自 assistant 可获取的快捷启动。",
+                "在详细区里新增最多 5 个图标快捷入口；候选项来自 Aicy纵览里可扫描到的快捷启动。",
                 SettingsStore.KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED,
                 SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED,
                 (buttonView, isChecked) -> actionGridEditorSection.setVisibility(
                         isChecked ? View.VISIBLE : View.GONE));
         activity.addDivider(actionGridEditorSection);
         activity.addActionButtonRow(actionGridEditorSection, "编辑图标入口顺序",
-                "优先使用已缓存候选；可在编辑器里扫描/刷新 assistant 当前快捷启动列表。最多选择 5 个，长按已选图标拖动排序，点应用后保存。",
+                "优先使用已缓存候选；可在编辑器里扫描/刷新 Aicy纵览中的快捷启动列表。最多选择 5 个，长按已选图标拖动排序，点应用后保存。",
                 "编辑", activity::showClockDetailActionGridEditor);
         page.addView(actionGridEditorSection, activity.matchWrap());
         return page;

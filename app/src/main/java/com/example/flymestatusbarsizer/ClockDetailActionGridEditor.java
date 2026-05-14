@@ -83,7 +83,7 @@ final class ClockDetailActionGridEditor {
 
         AlertDialog dialog = new AlertDialog.Builder(activity)
                 .setTitle("调整时间弹窗图标入口")
-                .setMessage("候选项优先读取本地缓存；点“扫描/刷新”可重新读取 assistant 当前快捷启动列表。最多选择 5 个，长按已选图标拖动排序。")
+                .setMessage("候选项优先读取本地缓存；点“扫描/刷新”可重新读取 Aicy纵览中的快捷启动列表。最多选择 5 个，长按已选图标拖动排序。")
                 .setView(scrollView)
                 .setNegativeButton("取消", null)
                 .show();
@@ -99,7 +99,7 @@ final class ClockDetailActionGridEditor {
         activity.addProfileSectionHeader(
                 card,
                 "已选入口",
-                "点图标可移除；长按已选图标拖动排序；恢复默认会按 assistant 的默认优先级重建前 5 项。");
+                "点图标可移除；长按已选图标拖动排序；恢复默认会按 Aicy纵览的默认优先级重建前 5 项。");
 
         LinearLayout actions = new LinearLayout(activity);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -205,7 +205,7 @@ final class ClockDetailActionGridEditor {
         activity.addProfileSectionHeader(
                 card,
                 "可选快捷启动",
-                "列表优先读取已缓存结果；点“扫描/刷新”重新读取 assistant 当前快捷启动列表。");
+                "列表优先读取已缓存结果；点“扫描/刷新”重新读取 Aicy纵览中的快捷启动列表。");
         LinearLayout list = new LinearLayout(activity);
         list.setOrientation(LinearLayout.VERTICAL);
         LinearLayout actions = new LinearLayout(activity);
@@ -277,7 +277,7 @@ final class ClockDetailActionGridEditor {
 
     private TextView buildCandidateEmptyView() {
         TextView emptyView = new TextView(activity);
-        emptyView.setText("当前没有缓存到 assistant 快捷启动，请点“扫描/刷新”。");
+        emptyView.setText("当前没有缓存到 Aicy纵览中的快捷启动，请点“扫描/刷新”。");
         emptyView.setTextColor(activity.subtextColor());
         emptyView.setTextSize(13);
         return emptyView;
@@ -294,7 +294,7 @@ final class ClockDetailActionGridEditor {
             triggerView.setEnabled(false);
             triggerView.setAlpha(0.58f);
         }
-        activity.showToast("正在扫描 assistant 当前快捷启动...");
+        activity.showToast("正在扫描Aicy纵览中的快捷启动...");
         new Thread(() -> {
             String cacheJson = ClockDetailAssistantActionCatalog.buildAvailableActionCacheJson(activity);
             String[] availableActions = ClockDetailAssistantActionCatalog.actionValuesFromCacheJson(cacheJson);
@@ -305,7 +305,7 @@ final class ClockDetailActionGridEditor {
                 }
                 if (availableActions.length == 0 || cacheJson.isEmpty()) {
                     refreshViews(workingSpecs, selectedCellViews, selectedSummaryView, candidateRows);
-                    activity.showToast("没有扫描到 assistant 快捷启动");
+                    activity.showToast("没有扫描到 Aicy纵览中的快捷启动");
                     return;
                 }
                 activity.putStringSetting(
@@ -421,15 +421,11 @@ final class ClockDetailActionGridEditor {
             Map<String, CandidateRowViews> candidateRows) {
         ClockDetailActionEntry[] selectedEntries = ClockDetailActionResolver.resolveEntries(activity, workingSpecs);
         int selectedCount = 0;
-        ArrayList<String> invalidTitles = new ArrayList<>();
         for (int slot = 0; slot < ClockDetailActionSpec.SLOT_COUNT; slot++) {
             ClockDetailActionSpec spec = specAt(workingSpecs, slot);
             ClockDetailActionEntry entry = selectedEntries[slot];
             if (!spec.assistantAction.isEmpty()) {
                 selectedCount++;
-                if (entry == null || !entry.valid) {
-                    invalidTitles.add(resolveActionTitle(spec, entry));
-                }
             }
             updateSelectedCell(selectedCellViews[slot], spec, entry);
         }
@@ -437,15 +433,6 @@ final class ClockDetailActionGridEditor {
             StringBuilder summary = new StringBuilder();
             summary.append("已选 ").append(selectedCount).append(" / ").append(ClockDetailActionSpec.SLOT_COUNT);
             summary.append("。点图标移除，长按拖动排序。");
-            if (!invalidTitles.isEmpty()) {
-                summary.append("\n当前设备上暂不可启动：");
-                for (int index = 0; index < invalidTitles.size(); index++) {
-                    if (index > 0) {
-                        summary.append("、");
-                    }
-                    summary.append(invalidTitles.get(index));
-                }
-            }
             selectedSummaryView.setText(summary);
         }
         if (candidateRows != null) {
@@ -464,13 +451,10 @@ final class ClockDetailActionGridEditor {
         }
         String action = spec == null ? "" : spec.assistantAction;
         boolean selected = !action.isEmpty();
-        boolean valid = entry != null && entry.valid;
         cellViews.root.setTag(action);
         cellViews.root.setBackground(activity.outlinedRect(
                 selected ? activity.surfaceColor() : activity.surfaceSoftColor(),
-                selected
-                        ? (valid ? activity.primaryColor() : activity.strokeColor())
-                        : activity.strokeColor(),
+                selected ? activity.primaryColor() : activity.strokeColor(),
                 1,
                 18));
         cellViews.root.setAlpha(selected ? 1f : 0.72f);
@@ -487,9 +471,9 @@ final class ClockDetailActionGridEditor {
         cellViews.iconView.setImageDrawable(entry != null && entry.hasIcon()
                 ? entry.icon
                 : ClockDetailAssistantActionCatalog.resolveActionIcon(activity, action));
-        cellViews.iconView.setAlpha(valid ? 1f : 0.58f);
+        cellViews.iconView.setAlpha(1f);
         cellViews.titleView.setText(ClockDetailAssistantActionCatalog.resolveActionName(action));
-        cellViews.titleView.setTextColor(valid ? activity.textColor() : activity.tertiaryColor());
+        cellViews.titleView.setTextColor(activity.textColor());
         cellViews.root.setContentDescription(resolveActionTitle(spec, entry));
     }
 
@@ -506,19 +490,18 @@ final class ClockDetailActionGridEditor {
                 ClockDetailAssistantActionCatalog.resolveActionTitle(action));
         ClockDetailActionEntry entry = ClockDetailActionResolver.resolveEntry(activity, spec);
         boolean selected = isSelected(workingSpecs, action);
-        boolean valid = entry != null && entry.valid;
         rowViews.root.setBackground(activity.outlinedRect(
                 selected ? activity.surfaceColor() : activity.surfaceSoftColor(),
                 selected ? activity.primaryColor() : activity.featureStrokeColor(),
                 1,
                 18));
-        rowViews.root.setAlpha(valid ? 1f : 0.78f);
+        rowViews.root.setAlpha(1f);
         rowViews.iconView.setImageDrawable(entry != null && entry.hasIcon()
                 ? entry.icon
                 : ClockDetailAssistantActionCatalog.resolveActionIcon(activity, action));
-        rowViews.iconView.setAlpha(valid ? 1f : 0.58f);
+        rowViews.iconView.setAlpha(1f);
         rowViews.titleView.setText(ClockDetailAssistantActionCatalog.resolveActionName(action));
-        rowViews.subtitleView.setText(buildCandidateSubtitle(action, valid));
+        rowViews.subtitleView.setText(buildCandidateSubtitle(action));
         rowViews.stateChip.setText(selected ? "已选" : "添加");
         rowViews.stateChip.setTextColor(selected ? android.graphics.Color.WHITE : activity.primaryColor());
         rowViews.stateChip.setBackground(selected
@@ -530,12 +513,8 @@ final class ClockDetailActionGridEditor {
                         99));
     }
 
-    private String buildCandidateSubtitle(String action, boolean valid) {
-        String appName = ClockDetailAssistantActionCatalog.resolveActionAppName(action);
-        if (appName.equals(ClockDetailAssistantActionCatalog.resolveActionName(action))) {
-            return valid ? appName : appName + " · 当前不可用";
-        }
-        return valid ? appName : appName + " · 当前不可用";
+    private String buildCandidateSubtitle(String action) {
+        return ClockDetailAssistantActionCatalog.resolveActionAppName(action);
     }
 
     private String resolveActionTitle(

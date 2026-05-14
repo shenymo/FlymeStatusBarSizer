@@ -32,7 +32,7 @@ final class ClockDetailRecentAppsProvider {
     private static final int ACTIVITY_INFO_FLAGS =
             PackageManager.MATCH_DISABLED_COMPONENTS
                     | PackageManager.MATCH_UNINSTALLED_PACKAGES;
-    private static final int MAX_SNAPSHOT_LONG_EDGE_PX = 720;
+    private static final int MAX_SNAPSHOT_LONG_EDGE_PX = 1080;
     private static final String SYSTEM_UI_PACKAGE = "com.android.systemui";
     private static final String FLYME_LAUNCHER_PACKAGE = "com.meizu.flyme.launcher";
     private static final Object BACKGROUND_LOCK = new Object();
