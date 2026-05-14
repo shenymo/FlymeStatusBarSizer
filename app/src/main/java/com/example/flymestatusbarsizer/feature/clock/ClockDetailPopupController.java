@@ -11,6 +11,7 @@ import android.app.ActivityManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.graphics.Outline;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
@@ -52,6 +53,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
@@ -99,6 +101,29 @@ final class ClockDetailPopupController {
     private static final int RECENT_APP_ITEM_SIZE_DP = 40;
     private static final int RECENT_APP_ICON_PADDING_DP = 4;
     private static final int RECENT_APP_GAP_DP = 10;
+    private static final int MBACK_FULLSCREEN_CONTENT_HORIZONTAL_PADDING_DP = 12;
+    private static final int MBACK_FULLSCREEN_CONTENT_TOP_PADDING_DP = 14;
+    private static final int MBACK_FULLSCREEN_CONTENT_BOTTOM_PADDING_DP = 16;
+    private static final int MBACK_RECENT_CARD_WIDTH_DP = 208;
+    private static final int MBACK_RECENT_CARD_HEIGHT_DP = 266;
+    private static final int MBACK_RECENT_CARD_OVERLAP_DP = 116;
+    private static final int MBACK_RECENT_CARD_MAX_WIDTH_DP = 384;
+    private static final int MBACK_RECENT_CARD_MAX_HEIGHT_DP = 560;
+    private static final int MBACK_RECENT_CARD_RADIUS_DP = 24;
+    private static final int MBACK_RECENT_CARD_ICON_SIZE_DP = 26;
+    private static final int MBACK_RECENT_CARD_PLACEHOLDER_ICON_SIZE_DP = 60;
+    private static final int MBACK_RECENT_CARD_SCRIM_HEIGHT_DP = 96;
+    private static final int MBACK_RECENT_CARD_INFO_HORIZONTAL_PADDING_DP = 14;
+    private static final int MBACK_RECENT_CARD_INFO_BOTTOM_PADDING_DP = 13;
+    private static final int MBACK_RECENT_CARD_INFO_GAP_DP = 10;
+    private static final int MBACK_RECENT_CARD_STACK_SIDE_GUTTER_DP = 10;
+    private static final int MBACK_RECENT_CARD_STACK_VERTICAL_INSET_DP = 4;
+    private static final int MBACK_RECENT_EMPTY_TOP_MARGIN_DP = 8;
+    private static final int MBACK_RECENT_SNAP_DELAY_MS = 72;
+    private static final float MBACK_RECENT_CARD_ASPECT_RATIO = 1.28f;
+    private static final float MBACK_RECENT_CARD_MAX_ROTATION_Y = 8f;
+    private static final float MBACK_RECENT_CARD_SIDE_SCALE_DROP = 0.17f;
+    private static final float MBACK_RECENT_CARD_SIDE_ALPHA_DROP = 0.26f;
     private static final int RECENT_APPS_SWAP_OFFSET_DP = 6;
     private static final int DETAILS_SWIPE_TRIGGER_DP = 20;
     private static final int POPUP_SURFACE_OFFSET_Y_DP = 8;
@@ -179,6 +204,7 @@ final class ClockDetailPopupController {
     private final Runnable autoDismissRunnable = this::dismiss;
     private final Runnable panelLongPressRunnable = this::handlePanelLongPressTimeout;
     private final Runnable mediaControlRefreshRunnable = this::refreshMediaSnapshotFromProvider;
+    private final Runnable recentAppsSnapRunnable = this::snapRecentAppsStackToNearestCard;
     private final int dragTouchSlop;
     private final Date reusableDate = new Date();
 
@@ -272,9 +298,13 @@ final class ClockDetailPopupController {
                 ? mainHandler
                 : new Handler(anchor.getContext().getMainLooper());
         Context context = anchor.getContext();
-        this.contentView = buildContentView(context);
+        this.contentView = buildContentView(context, this.hostMode);
         this.popupBackgroundView = buildPopupBackgroundView(context);
-        this.popupRootView = buildPopupRootView(context, popupBackgroundView, contentView);
+        this.popupRootView = buildPopupRootView(
+                context,
+                popupBackgroundView,
+                contentView,
+                this.hostMode);
         this.overlayView = buildOverlayView(context, popupRootView);
         this.headerView = buildHeaderView(context);
         this.timeRowView = buildTimeRowView(context);
@@ -285,7 +315,10 @@ final class ClockDetailPopupController {
         this.dateView = buildDateView(context);
         this.lunarDateView = buildLunarDateView(context);
         this.detailsContainerView = buildDetailsContainerView(context);
-        this.detailsViewportView = buildDetailsViewportView(context, detailsContainerView);
+        this.detailsViewportView = buildDetailsViewportView(
+                context,
+                detailsContainerView,
+                this.hostMode);
         this.memoryTile = buildMemoryStatTile(
                 context,
                 "系统内存",
@@ -295,14 +328,24 @@ final class ClockDetailPopupController {
         this.mediaStrip = buildMediaStrip(context);
         this.mediaViewportView = buildMediaViewportView(context, mediaStrip.root);
         this.actionGrid = buildActionGrid(context);
-        this.recentAppsStrip = buildRecentAppsStrip(context);
-        this.detailsContainerView.addView(statusGridView, matchWidth());
-        this.detailsContainerView.addView(
-                actionGrid.root,
-                matchWidthWithTop(context, ACTION_GRID_TOP_MARGIN_DP));
-        this.detailsContainerView.addView(
-                recentAppsStrip.root,
-                matchWidthWithTop(context, RECENT_APPS_TOP_MARGIN_DP));
+        this.recentAppsStrip = buildRecentAppsStrip(context, this.hostMode);
+        if (this.hostMode == HostMode.MBACK) {
+            this.detailsContainerView.addView(statusGridView, matchWidth());
+            this.detailsContainerView.addView(
+                    actionGrid.root,
+                    matchWidthWithTop(context, ACTION_GRID_TOP_MARGIN_DP));
+            this.detailsContainerView.addView(
+                    recentAppsStrip.root,
+                    matchWidthWeightWithTop(context, RECENT_APPS_TOP_MARGIN_DP, 1f));
+        } else {
+            this.detailsContainerView.addView(statusGridView, matchWidth());
+            this.detailsContainerView.addView(
+                    actionGrid.root,
+                    matchWidthWithTop(context, ACTION_GRID_TOP_MARGIN_DP));
+            this.detailsContainerView.addView(
+                    recentAppsStrip.root,
+                    matchWidthWithTop(context, RECENT_APPS_TOP_MARGIN_DP));
+        }
         this.timeRowView.addView(timeView, wrapContent());
         this.timeRowView.addView(millisecondsView, wrapContentWithStart(context, 2));
         this.headerView.addView(timeRowView, frameCentered());
@@ -312,7 +355,11 @@ final class ClockDetailPopupController {
         this.contentView.addView(headerView, matchWidth());
         this.contentView.addView(dateContainerView, matchWidthWithTop(context, 5));
         this.contentView.addView(mediaViewportView, matchWidthWithTop(context, MEDIA_TOP_MARGIN_DP));
-        this.contentView.addView(detailsViewportView, matchWidthWithTop(context, DETAILS_TOP_MARGIN_DP));
+        this.contentView.addView(
+                detailsViewportView,
+                this.hostMode == HostMode.MBACK
+                        ? matchWidthWeightWithTop(context, DETAILS_TOP_MARGIN_DP, 1f)
+                        : matchWidthWithTop(context, DETAILS_TOP_MARGIN_DP));
         this.lunarDateFormatter = new ClockDetailLunarDateFormatter(context.getClassLoader());
         this.mediaProvider = new ClockDetailMediaProvider(
                 context,
@@ -323,6 +370,7 @@ final class ClockDetailPopupController {
         this.dragTouchSlop = Math.max(
                 dp(context, 4),
                 ViewConfiguration.get(context).getScaledTouchSlop());
+        installRecentAppsStackListeners();
         timeView.setOnTouchListener(this::handleTimeTextTouch);
         millisecondsView.setOnTouchListener(this::handleTimeTextTouch);
         mediaStrip.root.setOnClickListener(v -> {
@@ -410,6 +458,7 @@ final class ClockDetailPopupController {
         handler.removeCallbacks(thermalPowerRefreshRunnable);
         handler.removeCallbacks(memoryRefreshRunnable);
         handler.removeCallbacks(autoDismissRunnable);
+        handler.removeCallbacks(recentAppsSnapRunnable);
         invalidatePopupSession();
         stopMediaUpdates();
         cancelPanelLongPress();
@@ -737,9 +786,22 @@ final class ClockDetailPopupController {
 
     private void measureContent() {
         Context context = popupRootView.getContext();
-        int margin = dp(context, HORIZONTAL_MARGIN_DP);
         int rootHorizontalPadding = popupRootView.getPaddingLeft() + popupRootView.getPaddingRight();
         int rootVerticalPadding = popupRootView.getPaddingTop() + popupRootView.getPaddingBottom();
+        if (isFullScreenMBackLayout()) {
+            popupWidth = Math.max(1, getOverlayWidth());
+            popupHeight = Math.max(1, getOverlayHeight());
+            int contentWidth = Math.max(1, popupWidth - rootHorizontalPadding);
+            int contentHeight = Math.max(1, popupHeight - rootVerticalPadding);
+            contentView.measure(
+                    View.MeasureSpec.makeMeasureSpec(contentWidth, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(contentHeight, View.MeasureSpec.EXACTLY));
+            popupRootView.measure(
+                    View.MeasureSpec.makeMeasureSpec(popupWidth, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(popupHeight, View.MeasureSpec.EXACTLY));
+            return;
+        }
+        int margin = dp(context, HORIZONTAL_MARGIN_DP);
         int popupMaxWidth = Math.max(1, getOverlayWidth() - (margin * 2));
         int contentWidth = Math.max(1, popupMaxWidth - rootHorizontalPadding);
         contentView.measure(
@@ -753,12 +815,18 @@ final class ClockDetailPopupController {
     }
 
     private int resolveTargetPopupLeft(View anchor) {
+        if (isFullScreenMBackLayout()) {
+            return 0;
+        }
         return manualPositionActive
                 ? clampPopupLeft(popupLeft)
                 : calculateAnchoredPopupLeft(anchor);
     }
 
     private int resolveTargetPopupTop(View anchor) {
+        if (isFullScreenMBackLayout()) {
+            return 0;
+        }
         return manualPositionActive
                 ? clampPopupTop(popupTop)
                 : calculateAnchoredPopupTop(anchor);
@@ -801,6 +869,9 @@ final class ClockDetailPopupController {
     }
 
     private int clampPopupLeft(int desiredLeft) {
+        if (isFullScreenMBackLayout()) {
+            return 0;
+        }
         Context context = popupRootView.getContext();
         int margin = dp(context, HORIZONTAL_MARGIN_DP);
         int maxLeft = Math.max(margin, getOverlayWidth() - margin - popupWidth);
@@ -808,6 +879,9 @@ final class ClockDetailPopupController {
     }
 
     private int clampPopupTop(int desiredTop) {
+        if (isFullScreenMBackLayout()) {
+            return 0;
+        }
         Context context = popupRootView.getContext();
         int topInset = overlayView.getPaddingTop();
         int bottomInset = overlayView.getPaddingBottom();
@@ -820,14 +894,23 @@ final class ClockDetailPopupController {
     }
 
     private void applyPopupPosition(int desiredLeft, int desiredTop) {
-        popupLeft = clampPopupLeft(desiredLeft);
-        popupTop = clampPopupTop(desiredTop);
+        if (isFullScreenMBackLayout()) {
+            popupLeft = 0;
+            popupTop = 0;
+        } else {
+            popupLeft = clampPopupLeft(desiredLeft);
+            popupTop = clampPopupTop(desiredTop);
+        }
         FrameLayout.LayoutParams params = popupRootView.getLayoutParams()
                 instanceof FrameLayout.LayoutParams
                 ? (FrameLayout.LayoutParams) popupRootView.getLayoutParams()
                 : frameWrapContent();
-        params.width = popupWidth;
-        params.height = popupHeight;
+        params.width = isFullScreenMBackLayout()
+                ? FrameLayout.LayoutParams.MATCH_PARENT
+                : popupWidth;
+        params.height = isFullScreenMBackLayout()
+                ? FrameLayout.LayoutParams.MATCH_PARENT
+                : popupHeight;
         params.gravity = Gravity.START | Gravity.TOP;
         params.leftMargin = popupLeft;
         params.topMargin = popupTop;
@@ -1087,10 +1170,12 @@ final class ClockDetailPopupController {
         GradientDrawable background = new GradientDrawable();
         background.setShape(GradientDrawable.RECTANGLE);
         background.setColor(adjustAlpha(palette.surfaceColor, 0.88f));
-        background.setCornerRadius(dp(context, POPUP_SURFACE_RADIUS_DP));
-        background.setStroke(
-                Math.max(1, dp(context, 1)),
-                adjustAlpha(palette.strokeColor, 0.86f));
+        background.setCornerRadius(isFullScreenMBackLayout() ? 0f : dp(context, POPUP_SURFACE_RADIUS_DP));
+        if (!isFullScreenMBackLayout()) {
+            background.setStroke(
+                    Math.max(1, dp(context, 1)),
+                    adjustAlpha(palette.strokeColor, 0.86f));
+        }
         return background;
     }
 
@@ -1098,14 +1183,23 @@ final class ClockDetailPopupController {
         GradientDrawable stroke = new GradientDrawable();
         stroke.setShape(GradientDrawable.RECTANGLE);
         stroke.setColor(Color.TRANSPARENT);
-        stroke.setCornerRadius(dp(context, POPUP_SURFACE_RADIUS_DP));
-        stroke.setStroke(
-                Math.max(1, dp(context, 1)),
-                adjustAlpha(palette.strokeColor, 0.86f));
+        stroke.setCornerRadius(isFullScreenMBackLayout() ? 0f : dp(context, POPUP_SURFACE_RADIUS_DP));
+        if (!isFullScreenMBackLayout()) {
+            stroke.setStroke(
+                    Math.max(1, dp(context, 1)),
+                    adjustAlpha(palette.strokeColor, 0.86f));
+        }
         return stroke;
     }
 
     private void applyPopupShadowStyle(Context context, Palette palette) {
+        if (isFullScreenMBackLayout()) {
+            popupBackgroundView.setElevation(0f);
+            popupBackgroundView.setTranslationZ(0f);
+            contentView.setElevation(0f);
+            contentView.setTranslationZ(0f);
+            return;
+        }
         float backgroundElevation = dp(context, POPUP_SHADOW_ELEVATION_DP);
         float backgroundTranslationZ = dp(context, POPUP_SHADOW_TRANSLATION_Z_DP);
         popupBackgroundView.setElevation(backgroundElevation);
@@ -1190,6 +1284,7 @@ final class ClockDetailPopupController {
         dismissAnimationRunning = false;
         cancelMediaAnimator();
         cancelDetailsAnimator();
+        cancelRecentAppsStackSnap();
         cancelRecentAppsStripAnimations();
         resetMediaStripVisualState();
         resetRecentAppsStripVisualState();
@@ -1454,6 +1549,10 @@ final class ClockDetailPopupController {
     }
 
     private static float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static int clampInt(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
     }
 
@@ -1735,6 +1834,7 @@ final class ClockDetailPopupController {
         latestMediaSnapshot = ClockDetailMediaSnapshot.EMPTY;
         cancelMediaAnimator();
         cancelDetailsAnimator();
+        cancelRecentAppsStackSnap();
         resetMediaStripVisualState();
         cancelRecentAppsStripAnimations();
         resetRecentAppsStripVisualState();
@@ -2000,6 +2100,10 @@ final class ClockDetailPopupController {
         return hostMode == HostMode.MBACK;
     }
 
+    private boolean isFullScreenMBackLayout() {
+        return hostMode == HostMode.MBACK;
+    }
+
     private boolean isPanelDragEnabled() {
         return hostMode == HostMode.CLOCK;
     }
@@ -2200,6 +2304,18 @@ final class ClockDetailPopupController {
 
     private void applyDetailsExpandedStateImmediately(boolean expanded) {
         cancelDetailsAnimator();
+        if (isFullScreenMBackLayout()) {
+            detailsViewportView.setAlpha(1f);
+            detailsViewportView.setTranslationY(0f);
+            if (expanded) {
+                setVisibilityIfChanged(detailsViewportView, View.VISIBLE);
+                restoreMBackDetailsViewportLayout();
+            } else {
+                updateDetailsViewportHeight(0);
+                setVisibilityIfChanged(detailsViewportView, View.GONE);
+            }
+            return;
+        }
         if (expanded) {
             detailsViewportView.setAlpha(1f);
             detailsViewportView.setTranslationY(0f);
@@ -2214,6 +2330,10 @@ final class ClockDetailPopupController {
     }
 
     private void animateDetailsExpandedState(boolean expanded) {
+        if (isFullScreenMBackLayout()) {
+            applyDetailsExpandedStateImmediately(expanded);
+            return;
+        }
         cancelDetailsAnimator();
         int startHeight = resolveCurrentDetailsViewportHeight();
         int targetHeight = expanded ? measureDetailsContentHeight() : 0;
@@ -2318,10 +2438,7 @@ final class ClockDetailPopupController {
     }
 
     private int measureMediaContentHeight() {
-        Context context = mediaViewportView.getContext();
-        int margin = dp(context, HORIZONTAL_MARGIN_DP);
-        int rootHorizontalPadding = popupRootView.getPaddingLeft() + popupRootView.getPaddingRight();
-        int contentWidth = Math.max(1, getOverlayWidth() - (margin * 2) - rootHorizontalPadding);
+        int contentWidth = resolvePopupChildContentWidth(mediaViewportView.getContext());
         mediaStrip.root.measure(
                 View.MeasureSpec.makeMeasureSpec(contentWidth, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
@@ -2354,10 +2471,7 @@ final class ClockDetailPopupController {
     }
 
     private int measureDetailsContentHeight() {
-        Context context = detailsViewportView.getContext();
-        int margin = dp(context, HORIZONTAL_MARGIN_DP);
-        int rootHorizontalPadding = popupRootView.getPaddingLeft() + popupRootView.getPaddingRight();
-        int contentWidth = Math.max(1, getOverlayWidth() - (margin * 2) - rootHorizontalPadding);
+        int contentWidth = resolvePopupChildContentWidth(detailsViewportView.getContext());
         detailsContainerView.measure(
                 View.MeasureSpec.makeMeasureSpec(contentWidth, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
@@ -2367,14 +2481,69 @@ final class ClockDetailPopupController {
     private void updateDetailsViewportHeight(int height) {
         ViewGroup.LayoutParams params = detailsViewportView.getLayoutParams();
         if (!(params instanceof LinearLayout.LayoutParams)) {
-            params = matchWidth();
+            params = isFullScreenMBackLayout()
+                    ? matchWidthWeight(1f)
+                    : matchWidth();
         }
-        params.height = height;
-        detailsViewportView.setLayoutParams(params);
+        LinearLayout.LayoutParams linearParams = (LinearLayout.LayoutParams) params;
+        if (isFullScreenMBackLayout()) {
+            linearParams.width = LinearLayout.LayoutParams.MATCH_PARENT;
+            if (height == 0) {
+                linearParams.height = 0;
+                linearParams.weight = 0f;
+            } else {
+                linearParams.height = 0;
+                linearParams.weight = 1f;
+            }
+            detailsViewportView.setLayoutParams(linearParams);
+            if (isPopupShowing() && !dismissAnimationRunning) {
+                measureContent();
+                updatePopupPosition();
+            }
+            return;
+        }
+        linearParams.height = height;
+        detailsViewportView.setLayoutParams(linearParams);
         if (isPopupShowing() && !dismissAnimationRunning) {
             measureContent();
             updatePopupPosition();
         }
+    }
+
+    private void restoreMBackDetailsViewportLayout() {
+        if (!isFullScreenMBackLayout()) {
+            return;
+        }
+        LinearLayout.LayoutParams params = detailsViewportView.getLayoutParams()
+                instanceof LinearLayout.LayoutParams
+                ? (LinearLayout.LayoutParams) detailsViewportView.getLayoutParams()
+                : matchWidthWeight(1f);
+        params.width = LinearLayout.LayoutParams.MATCH_PARENT;
+        params.height = 0;
+        params.weight = 1f;
+        if (params.topMargin == 0) {
+            params.topMargin = dp(detailsViewportView.getContext(), DETAILS_TOP_MARGIN_DP);
+        }
+        detailsViewportView.setLayoutParams(params);
+    }
+
+    private int resolvePopupChildContentWidth(Context context) {
+        int measuredContentWidth = contentView.getMeasuredWidth();
+        if (measuredContentWidth > 0) {
+            return Math.max(1, measuredContentWidth - contentView.getPaddingLeft() - contentView.getPaddingRight());
+        }
+        int overlayWidth = getOverlayWidth();
+        int rootHorizontalPadding = popupRootView.getPaddingLeft() + popupRootView.getPaddingRight();
+        if (isFullScreenMBackLayout()) {
+            return Math.max(
+                    1,
+                    overlayWidth
+                            - rootHorizontalPadding
+                            - contentView.getPaddingLeft()
+                            - contentView.getPaddingRight());
+        }
+        int margin = dp(context, HORIZONTAL_MARGIN_DP);
+        return Math.max(1, overlayWidth - (margin * 2) - rootHorizontalPadding);
     }
 
     private void attachOverlayTouchableInsetsListener() {
@@ -2555,7 +2724,8 @@ final class ClockDetailPopupController {
     private FrameLayout buildPopupRootView(
             Context context,
             View backgroundView,
-            LinearLayout contentView) {
+            LinearLayout contentView,
+            HostMode hostMode) {
         FrameLayout root = new FrameLayout(context) {
             @Override
             public boolean dispatchTouchEvent(MotionEvent event) {
@@ -2576,10 +2746,18 @@ final class ClockDetailPopupController {
         root.setClickable(true);
         root.setClipChildren(false);
         root.setClipToPadding(false);
-        int shadowPadding = dp(context, POPUP_SHADOW_PADDING_DP);
-        root.setPadding(shadowPadding, shadowPadding, shadowPadding, shadowPadding);
+        if (hostMode == HostMode.MBACK) {
+            root.setPadding(0, 0, 0, 0);
+        } else {
+            int shadowPadding = dp(context, POPUP_SHADOW_PADDING_DP);
+            root.setPadding(shadowPadding, shadowPadding, shadowPadding, shadowPadding);
+        }
         root.addView(backgroundView, frameMatchParent());
-        root.addView(contentView, frameMatchWidthWrapContent());
+        root.addView(
+                contentView,
+                hostMode == HostMode.MBACK
+                        ? frameMatchParent()
+                        : frameMatchWidthWrapContent());
         return root;
     }
 
@@ -2589,15 +2767,25 @@ final class ClockDetailPopupController {
         return background;
     }
 
-    private static LinearLayout buildContentView(Context context) {
+    private static LinearLayout buildContentView(Context context, HostMode hostMode) {
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(
-                dp(context, 18),
-                dp(context, 14),
-                dp(context, 18),
-                dp(context, 14));
+        root.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        root.setClipChildren(false);
+        root.setClipToPadding(false);
+        if (hostMode == HostMode.MBACK) {
+            root.setPadding(
+                    dp(context, MBACK_FULLSCREEN_CONTENT_HORIZONTAL_PADDING_DP),
+                    dp(context, MBACK_FULLSCREEN_CONTENT_TOP_PADDING_DP),
+                    dp(context, MBACK_FULLSCREEN_CONTENT_HORIZONTAL_PADDING_DP),
+                    dp(context, MBACK_FULLSCREEN_CONTENT_BOTTOM_PADDING_DP));
+        } else {
+            root.setPadding(
+                    dp(context, 18),
+                    dp(context, 14),
+                    dp(context, 18),
+                    dp(context, 14));
+        }
         return root;
     }
 
@@ -2627,11 +2815,16 @@ final class ClockDetailPopupController {
 
     private static FrameLayout buildDetailsViewportView(
             Context context,
-            LinearLayout detailsContainerView) {
+            LinearLayout detailsContainerView,
+            HostMode hostMode) {
         FrameLayout viewport = new FrameLayout(context);
         viewport.setClipChildren(true);
         viewport.setClipToPadding(true);
-        viewport.addView(detailsContainerView, frameMatchWidthWrapContent());
+        viewport.addView(
+                detailsContainerView,
+                hostMode == HostMode.MBACK
+                        ? frameMatchParent()
+                        : frameMatchWidthWrapContent());
         return viewport;
     }
 
@@ -3292,13 +3485,13 @@ final class ClockDetailPopupController {
         final int requestSessionId = popupSessionId;
         recentAppsQueryInFlight = true;
         recentAppsRequestSessionId = requestSessionId;
-        recentAppsProvider.requestRecentApps(handler, recentApps -> {
+        recentAppsProvider.requestRecentApps(handler, hostMode, recentApps -> {
             if (recentAppsRequestSessionId != requestSessionId) {
                 return;
             }
             recentAppsQueryInFlight = false;
             recentAppsRequestSessionId = INVALID_POPUP_SESSION_ID;
-            ClockDetailRecentApp[] resolvedRecentApps = recentApps != null && recentApps.length > 0
+            ClockDetailRecentApp[] resolvedRecentApps = recentApps != null
                     ? recentApps
                     : latestRecentApps;
             latestRecentApps = resolvedRecentApps != null && resolvedRecentApps.length > 0
@@ -3399,10 +3592,13 @@ final class ClockDetailPopupController {
         Context context = strip.root.getContext();
         GradientDrawable background = new GradientDrawable();
         background.setShape(GradientDrawable.RECTANGLE);
-        background.setCornerRadius(dp(context, 14));
+        background.setCornerRadius(dp(context, hostMode == HostMode.MBACK ? 22 : 14));
         background.setColor(mixColors(palette.surfaceColor, palette.strokeColor, 0.22f));
         background.setStroke(Math.max(1, dp(context, 1)), adjustAlpha(palette.strokeColor, 0.9f));
         strip.root.setBackground(background);
+        if (strip.emptyView != null) {
+            strip.emptyView.setTextColor(palette.secondaryTextColor);
+        }
     }
 
     private void applyMediaStripPalette(MediaStrip strip, Palette palette) {
@@ -3519,6 +3715,302 @@ final class ClockDetailPopupController {
         }
     }
 
+    private void installRecentAppsStackListeners() {
+        if (recentAppsStrip == null || hostMode != HostMode.MBACK) {
+            return;
+        }
+        recentAppsStrip.root.setClipChildren(false);
+        recentAppsStrip.root.setClipToPadding(false);
+        recentAppsStrip.scrollView.setOnScrollChangeListener(
+                (v, scrollX, scrollY, oldScrollX, oldScrollY) -> updateRecentAppsCardTransforms());
+        recentAppsStrip.scrollView.setOnTouchListener((v, event) -> {
+            if (event == null) {
+                return false;
+            }
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                scheduleRecentAppsStackSnap();
+            }
+            return false;
+        });
+        recentAppsStrip.scrollView.addOnLayoutChangeListener(
+                (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                    if (left == oldLeft && right == oldRight) {
+                        return;
+                    }
+                    updateRecentAppsCardLayoutParamsIfNeeded();
+                    updateRecentAppsStackHorizontalPadding();
+                    updateRecentAppsCardTransforms();
+                });
+        recentAppsStrip.contentView.addOnLayoutChangeListener(
+                (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                    if (left == oldLeft && right == oldRight) {
+                        return;
+                    }
+                    updateRecentAppsCardLayoutParamsIfNeeded();
+                    updateRecentAppsStackHorizontalPadding();
+                    updateRecentAppsCardTransforms();
+                });
+    }
+
+    private void cancelRecentAppsStackSnap() {
+        handler.removeCallbacks(recentAppsSnapRunnable);
+    }
+
+    private void scheduleRecentAppsStackSnap() {
+        if (hostMode != HostMode.MBACK) {
+            return;
+        }
+        cancelRecentAppsStackSnap();
+        handler.postDelayed(recentAppsSnapRunnable, MBACK_RECENT_SNAP_DELAY_MS);
+    }
+
+    private void snapRecentAppsStackToNearestCard() {
+        if (recentAppsStrip == null
+                || hostMode != HostMode.MBACK
+                || recentAppsStrip.cardViews.isEmpty()) {
+            return;
+        }
+        centerRecentAppCardAt(findNearestRecentAppCardIndex(), true);
+    }
+
+    private int findNearestRecentAppCardIndex() {
+        if (recentAppsStrip == null || recentAppsStrip.cardViews.isEmpty()) {
+            return 0;
+        }
+        float viewportCenter = recentAppsStrip.scrollView.getScrollX()
+                + (recentAppsStrip.scrollView.getWidth() / 2f);
+        int nearestIndex = 0;
+        float nearestDistance = Float.MAX_VALUE;
+        for (int i = 0; i < recentAppsStrip.cardViews.size(); i++) {
+            View cardView = recentAppsStrip.cardViews.get(i);
+            if (cardView == null) {
+                continue;
+            }
+            float cardCenter = cardView.getLeft() + (cardView.getWidth() / 2f);
+            float distance = Math.abs(cardCenter - viewportCenter);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestIndex = i;
+            }
+        }
+        return nearestIndex;
+    }
+
+    private void centerRecentAppCardAt(int index, boolean animate) {
+        if (recentAppsStrip == null
+                || hostMode != HostMode.MBACK
+                || index < 0
+                || index >= recentAppsStrip.cardViews.size()) {
+            return;
+        }
+        View cardView = recentAppsStrip.cardViews.get(index);
+        if (cardView == null) {
+            return;
+        }
+        int targetScroll = Math.max(
+                0,
+                Math.round(cardView.getLeft() + (cardView.getWidth() / 2f)
+                        - (recentAppsStrip.scrollView.getWidth() / 2f)));
+        if (animate) {
+            recentAppsStrip.scrollView.smoothScrollTo(targetScroll, 0);
+        } else {
+            recentAppsStrip.scrollView.scrollTo(targetScroll, 0);
+        }
+    }
+
+    private void updateRecentAppsStackHorizontalPadding() {
+        if (recentAppsStrip == null || hostMode != HostMode.MBACK) {
+            return;
+        }
+        int cardWidth = currentRecentCardWidth();
+        int viewportWidth = recentAppsStrip.scrollView.getWidth();
+        if (cardWidth <= 0 || viewportWidth <= 0) {
+            return;
+        }
+        Context context = recentAppsStrip.root.getContext();
+        int sidePadding = Math.max(
+                dp(context, MBACK_RECENT_CARD_STACK_SIDE_GUTTER_DP),
+                (viewportWidth - cardWidth) / 2);
+        int verticalInset = dp(context, MBACK_RECENT_CARD_STACK_VERTICAL_INSET_DP);
+        if (recentAppsStrip.contentView.getPaddingLeft() != sidePadding
+                || recentAppsStrip.contentView.getPaddingRight() != sidePadding
+                || recentAppsStrip.contentView.getPaddingTop() != verticalInset
+                || recentAppsStrip.contentView.getPaddingBottom() != verticalInset) {
+            recentAppsStrip.contentView.setPadding(
+                    sidePadding,
+                    verticalInset,
+                    sidePadding,
+                    verticalInset);
+        }
+    }
+
+    private void updateRecentAppsCardLayoutParamsIfNeeded() {
+        if (recentAppsStrip == null
+                || hostMode != HostMode.MBACK
+                || recentAppsStrip.cardViews.isEmpty()) {
+            return;
+        }
+        Context context = recentAppsStrip.root.getContext();
+        int targetCardWidth = resolveMBackRecentCardWidth(context);
+        int targetCardHeight = resolveMBackRecentCardHeight(context, targetCardWidth);
+        int overlap = resolveMBackRecentCardOverlap(context, targetCardWidth);
+        boolean changed = false;
+        for (int i = 0; i < recentAppsStrip.cardViews.size(); i++) {
+            View cardView = recentAppsStrip.cardViews.get(i);
+            if (cardView == null) {
+                continue;
+            }
+            ViewGroup.LayoutParams layoutParams = cardView.getLayoutParams();
+            LinearLayout.LayoutParams params = layoutParams instanceof LinearLayout.LayoutParams
+                    ? (LinearLayout.LayoutParams) layoutParams
+                    : mbackRecentAppCardLayoutParams(context);
+            int targetStartMargin = i == 0 ? 0 : -overlap;
+            if (params.width != targetCardWidth
+                    || params.height != targetCardHeight
+                    || params.leftMargin != targetStartMargin) {
+                params.width = targetCardWidth;
+                params.height = targetCardHeight;
+                params.leftMargin = targetStartMargin;
+                cardView.setLayoutParams(params);
+                changed = true;
+            }
+        }
+        if (changed) {
+            recentAppsStrip.contentView.requestLayout();
+        }
+    }
+
+    private int currentRecentCardWidth() {
+        if (hostMode != HostMode.MBACK) {
+            return dp(popupRootView.getContext(), MBACK_RECENT_CARD_WIDTH_DP);
+        }
+        if (recentAppsStrip == null || recentAppsStrip.cardViews.isEmpty()) {
+            return resolveMBackRecentCardWidth(popupRootView.getContext());
+        }
+        View cardView = recentAppsStrip.cardViews.get(0);
+        if (cardView == null) {
+            return resolveMBackRecentCardWidth(popupRootView.getContext());
+        }
+        if (cardView.getWidth() > 0) {
+            return cardView.getWidth();
+        }
+        if (cardView.getMeasuredWidth() > 0) {
+            return cardView.getMeasuredWidth();
+        }
+        return resolveMBackRecentCardWidth(cardView.getContext());
+    }
+
+    private int resolveMBackRecentCardWidth(Context context) {
+        int minWidth = dp(context, MBACK_RECENT_CARD_WIDTH_DP);
+        int maxWidthCap = dp(context, MBACK_RECENT_CARD_MAX_WIDTH_DP);
+        int availableWidth = resolveRecentAppsViewportWidth(context);
+        if (availableWidth <= 0) {
+            return minWidth;
+        }
+        int maxAllowedWidth = Math.max(minWidth, Math.min(maxWidthCap, availableWidth));
+        int availableHeight = resolveRecentAppsViewportHeight(context);
+        if (availableHeight > 0) {
+            int minHeight = dp(context, MBACK_RECENT_CARD_HEIGHT_DP);
+            int maxHeightCap = dp(context, MBACK_RECENT_CARD_MAX_HEIGHT_DP);
+            int maxAllowedHeight = Math.max(
+                    minHeight,
+                    Math.min(maxHeightCap, Math.round(availableHeight * 0.96f)));
+            int maxWidthFromHeight = Math.max(
+                    minWidth,
+                    Math.round(maxAllowedHeight / MBACK_RECENT_CARD_ASPECT_RATIO));
+            maxAllowedWidth = Math.max(
+                    minWidth,
+                    Math.min(maxAllowedWidth, maxWidthFromHeight));
+        }
+        return clampInt(Math.round(availableWidth * 0.88f), minWidth, maxAllowedWidth);
+    }
+
+    private int resolveMBackRecentCardHeight(Context context, int cardWidth) {
+        int minHeight = dp(context, MBACK_RECENT_CARD_HEIGHT_DP);
+        int maxHeightCap = dp(context, MBACK_RECENT_CARD_MAX_HEIGHT_DP);
+        int availableHeight = resolveRecentAppsViewportHeight(context);
+        int computedHeight = Math.round(cardWidth * MBACK_RECENT_CARD_ASPECT_RATIO);
+        if (availableHeight > 0) {
+            int maxAllowedHeight = Math.max(
+                    minHeight,
+                    Math.min(maxHeightCap, Math.round(availableHeight * 0.96f)));
+            computedHeight = Math.min(computedHeight, maxAllowedHeight);
+        }
+        return Math.max(minHeight, Math.min(computedHeight, maxHeightCap));
+    }
+
+    private int resolveMBackRecentCardOverlap(Context context, int cardWidth) {
+        int minOverlap = dp(context, MBACK_RECENT_CARD_OVERLAP_DP);
+        int maxOverlap = Math.max(minOverlap, Math.round(cardWidth * 0.68f));
+        return clampInt(Math.round(cardWidth * 0.55f), minOverlap, maxOverlap);
+    }
+
+    private int resolveRecentAppsViewportWidth(Context context) {
+        if (recentAppsStrip != null && recentAppsStrip.scrollView.getWidth() > 0) {
+            return recentAppsStrip.scrollView.getWidth();
+        }
+        int measuredContentWidth = resolvePopupChildContentWidth(context);
+        if (measuredContentWidth > 0) {
+            return measuredContentWidth;
+        }
+        return Math.max(1, getOverlayWidth() - (contentView.getPaddingLeft() + contentView.getPaddingRight()));
+    }
+
+    private int resolveRecentAppsViewportHeight(Context context) {
+        if (recentAppsStrip != null && recentAppsStrip.scrollView.getHeight() > 0) {
+            return recentAppsStrip.scrollView.getHeight();
+        }
+        int overlayHeight = getOverlayHeight();
+        int estimatedHeight = Math.round(overlayHeight * 0.42f);
+        return Math.max(dp(context, MBACK_RECENT_CARD_HEIGHT_DP), estimatedHeight);
+    }
+
+    private void updateRecentAppsCardTransforms() {
+        if (recentAppsStrip == null
+                || hostMode != HostMode.MBACK
+                || recentAppsStrip.cardViews.isEmpty()) {
+            return;
+        }
+        int viewportWidth = recentAppsStrip.scrollView.getWidth();
+        if (viewportWidth <= 0) {
+            return;
+        }
+        Context context = recentAppsStrip.root.getContext();
+        float viewportCenter = recentAppsStrip.scrollView.getScrollX() + (viewportWidth / 2f);
+        float influenceRange = Math.max(
+                currentRecentCardWidth() * 0.9f,
+                viewportWidth * 0.72f);
+        float translationXRange = dp(context, 18);
+        float translationYRange = dp(context, 18);
+        float maxElevation = dp(context, 18);
+        for (View cardView : recentAppsStrip.cardViews) {
+            if (cardView == null) {
+                continue;
+            }
+            float cardCenter = cardView.getLeft() + (cardView.getWidth() / 2f);
+            float normalizedDistance = influenceRange <= 0f
+                    ? 0f
+                    : (cardCenter - viewportCenter) / influenceRange;
+            float clampedDistance = clamp(normalizedDistance, -1f, 1f);
+            float absDistance = Math.abs(clampedDistance);
+            float scale = 1f - (MBACK_RECENT_CARD_SIDE_SCALE_DROP * absDistance);
+            float alpha = 1f - (MBACK_RECENT_CARD_SIDE_ALPHA_DROP * absDistance);
+            float translationX = -Math.signum(clampedDistance) * translationXRange * absDistance;
+            float translationY = translationYRange * absDistance;
+            float rotationY = -MBACK_RECENT_CARD_MAX_ROTATION_Y * clampedDistance;
+            cardView.setPivotX(cardView.getWidth() / 2f);
+            cardView.setPivotY(cardView.getHeight() * 0.56f);
+            cardView.setScaleX(scale);
+            cardView.setScaleY(scale);
+            cardView.setAlpha(alpha);
+            cardView.setTranslationX(translationX);
+            cardView.setTranslationY(translationY);
+            cardView.setRotationY(rotationY);
+            cardView.setTranslationZ(maxElevation * (1f - absDistance));
+        }
+    }
+
     private boolean updateRecentAppsView(ClockDetailRecentApp[] recentApps, boolean animate) {
         if (recentAppsStrip == null) {
             return false;
@@ -3526,18 +4018,22 @@ final class ClockDetailPopupController {
         ClockDetailRecentApp[] safeRecentApps = recentApps != null && recentApps.length > 0
                 ? recentApps
                 : ClockDetailRecentApp.EMPTY_ARRAY;
+        boolean hasApps = safeRecentApps.length > 0;
+        boolean shouldKeepVisible = shouldKeepRecentAppsContainerVisible(hasApps);
         if (areRecentAppsEquivalent(renderedRecentApps, safeRecentApps)) {
             resetRecentAppsStripVisualState();
-            boolean hasApps = safeRecentApps.length > 0;
             boolean visibilityChanged = setVisibilityIfChanged(
                     recentAppsStrip.root,
-                    hasApps ? View.VISIBLE : View.GONE);
+                    shouldKeepVisible ? View.VISIBLE : View.GONE);
+            updateRecentAppsEmptyState(hasApps);
             if (!hasApps) {
                 recentAppsStrip.scrollView.scrollTo(0, 0);
+            } else if (hostMode == HostMode.MBACK) {
+                updateRecentAppsStackHorizontalPadding();
+                updateRecentAppsCardTransforms();
             }
             return visibilityChanged;
         }
-        boolean hasApps = safeRecentApps.length > 0;
         if (!animate || !hasApps || !recentAppsStrip.root.isLaidOut()) {
             applyRecentAppsContent(safeRecentApps);
             return true;
@@ -3546,7 +4042,32 @@ final class ClockDetailPopupController {
         return true;
     }
 
+    private boolean shouldKeepRecentAppsContainerVisible(boolean hasApps) {
+        return hostMode == HostMode.MBACK || hasApps;
+    }
+
+    private void updateRecentAppsEmptyState(boolean hasApps) {
+        if (recentAppsStrip == null) {
+            return;
+        }
+        if (hostMode == HostMode.MBACK) {
+            setVisibilityIfChanged(recentAppsStrip.scrollView, hasApps ? View.VISIBLE : View.GONE);
+            if (recentAppsStrip.emptyView != null) {
+                setVisibilityIfChanged(recentAppsStrip.emptyView, hasApps ? View.GONE : View.VISIBLE);
+                if (!hasApps) {
+                    setTextIfChanged(recentAppsStrip.emptyView, "当前没有可展示的后台任务");
+                }
+            }
+            return;
+        }
+        setVisibilityIfChanged(recentAppsStrip.scrollView, hasApps ? View.VISIBLE : View.GONE);
+        if (recentAppsStrip.emptyView != null) {
+            setVisibilityIfChanged(recentAppsStrip.emptyView, View.GONE);
+        }
+    }
+
     private void applyRecentAppsContent(ClockDetailRecentApp[] recentApps) {
+        cancelRecentAppsStackSnap();
         cancelRecentAppsStripAnimations();
         resetRecentAppsStripVisualState();
         bindRecentAppsContent(recentApps);
@@ -3560,16 +4081,38 @@ final class ClockDetailPopupController {
                 ? recentApps
                 : ClockDetailRecentApp.EMPTY_ARRAY;
         boolean hasApps = safeRecentApps.length > 0;
-        setVisibilityIfChanged(recentAppsStrip.root, hasApps ? View.VISIBLE : View.GONE);
+        setVisibilityIfChanged(
+                recentAppsStrip.root,
+                shouldKeepRecentAppsContainerVisible(hasApps) ? View.VISIBLE : View.GONE);
         recentAppsStrip.contentView.removeAllViews();
+        recentAppsStrip.cardViews.clear();
         renderedRecentApps = safeRecentApps;
+        updateRecentAppsEmptyState(hasApps);
         if (!hasApps) {
             recentAppsStrip.scrollView.scrollTo(0, 0);
             return;
         }
         Context context = recentAppsStrip.root.getContext();
-        for (int i = 0; i < safeRecentApps.length; i++) {
-            ClockDetailRecentApp app = safeRecentApps[i];
+        if (hostMode == HostMode.MBACK) {
+            bindMBackRecentAppsContent(context, safeRecentApps);
+        } else {
+            bindClockRecentAppsContent(context, safeRecentApps);
+        }
+        recentAppsStrip.scrollView.scrollTo(0, 0);
+        if (hostMode == HostMode.MBACK) {
+            recentAppsStrip.scrollView.post(() -> {
+                updateRecentAppsStackHorizontalPadding();
+                centerRecentAppCardAt(0, false);
+                updateRecentAppsCardTransforms();
+            });
+        }
+    }
+
+    private void bindClockRecentAppsContent(
+            Context context,
+            ClockDetailRecentApp[] recentApps) {
+        for (int i = 0; i < recentApps.length; i++) {
+            ClockDetailRecentApp app = recentApps[i];
             ImageView iconView = buildRecentAppIconView(context);
             iconView.setImageDrawable(app.icon);
             iconView.setContentDescription(app.label);
@@ -3583,7 +4126,25 @@ final class ClockDetailPopupController {
                             ? recentAppItemLayoutParams(context)
                             : recentAppItemLayoutParamsWithStart(context, RECENT_APP_GAP_DP));
         }
-        recentAppsStrip.scrollView.scrollTo(0, 0);
+    }
+
+    private void bindMBackRecentAppsContent(
+            Context context,
+            ClockDetailRecentApp[] recentApps) {
+        int overlap = resolveMBackRecentCardOverlap(context, resolveMBackRecentCardWidth(context));
+        for (int i = 0; i < recentApps.length; i++) {
+            ClockDetailRecentApp app = recentApps[i];
+            View cardView = buildMBackRecentAppCardView(context, app);
+            recentAppsStrip.cardViews.add(cardView);
+            LinearLayout.LayoutParams params = mbackRecentAppCardLayoutParams(context);
+            if (i > 0) {
+                params.leftMargin = -overlap;
+            }
+            recentAppsStrip.contentView.addView(
+                    cardView,
+                    params);
+        }
+        updateRecentAppsCardLayoutParamsIfNeeded();
     }
 
     private void animateRecentAppsViewChange(ClockDetailRecentApp[] recentApps) {
@@ -3595,6 +4156,7 @@ final class ClockDetailPopupController {
                 : ClockDetailRecentApp.EMPTY_ARRAY;
         boolean hadApps = renderedRecentApps != null && renderedRecentApps.length > 0;
         float offset = dp(recentAppsStrip.root.getContext(), RECENT_APPS_SWAP_OFFSET_DP);
+        cancelRecentAppsStackSnap();
         cancelRecentAppsStripAnimations();
         resetRecentAppsStripVisualState();
         if (!hadApps) {
@@ -3644,6 +4206,18 @@ final class ClockDetailPopupController {
         recentAppsStrip.root.setTranslationY(0f);
         recentAppsStrip.contentView.setAlpha(1f);
         recentAppsStrip.contentView.setTranslationY(0f);
+        for (View cardView : recentAppsStrip.cardViews) {
+            if (cardView == null) {
+                continue;
+            }
+            cardView.setAlpha(1f);
+            cardView.setScaleX(1f);
+            cardView.setScaleY(1f);
+            cardView.setTranslationX(0f);
+            cardView.setTranslationY(0f);
+            cardView.setTranslationZ(0f);
+            cardView.setRotationY(0f);
+        }
     }
 
     private static boolean areRecentAppsEquivalent(
@@ -3671,12 +4245,18 @@ final class ClockDetailPopupController {
         if (first == null || second == null) {
             return false;
         }
-        if (first.taskId != second.taskId || first.userId != second.userId) {
+        if (first.taskId != second.taskId
+                || first.userId != second.userId
+                || first.snapshotId != second.snapshotId) {
+            return false;
+        }
+        if (first.hasThumbnail() != second.hasThumbnail()) {
             return false;
         }
         String firstLabel = first.label != null ? first.label.toString() : "";
         String secondLabel = second.label != null ? second.label.toString() : "";
-        return firstLabel.equals(secondLabel);
+        return firstLabel.equals(secondLabel)
+                && TextUtils.equals(first.packageName, second.packageName);
     }
 
     private static ClockDetailActionEntry[] normalizeActionEntries(ClockDetailActionEntry[] entries) {
@@ -4056,33 +4636,70 @@ final class ClockDetailPopupController {
         });
     }
 
-    private static RecentAppsStrip buildRecentAppsStrip(Context context) {
+    private static RecentAppsStrip buildRecentAppsStrip(Context context, HostMode hostMode) {
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_VERTICAL);
-        root.setPadding(
-                dp(context, 12),
-                dp(context, 10),
-                dp(context, 12),
-                dp(context, 10));
-        root.setVisibility(View.GONE);
+        root.setGravity(Gravity.START);
+        if (hostMode == HostMode.MBACK) {
+            root.setPadding(0, dp(context, 4), 0, 0);
+        } else {
+            root.setPadding(
+                    dp(context, 12),
+                    dp(context, 10),
+                    dp(context, 12),
+                    dp(context, 10));
+        }
+        root.setVisibility(hostMode == HostMode.MBACK ? View.VISIBLE : View.GONE);
+
+        TextView emptyView = null;
 
         HorizontalScrollView scrollView = new HorizontalScrollView(context);
         scrollView.setHorizontalScrollBarEnabled(false);
-        scrollView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
-        scrollView.setFillViewport(false);
+        scrollView.setOverScrollMode(
+                hostMode == HostMode.MBACK
+                        ? View.OVER_SCROLL_NEVER
+                        : View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        scrollView.setFillViewport(hostMode == HostMode.MBACK);
+        scrollView.setClipToPadding(false);
 
         LinearLayout content = new LinearLayout(context);
         content.setOrientation(LinearLayout.HORIZONTAL);
         content.setGravity(Gravity.CENTER_VERTICAL);
+        content.setClipChildren(false);
+        content.setClipToPadding(false);
 
         scrollView.addView(
                 content,
                 new FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.WRAP_CONTENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT));
-        root.addView(scrollView, matchWidth());
-        return new RecentAppsStrip(root, scrollView, content);
+                        hostMode == HostMode.MBACK
+                                ? FrameLayout.LayoutParams.MATCH_PARENT
+                                : FrameLayout.LayoutParams.WRAP_CONTENT));
+        root.addView(
+                scrollView,
+                hostMode == HostMode.MBACK
+                        ? matchWidthWeight(1f)
+                        : matchWidth());
+        if (hostMode == HostMode.MBACK) {
+            emptyView = buildRecentAppsHeaderTextView(context, false);
+            emptyView.setVisibility(View.GONE);
+            emptyView.setText("当前没有可展示的后台任务");
+            root.addView(
+                    emptyView,
+                    matchWidthWithTop(context, MBACK_RECENT_EMPTY_TOP_MARGIN_DP));
+        }
+        return new RecentAppsStrip(root, emptyView, scrollView, content);
+    }
+
+    private static TextView buildRecentAppsHeaderTextView(Context context, boolean title) {
+        TextView textView = new TextView(context);
+        textView.setIncludeFontPadding(false);
+        textView.setSingleLine(!title);
+        textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, title ? 13.5f : 11.5f);
+        textView.setTypeface(Typeface.create(
+                title ? "sans-serif-medium" : "sans-serif",
+                Typeface.NORMAL));
+        return textView;
     }
 
     private static MediaStrip buildMediaStrip(Context context) {
@@ -4202,6 +4819,163 @@ final class ClockDetailPopupController {
         return iconView;
     }
 
+    private View buildMBackRecentAppCardView(Context context, ClockDetailRecentApp app) {
+        FrameLayout card = new FrameLayout(context);
+        card.setClipChildren(false);
+        card.setClipToPadding(false);
+        styleRoundedOutline(card, dp(context, MBACK_RECENT_CARD_RADIUS_DP), false);
+        card.setElevation(dp(context, 10));
+        card.setCameraDistance(dp(context, 1600));
+        card.setContentDescription(app != null ? app.label : "");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            card.setTranslationZ(dp(context, 1));
+        }
+
+        FrameLayout surface = new FrameLayout(context);
+        surface.setClipChildren(true);
+        surface.setClipToPadding(true);
+        styleRoundedOutline(surface, dp(context, MBACK_RECENT_CARD_RADIUS_DP), true);
+        surface.setBackground(buildRecentAppCardSurfaceBackground(context, app));
+
+        if (app != null && app.hasThumbnail()) {
+            ImageView thumbnailView = new ImageView(context);
+            thumbnailView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            Bitmap thumbnail = app.thumbnail;
+            thumbnailView.setImageBitmap(thumbnail);
+            surface.addView(thumbnailView, frameMatchParent());
+        } else {
+            surface.addView(buildRecentAppCardPlaceholderView(context, app), frameMatchParent());
+        }
+
+        View scrimView = new View(context);
+        scrimView.setBackground(buildRecentAppCardScrimDrawable(context));
+        FrameLayout.LayoutParams scrimParams = frameMatchWidthWrapContent();
+        scrimParams.gravity = Gravity.BOTTOM;
+        scrimParams.height = dp(context, MBACK_RECENT_CARD_SCRIM_HEIGHT_DP);
+        surface.addView(scrimView, scrimParams);
+
+        LinearLayout infoRow = new LinearLayout(context);
+        infoRow.setOrientation(LinearLayout.HORIZONTAL);
+        infoRow.setGravity(Gravity.CENTER_VERTICAL);
+        infoRow.setPadding(
+                dp(context, MBACK_RECENT_CARD_INFO_HORIZONTAL_PADDING_DP),
+                0,
+                dp(context, MBACK_RECENT_CARD_INFO_HORIZONTAL_PADDING_DP),
+                dp(context, MBACK_RECENT_CARD_INFO_BOTTOM_PADDING_DP));
+
+        ImageView iconView = new ImageView(context);
+        iconView.setAdjustViewBounds(false);
+        iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int iconSize = dp(context, MBACK_RECENT_CARD_ICON_SIZE_DP);
+        if (app != null) {
+            iconView.setImageDrawable(app.icon);
+            iconView.setContentDescription(app.label);
+        }
+        infoRow.addView(iconView, new LinearLayout.LayoutParams(iconSize, iconSize));
+
+        LinearLayout textColumn = new LinearLayout(context);
+        textColumn.setOrientation(LinearLayout.VERTICAL);
+        textColumn.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView titleView = new TextView(context);
+        titleView.setIncludeFontPadding(false);
+        titleView.setSingleLine(true);
+        titleView.setEllipsize(TextUtils.TruncateAt.END);
+        titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f);
+        titleView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        titleView.setTextColor(Color.WHITE);
+        titleView.setText(app != null ? app.label : "");
+        textColumn.addView(titleView, matchWidth());
+
+        infoRow.addView(
+                textColumn,
+                weightCellWithStart(context, MBACK_RECENT_CARD_INFO_GAP_DP, 1f));
+
+        FrameLayout.LayoutParams infoParams = frameMatchWidthWrapContent();
+        infoParams.gravity = Gravity.BOTTOM;
+        surface.addView(infoRow, infoParams);
+
+        card.addView(surface, frameMatchParent());
+        card.setOnClickListener(v -> {
+            performClockHaptic(v);
+            launchRecentTask(app);
+        });
+        return card;
+    }
+
+    private static Drawable buildRecentAppCardSurfaceBackground(
+            Context context,
+            ClockDetailRecentApp app) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.RECTANGLE);
+        drawable.setCornerRadius(dp(context, MBACK_RECENT_CARD_RADIUS_DP));
+        int baseColor = app != null && app.taskColor != 0
+                ? app.taskColor
+                : Color.rgb(52, 60, 74);
+        drawable.setColor(mixColors(baseColor, Color.BLACK, 0.18f));
+        drawable.setStroke(Math.max(1, dp(context, 1)), adjustAlpha(Color.WHITE, 0.16f));
+        return drawable;
+    }
+
+    private static View buildRecentAppCardPlaceholderView(Context context, ClockDetailRecentApp app) {
+        FrameLayout placeholder = new FrameLayout(context);
+        placeholder.setBackground(buildRecentAppCardPlaceholderBackground(context, app));
+
+        ImageView iconView = new ImageView(context);
+        iconView.setAdjustViewBounds(false);
+        iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        if (app != null) {
+            iconView.setImageDrawable(app.icon);
+            iconView.setContentDescription(app.label);
+        }
+        FrameLayout.LayoutParams iconParams = new FrameLayout.LayoutParams(
+                dp(context, MBACK_RECENT_CARD_PLACEHOLDER_ICON_SIZE_DP),
+                dp(context, MBACK_RECENT_CARD_PLACEHOLDER_ICON_SIZE_DP));
+        iconParams.gravity = Gravity.CENTER;
+        placeholder.addView(iconView, iconParams);
+        return placeholder;
+    }
+
+    private static Drawable buildRecentAppCardPlaceholderBackground(
+            Context context,
+            ClockDetailRecentApp app) {
+        int baseColor = app != null && app.taskColor != 0
+                ? app.taskColor
+                : Color.rgb(56, 66, 82);
+        GradientDrawable drawable = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{
+                        mixColors(baseColor, Color.WHITE, 0.08f),
+                        mixColors(baseColor, Color.BLACK, 0.34f)
+                });
+        drawable.setCornerRadius(dp(context, MBACK_RECENT_CARD_RADIUS_DP));
+        return drawable;
+    }
+
+    private static Drawable buildRecentAppCardScrimDrawable(Context context) {
+        GradientDrawable drawable = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{
+                        adjustAlpha(Color.BLACK, 0f),
+                        adjustAlpha(Color.BLACK, 0.84f)
+                });
+        drawable.setCornerRadius(dp(context, MBACK_RECENT_CARD_RADIUS_DP));
+        return drawable;
+    }
+
+    private static void styleRoundedOutline(View view, int radiusPx, boolean clipToOutline) {
+        if (view == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return;
+        }
+        view.setClipToOutline(clipToOutline);
+        view.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View target, Outline outline) {
+                outline.setRoundRect(0, 0, target.getWidth(), target.getHeight(), radiusPx);
+            }
+        });
+    }
+
     private static LinearLayout.LayoutParams recentAppItemLayoutParams(Context context) {
         int size = dp(context, RECENT_APP_ITEM_SIZE_DP);
         return new LinearLayout.LayoutParams(size, size);
@@ -4213,6 +4987,12 @@ final class ClockDetailPopupController {
         LinearLayout.LayoutParams params = recentAppItemLayoutParams(context);
         params.leftMargin = dp(context, startMarginDp);
         return params;
+    }
+
+    private static LinearLayout.LayoutParams mbackRecentAppCardLayoutParams(Context context) {
+        return new LinearLayout.LayoutParams(
+                dp(context, MBACK_RECENT_CARD_WIDTH_DP),
+                dp(context, MBACK_RECENT_CARD_HEIGHT_DP));
     }
 
     private static LinearLayout.LayoutParams actionGridCellLayoutParams() {
@@ -4288,6 +5068,22 @@ final class ClockDetailPopupController {
             Context context,
             int topMarginDp) {
         LinearLayout.LayoutParams params = matchWidth();
+        params.topMargin = dp(context, topMarginDp);
+        return params;
+    }
+
+    private static LinearLayout.LayoutParams matchWidthWeight(float weight) {
+        return new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                weight);
+    }
+
+    private static LinearLayout.LayoutParams matchWidthWeightWithTop(
+            Context context,
+            int topMarginDp,
+            float weight) {
+        LinearLayout.LayoutParams params = matchWidthWeight(weight);
         params.topMargin = dp(context, topMarginDp);
         return params;
     }
@@ -4481,14 +5277,18 @@ final class ClockDetailPopupController {
 
     private static final class RecentAppsStrip {
         final LinearLayout root;
+        final TextView emptyView;
         final HorizontalScrollView scrollView;
         final LinearLayout contentView;
+        final ArrayList<View> cardViews = new ArrayList<>();
 
         RecentAppsStrip(
                 LinearLayout root,
+                TextView emptyView,
                 HorizontalScrollView scrollView,
                 LinearLayout contentView) {
             this.root = root;
+            this.emptyView = emptyView;
             this.scrollView = scrollView;
             this.contentView = contentView;
         }
