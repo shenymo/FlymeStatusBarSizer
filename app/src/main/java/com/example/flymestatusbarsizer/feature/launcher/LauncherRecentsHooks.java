@@ -2,12 +2,16 @@ package com.example.flymestatusbarsizer.feature.launcher;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.graphics.Canvas;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
+import android.view.animation.DecelerateInterpolator;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -22,13 +26,22 @@ public final class LauncherRecentsHooks {
             "com.android.quickstep.views.LauncherRecentsView";
     private static final String PAGED_VIEW_CLASS = "com.android.launcher3.PagedView";
     private static final String RECENTS_VIEW_CLASS = "com.android.quickstep.views.RecentsView";
+    private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 300L;
+    private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.10f;
+    private static final float BLANK_TAP_HOME_EXIT_TRAVEL_RATIO = 1.25f;
     private static final float STACK_BACK_REVEAL_DECAY = 0.80f;
     private static final float STACK_HORIZONTAL_STEP_RATIO = 0.22f;
     private static final float STACK_OUTGOING_TRAVEL_RATIO = 0.70f;
     private static final float STACK_SCALE_STEP = 0.055f;
     private static final float STACK_MIN_SCALE = 0.80f;
     private static final float MAX_STACK_LAYERS = 3.0f;
+    private static final DecelerateInterpolator BLANK_TAP_HOME_EXIT_INTERPOLATOR =
+            new DecelerateInterpolator(1.6f);
     private static final WeakHashMap<View, Boolean> TRACKED_RECENTS_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<View, ValueAnimator> ACTIVE_HOME_EXIT_ANIMATORS =
+            new WeakHashMap<>();
+    private static final WeakHashMap<View, Float> BLANK_TAP_HOME_EXIT_PROGRESS =
+            new WeakHashMap<>();
     private static final WeakHashMap<View, Float> ORIGINAL_NON_GRID_SCALES = new WeakHashMap<>();
     private static final WeakHashMap<View, Float> ORIGINAL_BOX_TRANSLATION_YS = new WeakHashMap<>();
     private static volatile Handler mainHandler;
@@ -46,6 +59,7 @@ public final class LauncherRecentsHooks {
         hookRecentsViewOnLayout(module, loader);
         hookRecentsViewOnScrollChanged(module, loader);
         hookRecentsViewDraw(module, loader);
+        hookRecentsViewStartHome(module, loader);
         hookRecentsViewFreeScrollSettling(module, loader);
         hookPagedViewSnapToDestination(module, loader);
     }
@@ -205,6 +219,33 @@ public final class LauncherRecentsHooks {
         }
     }
 
+    private static void hookRecentsViewStartHome(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("startHome", boolean.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View) {
+                    View recentsView = (View) thisObject;
+                    trackRecentsView(recentsView);
+                    prepareRecentsView(recentsView);
+                    if (shouldAnimateBlankTapHomeExit(recentsView)) {
+                        if (invokeBoolean(recentsView, "canStartHomeSafely", false)) {
+                            startBlankTapHomeExitAnimation(recentsView);
+                            return null;
+                        }
+                    }
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.startHome",
+                    t);
+        }
+    }
+
     private static void hookRecentsViewFreeScrollSettling(FlymeStatusBarSizer module, ClassLoader loader) {
         try {
             Class<?> clazz = Class.forName(RECENTS_VIEW_CLASS, false, loader);
@@ -337,6 +378,10 @@ public final class LauncherRecentsHooks {
                 FlymeStatusBarSizer.dp(recentsView.getContext(), 92));
         float outgoingTravelPx = Math.max(referenceWidth * STACK_OUTGOING_TRAVEL_RATIO,
                 FlymeStatusBarSizer.dp(recentsView.getContext(), 220));
+        float blankTapExitTravelPx = Math.max(
+                referenceWidth * BLANK_TAP_HOME_EXIT_TRAVEL_RATIO,
+                FlymeStatusBarSizer.dp(recentsView.getContext(), 320));
+        float blankTapExitProgress = readBlankTapHomeExitProgress(recentsView);
         float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
         float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
 
@@ -375,6 +420,10 @@ public final class LauncherRecentsHooks {
                         STACK_MIN_SCALE,
                         1.0f - (STACK_SCALE_STEP * visualStackDepth));
                 desiredTranslationZ = Math.max(0f, maxTranslationZ - (visualStackDepth * zStepPx));
+            }
+            if (blankTapExitProgress > 0f) {
+                desiredVisibleOffset -= blankTapExitTravelPx * blankTapExitProgress;
+                desiredScale *= 1.0f - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * blankTapExitProgress);
             }
             float translationCompensationX = desiredVisibleOffset - effectiveRawOffset;
 
@@ -431,12 +480,110 @@ public final class LauncherRecentsHooks {
     }
 
     private static void reapplyOriginalTransforms(View recentsView) {
+        cancelBlankTapHomeExitAnimation(recentsView, true);
         int taskViewCount = invokeInt(recentsView, "getTaskViewCount", 0);
         restoreTaskTransforms(recentsView, taskViewCount);
         FlymeStatusBarSizer.invokeMethodCompat(recentsView, "updatePageScales", NO_ARGS);
         FlymeStatusBarSizer.invokeMethodCompat(recentsView, "updatePageOffsetsForFlyme", NO_ARGS);
         recentsView.requestLayout();
         recentsView.invalidate();
+    }
+
+    private static boolean shouldAnimateBlankTapHomeExit(View recentsView) {
+        return recentsView != null
+                && shouldUseStackLayout(recentsView)
+                && readBooleanField(recentsView, "mTouchDownToStartHome", false);
+    }
+
+    private static void startBlankTapHomeExitAnimation(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        ValueAnimator runningAnimator = ACTIVE_HOME_EXIT_ANIMATORS.get(recentsView);
+        if (runningAnimator != null) {
+            if (runningAnimator.isStarted() || runningAnimator.isRunning()) {
+                return;
+            }
+            ACTIVE_HOME_EXIT_ANIMATORS.remove(recentsView);
+        }
+        setBlankTapHomeExitProgress(recentsView, 0f);
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        animator.setDuration(BLANK_TAP_HOME_EXIT_DURATION_MS);
+        animator.setInterpolator(BLANK_TAP_HOME_EXIT_INTERPOLATOR);
+        animator.addUpdateListener(animation -> {
+            Object value = animation.getAnimatedValue();
+            float progress = value instanceof Float ? (Float) value : 0f;
+            setBlankTapHomeExitProgress(recentsView, progress);
+            recentsView.invalidate();
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                ACTIVE_HOME_EXIT_ANIMATORS.remove(recentsView);
+                if (cancelled) {
+                    clearBlankTapHomeExitProgress(recentsView);
+                    return;
+                }
+                finishBlankTapHomeExit(recentsView);
+            }
+        });
+        ACTIVE_HOME_EXIT_ANIMATORS.put(recentsView, animator);
+        animator.start();
+    }
+
+    private static void finishBlankTapHomeExit(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        FlymeStatusBarSizer.invokeMethodCompat(
+                recentsView,
+                "handleStartHome",
+                new Class[]{boolean.class},
+                false);
+        Runnable resetRunnable = () -> clearBlankTapHomeExitProgress(recentsView);
+        Handler handler = ensureMainHandler();
+        if (handler != null && Looper.myLooper() != handler.getLooper()) {
+            handler.post(resetRunnable);
+        } else {
+            recentsView.post(resetRunnable);
+        }
+    }
+
+    private static void cancelBlankTapHomeExitAnimation(View recentsView, boolean resetTransform) {
+        ValueAnimator animator = ACTIVE_HOME_EXIT_ANIMATORS.remove(recentsView);
+        if (animator != null) {
+            animator.cancel();
+        }
+        if (resetTransform) {
+            clearBlankTapHomeExitProgress(recentsView);
+        }
+    }
+
+    private static void clearBlankTapHomeExitProgress(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        BLANK_TAP_HOME_EXIT_PROGRESS.remove(recentsView);
+        recentsView.invalidate();
+    }
+
+    private static void setBlankTapHomeExitProgress(View recentsView, float progress) {
+        if (recentsView == null) {
+            return;
+        }
+        BLANK_TAP_HOME_EXIT_PROGRESS.put(recentsView, clamp(progress, 0f, 1f));
+    }
+
+    private static float readBlankTapHomeExitProgress(View recentsView) {
+        Float value = BLANK_TAP_HOME_EXIT_PROGRESS.get(recentsView);
+        return value != null ? value : 0f;
     }
 
     private static View getTaskViewAt(View recentsView, int index) {
@@ -577,6 +724,11 @@ public final class LauncherRecentsHooks {
     private static float readFloatField(Object target, String name, float fallback) {
         Object value = FlymeStatusBarSizer.getFieldCompat(target, name);
         return value instanceof Float ? (Float) value : fallback;
+    }
+
+    private static boolean readBooleanField(Object target, String name, boolean fallback) {
+        Object value = FlymeStatusBarSizer.getFieldCompat(target, name);
+        return value instanceof Boolean ? (Boolean) value : fallback;
     }
 
     private static float clamp(float value, float min, float max) {
