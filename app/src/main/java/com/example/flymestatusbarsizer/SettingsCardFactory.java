@@ -165,6 +165,23 @@ final class SettingsCardFactory {
                 activity.imeToolbarEditor().buildSettingsContent());
     }
 
+    View createLauncherRecentsSettingsCard() {
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        activity.addSwitchRow(content, "IOS 式堆叠后台",
+                "Hook Flyme launcher 的 Recent，把原来的 PagedView 卡片压成重叠 stack carousel，并去掉原有自动横向推开和居中修正。",
+                SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
+                SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED);
+        activity.addDivider(content);
+        activity.addActionButtonRow(content, "重启系统桌面",
+                "修改这个开关后，需要重启系统桌面，新的后台卡片布局才会完整生效。",
+                "重启", activity::restartLauncher);
+        return activity.buildSectionCard(
+                "系统桌面后台",
+                "作用域是 com.meizu.flyme.launcher，只改 Recent 卡片排布，不替换原有 Quickstep 手势链路。",
+                content);
+    }
+
     View createAdvancedToolsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);

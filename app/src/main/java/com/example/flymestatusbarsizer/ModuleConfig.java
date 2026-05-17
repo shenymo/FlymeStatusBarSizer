@@ -64,6 +64,8 @@ final class ModuleConfig {
     boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
     int notificationAppIconSizeDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
     int notificationAppIconPaddingDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP;
+    boolean launcherIosStackRecentsEnabled =
+            SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED;
     boolean mbackHidePill = SettingsStore.DEFAULT_MBACK_HIDE_PILL;
     int mbackInsetSize = SettingsStore.DEFAULT_MBACK_INSET_SIZE;
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
@@ -340,6 +342,10 @@ final class ModuleConfig {
                             prefs,
                             SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP,
                             SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP));
+            config.launcherIosStackRecentsEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
+                    SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED);
             config.mbackHidePill = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_MBACK_HIDE_PILL,

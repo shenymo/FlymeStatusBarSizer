@@ -58,6 +58,7 @@ public class MainActivity extends Activity {
     static final String IME_CONTROL_BAR_DRAG_LABEL = "ime_control_bar_button";
     static final int IME_CONTROL_BAR_POOL_ROW_ITEM_COUNT = 3;
     private static final String PACKAGE_SYSTEM_UI = "com.android.systemui";
+    private static final String PACKAGE_FLYME_LAUNCHER = "com.meizu.flyme.launcher";
     private static final long SYSTEM_UI_RESTART_DELAY_MS = 600L;
     private static final String GITHUB_URL = "https://github.com/shenymo/FlymeStatusBarSizer";
     private static final String QQ_GROUP_URL = "https://qun.qq.com/universal-share/share?ac=1&authKey=WuaHYIEHdI6Y%2Fvn7SvcFMtyuUX%2Bwp%2FMedY0eMgPLq9Bbrz%2FPMRsiIgDttNOMbPWW&busi_data=eyJncm91cENvZGUiOiIxMTAyMTM4MzgxIiwidG9rZW4iOiJIb1hmV2xvaVUxWFk2YjAyOXl5MmIwelljU3A5bFRYejQrb3JtUlJwOXRMK1BLU3pnWWRaSG9VdHZ4M3Fld2xqIiwidWluIjoiMjI4OTU3MTk5MCJ9&data=O3ClX619ry0x93elARpxRoHiwSavPU_N00zhT1jj5d_rR0feICi-g7gudqIpU6sbrKtr1_CCPBpNQ-APojGliw&svctype=4&tempid=h5_group_info";
@@ -137,7 +138,7 @@ public class MainActivity extends Activity {
         HOME(null, null, null, false),
         ICONS_BATTERY("图标与电池", "状态栏图标缩放、电池样式、通知图标以及信号与 Wi-Fi 接管设置。", null, true),
         TIME_NETWORK("时间与网络", "实时网速显隐阈值、时间表达式、时钟详情弹窗，以及时间字重字号设置。", null, true),
-        SYSTEM_INTERACTION("系统交互", "MBack 长触、导航栏沉浸与高度，以及输入法控制栏接管。", null, true),
+        SYSTEM_INTERACTION("系统交互", "MBack 长触、导航栏沉浸与高度、输入法控制栏接管，以及系统桌面后台卡片布局调整。", null, true),
         ADVANCED_DEBUG("高级与调试", "配置管理、WIFI 性能打点，以及高阶工具入口。", null, true),
         ABOUT("关于与支持", "项目地址、交流群、版本构建信息和目标作用域说明。", null, false),
         POSITION_TUNING("布局微调", "单独调整时钟、电池、信号、Wi-Fi 与输入法控制栏的细节位置。", null, true),
@@ -1563,6 +1564,10 @@ public class MainActivity extends Activity {
                 SYSTEM_UI_RESTART_DELAY_MS);
     }
 
+    void restartLauncher() {
+        restartPackageProcess(PACKAGE_FLYME_LAUNCHER, "系统桌面");
+    }
+
     private void restartPackageProcess(String packageName, String label) {
         restartRootCommands(label, new String[]{
                 "am force-stop " + packageName,
@@ -1790,6 +1795,10 @@ public class MainActivity extends Activity {
 
     View createImeToolbarSettingsCard() {
         return settingsCardFactory.createImeToolbarSettingsCard();
+    }
+
+    View createLauncherRecentsSettingsCard() {
+        return settingsCardFactory.createLauncherRecentsSettingsCard();
     }
 
     View createAdvancedToolsCard() {

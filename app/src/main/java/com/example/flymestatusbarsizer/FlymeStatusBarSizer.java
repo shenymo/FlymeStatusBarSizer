@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer;
 
 import com.example.flymestatusbarsizer.feature.clock.ClockHooks;
 import com.example.flymestatusbarsizer.feature.ime.ImeHooks;
+import com.example.flymestatusbarsizer.feature.launcher.LauncherRecentsHooks;
 import com.example.flymestatusbarsizer.feature.mback.MBackHooks;
 import com.example.flymestatusbarsizer.feature.notification.NotificationHooks;
 
@@ -61,6 +62,7 @@ import io.github.libxposed.api.XposedModuleInterface;
 public class FlymeStatusBarSizer extends XposedModule {
     private static final String TAG = "FlymeStatusBarSizer";
     private static final String SYSTEM_UI = "com.android.systemui";
+    private static final String FLYME_LAUNCHER = "com.meizu.flyme.launcher";
     private static volatile FlymeStatusBarSizer MODULE;
 
     private static final WeakHashMap<View, int[]> ORIGINAL_SIZES = new WeakHashMap<>();
@@ -198,6 +200,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (SYSTEM_UI.equals(packageName)) {
             hookSystemUi(loader);
         }
+        if (FLYME_LAUNCHER.equals(packageName)) {
+            hookFlymeLauncher(loader);
+        }
         ImeHooks.install(this, loader, packageName);
     }
 
@@ -208,6 +213,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         MBackHooks.install(this, loader);
         installBatteryHooks(loader);
         ClockHooks.install(this, loader);
+    }
+
+    private void hookFlymeLauncher(ClassLoader loader) {
+        LauncherRecentsHooks.install(this, loader);
     }
 
     private void installStatusBarHooks(ClassLoader loader) {
@@ -287,6 +296,11 @@ public class FlymeStatusBarSizer extends XposedModule {
         return new NotificationConfigSnapshot(config);
     }
 
+    public static LauncherRecentsConfigSnapshot loadLauncherRecentsConfig(Context context) {
+        ModuleConfig config = ModuleConfig.load(context);
+        return new LauncherRecentsConfigSnapshot(config);
+    }
+
     public static void logMBackWarning(String message, Throwable throwable) {
         FlymeStatusBarSizer module = MODULE;
         if (module != null) {
@@ -316,6 +330,13 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     public static void logNotificationWarning(String message, Throwable throwable) {
+        FlymeStatusBarSizer module = MODULE;
+        if (module != null) {
+            module.log(android.util.Log.WARN, TAG, message, throwable);
+        }
+    }
+
+    public static void logLauncherWarning(String message, Throwable throwable) {
         FlymeStatusBarSizer module = MODULE;
         if (module != null) {
             module.log(android.util.Log.WARN, TAG, message, throwable);
@@ -5803,6 +5824,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         refreshTrackedStatusBarIconViews();
         ClockHooks.refreshTrackedViews();
         refreshTrackedInputMethodViews();
+        LauncherRecentsHooks.refreshTrackedViews();
     }
 
     private static void refreshTrackedBatteryViews() {
@@ -6496,6 +6518,18 @@ public class FlymeStatusBarSizer extends XposedModule {
             notificationAppIconEnabled = config != null && config.notificationAppIconEnabled;
             notificationAppIconSizeDp = config == null ? 0 : config.notificationAppIconSizeDp;
             notificationAppIconPaddingDp = config == null ? 0 : config.notificationAppIconPaddingDp;
+        }
+    }
+
+    public static final class LauncherRecentsConfigSnapshot {
+        public final boolean enabled;
+        public final boolean launcherIosStackRecentsEnabled;
+
+        private LauncherRecentsConfigSnapshot(ModuleConfig config) {
+            enabled = config != null && config.enabled;
+            launcherIosStackRecentsEnabled = enabled
+                    && config != null
+                    && config.launcherIosStackRecentsEnabled;
         }
     }
 
