@@ -22,6 +22,7 @@ public final class LauncherRecentsHooks {
             "com.android.quickstep.views.LauncherRecentsView";
     private static final String PAGED_VIEW_CLASS = "com.android.launcher3.PagedView";
     private static final String RECENTS_VIEW_CLASS = "com.android.quickstep.views.RecentsView";
+    private static final float STACK_BACK_REVEAL_DECAY = 0.80f;
     private static final float STACK_HORIZONTAL_STEP_RATIO = 0.22f;
     private static final float STACK_OUTGOING_TRAVEL_RATIO = 0.70f;
     private static final float STACK_SCALE_STEP = 0.055f;
@@ -366,12 +367,14 @@ public final class LauncherRecentsHooks {
                 desiredScale = Math.max(0.92f, 1.0f - (0.03f * outgoingProgress));
                 desiredTranslationZ = maxTranslationZ + (outgoingProgress * zStepPx);
             } else {
-                float stackDepth = clamp(-progress, 0f, MAX_STACK_LAYERS);
-                float normalizedFrontness = 1.0f - (stackDepth / MAX_STACK_LAYERS);
-                float revealCurve = normalizedFrontness * normalizedFrontness;
+                float stackDepth = Math.max(-progress, 0f);
+                float revealCurve = (float) Math.exp(-STACK_BACK_REVEAL_DECAY * stackDepth);
+                float visualStackDepth = clamp(stackDepth, 0f, MAX_STACK_LAYERS);
                 desiredVisibleOffset = stackLeftShiftPx + (horizontalStepPx * revealCurve);
-                desiredScale = Math.max(STACK_MIN_SCALE, 1.0f - (STACK_SCALE_STEP * stackDepth));
-                desiredTranslationZ = Math.max(0f, maxTranslationZ - (stackDepth * zStepPx));
+                desiredScale = Math.max(
+                        STACK_MIN_SCALE,
+                        1.0f - (STACK_SCALE_STEP * visualStackDepth));
+                desiredTranslationZ = Math.max(0f, maxTranslationZ - (visualStackDepth * zStepPx));
             }
             float translationCompensationX = desiredVisibleOffset - effectiveRawOffset;
 
