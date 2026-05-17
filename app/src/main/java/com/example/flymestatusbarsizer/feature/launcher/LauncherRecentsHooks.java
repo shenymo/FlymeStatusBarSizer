@@ -328,14 +328,14 @@ public final class LauncherRecentsHooks {
             float desiredScale;
             float desiredTranslationZ;
 
-            if (progress <= 0f) {
-                float outgoingProgress = clamp(-progress, 0f, MAX_STACK_LAYERS);
+            if (progress >= 0f) {
+                float outgoingProgress = clamp(progress, 0f, MAX_STACK_LAYERS);
                 desiredVisibleOffset = stackLeftShiftPx + horizontalStepPx
                         + (outgoingProgress * outgoingTravelPx);
                 desiredScale = Math.max(0.92f, 1.0f - (0.03f * outgoingProgress));
                 desiredTranslationZ = maxTranslationZ + (outgoingProgress * zStepPx);
             } else {
-                float stackDepth = clamp(progress, 0f, MAX_STACK_LAYERS);
+                float stackDepth = clamp(-progress, 0f, MAX_STACK_LAYERS);
                 float normalizedFrontness = 1.0f - (stackDepth / MAX_STACK_LAYERS);
                 float revealCurve = normalizedFrontness * normalizedFrontness;
                 desiredVisibleOffset = stackLeftShiftPx + (horizontalStepPx * revealCurve);
