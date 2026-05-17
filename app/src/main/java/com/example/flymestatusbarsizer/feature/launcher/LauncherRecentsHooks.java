@@ -349,7 +349,12 @@ public final class LauncherRecentsHooks {
                 continue;
             }
             float rawOffset = rawOffsets[i];
-            float progress = rawOffset / pageSpan;
+            float dismissTranslationX = readFloatField(taskView, "dismissTranslationX", 0f);
+            // Keep the stock gap-closing animation, but remap its logical page position into
+            // the compressed stack so sibling cards move into the dismissed slot instead of
+            // adding a second full-page horizontal shift on top of it.
+            float effectiveRawOffset = rawOffset + dismissTranslationX;
+            float progress = effectiveRawOffset / pageSpan;
             float desiredVisibleOffset;
             float desiredScale;
             float desiredTranslationZ;
@@ -368,7 +373,7 @@ public final class LauncherRecentsHooks {
                 desiredScale = Math.max(STACK_MIN_SCALE, 1.0f - (STACK_SCALE_STEP * stackDepth));
                 desiredTranslationZ = Math.max(0f, maxTranslationZ - (stackDepth * zStepPx));
             }
-            float translationCompensationX = desiredVisibleOffset - rawOffset;
+            float translationCompensationX = desiredVisibleOffset - effectiveRawOffset;
 
             taskView.setPivotX(0f);
             taskView.setPivotY(taskView.getHeight() * 0.5f);
