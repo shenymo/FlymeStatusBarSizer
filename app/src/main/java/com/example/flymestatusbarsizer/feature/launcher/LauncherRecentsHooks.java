@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer.feature.launcher;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
+import android.graphics.Canvas;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
@@ -43,6 +44,7 @@ public final class LauncherRecentsHooks {
         hookRecentsViewMethod(module, loader, "updatePageScales");
         hookRecentsViewOnLayout(module, loader);
         hookRecentsViewOnScrollChanged(module, loader);
+        hookRecentsViewDraw(module, loader);
         hookRecentsViewFreeScrollSettling(module, loader);
         hookPagedViewSnapToDestination(module, loader);
     }
@@ -174,6 +176,30 @@ public final class LauncherRecentsHooks {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook RecentsView.onScrollChanged",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewDraw(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("draw", Canvas.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View) {
+                    View recentsView = (View) thisObject;
+                    trackRecentsView(recentsView);
+                    prepareRecentsView(recentsView);
+                    if (shouldUseStackLayout(recentsView)) {
+                        applyStackLayout(recentsView);
+                    }
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.draw",
                     t);
         }
     }
