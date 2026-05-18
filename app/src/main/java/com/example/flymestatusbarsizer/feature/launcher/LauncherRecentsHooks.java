@@ -454,6 +454,7 @@ public final class LauncherRecentsHooks {
 
         float blankTapExitProgress = readBlankTapHomeExitProgress(recentsView);
         float stackEntryProgress = resolveStackEntryProgress(recentsView);
+        float stackVerticalProgress = resolveStackVerticalProgress(recentsView);
         float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
         float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
 
@@ -533,7 +534,7 @@ public final class LauncherRecentsHooks {
                 desiredTranslationZ = maxTranslationZ
                         + zStepPx
                         + (outgoingCurve * maxTranslationZ);
-                desiredTaskOffsetY = stackEntryLiftPx * (1.0f - stackEntryProgress);
+                desiredTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
             } else {
                 float stackDepth = clamp(-progress, 0f, MAX_STACK_LAYERS);
                 float revealCurve = (float) Math.pow(
@@ -561,18 +562,18 @@ public final class LauncherRecentsHooks {
                         STACK_MIN_SCALE,
                         1.0f - (STACK_SCALE_STEP * visualStackDepth));
                 desiredTranslationZ = Math.max(0f, maxTranslationZ - (revealCurve * maxTranslationZ));
-                desiredTaskOffsetY = stackEntryLiftPx * (1.0f - stackEntryProgress);
+                desiredTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
             }
             desiredVisibleOffset = lerp(stockVisibleOffset, desiredVisibleOffset, stackEntryProgress);
             desiredScale = lerp(readLastStockNonGridScale(taskView), desiredScale, stackEntryProgress);
             desiredTaskOffsetY = lerp(
                     readLastStockTaskOffsetY(taskView),
                     desiredTaskOffsetY,
-                    stackEntryProgress);
+                    stackVerticalProgress);
             desiredBoxTranslationY = lerp(
                     readLastStockBoxTranslationY(taskView),
                     readOriginalBoxTranslationY(taskView),
-                    stackEntryProgress);
+                    stackVerticalProgress);
             desiredTranslationZ = lerp(
                     readLastStockTranslationZ(taskView),
                     desiredTranslationZ,
@@ -1291,6 +1292,18 @@ public final class LauncherRecentsHooks {
                 1f);
         float collapsedProgress = Math.max(adjacentOffset, fullscreenProgress);
         return clamp((1.0f - collapsedProgress) * contentAlpha, 0f, 1f);
+    }
+
+    private static float resolveStackVerticalProgress(View recentsView) {
+        float fullscreenProgress = clamp(
+                readFloatField(recentsView, "mFullscreenProgress", 0f),
+                0f,
+                1f);
+        float contentAlpha = clamp(
+                readFloatField(recentsView, "mContentAlpha", 1f),
+                0f,
+                1f);
+        return clamp((1.0f - fullscreenProgress) * contentAlpha, 0f, 1f);
     }
 
     private static boolean isTaskVisibleInViewport(
