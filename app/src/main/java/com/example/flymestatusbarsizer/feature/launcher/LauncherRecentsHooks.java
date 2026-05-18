@@ -38,12 +38,9 @@ public final class LauncherRecentsHooks {
     private static final float STACK_FRONT_VISIBLE_RATIO = 0.50f;
     private static final float STACK_FRONT_SHIFT_START_PROGRESS = 0.58f;
     private static final float STACK_FRONT_REVEAL_CURVE_POWER = 0.72f;
-    private static final float STACK_OVERLAP_RELEASE_CURVE_POWER = 1.22f;
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
-    private static final float STACK_OUTGOING_TRAVEL_RATIO = 0.34f;
-    private static final float STACK_OUTGOING_CURVE_POWER = 1.30f;
     private static final float STACK_BACK_SPREAD_RATIO = 0.14f;
-    private static final float STACK_MIN_OVERLAP_RATIO = 0.16f;
+    private static final float STACK_MIN_OVERLAP_RATIO = 0.20f;
     private static final float STACK_SCALE_STEP = 0.065f;
     private static final float STACK_MIN_SCALE = 0.80f;
     private static final float STACK_LEFT_INSET_RATIO = 0.05f;
@@ -519,14 +516,13 @@ public final class LauncherRecentsHooks {
             float taskWidth = taskView.getWidth() > 0 ? taskView.getWidth() : referenceWidth;
             float taskHeight = taskView.getHeight() > 0 ? taskView.getHeight() : referenceHeight;
             float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
-            float stackBaseLeftPx = taskWidth * STACK_LEFT_INSET_RATIO;
             float stackBaseOffsetPx =
                     -taskCenteredLeftPx + (taskWidth * STACK_LEFT_INSET_RATIO);
             float stackFrontLeftPx = recentsView.getWidth() - (taskWidth * STACK_FRONT_VISIBLE_RATIO);
-            float stackFrontOffsetPx = stackFrontLeftPx - taskCenteredLeftPx;
-            float outgoingTravelPx = Math.max(
-                    taskWidth * STACK_OUTGOING_TRAVEL_RATIO,
-                    FlymeStatusBarSizer.dp(recentsView.getContext(), 180));
+            float screenFrontOffsetPx = stackFrontLeftPx - taskCenteredLeftPx;
+            float maxFrontOffsetPx = stackBaseOffsetPx
+                    + (taskWidth * (1.0f - STACK_MIN_OVERLAP_RATIO));
+            float stackFrontOffsetPx = Math.min(screenFrontOffsetPx, maxFrontOffsetPx);
             float stackBackSpreadPx = Math.min(
                     taskWidth * STACK_BACK_SPREAD_RATIO,
                     FlymeStatusBarSizer.dp(recentsView.getContext(), 96));
@@ -551,26 +547,16 @@ public final class LauncherRecentsHooks {
             float desiredBoxTranslationY;
 
             if (progress >= 0f) {
+                float positiveProgress = Math.max(0f, progress);
+                int rightLayer = (int) Math.floor(positiveProgress);
+                float localProgress = positiveProgress - rightLayer;
                 float handoffProgress = smoothStep((float) Math.pow(
-                        remapProgress(progress, 0.0f, 1.0f),
+                        localProgress,
                         STACK_FRONT_REVEAL_CURVE_POWER));
                 float maxLeadSeparationPx = taskWidth * (1.0f - STACK_MIN_OVERLAP_RATIO);
-                float leadExitOffsetPx = frontBaseOffset + maxLeadSeparationPx;
-                if (progress <= 1.0f) {
-                    desiredVisibleOffset = lerp(
-                            frontBaseOffset,
-                            leadExitOffsetPx,
-                            handoffProgress);
-                } else {
-                    float outgoingProgress = remapProgress(progress, 1.0f, MAX_STACK_LAYERS);
-                    float outgoingCurve = (float) Math.pow(
-                            outgoingProgress,
-                            STACK_OUTGOING_CURVE_POWER);
-                    float extraExitTravelPx = Math.max(
-                            taskWidth * 0.08f,
-                            FlymeStatusBarSizer.dp(recentsView.getContext(), 64));
-                    desiredVisibleOffset = leadExitOffsetPx + (extraExitTravelPx * outgoingCurve);
-                }
+                desiredVisibleOffset = frontBaseOffset
+                        + (rightLayer * maxLeadSeparationPx)
+                        + (handoffProgress * maxLeadSeparationPx);
                 desiredScale = 1.0f;
                 desiredTranslationZ = maxTranslationZ
                         + zStepPx
