@@ -38,8 +38,7 @@ public final class LauncherRecentsHooks {
     private static final float STACK_BACK_SPREAD_RATIO = 0.14f;
     private static final float STACK_SCALE_STEP = 0.065f;
     private static final float STACK_MIN_SCALE = 0.80f;
-    private static final float STACK_STACK_LEFT_SHIFT_RATIO = 0.08f;
-    private static final float STACK_VERTICAL_STEP_RATIO = 0.055f;
+    private static final float STACK_LEFT_OVERFLOW_RATIO = 0.05f;
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final DecelerateInterpolator BLANK_TAP_HOME_EXIT_INTERPOLATOR =
             new DecelerateInterpolator(1.6f);
@@ -446,9 +445,8 @@ public final class LauncherRecentsHooks {
             float taskWidth = taskView.getWidth() > 0 ? taskView.getWidth() : referenceWidth;
             float taskHeight = taskView.getHeight() > 0 ? taskView.getHeight() : referenceHeight;
             float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
-            float stackBaseOffsetPx = -Math.min(
-                    taskWidth * STACK_STACK_LEFT_SHIFT_RATIO,
-                    FlymeStatusBarSizer.dp(recentsView.getContext(), 72));
+            float stackBaseOffsetPx =
+                    -taskCenteredLeftPx - (taskWidth * STACK_LEFT_OVERFLOW_RATIO);
             float stackFrontLeftPx = recentsView.getWidth() - (taskWidth * STACK_FRONT_VISIBLE_RATIO);
             float stackFrontOffsetPx = stackFrontLeftPx - taskCenteredLeftPx;
             float outgoingTravelPx = Math.max(
@@ -457,9 +455,6 @@ public final class LauncherRecentsHooks {
             float stackBackSpreadPx = Math.min(
                     taskWidth * STACK_BACK_SPREAD_RATIO,
                     FlymeStatusBarSizer.dp(recentsView.getContext(), 96));
-            float stackVerticalStepPx = Math.min(
-                    taskHeight * STACK_VERTICAL_STEP_RATIO,
-                    FlymeStatusBarSizer.dp(recentsView.getContext(), 28));
             float stackEntryLiftPx = Math.min(
                     taskHeight * STACK_ENTRY_LIFT_RATIO,
                     FlymeStatusBarSizer.dp(recentsView.getContext(), 40));
@@ -511,8 +506,7 @@ public final class LauncherRecentsHooks {
                         STACK_MIN_SCALE,
                         1.0f - (STACK_SCALE_STEP * visualStackDepth));
                 desiredTranslationZ = Math.max(0f, maxTranslationZ - (revealCurve * maxTranslationZ));
-                desiredTaskOffsetY = (stackVerticalStepPx * visualStackDepth)
-                        + (stackEntryLiftPx * (1.0f - stackEntryProgress));
+                desiredTaskOffsetY = stackEntryLiftPx * (1.0f - stackEntryProgress);
             }
             desiredVisibleOffset = lerp(stockVisibleOffset, desiredVisibleOffset, stackEntryProgress);
             desiredScale = lerp(readLastStockNonGridScale(taskView), desiredScale, stackEntryProgress);
