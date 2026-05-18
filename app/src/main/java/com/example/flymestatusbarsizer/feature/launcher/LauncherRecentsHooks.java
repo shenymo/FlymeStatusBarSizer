@@ -5,10 +5,14 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.graphics.Canvas;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
@@ -19,6 +23,7 @@ import android.view.animation.DecelerateInterpolator;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.WeakHashMap;
 
@@ -30,8 +35,13 @@ public final class LauncherRecentsHooks {
     private static final String LAUNCHER_RECENTS_VIEW_CLASS =
             "com.android.quickstep.views.LauncherRecentsView";
     private static final String PAGED_VIEW_CLASS = "com.android.launcher3.PagedView";
+    private static final String PAGED_ORIENTATION_HANDLER_CLASS =
+            "com.android.launcher3.touch.PagedOrientationHandler";
     private static final String RECENTS_VIEW_CLASS = "com.android.quickstep.views.RecentsView";
     private static final String TASK_VIEW_CLASS = "com.android.quickstep.views.TaskView";
+    private static final String TASK_VIEW_SIMULATOR_CLASS =
+            "com.android.quickstep.util.TaskViewSimulator";
+    private static final String TASK_VIEW_UTILS_CLASS = "com.android.quickstep.TaskViewUtils";
     private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 360L;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.07f;
     private static final float BLANK_TAP_HOME_EXIT_TRAVEL_RATIO = 0.90f;
@@ -46,12 +56,25 @@ public final class LauncherRecentsHooks {
     private static final float STACK_MIN_SCALE = 0.80f;
     private static final float STACK_LEFT_INSET_RATIO = 0.05f;
     private static final float MAX_STACK_LAYERS = 3.0f;
+    private static final long TASK_LAUNCH_HANDOFF_DURATION_MS = 88L;
+    private static final long TASK_LAUNCH_FRONT_HANDOFF_DURATION_MS = 52L;
+    private static final long TASK_LAUNCH_NO_ANIMATION_CLEANUP_DELAY_MS = 1200L;
+    private static final float TASK_LAUNCH_REAR_PROMOTE_FRACTION = 0.42f;
+    private static final float TASK_LAUNCH_SIBLING_END_ALPHA = 0.16f;
     private static final DecelerateInterpolator BLANK_TAP_HOME_EXIT_INTERPOLATOR =
             new DecelerateInterpolator(1.6f);
     private static final WeakHashMap<View, Boolean> TRACKED_RECENTS_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, ValueAnimator> ACTIVE_HOME_EXIT_ANIMATORS =
             new WeakHashMap<>();
+    private static final WeakHashMap<View, ValueAnimator> ACTIVE_TASK_LAUNCH_HANDOFF_ANIMATORS =
+            new WeakHashMap<>();
     private static final WeakHashMap<View, Float> BLANK_TAP_HOME_EXIT_PROGRESS =
+            new WeakHashMap<>();
+    private static final WeakHashMap<View, LaunchHandoffState> ACTIVE_TASK_LAUNCH_HANDOFFS =
+            new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> BYPASS_TASK_CLICK_INTERCEPTION =
+            new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> TASK_LAUNCH_REQUEST_STARTED =
             new WeakHashMap<>();
     private static final WeakHashMap<View, Float> ORIGINAL_NON_GRID_SCALES = new WeakHashMap<>();
     private static final WeakHashMap<View, Float> ORIGINAL_BOX_TRANSLATION_YS = new WeakHashMap<>();
@@ -66,7 +89,51 @@ public final class LauncherRecentsHooks {
     private static final WeakHashMap<View, Float> LAST_STOCK_STABLE_ALPHAS = new WeakHashMap<>();
     private static final WeakHashMap<View, Float> LAST_STOCK_TRANSLATION_ZS =
             new WeakHashMap<>();
+    private static final ThreadLocal<TaskLaunchSimulatorTranslationContext>
+            ACTIVE_TASK_LAUNCH_SIMULATOR_TRANSLATION = new ThreadLocal<>();
+    private static final ThreadLocal<View> ACTIVE_TASK_LAUNCH_SCROLL_COMPENSATION_BYPASS =
+            new ThreadLocal<>();
     private static volatile Handler mainHandler;
+
+    private static final class LaunchHandoffState {
+        final View targetTaskView;
+        final int targetIndex;
+        final boolean promoteRearCard;
+        final boolean handoffEnabled;
+        float progress;
+        boolean frozen;
+
+        LaunchHandoffState(
+                View targetTaskView,
+                int targetIndex,
+                boolean promoteRearCard,
+                boolean handoffEnabled) {
+            this.targetTaskView = targetTaskView;
+            this.targetIndex = targetIndex;
+            this.promoteRearCard = promoteRearCard;
+            this.handoffEnabled = handoffEnabled;
+        }
+    }
+
+    private static final class TaskLaunchSimulatorTranslationContext {
+        final View recentsView;
+        final View taskView;
+
+        TaskLaunchSimulatorTranslationContext(View recentsView, View taskView) {
+            this.recentsView = recentsView;
+            this.taskView = taskView;
+        }
+    }
+
+    private static final class TaskLaunchTaskRectTranslation {
+        final int translationX;
+        final int translationY;
+
+        TaskLaunchTaskRectTranslation(int translationX, int translationY) {
+            this.translationX = translationX;
+            this.translationY = translationY;
+        }
+    }
 
     private LauncherRecentsHooks() {
     }
@@ -81,14 +148,32 @@ public final class LauncherRecentsHooks {
         hookRecentsViewOnLayout(module, loader);
         hookRecentsViewOnScrollChanged(module, loader);
         hookRecentsViewContentAlpha(module, loader);
+        hookRecentsViewResetTaskVisuals(module, loader);
         hookRecentsViewDraw(module, loader);
         hookRecentsViewStartHome(module, loader);
         hookRecentsViewFreeScrollSettling(module, loader);
         hookRecentsViewPrepareGestureEndAnimation(module, loader);
         hookRecentsViewGestureAnimationEnd(module, loader);
+        hookRecentsViewWindowVisibilityChanged(module, loader);
+        hookRecentsViewDetachedFromWindow(module, loader);
+        hookRecentsViewNotifyHandleActionUp(module, loader);
         hookPagedViewOnTouchEvent(module, loader);
+        hookPagedViewSetCurrentPageForTaskLaunch(module, loader);
+        hookPagedViewUpdateCurrentPageScrollForTaskLaunch(module, loader);
         hookPagedViewSnapToDestination(module, loader);
+        hookPagedViewSnapToPageForTaskLaunch(module, loader);
+        hookPagedViewScrollToForTaskLaunch(module, loader);
+        hookTaskViewClick(module, loader);
+        hookTaskViewLaunchWithAnimation(module, loader);
         hookTaskViewPressScale(module, loader);
+        hookTaskViewUtilsCreateRecentsWindowAnimator(module, loader);
+        hookTaskViewUtilsLaunchFrameCallback(module, loader);
+        hookTaskViewSimulatorSetTaskRectTranslation(module, loader);
+        hookRecentsViewCreateTaskLaunchAnimation(module, loader);
+        hookRecentsViewCreateAdjacentPageAnimForTaskLaunch(module, loader);
+        hookRecentsViewUpdateScrollSynchronously(module, loader);
+        hookViewScrollByForTaskLaunch(module);
+        hookViewScrollToForTaskLaunch(module);
     }
 
     public static void refreshTrackedViews() {
@@ -96,6 +181,9 @@ public final class LauncherRecentsHooks {
             ArrayList<View> views = new ArrayList<>(TRACKED_RECENTS_VIEWS.keySet());
             for (View recentsView : views) {
                 if (recentsView == null) {
+                    continue;
+                }
+                if (isTaskLaunchLayoutFrozen(recentsView)) {
                     continue;
                 }
                 prepareRecentsView(recentsView);
@@ -148,14 +236,22 @@ public final class LauncherRecentsHooks {
             Method method = clazz.getDeclaredMethod(methodName);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                Object result = chain.proceed();
                 Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View) {
+                    View recentsView = (View) thisObject;
+                    if (shouldSuppressStockTaskLaunchTransformMethod(recentsView, methodName)) {
+                        return null;
+                    }
+                }
+                Object result = chain.proceed();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
                     trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    captureStockTaskStates(recentsView);
-                    applyStackLayout(recentsView, false);
+                    if (shouldApplyDynamicStackLayout(recentsView)) {
+                        captureStockTaskStates(recentsView);
+                        applyStackLayout(recentsView, false);
+                    }
                 }
                 return result;
             });
@@ -184,8 +280,10 @@ public final class LauncherRecentsHooks {
                     View recentsView = (View) thisObject;
                     trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    captureStockTaskStates(recentsView);
-                    applyStackLayout(recentsView, false);
+                    if (shouldApplyDynamicStackLayout(recentsView)) {
+                        captureStockTaskStates(recentsView);
+                        applyStackLayout(recentsView, false);
+                    }
                 }
                 return result;
             });
@@ -208,8 +306,8 @@ public final class LauncherRecentsHooks {
                     View recentsView = (View) thisObject;
                     trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    captureStockTaskStates(recentsView);
-                    if (shouldUseStackLayout(recentsView)) {
+                    if (shouldApplyDynamicStackLayout(recentsView)) {
+                        captureStockTaskStates(recentsView);
                         applyStackLayout(recentsView, false);
                     }
                 }
@@ -234,8 +332,8 @@ public final class LauncherRecentsHooks {
                     View recentsView = (View) thisObject;
                     trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    captureStockTaskStates(recentsView);
-                    if (shouldUseStackLayout(recentsView)) {
+                    if (shouldApplyDynamicStackLayout(recentsView)) {
+                        captureStockTaskStates(recentsView);
                         applyStackLayout(recentsView, false);
                     }
                 }
@@ -259,7 +357,7 @@ public final class LauncherRecentsHooks {
                     View recentsView = (View) thisObject;
                     trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    if (shouldUseStackLayout(recentsView)) {
+                    if (shouldApplyDynamicStackLayout(recentsView)) {
                         applyStackLayout(recentsView, false);
                     }
                 }
@@ -310,7 +408,7 @@ public final class LauncherRecentsHooks {
                     View recentsView = (View) thisObject;
                     trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    if (shouldUseStackLayout(recentsView)) {
+                    if (shouldApplyDynamicStackLayout(recentsView)) {
                         applyStackLayout(recentsView, false);
                         recentsView.invalidate();
                         return null;
@@ -389,6 +487,81 @@ public final class LauncherRecentsHooks {
         }
     }
 
+    private static void hookRecentsViewResetTaskVisuals(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("resetTaskVisuals");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View) {
+                    View recentsView = (View) thisObject;
+                    if (shouldSuppressStockTaskLaunchVisualReset(recentsView)) {
+                        return null;
+                    }
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.resetTaskVisuals",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewWindowVisibilityChanged(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("onWindowVisibilityChanged", int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                Object result = chain.proceed();
+                if (thisObject instanceof View) {
+                    View recentsView = (View) thisObject;
+                    int visibility = chain.getArg(0) instanceof Integer ? (Integer) chain.getArg(0) : 0;
+                    if (visibility != View.VISIBLE && isTaskLaunchLayoutFrozen(recentsView)) {
+                        clearTaskLaunchHandoff(recentsView, false);
+                    }
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.onWindowVisibilityChanged",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewDetachedFromWindow(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("onDetachedFromWindow");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                Object result = chain.proceed();
+                if (thisObject instanceof View) {
+                    View recentsView = (View) thisObject;
+                    if (isTaskLaunchLayoutFrozen(recentsView)) {
+                        clearTaskLaunchHandoff(recentsView, false);
+                    }
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.onDetachedFromWindow",
+                    t);
+        }
+    }
+
     private static void hookPagedViewOnTouchEvent(FlymeStatusBarSizer module, ClassLoader loader) {
         try {
             Class<?> clazz = Class.forName(PAGED_VIEW_CLASS, false, loader);
@@ -420,6 +593,82 @@ public final class LauncherRecentsHooks {
         }
     }
 
+    private static void hookRecentsViewNotifyHandleActionUp(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Class<?> taskViewClass = Class.forName(TASK_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("notifyHandleActionUp", taskViewClass);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                Object arg0 = chain.getArg(0);
+                if (thisObject instanceof View && arg0 instanceof View) {
+                    View recentsView = (View) thisObject;
+                    View taskView = (View) arg0;
+                    if (shouldSuppressTaskHandleActionUp(recentsView, taskView)) {
+                        clearRecentsDeferredSnap(recentsView);
+                        return null;
+                    }
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.notifyHandleActionUp",
+                    t);
+        }
+    }
+
+    private static void hookPagedViewSetCurrentPageForTaskLaunch(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(PAGED_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("setCurrentPage", int.class, int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (shouldSuppressTaskLaunchPageMutation(thisObject)) {
+                    if (thisObject instanceof View) {
+                        clearRecentsDeferredSnap((View) thisObject);
+                    }
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook PagedView.setCurrentPage",
+                    t);
+        }
+    }
+
+    private static void hookPagedViewUpdateCurrentPageScrollForTaskLaunch(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(PAGED_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("updateCurrentPageScroll");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (shouldSuppressTaskLaunchPageMutation(thisObject)) {
+                    if (thisObject instanceof View) {
+                        clearRecentsDeferredSnap((View) thisObject);
+                    }
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook PagedView.updateCurrentPageScroll",
+                    t);
+        }
+    }
+
     private static void hookPagedViewSnapToDestination(FlymeStatusBarSizer module, ClassLoader loader) {
         try {
             Class<?> clazz = Class.forName(PAGED_VIEW_CLASS, false, loader);
@@ -431,7 +680,7 @@ public final class LauncherRecentsHooks {
                     View recentsView = (View) thisObject;
                     trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    if (shouldUseStackLayout(recentsView)) {
+                    if (shouldApplyDynamicStackLayout(recentsView)) {
                         applyStackLayout(recentsView, false);
                         recentsView.invalidate();
                         return null;
@@ -442,6 +691,129 @@ public final class LauncherRecentsHooks {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook PagedView.snapToDestination",
+                    t);
+        }
+    }
+
+    private static void hookPagedViewSnapToPageForTaskLaunch(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(PAGED_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod(
+                    "snapToPage",
+                    int.class,
+                    int.class,
+                    int.class,
+                    boolean.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (shouldSuppressTaskLaunchPageMutation(thisObject)) {
+                    if (thisObject instanceof View) {
+                        clearRecentsDeferredSnap((View) thisObject);
+                    }
+                    return false;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook PagedView.snapToPage",
+                    t);
+        }
+    }
+
+    private static void hookPagedViewScrollToForTaskLaunch(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(PAGED_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("scrollTo", int.class, int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (shouldSuppressTaskLaunchPageMutation(thisObject)) {
+                    if (thisObject instanceof View) {
+                        clearRecentsDeferredSnap((View) thisObject);
+                    }
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook PagedView.scrollTo",
+                    t);
+        }
+    }
+
+    private static void hookTaskViewClick(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(TASK_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("onClick");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View) {
+                    View taskView = (View) thisObject;
+                    if (consumeTaskClickBypass(taskView)) {
+                        return chain.proceed();
+                    }
+                    View recentsView = resolveOwningRecentsView(taskView);
+                    if (shouldReplaceTaskLaunchWithNoAnimation(recentsView, taskView)) {
+                        if (handleTaskClickWithoutSystemAnimation(taskView, recentsView)) {
+                            return null;
+                        }
+                        return chain.proceed();
+                    }
+                    if (shouldStartTaskLaunchHandoff(taskView, recentsView)) {
+                        startTaskLaunchHandoff(taskView, recentsView);
+                        return null;
+                    }
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook TaskView.onClick",
+                    t);
+        }
+    }
+
+    private static void hookTaskViewLaunchWithAnimation(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(TASK_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("launchWithAnimation");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                View recentsView = null;
+                if (thisObject instanceof View) {
+                    View taskView = (View) thisObject;
+                    recentsView = resolveOwningRecentsView(taskView);
+                    if (shouldReplaceTaskLaunchWithNoAnimation(recentsView, taskView)) {
+                        prepareTaskLaunchWithoutSystemAnimation(recentsView, taskView);
+                        if (launchTaskWithoutSystemAnimation(taskView, recentsView)) {
+                            return null;
+                        }
+                    }
+                    if (shouldUseStackLayout(recentsView) && !isDesktopTask(taskView)) {
+                        trackRecentsView(recentsView);
+                        prepareRecentsView(recentsView);
+                        TASK_LAUNCH_REQUEST_STARTED.put(recentsView, Boolean.TRUE);
+                        freezeTaskLaunchLayoutIfNeeded(recentsView, taskView);
+                    }
+                }
+                Object result = chain.proceed();
+                if (recentsView != null && isTaskLaunchLayoutFrozen(recentsView)) {
+                    attachTaskLaunchCleanup(recentsView, result);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook TaskView.launchWithAnimation",
                     t);
         }
     }
@@ -506,6 +878,10 @@ public final class LauncherRecentsHooks {
 
     private static void applyStackLayout(View recentsView, boolean captureStockState) {
         if (recentsView == null) {
+            return;
+        }
+        LaunchHandoffState launchState = ACTIVE_TASK_LAUNCH_HANDOFFS.get(recentsView);
+        if (launchState != null && launchState.frozen) {
             return;
         }
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
@@ -708,6 +1084,270 @@ public final class LauncherRecentsHooks {
             setStableAlpha(taskView, desiredStableAlpha);
             taskView.setTranslationZ(desiredTranslationZ);
         }
+        if (launchState != null && launchState.handoffEnabled) {
+            applyLaunchHandoffLayout(recentsView, launchState);
+        }
+    }
+
+    private static void hookTaskViewUtilsCreateRecentsWindowAnimator(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(TASK_VIEW_UTILS_CLASS, false, loader);
+            Class<?> recentsViewClass = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Class<?> taskViewClass = Class.forName(TASK_VIEW_CLASS, false, loader);
+            Class<?> remoteAnimationTargetArrayClass =
+                    Class.forName("[Landroid.view.RemoteAnimationTarget;", false, loader);
+            Class<?> depthControllerClass =
+                    Class.forName(
+                            "com.android.launcher3.statehandlers.DepthController",
+                            false,
+                            loader);
+            Class<?> transitionInfoClass = Class.forName("android.window.TransitionInfo", false, loader);
+            Class<?> pendingAnimationClass =
+                    Class.forName("com.android.launcher3.anim.PendingAnimation", false, loader);
+            Method method = clazz.getDeclaredMethod(
+                    "createRecentsWindowAnimator",
+                    recentsViewClass,
+                    taskViewClass,
+                    boolean.class,
+                    remoteAnimationTargetArrayClass,
+                    remoteAnimationTargetArrayClass,
+                    remoteAnimationTargetArrayClass,
+                    depthControllerClass,
+                    transitionInfoClass,
+                    pendingAnimationClass);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                View recentsView = chain.getArg(0) instanceof View ? (View) chain.getArg(0) : null;
+                View taskView = chain.getArg(1) instanceof View ? (View) chain.getArg(1) : null;
+                if (!shouldOverrideTaskLaunchStockGeometry(recentsView, taskView)) {
+                    return chain.proceed();
+                }
+                TaskLaunchSimulatorTranslationContext previousContext =
+                        ACTIVE_TASK_LAUNCH_SIMULATOR_TRANSLATION.get();
+                ACTIVE_TASK_LAUNCH_SIMULATOR_TRANSLATION.set(
+                        new TaskLaunchSimulatorTranslationContext(recentsView, taskView));
+                try {
+                    return chain.proceed();
+                } finally {
+                    restoreTaskLaunchSimulatorTranslationContext(previousContext);
+                }
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook TaskViewUtils.createRecentsWindowAnimator",
+                    t);
+        }
+    }
+
+    private static void hookTaskViewUtilsLaunchFrameCallback(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(TASK_VIEW_UTILS_CLASS, false, loader);
+            Class<?> remoteTargetHandleArrayClass =
+                    Class.forName("[Lcom.android.quickstep.RemoteTargetGluer$RemoteTargetHandle;", false, loader);
+            Class<?> recentsViewClass = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Class<?> taskViewClass = Class.forName(TASK_VIEW_CLASS, false, loader);
+            Class<?> pagedOrientationHandlerClass =
+                    Class.forName(PAGED_ORIENTATION_HANDLER_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod(
+                    "lambda$createRecentsWindowAnimator$0",
+                    remoteTargetHandleArrayClass,
+                    recentsViewClass,
+                    float[].class,
+                    taskViewClass,
+                    int[].class,
+                    RectF.class,
+                    boolean[].class,
+                    pagedOrientationHandlerClass);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                View recentsView = chain.getArg(1) instanceof View ? (View) chain.getArg(1) : null;
+                View taskView = chain.getArg(3) instanceof View ? (View) chain.getArg(3) : null;
+                if (!shouldSuppressTaskLaunchScrollCompensation(recentsView, taskView)) {
+                    return chain.proceed();
+                }
+                View previousRecentsView = ACTIVE_TASK_LAUNCH_SCROLL_COMPENSATION_BYPASS.get();
+                ACTIVE_TASK_LAUNCH_SCROLL_COMPENSATION_BYPASS.set(recentsView);
+                try {
+                    return chain.proceed();
+                } finally {
+                    restoreTaskLaunchScrollCompensationBypass(previousRecentsView);
+                }
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook TaskViewUtils launch frame callback",
+                    t);
+        }
+    }
+
+    private static void hookTaskViewSimulatorSetTaskRectTranslation(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(TASK_VIEW_SIMULATOR_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("setTaskRectTranslation", int.class, int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                TaskLaunchSimulatorTranslationContext context =
+                        ACTIVE_TASK_LAUNCH_SIMULATOR_TRANSLATION.get();
+                if (context == null
+                        || !shouldOverrideTaskLaunchStockGeometry(
+                        context.recentsView,
+                        context.taskView)) {
+                    return chain.proceed();
+                }
+                TaskLaunchTaskRectTranslation adjustedTranslation =
+                        resolveTaskLaunchTaskRectTranslation(
+                                context.recentsView,
+                                context.taskView);
+                if (adjustedTranslation == null) {
+                    return chain.proceed();
+                }
+                Object thisObject = chain.getThisObject();
+                setIntField(thisObject, "mTaskRectTranslationX", adjustedTranslation.translationX);
+                setIntField(thisObject, "mTaskRectTranslationY", adjustedTranslation.translationY);
+                invokeMethodReflectively(thisObject, "calculateTaskSize", NO_ARGS);
+                return null;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook TaskViewSimulator.setTaskRectTranslation",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewCreateAdjacentPageAnimForTaskLaunch(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Class<?> taskViewClass = Class.forName(TASK_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("createAdjacentPageAnimForTaskLaunch", taskViewClass);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                Object arg0 = chain.getArg(0);
+                if (!(thisObject instanceof View) || !(arg0 instanceof View)) {
+                    return chain.proceed();
+                }
+                View recentsView = (View) thisObject;
+                View taskView = (View) arg0;
+                if (!shouldUseStackFriendlyAdjacentLaunchAnimation(recentsView, taskView)) {
+                    return chain.proceed();
+                }
+                AnimatorSet animatorSet = new AnimatorSet();
+                animatorSet.play(ObjectAnimator.ofFloat(recentsView, "taskThumbnailSplashAlpha", 0.0f, 1.0f));
+                return animatorSet;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.createAdjacentPageAnimForTaskLaunch",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewCreateTaskLaunchAnimation(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Class<?> taskViewClass = Class.forName(TASK_VIEW_CLASS, false, loader);
+            Constructor<?> pendingAnimationConstructor =
+                    Class.forName("com.android.launcher3.anim.PendingAnimation", false, loader)
+                            .getDeclaredConstructor(long.class);
+            pendingAnimationConstructor.setAccessible(true);
+            Method method = clazz.getDeclaredMethod(
+                    "createTaskLaunchAnimation",
+                    taskViewClass,
+                    long.class,
+                    android.view.animation.Interpolator.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                Object arg0 = chain.getArg(0);
+                if (!(thisObject instanceof View) || !(arg0 instanceof View)) {
+                    return chain.proceed();
+                }
+                View recentsView = (View) thisObject;
+                View taskView = (View) arg0;
+                if (!shouldSuppressStockTaskLaunchAnimationBuild(recentsView, taskView)) {
+                    return chain.proceed();
+                }
+                Object emptyPendingAnimation =
+                        createPendingAnimationInstance(pendingAnimationConstructor, 0L);
+                if (emptyPendingAnimation == null) {
+                    return chain.proceed();
+                }
+                writeField(recentsView, "mPendingAnimation", emptyPendingAnimation);
+                return emptyPendingAnimation;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.createTaskLaunchAnimation",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewUpdateScrollSynchronously(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("updateScrollSynchronously");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View
+                        && shouldSuppressTaskLaunchSynchronousLayout((View) thisObject)) {
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.updateScrollSynchronously",
+                    t);
+        }
+    }
+
+    private static void hookViewScrollByForTaskLaunch(FlymeStatusBarSizer module) {
+        try {
+            Method method = View.class.getDeclaredMethod("scrollBy", int.class, int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (shouldSuppressRecentsLaunchScrollMutation(thisObject)) {
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook View.scrollBy for task launch",
+                    t);
+        }
+    }
+
+    private static void hookViewScrollToForTaskLaunch(FlymeStatusBarSizer module) {
+        try {
+            Method method = View.class.getDeclaredMethod("scrollTo", int.class, int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (shouldSuppressRecentsLaunchScrollMutation(thisObject)) {
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook View.scrollTo for task launch",
+                    t);
+        }
     }
 
     private static void restoreTaskTransforms(View recentsView, int taskViewCount) {
@@ -750,6 +1390,33 @@ public final class LauncherRecentsHooks {
                 && taskViewCount > 0
                 && !invokeBoolean(recentsView, "showAsGrid", false)
                 && !invokeBoolean(recentsView, "isSplitSelectionActive", false);
+    }
+
+    private static boolean shouldApplyDynamicStackLayout(View recentsView) {
+        return shouldUseStackLayout(recentsView) && !isTaskLaunchLayoutFrozen(recentsView);
+    }
+
+    private static boolean shouldSuppressStockTaskLaunchTransformMethod(
+            View recentsView,
+            String methodName) {
+        return recentsView != null
+                && isTaskLaunchLayoutFrozen(recentsView)
+                && ("updatePageOffsetsForFlyme".equals(methodName)
+                || "updatePageScales".equals(methodName));
+    }
+
+    private static boolean shouldSuppressStockTaskLaunchVisualReset(View recentsView) {
+        return recentsView != null && isTaskLaunchLayoutFrozen(recentsView);
+    }
+
+    private static boolean shouldSuppressStockTaskLaunchAnimationBuild(
+            View recentsView,
+            View taskView) {
+        return shouldOverrideTaskLaunchStockGeometry(recentsView, taskView);
+    }
+
+    private static boolean shouldSuppressTaskLaunchSynchronousLayout(View recentsView) {
+        return recentsView != null && isTaskLaunchLayoutFrozen(recentsView);
     }
 
     private static void reapplyOriginalTransforms(View recentsView) {
@@ -871,6 +1538,245 @@ public final class LauncherRecentsHooks {
         return shouldUseStackLayout(recentsView);
     }
 
+    private static boolean handleTaskClickWithoutSystemAnimation(
+            View taskView,
+            View recentsView) {
+        if (!shouldReplaceTaskLaunchWithNoAnimation(recentsView, taskView)) {
+            return false;
+        }
+        Object splitSelectResult = FlymeStatusBarSizer.invokeMethodCompat(
+                taskView,
+                "confirmSecondSplitSelectApp",
+                NO_ARGS);
+        if (splitSelectResult instanceof Boolean && (Boolean) splitSelectResult) {
+            return true;
+        }
+        FlymeStatusBarSizer.invokeMethodCompat(taskView, "updateUsageState", NO_ARGS);
+        prepareTaskLaunchWithoutSystemAnimation(recentsView, taskView);
+        return launchTaskWithoutSystemAnimation(taskView, recentsView);
+    }
+
+    private static boolean shouldSuppressTaskHandleActionUp(
+            View recentsView,
+            View taskView) {
+        return shouldReplaceTaskLaunchWithNoAnimation(recentsView, taskView);
+    }
+
+    private static boolean shouldStartTaskLaunchHandoff(View taskView, View recentsView) {
+        return taskView != null
+                && recentsView != null
+                && shouldUseStackLayout(recentsView)
+                && !isDesktopTask(taskView)
+                && !isTaskLaunchLayoutFrozen(recentsView)
+                && !ACTIVE_TASK_LAUNCH_HANDOFFS.containsKey(recentsView);
+    }
+
+    private static boolean shouldReplaceTaskLaunchWithNoAnimation(
+            View recentsView,
+            View taskView) {
+        return taskView != null
+                && recentsView != null
+                && shouldUseStackLayout(recentsView)
+                && !isDesktopTask(taskView);
+    }
+
+    private static boolean shouldOverrideTaskLaunchStockGeometry(View recentsView, View taskView) {
+        if (recentsView == null
+                || taskView == null
+                || !shouldUseStackLayout(recentsView)
+                || isDesktopTask(taskView)) {
+            return false;
+        }
+        LaunchHandoffState state = ACTIVE_TASK_LAUNCH_HANDOFFS.get(recentsView);
+        return state != null
+                && state.frozen
+                && state.targetTaskView == taskView;
+    }
+
+    private static boolean shouldSuppressTaskLaunchScrollCompensation(
+            View recentsView,
+            View taskView) {
+        return shouldOverrideTaskLaunchStockGeometry(recentsView, taskView)
+                && resolveTaskLaunchTaskRectTranslation(recentsView, taskView) != null;
+    }
+
+    private static boolean shouldUseStackFriendlyAdjacentLaunchAnimation(
+            View recentsView,
+            View taskView) {
+        if (!shouldOverrideTaskLaunchStockGeometry(recentsView, taskView)
+                || invokeBoolean(recentsView, "showAsGrid", false)) {
+            return false;
+        }
+        int taskIndex = resolveTaskViewIndex(recentsView, taskView);
+        int currentPage = invokeInt(recentsView, "getCurrentPage", 0);
+        return taskIndex >= 0 && taskIndex != currentPage;
+    }
+
+    private static void restoreTaskLaunchSimulatorTranslationContext(
+            TaskLaunchSimulatorTranslationContext previousContext) {
+        if (previousContext == null) {
+            ACTIVE_TASK_LAUNCH_SIMULATOR_TRANSLATION.remove();
+        } else {
+            ACTIVE_TASK_LAUNCH_SIMULATOR_TRANSLATION.set(previousContext);
+        }
+    }
+
+    private static void restoreTaskLaunchScrollCompensationBypass(View previousRecentsView) {
+        if (previousRecentsView == null) {
+            ACTIVE_TASK_LAUNCH_SCROLL_COMPENSATION_BYPASS.remove();
+        } else {
+            ACTIVE_TASK_LAUNCH_SCROLL_COMPENSATION_BYPASS.set(previousRecentsView);
+        }
+    }
+
+    private static void prepareTaskLaunchWithoutSystemAnimation(
+            View recentsView,
+            View taskView) {
+        if (recentsView == null || taskView == null) {
+            return;
+        }
+        cancelTaskLaunchHandoff(recentsView, true);
+        TASK_LAUNCH_REQUEST_STARTED.remove(recentsView);
+        trackRecentsView(recentsView);
+        prepareRecentsView(recentsView);
+        freezeTaskLaunchLayoutIfNeeded(recentsView, taskView);
+        recentsView.invalidate();
+    }
+
+    private static boolean shouldSuppressRecentsLaunchScrollMutation(Object thisObject) {
+        if (!(thisObject instanceof View)) {
+            return false;
+        }
+        View view = (View) thisObject;
+        View bypassRecentsView = ACTIVE_TASK_LAUNCH_SCROLL_COMPENSATION_BYPASS.get();
+        if (view == bypassRecentsView && bypassRecentsView != null) {
+            return true;
+        }
+        return isRecentsViewObject(view) && isTaskLaunchLayoutFrozen(view);
+    }
+
+    private static boolean shouldSuppressTaskLaunchPageMutation(Object thisObject) {
+        if (!(thisObject instanceof View)) {
+            return false;
+        }
+        View view = (View) thisObject;
+        return isRecentsViewObject(view) && isTaskLaunchLayoutFrozen(view);
+    }
+
+    private static boolean launchTaskWithoutSystemAnimation(View taskView, View recentsView) {
+        if (taskView == null) {
+            return false;
+        }
+        ClassLoader loader = taskView.getClass().getClassLoader();
+        if (loader == null) {
+            loader = LauncherRecentsHooks.class.getClassLoader();
+        }
+        if (loader == null) {
+            return false;
+        }
+        try {
+            Class<?> function1Class = Class.forName("kotlin.jvm.functions.Function1", false, loader);
+            final Object kotlinUnitInstance = resolveKotlinUnitInstance(loader);
+            final View callbackRecentsView = recentsView;
+            Object callback = Proxy.newProxyInstance(
+                    loader,
+                    new Class<?>[]{function1Class},
+                    (proxy, method, args) -> {
+                        String methodName = method.getName();
+                        if ("equals".equals(methodName)) {
+                            return proxy == (args != null && args.length > 0 ? args[0] : null);
+                        }
+                        if ("hashCode".equals(methodName)) {
+                            return System.identityHashCode(proxy);
+                        }
+                        if ("toString".equals(methodName)) {
+                            return "TaskLaunchWithoutAnimationCallback";
+                        }
+                        boolean launched = args != null
+                                && args.length > 0
+                                && args[0] instanceof Boolean
+                                && (Boolean) args[0];
+                        if (launched) {
+                            scheduleTaskLaunchNoAnimationCleanup(callbackRecentsView);
+                        } else {
+                            clearTaskLaunchHandoff(callbackRecentsView, true);
+                        }
+                        return kotlinUnitInstance;
+                    });
+            return invokeMethodReflectively(
+                    taskView,
+                    "launchWithoutAnimation",
+                    new Class<?>[]{boolean.class, function1Class},
+                    false,
+                    callback);
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to replace task launch animation with launchWithoutAnimation",
+                    t);
+            return false;
+        }
+    }
+
+    private static void scheduleTaskLaunchNoAnimationCleanup(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        Runnable cleanup = () -> clearTaskLaunchHandoff(recentsView, true);
+        Handler handler = ensureMainHandler();
+        if (handler != null) {
+            handler.postDelayed(cleanup, TASK_LAUNCH_NO_ANIMATION_CLEANUP_DELAY_MS);
+        } else {
+            recentsView.postDelayed(cleanup, TASK_LAUNCH_NO_ANIMATION_CLEANUP_DELAY_MS);
+        }
+    }
+
+    private static TaskLaunchTaskRectTranslation resolveTaskLaunchTaskRectTranslation(
+            View recentsView,
+            View taskView) {
+        if (recentsView == null || taskView == null) {
+            return null;
+        }
+        Rect baseTaskRect = new Rect();
+        FlymeStatusBarSizer.invokeMethodCompat(
+                recentsView,
+                "getTaskSize",
+                new Class<?>[]{Rect.class},
+                baseTaskRect);
+        if (baseTaskRect.isEmpty()) {
+            return null;
+        }
+        float actualTaskLeft = taskView.getX() - recentsView.getScrollX();
+        float actualTaskTop = taskView.getY() - recentsView.getScrollY();
+        return new TaskLaunchTaskRectTranslation(
+                Math.round(actualTaskLeft - baseTaskRect.left),
+                Math.round(actualTaskTop - baseTaskRect.top));
+    }
+
+    private static Object resolveKotlinUnitInstance(ClassLoader loader) {
+        try {
+            Class<?> unitClass = Class.forName("kotlin.Unit", false, loader);
+            Field field = unitClass.getField("INSTANCE");
+            return field.get(null);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static boolean consumeTaskClickBypass(View taskView) {
+        Boolean value = BYPASS_TASK_CLICK_INTERCEPTION.remove(taskView);
+        return value != null && value;
+    }
+
+    private static boolean consumeTaskLaunchRequestStarted(View recentsView) {
+        Boolean value = TASK_LAUNCH_REQUEST_STARTED.remove(recentsView);
+        return value != null && value;
+    }
+
+    private static boolean isTaskLaunchLayoutFrozen(View recentsView) {
+        LaunchHandoffState state = ACTIVE_TASK_LAUNCH_HANDOFFS.get(recentsView);
+        return state != null && state.frozen;
+    }
+
     private static boolean isRecentsGestureEndTarget(Object value) {
         return value instanceof Enum && "RECENTS".equals(((Enum<?>) value).name());
     }
@@ -964,6 +1870,318 @@ public final class LauncherRecentsHooks {
         setNonGridScale(taskView, readFloatField(taskView, "nonGridScale", 1f));
     }
 
+    private static void startTaskLaunchHandoff(View taskView, View recentsView) {
+        if (taskView == null || recentsView == null) {
+            return;
+        }
+        cancelTaskLaunchHandoff(recentsView, true);
+        TASK_LAUNCH_REQUEST_STARTED.remove(recentsView);
+        trackRecentsView(recentsView);
+        prepareRecentsView(recentsView);
+        LaunchHandoffState state = new LaunchHandoffState(
+                taskView,
+                resolveTaskViewIndex(recentsView, taskView),
+                shouldPromoteRearTaskDuringLaunch(recentsView, taskView),
+                true);
+        ACTIVE_TASK_LAUNCH_HANDOFFS.put(recentsView, state);
+        applyStackLayout(recentsView, false);
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        animator.setDuration(state.promoteRearCard
+                ? TASK_LAUNCH_HANDOFF_DURATION_MS
+                : TASK_LAUNCH_FRONT_HANDOFF_DURATION_MS);
+        animator.setInterpolator(BLANK_TAP_HOME_EXIT_INTERPOLATOR);
+        animator.addUpdateListener(animation -> {
+            Object value = animation.getAnimatedValue();
+            state.progress = value instanceof Float ? (Float) value : 0f;
+            recentsView.invalidate();
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (ACTIVE_TASK_LAUNCH_HANDOFF_ANIMATORS.get(recentsView) == animation) {
+                    ACTIVE_TASK_LAUNCH_HANDOFF_ANIMATORS.remove(recentsView);
+                }
+                if (ACTIVE_TASK_LAUNCH_HANDOFFS.get(recentsView) != state) {
+                    return;
+                }
+                if (cancelled) {
+                    clearTaskLaunchHandoff(recentsView, true);
+                    return;
+                }
+                completeTaskLaunchHandoff(recentsView, state);
+                continueTaskLaunchClick(taskView, recentsView);
+            }
+        });
+        ACTIVE_TASK_LAUNCH_HANDOFF_ANIMATORS.put(recentsView, animator);
+        animator.start();
+    }
+
+    private static void completeTaskLaunchHandoff(View recentsView, LaunchHandoffState state) {
+        if (recentsView == null || state == null) {
+            return;
+        }
+        state.progress = 1f;
+        applyStackLayout(recentsView, false);
+        state.frozen = true;
+        recentsView.invalidate();
+    }
+
+    private static void continueTaskLaunchClick(View taskView, View recentsView) {
+        if (taskView == null) {
+            clearTaskLaunchHandoff(recentsView, true);
+            return;
+        }
+        BYPASS_TASK_CLICK_INTERCEPTION.put(taskView, Boolean.TRUE);
+        writeField(taskView, "mDownTime", SystemClock.uptimeMillis());
+        try {
+            if (!invokeMethodReflectively(taskView, "onClick", NO_ARGS)) {
+                clearTaskLaunchHandoff(recentsView, true);
+                return;
+            }
+            if (!consumeTaskLaunchRequestStarted(recentsView)
+                    && isTaskLaunchLayoutFrozen(recentsView)) {
+                clearTaskLaunchHandoff(recentsView, true);
+            }
+        } finally {
+            BYPASS_TASK_CLICK_INTERCEPTION.remove(taskView);
+        }
+    }
+
+    private static void freezeTaskLaunchLayoutIfNeeded(View recentsView, View taskView) {
+        if (recentsView == null || taskView == null) {
+            return;
+        }
+        LaunchHandoffState state = ACTIVE_TASK_LAUNCH_HANDOFFS.get(recentsView);
+        if (state == null) {
+            state = new LaunchHandoffState(
+                    taskView,
+                    resolveTaskViewIndex(recentsView, taskView),
+                    false,
+                    false);
+            ACTIVE_TASK_LAUNCH_HANDOFFS.put(recentsView, state);
+        }
+        if (state.frozen) {
+            return;
+        }
+        state.progress = 1f;
+        if (state.handoffEnabled) {
+            applyStackLayout(recentsView, false);
+        }
+        state.frozen = true;
+        recentsView.invalidate();
+    }
+
+    private static void attachTaskLaunchCleanup(View recentsView, Object launchResult) {
+        Runnable cleanup = () -> clearTaskLaunchHandoff(recentsView, true);
+        if (launchResult == null) {
+            cleanup.run();
+            return;
+        }
+        if (!invokeMethodReflectively(
+                launchResult,
+                "add",
+                new Class<?>[]{Runnable.class},
+                cleanup)) {
+            cleanup.run();
+        }
+    }
+
+    private static void clearTaskLaunchHandoff(View recentsView, boolean restoreStack) {
+        if (recentsView == null) {
+            return;
+        }
+        TASK_LAUNCH_REQUEST_STARTED.remove(recentsView);
+        ACTIVE_TASK_LAUNCH_HANDOFFS.remove(recentsView);
+        cancelTaskLaunchHandoff(recentsView, false);
+        if (!restoreStack || !recentsView.isAttachedToWindow() || !recentsView.isShown()) {
+            return;
+        }
+        prepareRecentsView(recentsView);
+        if (shouldUseStackLayout(recentsView)) {
+            applyStackLayout(recentsView, false);
+        } else {
+            reapplyOriginalTransforms(recentsView);
+        }
+        recentsView.invalidate();
+    }
+
+    private static void cancelTaskLaunchHandoff(View recentsView, boolean restoreStack) {
+        ValueAnimator animator = ACTIVE_TASK_LAUNCH_HANDOFF_ANIMATORS.remove(recentsView);
+        if (animator != null) {
+            animator.cancel();
+        }
+        if (restoreStack) {
+            ACTIVE_TASK_LAUNCH_HANDOFFS.remove(recentsView);
+        }
+    }
+
+    private static int resolveTaskViewIndex(View recentsView, View taskView) {
+        int taskViewCount = invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            if (getTaskViewAt(recentsView, i) == taskView) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean shouldPromoteRearTaskDuringLaunch(View recentsView, View taskView) {
+        if (taskView == null) {
+            return false;
+        }
+        View frontTaskView = resolveFrontMostTaskView(recentsView);
+        if (frontTaskView == null || frontTaskView == taskView) {
+            return false;
+        }
+        return readFloatField(taskView, "nonGridScale", 1f)
+                < (readFloatField(frontTaskView, "nonGridScale", 1f) - 0.02f);
+    }
+
+    private static View resolveFrontMostTaskView(View recentsView) {
+        View frontTaskView = null;
+        float highestZ = Float.NEGATIVE_INFINITY;
+        int taskViewCount = invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = getTaskViewAt(recentsView, i);
+            if (taskView == null || isDesktopTask(taskView)) {
+                continue;
+            }
+            float translationZ = taskView.getTranslationZ();
+            if (frontTaskView == null || translationZ > highestZ) {
+                frontTaskView = taskView;
+                highestZ = translationZ;
+            }
+        }
+        return frontTaskView;
+    }
+
+    private static void applyLaunchHandoffLayout(View recentsView, LaunchHandoffState state) {
+        if (recentsView == null
+                || state == null
+                || state.frozen
+                || !state.handoffEnabled
+                || state.targetTaskView == null) {
+            return;
+        }
+        View targetTaskView = state.targetTaskView;
+        if (resolveOwningRecentsView(targetTaskView) != recentsView) {
+            return;
+        }
+        View frontTaskView = resolveFrontMostTaskView(recentsView);
+        float progress = smoothStep(state.progress);
+        float promoteProgress = state.promoteRearCard
+                ? smoothStep(remapProgress(progress, 0f, TASK_LAUNCH_REAR_PROMOTE_FRACTION))
+                : progress;
+        float settleProgress = state.promoteRearCard
+                ? smoothStep(remapProgress(progress, TASK_LAUNCH_REAR_PROMOTE_FRACTION, 1f))
+                : progress;
+        float siblingRetreatPx = Math.min(
+                Math.max(targetTaskView.getWidth(), recentsView.getWidth()) * 0.04f,
+                FlymeStatusBarSizer.dp(recentsView.getContext(), 22));
+        float siblingDropPx = Math.min(
+                Math.max(targetTaskView.getHeight(), recentsView.getHeight()) * 0.035f,
+                FlymeStatusBarSizer.dp(recentsView.getContext(), 14));
+        float targetLiftPx = Math.min(
+                Math.max(targetTaskView.getHeight(), recentsView.getHeight()) * 0.045f,
+                FlymeStatusBarSizer.dp(recentsView.getContext(), 18));
+        float targetExtraZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 18);
+        float anchorTaskOffsetX = frontTaskView != null
+                ? readFloatField(frontTaskView, "taskOffsetTranslationX", 0f)
+                : readFloatField(targetTaskView, "taskOffsetTranslationX", 0f);
+        float anchorTaskOffsetY = frontTaskView != null
+                ? readFloatField(frontTaskView, "taskOffsetTranslationY", 0f)
+                : readFloatField(targetTaskView, "taskOffsetTranslationY", 0f);
+        float anchorScale = frontTaskView != null
+                ? readFloatField(frontTaskView, "nonGridScale", 1f)
+                : readFloatField(targetTaskView, "nonGridScale", 1f);
+        float anchorZ = frontTaskView != null
+                ? frontTaskView.getTranslationZ()
+                : targetTaskView.getTranslationZ();
+
+        int taskViewCount = invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = getTaskViewAt(recentsView, i);
+            if (taskView == null || isDesktopTask(taskView)) {
+                continue;
+            }
+            float startHorizontalOffsetX = readFloatField(taskView, "horizontalOffsetTranslationX", 0f);
+            float startTaskOffsetX = readFloatField(taskView, "taskOffsetTranslationX", 0f);
+            float startTaskOffsetY = readFloatField(taskView, "taskOffsetTranslationY", 0f);
+            float startBoxTranslationY = readFloatField(
+                    taskView,
+                    "boxTranslationY",
+                    readOriginalBoxTranslationY(taskView));
+            float startScale = readFloatField(taskView, "nonGridScale", 1f);
+            float startAlpha = readStableAlpha(taskView);
+            float startTranslationZ = taskView.getTranslationZ();
+            if (taskView == targetTaskView) {
+                float handoffHorizontalOffsetX = startHorizontalOffsetX;
+                float handoffTaskOffsetX = startTaskOffsetX;
+                float handoffTaskOffsetY = startTaskOffsetY;
+                float handoffBoxTranslationY = startBoxTranslationY;
+                float handoffScale = startScale;
+                float handoffTranslationZ = startTranslationZ;
+                if (state.promoteRearCard) {
+                    handoffTaskOffsetX = lerp(
+                            startTaskOffsetX,
+                            lerp(startTaskOffsetX, anchorTaskOffsetX, 0.58f),
+                            promoteProgress);
+                    handoffTaskOffsetY = lerp(
+                            startTaskOffsetY,
+                            anchorTaskOffsetY - (targetLiftPx * 0.35f),
+                            promoteProgress);
+                    handoffBoxTranslationY = lerp(
+                            startBoxTranslationY,
+                            readLastStockBoxTranslationY(taskView),
+                            promoteProgress);
+                    handoffScale = lerp(startScale, Math.max(anchorScale, startScale), promoteProgress);
+                    handoffTranslationZ = lerp(
+                            startTranslationZ,
+                            Math.max(anchorZ, startTranslationZ) + (targetExtraZ * 0.35f),
+                            promoteProgress);
+                }
+                float endHorizontalOffsetX = readLastStockHorizontalOffsetX(taskView);
+                float endTaskOffsetX = readLastStockTaskOffsetX(taskView);
+                float endTaskOffsetY = readLastStockTaskOffsetY(taskView);
+                float endBoxTranslationY = readLastStockBoxTranslationY(taskView);
+                float endScale = readLastStockNonGridScale(taskView);
+                float endTranslationZ = Math.max(
+                        readLastStockTranslationZ(taskView),
+                        Math.max(anchorZ, startTranslationZ) + targetExtraZ);
+                // Handoff should end near the last stock launch geometry, otherwise Quickstep
+                // immediately applies a large horizontal compensation before its own launch anim.
+                setHorizontalOffsetTranslationX(
+                        taskView,
+                        lerp(handoffHorizontalOffsetX, endHorizontalOffsetX, settleProgress));
+                setTaskOffsetTranslationX(taskView, lerp(handoffTaskOffsetX, endTaskOffsetX, settleProgress));
+                setTaskOffsetTranslationY(taskView, lerp(handoffTaskOffsetY, endTaskOffsetY, settleProgress));
+                setBoxTranslationY(taskView, lerp(handoffBoxTranslationY, endBoxTranslationY, settleProgress));
+                setNonGridScale(taskView, lerp(handoffScale, endScale, settleProgress));
+                setStableAlpha(taskView, 1f);
+                taskView.setTranslationZ(lerp(handoffTranslationZ, endTranslationZ, settleProgress));
+                continue;
+            }
+            float direction = i < state.targetIndex ? -1f : 1f;
+            setHorizontalOffsetTranslationX(taskView, 0f);
+            setTaskOffsetTranslationX(taskView, startTaskOffsetX + (direction * siblingRetreatPx * progress));
+            setTaskOffsetTranslationY(taskView, startTaskOffsetY + (siblingDropPx * progress));
+            setBoxTranslationY(taskView, lerp(
+                    readFloatField(taskView, "boxTranslationY", readOriginalBoxTranslationY(taskView)),
+                    readOriginalBoxTranslationY(taskView),
+                    progress));
+            setNonGridScale(taskView, lerp(startScale, startScale * 0.965f, progress));
+            setStableAlpha(taskView, lerp(startAlpha, startAlpha * TASK_LAUNCH_SIBLING_END_ALPHA, progress));
+            taskView.setTranslationZ(lerp(startTranslationZ, Math.max(0f, startTranslationZ - targetExtraZ), progress));
+        }
+    }
+
     private static boolean shouldSuppressPagedRelease(View recentsView, MotionEvent motionEvent) {
         if (recentsView == null || motionEvent == null) {
             return false;
@@ -985,9 +2203,11 @@ public final class LauncherRecentsHooks {
         }
         releasePagedEdgeEffects(recentsView, motionEvent);
         FlymeStatusBarSizer.invokeMethodCompat(recentsView, "resetTouchState", NO_ARGS);
-        captureStockTaskStates(recentsView);
-        applyStackLayout(recentsView, false);
-        recentsView.invalidate();
+        if (shouldApplyDynamicStackLayout(recentsView)) {
+            captureStockTaskStates(recentsView);
+            applyStackLayout(recentsView, false);
+            recentsView.invalidate();
+        }
     }
 
     private static void startUnsnappedFlingIfNeeded(View recentsView, MotionEvent motionEvent) {
@@ -1500,6 +2720,19 @@ public final class LauncherRecentsHooks {
             }
         }
         return false;
+    }
+
+    private static Object createPendingAnimationInstance(
+            Constructor<?> constructor,
+            long durationMs) {
+        if (constructor == null) {
+            return null;
+        }
+        try {
+            return constructor.newInstance(durationMs);
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     private static float resolveStackEntryProgress(View recentsView) {
