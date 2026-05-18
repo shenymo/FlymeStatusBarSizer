@@ -1650,7 +1650,7 @@ public final class LauncherRecentsHooks {
             return;
         }
         cancelTaskLaunchHandoff(recentsView, true);
-        TASK_LAUNCH_REQUEST_STARTED.remove(recentsView);
+        TASK_LAUNCH_REQUEST_STARTED.put(recentsView, Boolean.TRUE);
         trackRecentsView(recentsView);
         prepareRecentsView(recentsView);
         freezeTaskLaunchLayoutIfNeeded(recentsView, taskView);
@@ -1735,7 +1735,10 @@ public final class LauncherRecentsHooks {
         if (recentsView == null) {
             return;
         }
-        Runnable cleanup = () -> clearTaskLaunchHandoff(recentsView, true);
+        // A successful task launch is leaving overview, so delayed cleanup should only clear the
+        // frozen handoff state. Restoring the stack while the launcher window is still transitioning
+        // out can flash the original recents cards for a frame.
+        Runnable cleanup = () -> clearTaskLaunchHandoff(recentsView, false);
         Handler handler = ensureMainHandler();
         if (handler != null) {
             handler.postDelayed(cleanup, TASK_LAUNCH_NO_ANIMATION_CLEANUP_DELAY_MS);
@@ -1764,6 +1767,37 @@ public final class LauncherRecentsHooks {
         return new TaskLaunchTaskRectTranslation(
                 Math.round(actualTaskLeft - baseTaskRect.left),
                 Math.round(actualTaskTop - baseTaskRect.top));
+    }
+
+    private static float[] resolveTaskLaunchTargetCenter(View recentsView) {
+        if (recentsView == null) {
+            return null;
+        }
+        Rect windowFrame = new Rect();
+        recentsView.getWindowVisibleDisplayFrame(windowFrame);
+        float windowCenterX;
+        float windowCenterY;
+        if (!windowFrame.isEmpty()) {
+            windowCenterX = windowFrame.exactCenterX();
+            windowCenterY = windowFrame.exactCenterY();
+        } else {
+            View rootView = recentsView.getRootView();
+            if (rootView == null || rootView.getWidth() <= 0 || rootView.getHeight() <= 0) {
+                return null;
+            }
+            int[] rootLocation = new int[2];
+            rootView.getLocationOnScreen(rootLocation);
+            windowCenterX = rootLocation[0] + (rootView.getWidth() * 0.5f);
+            windowCenterY = rootLocation[1] + (rootView.getHeight() * 0.5f);
+        }
+        int[] recentsLocation = new int[2];
+        recentsView.getLocationOnScreen(recentsLocation);
+        float recentsScaleX = Math.max(0.001f, recentsView.getScaleX());
+        float recentsScaleY = Math.max(0.001f, recentsView.getScaleY());
+        return new float[]{
+                ((windowCenterX - recentsLocation[0]) / recentsScaleX) + recentsView.getScrollX(),
+                ((windowCenterY - recentsLocation[1]) / recentsScaleY) + recentsView.getScrollY()
+        };
     }
 
     private static Object resolveKotlinUnitInstance(ClassLoader loader) {
@@ -2107,8 +2141,13 @@ public final class LauncherRecentsHooks {
                 : targetTaskView.getTranslationZ();
         float targetWidth = Math.max(1f, targetTaskView.getWidth());
         float targetHeight = Math.max(1f, targetTaskView.getHeight());
-        float viewportCenterX = recentsView.getScrollX() + (recentsView.getWidth() * 0.5f);
-        float viewportCenterY = recentsView.getScrollY() + (recentsView.getHeight() * 0.5f);
+        float[] handoffTargetCenter = resolveTaskLaunchTargetCenter(recentsView);
+        float viewportCenterX = handoffTargetCenter != null
+                ? handoffTargetCenter[0]
+                : recentsView.getScrollX() + (recentsView.getWidth() * 0.5f);
+        float viewportCenterY = handoffTargetCenter != null
+                ? handoffTargetCenter[1]
+                : recentsView.getScrollY() + (recentsView.getHeight() * 0.5f);
         float currentTargetCenterX = targetTaskView.getX() + (targetWidth * 0.5f);
         float currentTargetCenterY = targetTaskView.getY() + (targetHeight * 0.5f);
         float targetDeltaX = viewportCenterX - currentTargetCenterX;
