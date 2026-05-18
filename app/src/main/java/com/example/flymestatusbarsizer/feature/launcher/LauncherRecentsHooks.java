@@ -22,18 +22,24 @@ public final class LauncherRecentsHooks {
     private static final Class<?>[] NO_ARGS = new Class[0];
     private static final Class<?>[] INT_ARG = new Class[]{int.class};
     private static final Class<?>[] FLOAT_ARG = new Class[]{float.class};
+    private static final Class<?>[] BOOLEAN_ARG = new Class[]{boolean.class};
     private static final String LAUNCHER_RECENTS_VIEW_CLASS =
             "com.android.quickstep.views.LauncherRecentsView";
     private static final String PAGED_VIEW_CLASS = "com.android.launcher3.PagedView";
     private static final String RECENTS_VIEW_CLASS = "com.android.quickstep.views.RecentsView";
-    private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 300L;
-    private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.10f;
-    private static final float BLANK_TAP_HOME_EXIT_TRAVEL_RATIO = 1.25f;
-    private static final float STACK_BACK_REVEAL_DECAY = 0.80f;
-    private static final float STACK_HORIZONTAL_STEP_RATIO = 0.22f;
-    private static final float STACK_OUTGOING_TRAVEL_RATIO = 0.70f;
-    private static final float STACK_SCALE_STEP = 0.055f;
+    private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 360L;
+    private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.07f;
+    private static final float BLANK_TAP_HOME_EXIT_TRAVEL_RATIO = 0.90f;
+    private static final float STACK_BACK_CURVE_POWER = 0.82f;
+    private static final float STACK_FRONT_VISIBLE_RATIO = 0.40f;
+    private static final float STACK_FRONT_SHIFT_START_PROGRESS = 0.58f;
+    private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
+    private static final float STACK_OUTGOING_TRAVEL_RATIO = 0.48f;
+    private static final float STACK_BACK_SPREAD_RATIO = 0.14f;
+    private static final float STACK_SCALE_STEP = 0.065f;
     private static final float STACK_MIN_SCALE = 0.80f;
+    private static final float STACK_STACK_LEFT_SHIFT_RATIO = 0.08f;
+    private static final float STACK_VERTICAL_STEP_RATIO = 0.055f;
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final DecelerateInterpolator BLANK_TAP_HOME_EXIT_INTERPOLATOR =
             new DecelerateInterpolator(1.6f);
@@ -44,6 +50,17 @@ public final class LauncherRecentsHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<View, Float> ORIGINAL_NON_GRID_SCALES = new WeakHashMap<>();
     private static final WeakHashMap<View, Float> ORIGINAL_BOX_TRANSLATION_YS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Float> LAST_STOCK_TASK_OFFSET_XS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Float> LAST_STOCK_TASK_OFFSET_YS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Float> LAST_STOCK_HORIZONTAL_OFFSET_XS =
+            new WeakHashMap<>();
+    private static final WeakHashMap<View, Float> LAST_STOCK_NON_GRID_SCALES =
+            new WeakHashMap<>();
+    private static final WeakHashMap<View, Float> LAST_STOCK_BOX_TRANSLATION_YS =
+            new WeakHashMap<>();
+    private static final WeakHashMap<View, Float> LAST_STOCK_STABLE_ALPHAS = new WeakHashMap<>();
+    private static final WeakHashMap<View, Float> LAST_STOCK_TRANSLATION_ZS =
+            new WeakHashMap<>();
     private static volatile Handler mainHandler;
 
     private LauncherRecentsHooks() {
@@ -58,6 +75,7 @@ public final class LauncherRecentsHooks {
         hookRecentsViewMethod(module, loader, "updatePageScales");
         hookRecentsViewOnLayout(module, loader);
         hookRecentsViewOnScrollChanged(module, loader);
+        hookRecentsViewContentAlpha(module, loader);
         hookRecentsViewDraw(module, loader);
         hookRecentsViewStartHome(module, loader);
         hookRecentsViewFreeScrollSettling(module, loader);
@@ -73,7 +91,7 @@ public final class LauncherRecentsHooks {
                 }
                 prepareRecentsView(recentsView);
                 if (shouldUseStackLayout(recentsView)) {
-                    applyStackLayout(recentsView);
+                    applyStackLayout(recentsView, false);
                 } else {
                     reapplyOriginalTransforms(recentsView);
                 }
@@ -100,7 +118,8 @@ public final class LauncherRecentsHooks {
                         trackRecentsView(recentsView);
                         recentsView.post(() -> {
                             prepareRecentsView(recentsView);
-                            applyStackLayout(recentsView);
+                            captureStockTaskStates(recentsView);
+                            applyStackLayout(recentsView, false);
                         });
                     }
                     return result;
@@ -126,7 +145,8 @@ public final class LauncherRecentsHooks {
                     View recentsView = (View) thisObject;
                     trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    applyStackLayout(recentsView);
+                    captureStockTaskStates(recentsView);
+                    applyStackLayout(recentsView, false);
                 }
                 return result;
             });
@@ -155,7 +175,8 @@ public final class LauncherRecentsHooks {
                     View recentsView = (View) thisObject;
                     trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    applyStackLayout(recentsView);
+                    captureStockTaskStates(recentsView);
+                    applyStackLayout(recentsView, false);
                 }
                 return result;
             });
@@ -178,8 +199,9 @@ public final class LauncherRecentsHooks {
                     View recentsView = (View) thisObject;
                     trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
+                    captureStockTaskStates(recentsView);
                     if (shouldUseStackLayout(recentsView)) {
-                        applyStackLayout(recentsView);
+                        applyStackLayout(recentsView, false);
                         if (invokeBoolean(recentsView, "isScrollerFinished", false)
                                 && !invokeBoolean(recentsView, "isHandlingTouch", false)) {
                             syncCurrentPageToNearestIfNeeded(recentsView);
@@ -191,6 +213,32 @@ public final class LauncherRecentsHooks {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook RecentsView.onScrollChanged",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewContentAlpha(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("setContentAlpha", float.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View) {
+                    View recentsView = (View) thisObject;
+                    trackRecentsView(recentsView);
+                    prepareRecentsView(recentsView);
+                    captureStockTaskStates(recentsView);
+                    if (shouldUseStackLayout(recentsView)) {
+                        applyStackLayout(recentsView, false);
+                    }
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.setContentAlpha",
                     t);
         }
     }
@@ -207,7 +255,7 @@ public final class LauncherRecentsHooks {
                     trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (shouldUseStackLayout(recentsView)) {
-                        applyStackLayout(recentsView);
+                        applyStackLayout(recentsView, false);
                     }
                 }
                 return chain.proceed();
@@ -258,7 +306,7 @@ public final class LauncherRecentsHooks {
                     trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (shouldUseStackLayout(recentsView)) {
-                        applyStackLayout(recentsView);
+                        applyStackLayout(recentsView, false);
                         recentsView.invalidate();
                         return null;
                     }
@@ -285,7 +333,7 @@ public final class LauncherRecentsHooks {
                     prepareRecentsView(recentsView);
                     if (shouldUseStackLayout(recentsView)) {
                         syncCurrentPageToNearestIfNeeded(recentsView);
-                        applyStackLayout(recentsView);
+                        applyStackLayout(recentsView, false);
                         recentsView.invalidate();
                         return null;
                     }
@@ -319,7 +367,7 @@ public final class LauncherRecentsHooks {
         }
     }
 
-    private static void applyStackLayout(View recentsView) {
+    private static void applyStackLayout(View recentsView, boolean captureStockState) {
         if (recentsView == null) {
             return;
         }
@@ -371,17 +419,8 @@ public final class LauncherRecentsHooks {
             pageSpan = Math.max(1f, referenceWidth);
         }
 
-        float stackLeftMarginPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 16);
-        float stackLeftShiftPx = -Math.max(0f, (recentsView.getWidth() - referenceWidth) * 0.5f)
-                + stackLeftMarginPx;
-        float horizontalStepPx = Math.min(referenceWidth * STACK_HORIZONTAL_STEP_RATIO,
-                FlymeStatusBarSizer.dp(recentsView.getContext(), 92));
-        float outgoingTravelPx = Math.max(referenceWidth * STACK_OUTGOING_TRAVEL_RATIO,
-                FlymeStatusBarSizer.dp(recentsView.getContext(), 220));
-        float blankTapExitTravelPx = Math.max(
-                referenceWidth * BLANK_TAP_HOME_EXIT_TRAVEL_RATIO,
-                FlymeStatusBarSizer.dp(recentsView.getContext(), 320));
         float blankTapExitProgress = readBlankTapHomeExitProgress(recentsView);
+        float stackEntryProgress = resolveStackEntryProgress(recentsView);
         float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
         float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
 
@@ -394,6 +433,9 @@ public final class LauncherRecentsHooks {
                 restoreTaskTransform(taskView);
                 continue;
             }
+            if (captureStockState) {
+                captureStockTaskState(taskView);
+            }
             float rawOffset = rawOffsets[i];
             float dismissTranslationX = readFloatField(taskView, "dismissTranslationX", 0f);
             // Keep the stock gap-closing animation, but remap its logical page position into
@@ -401,39 +443,116 @@ public final class LauncherRecentsHooks {
             // adding a second full-page horizontal shift on top of it.
             float effectiveRawOffset = rawOffset + dismissTranslationX;
             float progress = effectiveRawOffset / pageSpan;
+            float taskWidth = taskView.getWidth() > 0 ? taskView.getWidth() : referenceWidth;
+            float taskHeight = taskView.getHeight() > 0 ? taskView.getHeight() : referenceHeight;
+            float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
+            float stackBaseOffsetPx = -Math.min(
+                    taskWidth * STACK_STACK_LEFT_SHIFT_RATIO,
+                    FlymeStatusBarSizer.dp(recentsView.getContext(), 72));
+            float stackFrontLeftPx = recentsView.getWidth() - (taskWidth * STACK_FRONT_VISIBLE_RATIO);
+            float stackFrontOffsetPx = stackFrontLeftPx - taskCenteredLeftPx;
+            float outgoingTravelPx = Math.max(
+                    taskWidth * STACK_OUTGOING_TRAVEL_RATIO,
+                    FlymeStatusBarSizer.dp(recentsView.getContext(), 180));
+            float stackBackSpreadPx = Math.min(
+                    taskWidth * STACK_BACK_SPREAD_RATIO,
+                    FlymeStatusBarSizer.dp(recentsView.getContext(), 96));
+            float stackVerticalStepPx = Math.min(
+                    taskHeight * STACK_VERTICAL_STEP_RATIO,
+                    FlymeStatusBarSizer.dp(recentsView.getContext(), 28));
+            float stackEntryLiftPx = Math.min(
+                    taskHeight * STACK_ENTRY_LIFT_RATIO,
+                    FlymeStatusBarSizer.dp(recentsView.getContext(), 40));
+            float blankTapExitTravelPx = Math.max(
+                    taskWidth * BLANK_TAP_HOME_EXIT_TRAVEL_RATIO,
+                    FlymeStatusBarSizer.dp(recentsView.getContext(), 220));
+            float stockVisibleOffset = effectiveRawOffset
+                    + readLastStockTaskOffsetX(taskView)
+                    + readLastStockHorizontalOffsetX(taskView);
+            float frontShiftProgress = remapProgress(
+                    stackEntryProgress,
+                    STACK_FRONT_SHIFT_START_PROGRESS,
+                    1.0f);
+            float frontBaseOffset = lerp(stackBaseOffsetPx, stackFrontOffsetPx, frontShiftProgress);
             float desiredVisibleOffset;
             float desiredScale;
             float desiredTranslationZ;
+            float desiredTaskOffsetY;
+            float desiredBoxTranslationY;
 
             if (progress >= 0f) {
-                float outgoingProgress = clamp(progress, 0f, MAX_STACK_LAYERS);
-                desiredVisibleOffset = stackLeftShiftPx + horizontalStepPx
-                        + (outgoingProgress * outgoingTravelPx);
-                desiredScale = Math.max(0.92f, 1.0f - (0.03f * outgoingProgress));
-                desiredTranslationZ = maxTranslationZ + (outgoingProgress * zStepPx);
+                float outgoingProgress = clamp(progress / MAX_STACK_LAYERS, 0f, 1f);
+                float outgoingCurve = (float) Math.pow(outgoingProgress, STACK_BACK_CURVE_POWER);
+                desiredVisibleOffset = frontBaseOffset + (outgoingTravelPx * outgoingCurve);
+                desiredScale = Math.max(0.90f, 1.0f - (0.03f * outgoingCurve * MAX_STACK_LAYERS));
+                desiredTranslationZ = Math.max(0f, maxTranslationZ - (outgoingCurve * zStepPx));
+                desiredTaskOffsetY = stackEntryLiftPx * (1.0f - stackEntryProgress);
             } else {
-                float stackDepth = Math.max(-progress, 0f);
-                float revealCurve = (float) Math.exp(-STACK_BACK_REVEAL_DECAY * stackDepth);
-                float visualStackDepth = clamp(stackDepth, 0f, MAX_STACK_LAYERS);
-                desiredVisibleOffset = stackLeftShiftPx + (horizontalStepPx * revealCurve);
+                float stackDepth = clamp(-progress, 0f, MAX_STACK_LAYERS);
+                float revealCurve = (float) Math.pow(
+                        clamp(stackDepth / MAX_STACK_LAYERS, 0f, 1f),
+                        STACK_BACK_CURVE_POWER);
+                float visualStackDepth = revealCurve * MAX_STACK_LAYERS;
+                float backgroundSpreadProgress = clamp(
+                        (stackDepth - 1.0f) / Math.max(1.0f, MAX_STACK_LAYERS - 1.0f),
+                        0f,
+                        1f);
+                float backgroundSpreadCurve = (float) Math.pow(
+                        backgroundSpreadProgress,
+                        STACK_BACK_CURVE_POWER);
+                float backgroundStackOffset = stackBaseOffsetPx
+                        - (stackBackSpreadPx * backgroundSpreadCurve);
+                float backgroundHandoffProgress = smoothStep(clamp(stackDepth, 0f, 1f));
+                desiredVisibleOffset = lerp(
+                        frontBaseOffset,
+                        backgroundStackOffset,
+                        backgroundHandoffProgress);
                 desiredScale = Math.max(
                         STACK_MIN_SCALE,
                         1.0f - (STACK_SCALE_STEP * visualStackDepth));
-                desiredTranslationZ = Math.max(0f, maxTranslationZ - (visualStackDepth * zStepPx));
+                desiredTranslationZ = Math.max(0f, maxTranslationZ - (revealCurve * maxTranslationZ));
+                desiredTaskOffsetY = (stackVerticalStepPx * visualStackDepth)
+                        + (stackEntryLiftPx * (1.0f - stackEntryProgress));
             }
+            desiredVisibleOffset = lerp(stockVisibleOffset, desiredVisibleOffset, stackEntryProgress);
+            desiredScale = lerp(readLastStockNonGridScale(taskView), desiredScale, stackEntryProgress);
+            desiredTaskOffsetY = lerp(
+                    readLastStockTaskOffsetY(taskView),
+                    desiredTaskOffsetY,
+                    stackEntryProgress);
+            desiredBoxTranslationY = lerp(
+                    readLastStockBoxTranslationY(taskView),
+                    readOriginalBoxTranslationY(taskView),
+                    stackEntryProgress);
+            desiredTranslationZ = lerp(
+                    readLastStockTranslationZ(taskView),
+                    desiredTranslationZ,
+                    stackEntryProgress);
+            float desiredStableAlpha = readLastStockStableAlpha(taskView);
             if (blankTapExitProgress > 0f) {
-                desiredVisibleOffset -= blankTapExitTravelPx * blankTapExitProgress;
-                desiredScale *= 1.0f - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * blankTapExitProgress);
+                if (isTaskVisibleInViewport(
+                        recentsView,
+                        taskCenteredLeftPx,
+                        taskWidth,
+                        desiredVisibleOffset,
+                        desiredScale)) {
+                    desiredVisibleOffset -= blankTapExitTravelPx * blankTapExitProgress;
+                    desiredScale *= 1.0f - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * blankTapExitProgress);
+                    desiredStableAlpha *= 1.0f - blankTapExitProgress;
+                } else {
+                    desiredStableAlpha = 0f;
+                }
             }
             float translationCompensationX = desiredVisibleOffset - effectiveRawOffset;
 
-            taskView.setPivotX(0f);
-            taskView.setPivotY(taskView.getHeight() * 0.5f);
+            taskView.setPivotX(taskWidth * 0.5f);
+            taskView.setPivotY(taskHeight * 0.5f);
             setHorizontalOffsetTranslationX(taskView, 0f);
             setTaskOffsetTranslationX(taskView, translationCompensationX);
-            setTaskOffsetTranslationY(taskView, 0f);
-            setBoxTranslationY(taskView, readOriginalBoxTranslationY(taskView));
+            setTaskOffsetTranslationY(taskView, desiredTaskOffsetY);
+            setBoxTranslationY(taskView, desiredBoxTranslationY);
             setNonGridScale(taskView, desiredScale);
+            setStableAlpha(taskView, desiredStableAlpha);
             taskView.setTranslationZ(desiredTranslationZ);
         }
     }
@@ -454,7 +573,8 @@ public final class LauncherRecentsHooks {
         setTaskOffsetTranslationY(taskView, 0f);
         setBoxTranslationY(taskView, readOriginalBoxTranslationY(taskView));
         setNonGridScale(taskView, readOriginalNonGridScale(taskView));
-        taskView.setTranslationZ(0f);
+        setStableAlpha(taskView, readLastStockStableAlpha(taskView));
+        taskView.setTranslationZ(readLastStockTranslationZ(taskView));
     }
 
     private static boolean shouldUseStackLayout(View recentsView) {
@@ -506,6 +626,7 @@ public final class LauncherRecentsHooks {
             }
             ACTIVE_HOME_EXIT_ANIMATORS.remove(recentsView);
         }
+        setPageAnimOffScreenStart(recentsView, true);
         setBlankTapHomeExitProgress(recentsView, 0f);
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(BLANK_TAP_HOME_EXIT_DURATION_MS);
@@ -571,6 +692,7 @@ public final class LauncherRecentsHooks {
             return;
         }
         BLANK_TAP_HOME_EXIT_PROGRESS.remove(recentsView);
+        setPageAnimOffScreenStart(recentsView, false);
         recentsView.invalidate();
     }
 
@@ -589,6 +711,35 @@ public final class LauncherRecentsHooks {
     private static View getTaskViewAt(View recentsView, int index) {
         Object value = FlymeStatusBarSizer.invokeMethodCompat(recentsView, "getTaskViewAt", INT_ARG, index);
         return value instanceof View ? (View) value : null;
+    }
+
+    private static void captureStockTaskStates(View recentsView) {
+        int taskViewCount = invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = getTaskViewAt(recentsView, i);
+            if (taskView == null || isDesktopTask(taskView)) {
+                continue;
+            }
+            captureStockTaskState(taskView);
+        }
+    }
+
+    private static void captureStockTaskState(View taskView) {
+        if (taskView == null) {
+            return;
+        }
+        rememberOriginalTaskState(taskView);
+        LAST_STOCK_TASK_OFFSET_XS.put(taskView, readFloatField(taskView, "taskOffsetTranslationX", 0f));
+        LAST_STOCK_TASK_OFFSET_YS.put(taskView, readFloatField(taskView, "taskOffsetTranslationY", 0f));
+        LAST_STOCK_HORIZONTAL_OFFSET_XS.put(
+                taskView,
+                readFloatField(taskView, "horizontalOffsetTranslationX", 0f));
+        LAST_STOCK_NON_GRID_SCALES.put(taskView, readFloatField(taskView, "nonGridScale", 1f));
+        LAST_STOCK_BOX_TRANSLATION_YS.put(
+                taskView,
+                readFloatField(taskView, "boxTranslationY", readOriginalBoxTranslationY(taskView)));
+        LAST_STOCK_STABLE_ALPHAS.put(taskView, readStableAlpha(taskView));
+        LAST_STOCK_TRANSLATION_ZS.put(taskView, taskView.getTranslationZ());
     }
 
     private static void setHorizontalOffsetTranslationX(View taskView, float value) {
@@ -631,6 +782,14 @@ public final class LauncherRecentsHooks {
                 value);
     }
 
+    private static void setStableAlpha(View taskView, float value) {
+        FlymeStatusBarSizer.invokeMethodCompat(
+                taskView,
+                "setStableAlpha",
+                FLOAT_ARG,
+                clamp(value, 0f, 1f));
+    }
+
     private static boolean isDesktopTask(View taskView) {
         return taskView != null
                 && taskView.getClass().getName().contains("DesktopTaskView");
@@ -667,6 +826,49 @@ public final class LauncherRecentsHooks {
     private static float readOriginalBoxTranslationY(View taskView) {
         Float value = ORIGINAL_BOX_TRANSLATION_YS.get(taskView);
         return value != null ? value : 0f;
+    }
+
+    private static float readLastStockTaskOffsetX(View taskView) {
+        Float value = LAST_STOCK_TASK_OFFSET_XS.get(taskView);
+        return value != null ? value : 0f;
+    }
+
+    private static float readLastStockTaskOffsetY(View taskView) {
+        Float value = LAST_STOCK_TASK_OFFSET_YS.get(taskView);
+        return value != null ? value : 0f;
+    }
+
+    private static float readLastStockHorizontalOffsetX(View taskView) {
+        Float value = LAST_STOCK_HORIZONTAL_OFFSET_XS.get(taskView);
+        return value != null ? value : 0f;
+    }
+
+    private static float readLastStockNonGridScale(View taskView) {
+        Float value = LAST_STOCK_NON_GRID_SCALES.get(taskView);
+        return value != null ? value : readOriginalNonGridScale(taskView);
+    }
+
+    private static float readLastStockBoxTranslationY(View taskView) {
+        Float value = LAST_STOCK_BOX_TRANSLATION_YS.get(taskView);
+        return value != null ? value : readOriginalBoxTranslationY(taskView);
+    }
+
+    private static float readLastStockStableAlpha(View taskView) {
+        Float value = LAST_STOCK_STABLE_ALPHAS.get(taskView);
+        return value != null ? value : 1f;
+    }
+
+    private static float readLastStockTranslationZ(View taskView) {
+        Float value = LAST_STOCK_TRANSLATION_ZS.get(taskView);
+        return value != null ? value : 0f;
+    }
+
+    private static float readStableAlpha(View taskView) {
+        Object value = FlymeStatusBarSizer.invokeMethodCompat(taskView, "getStableAlpha", NO_ARGS);
+        if (value instanceof Float) {
+            return (Float) value;
+        }
+        return taskView.getAlpha();
     }
 
     private static void syncCurrentPageToNearestIfNeeded(View recentsView) {
@@ -729,6 +931,60 @@ public final class LauncherRecentsHooks {
     private static boolean readBooleanField(Object target, String name, boolean fallback) {
         Object value = FlymeStatusBarSizer.getFieldCompat(target, name);
         return value instanceof Boolean ? (Boolean) value : fallback;
+    }
+
+    private static float resolveStackEntryProgress(View recentsView) {
+        float adjacentOffset = clamp(
+                readFloatField(recentsView, "mAdjacentPageHorizontalOffset", 0f),
+                0f,
+                1f);
+        float fullscreenProgress = clamp(
+                readFloatField(recentsView, "mFullscreenProgress", 0f),
+                0f,
+                1f);
+        float contentAlpha = clamp(
+                readFloatField(recentsView, "mContentAlpha", 1f),
+                0f,
+                1f);
+        float collapsedProgress = Math.max(adjacentOffset, fullscreenProgress);
+        return clamp((1.0f - collapsedProgress) * contentAlpha, 0f, 1f);
+    }
+
+    private static boolean isTaskVisibleInViewport(
+            View recentsView,
+            float centeredLeftPx,
+            float taskWidth,
+            float desiredVisibleOffset,
+            float desiredScale) {
+        float clampedScale = Math.max(0.5f, desiredScale);
+        float translatedLeftPx = centeredLeftPx + desiredVisibleOffset;
+        float actualLeftPx = translatedLeftPx + ((1.0f - clampedScale) * taskWidth * 0.5f);
+        float actualRightPx = actualLeftPx + (taskWidth * clampedScale);
+        return actualRightPx > 0f && actualLeftPx < recentsView.getWidth();
+    }
+
+    private static float lerp(float start, float end, float progress) {
+        return start + ((end - start) * clamp(progress, 0f, 1f));
+    }
+
+    private static float remapProgress(float value, float start, float end) {
+        if (end <= start) {
+            return value >= end ? 1f : 0f;
+        }
+        return clamp((value - start) / (end - start), 0f, 1f);
+    }
+
+    private static float smoothStep(float value) {
+        float clamped = clamp(value, 0f, 1f);
+        return clamped * clamped * (3.0f - (2.0f * clamped));
+    }
+
+    private static void setPageAnimOffScreenStart(View recentsView, boolean value) {
+        FlymeStatusBarSizer.invokeMethodCompat(
+                recentsView,
+                "setPageAnimOffScreenStart",
+                BOOLEAN_ARG,
+                value);
     }
 
     private static float clamp(float value, float min, float max) {
