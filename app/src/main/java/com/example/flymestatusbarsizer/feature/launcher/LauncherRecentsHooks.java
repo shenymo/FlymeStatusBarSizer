@@ -879,7 +879,10 @@ public final class LauncherRecentsHooks {
         if (recentsView == null) {
             return;
         }
-        Runnable applyRunnable = () -> finishRunningTaskReleaseToStack(recentsView);
+        Runnable applyRunnable = () -> {
+            finishRunningTaskRecentsAnimation(recentsView);
+            finishRunningTaskReleaseToStack(recentsView);
+        };
         if (!invokeMethodReflectively(
                 recentsView,
                 "switchToScreenshot",
@@ -911,6 +914,19 @@ public final class LauncherRecentsHooks {
         captureStockTaskStates(recentsView);
         applyStackLayout(recentsView, false);
         recentsView.invalidate();
+    }
+
+    private static void finishRunningTaskRecentsAnimation(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        invokeMethodReflectively(
+                recentsView,
+                "finishRecentsAnimation",
+                new Class<?>[]{boolean.class, boolean.class, Runnable.class},
+                true,
+                false,
+                null);
     }
 
     private static View resolveOwningRecentsView(View taskView) {
