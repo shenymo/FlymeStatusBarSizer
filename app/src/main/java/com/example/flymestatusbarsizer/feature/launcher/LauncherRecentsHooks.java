@@ -8,12 +8,15 @@ import android.animation.ValueAnimator;
 import android.graphics.Canvas;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.MotionEvent;
+import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.animation.DecelerateInterpolator;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.WeakHashMap;
@@ -30,15 +33,19 @@ public final class LauncherRecentsHooks {
     private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 360L;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.07f;
     private static final float BLANK_TAP_HOME_EXIT_TRAVEL_RATIO = 0.90f;
-    private static final float STACK_BACK_CURVE_POWER = 0.82f;
-    private static final float STACK_FRONT_VISIBLE_RATIO = 0.40f;
+    private static final float STACK_DEPTH_CURVE_POWER = 0.82f;
+    private static final float STACK_FRONT_VISIBLE_RATIO = 0.50f;
     private static final float STACK_FRONT_SHIFT_START_PROGRESS = 0.58f;
+    private static final float STACK_FRONT_REVEAL_CURVE_POWER = 1.28f;
+    private static final float STACK_OVERLAP_RELEASE_CURVE_POWER = 1.22f;
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
-    private static final float STACK_OUTGOING_TRAVEL_RATIO = 0.48f;
+    private static final float STACK_OUTGOING_TRAVEL_RATIO = 0.34f;
+    private static final float STACK_OUTGOING_CURVE_POWER = 1.30f;
     private static final float STACK_BACK_SPREAD_RATIO = 0.14f;
+    private static final float STACK_MIN_OVERLAP_RATIO = 0.16f;
     private static final float STACK_SCALE_STEP = 0.065f;
     private static final float STACK_MIN_SCALE = 0.80f;
-    private static final float STACK_LEFT_OVERFLOW_RATIO = 0.05f;
+    private static final float STACK_LEFT_INSET_RATIO = 0.05f;
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final DecelerateInterpolator BLANK_TAP_HOME_EXIT_INTERPOLATOR =
             new DecelerateInterpolator(1.6f);
@@ -78,6 +85,7 @@ public final class LauncherRecentsHooks {
         hookRecentsViewDraw(module, loader);
         hookRecentsViewStartHome(module, loader);
         hookRecentsViewFreeScrollSettling(module, loader);
+        hookPagedViewOnTouchEvent(module, loader);
         hookPagedViewSnapToDestination(module, loader);
     }
 
@@ -201,10 +209,6 @@ public final class LauncherRecentsHooks {
                     captureStockTaskStates(recentsView);
                     if (shouldUseStackLayout(recentsView)) {
                         applyStackLayout(recentsView, false);
-                        if (invokeBoolean(recentsView, "isScrollerFinished", false)
-                                && !invokeBoolean(recentsView, "isHandlingTouch", false)) {
-                            syncCurrentPageToNearestIfNeeded(recentsView);
-                        }
                     }
                 }
                 return result;
@@ -319,6 +323,37 @@ public final class LauncherRecentsHooks {
         }
     }
 
+    private static void hookPagedViewOnTouchEvent(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(PAGED_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("onTouchEvent", MotionEvent.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                MotionEvent motionEvent = chain.getArg(0) instanceof MotionEvent
+                        ? (MotionEvent) chain.getArg(0)
+                        : null;
+                if (isRecentsViewObject(thisObject)
+                        && thisObject instanceof View
+                        && motionEvent != null) {
+                    View recentsView = (View) thisObject;
+                    if (shouldUseStackLayout(recentsView)
+                            && shouldSuppressPagedRelease(recentsView, motionEvent)) {
+                        trackRecentsView(recentsView);
+                        prepareRecentsView(recentsView);
+                        suppressPagedRelease(recentsView, motionEvent);
+                        return true;
+                    }
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook PagedView.onTouchEvent",
+                    t);
+        }
+    }
+
     private static void hookPagedViewSnapToDestination(FlymeStatusBarSizer module, ClassLoader loader) {
         try {
             Class<?> clazz = Class.forName(PAGED_VIEW_CLASS, false, loader);
@@ -331,7 +366,6 @@ public final class LauncherRecentsHooks {
                     trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (shouldUseStackLayout(recentsView)) {
-                        syncCurrentPageToNearestIfNeeded(recentsView);
                         applyStackLayout(recentsView, false);
                         recentsView.invalidate();
                         return null;
@@ -445,8 +479,9 @@ public final class LauncherRecentsHooks {
             float taskWidth = taskView.getWidth() > 0 ? taskView.getWidth() : referenceWidth;
             float taskHeight = taskView.getHeight() > 0 ? taskView.getHeight() : referenceHeight;
             float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
+            float stackBaseLeftPx = taskWidth * STACK_LEFT_INSET_RATIO;
             float stackBaseOffsetPx =
-                    -taskCenteredLeftPx - (taskWidth * STACK_LEFT_OVERFLOW_RATIO);
+                    -taskCenteredLeftPx + (taskWidth * STACK_LEFT_INSET_RATIO);
             float stackFrontLeftPx = recentsView.getWidth() - (taskWidth * STACK_FRONT_VISIBLE_RATIO);
             float stackFrontOffsetPx = stackFrontLeftPx - taskCenteredLeftPx;
             float outgoingTravelPx = Math.max(
@@ -477,16 +512,33 @@ public final class LauncherRecentsHooks {
 
             if (progress >= 0f) {
                 float outgoingProgress = clamp(progress / MAX_STACK_LAYERS, 0f, 1f);
-                float outgoingCurve = (float) Math.pow(outgoingProgress, STACK_BACK_CURVE_POWER);
-                desiredVisibleOffset = frontBaseOffset + (outgoingTravelPx * outgoingCurve);
+                float outgoingCurve = (float) Math.pow(outgoingProgress, STACK_OUTGOING_CURVE_POWER);
+                float uncappedVisibleOffset = frontBaseOffset + (outgoingTravelPx * outgoingCurve);
+                float overlapReleaseBase = (float) Math.pow(
+                        clamp(progress, 0f, 1f),
+                        STACK_OVERLAP_RELEASE_CURVE_POWER);
+                float dynamicOverlapRatio = STACK_MIN_OVERLAP_RATIO
+                        * (1.0f - smoothStep(overlapReleaseBase));
+                float dynamicFrontLimitLeftPx = stackBaseLeftPx
+                        + (taskWidth * (1.0f - dynamicOverlapRatio));
+                float cappedVisibleOffset = Math.min(
+                        uncappedVisibleOffset,
+                        dynamicFrontLimitLeftPx - taskCenteredLeftPx);
+                float overlapReleaseProgress = smoothStep(remapProgress(progress, 0f, 1.0f));
+                desiredVisibleOffset = lerp(
+                        cappedVisibleOffset,
+                        uncappedVisibleOffset,
+                        overlapReleaseProgress);
                 desiredScale = Math.max(0.90f, 1.0f - (0.03f * outgoingCurve * MAX_STACK_LAYERS));
-                desiredTranslationZ = Math.max(0f, maxTranslationZ - (outgoingCurve * zStepPx));
+                desiredTranslationZ = maxTranslationZ
+                        + zStepPx
+                        + (outgoingCurve * maxTranslationZ);
                 desiredTaskOffsetY = stackEntryLiftPx * (1.0f - stackEntryProgress);
             } else {
                 float stackDepth = clamp(-progress, 0f, MAX_STACK_LAYERS);
                 float revealCurve = (float) Math.pow(
                         clamp(stackDepth / MAX_STACK_LAYERS, 0f, 1f),
-                        STACK_BACK_CURVE_POWER);
+                        STACK_DEPTH_CURVE_POWER);
                 float visualStackDepth = revealCurve * MAX_STACK_LAYERS;
                 float backgroundSpreadProgress = clamp(
                         (stackDepth - 1.0f) / Math.max(1.0f, MAX_STACK_LAYERS - 1.0f),
@@ -494,14 +546,17 @@ public final class LauncherRecentsHooks {
                         1f);
                 float backgroundSpreadCurve = (float) Math.pow(
                         backgroundSpreadProgress,
-                        STACK_BACK_CURVE_POWER);
+                        STACK_DEPTH_CURVE_POWER);
                 float backgroundStackOffset = stackBaseOffsetPx
                         - (stackBackSpreadPx * backgroundSpreadCurve);
-                float backgroundHandoffProgress = smoothStep(clamp(stackDepth, 0f, 1f));
+                float frontRevealBase = (float) Math.pow(
+                        1.0f - clamp(stackDepth, 0f, 1f),
+                        STACK_FRONT_REVEAL_CURVE_POWER);
+                float frontRevealProgress = smoothStep(frontRevealBase);
                 desiredVisibleOffset = lerp(
-                        frontBaseOffset,
                         backgroundStackOffset,
-                        backgroundHandoffProgress);
+                        frontBaseOffset,
+                        frontRevealProgress);
                 desiredScale = Math.max(
                         STACK_MIN_SCALE,
                         1.0f - (STACK_SCALE_STEP * visualStackDepth));
@@ -707,6 +762,301 @@ public final class LauncherRecentsHooks {
         return value instanceof View ? (View) value : null;
     }
 
+    private static boolean shouldSuppressPagedRelease(View recentsView, MotionEvent motionEvent) {
+        if (recentsView == null || motionEvent == null) {
+            return false;
+        }
+        int action = motionEvent.getActionMasked();
+        return (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)
+                && invokeBoolean(recentsView, "isHandlingTouch", false);
+    }
+
+    private static void suppressPagedRelease(View recentsView, MotionEvent motionEvent) {
+        if (recentsView == null) {
+            return;
+        }
+        clearRecentsDeferredSnap(recentsView);
+        if (motionEvent != null && motionEvent.getActionMasked() == MotionEvent.ACTION_UP) {
+            startUnsnappedFlingIfNeeded(recentsView, motionEvent);
+        } else {
+            FlymeStatusBarSizer.invokeMethodCompat(recentsView, "abortScrollerAnimation", NO_ARGS);
+        }
+        releasePagedEdgeEffects(recentsView, motionEvent);
+        FlymeStatusBarSizer.invokeMethodCompat(recentsView, "resetTouchState", NO_ARGS);
+        captureStockTaskStates(recentsView);
+        applyStackLayout(recentsView, false);
+        recentsView.invalidate();
+    }
+
+    private static void startUnsnappedFlingIfNeeded(View recentsView, MotionEvent motionEvent) {
+        if (recentsView == null || motionEvent == null) {
+            return;
+        }
+        Object velocityTrackerValue = FlymeStatusBarSizer.getFieldCompat(recentsView, "mVelocityTracker");
+        if (!(velocityTrackerValue instanceof VelocityTracker)) {
+            return;
+        }
+        VelocityTracker velocityTracker = (VelocityTracker) velocityTrackerValue;
+        velocityTracker.addMovement(motionEvent);
+        int maximumVelocity = invokeInt(recentsView, "getMaximumVelocity", Integer.MAX_VALUE);
+        velocityTracker.computeCurrentVelocity(1000, maximumVelocity);
+        int activePointerId = readIntField(recentsView, "mActivePointerId", -1);
+        int primaryVelocity = Math.round(resolvePrimaryVelocity(recentsView, velocityTracker, activePointerId));
+        int primaryScroll = resolvePrimaryScroll(recentsView);
+        int minScroll = readIntField(recentsView, "mMinScroll", primaryScroll);
+        int maxScroll = readIntField(recentsView, "mMaxScroll", primaryScroll);
+
+        if (primaryScroll < minScroll || primaryScroll > maxScroll) {
+            startPagedSpringBack(recentsView, primaryScroll, minScroll, maxScroll);
+            return;
+        }
+        if (!shouldKeepFreeScrollFling(recentsView, primaryVelocity)) {
+            return;
+        }
+        Object scroller = FlymeStatusBarSizer.getFieldCompat(recentsView, "mScroller");
+        if (scroller == null) {
+            return;
+        }
+        setScrollerFriction(scroller, 0.03f);
+        if (!startScrollerFling(recentsView, scroller, primaryScroll, primaryVelocity, minScroll, maxScroll)) {
+            return;
+        }
+        setIntField(recentsView, "mNextPage", readIntField(recentsView, "mCurrentPage", -1));
+    }
+
+    private static boolean shouldKeepFreeScrollFling(View recentsView, int primaryVelocity) {
+        Object value = FlymeStatusBarSizer.invokeMethodCompat(
+                recentsView,
+                "shouldFlingForVelocity",
+                INT_ARG,
+                primaryVelocity);
+        return value instanceof Boolean && (Boolean) value;
+    }
+
+    private static float resolvePrimaryVelocity(
+            View recentsView,
+            VelocityTracker velocityTracker,
+            int activePointerId) {
+        Object orientationHandler = FlymeStatusBarSizer.getFieldCompat(recentsView, "mOrientationHandler");
+        Object value = FlymeStatusBarSizer.invokeMethodCompat(
+                orientationHandler,
+                "getPrimaryVelocity",
+                new Class<?>[]{VelocityTracker.class, int.class},
+                velocityTracker,
+                activePointerId);
+        if (value instanceof Float) {
+            return (Float) value;
+        }
+        if (value instanceof Double) {
+            return ((Double) value).floatValue();
+        }
+        return activePointerId >= 0
+                ? velocityTracker.getXVelocity(activePointerId)
+                : velocityTracker.getXVelocity();
+    }
+
+    private static int resolvePrimaryScroll(View recentsView) {
+        Object orientationHandler = FlymeStatusBarSizer.getFieldCompat(recentsView, "mOrientationHandler");
+        Object value = FlymeStatusBarSizer.invokeMethodCompat(
+                orientationHandler,
+                "getPrimaryScroll",
+                new Class<?>[]{View.class},
+                recentsView);
+        return value instanceof Integer ? (Integer) value : recentsView.getScrollX();
+    }
+
+    private static void startPagedSpringBack(
+            View recentsView,
+            int primaryScroll,
+            int minScroll,
+            int maxScroll) {
+        Object scroller = FlymeStatusBarSizer.getFieldCompat(recentsView, "mScroller");
+        if (scroller == null) {
+            return;
+        }
+        invokeScrollerSpringBack(scroller, primaryScroll, minScroll, maxScroll);
+        setIntField(recentsView, "mNextPage", readIntField(recentsView, "mCurrentPage", -1));
+    }
+
+    private static boolean startScrollerFling(
+            View recentsView,
+            Object scroller,
+            int primaryScroll,
+            int primaryVelocity,
+            int minScroll,
+            int maxScroll) {
+        int overX = Math.round(recentsView.getWidth() * 0.5f * 0.07f);
+        invokeScrollerFling10(scroller, primaryScroll, primaryVelocity, minScroll, maxScroll, overX);
+        int afterFinalX = readScrollerFinalX(scroller, primaryScroll);
+        if (afterFinalX != primaryScroll) {
+            return true;
+        }
+        invokeScrollerFling8(scroller, primaryScroll, primaryVelocity, minScroll, maxScroll);
+        return readScrollerFinalX(scroller, primaryScroll) != primaryScroll;
+    }
+
+    private static void setScrollerFriction(Object scroller, float friction) {
+        invokeScrollerMethod(scroller, "setFriction", FLOAT_ARG, friction);
+    }
+
+    private static void invokeScrollerSpringBack(
+            Object scroller,
+            int primaryScroll,
+            int minScroll,
+            int maxScroll) {
+        invokeScrollerMethod(
+                scroller,
+                "springBack",
+                new Class<?>[]{
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class
+                },
+                primaryScroll,
+                0,
+                minScroll,
+                maxScroll,
+                0,
+                0);
+    }
+
+    private static void invokeScrollerFling10(
+            Object scroller,
+            int primaryScroll,
+            int primaryVelocity,
+            int minScroll,
+            int maxScroll,
+            int overX) {
+        invokeScrollerMethod(
+                scroller,
+                "fling",
+                new Class<?>[]{
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class
+                },
+                primaryScroll,
+                0,
+                -primaryVelocity,
+                0,
+                minScroll,
+                maxScroll,
+                0,
+                0,
+                overX,
+                0);
+    }
+
+    private static void invokeScrollerFling8(
+            Object scroller,
+            int primaryScroll,
+            int primaryVelocity,
+            int minScroll,
+            int maxScroll) {
+        invokeScrollerMethod(
+                scroller,
+                "fling",
+                new Class<?>[]{
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class
+                },
+                primaryScroll,
+                0,
+                -primaryVelocity,
+                0,
+                minScroll,
+                maxScroll,
+                0,
+                0);
+    }
+
+    private static void invokeScrollerMethod(
+            Object scroller,
+            String methodName,
+            Class<?>[] parameterTypes,
+            Object... args) {
+        if (scroller == null) {
+            return;
+        }
+        FlymeStatusBarSizer.invokeMethodCompat(scroller, methodName, parameterTypes, args);
+        Object activeScroller = FlymeStatusBarSizer.getFieldCompat(scroller, "usingScroller");
+        if (activeScroller != null && activeScroller != scroller) {
+            FlymeStatusBarSizer.invokeMethodCompat(activeScroller, methodName, parameterTypes, args);
+        }
+    }
+
+    private static int readScrollerFinalX(Object scroller, int fallback) {
+        if (scroller == null) {
+            return fallback;
+        }
+        Object value = FlymeStatusBarSizer.invokeMethodCompat(scroller, "getFinalX", NO_ARGS);
+        if (value instanceof Integer) {
+            return (Integer) value;
+        }
+        Object activeScroller = FlymeStatusBarSizer.getFieldCompat(scroller, "usingScroller");
+        Object activeValue = FlymeStatusBarSizer.invokeMethodCompat(activeScroller, "getFinalX", NO_ARGS);
+        return activeValue instanceof Integer ? (Integer) activeValue : fallback;
+    }
+
+    private static void releasePagedEdgeEffects(View recentsView, MotionEvent motionEvent) {
+        if (recentsView == null) {
+            return;
+        }
+        releaseEdgeEffect(FlymeStatusBarSizer.getFieldCompat(recentsView, "mEdgeGlowLeft"), motionEvent);
+        releaseEdgeEffect(FlymeStatusBarSizer.getFieldCompat(recentsView, "mEdgeGlowRight"), motionEvent);
+    }
+
+    private static void releaseEdgeEffect(Object edgeEffect, MotionEvent motionEvent) {
+        if (edgeEffect == null) {
+            return;
+        }
+        if (motionEvent != null) {
+            FlymeStatusBarSizer.invokeMethodCompat(
+                    edgeEffect,
+                    "onRelease",
+                    new Class<?>[]{MotionEvent.class},
+                    motionEvent);
+        }
+        FlymeStatusBarSizer.invokeMethodCompat(edgeEffect, "onRelease", NO_ARGS);
+    }
+
+    private static void clearRecentsDeferredSnap(View recentsView) {
+        Object handlerValue = FlymeStatusBarSizer.getFieldCompat(
+                recentsView,
+                "mMainHandlerForAbortScrollAndCheckSnap");
+        Object timeoutValue = FlymeStatusBarSizer.getFieldCompat(recentsView, "mTimeoutToCheckSnap");
+        Object abortRunnerValue = FlymeStatusBarSizer.getFieldCompat(
+                recentsView,
+                "mAbortRecentsViewScrollAnimRunner");
+        if (handlerValue instanceof Handler) {
+            Handler handler = (Handler) handlerValue;
+            if (timeoutValue instanceof Runnable) {
+                handler.removeCallbacks((Runnable) timeoutValue);
+            }
+            if (abortRunnerValue instanceof Runnable) {
+                handler.removeCallbacks((Runnable) abortRunnerValue);
+            }
+        }
+        setBooleanField(recentsView, "mNeedCheckSnapToDestination", false);
+        setIntField(recentsView, "mLastHandleActionUpChildIndex", -1);
+    }
+
     private static void captureStockTaskStates(View recentsView) {
         int taskViewCount = invokeInt(recentsView, "getTaskViewCount", 0);
         for (int i = 0; i < taskViewCount; i++) {
@@ -865,34 +1215,6 @@ public final class LauncherRecentsHooks {
         return taskView.getAlpha();
     }
 
-    private static void syncCurrentPageToNearestIfNeeded(View recentsView) {
-        int page = findNearestTaskIndexByRawOffset(recentsView);
-        int currentPage = invokeInt(recentsView, "getCurrentPage", -1);
-        if (page >= 0 && page != currentPage) {
-            FlymeStatusBarSizer.invokeMethodCompat(recentsView, "setCurrentPage", INT_ARG, page);
-        }
-    }
-
-    private static int findNearestTaskIndexByRawOffset(View recentsView) {
-        int taskViewCount = invokeInt(recentsView, "getTaskViewCount", 0);
-        int bestIndex = -1;
-        float bestDistance = Float.MAX_VALUE;
-        for (int i = 0; i < taskViewCount; i++) {
-            float offset = invokeInt(
-                    recentsView,
-                    "getUnclampedScrollOffset",
-                    INT_ARG,
-                    invokeInt(recentsView, "getScrollOffset", INT_ARG, 0, i),
-                    i);
-            float distance = Math.abs(offset);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                bestIndex = i;
-            }
-        }
-        return bestIndex;
-    }
-
     private static int invokeInt(Object target, String methodName, int fallback) {
         return invokeInt(target, methodName, NO_ARGS, fallback);
     }
@@ -925,6 +1247,33 @@ public final class LauncherRecentsHooks {
     private static boolean readBooleanField(Object target, String name, boolean fallback) {
         Object value = FlymeStatusBarSizer.getFieldCompat(target, name);
         return value instanceof Boolean ? (Boolean) value : fallback;
+    }
+
+    private static void setBooleanField(Object target, String name, boolean value) {
+        writeField(target, name, value);
+    }
+
+    private static void setIntField(Object target, String name, int value) {
+        writeField(target, name, value);
+    }
+
+    private static void writeField(Object target, String name, Object value) {
+        if (target == null || name == null) {
+            return;
+        }
+        Class<?> clazz = target.getClass();
+        while (clazz != null) {
+            try {
+                Field field = clazz.getDeclaredField(name);
+                field.setAccessible(true);
+                field.set(target, value);
+                return;
+            } catch (NoSuchFieldException e) {
+                clazz = clazz.getSuperclass();
+            } catch (Throwable ignored) {
+                return;
+            }
+        }
     }
 
     private static float resolveStackEntryProgress(View recentsView) {
