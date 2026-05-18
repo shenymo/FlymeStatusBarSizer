@@ -56,13 +56,18 @@ public final class LauncherRecentsHooks {
     private static final float STACK_MIN_SCALE = 0.80f;
     private static final float STACK_LEFT_INSET_RATIO = 0.05f;
     private static final float MAX_STACK_LAYERS = 3.0f;
-    private static final long TASK_LAUNCH_HANDOFF_DURATION_MS = 88L;
-    private static final long TASK_LAUNCH_FRONT_HANDOFF_DURATION_MS = 52L;
+    private static final long TASK_LAUNCH_HANDOFF_DURATION_MS = 360L;
+    private static final long TASK_LAUNCH_FRONT_HANDOFF_DURATION_MS = 320L;
     private static final long TASK_LAUNCH_NO_ANIMATION_CLEANUP_DELAY_MS = 1200L;
     private static final float TASK_LAUNCH_REAR_PROMOTE_FRACTION = 0.42f;
-    private static final float TASK_LAUNCH_SIBLING_END_ALPHA = 0.16f;
+    private static final float TASK_LAUNCH_TARGET_END_SCALE_BLEED = 1.0f;
+    private static final float TASK_LAUNCH_TARGET_END_FULLSCREEN_PROGRESS = 0.94f;
+    private static final float TASK_LAUNCH_ADJACENT_SHIFT_RATIO = 0.15f;
+    private static final float TASK_LAUNCH_SIBLING_END_ALPHA = 0.0f;
     private static final DecelerateInterpolator BLANK_TAP_HOME_EXIT_INTERPOLATOR =
             new DecelerateInterpolator(1.6f);
+    private static final DecelerateInterpolator TASK_LAUNCH_HANDOFF_INTERPOLATOR =
+            new DecelerateInterpolator(1.12f);
     private static final WeakHashMap<View, Boolean> TRACKED_RECENTS_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, ValueAnimator> ACTIVE_HOME_EXIT_ANIMATORS =
             new WeakHashMap<>();
@@ -88,6 +93,8 @@ public final class LauncherRecentsHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<View, Float> LAST_STOCK_STABLE_ALPHAS = new WeakHashMap<>();
     private static final WeakHashMap<View, Float> LAST_STOCK_TRANSLATION_ZS =
+            new WeakHashMap<>();
+    private static final WeakHashMap<View, Float> LAST_STOCK_FULLSCREEN_PROGRESSES =
             new WeakHashMap<>();
     private static final ThreadLocal<TaskLaunchSimulatorTranslationContext>
             ACTIVE_TASK_LAUNCH_SIMULATOR_TRANSLATION = new ThreadLocal<>();
@@ -761,15 +768,15 @@ public final class LauncherRecentsHooks {
                         return chain.proceed();
                     }
                     View recentsView = resolveOwningRecentsView(taskView);
+                    if (shouldStartTaskLaunchHandoff(taskView, recentsView)) {
+                        startTaskLaunchHandoff(taskView, recentsView);
+                        return null;
+                    }
                     if (shouldReplaceTaskLaunchWithNoAnimation(recentsView, taskView)) {
                         if (handleTaskClickWithoutSystemAnimation(taskView, recentsView)) {
                             return null;
                         }
                         return chain.proceed();
-                    }
-                    if (shouldStartTaskLaunchHandoff(taskView, recentsView)) {
-                        startTaskLaunchHandoff(taskView, recentsView);
-                        return null;
                     }
                 }
                 return chain.proceed();
@@ -1082,6 +1089,7 @@ public final class LauncherRecentsHooks {
             setBoxTranslationY(taskView, desiredBoxTranslationY);
             setNonGridScale(taskView, desiredScale);
             setStableAlpha(taskView, desiredStableAlpha);
+            setFullscreenProgress(taskView, readLastStockFullscreenProgress(taskView));
             taskView.setTranslationZ(desiredTranslationZ);
         }
         if (launchState != null && launchState.handoffEnabled) {
@@ -1367,6 +1375,7 @@ public final class LauncherRecentsHooks {
         setBoxTranslationY(taskView, readOriginalBoxTranslationY(taskView));
         setNonGridScale(taskView, readOriginalNonGridScale(taskView));
         setStableAlpha(taskView, readLastStockStableAlpha(taskView));
+        setFullscreenProgress(taskView, readLastStockFullscreenProgress(taskView));
         taskView.setTranslationZ(readLastStockTranslationZ(taskView));
     }
 
@@ -1567,6 +1576,11 @@ public final class LauncherRecentsHooks {
                 && recentsView != null
                 && shouldUseStackLayout(recentsView)
                 && !isDesktopTask(taskView)
+                && taskView.getWidth() > 0
+                && taskView.getHeight() > 0
+                && recentsView.getWidth() > 0
+                && recentsView.getHeight() > 0
+                && resolveTaskViewIndex(recentsView, taskView) >= 0
                 && !isTaskLaunchLayoutFrozen(recentsView)
                 && !ACTIVE_TASK_LAUNCH_HANDOFFS.containsKey(recentsView);
     }
@@ -1889,7 +1903,7 @@ public final class LauncherRecentsHooks {
         animator.setDuration(state.promoteRearCard
                 ? TASK_LAUNCH_HANDOFF_DURATION_MS
                 : TASK_LAUNCH_FRONT_HANDOFF_DURATION_MS);
-        animator.setInterpolator(BLANK_TAP_HOME_EXIT_INTERPOLATOR);
+        animator.setInterpolator(TASK_LAUNCH_HANDOFF_INTERPOLATOR);
         animator.addUpdateListener(animation -> {
             Object value = animation.getAnimatedValue();
             state.progress = value instanceof Float ? (Float) value : 0f;
@@ -2075,35 +2089,34 @@ public final class LauncherRecentsHooks {
             return;
         }
         View frontTaskView = resolveFrontMostTaskView(recentsView);
-        float progress = smoothStep(state.progress);
-        float promoteProgress = state.promoteRearCard
-                ? smoothStep(remapProgress(progress, 0f, TASK_LAUNCH_REAR_PROMOTE_FRACTION))
-                : progress;
-        float settleProgress = state.promoteRearCard
-                ? smoothStep(remapProgress(progress, TASK_LAUNCH_REAR_PROMOTE_FRACTION, 1f))
-                : progress;
-        float siblingRetreatPx = Math.min(
-                Math.max(targetTaskView.getWidth(), recentsView.getWidth()) * 0.04f,
-                FlymeStatusBarSizer.dp(recentsView.getContext(), 22));
-        float siblingDropPx = Math.min(
-                Math.max(targetTaskView.getHeight(), recentsView.getHeight()) * 0.035f,
-                FlymeStatusBarSizer.dp(recentsView.getContext(), 14));
-        float targetLiftPx = Math.min(
-                Math.max(targetTaskView.getHeight(), recentsView.getHeight()) * 0.045f,
-                FlymeStatusBarSizer.dp(recentsView.getContext(), 18));
-        float targetExtraZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 18);
-        float anchorTaskOffsetX = frontTaskView != null
-                ? readFloatField(frontTaskView, "taskOffsetTranslationX", 0f)
-                : readFloatField(targetTaskView, "taskOffsetTranslationX", 0f);
-        float anchorTaskOffsetY = frontTaskView != null
-                ? readFloatField(frontTaskView, "taskOffsetTranslationY", 0f)
-                : readFloatField(targetTaskView, "taskOffsetTranslationY", 0f);
-        float anchorScale = frontTaskView != null
-                ? readFloatField(frontTaskView, "nonGridScale", 1f)
-                : readFloatField(targetTaskView, "nonGridScale", 1f);
+        float progress = state.progress;
+        float targetFullscreenProgress = smoothStep(remapProgress(
+                progress,
+                state.promoteRearCard ? TASK_LAUNCH_REAR_PROMOTE_FRACTION * 0.32f : 0.18f,
+                1f));
+        float adjacentMoveProgress = smoothStep(remapProgress(progress, 0.04f, 0.76f));
+        float adjacentFadeProgress = smoothStep(remapProgress(progress, 0.20f, 0.94f));
+        float otherFadeProgress = smoothStep(remapProgress(progress, 0.12f, 0.56f));
+        float targetExtraZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 28);
+        float adjacentShiftPx = Math.min(
+                Math.max(targetTaskView.getWidth(), recentsView.getWidth())
+                        * TASK_LAUNCH_ADJACENT_SHIFT_RATIO,
+                FlymeStatusBarSizer.dp(recentsView.getContext(), 120));
         float anchorZ = frontTaskView != null
                 ? frontTaskView.getTranslationZ()
                 : targetTaskView.getTranslationZ();
+        float targetWidth = Math.max(1f, targetTaskView.getWidth());
+        float targetHeight = Math.max(1f, targetTaskView.getHeight());
+        float viewportCenterX = recentsView.getScrollX() + (recentsView.getWidth() * 0.5f);
+        float viewportCenterY = recentsView.getScrollY() + (recentsView.getHeight() * 0.5f);
+        float currentTargetCenterX = targetTaskView.getX() + (targetWidth * 0.5f);
+        float currentTargetCenterY = targetTaskView.getY() + (targetHeight * 0.5f);
+        float targetDeltaX = viewportCenterX - currentTargetCenterX;
+        float targetDeltaY = viewportCenterY - currentTargetCenterY;
+        float targetEndScale = Math.max(
+                Math.max(1f, recentsView.getWidth() / targetWidth),
+                Math.max(1f, recentsView.getHeight() / targetHeight))
+                * TASK_LAUNCH_TARGET_END_SCALE_BLEED;
 
         int taskViewCount = invokeInt(recentsView, "getTaskViewCount", 0);
         for (int i = 0; i < taskViewCount; i++) {
@@ -2121,64 +2134,74 @@ public final class LauncherRecentsHooks {
             float startScale = readFloatField(taskView, "nonGridScale", 1f);
             float startAlpha = readStableAlpha(taskView);
             float startTranslationZ = taskView.getTranslationZ();
+            float startFullscreenProgress = readFloatField(taskView, "fullscreenProgress", 0f);
             if (taskView == targetTaskView) {
-                float handoffHorizontalOffsetX = startHorizontalOffsetX;
-                float handoffTaskOffsetX = startTaskOffsetX;
-                float handoffTaskOffsetY = startTaskOffsetY;
-                float handoffBoxTranslationY = startBoxTranslationY;
-                float handoffScale = startScale;
-                float handoffTranslationZ = startTranslationZ;
-                if (state.promoteRearCard) {
-                    handoffTaskOffsetX = lerp(
-                            startTaskOffsetX,
-                            lerp(startTaskOffsetX, anchorTaskOffsetX, 0.58f),
-                            promoteProgress);
-                    handoffTaskOffsetY = lerp(
-                            startTaskOffsetY,
-                            anchorTaskOffsetY - (targetLiftPx * 0.35f),
-                            promoteProgress);
-                    handoffBoxTranslationY = lerp(
-                            startBoxTranslationY,
-                            readLastStockBoxTranslationY(taskView),
-                            promoteProgress);
-                    handoffScale = lerp(startScale, Math.max(anchorScale, startScale), promoteProgress);
-                    handoffTranslationZ = lerp(
-                            startTranslationZ,
-                            Math.max(anchorZ, startTranslationZ) + (targetExtraZ * 0.35f),
-                            promoteProgress);
-                }
-                float endHorizontalOffsetX = readLastStockHorizontalOffsetX(taskView);
-                float endTaskOffsetX = readLastStockTaskOffsetX(taskView);
-                float endTaskOffsetY = readLastStockTaskOffsetY(taskView);
-                float endBoxTranslationY = readLastStockBoxTranslationY(taskView);
-                float endScale = readLastStockNonGridScale(taskView);
-                float endTranslationZ = Math.max(
-                        readLastStockTranslationZ(taskView),
-                        Math.max(anchorZ, startTranslationZ) + targetExtraZ);
-                // Handoff should end near the last stock launch geometry, otherwise Quickstep
-                // immediately applies a large horizontal compensation before its own launch anim.
                 setHorizontalOffsetTranslationX(
                         taskView,
-                        lerp(handoffHorizontalOffsetX, endHorizontalOffsetX, settleProgress));
-                setTaskOffsetTranslationX(taskView, lerp(handoffTaskOffsetX, endTaskOffsetX, settleProgress));
-                setTaskOffsetTranslationY(taskView, lerp(handoffTaskOffsetY, endTaskOffsetY, settleProgress));
-                setBoxTranslationY(taskView, lerp(handoffBoxTranslationY, endBoxTranslationY, settleProgress));
-                setNonGridScale(taskView, lerp(handoffScale, endScale, settleProgress));
+                        startHorizontalOffsetX);
+                setTaskOffsetTranslationX(
+                        taskView,
+                        lerp(startTaskOffsetX, startTaskOffsetX + targetDeltaX, targetFullscreenProgress));
+                setTaskOffsetTranslationY(
+                        taskView,
+                        lerp(startTaskOffsetY, startTaskOffsetY + targetDeltaY, targetFullscreenProgress));
+                setBoxTranslationY(
+                        taskView,
+                        lerp(startBoxTranslationY, readOriginalBoxTranslationY(taskView), targetFullscreenProgress));
+                setNonGridScale(taskView, lerp(startScale, targetEndScale, targetFullscreenProgress));
                 setStableAlpha(taskView, 1f);
-                taskView.setTranslationZ(lerp(handoffTranslationZ, endTranslationZ, settleProgress));
+                // Stop just before TaskView's fullscreen terminal state to avoid a last-frame
+                // relayout/visibility flip before launchWithoutAnimation switches activities.
+                setFullscreenProgress(
+                        taskView,
+                        lerp(
+                                startFullscreenProgress,
+                                TASK_LAUNCH_TARGET_END_FULLSCREEN_PROGRESS,
+                                targetFullscreenProgress));
+                taskView.setTranslationZ(lerp(
+                        startTranslationZ,
+                        Math.max(anchorZ, startTranslationZ) + targetExtraZ,
+                        targetFullscreenProgress));
                 continue;
             }
-            float direction = i < state.targetIndex ? -1f : 1f;
-            setHorizontalOffsetTranslationX(taskView, 0f);
-            setTaskOffsetTranslationX(taskView, startTaskOffsetX + (direction * siblingRetreatPx * progress));
-            setTaskOffsetTranslationY(taskView, startTaskOffsetY + (siblingDropPx * progress));
-            setBoxTranslationY(taskView, lerp(
-                    readFloatField(taskView, "boxTranslationY", readOriginalBoxTranslationY(taskView)),
-                    readOriginalBoxTranslationY(taskView),
-                    progress));
-            setNonGridScale(taskView, lerp(startScale, startScale * 0.965f, progress));
-            setStableAlpha(taskView, lerp(startAlpha, startAlpha * TASK_LAUNCH_SIBLING_END_ALPHA, progress));
-            taskView.setTranslationZ(lerp(startTranslationZ, Math.max(0f, startTranslationZ - targetExtraZ), progress));
+            boolean isImmediateLeft = state.targetIndex >= 0 && i == state.targetIndex - 1;
+            boolean isImmediateRight = state.targetIndex >= 0 && i == state.targetIndex + 1;
+            if (isImmediateLeft || isImmediateRight) {
+                float direction = isImmediateLeft ? -1f : 1f;
+                setHorizontalOffsetTranslationX(taskView, startHorizontalOffsetX);
+                setTaskOffsetTranslationX(
+                        taskView,
+                        startTaskOffsetX + (direction * adjacentShiftPx * adjacentMoveProgress));
+                setTaskOffsetTranslationY(taskView, startTaskOffsetY);
+                setBoxTranslationY(
+                        taskView,
+                        lerp(startBoxTranslationY, readOriginalBoxTranslationY(taskView), adjacentFadeProgress));
+                setNonGridScale(taskView, lerp(startScale, startScale * 0.985f, adjacentMoveProgress));
+                setStableAlpha(
+                        taskView,
+                        lerp(startAlpha, startAlpha * TASK_LAUNCH_SIBLING_END_ALPHA, adjacentFadeProgress));
+                setFullscreenProgress(taskView, startFullscreenProgress);
+                taskView.setTranslationZ(lerp(
+                        startTranslationZ,
+                        Math.max(0f, startTranslationZ - targetExtraZ),
+                        adjacentFadeProgress));
+                continue;
+            }
+            setHorizontalOffsetTranslationX(taskView, startHorizontalOffsetX);
+            setTaskOffsetTranslationX(taskView, startTaskOffsetX);
+            setTaskOffsetTranslationY(taskView, startTaskOffsetY);
+            setBoxTranslationY(
+                    taskView,
+                    lerp(startBoxTranslationY, readOriginalBoxTranslationY(taskView), otherFadeProgress));
+            setNonGridScale(taskView, startScale);
+            setStableAlpha(
+                    taskView,
+                    lerp(startAlpha, startAlpha * TASK_LAUNCH_SIBLING_END_ALPHA, otherFadeProgress));
+            setFullscreenProgress(taskView, startFullscreenProgress);
+            taskView.setTranslationZ(lerp(
+                    startTranslationZ,
+                    Math.max(0f, startTranslationZ - targetExtraZ),
+                    otherFadeProgress));
         }
     }
 
@@ -2506,6 +2529,9 @@ public final class LauncherRecentsHooks {
                 readFloatField(taskView, "boxTranslationY", readOriginalBoxTranslationY(taskView)));
         LAST_STOCK_STABLE_ALPHAS.put(taskView, readStableAlpha(taskView));
         LAST_STOCK_TRANSLATION_ZS.put(taskView, taskView.getTranslationZ());
+        LAST_STOCK_FULLSCREEN_PROGRESSES.put(
+                taskView,
+                readFloatField(taskView, "fullscreenProgress", 0f));
     }
 
     private static void setHorizontalOffsetTranslationX(View taskView, float value) {
@@ -2552,6 +2578,14 @@ public final class LauncherRecentsHooks {
         FlymeStatusBarSizer.invokeMethodCompat(
                 taskView,
                 "setStableAlpha",
+                FLOAT_ARG,
+                clamp(value, 0f, 1f));
+    }
+
+    private static void setFullscreenProgress(View taskView, float value) {
+        FlymeStatusBarSizer.invokeMethodCompat(
+                taskView,
+                "setFullscreenProgress",
                 FLOAT_ARG,
                 clamp(value, 0f, 1f));
     }
@@ -2626,6 +2660,11 @@ public final class LauncherRecentsHooks {
 
     private static float readLastStockTranslationZ(View taskView) {
         Float value = LAST_STOCK_TRANSLATION_ZS.get(taskView);
+        return value != null ? value : 0f;
+    }
+
+    private static float readLastStockFullscreenProgress(View taskView) {
+        Float value = LAST_STOCK_FULLSCREEN_PROGRESSES.get(taskView);
         return value != null ? value : 0f;
     }
 
