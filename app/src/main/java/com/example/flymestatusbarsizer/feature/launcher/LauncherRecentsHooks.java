@@ -30,13 +30,14 @@ public final class LauncherRecentsHooks {
             "com.android.quickstep.views.LauncherRecentsView";
     private static final String PAGED_VIEW_CLASS = "com.android.launcher3.PagedView";
     private static final String RECENTS_VIEW_CLASS = "com.android.quickstep.views.RecentsView";
+    private static final String TASK_VIEW_CLASS = "com.android.quickstep.views.TaskView";
     private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 360L;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.07f;
     private static final float BLANK_TAP_HOME_EXIT_TRAVEL_RATIO = 0.90f;
     private static final float STACK_DEPTH_CURVE_POWER = 0.82f;
     private static final float STACK_FRONT_VISIBLE_RATIO = 0.50f;
     private static final float STACK_FRONT_SHIFT_START_PROGRESS = 0.58f;
-    private static final float STACK_FRONT_REVEAL_CURVE_POWER = 1.28f;
+    private static final float STACK_FRONT_REVEAL_CURVE_POWER = 0.72f;
     private static final float STACK_OVERLAP_RELEASE_CURVE_POWER = 1.22f;
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
     private static final float STACK_OUTGOING_TRAVEL_RATIO = 0.34f;
@@ -87,6 +88,7 @@ public final class LauncherRecentsHooks {
         hookRecentsViewFreeScrollSettling(module, loader);
         hookPagedViewOnTouchEvent(module, loader);
         hookPagedViewSnapToDestination(module, loader);
+        hookTaskViewPressScale(module, loader);
     }
 
     public static void refreshTrackedViews() {
@@ -380,6 +382,44 @@ public final class LauncherRecentsHooks {
         }
     }
 
+    private static void hookTaskViewPressScale(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(TASK_VIEW_CLASS, false, loader);
+
+            Method scaleDownMethod = clazz.getDeclaredMethod("scaleDown");
+            scaleDownMethod.setAccessible(true);
+            module.intercept(scaleDownMethod, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View) {
+                    View taskView = (View) thisObject;
+                    if (shouldSuppressTaskPressScale(taskView)) {
+                        resetTaskTouchScale(taskView);
+                        return null;
+                    }
+                }
+                return chain.proceed();
+            });
+
+            Method scaleUpMethod = clazz.getDeclaredMethod("scaleUp", boolean.class);
+            scaleUpMethod.setAccessible(true);
+            module.intercept(scaleUpMethod, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View) {
+                    View taskView = (View) thisObject;
+                    if (shouldSuppressTaskPressScale(taskView)) {
+                        resetTaskTouchScale(taskView);
+                        return null;
+                    }
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook TaskView press scale",
+                    t);
+        }
+    }
+
     private static void trackRecentsView(View recentsView) {
         if (recentsView == null) {
             return;
@@ -453,7 +493,6 @@ public final class LauncherRecentsHooks {
         }
 
         float blankTapExitProgress = readBlankTapHomeExitProgress(recentsView);
-        float stackEntryProgress = resolveStackEntryProgress(recentsView);
         float stackVerticalProgress = resolveStackVerticalProgress(recentsView);
         float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
         float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
@@ -501,7 +540,7 @@ public final class LauncherRecentsHooks {
                     + readLastStockTaskOffsetX(taskView)
                     + readLastStockHorizontalOffsetX(taskView);
             float frontShiftProgress = remapProgress(
-                    stackEntryProgress,
+                    stackVerticalProgress,
                     STACK_FRONT_SHIFT_START_PROGRESS,
                     1.0f);
             float frontBaseOffset = lerp(stackBaseOffsetPx, stackFrontOffsetPx, frontShiftProgress);
@@ -512,28 +551,30 @@ public final class LauncherRecentsHooks {
             float desiredBoxTranslationY;
 
             if (progress >= 0f) {
-                float outgoingProgress = clamp(progress / MAX_STACK_LAYERS, 0f, 1f);
-                float outgoingCurve = (float) Math.pow(outgoingProgress, STACK_OUTGOING_CURVE_POWER);
-                float uncappedVisibleOffset = frontBaseOffset + (outgoingTravelPx * outgoingCurve);
-                float overlapReleaseBase = (float) Math.pow(
-                        clamp(progress, 0f, 1f),
-                        STACK_OVERLAP_RELEASE_CURVE_POWER);
-                float dynamicOverlapRatio = STACK_MIN_OVERLAP_RATIO
-                        * (1.0f - smoothStep(overlapReleaseBase));
-                float dynamicFrontLimitLeftPx = stackBaseLeftPx
-                        + (taskWidth * (1.0f - dynamicOverlapRatio));
-                float cappedVisibleOffset = Math.min(
-                        uncappedVisibleOffset,
-                        dynamicFrontLimitLeftPx - taskCenteredLeftPx);
-                float overlapReleaseProgress = smoothStep(remapProgress(progress, 0f, 1.0f));
-                desiredVisibleOffset = lerp(
-                        cappedVisibleOffset,
-                        uncappedVisibleOffset,
-                        overlapReleaseProgress);
-                desiredScale = Math.max(0.90f, 1.0f - (0.03f * outgoingCurve * MAX_STACK_LAYERS));
+                float handoffProgress = smoothStep((float) Math.pow(
+                        remapProgress(progress, 0.0f, 1.0f),
+                        STACK_FRONT_REVEAL_CURVE_POWER));
+                float maxLeadSeparationPx = taskWidth * (1.0f - STACK_MIN_OVERLAP_RATIO);
+                float leadExitOffsetPx = frontBaseOffset + maxLeadSeparationPx;
+                if (progress <= 1.0f) {
+                    desiredVisibleOffset = lerp(
+                            frontBaseOffset,
+                            leadExitOffsetPx,
+                            handoffProgress);
+                } else {
+                    float outgoingProgress = remapProgress(progress, 1.0f, MAX_STACK_LAYERS);
+                    float outgoingCurve = (float) Math.pow(
+                            outgoingProgress,
+                            STACK_OUTGOING_CURVE_POWER);
+                    float extraExitTravelPx = Math.max(
+                            taskWidth * 0.08f,
+                            FlymeStatusBarSizer.dp(recentsView.getContext(), 64));
+                    desiredVisibleOffset = leadExitOffsetPx + (extraExitTravelPx * outgoingCurve);
+                }
+                desiredScale = 1.0f;
                 desiredTranslationZ = maxTranslationZ
                         + zStepPx
-                        + (outgoingCurve * maxTranslationZ);
+                        + (Math.min(progress, MAX_STACK_LAYERS) / MAX_STACK_LAYERS * maxTranslationZ);
                 desiredTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
             } else {
                 float stackDepth = clamp(-progress, 0f, MAX_STACK_LAYERS);
@@ -550,10 +591,10 @@ public final class LauncherRecentsHooks {
                         STACK_DEPTH_CURVE_POWER);
                 float backgroundStackOffset = stackBaseOffsetPx
                         - (stackBackSpreadPx * backgroundSpreadCurve);
-                float frontRevealBase = (float) Math.pow(
-                        1.0f - clamp(stackDepth, 0f, 1f),
-                        STACK_FRONT_REVEAL_CURVE_POWER);
-                float frontRevealProgress = smoothStep(frontRevealBase);
+                float incomingProgress = remapProgress(progress, -1.0f, 0.0f);
+                float frontRevealProgress = smoothStep((float) Math.pow(
+                        incomingProgress,
+                        STACK_FRONT_REVEAL_CURVE_POWER));
                 desiredVisibleOffset = lerp(
                         backgroundStackOffset,
                         frontBaseOffset,
@@ -564,8 +605,8 @@ public final class LauncherRecentsHooks {
                 desiredTranslationZ = Math.max(0f, maxTranslationZ - (revealCurve * maxTranslationZ));
                 desiredTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
             }
-            desiredVisibleOffset = lerp(stockVisibleOffset, desiredVisibleOffset, stackEntryProgress);
-            desiredScale = lerp(readLastStockNonGridScale(taskView), desiredScale, stackEntryProgress);
+            desiredVisibleOffset = lerp(stockVisibleOffset, desiredVisibleOffset, stackVerticalProgress);
+            desiredScale = lerp(readLastStockNonGridScale(taskView), desiredScale, stackVerticalProgress);
             desiredTaskOffsetY = lerp(
                     readLastStockTaskOffsetY(taskView),
                     desiredTaskOffsetY,
@@ -577,7 +618,7 @@ public final class LauncherRecentsHooks {
             desiredTranslationZ = lerp(
                     readLastStockTranslationZ(taskView),
                     desiredTranslationZ,
-                    stackEntryProgress);
+                    stackVerticalProgress);
             float desiredStableAlpha = readLastStockStableAlpha(taskView);
             if (blankTapExitProgress > 0f) {
                 if (isTaskVisibleInViewport(
@@ -761,6 +802,46 @@ public final class LauncherRecentsHooks {
     private static View getTaskViewAt(View recentsView, int index) {
         Object value = FlymeStatusBarSizer.invokeMethodCompat(recentsView, "getTaskViewAt", INT_ARG, index);
         return value instanceof View ? (View) value : null;
+    }
+
+    private static boolean shouldSuppressTaskPressScale(View taskView) {
+        View recentsView = resolveOwningRecentsView(taskView);
+        return shouldUseStackLayout(recentsView);
+    }
+
+    private static View resolveOwningRecentsView(View taskView) {
+        Object value = FlymeStatusBarSizer.invokeMethodCompat(taskView, "getRecentsView", NO_ARGS);
+        if (value instanceof View) {
+            return (View) value;
+        }
+        ViewParent parent = taskView != null ? taskView.getParent() : null;
+        while (parent instanceof View) {
+            View parentView = (View) parent;
+            if (isRecentsViewObject(parentView)) {
+                return parentView;
+            }
+            parent = parentView.getParent();
+        }
+        return null;
+    }
+
+    private static void resetTaskTouchScale(View taskView) {
+        if (taskView == null) {
+            return;
+        }
+        Object animator = FlymeStatusBarSizer.getFieldCompat(taskView, "mTaskThumbScaleAnimator");
+        if (animator instanceof Animator) {
+            Animator taskScaleAnimator = (Animator) animator;
+            if (taskScaleAnimator.isStarted() || taskScaleAnimator.isRunning()) {
+                taskScaleAnimator.cancel();
+            }
+        }
+        Object scaleUpRunnable = FlymeStatusBarSizer.getFieldCompat(taskView, "mScaleUpRunnable");
+        if (scaleUpRunnable instanceof Runnable) {
+            taskView.removeCallbacks((Runnable) scaleUpRunnable);
+        }
+        writeField(taskView, "mTaskThumbScaleAnimator", null);
+        setNonGridScale(taskView, readFloatField(taskView, "nonGridScale", 1f));
     }
 
     private static boolean shouldSuppressPagedRelease(View recentsView, MotionEvent motionEvent) {
