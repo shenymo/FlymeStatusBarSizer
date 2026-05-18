@@ -35,6 +35,17 @@ final class LauncherRecentsState {
     static final WeakHashMap<View, Float> LAST_STOCK_TRANSLATION_ZS = new WeakHashMap<>();
     static final WeakHashMap<View, Float> LAST_STOCK_FULLSCREEN_PROGRESSES =
             new WeakHashMap<>();
+    static final WeakHashMap<View, Float> LAST_APPLIED_TASK_OFFSET_XS = new WeakHashMap<>();
+    static final WeakHashMap<View, Float> LAST_APPLIED_TASK_OFFSET_YS = new WeakHashMap<>();
+    static final WeakHashMap<View, Float> LAST_APPLIED_HORIZONTAL_OFFSET_XS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Float> LAST_APPLIED_NON_GRID_SCALES = new WeakHashMap<>();
+    static final WeakHashMap<View, Float> LAST_APPLIED_BOX_TRANSLATION_YS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Float> LAST_APPLIED_STABLE_ALPHAS = new WeakHashMap<>();
+    static final WeakHashMap<View, Float> LAST_APPLIED_TRANSLATION_ZS = new WeakHashMap<>();
+    static final WeakHashMap<View, Float> LAST_APPLIED_FULLSCREEN_PROGRESSES =
+            new WeakHashMap<>();
     static final ThreadLocal<TaskLaunchSimulatorTranslationContext>
             ACTIVE_TASK_LAUNCH_SIMULATOR_TRANSLATION = new ThreadLocal<>();
     static final ThreadLocal<View> ACTIVE_TASK_LAUNCH_SCROLL_COMPENSATION_BYPASS =

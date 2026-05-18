@@ -96,10 +96,7 @@ final class LauncherRecentsTouchController {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
-                    LauncherRecentsState.trackRecentsView(recentsView);
-                    LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-                    if (LauncherRecentsLayoutEngine.shouldApplyDynamicStackLayout(recentsView)) {
-                        LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
+                    if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
                         recentsView.invalidate();
                         return null;
                     }
@@ -125,10 +122,7 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsCompat.isRecentsViewObject(thisObject)
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
-                    LauncherRecentsState.trackRecentsView(recentsView);
-                    LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-                    if (LauncherRecentsLayoutEngine.shouldApplyDynamicStackLayout(recentsView)) {
-                        LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
+                    if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
                         recentsView.invalidate();
                         return null;
                     }
@@ -168,9 +162,7 @@ final class LauncherRecentsTouchController {
         }
         releasePagedEdgeEffects(recentsView, motionEvent);
         LauncherRecentsCompat.invokeCompat(recentsView, "resetTouchState", LauncherRecentsCompat.NO_ARGS);
-        if (LauncherRecentsLayoutEngine.shouldApplyDynamicStackLayout(recentsView)) {
-            LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
-            LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
+        if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
             recentsView.invalidate();
         }
     }

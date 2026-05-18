@@ -953,6 +953,7 @@ final class LauncherRecentsLaunchController {
         animator.addUpdateListener(animation -> {
             Object value = animation.getAnimatedValue();
             state.progress = value instanceof Float ? (Float) value : 0f;
+            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
             recentsView.invalidate();
         });
         animator.addListener(new android.animation.AnimatorListenerAdapter() {
@@ -1281,10 +1282,12 @@ final class LauncherRecentsLaunchController {
                                 startFullscreenProgress,
                                 TASK_LAUNCH_TARGET_END_FULLSCREEN_PROGRESS,
                                 targetFullscreenProgress));
-                taskView.setTranslationZ(LauncherRecentsLayoutEngine.lerp(
-                        startTranslationZ,
-                        Math.max(anchorZ, startTranslationZ) + targetExtraZ,
-                        targetFullscreenProgress));
+                LauncherRecentsTaskVisuals.setTranslationZ(
+                        taskView,
+                        LauncherRecentsLayoutEngine.lerp(
+                                startTranslationZ,
+                                Math.max(anchorZ, startTranslationZ) + targetExtraZ,
+                                targetFullscreenProgress));
                 continue;
             }
             boolean isImmediateLeft = state.targetIndex >= 0 && i == state.targetIndex - 1;
@@ -1315,10 +1318,12 @@ final class LauncherRecentsLaunchController {
                                 startAlpha * TASK_LAUNCH_SIBLING_END_ALPHA,
                                 adjacentFadeProgress));
                 LauncherRecentsTaskVisuals.setFullscreenProgress(taskView, startFullscreenProgress);
-                taskView.setTranslationZ(LauncherRecentsLayoutEngine.lerp(
-                        startTranslationZ,
-                        Math.max(0f, startTranslationZ - targetExtraZ),
-                        adjacentFadeProgress));
+                LauncherRecentsTaskVisuals.setTranslationZ(
+                        taskView,
+                        LauncherRecentsLayoutEngine.lerp(
+                                startTranslationZ,
+                                Math.max(0f, startTranslationZ - targetExtraZ),
+                                adjacentFadeProgress));
                 continue;
             }
             LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(taskView, startHorizontalOffsetX);
@@ -1338,10 +1343,12 @@ final class LauncherRecentsLaunchController {
                             startAlpha * TASK_LAUNCH_SIBLING_END_ALPHA,
                             otherFadeProgress));
             LauncherRecentsTaskVisuals.setFullscreenProgress(taskView, startFullscreenProgress);
-            taskView.setTranslationZ(LauncherRecentsLayoutEngine.lerp(
-                    startTranslationZ,
-                    Math.max(0f, startTranslationZ - targetExtraZ),
-                    otherFadeProgress));
+            LauncherRecentsTaskVisuals.setTranslationZ(
+                    taskView,
+                    LauncherRecentsLayoutEngine.lerp(
+                            startTranslationZ,
+                            Math.max(0f, startTranslationZ - targetExtraZ),
+                            otherFadeProgress));
         }
     }
 }

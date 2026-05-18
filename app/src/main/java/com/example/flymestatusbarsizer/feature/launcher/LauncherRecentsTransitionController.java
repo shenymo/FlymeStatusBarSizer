@@ -162,6 +162,7 @@ final class LauncherRecentsTransitionController {
             Object value = animation.getAnimatedValue();
             float progress = value instanceof Float ? (Float) value : 0f;
             setBlankTapHomeExitProgress(recentsView, progress);
+            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
             recentsView.invalidate();
         });
         animator.addListener(new AnimatorListenerAdapter() {
@@ -220,6 +221,7 @@ final class LauncherRecentsTransitionController {
         }
         LauncherRecentsState.BLANK_TAP_HOME_EXIT_PROGRESS.remove(recentsView);
         setPageAnimOffScreenStart(recentsView, false);
+        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
         recentsView.invalidate();
     }
 

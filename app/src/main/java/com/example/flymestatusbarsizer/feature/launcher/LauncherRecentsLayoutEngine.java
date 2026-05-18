@@ -2,7 +2,6 @@ package com.example.flymestatusbarsizer.feature.launcher;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
-import android.graphics.Canvas;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
@@ -37,11 +36,8 @@ final class LauncherRecentsLayoutEngine {
         }
         hookRecentsViewConstructors(module, loader);
         hookRecentsViewMethod(module, loader, "updatePageOffsetsForFlyme");
-        hookRecentsViewMethod(module, loader, "updatePageScales");
-        hookRecentsViewOnLayout(module, loader);
         hookRecentsViewOnScrollChanged(module, loader);
         hookRecentsViewContentAlpha(module, loader);
-        hookRecentsViewDraw(module, loader);
     }
 
     static void refreshTrackedViews() {
@@ -139,38 +135,6 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
-    private static void hookRecentsViewOnLayout(FlymeStatusBarSizer module, ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod(
-                    "onLayout",
-                    boolean.class,
-                    int.class,
-                    int.class,
-                    int.class,
-                    int.class);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object result = chain.proceed();
-                Object thisObject = chain.getThisObject();
-                if (thisObject instanceof View) {
-                    View recentsView = (View) thisObject;
-                    LauncherRecentsState.trackRecentsView(recentsView);
-                    prepareRecentsView(recentsView);
-                    if (shouldApplyDynamicStackLayout(recentsView)) {
-                        LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
-                        applyStackLayout(recentsView, false);
-                    }
-                }
-                return result;
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook RecentsView.onLayout",
-                    t);
-        }
-    }
-
     private static void hookRecentsViewOnScrollChanged(
             FlymeStatusBarSizer module,
             ClassLoader loader) {
@@ -228,30 +192,6 @@ final class LauncherRecentsLayoutEngine {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook RecentsView.setContentAlpha",
-                    t);
-        }
-    }
-
-    private static void hookRecentsViewDraw(FlymeStatusBarSizer module, ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod("draw", Canvas.class);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object thisObject = chain.getThisObject();
-                if (thisObject instanceof View) {
-                    View recentsView = (View) thisObject;
-                    LauncherRecentsState.trackRecentsView(recentsView);
-                    prepareRecentsView(recentsView);
-                    if (shouldApplyDynamicStackLayout(recentsView)) {
-                        applyStackLayout(recentsView, false);
-                    }
-                }
-                return chain.proceed();
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook RecentsView.draw",
                     t);
         }
     }
@@ -497,7 +437,7 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsTaskVisuals.setFullscreenProgress(
                     taskView,
                     LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView));
-            taskView.setTranslationZ(desiredTranslationZ);
+            LauncherRecentsTaskVisuals.setTranslationZ(taskView, desiredTranslationZ);
         }
         if (launchState != null && launchState.handoffEnabled) {
             LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);
@@ -530,7 +470,10 @@ final class LauncherRecentsLayoutEngine {
         LauncherRecentsTaskVisuals.setFullscreenProgress(
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView));
-        taskView.setTranslationZ(LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView));
+        LauncherRecentsTaskVisuals.setTranslationZ(
+                taskView,
+                LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView));
+        LauncherRecentsTaskVisuals.clearAppliedTaskState(taskView);
     }
 
     static boolean shouldUseStackLayout(View recentsView) {
@@ -561,6 +504,19 @@ final class LauncherRecentsLayoutEngine {
     static boolean shouldApplyDynamicStackLayout(View recentsView) {
         return shouldUseStackLayout(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView);
+    }
+
+    static boolean applyDynamicStackLayoutIfNeeded(View recentsView) {
+        if (recentsView == null) {
+            return false;
+        }
+        LauncherRecentsState.trackRecentsView(recentsView);
+        prepareRecentsView(recentsView);
+        if (!shouldApplyDynamicStackLayout(recentsView)) {
+            return false;
+        }
+        applyStackLayout(recentsView, false);
+        return true;
     }
 
     static void reapplyOriginalTransforms(View recentsView) {
