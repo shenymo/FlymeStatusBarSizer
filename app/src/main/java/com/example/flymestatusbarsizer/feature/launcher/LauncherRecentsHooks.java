@@ -4,6 +4,7 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
+import android.animation.AnimatorSet;
 import android.animation.ValueAnimator;
 import android.graphics.Canvas;
 import android.os.Handler;
@@ -36,7 +37,7 @@ public final class LauncherRecentsHooks {
     private static final float BLANK_TAP_HOME_EXIT_TRAVEL_RATIO = 0.90f;
     private static final float STACK_DEPTH_CURVE_POWER = 0.82f;
     private static final float STACK_FRONT_VISIBLE_RATIO = 0.50f;
-    private static final float STACK_FRONT_SHIFT_START_PROGRESS = 0.58f;
+    private static final float STACK_FRONT_SHIFT_START_PROGRESS = 0.12f;
     private static final float STACK_FRONT_REVEAL_CURVE_POWER = 0.72f;
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
     private static final float STACK_BACK_SPREAD_RATIO = 0.14f;
@@ -83,6 +84,8 @@ public final class LauncherRecentsHooks {
         hookRecentsViewDraw(module, loader);
         hookRecentsViewStartHome(module, loader);
         hookRecentsViewFreeScrollSettling(module, loader);
+        hookRecentsViewPrepareGestureEndAnimation(module, loader);
+        hookRecentsViewGestureAnimationEnd(module, loader);
         hookPagedViewOnTouchEvent(module, loader);
         hookPagedViewSnapToDestination(module, loader);
         hookTaskViewPressScale(module, loader);
@@ -322,6 +325,70 @@ public final class LauncherRecentsHooks {
         }
     }
 
+    private static void hookRecentsViewPrepareGestureEndAnimation(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Class<?> gestureEndTargetClass =
+                    Class.forName("com.android.quickstep.GestureState$GestureEndTarget", false, loader);
+            Class<?> remoteTargetHandleArrayClass =
+                    Class.forName("[Lcom.android.quickstep.RemoteTargetGluer$RemoteTargetHandle;", false, loader);
+            Method method = clazz.getDeclaredMethod(
+                    "onPrepareGestureEndAnimation",
+                    AnimatorSet.class,
+                    gestureEndTargetClass,
+                    remoteTargetHandleArrayClass);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object thisObject = chain.getThisObject();
+                Object endTarget = chain.getArg(1);
+                if (thisObject instanceof View) {
+                    View recentsView = (View) thisObject;
+                    trackRecentsView(recentsView);
+                    prepareRecentsView(recentsView);
+                    if (shouldUseStackLayout(recentsView)
+                            && isRecentsGestureEndTarget(endTarget)) {
+                        switchRunningTaskToScreenshot(recentsView);
+                    }
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.onPrepareGestureEndAnimation",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewGestureAnimationEnd(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("onGestureAnimationEnd");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                Object endTarget = FlymeStatusBarSizer.getFieldCompat(thisObject, "mCurrentGestureEndTarget");
+                Object result = chain.proceed();
+                if (thisObject instanceof View) {
+                    View recentsView = (View) thisObject;
+                    trackRecentsView(recentsView);
+                    prepareRecentsView(recentsView);
+                    if (shouldUseStackLayout(recentsView)
+                            && isRecentsGestureEndTarget(endTarget)) {
+                        finishRunningTaskReleaseToStack(recentsView);
+                    }
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.onGestureAnimationEnd",
+                    t);
+        }
+    }
+
     private static void hookPagedViewOnTouchEvent(FlymeStatusBarSizer module, ClassLoader loader) {
         try {
             Class<?> clazz = Class.forName(PAGED_VIEW_CLASS, false, loader);
@@ -490,7 +557,9 @@ public final class LauncherRecentsHooks {
         }
 
         float blankTapExitProgress = readBlankTapHomeExitProgress(recentsView);
+        float stackEntryProgress = resolveStackEntryProgress(recentsView);
         float stackVerticalProgress = resolveStackVerticalProgress(recentsView);
+        boolean isTouchHandling = invokeBoolean(recentsView, "isHandlingTouch", false);
         float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
         float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
 
@@ -535,8 +604,15 @@ public final class LauncherRecentsHooks {
             float stockVisibleOffset = effectiveRawOffset
                     + readLastStockTaskOffsetX(taskView)
                     + readLastStockHorizontalOffsetX(taskView);
+            boolean shouldHoldLeadCardCentered = isTouchHandling
+                    && stackVerticalProgress < 0.999f
+                    && progress >= 0f
+                    && progress < 1.0f;
+            float horizontalEntryProgress = shouldHoldLeadCardCentered
+                    ? 0f
+                    : stackEntryProgress;
             float frontShiftProgress = remapProgress(
-                    stackVerticalProgress,
+                    horizontalEntryProgress,
                     STACK_FRONT_SHIFT_START_PROGRESS,
                     1.0f);
             float frontBaseOffset = lerp(stackBaseOffsetPx, stackFrontOffsetPx, frontShiftProgress);
@@ -591,7 +667,7 @@ public final class LauncherRecentsHooks {
                 desiredTranslationZ = Math.max(0f, maxTranslationZ - (revealCurve * maxTranslationZ));
                 desiredTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
             }
-            desiredVisibleOffset = lerp(stockVisibleOffset, desiredVisibleOffset, stackVerticalProgress);
+            desiredVisibleOffset = lerp(stockVisibleOffset, desiredVisibleOffset, horizontalEntryProgress);
             desiredScale = lerp(readLastStockNonGridScale(taskView), desiredScale, stackVerticalProgress);
             desiredTaskOffsetY = lerp(
                     readLastStockTaskOffsetY(taskView),
@@ -793,6 +869,48 @@ public final class LauncherRecentsHooks {
     private static boolean shouldSuppressTaskPressScale(View taskView) {
         View recentsView = resolveOwningRecentsView(taskView);
         return shouldUseStackLayout(recentsView);
+    }
+
+    private static boolean isRecentsGestureEndTarget(Object value) {
+        return value instanceof Enum && "RECENTS".equals(((Enum<?>) value).name());
+    }
+
+    private static void switchRunningTaskToScreenshot(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        Runnable applyRunnable = () -> finishRunningTaskReleaseToStack(recentsView);
+        if (!invokeMethodReflectively(
+                recentsView,
+                "switchToScreenshot",
+                new Class<?>[]{Runnable.class},
+                applyRunnable)) {
+            applyRunnable.run();
+        }
+    }
+
+    private static void finishRunningTaskReleaseToStack(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        invokeMethodReflectively(
+                recentsView,
+                "setRunningTaskViewShowScreenshot",
+                BOOLEAN_ARG,
+                true);
+        FlymeStatusBarSizer.invokeMethodCompat(
+                recentsView,
+                "setEnableDrawingLiveTile",
+                BOOLEAN_ARG,
+                false);
+        FlymeStatusBarSizer.invokeMethodCompat(
+                recentsView,
+                "setRunningTaskHidden",
+                BOOLEAN_ARG,
+                false);
+        captureStockTaskStates(recentsView);
+        applyStackLayout(recentsView, false);
+        recentsView.invalidate();
     }
 
     private static View resolveOwningRecentsView(View taskView) {
@@ -1342,6 +1460,30 @@ public final class LauncherRecentsHooks {
                 return;
             }
         }
+    }
+
+    private static boolean invokeMethodReflectively(
+            Object target,
+            String methodName,
+            Class<?>[] parameterTypes,
+            Object... args) {
+        if (target == null || methodName == null) {
+            return false;
+        }
+        Class<?> clazz = target.getClass();
+        while (clazz != null) {
+            try {
+                Method method = clazz.getDeclaredMethod(methodName, parameterTypes);
+                method.setAccessible(true);
+                method.invoke(target, args);
+                return true;
+            } catch (NoSuchMethodException e) {
+                clazz = clazz.getSuperclass();
+            } catch (Throwable ignored) {
+                return false;
+            }
+        }
+        return false;
     }
 
     private static float resolveStackEntryProgress(View recentsView) {
