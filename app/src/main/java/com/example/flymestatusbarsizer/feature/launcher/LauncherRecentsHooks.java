@@ -1769,34 +1769,42 @@ public final class LauncherRecentsHooks {
                 Math.round(actualTaskTop - baseTaskRect.top));
     }
 
+    private static Rect resolveTaskLaunchThumbnailBounds(View taskView) {
+        if (taskView == null) {
+            return null;
+        }
+        Rect bounds = new Rect();
+        FlymeStatusBarSizer.invokeMethodCompat(
+                taskView,
+                "getThumbnailBounds",
+                new Class<?>[]{Rect.class, boolean.class},
+                bounds,
+                false);
+        return bounds.isEmpty() ? null : bounds;
+    }
+
     private static float[] resolveTaskLaunchTargetCenter(View recentsView) {
         if (recentsView == null) {
             return null;
         }
-        Rect windowFrame = new Rect();
-        recentsView.getWindowVisibleDisplayFrame(windowFrame);
-        float windowCenterX;
-        float windowCenterY;
-        if (!windowFrame.isEmpty()) {
-            windowCenterX = windowFrame.exactCenterX();
-            windowCenterY = windowFrame.exactCenterY();
-        } else {
-            View rootView = recentsView.getRootView();
-            if (rootView == null || rootView.getWidth() <= 0 || rootView.getHeight() <= 0) {
-                return null;
-            }
-            int[] rootLocation = new int[2];
-            rootView.getLocationOnScreen(rootLocation);
-            windowCenterX = rootLocation[0] + (rootView.getWidth() * 0.5f);
-            windowCenterY = rootLocation[1] + (rootView.getHeight() * 0.5f);
+        View rootView = recentsView.getRootView();
+        if (rootView == null || rootView.getWidth() <= 0 || rootView.getHeight() <= 0) {
+            return new float[]{
+                    recentsView.getScrollX() + (recentsView.getWidth() * 0.5f),
+                    recentsView.getScrollY() + (recentsView.getHeight() * 0.5f)
+            };
         }
         int[] recentsLocation = new int[2];
-        recentsView.getLocationOnScreen(recentsLocation);
-        float recentsScaleX = Math.max(0.001f, recentsView.getScaleX());
-        float recentsScaleY = Math.max(0.001f, recentsView.getScaleY());
+        int[] rootLocation = new int[2];
+        recentsView.getLocationInWindow(recentsLocation);
+        rootView.getLocationInWindow(rootLocation);
         return new float[]{
-                ((windowCenterX - recentsLocation[0]) / recentsScaleX) + recentsView.getScrollX(),
-                ((windowCenterY - recentsLocation[1]) / recentsScaleY) + recentsView.getScrollY()
+                (rootLocation[0] - recentsLocation[0])
+                        + (rootView.getWidth() * 0.5f)
+                        + recentsView.getScrollX(),
+                (rootLocation[1] - recentsLocation[1])
+                        + (rootView.getHeight() * 0.5f)
+                        + recentsView.getScrollY()
         };
     }
 
@@ -2141,6 +2149,31 @@ public final class LauncherRecentsHooks {
                 : targetTaskView.getTranslationZ();
         float targetWidth = Math.max(1f, targetTaskView.getWidth());
         float targetHeight = Math.max(1f, targetTaskView.getHeight());
+        Rect targetThumbnailBounds = resolveTaskLaunchThumbnailBounds(targetTaskView);
+        float targetFocusCenterX = targetWidth * 0.5f;
+        float targetFocusCenterY = targetHeight * 0.5f;
+        float targetFocusWidth = targetWidth;
+        float targetFocusHeight = targetHeight;
+        if (targetThumbnailBounds != null) {
+            targetFocusCenterX = targetThumbnailBounds.exactCenterX();
+            targetFocusCenterY = targetThumbnailBounds.exactCenterY();
+            targetFocusWidth = Math.max(1f, targetThumbnailBounds.width());
+            targetFocusHeight = Math.max(1f, targetThumbnailBounds.height());
+        }
+        float startTargetPivotX = targetTaskView.getPivotX();
+        float startTargetPivotY = targetTaskView.getPivotY();
+        float startTargetScaleX = Math.max(0.0001f, targetTaskView.getScaleX());
+        float startTargetScaleY = Math.max(0.0001f, targetTaskView.getScaleY());
+        float currentTargetCenterX = targetTaskView.getX()
+                + startTargetPivotX
+                + ((targetFocusCenterX - startTargetPivotX) * startTargetScaleX);
+        float currentTargetCenterY = targetTaskView.getY()
+                + startTargetPivotY
+                + ((targetFocusCenterY - startTargetPivotY) * startTargetScaleY);
+        float targetPivotCompensationX =
+                currentTargetCenterX - (targetTaskView.getX() + targetFocusCenterX);
+        float targetPivotCompensationY =
+                currentTargetCenterY - (targetTaskView.getY() + targetFocusCenterY);
         float[] handoffTargetCenter = resolveTaskLaunchTargetCenter(recentsView);
         float viewportCenterX = handoffTargetCenter != null
                 ? handoffTargetCenter[0]
@@ -2148,13 +2181,23 @@ public final class LauncherRecentsHooks {
         float viewportCenterY = handoffTargetCenter != null
                 ? handoffTargetCenter[1]
                 : recentsView.getScrollY() + (recentsView.getHeight() * 0.5f);
-        float currentTargetCenterX = targetTaskView.getX() + (targetWidth * 0.5f);
-        float currentTargetCenterY = targetTaskView.getY() + (targetHeight * 0.5f);
         float targetDeltaX = viewportCenterX - currentTargetCenterX;
         float targetDeltaY = viewportCenterY - currentTargetCenterY;
+        View rootView = recentsView.getRootView();
+        float targetViewportWidth = rootView != null && rootView.getWidth() > 0
+                ? rootView.getWidth()
+                : recentsView.getWidth();
+        float targetViewportHeight = rootView != null && rootView.getHeight() > 0
+                ? rootView.getHeight()
+                : recentsView.getHeight();
+        float targetStartNonGridScale = readFloatField(targetTaskView, "nonGridScale", 1f);
+        float scaleNormalizer = Math.abs(targetStartNonGridScale) > 0.0001f
+                ? Math.max(0.0001f, targetTaskView.getScaleX() / targetStartNonGridScale)
+                : 1f;
         float targetEndScale = Math.max(
-                Math.max(1f, recentsView.getWidth() / targetWidth),
-                Math.max(1f, recentsView.getHeight() / targetHeight))
+                Math.max(1f, targetViewportWidth / targetFocusWidth),
+                Math.max(1f, targetViewportHeight / targetFocusHeight))
+                / scaleNormalizer
                 * TASK_LAUNCH_TARGET_END_SCALE_BLEED;
 
         int taskViewCount = invokeInt(recentsView, "getTaskViewCount", 0);
@@ -2175,15 +2218,23 @@ public final class LauncherRecentsHooks {
             float startTranslationZ = taskView.getTranslationZ();
             float startFullscreenProgress = readFloatField(taskView, "fullscreenProgress", 0f);
             if (taskView == targetTaskView) {
+                taskView.setPivotX(targetFocusCenterX);
+                taskView.setPivotY(targetFocusCenterY);
                 setHorizontalOffsetTranslationX(
                         taskView,
                         startHorizontalOffsetX);
                 setTaskOffsetTranslationX(
                         taskView,
-                        lerp(startTaskOffsetX, startTaskOffsetX + targetDeltaX, targetFullscreenProgress));
+                        lerp(
+                                startTaskOffsetX + targetPivotCompensationX,
+                                startTaskOffsetX + targetPivotCompensationX + targetDeltaX,
+                                targetFullscreenProgress));
                 setTaskOffsetTranslationY(
                         taskView,
-                        lerp(startTaskOffsetY, startTaskOffsetY + targetDeltaY, targetFullscreenProgress));
+                        lerp(
+                                startTaskOffsetY + targetPivotCompensationY,
+                                startTaskOffsetY + targetPivotCompensationY + targetDeltaY,
+                                targetFullscreenProgress));
                 setBoxTranslationY(
                         taskView,
                         lerp(startBoxTranslationY, readOriginalBoxTranslationY(taskView), targetFullscreenProgress));
