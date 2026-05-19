@@ -54,9 +54,11 @@ final class LauncherRecentsStateAnimationController {
                 View recentsView = resolveControllerRecentsView(thisObject);
                 boolean shouldTakeOver =
                         shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
+                if (shouldTakeOver) {
+                    beginOverviewStateStackAnimation(recentsView, pendingAnimation);
+                }
                 Object result = chain.proceed();
                 if (shouldTakeOver) {
-                    attachOverviewStateAnimationCallbacks(recentsView, pendingAnimation);
                     LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 }
                 return result;
@@ -91,7 +93,7 @@ final class LauncherRecentsStateAnimationController {
                 boolean shouldTakeOver =
                         shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
                 if (shouldTakeOver) {
-                    markOverviewStateStackAnimation(recentsView, true);
+                    beginOverviewStateStackAnimation(recentsView, null);
                     LauncherRecentsTransitionController.finishRunningTaskReleaseToStack(recentsView);
                 }
                 Object result = chain.proceed();
@@ -121,10 +123,14 @@ final class LauncherRecentsStateAnimationController {
                 View recentsView = resolveControllerRecentsView(thisObject);
                 boolean shouldTakeOver =
                         shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
+                if (shouldTakeOver) {
+                    beginOverviewStateStackAnimation(recentsView, null);
+                }
                 Object result = chain.proceed();
                 if (shouldTakeOver) {
                     LauncherRecentsTransitionController.finishRunningTaskReleaseToStack(recentsView);
                     LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                    clearOverviewStateStackAnimation(recentsView);
                 }
                 return result;
             });
@@ -163,6 +169,16 @@ final class LauncherRecentsStateAnimationController {
                         clearOverviewStateStackAnimation(recentsView);
                     }
                 });
+    }
+
+    private static void beginOverviewStateStackAnimation(
+            View recentsView,
+            Object pendingAnimation) {
+        if (recentsView == null) {
+            return;
+        }
+        markOverviewStateStackAnimation(recentsView, true);
+        attachOverviewStateAnimationCallbacks(recentsView, pendingAnimation);
     }
 
     private static boolean shouldTakeOverOverviewPeekToOverview(

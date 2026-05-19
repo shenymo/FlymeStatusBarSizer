@@ -15,9 +15,10 @@ import java.util.ArrayList;
 final class LauncherRecentsLayoutEngine {
     private static final float STACK_DEPTH_CURVE_POWER = 0.82f;
     private static final float STACK_FRONT_VISIBLE_RATIO = 0.50f;
-    private static final float STACK_FRONT_SHIFT_START_PROGRESS = 0.12f;
     private static final float STACK_FRONT_REVEAL_CURVE_POWER = 0.72f;
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
+    private static final float STACK_ENTRY_REAR_START_SPREAD_RATIO = 0.06f;
+    private static final float STACK_ENTRY_REAR_START_SCALE_STEP = 0.045f;
     private static final float STACK_BACK_SPREAD_RATIO = 0.14f;
     private static final float STACK_MIN_OVERLAP_RATIO = 0.20f;
     private static final float STACK_SCALE_STEP = 0.065f;
@@ -113,6 +114,15 @@ final class LauncherRecentsLayoutEngine {
                     if (LauncherRecentsLaunchController.shouldSuppressStockTaskLaunchTransformMethod(
                             recentsView,
                             methodName)) {
+                        return null;
+                    }
+                    if (shouldSuppressStockPageOffsetUpdate(methodName, recentsView)) {
+                        LauncherRecentsState.trackRecentsView(recentsView);
+                        prepareRecentsView(recentsView);
+                        if (shouldApplyDynamicStackLayout(recentsView)) {
+                            LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
+                            applyStackLayout(recentsView, false);
+                        }
                         return null;
                     }
                 }
@@ -275,8 +285,6 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTransitionController.readBlankTapHomeExitProgress(recentsView);
         float stackEntryProgress = resolveStackEntryProgress(recentsView);
         float stackVerticalProgress = resolveStackVerticalProgress(recentsView);
-        boolean isTouchHandling =
-                LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false);
         float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
         float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
 
@@ -320,26 +328,10 @@ final class LauncherRecentsLayoutEngine {
             float blankTapExitTravelPx = Math.max(
                     taskWidth * BLANK_TAP_HOME_EXIT_TRAVEL_RATIO,
                     FlymeStatusBarSizer.dp(recentsView.getContext(), 220));
-            float stockVisibleOffset = effectiveRawOffset
-                    + LauncherRecentsTaskVisuals.readLastStockTaskOffsetX(taskView)
-                    + LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView);
-            boolean shouldHoldLeadCardCentered = isTouchHandling
-                    && stackVerticalProgress < 0.999f
-                    && progress >= 0f
-                    && progress < 1.0f;
-            float horizontalEntryProgress = shouldHoldLeadCardCentered
-                    ? 0f
-                    : stackEntryProgress;
-            float frontShiftProgress = remapProgress(
-                    horizontalEntryProgress,
-                    STACK_FRONT_SHIFT_START_PROGRESS,
-                    1.0f);
-            float frontBaseOffset = lerp(stackBaseOffsetPx, stackFrontOffsetPx, frontShiftProgress);
-            float desiredVisibleOffset;
-            float desiredScale;
-            float desiredTranslationZ;
-            float desiredTaskOffsetY;
-            float desiredBoxTranslationY;
+            float finalVisibleOffset;
+            float finalScale;
+            float finalTranslationZ;
+            float finalTaskOffsetY;
 
             if (progress >= 0f) {
                 float positiveProgress = Math.max(0f, progress);
@@ -349,14 +341,14 @@ final class LauncherRecentsLayoutEngine {
                         localProgress,
                         STACK_FRONT_REVEAL_CURVE_POWER));
                 float maxLeadSeparationPx = taskWidth * (1.0f - STACK_MIN_OVERLAP_RATIO);
-                desiredVisibleOffset = frontBaseOffset
+                finalVisibleOffset = stackFrontOffsetPx
                         + (rightLayer * maxLeadSeparationPx)
                         + (handoffProgress * maxLeadSeparationPx);
-                desiredScale = 1.0f;
-                desiredTranslationZ = maxTranslationZ
+                finalScale = 1.0f;
+                finalTranslationZ = maxTranslationZ
                         + zStepPx
                         + (Math.min(progress, MAX_STACK_LAYERS) / MAX_STACK_LAYERS * maxTranslationZ);
-                desiredTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
+                finalTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
             } else {
                 float stackDepth = clamp(-progress, 0f, MAX_STACK_LAYERS);
                 float revealCurve = (float) Math.pow(
@@ -376,39 +368,70 @@ final class LauncherRecentsLayoutEngine {
                 float frontRevealProgress = smoothStep((float) Math.pow(
                         incomingProgress,
                         STACK_FRONT_REVEAL_CURVE_POWER));
-                desiredVisibleOffset = lerp(
+                finalVisibleOffset = lerp(
                         backgroundStackOffset,
-                        frontBaseOffset,
+                        stackFrontOffsetPx,
                         frontRevealProgress);
-                desiredScale = Math.max(
+                finalScale = Math.max(
                         STACK_MIN_SCALE,
                         1.0f - (STACK_SCALE_STEP * visualStackDepth));
-                desiredTranslationZ =
+                finalTranslationZ =
                         Math.max(0f, maxTranslationZ - (revealCurve * maxTranslationZ));
-                desiredTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
+                finalTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
             }
-            desiredVisibleOffset = lerp(
-                    stockVisibleOffset,
-                    desiredVisibleOffset,
-                    horizontalEntryProgress);
-            desiredScale = lerp(
-                    LauncherRecentsTaskVisuals.readLastStockNonGridScale(taskView),
-                    desiredScale,
-                    stackVerticalProgress);
-            desiredTaskOffsetY = lerp(
-                    LauncherRecentsTaskVisuals.readLastStockTaskOffsetY(taskView),
-                    desiredTaskOffsetY,
-                    stackVerticalProgress);
-            desiredBoxTranslationY = lerp(
+            boolean isLeadCard = progress >= 0f && progress < 1.0f;
+            float taskEntryProgress = resolveTaskStackEntryProgress(stackEntryProgress, progress);
+            float taskAlphaProgress = resolveTaskStackEntryAlphaProgress(stackEntryProgress, progress);
+            float collapsedDepth = clamp(
+                    Math.abs(progress) + (progress > 0f ? 0.45f : 0.15f),
+                    0f,
+                    MAX_STACK_LAYERS + 0.5f);
+            float collapsedSpreadPx = Math.min(
+                    taskWidth * STACK_ENTRY_REAR_START_SPREAD_RATIO,
+                    FlymeStatusBarSizer.dp(recentsView.getContext(), 28));
+            float collapsedVisibleOffset = isLeadCard
+                    ? 0f
+                    : -(collapsedSpreadPx * Math.min(MAX_STACK_LAYERS + 0.5f, collapsedDepth + 0.75f));
+            float collapsedScale = isLeadCard
+                    ? 1.0f
+                    : Math.max(
+                    STACK_MIN_SCALE,
+                    1.0f - (STACK_ENTRY_REAR_START_SCALE_STEP * (collapsedDepth + 1.0f)));
+            float collapsedTranslationZ = isLeadCard
+                    ? maxTranslationZ + zStepPx
+                    : Math.max(
+                    0f,
+                    maxTranslationZ - ((Math.min(collapsedDepth, MAX_STACK_LAYERS)
+                    / MAX_STACK_LAYERS) * (maxTranslationZ * 0.6f)));
+            float collapsedTaskOffsetY = isLeadCard
+                    ? 0f
+                    : stackEntryLiftPx * Math.min(1.25f, 0.35f + (0.20f * collapsedDepth));
+            float transformEntryProgress = Math.max(
+                    taskEntryProgress,
+                    stackVerticalProgress * 0.55f);
+            float desiredVisibleOffset = lerp(
+                    collapsedVisibleOffset,
+                    finalVisibleOffset,
+                    taskEntryProgress);
+            float desiredScale = lerp(
+                    collapsedScale,
+                    finalScale,
+                    transformEntryProgress);
+            float desiredTaskOffsetY = lerp(
+                    collapsedTaskOffsetY,
+                    finalTaskOffsetY,
+                    Math.max(stackVerticalProgress, taskEntryProgress));
+            float desiredBoxTranslationY = lerp(
                     LauncherRecentsTaskVisuals.readLastStockBoxTranslationY(taskView),
                     LauncherRecentsTaskVisuals.readOriginalBoxTranslationY(taskView),
-                    stackVerticalProgress);
-            desiredTranslationZ = lerp(
-                    LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView),
-                    desiredTranslationZ,
-                    stackVerticalProgress);
+                    Math.max(stackVerticalProgress, taskEntryProgress * 0.6f));
+            float desiredTranslationZ = lerp(
+                    collapsedTranslationZ,
+                    finalTranslationZ,
+                    transformEntryProgress);
             float desiredStableAlpha =
-                    LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView);
+                    LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView)
+                            * taskAlphaProgress;
             if (blankTapExitProgress > 0f) {
                 if (isTaskVisibleInViewport(
                         recentsView,
@@ -442,6 +465,13 @@ final class LauncherRecentsLayoutEngine {
         if (launchState != null && launchState.handoffEnabled) {
             LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);
         }
+    }
+
+    private static boolean shouldSuppressStockPageOffsetUpdate(
+            String methodName,
+            View recentsView) {
+        return "updatePageOffsetsForFlyme".equals(methodName)
+                && shouldUseStackLayout(recentsView);
     }
 
     static void restoreTaskTransforms(View recentsView, int taskViewCount) {
@@ -565,6 +595,30 @@ final class LauncherRecentsLayoutEngine {
                 0f,
                 1f);
         return clamp((1.0f - fullscreenProgress) * contentAlpha, 0f, 1f);
+    }
+
+    private static float resolveTaskStackEntryProgress(
+            float stackEntryProgress,
+            float pageProgress) {
+        if (pageProgress >= 0f && pageProgress < 1.0f) {
+            return smoothStep(stackEntryProgress);
+        }
+        float layerDepth = clamp(Math.abs(pageProgress), 0f, MAX_STACK_LAYERS);
+        float revealStart = Math.min(0.42f, layerDepth * 0.10f);
+        float revealEnd = 1.0f - Math.min(0.18f, layerDepth * 0.04f);
+        return smoothStep(remapProgress(stackEntryProgress, revealStart, revealEnd));
+    }
+
+    private static float resolveTaskStackEntryAlphaProgress(
+            float stackEntryProgress,
+            float pageProgress) {
+        if (pageProgress >= 0f && pageProgress < 1.0f) {
+            return 1.0f;
+        }
+        float layerDepth = clamp(Math.abs(pageProgress), 0f, MAX_STACK_LAYERS);
+        float revealStart = 0.06f + Math.min(0.36f, layerDepth * 0.12f);
+        float revealEnd = 0.78f + Math.min(0.12f, layerDepth * 0.03f);
+        return smoothStep(remapProgress(stackEntryProgress, revealStart, revealEnd));
     }
 
     static boolean isTaskVisibleInViewport(
