@@ -36,6 +36,7 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         hookRecentsViewConstructors(module, loader);
+        hookRecentsViewMethod(module, loader, "updatePageScales");
         hookRecentsViewMethod(module, loader, "updatePageOffsetsForFlyme");
         hookRecentsViewMethod(module, loader, "applyAttachAlpha");
         hookRecentsViewOnScrollChanged(module, loader);
@@ -115,6 +116,15 @@ final class LauncherRecentsLayoutEngine {
                     if (LauncherRecentsLaunchController.shouldSuppressStockTaskLaunchTransformMethod(
                             recentsView,
                             methodName)) {
+                        return null;
+                    }
+                    if (shouldSuppressStockPageScaleUpdate(methodName, recentsView)) {
+                        LauncherRecentsState.trackRecentsView(recentsView);
+                        prepareRecentsView(recentsView);
+                        if (shouldApplyDynamicStackLayout(recentsView)) {
+                            LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
+                            applyStackLayout(recentsView, false);
+                        }
                         return null;
                     }
                     if (shouldSuppressStockPageOffsetUpdate(methodName, recentsView)) {
@@ -220,6 +230,25 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
+    static void resetTaskPageViewScales(View recentsView) {
+        if (!(recentsView instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) recentsView;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child == null) {
+                continue;
+            }
+            child.setScaleX(1f);
+            child.setScaleY(1f);
+            if (child.getWidth() > 0 && child.getHeight() > 0) {
+                child.setPivotX(child.getWidth() * 0.5f);
+                child.setPivotY(child.getHeight() * 0.5f);
+            }
+        }
+    }
+
     static void applyStackLayout(View recentsView, boolean captureStockState) {
         if (recentsView == null) {
             return;
@@ -294,6 +323,12 @@ final class LauncherRecentsLayoutEngine {
         float stackVerticalProgress = resolveStackVerticalProgress(recentsView);
         float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
         float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
+        boolean appEntrySessionActive =
+                LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
+        int runningTaskChildIndex = -1;
+        if (runningTaskView != null && recentsView instanceof ViewGroup) {
+            runningTaskChildIndex = ((ViewGroup) recentsView).indexOfChild(runningTaskView);
+        }
 
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
@@ -302,6 +337,13 @@ final class LauncherRecentsLayoutEngine {
             }
             if (LauncherRecentsCompat.isDesktopTask(taskView)) {
                 restoreTaskTransform(taskView);
+                continue;
+            }
+            if (taskView != runningTaskView && sharesRunningTaskIds(taskView, runningTaskView)) {
+                restoreTaskTransform(taskView);
+                LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
                 continue;
             }
             if (captureStockState) {
@@ -318,6 +360,14 @@ final class LauncherRecentsLayoutEngine {
             float taskWidth = taskView.getWidth() > 0 ? taskView.getWidth() : referenceWidth;
             float taskHeight = taskView.getHeight() > 0 ? taskView.getHeight() : referenceHeight;
             float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
+            float collapsedReferenceProgress = progress;
+            if (appEntrySessionActive && runningTaskView != null) {
+                collapsedReferenceProgress = resolveAppEntryCollapsedProgress(
+                        taskView,
+                        runningTaskView,
+                        i,
+                        runningTaskChildIndex);
+            }
             float stackBaseOffsetPx =
                     -taskCenteredLeftPx + (taskWidth * STACK_LEFT_INSET_RATIO);
             float stackFrontLeftPx =
@@ -386,19 +436,21 @@ final class LauncherRecentsLayoutEngine {
                         Math.max(0f, maxTranslationZ - (revealCurve * maxTranslationZ));
                 finalTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
             }
-            boolean isLeadCard = progress >= 0f && progress < 1.0f;
-            float taskEntryProgress = resolveTaskStackEntryProgress(stackEntryProgress, progress);
-            float taskAlphaProgress = resolveTaskStackEntryAlphaProgress(stackEntryProgress, progress);
+            boolean isLeadCard = appEntrySessionActive
+                    ? taskView == runningTaskView
+                    : progress >= 0f && progress < 1.0f;
+            float taskEntryProgress = resolveTaskStackEntryProgress(
+                    stackEntryProgress,
+                    collapsedReferenceProgress);
+            float taskAlphaProgress = resolveTaskStackEntryAlphaProgress(
+                    stackEntryProgress,
+                    collapsedReferenceProgress);
             float collapsedDepth = clamp(
-                    Math.abs(progress) + (progress > 0f ? 0.45f : 0.15f),
+                    Math.abs(collapsedReferenceProgress)
+                            + (collapsedReferenceProgress > 0f ? 0.45f : 0.15f),
                     0f,
                     MAX_STACK_LAYERS + 0.5f);
-            float collapsedSpreadPx = Math.min(
-                    taskWidth * STACK_ENTRY_REAR_START_SPREAD_RATIO,
-                    FlymeStatusBarSizer.dp(recentsView.getContext(), 28));
-            float collapsedVisibleOffset = isLeadCard
-                    ? 0f
-                    : -(collapsedSpreadPx * Math.min(MAX_STACK_LAYERS + 0.5f, collapsedDepth + 0.75f));
+            float collapsedVisibleOffset = 0f;
             float collapsedScale = isLeadCard
                     ? 1.0f
                     : Math.max(
@@ -410,9 +462,7 @@ final class LauncherRecentsLayoutEngine {
                     0f,
                     maxTranslationZ - ((Math.min(collapsedDepth, MAX_STACK_LAYERS)
                     / MAX_STACK_LAYERS) * (maxTranslationZ * 0.6f)));
-            float collapsedTaskOffsetY = isLeadCard
-                    ? 0f
-                    : stackEntryLiftPx * Math.min(1.25f, 0.35f + (0.20f * collapsedDepth));
+            float collapsedTaskOffsetY = 0f;
             float transformEntryProgress = Math.max(
                     taskEntryProgress,
                     stackVerticalProgress * 0.55f);
@@ -436,8 +486,9 @@ final class LauncherRecentsLayoutEngine {
                     collapsedTranslationZ,
                     finalTranslationZ,
                     transformEntryProgress);
-            float desiredStableAlpha =
-                    LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView)
+            float desiredStableAlpha = appEntrySessionActive
+                    ? taskAlphaProgress
+                    : LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView)
                             * taskAlphaProgress;
             if (blankTapExitProgress > 0f) {
                 if (isTaskVisibleInViewport(
@@ -465,7 +516,9 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsTaskVisuals.setNonGridScale(taskView, desiredScale);
             LauncherRecentsTaskVisuals.setAttachAlpha(
                     taskView,
-                    taskView == runningTaskView
+                    appEntrySessionActive
+                            ? 1f
+                            : taskView == runningTaskView
                             ? LauncherRecentsTaskVisuals.readLastStockAttachAlpha(taskView)
                             : 1f);
             LauncherRecentsTaskVisuals.setStableAlpha(taskView, desiredStableAlpha);
@@ -483,6 +536,14 @@ final class LauncherRecentsLayoutEngine {
             String methodName,
             View recentsView) {
         return "updatePageOffsetsForFlyme".equals(methodName)
+                && shouldUseStackLayout(recentsView);
+    }
+
+    private static boolean shouldSuppressStockPageScaleUpdate(
+            String methodName,
+            View recentsView) {
+        return "updatePageScales".equals(methodName)
+                && LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                 && shouldUseStackLayout(recentsView);
     }
 
@@ -581,6 +642,26 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static float resolveStackEntryProgress(View recentsView) {
+        if (LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)) {
+            return clamp(
+                    LauncherRecentsState.readAppToRecentsEntryProgress(recentsView, 0f),
+                    0f,
+                    1f);
+        }
+        return resolveStockStackEntryProgress(recentsView);
+    }
+
+    static float resolveStackVerticalProgress(View recentsView) {
+        if (LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)) {
+            return clamp(
+                    LauncherRecentsState.readAppToRecentsEntryProgress(recentsView, 0f),
+                    0f,
+                    1f);
+        }
+        return resolveStockStackVerticalProgress(recentsView);
+    }
+
+    static float resolveStockStackEntryProgress(View recentsView) {
         float adjacentOffset = clamp(
                 LauncherRecentsCompat.readFloatField(
                         recentsView,
@@ -600,7 +681,7 @@ final class LauncherRecentsLayoutEngine {
         return clamp((1.0f - collapsedProgress) * contentAlpha, 0f, 1f);
     }
 
-    static float resolveStackVerticalProgress(View recentsView) {
+    static float resolveStockStackVerticalProgress(View recentsView) {
         float fullscreenProgress = clamp(
                 LauncherRecentsCompat.readFloatField(recentsView, "mFullscreenProgress", 0f),
                 0f,
@@ -610,6 +691,47 @@ final class LauncherRecentsLayoutEngine {
                 0f,
                 1f);
         return clamp((1.0f - fullscreenProgress) * contentAlpha, 0f, 1f);
+    }
+
+    private static float resolveAppEntryCollapsedProgress(
+            View taskView,
+            View runningTaskView,
+            int childIndex,
+            int runningTaskChildIndex) {
+        if (taskView == null || runningTaskView == null) {
+            return 0f;
+        }
+        if (taskView == runningTaskView) {
+            return 0f;
+        }
+        int referenceIndex = runningTaskChildIndex >= 0 ? runningTaskChildIndex : childIndex;
+        int orderDistance = Math.abs(childIndex - referenceIndex);
+        return -Math.max(1f, (float) orderDistance);
+    }
+
+    private static boolean sharesRunningTaskIds(View taskView, View runningTaskView) {
+        if (taskView == null || runningTaskView == null) {
+            return false;
+        }
+        Object taskIdsObject = LauncherRecentsCompat.invokeCompat(
+                runningTaskView,
+                "getTaskIds",
+                LauncherRecentsCompat.NO_ARGS);
+        if (!(taskIdsObject instanceof int[])) {
+            return false;
+        }
+        int[] runningTaskIds = (int[]) taskIdsObject;
+        for (int taskId : runningTaskIds) {
+            Object contains = LauncherRecentsCompat.invokeCompat(
+                    taskView,
+                    "containsTaskId",
+                    LauncherRecentsCompat.INT_ARG,
+                    taskId);
+            if (contains instanceof Boolean && (Boolean) contains) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static float resolveTaskStackEntryProgress(

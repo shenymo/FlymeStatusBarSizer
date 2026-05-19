@@ -43,6 +43,9 @@ final class LauncherRecentsTransitionController {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    LauncherRecentsAttachController.clearAppToRecentsEntrySession(
+                            recentsView,
+                            false);
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                     if (shouldAnimateBlankTapHomeExit(recentsView)) {
@@ -125,6 +128,8 @@ final class LauncherRecentsTransitionController {
                     View recentsView = (View) thisObject;
                     if (isPendingGestureRecentsStackRelease(recentsView)) {
                         applyGestureRecentsStackRelease(recentsView, false);
+                        LauncherRecentsAttachController.startAppToRecentsRevealAnimation(
+                                recentsView);
                     }
                 }
                 return result;
@@ -188,6 +193,12 @@ final class LauncherRecentsTransitionController {
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                     if (shouldPrepareGestureRelease) {
                         finishRunningTaskReleaseToStack(recentsView);
+                        LauncherRecentsAttachController.startAppToRecentsRevealAnimation(
+                                recentsView);
+                    } else {
+                        LauncherRecentsAttachController.clearAppToRecentsEntrySession(
+                                recentsView,
+                                false);
                     }
                     markPendingGestureRecentsStackRelease(recentsView, false);
                 }
@@ -315,10 +326,7 @@ final class LauncherRecentsTransitionController {
         if (recentsView == null) {
             return;
         }
-        Runnable applyRunnable = () -> {
-            finishRunningTaskRecentsAnimation(recentsView);
-            finishRunningTaskReleaseToStack(recentsView);
-        };
+        Runnable applyRunnable = () -> finishRunningTaskReleaseToStack(recentsView);
         if (!LauncherRecentsCompat.invokeMethodReflectively(
                 recentsView,
                 "switchToScreenshot",

@@ -2,8 +2,12 @@ package com.example.flymestatusbarsizer.feature.launcher;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -16,6 +20,9 @@ final class LauncherRecentsAttachController {
     private static final String LAUNCHER_STATE_CLASS = "com.android.launcher3.LauncherState";
     private static final String FLYME_LAUNCHER_STATE_CLASS =
             "com.meizu.flyme.launcher.FlymeLauncherState";
+    private static final long APP_TO_RECENTS_ENTRY_DURATION_MS = 320L;
+    private static final DecelerateInterpolator APP_TO_RECENTS_ENTRY_INTERPOLATOR =
+            new DecelerateInterpolator(1.55f);
 
     private LauncherRecentsAttachController() {
     }
@@ -28,6 +35,7 @@ final class LauncherRecentsAttachController {
         hookRecentsViewMoveRunningTaskToExpectedPosition(module, loader);
         hookLauncherRecentsViewApplyLoadPlan(module, loader);
         hookAbsSwipeUpHandlerInitialRecentsAttach(module, loader);
+        hookAbsSwipeUpHandlerAppEntryScrollTakeover(module, loader);
         hookFlymeRecentsAttach(module, loader);
     }
 
@@ -48,12 +56,12 @@ final class LauncherRecentsAttachController {
                         || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
                     return chain.proceed();
                 }
+                clearAppToRecentsEntrySession(recentsView, false);
+                beginAppToRecentsEntrySession(recentsView);
                 LauncherRecentsState.trackRecentsView(recentsView);
-                LauncherRecentsState.setPendingInitialAppToRecentsReorder(recentsView, true);
                 prepareRecentsForOverviewEntry(recentsView);
                 LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                 Object result = chain.proceed();
-                LauncherRecentsTransitionController.finishRunningTaskReleaseToStack(recentsView);
                 applyImmediateStackEntryTakeover(recentsView, loader);
                 return result;
             });
@@ -135,14 +143,14 @@ final class LauncherRecentsAttachController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
-                boolean updateRunningTaskAlpha =
-                        chain.getArg(2) instanceof Boolean && (Boolean) chain.getArg(2);
+                boolean allowInitialRunningTaskReorder =
+                        chain.getArg(1) instanceof Boolean && (Boolean) chain.getArg(1);
                 if (!shouldPrimeInitialAppToRecentsAttach(thisObject)) {
                     return chain.proceed();
                 }
                 primeInitialAppToRecentsAttach(
                         thisObject,
-                        updateRunningTaskAlpha);
+                        allowInitialRunningTaskReorder);
                 Object result = chain.proceed();
                 finishStockAppToRecentsAttachTakeover(resolveHandlerRecentsView(thisObject));
                 return result;
@@ -150,6 +158,44 @@ final class LauncherRecentsAttachController {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook AbsSwipeUpHandler.maybeUpdateRecentsAttachedState",
+                    t);
+        }
+    }
+
+    private static void hookAbsSwipeUpHandlerAppEntryScrollTakeover(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(ABS_SWIPE_UP_HANDLER_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("applyScrollAndTransform");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object handler = chain.getThisObject();
+                View recentsView = resolveHandlerRecentsView(handler);
+                if (!LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)) {
+                    return chain.proceed();
+                }
+                boolean originalScrollLinked =
+                        LauncherRecentsCompat.readBooleanField(
+                                handler,
+                                "mRecentsViewScrollLinked",
+                                false);
+                LauncherRecentsCompat.writeField(
+                        handler,
+                        "mRecentsViewScrollLinked",
+                        Boolean.FALSE);
+                try {
+                    return chain.proceed();
+                } finally {
+                    LauncherRecentsCompat.writeField(
+                            handler,
+                            "mRecentsViewScrollLinked",
+                            Boolean.valueOf(originalScrollLinked));
+                }
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook AbsSwipeUpHandler.applyScrollAndTransform",
                     t);
         }
     }
@@ -168,6 +214,10 @@ final class LauncherRecentsAttachController {
                 Object thisObject = chain.getThisObject();
                 boolean attached = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
                 View recentsView = resolveRecentsView(thisObject);
+                if (!attached) {
+                    clearAppToRecentsEntrySession(recentsView, false);
+                    return chain.proceed();
+                }
                 if (!shouldAugmentAppToRecentsAttach(
                         thisObject,
                         recentsView,
@@ -175,10 +225,8 @@ final class LauncherRecentsAttachController {
                         loader)) {
                     return chain.proceed();
                 }
-                prepareStockAppToRecentsAttachTakeover(recentsView);
-                Object result = chain.proceed();
-                finishStockAppToRecentsAttachTakeover(recentsView);
-                return result;
+                takeOverAppToRecentsAttachAtSource(thisObject, recentsView);
+                return null;
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
@@ -207,6 +255,7 @@ final class LauncherRecentsAttachController {
         if (recentsView == null) {
             return;
         }
+        beginAppToRecentsEntrySession(recentsView);
         LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASES.put(
                 recentsView,
                 Boolean.TRUE);
@@ -221,7 +270,86 @@ final class LauncherRecentsAttachController {
         }
         LauncherRecentsState.setPendingInitialAppToRecentsReorder(recentsView, false);
         LauncherRecentsState.trackRecentsView(recentsView);
-        LauncherRecentsTransitionController.finishRunningTaskReleaseToStack(recentsView);
+        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        recentsView.requestLayout();
+        recentsView.invalidate();
+    }
+
+    static boolean isAppToRecentsEntrySessionActive(View recentsView) {
+        return LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
+    }
+
+    static void startAppToRecentsRevealAnimation(View recentsView) {
+        if (recentsView == null
+                || !LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)) {
+            return;
+        }
+        ValueAnimator runningAnimator =
+                LauncherRecentsState.ACTIVE_APP_TO_RECENTS_ENTRY_ANIMATORS.get(recentsView);
+        if (runningAnimator != null) {
+            if (runningAnimator.isStarted() || runningAnimator.isRunning()) {
+                return;
+            }
+            LauncherRecentsState.ACTIVE_APP_TO_RECENTS_ENTRY_ANIMATORS.remove(recentsView);
+        }
+        float startProgress = LauncherRecentsLayoutEngine.clamp(
+                LauncherRecentsState.readAppToRecentsEntryProgress(recentsView, 0f),
+                0f,
+                1f);
+        LauncherRecentsState.setAppToRecentsEntryProgress(recentsView, startProgress);
+        if (startProgress >= 1f) {
+            clearAppToRecentsEntrySession(recentsView, true);
+            return;
+        }
+        ValueAnimator animator = ValueAnimator.ofFloat(startProgress, 1f);
+        animator.setDuration(APP_TO_RECENTS_ENTRY_DURATION_MS);
+        animator.setInterpolator(APP_TO_RECENTS_ENTRY_INTERPOLATOR);
+        animator.addUpdateListener(animation -> {
+            Object value = animation.getAnimatedValue();
+            float progress = value instanceof Float ? (Float) value : 0f;
+            LauncherRecentsState.setAppToRecentsEntryProgress(recentsView, progress);
+            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+            recentsView.invalidate();
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                LauncherRecentsState.ACTIVE_APP_TO_RECENTS_ENTRY_ANIMATORS.remove(recentsView);
+                clearAppToRecentsEntrySession(recentsView, !cancelled);
+            }
+        });
+        LauncherRecentsState.ACTIVE_APP_TO_RECENTS_ENTRY_ANIMATORS.put(recentsView, animator);
+        animator.start();
+    }
+
+    static void clearAppToRecentsEntrySession(View recentsView, boolean keepExpanded) {
+        if (recentsView == null) {
+            return;
+        }
+        ValueAnimator animator =
+                LauncherRecentsState.ACTIVE_APP_TO_RECENTS_ENTRY_ANIMATORS.remove(recentsView);
+        if (animator != null) {
+            animator.cancel();
+        }
+        if (keepExpanded) {
+            LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
+        }
+        LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
+        LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASES.remove(recentsView);
+        LauncherRecentsState.setPendingInitialAppToRecentsReorder(recentsView, false);
+        LauncherRecentsState.APP_TO_RECENTS_ENTRY_PROGRESS.remove(recentsView);
+        if (keepExpanded) {
+            setRecentsPageFloatProperty(recentsView, "ADJACENT_PAGE_SCALE", 0f);
+            setRecentsPageFloatProperty(recentsView, "ADJACENT_PAGE_HORIZONTAL_OFFSET", 0f);
+        }
+        LauncherRecentsLayoutEngine.resetTaskPageViewScales(recentsView);
         LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
         recentsView.requestLayout();
         recentsView.invalidate();
@@ -249,7 +377,7 @@ final class LauncherRecentsAttachController {
 
     private static void primeInitialAppToRecentsAttach(
             Object handler,
-            boolean updateRunningTaskAlpha) {
+            boolean allowInitialRunningTaskReorder) {
         View recentsView = resolveHandlerRecentsView(handler);
         Object animationFactory = LauncherRecentsCompat.getFieldCompat(handler, "mAnimationFactory");
         if (recentsView == null
@@ -268,7 +396,7 @@ final class LauncherRecentsAttachController {
                         "hasRecentsEverAttachedToAppWindow",
                         false);
         prepareRecentsForOverviewEntry(recentsView);
-        if (updateRunningTaskAlpha && !hasEverAttached) {
+        if (allowInitialRunningTaskReorder && !hasEverAttached) {
             LauncherRecentsState.setPendingInitialAppToRecentsReorder(recentsView, true);
             LauncherRecentsCompat.invokeCompat(
                     recentsView,
@@ -415,6 +543,23 @@ final class LauncherRecentsAttachController {
         recentsView.invalidate();
     }
 
+    private static void beginAppToRecentsEntrySession(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        ValueAnimator runningAnimator =
+                LauncherRecentsState.ACTIVE_APP_TO_RECENTS_ENTRY_ANIMATORS.remove(recentsView);
+        if (runningAnimator != null) {
+            runningAnimator.cancel();
+        }
+        LauncherRecentsState.trackRecentsView(recentsView);
+        LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, true);
+        LauncherRecentsState.setAppToRecentsEntryProgress(recentsView, 0f);
+        setRecentsPageFloatProperty(recentsView, "ADJACENT_PAGE_HORIZONTAL_OFFSET", 1f);
+        setRecentsPageFloatProperty(recentsView, "ADJACENT_PAGE_SCALE", 1f);
+        LauncherRecentsLayoutEngine.resetTaskPageViewScales(recentsView);
+    }
+
     private static void prepareRecentsForOverviewEntry(View recentsView) {
         if (recentsView == null) {
             return;
@@ -429,6 +574,61 @@ final class LauncherRecentsAttachController {
                 "setOverviewStateEnabled",
                 LauncherRecentsCompat.BOOLEAN_ARG,
                 true);
+    }
+
+    private static void takeOverAppToRecentsAttachAtSource(
+            Object factory,
+            View recentsView) {
+        if (factory == null || recentsView == null) {
+            return;
+        }
+        LauncherRecentsCompat.writeField(factory, "mIsAttachedToWindow", Boolean.TRUE);
+        LauncherRecentsCompat.writeField(factory, "mHasEverAttachedToWindow", Boolean.TRUE);
+        cancelFactoryStateElementAnimation(factory, 4);
+        prepareStockAppToRecentsAttachTakeover(recentsView);
+        setRecentsPageFloatProperty(recentsView, "ADJACENT_PAGE_HORIZONTAL_OFFSET", 1f);
+        setRecentsPageFloatProperty(recentsView, "ADJACENT_PAGE_SCALE", 1f);
+        setRecentsPageFloatProperty(recentsView, "CONTENT_ALPHA", 1f);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setEnableDrawingLiveTile",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                false);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setRunningTaskHidden",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                false);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setPageAnimOffScreenStart",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                false);
+        applyImmediateStackEntryTakeover(recentsView, recentsView.getClass().getClassLoader());
+        if (!LauncherRecentsCompat.invokeMethodReflectively(
+                recentsView,
+                "switchToScreenshot",
+                new Class<?>[]{Runnable.class},
+                (Runnable) () -> {
+                    LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                    recentsView.invalidate();
+                })) {
+            LauncherRecentsCompat.invokeMethodReflectively(
+                    recentsView,
+                    "setRunningTaskViewShowScreenshot",
+                    LauncherRecentsCompat.BOOLEAN_ARG,
+                    true);
+        }
+    }
+
+    private static void cancelFactoryStateElementAnimation(Object factory, int index) {
+        Object activity = resolveFactoryActivity(factory);
+        Object stateManager = LauncherRecentsCompat.invokeCompat(activity, "getStateManager");
+        LauncherRecentsCompat.invokeCompat(
+                stateManager,
+                "cancelStateElementAnimation",
+                LauncherRecentsCompat.INT_ARG,
+                index);
     }
 
     private static View resolveRecentsView(Object factory) {
@@ -515,6 +715,21 @@ final class LauncherRecentsAttachController {
         float forceHideFactor =
                 LauncherRecentsCompat.readFloatField(handler, "mForceHideOverViewFactor", 0f);
         return shiftValue >= forceHideFactor;
+    }
+
+    private static void setRecentsPageFloatProperty(
+            View recentsView,
+            String fieldName,
+            float value) {
+        if (recentsView == null) {
+            return;
+        }
+        LauncherRecentsCompat.setStaticFloatPropertyCompat(
+                LauncherRecentsCompat.RECENTS_VIEW_CLASS,
+                fieldName,
+                recentsView.getClass().getClassLoader(),
+                recentsView,
+                value);
     }
 
 }

@@ -20,11 +20,34 @@ final class LauncherRecentsTaskVisuals {
         }
     }
 
+    static void captureCurrentTaskStatesAsBaseline(View recentsView) {
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
+                continue;
+            }
+            captureCurrentTaskStateAsBaseline(taskView);
+        }
+    }
+
     static void captureStockTaskState(View taskView) {
         if (taskView == null) {
             return;
         }
+        View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
+        if (LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)) {
+            return;
+        }
         if (isCurrentTaskStateModuleApplied(taskView)) {
+            return;
+        }
+        rememberOriginalTaskState(taskView);
+        captureCurrentTaskStateAsBaseline(taskView);
+    }
+
+    private static void captureCurrentTaskStateAsBaseline(View taskView) {
+        if (taskView == null) {
             return;
         }
         rememberOriginalTaskState(taskView);

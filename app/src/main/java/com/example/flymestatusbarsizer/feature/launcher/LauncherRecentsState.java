@@ -14,13 +14,19 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, ValueAnimator> ACTIVE_TASK_LAUNCH_HANDOFF_ANIMATORS =
             new WeakHashMap<>();
+    static final WeakHashMap<View, ValueAnimator> ACTIVE_APP_TO_RECENTS_ENTRY_ANIMATORS =
+            new WeakHashMap<>();
     static final WeakHashMap<View, Float> BLANK_TAP_HOME_EXIT_PROGRESS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Float> APP_TO_RECENTS_ENTRY_PROGRESS =
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> PENDING_GESTURE_RECENTS_STACK_RELEASES =
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> PENDING_INITIAL_APP_TO_RECENTS_REORDERS =
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> ACTIVE_OVERVIEW_STATE_STACK_ANIMATIONS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> ACTIVE_APP_TO_RECENTS_ENTRY_SESSIONS =
             new WeakHashMap<>();
     static final WeakHashMap<View, LaunchHandoffState> ACTIVE_TASK_LAUNCH_HANDOFFS =
             new WeakHashMap<>();
@@ -146,6 +152,36 @@ final class LauncherRecentsState {
                 ? PENDING_INITIAL_APP_TO_RECENTS_REORDERS.get(recentsView)
                 : null;
         return value != null && value;
+    }
+
+    static void setAppToRecentsEntrySessionActive(View recentsView, boolean active) {
+        if (recentsView == null) {
+            return;
+        }
+        if (active) {
+            ACTIVE_APP_TO_RECENTS_ENTRY_SESSIONS.put(recentsView, Boolean.TRUE);
+        } else {
+            ACTIVE_APP_TO_RECENTS_ENTRY_SESSIONS.remove(recentsView);
+        }
+    }
+
+    static boolean isAppToRecentsEntrySessionActive(View recentsView) {
+        Boolean value = recentsView != null
+                ? ACTIVE_APP_TO_RECENTS_ENTRY_SESSIONS.get(recentsView)
+                : null;
+        return value != null && value;
+    }
+
+    static void setAppToRecentsEntryProgress(View recentsView, float progress) {
+        if (recentsView == null) {
+            return;
+        }
+        APP_TO_RECENTS_ENTRY_PROGRESS.put(recentsView, progress);
+    }
+
+    static float readAppToRecentsEntryProgress(View recentsView, float fallback) {
+        Float value = recentsView != null ? APP_TO_RECENTS_ENTRY_PROGRESS.get(recentsView) : null;
+        return value != null ? value : fallback;
     }
 
     static boolean isTaskLaunchLayoutFrozen(View recentsView) {
