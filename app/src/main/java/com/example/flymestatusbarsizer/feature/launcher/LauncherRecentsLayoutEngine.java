@@ -54,9 +54,9 @@ final class LauncherRecentsLayoutEngine {
                     continue;
                 }
                 prepareRecentsView(recentsView);
-                if (shouldUseStackLayout(recentsView)) {
+                if (shouldApplyDynamicStackLayout(recentsView)) {
                     applyStackLayout(recentsView, false);
-                } else {
+                } else if (!shouldUseStackLayout(recentsView)) {
                     reapplyOriginalTransforms(recentsView);
                 }
             }
@@ -88,7 +88,7 @@ final class LauncherRecentsLayoutEngine {
                         recentsView.post(() -> {
                             prepareRecentsView(recentsView);
                             LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
-                            applyStackLayout(recentsView, false);
+                            applyDynamicStackLayoutIfNeeded(recentsView);
                         });
                     }
                     return result;
@@ -258,6 +258,11 @@ final class LauncherRecentsLayoutEngine {
         if (launchState != null && launchState.frozen) {
             return;
         }
+        if (LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                && !LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                recentsView)) {
+            return;
+        }
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
                 FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
@@ -321,6 +326,16 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTransitionController.readBlankTapHomeExitProgress(recentsView);
         float stackEntryProgress = resolveStackEntryProgress(recentsView);
         float stackVerticalProgress = resolveStackVerticalProgress(recentsView);
+        boolean gestureStackReleaseActive =
+                LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                        recentsView);
+        float gestureStackReleaseProgress =
+                LauncherRecentsTransitionController.readGestureRecentsStackReleaseProgress(
+                        recentsView);
+        if (gestureStackReleaseActive) {
+            stackEntryProgress = 1f;
+            stackVerticalProgress = 1f;
+        }
         float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
         float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
         boolean appEntrySessionActive =
@@ -341,6 +356,12 @@ final class LauncherRecentsLayoutEngine {
             }
             if (taskView != runningTaskView && sharesRunningTaskIds(taskView, runningTaskView)) {
                 restoreTaskTransform(taskView);
+                LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
+                continue;
+            }
+            if (appEntrySessionActive && taskView == runningTaskView) {
                 LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
@@ -442,9 +463,6 @@ final class LauncherRecentsLayoutEngine {
             float taskEntryProgress = resolveTaskStackEntryProgress(
                     stackEntryProgress,
                     collapsedReferenceProgress);
-            float taskAlphaProgress = resolveTaskStackEntryAlphaProgress(
-                    stackEntryProgress,
-                    collapsedReferenceProgress);
             float collapsedDepth = clamp(
                     Math.abs(collapsedReferenceProgress)
                             + (collapsedReferenceProgress > 0f ? 0.45f : 0.15f),
@@ -486,10 +504,7 @@ final class LauncherRecentsLayoutEngine {
                     collapsedTranslationZ,
                     finalTranslationZ,
                     transformEntryProgress);
-            float desiredStableAlpha = appEntrySessionActive
-                    ? taskAlphaProgress
-                    : LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView)
-                            * taskAlphaProgress;
+            float desiredStableAlpha = 1f;
             if (blankTapExitProgress > 0f) {
                 if (isTaskVisibleInViewport(
                         recentsView,
@@ -509,23 +524,62 @@ final class LauncherRecentsLayoutEngine {
 
             taskView.setPivotX(taskWidth * 0.5f);
             taskView.setPivotY(taskHeight * 0.5f);
-            LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(taskView, 0f);
-            LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(taskView, translationCompensationX);
-            LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(taskView, desiredTaskOffsetY);
-            LauncherRecentsTaskVisuals.setBoxTranslationY(taskView, desiredBoxTranslationY);
-            LauncherRecentsTaskVisuals.setNonGridScale(taskView, desiredScale);
+            float appliedHorizontalOffsetX = 0f;
+            float appliedTaskOffsetX = translationCompensationX;
+            float appliedTaskOffsetY = desiredTaskOffsetY;
+            float appliedBoxTranslationY = desiredBoxTranslationY;
+            float appliedScale = desiredScale;
+            float appliedAttachAlpha = 1f;
+            float appliedStableAlpha = desiredStableAlpha;
+            float appliedFullscreenProgress =
+                    LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView);
+            float appliedTranslationZ = desiredTranslationZ;
+            if (gestureStackReleaseActive) {
+                float releaseProgress = clamp(gestureStackReleaseProgress, 0f, 1f);
+                appliedHorizontalOffsetX = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView),
+                        appliedHorizontalOffsetX,
+                        releaseProgress);
+                appliedTaskOffsetX = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockTaskOffsetX(taskView),
+                        appliedTaskOffsetX,
+                        releaseProgress);
+                appliedTaskOffsetY = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockTaskOffsetY(taskView),
+                        appliedTaskOffsetY,
+                        releaseProgress);
+                appliedBoxTranslationY = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockBoxTranslationY(taskView),
+                        appliedBoxTranslationY,
+                        releaseProgress);
+                appliedScale = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockNonGridScale(taskView),
+                        appliedScale,
+                        releaseProgress);
+                appliedFullscreenProgress = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView),
+                        appliedFullscreenProgress,
+                        releaseProgress);
+                appliedTranslationZ = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView),
+                        appliedTranslationZ,
+                        releaseProgress);
+            }
+            LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(
+                    taskView,
+                    appliedHorizontalOffsetX);
+            LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(taskView, appliedTaskOffsetX);
+            LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(taskView, appliedTaskOffsetY);
+            LauncherRecentsTaskVisuals.setBoxTranslationY(taskView, appliedBoxTranslationY);
+            LauncherRecentsTaskVisuals.setNonGridScale(taskView, appliedScale);
             LauncherRecentsTaskVisuals.setAttachAlpha(
                     taskView,
-                    appEntrySessionActive
-                            ? 1f
-                            : taskView == runningTaskView
-                            ? LauncherRecentsTaskVisuals.readLastStockAttachAlpha(taskView)
-                            : 1f);
-            LauncherRecentsTaskVisuals.setStableAlpha(taskView, desiredStableAlpha);
+                    appliedAttachAlpha);
+            LauncherRecentsTaskVisuals.setStableAlpha(taskView, appliedStableAlpha);
             LauncherRecentsTaskVisuals.setFullscreenProgress(
                     taskView,
-                    LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView));
-            LauncherRecentsTaskVisuals.setTranslationZ(taskView, desiredTranslationZ);
+                    appliedFullscreenProgress);
+            LauncherRecentsTaskVisuals.setTranslationZ(taskView, appliedTranslationZ);
         }
         if (launchState != null && launchState.handoffEnabled) {
             LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);
@@ -536,15 +590,21 @@ final class LauncherRecentsLayoutEngine {
             String methodName,
             View recentsView) {
         return "updatePageOffsetsForFlyme".equals(methodName)
-                && shouldUseStackLayout(recentsView);
+                && shouldUseStackLayout(recentsView)
+                && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView);
     }
 
     private static boolean shouldSuppressStockPageScaleUpdate(
             String methodName,
             View recentsView) {
         return "updatePageScales".equals(methodName)
-                && LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
-                && shouldUseStackLayout(recentsView);
+                && shouldUseStackLayout(recentsView)
+                && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                && (LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+                || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                recentsView)
+                || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView));
     }
 
     static void restoreTaskTransforms(View recentsView, int taskViewCount) {
@@ -592,6 +652,22 @@ final class LauncherRecentsLayoutEngine {
         return shouldUseStackLayout(config, recentsView, taskViewCount);
     }
 
+    static boolean shouldDeferStackLayoutForAppToRecents(View recentsView) {
+        if (recentsView == null) {
+            return false;
+        }
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
+        return config != null
+                && config.enabled
+                && config.launcherIosStackRecentsEnabled
+                && !LauncherRecentsCompat.invokeBoolean(recentsView, "showAsGrid", false)
+                && !LauncherRecentsCompat.invokeBoolean(
+                        recentsView,
+                        "isSplitSelectionActive",
+                        false);
+    }
+
     static boolean shouldUseStackLayout(
             FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config,
             View recentsView,
@@ -609,7 +685,10 @@ final class LauncherRecentsLayoutEngine {
 
     static boolean shouldApplyDynamicStackLayout(View recentsView) {
         return shouldUseStackLayout(recentsView)
-                && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView);
+                && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
+                && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                recentsView));
     }
 
     static boolean applyDynamicStackLayoutIfNeeded(View recentsView) {
@@ -642,22 +721,10 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static float resolveStackEntryProgress(View recentsView) {
-        if (LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)) {
-            return clamp(
-                    LauncherRecentsState.readAppToRecentsEntryProgress(recentsView, 0f),
-                    0f,
-                    1f);
-        }
         return resolveStockStackEntryProgress(recentsView);
     }
 
     static float resolveStackVerticalProgress(View recentsView) {
-        if (LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)) {
-            return clamp(
-                    LauncherRecentsState.readAppToRecentsEntryProgress(recentsView, 0f),
-                    0f,
-                    1f);
-        }
         return resolveStockStackVerticalProgress(recentsView);
     }
 
@@ -743,18 +810,6 @@ final class LauncherRecentsLayoutEngine {
         float layerDepth = clamp(Math.abs(pageProgress), 0f, MAX_STACK_LAYERS);
         float revealStart = Math.min(0.42f, layerDepth * 0.10f);
         float revealEnd = 1.0f - Math.min(0.18f, layerDepth * 0.04f);
-        return smoothStep(remapProgress(stackEntryProgress, revealStart, revealEnd));
-    }
-
-    private static float resolveTaskStackEntryAlphaProgress(
-            float stackEntryProgress,
-            float pageProgress) {
-        if (pageProgress >= 0f && pageProgress < 1.0f) {
-            return 1.0f;
-        }
-        float layerDepth = clamp(Math.abs(pageProgress), 0f, MAX_STACK_LAYERS);
-        float revealStart = 0.06f + Math.min(0.36f, layerDepth * 0.12f);
-        float revealEnd = 0.78f + Math.min(0.12f, layerDepth * 0.03f);
         return smoothStep(remapProgress(stackEntryProgress, revealStart, revealEnd));
     }
 

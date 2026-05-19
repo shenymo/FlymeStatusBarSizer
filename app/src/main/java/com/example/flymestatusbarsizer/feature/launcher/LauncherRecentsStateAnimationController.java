@@ -94,7 +94,7 @@ final class LauncherRecentsStateAnimationController {
                         shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
                 if (shouldTakeOver) {
                     beginOverviewStateStackAnimation(recentsView, null);
-                    LauncherRecentsTransitionController.finishRunningTaskReleaseToStack(recentsView);
+                    finishRunningTaskReleaseToStackIfReady(recentsView);
                 }
                 Object result = chain.proceed();
                 if (shouldTakeOver) {
@@ -128,7 +128,7 @@ final class LauncherRecentsStateAnimationController {
                 }
                 Object result = chain.proceed();
                 if (shouldTakeOver) {
-                    LauncherRecentsTransitionController.finishRunningTaskReleaseToStack(recentsView);
+                    finishRunningTaskReleaseToStackIfReady(recentsView);
                     LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                     clearOverviewStateStackAnimation(recentsView);
                 }
@@ -189,7 +189,8 @@ final class LauncherRecentsStateAnimationController {
         if (controller == null
                 || recentsView == null
                 || toState == null
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)) {
             return false;
         }
         Object overviewState =
@@ -240,5 +241,12 @@ final class LauncherRecentsStateAnimationController {
     private static void clearOverviewStateStackAnimation(View recentsView) {
         markOverviewStateStackAnimation(recentsView, false);
         LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+    }
+
+    private static void finishRunningTaskReleaseToStackIfReady(View recentsView) {
+        if (!LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+                && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)) {
+            LauncherRecentsTransitionController.finishRunningTaskReleaseToStack(recentsView);
+        }
     }
 }

@@ -14,15 +14,17 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, ValueAnimator> ACTIVE_TASK_LAUNCH_HANDOFF_ANIMATORS =
             new WeakHashMap<>();
-    static final WeakHashMap<View, ValueAnimator> ACTIVE_APP_TO_RECENTS_ENTRY_ANIMATORS =
+    static final WeakHashMap<View, ValueAnimator> ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS =
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> BLANK_TAP_HOME_EXIT_PROGRESS =
             new WeakHashMap<>();
-    static final WeakHashMap<View, Float> APP_TO_RECENTS_ENTRY_PROGRESS =
+    static final WeakHashMap<View, Float> GESTURE_STACK_RELEASE_PROGRESS =
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> PENDING_GESTURE_RECENTS_STACK_RELEASES =
             new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> PENDING_INITIAL_APP_TO_RECENTS_REORDERS =
+    static final WeakHashMap<View, Boolean> APP_TO_RECENTS_GESTURE_RELEASED =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> DEFERRED_APP_TO_RECENTS_STACK_LAYOUTS =
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> ACTIVE_OVERVIEW_STATE_STACK_ANIMATIONS =
             new WeakHashMap<>();
@@ -131,29 +133,6 @@ final class LauncherRecentsState {
         return value != null && value;
     }
 
-    static void setPendingInitialAppToRecentsReorder(View recentsView, boolean pending) {
-        if (recentsView == null) {
-            return;
-        }
-        if (pending) {
-            PENDING_INITIAL_APP_TO_RECENTS_REORDERS.put(recentsView, Boolean.TRUE);
-        } else {
-            PENDING_INITIAL_APP_TO_RECENTS_REORDERS.remove(recentsView);
-        }
-    }
-
-    static boolean consumePendingInitialAppToRecentsReorder(View recentsView) {
-        Boolean value = PENDING_INITIAL_APP_TO_RECENTS_REORDERS.remove(recentsView);
-        return value != null && value;
-    }
-
-    static boolean hasPendingInitialAppToRecentsReorder(View recentsView) {
-        Boolean value = recentsView != null
-                ? PENDING_INITIAL_APP_TO_RECENTS_REORDERS.get(recentsView)
-                : null;
-        return value != null && value;
-    }
-
     static void setAppToRecentsEntrySessionActive(View recentsView, boolean active) {
         if (recentsView == null) {
             return;
@@ -172,16 +151,40 @@ final class LauncherRecentsState {
         return value != null && value;
     }
 
-    static void setAppToRecentsEntryProgress(View recentsView, float progress) {
+    static void setAppToRecentsStackLayoutDeferred(View recentsView, boolean deferred) {
         if (recentsView == null) {
             return;
         }
-        APP_TO_RECENTS_ENTRY_PROGRESS.put(recentsView, progress);
+        if (deferred) {
+            DEFERRED_APP_TO_RECENTS_STACK_LAYOUTS.put(recentsView, Boolean.TRUE);
+        } else {
+            DEFERRED_APP_TO_RECENTS_STACK_LAYOUTS.remove(recentsView);
+        }
     }
 
-    static float readAppToRecentsEntryProgress(View recentsView, float fallback) {
-        Float value = recentsView != null ? APP_TO_RECENTS_ENTRY_PROGRESS.get(recentsView) : null;
-        return value != null ? value : fallback;
+    static boolean isAppToRecentsStackLayoutDeferred(View recentsView) {
+        Boolean value = recentsView != null
+                ? DEFERRED_APP_TO_RECENTS_STACK_LAYOUTS.get(recentsView)
+                : null;
+        return value != null && value;
+    }
+
+    static void setAppToRecentsGestureReleased(View recentsView, boolean released) {
+        if (recentsView == null) {
+            return;
+        }
+        if (released) {
+            APP_TO_RECENTS_GESTURE_RELEASED.put(recentsView, Boolean.TRUE);
+        } else {
+            APP_TO_RECENTS_GESTURE_RELEASED.remove(recentsView);
+        }
+    }
+
+    static boolean isAppToRecentsGestureReleased(View recentsView) {
+        Boolean value = recentsView != null
+                ? APP_TO_RECENTS_GESTURE_RELEASED.get(recentsView)
+                : null;
+        return value != null && value;
     }
 
     static boolean isTaskLaunchLayoutFrozen(View recentsView) {
