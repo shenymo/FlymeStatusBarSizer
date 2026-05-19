@@ -18,7 +18,7 @@ final class LauncherRecentsTransitionController {
     private static final String ABS_SWIPE_UP_HANDLER_CLASS =
             "com.android.quickstep.AbsSwipeUpHandler";
     private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 360L;
-    private static final long GESTURE_STACK_RELEASE_DURATION_MS = 260L;
+    private static final long GESTURE_STACK_RELEASE_DURATION_MS = 220L;
     private static final DecelerateInterpolator BLANK_TAP_HOME_EXIT_INTERPOLATOR =
             new DecelerateInterpolator(1.6f);
     private static final DecelerateInterpolator GESTURE_STACK_RELEASE_INTERPOLATOR =
@@ -96,6 +96,9 @@ final class LauncherRecentsTransitionController {
                 View recentsView = chain.getThisObject() instanceof View
                         ? (View) chain.getThisObject()
                         : null;
+                AnimatorSet animatorSet = chain.getArg(0) instanceof AnimatorSet
+                        ? (AnimatorSet) chain.getArg(0)
+                        : null;
                 Object endTarget = chain.getArg(1);
                 boolean shouldPrepareGestureRelease =
                         shouldUsePendingGestureRecentsStackRelease(recentsView, endTarget);
@@ -108,6 +111,11 @@ final class LauncherRecentsTransitionController {
                 if (recentsView != null) {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+                    if (shouldPrepareGestureRelease
+                            && LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
+                            && !isGestureRecentsStackReleaseAnimationActive(recentsView)) {
+                        startGestureRecentsStackReleaseAnimation(recentsView, animatorSet, true);
+                    }
                 }
                 return result;
             });
@@ -193,15 +201,18 @@ final class LauncherRecentsTransitionController {
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                     boolean gestureReleased =
                             LauncherRecentsState.isAppToRecentsGestureReleased(recentsView);
+                    boolean releaseAnimationActive =
+                            isGestureRecentsStackReleaseAnimationActive(recentsView);
                     if (LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                            && !gestureReleased) {
+                            && !gestureReleased
+                            && !releaseAnimationActive) {
                         return result;
                     } else if (shouldPrepareGestureRelease) {
                         if (gestureReleased
-                                && !isGestureRecentsStackReleaseAnimationActive(recentsView)) {
+                                && !releaseAnimationActive) {
                             applyGestureRecentsStackRelease(recentsView, true);
                         }
-                        if (gestureReleased) {
+                        if (gestureReleased || releaseAnimationActive) {
                             LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
                             LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
                             LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
@@ -211,7 +222,7 @@ final class LauncherRecentsTransitionController {
                                 recentsView,
                                 false);
                     }
-                    if (!shouldPrepareGestureRelease || gestureReleased) {
+                    if (!shouldPrepareGestureRelease || gestureReleased || releaseAnimationActive) {
                         markPendingGestureRecentsStackRelease(recentsView, false);
                     }
                 }
@@ -419,11 +430,12 @@ final class LauncherRecentsTransitionController {
         if (recentsView == null) {
             return;
         }
-        startGestureRecentsStackReleaseAnimation(recentsView, ensureRunningTaskScreenshot);
+        startGestureRecentsStackReleaseAnimation(recentsView, null, ensureRunningTaskScreenshot);
     }
 
     private static void startGestureRecentsStackReleaseAnimation(
             View recentsView,
+            AnimatorSet animatorSet,
             boolean ensureRunningTaskScreenshot) {
         if (recentsView == null) {
             return;
@@ -433,18 +445,25 @@ final class LauncherRecentsTransitionController {
         if (runningAnimator != null) {
             return;
         }
-        if (ensureRunningTaskScreenshot) {
-            LauncherRecentsCompat.invokeMethodReflectively(
-                    recentsView,
-                    "setRunningTaskViewShowScreenshot",
-                    LauncherRecentsCompat.BOOLEAN_ARG,
-                    true);
-        }
         LauncherRecentsCompat.invokeCompat(
                 recentsView,
                 "setEnableDrawingLiveTile",
                 LauncherRecentsCompat.BOOLEAN_ARG,
                 false);
+        if (ensureRunningTaskScreenshot) {
+            if (!LauncherRecentsCompat.invokeMethodReflectively(
+                    recentsView,
+                    "switchToScreenshot",
+                    new Class<?>[]{Runnable.class},
+                    (Runnable) () -> finishRunningTaskRecentsAnimation(recentsView))) {
+                LauncherRecentsCompat.invokeMethodReflectively(
+                        recentsView,
+                        "setRunningTaskViewShowScreenshot",
+                        LauncherRecentsCompat.BOOLEAN_ARG,
+                        true);
+                finishRunningTaskRecentsAnimation(recentsView);
+            }
+        }
         LauncherRecentsCompat.invokeCompat(
                 recentsView,
                 "setRunningTaskHidden",
@@ -490,7 +509,11 @@ final class LauncherRecentsTransitionController {
             }
         });
         LauncherRecentsState.ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS.put(recentsView, animator);
-        animator.start();
+        if (animatorSet != null) {
+            animatorSet.play(animator);
+        } else {
+            animator.start();
+        }
     }
 
     static void finishRunningTaskRecentsAnimation(View recentsView) {
