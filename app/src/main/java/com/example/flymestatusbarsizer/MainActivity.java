@@ -408,12 +408,12 @@ public class MainActivity extends Activity {
         clockDetailActionGridEditor.show();
     }
 
-    void addSwitchRow(LinearLayout root, String titleText, String subtitleText,
+    Switch addSwitchRow(LinearLayout root, String titleText, String subtitleText,
             String key, boolean defaultValue) {
-        addSwitchRow(root, titleText, subtitleText, key, defaultValue, null);
+        return addSwitchRow(root, titleText, subtitleText, key, defaultValue, null);
     }
 
-    void addSwitchRow(LinearLayout root, String titleText, String subtitleText,
+    Switch addSwitchRow(LinearLayout root, String titleText, String subtitleText,
             String key, boolean defaultValue, CompoundButton.OnCheckedChangeListener extraListener) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -454,6 +454,7 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         root.addView(row, matchWrap());
+        return toggle;
     }
 
     LinearLayout buildBatteryHollowOptions() {

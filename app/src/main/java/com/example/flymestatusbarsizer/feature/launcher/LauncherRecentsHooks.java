@@ -10,6 +10,7 @@ public final class LauncherRecentsHooks {
         if (module == null || loader == null) {
             return;
         }
+        LauncherRecentsActivityHooks.installHooks(module, loader);
         LauncherRecentsLayoutEngine.installHooks(module, loader);
         LauncherRecentsAttachController.installHooks(module, loader);
         LauncherRecentsStateAnimationController.installHooks(module, loader);
@@ -19,6 +20,7 @@ public final class LauncherRecentsHooks {
     }
 
     public static void refreshTrackedViews() {
+        LauncherRecentsActivityHooks.refreshTrackedViews();
         LauncherRecentsLayoutEngine.refreshTrackedViews();
     }
 }
