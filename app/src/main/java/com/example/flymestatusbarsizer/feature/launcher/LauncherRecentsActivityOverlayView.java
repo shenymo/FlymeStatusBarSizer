@@ -53,6 +53,8 @@ final class LauncherRecentsActivityOverlayView extends FrameLayout {
         final String badgeText;
         final String fallbackTitle;
         final String subtitle;
+        final int preferredWidthPx;
+        final int preferredHeightPx;
         int generation;
         Drawable icon;
         Bitmap thumbnail;
@@ -65,6 +67,8 @@ final class LauncherRecentsActivityOverlayView extends FrameLayout {
                 String title,
                 String fallbackTitle,
                 String subtitle,
+                int preferredWidthPx,
+                int preferredHeightPx,
                 String badgeText,
                 String contentDescription,
                 Drawable icon,
@@ -75,6 +79,8 @@ final class LauncherRecentsActivityOverlayView extends FrameLayout {
             this.title = title;
             this.fallbackTitle = fallbackTitle;
             this.subtitle = subtitle;
+            this.preferredWidthPx = preferredWidthPx;
+            this.preferredHeightPx = preferredHeightPx;
             this.badgeText = badgeText;
             this.contentDescription = contentDescription;
             this.icon = icon;
@@ -481,8 +487,8 @@ final class LauncherRecentsActivityOverlayView extends FrameLayout {
         float activeIndex = clamp(visualTaskIndex, 0f, Math.max(0, cards.size() - 1));
         int width = getWidth();
         int height = getHeight();
-        int cardWidth = Math.min(width - dp(48), Math.round(width * 0.84f));
-        int cardHeight = Math.min(height - dp(188), Math.round(height * 0.72f));
+        int cardWidth = resolvePreferredCardWidth(width);
+        int cardHeight = resolvePreferredCardHeight(height);
         float frontY = Math.max(dp(110), ((height - cardHeight) * 0.5f) - dp(8));
         float stackBaseLeft = cardWidth * STACK_LEFT_INSET_RATIO;
         float frontLeft = Math.min(
@@ -672,13 +678,32 @@ final class LauncherRecentsActivityOverlayView extends FrameLayout {
         return FlymeStatusBarSizer.dp(getContext(), value);
     }
 
+    private int resolvePreferredCardWidth(int containerWidth) {
+        int preferredWidth = 0;
+        for (CardRecord card : cards) {
+            preferredWidth = Math.max(preferredWidth, card.preferredWidthPx);
+        }
+        int fallbackWidth = Math.min(containerWidth - dp(32), Math.round(containerWidth * 0.82f));
+        int resolvedWidth = preferredWidth > 0 ? preferredWidth : fallbackWidth;
+        return Math.max(dp(220), Math.min(containerWidth - dp(16), resolvedWidth));
+    }
+
+    private int resolvePreferredCardHeight(int containerHeight) {
+        int preferredHeight = 0;
+        for (CardRecord card : cards) {
+            preferredHeight = Math.max(preferredHeight, card.preferredHeightPx);
+        }
+        int fallbackHeight = Math.min(containerHeight - dp(132), Math.round(containerHeight * 0.76f));
+        int resolvedHeight = preferredHeight > 0 ? preferredHeight : fallbackHeight;
+        return Math.max(dp(280), Math.min(containerHeight - dp(96), resolvedHeight));
+    }
+
     private final class TaskCardView extends FrameLayout {
         private final ImageView thumbnailView;
         private final View placeholderView;
+        private final View headerBackgroundView;
         private final ImageView iconView;
-        private final TextView badgeView;
         private final TextView titleText;
-        private final TextView subtitleText;
         private final TextView closeButton;
         private int boundTaskId = -1;
         private int generation = -1;
@@ -689,92 +714,64 @@ final class LauncherRecentsActivityOverlayView extends FrameLayout {
             setClickable(true);
             setFocusable(true);
             setClipToOutline(true);
-            setBackground(createCardBackground(0xFF1A2232));
+            setBackground(createCardBackground());
 
             thumbnailView = new ImageView(context);
             thumbnailView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            addView(thumbnailView, new LayoutParams(
+            LayoutParams thumbnailLp = new LayoutParams(
                     LayoutParams.MATCH_PARENT,
-                    LayoutParams.MATCH_PARENT));
+                    LayoutParams.MATCH_PARENT);
+            thumbnailLp.topMargin = dp(37);
+            addView(thumbnailView, thumbnailLp);
 
             placeholderView = new View(context);
-            addView(placeholderView, new LayoutParams(
+            LayoutParams placeholderLp = new LayoutParams(
                     LayoutParams.MATCH_PARENT,
-                    LayoutParams.MATCH_PARENT));
+                    LayoutParams.MATCH_PARENT);
+            placeholderLp.topMargin = dp(37);
+            addView(placeholderView, placeholderLp);
 
-            View bottomFade = new View(context);
-            GradientDrawable fadeDrawable = new GradientDrawable(
-                    GradientDrawable.Orientation.TOP_BOTTOM,
-                    new int[]{0x00000000, 0xCC05070C});
-            bottomFade.setBackground(fadeDrawable);
-            addView(bottomFade, new LayoutParams(
+            headerBackgroundView = new View(context);
+            headerBackgroundView.setBackground(createHeaderBackground());
+            addView(headerBackgroundView, new LayoutParams(
                     LayoutParams.MATCH_PARENT,
-                    LayoutParams.MATCH_PARENT));
+                    dp(30)));
 
             LinearLayout topBar = new LinearLayout(context);
             topBar.setOrientation(LinearLayout.HORIZONTAL);
             topBar.setGravity(Gravity.CENTER_VERTICAL);
-            topBar.setPadding(dp(18), dp(18), dp(18), 0);
+            topBar.setPadding(dp(18), 0, dp(18), 0);
 
             iconView = new ImageView(context);
-            LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(22), dp(22));
+            LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(18), dp(18));
             topBar.addView(iconView, iconLp);
 
-            badgeView = new TextView(context);
-            badgeView.setTextColor(Color.WHITE);
-            badgeView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-            badgeView.setPadding(dp(8), dp(3), dp(8), dp(3));
-            badgeView.setBackground(createPillBackground(0x33000000, 0x4DFFFFFF));
-            LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(
+            titleText = new TextView(context);
+            titleText.setTextColor(0xFF1B1B1F);
+            titleText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            titleText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            titleText.setMaxLines(1);
+            titleText.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
+                    0,
                     LayoutParams.WRAP_CONTENT,
-                    LayoutParams.WRAP_CONTENT);
-            badgeLp.leftMargin = dp(10);
-            topBar.addView(badgeView, badgeLp);
-
-            View spacer = new View(context);
-            topBar.addView(spacer, new LinearLayout.LayoutParams(0, 0, 1f));
+                    1f);
+            titleLp.leftMargin = dp(9);
+            titleLp.rightMargin = dp(9);
+            topBar.addView(titleText, titleLp);
 
             closeButton = new TextView(context);
             closeButton.setText("×");
             closeButton.setGravity(Gravity.CENTER);
-            closeButton.setTextColor(Color.WHITE);
-            closeButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-            closeButton.setBackground(createPillBackground(0x33000000, 0x59FFFFFF));
-            topBar.addView(closeButton, new LinearLayout.LayoutParams(dp(34), dp(34)));
+            closeButton.setTextColor(0xFF77777C);
+            closeButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+            closeButton.setBackground(null);
+            topBar.addView(closeButton, new LinearLayout.LayoutParams(dp(18), dp(18)));
 
-            addView(topBar, new LayoutParams(
+            LayoutParams topBarLp = new LayoutParams(
                     LayoutParams.MATCH_PARENT,
-                    LayoutParams.WRAP_CONTENT));
-
-            LinearLayout bottomText = new LinearLayout(context);
-            bottomText.setOrientation(LinearLayout.VERTICAL);
-            bottomText.setPadding(dp(18), 0, dp(18), dp(18));
-            LayoutParams bottomLp = new LayoutParams(
-                    LayoutParams.MATCH_PARENT,
-                    LayoutParams.WRAP_CONTENT);
-            bottomLp.gravity = Gravity.BOTTOM;
-
-            titleText = new TextView(context);
-            titleText.setTextColor(Color.WHITE);
-            titleText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19);
-            titleText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            titleText.setMaxLines(1);
-            titleText.setEllipsize(TextUtils.TruncateAt.END);
-            bottomText.addView(titleText, new LinearLayout.LayoutParams(
-                    LayoutParams.MATCH_PARENT,
-                    LayoutParams.WRAP_CONTENT));
-
-            subtitleText = new TextView(context);
-            subtitleText.setTextColor(0xD9FFFFFF);
-            subtitleText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-            subtitleText.setMaxLines(2);
-            subtitleText.setEllipsize(TextUtils.TruncateAt.END);
-            subtitleText.setPadding(0, dp(6), 0, 0);
-            bottomText.addView(subtitleText, new LinearLayout.LayoutParams(
-                    LayoutParams.MATCH_PARENT,
-                    LayoutParams.WRAP_CONTENT));
-
-            addView(bottomText, bottomLp);
+                    dp(30));
+            addView(topBar, topBarLp);
 
             closeButton.setOnClickListener(v -> {
                 if (boundTaskId != -1) {
@@ -788,23 +785,14 @@ final class LauncherRecentsActivityOverlayView extends FrameLayout {
             this.generation = record.generation;
             this.active = active;
             setContentDescription(record.contentDescription);
-            titleText.setText(record.effectiveTitle());
-            subtitleText.setText(record.subtitle);
+            titleText.setText(resolveHeaderTitle(record));
             if (record.icon != null) {
                 iconView.setImageDrawable(record.icon);
             } else {
                 iconView.setImageDrawable(null);
             }
-            if (TextUtils.isEmpty(record.badgeText)) {
-                badgeView.setVisibility(GONE);
-            } else {
-                badgeView.setVisibility(VISIBLE);
-                badgeView.setText(record.badgeText);
-            }
             closeButton.setVisibility(active ? VISIBLE : INVISIBLE);
-            closeButton.setAlpha(active ? 1f : 0f);
-            closeButton.setScaleX(active ? 1f : 0.9f);
-            closeButton.setScaleY(active ? 1f : 0.9f);
+            closeButton.setAlpha(active ? 1f : 0.55f);
             if (record.thumbnail != null && !record.thumbnail.isRecycled()) {
                 thumbnailView.setImageBitmap(record.thumbnail);
                 placeholderView.setBackgroundColor(Color.TRANSPARENT);
@@ -821,18 +809,29 @@ final class LauncherRecentsActivityOverlayView extends FrameLayout {
             });
         }
 
-        private GradientDrawable createCardBackground(int color) {
+        private String resolveHeaderTitle(CardRecord record) {
+            if (TextUtils.isEmpty(record.badgeText)) {
+                return record.effectiveTitle();
+            }
+            return record.effectiveTitle() + " · " + record.badgeText;
+        }
+
+        private GradientDrawable createCardBackground() {
             GradientDrawable drawable = new GradientDrawable();
-            drawable.setColor(color);
-            drawable.setCornerRadius(dp(28));
+            drawable.setColor(Color.TRANSPARENT);
+            drawable.setCornerRadius(dp(24));
             return drawable;
         }
 
-        private GradientDrawable createPillBackground(int fillColor, int strokeColor) {
+        private GradientDrawable createHeaderBackground() {
             GradientDrawable drawable = new GradientDrawable();
-            drawable.setColor(fillColor);
-            drawable.setCornerRadius(dp(999));
-            drawable.setStroke(Math.max(1, dp(1)), strokeColor);
+            drawable.setColor(0xFFF6F6F6);
+            drawable.setCornerRadii(new float[]{
+                    dp(16), dp(16),
+                    dp(16), dp(16),
+                    0f, 0f,
+                    0f, 0f
+            });
             return drawable;
         }
 

@@ -593,12 +593,15 @@ final class LauncherRecentsActivityHooks {
                 contentDescription = title;
             }
             int accentColor = resolveAccentColor(primaryTask);
+            int[] systemTaskSize = resolveSystemTaskSize(taskId);
             return new LauncherRecentsActivityOverlayView.CardRecord(
                     taskId,
                     accentColor,
                     title,
                     TextUtils.isEmpty(title) ? "最近任务" : title,
                     subtitle,
+                    systemTaskSize[0],
+                    systemTaskSize[1],
                     badgeText,
                     contentDescription,
                     forceVisualRefresh ? null : resolveTaskIcon(primaryTask),
@@ -644,6 +647,17 @@ final class LauncherRecentsActivityHooks {
                 }
             }
             return null;
+        }
+
+        private int[] resolveSystemTaskSize(int taskId) {
+            View taskView = resolveTaskView(taskId);
+            if (taskView == null) {
+                return new int[]{0, 0};
+            }
+            return new int[]{
+                    Math.max(0, taskView.getWidth()),
+                    Math.max(0, taskView.getHeight())
+            };
         }
 
         private void requestTaskThumbnail(
