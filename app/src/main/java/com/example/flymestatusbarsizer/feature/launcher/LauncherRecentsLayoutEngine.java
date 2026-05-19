@@ -371,12 +371,16 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTaskVisuals.captureStockTaskState(taskView);
             }
             float rawOffset = rawOffsets[i];
-            float dismissTranslationX =
-                    LauncherRecentsCompat.readFloatField(taskView, "dismissTranslationX", 0f);
+            float dismissTranslationX = LauncherRecentsTouchController
+                    .shouldSuppressNativeDismissTranslation(recentsView)
+                    ? 0f
+                    : LauncherRecentsCompat.readFloatField(taskView, "dismissTranslationX", 0f);
             // Keep the stock gap-closing animation, but remap its logical page position into
             // the compressed stack so sibling cards move into the dismissed slot instead of
             // adding a second full-page horizontal shift on top of it.
-            float effectiveRawOffset = rawOffset + dismissTranslationX;
+            float effectiveRawOffset = rawOffset
+                    + dismissTranslationX
+                    + LauncherRecentsTouchController.readStackDismissLayoutOffset(taskView);
             float progress = effectiveRawOffset / pageSpan;
             float taskWidth = taskView.getWidth() > 0 ? taskView.getWidth() : referenceWidth;
             float taskHeight = taskView.getHeight() > 0 ? taskView.getHeight() : referenceHeight;
