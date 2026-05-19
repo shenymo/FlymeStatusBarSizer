@@ -37,6 +37,7 @@ final class LauncherRecentsLayoutEngine {
         }
         hookRecentsViewConstructors(module, loader);
         hookRecentsViewMethod(module, loader, "updatePageOffsetsForFlyme");
+        hookRecentsViewMethod(module, loader, "applyAttachAlpha");
         hookRecentsViewOnScrollChanged(module, loader);
         hookRecentsViewContentAlpha(module, loader);
     }
@@ -237,6 +238,12 @@ final class LauncherRecentsLayoutEngine {
         }
 
         float pageSpacing = LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0);
+        Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "getRunningTaskView");
+        View runningTaskView = runningTaskObject instanceof View
+                ? (View) runningTaskObject
+                : null;
         float referenceWidth = 0f;
         float referenceHeight = 0f;
         float pageSpan = 0f;
@@ -456,6 +463,11 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(taskView, desiredTaskOffsetY);
             LauncherRecentsTaskVisuals.setBoxTranslationY(taskView, desiredBoxTranslationY);
             LauncherRecentsTaskVisuals.setNonGridScale(taskView, desiredScale);
+            LauncherRecentsTaskVisuals.setAttachAlpha(
+                    taskView,
+                    taskView == runningTaskView
+                            ? LauncherRecentsTaskVisuals.readLastStockAttachAlpha(taskView)
+                            : 1f);
             LauncherRecentsTaskVisuals.setStableAlpha(taskView, desiredStableAlpha);
             LauncherRecentsTaskVisuals.setFullscreenProgress(
                     taskView,
@@ -494,6 +506,9 @@ final class LauncherRecentsLayoutEngine {
         LauncherRecentsTaskVisuals.setNonGridScale(
                 taskView,
                 LauncherRecentsTaskVisuals.readOriginalNonGridScale(taskView));
+        LauncherRecentsTaskVisuals.setAttachAlpha(
+                taskView,
+                LauncherRecentsTaskVisuals.readLastStockAttachAlpha(taskView));
         LauncherRecentsTaskVisuals.setStableAlpha(
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView));

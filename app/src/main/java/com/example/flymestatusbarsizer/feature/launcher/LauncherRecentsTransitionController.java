@@ -395,9 +395,8 @@ final class LauncherRecentsTransitionController {
     }
 
     private static boolean shouldSuppressLiveTileForStack(View recentsView) {
-        return isPendingGestureRecentsStackRelease(recentsView)
-                || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
-                recentsView);
+        return recentsView != null
+                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView);
     }
 
     private static void markPendingGestureRecentsStackRelease(View recentsView, boolean active) {

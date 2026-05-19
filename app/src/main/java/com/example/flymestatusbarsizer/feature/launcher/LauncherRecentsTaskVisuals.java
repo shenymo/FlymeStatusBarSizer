@@ -46,6 +46,7 @@ final class LauncherRecentsTaskVisuals {
                         taskView,
                         "boxTranslationY",
                         readOriginalBoxTranslationY(taskView)));
+        LauncherRecentsState.LAST_STOCK_ATTACH_ALPHAS.put(taskView, readAttachAlpha(taskView));
         LauncherRecentsState.LAST_STOCK_STABLE_ALPHAS.put(taskView, readStableAlpha(taskView));
         LauncherRecentsState.LAST_STOCK_TRANSLATION_ZS.put(taskView, taskView.getTranslationZ());
         LauncherRecentsState.LAST_STOCK_FULLSCREEN_PROGRESSES.put(
@@ -96,6 +97,16 @@ final class LauncherRecentsTaskVisuals {
                 LauncherRecentsCompat.FLOAT_ARG,
                 value);
         LauncherRecentsState.LAST_APPLIED_BOX_TRANSLATION_YS.put(taskView, value);
+    }
+
+    static void setAttachAlpha(View taskView, float value) {
+        float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
+        LauncherRecentsCompat.invokeCompat(
+                taskView,
+                "setAttachAlpha",
+                LauncherRecentsCompat.FLOAT_ARG,
+                clampedValue);
+        LauncherRecentsState.LAST_APPLIED_ATTACH_ALPHAS.put(taskView, clampedValue);
     }
 
     static void setStableAlpha(View taskView, float value) {
@@ -177,6 +188,11 @@ final class LauncherRecentsTaskVisuals {
         return value != null ? value : readOriginalBoxTranslationY(taskView);
     }
 
+    static float readLastStockAttachAlpha(View taskView) {
+        Float value = LauncherRecentsState.LAST_STOCK_ATTACH_ALPHAS.get(taskView);
+        return value != null ? value : 1f;
+    }
+
     static float readLastStockStableAlpha(View taskView) {
         Float value = LauncherRecentsState.LAST_STOCK_STABLE_ALPHAS.get(taskView);
         return value != null ? value : 1f;
@@ -200,6 +216,14 @@ final class LauncherRecentsTaskVisuals {
         return taskView.getAlpha();
     }
 
+    static float readAttachAlpha(View taskView) {
+        Object value = LauncherRecentsCompat.invokeCompat(taskView, "getAttachAlpha");
+        if (value instanceof Float) {
+            return (Float) value;
+        }
+        return 1f;
+    }
+
     static void clearAppliedTaskState(View taskView) {
         if (taskView == null) {
             return;
@@ -209,6 +233,7 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_APPLIED_HORIZONTAL_OFFSET_XS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_NON_GRID_SCALES.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_BOX_TRANSLATION_YS.remove(taskView);
+        LauncherRecentsState.LAST_APPLIED_ATTACH_ALPHAS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_STABLE_ALPHAS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_TRANSLATION_ZS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_FULLSCREEN_PROGRESSES.remove(taskView);
@@ -223,6 +248,8 @@ final class LauncherRecentsTaskVisuals {
                 LauncherRecentsState.LAST_APPLIED_NON_GRID_SCALES.get(taskView);
         Float appliedBoxTranslationY =
                 LauncherRecentsState.LAST_APPLIED_BOX_TRANSLATION_YS.get(taskView);
+        Float appliedAttachAlpha =
+                LauncherRecentsState.LAST_APPLIED_ATTACH_ALPHAS.get(taskView);
         Float appliedStableAlpha = LauncherRecentsState.LAST_APPLIED_STABLE_ALPHAS.get(taskView);
         Float appliedTranslationZ =
                 LauncherRecentsState.LAST_APPLIED_TRANSLATION_ZS.get(taskView);
@@ -233,6 +260,7 @@ final class LauncherRecentsTaskVisuals {
                 || appliedHorizontalOffsetX == null
                 || appliedNonGridScale == null
                 || appliedBoxTranslationY == null
+                || appliedAttachAlpha == null
                 || appliedStableAlpha == null
                 || appliedTranslationZ == null
                 || appliedFullscreenProgress == null) {
@@ -259,6 +287,7 @@ final class LauncherRecentsTaskVisuals {
                         "boxTranslationY",
                         readOriginalBoxTranslationY(taskView)),
                 appliedBoxTranslationY)
+                && approximatelyEqual(readAttachAlpha(taskView), appliedAttachAlpha)
                 && approximatelyEqual(readStableAlpha(taskView), appliedStableAlpha)
                 && approximatelyEqual(taskView.getTranslationZ(), appliedTranslationZ)
                 && approximatelyEqual(

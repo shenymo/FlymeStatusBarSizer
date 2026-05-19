@@ -53,6 +53,7 @@ final class LauncherRecentsAttachController {
                 prepareRecentsForOverviewEntry(recentsView);
                 LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                 Object result = chain.proceed();
+                LauncherRecentsTransitionController.finishRunningTaskReleaseToStack(recentsView);
                 applyImmediateStackEntryTakeover(recentsView, loader);
                 return result;
             });
