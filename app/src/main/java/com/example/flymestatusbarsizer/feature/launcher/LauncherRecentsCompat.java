@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer.feature.launcher;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
+import android.util.Property;
 import android.view.View;
 import android.view.ViewParent;
 
@@ -43,6 +44,46 @@ final class LauncherRecentsCompat {
 
     static Object getFieldCompat(Object target, String name) {
         return FlymeStatusBarSizer.getFieldCompat(target, name);
+    }
+
+    static Object readStaticFieldCompat(String className, String fieldName, ClassLoader loader) {
+        if (className == null || fieldName == null || loader == null) {
+            return null;
+        }
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            Field field = clazz.getField(fieldName);
+            field.setAccessible(true);
+            return field.get(null);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    static boolean setStaticFloatPropertyCompat(
+            String className,
+            String fieldName,
+            ClassLoader loader,
+            Object target,
+            float value) {
+        if (className == null || fieldName == null || loader == null || target == null) {
+            return false;
+        }
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            Field field = clazz.getField(fieldName);
+            field.setAccessible(true);
+            Object propertyObject = field.get(null);
+            if (!(propertyObject instanceof Property)) {
+                return false;
+            }
+            @SuppressWarnings("unchecked")
+            Property<Object, Float> property = (Property<Object, Float>) propertyObject;
+            property.set(target, Float.valueOf(value));
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     static View getTaskViewAt(View recentsView, int index) {

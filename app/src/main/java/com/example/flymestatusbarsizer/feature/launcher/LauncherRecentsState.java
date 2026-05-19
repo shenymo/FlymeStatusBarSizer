@@ -16,6 +16,12 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> BLANK_TAP_HOME_EXIT_PROGRESS =
             new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> PENDING_GESTURE_RECENTS_STACK_RELEASES =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> PENDING_INITIAL_APP_TO_RECENTS_REORDERS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> ACTIVE_OVERVIEW_STATE_STACK_ANIMATIONS =
+            new WeakHashMap<>();
     static final WeakHashMap<View, LaunchHandoffState> ACTIVE_TASK_LAUNCH_HANDOFFS =
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> BYPASS_TASK_CLICK_INTERCEPTION =
@@ -114,6 +120,29 @@ final class LauncherRecentsState {
 
     static boolean consumeTaskLaunchRequestStarted(View recentsView) {
         Boolean value = TASK_LAUNCH_REQUEST_STARTED.remove(recentsView);
+        return value != null && value;
+    }
+
+    static void setPendingInitialAppToRecentsReorder(View recentsView, boolean pending) {
+        if (recentsView == null) {
+            return;
+        }
+        if (pending) {
+            PENDING_INITIAL_APP_TO_RECENTS_REORDERS.put(recentsView, Boolean.TRUE);
+        } else {
+            PENDING_INITIAL_APP_TO_RECENTS_REORDERS.remove(recentsView);
+        }
+    }
+
+    static boolean consumePendingInitialAppToRecentsReorder(View recentsView) {
+        Boolean value = PENDING_INITIAL_APP_TO_RECENTS_REORDERS.remove(recentsView);
+        return value != null && value;
+    }
+
+    static boolean hasPendingInitialAppToRecentsReorder(View recentsView) {
+        Boolean value = recentsView != null
+                ? PENDING_INITIAL_APP_TO_RECENTS_REORDERS.get(recentsView)
+                : null;
         return value != null && value;
     }
 

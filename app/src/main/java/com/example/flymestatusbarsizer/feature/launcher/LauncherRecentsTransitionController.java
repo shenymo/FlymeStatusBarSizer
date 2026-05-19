@@ -27,6 +27,8 @@ final class LauncherRecentsTransitionController {
         }
         hookRecentsViewStartHome(module, loader);
         hookRecentsViewPrepareGestureEndAnimation(module, loader);
+        hookRecentsViewSwitchToScreenshot(module, loader);
+        hookRecentsViewEnableDrawingLiveTile(module, loader);
         hookRecentsViewGestureAnimationEnd(module, loader);
     }
 
@@ -81,15 +83,22 @@ final class LauncherRecentsTransitionController {
                     remoteTargetHandleArrayClass);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                Object result = chain.proceed();
-                Object thisObject = chain.getThisObject();
+                View recentsView = chain.getThisObject() instanceof View
+                        ? (View) chain.getThisObject()
+                        : null;
                 Object endTarget = chain.getArg(1);
-                if (thisObject instanceof View) {
-                    View recentsView = (View) thisObject;
+                boolean shouldPrepareGestureRelease =
+                        shouldUsePendingGestureRecentsStackRelease(recentsView, endTarget);
+                if (shouldPrepareGestureRelease) {
+                    markPendingGestureRecentsStackRelease(recentsView, true);
+                } else {
+                    markPendingGestureRecentsStackRelease(recentsView, false);
+                }
+                Object result = chain.proceed();
+                if (recentsView != null) {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-                    if (LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                            && isRecentsGestureEndTarget(endTarget)) {
+                    if (shouldPrepareGestureRelease) {
                         switchRunningTaskToScreenshot(recentsView);
                     }
                 }
@@ -98,6 +107,58 @@ final class LauncherRecentsTransitionController {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook RecentsView.onPrepareGestureEndAnimation",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewSwitchToScreenshot(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("switchToScreenshot", Runnable.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View) {
+                    View recentsView = (View) thisObject;
+                    if (isPendingGestureRecentsStackRelease(recentsView)) {
+                        applyGestureRecentsStackRelease(recentsView, false);
+                    }
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.switchToScreenshot",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewEnableDrawingLiveTile(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("setEnableDrawingLiveTile", boolean.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                boolean enableLiveTile =
+                        chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
+                if (thisObject instanceof View) {
+                    View recentsView = (View) thisObject;
+                    if (enableLiveTile && shouldSuppressLiveTileForStack(recentsView)) {
+                        LauncherRecentsCompat.writeField(recentsView, "mEnableDrawingLiveTile", false);
+                        return null;
+                    }
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.setEnableDrawingLiveTile",
                     t);
         }
     }
@@ -111,17 +172,24 @@ final class LauncherRecentsTransitionController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
-                Object endTarget =
-                        LauncherRecentsCompat.getFieldCompat(thisObject, "mCurrentGestureEndTarget");
+                View recentsView = thisObject instanceof View ? (View) thisObject : null;
+                Object endTarget = LauncherRecentsCompat.getFieldCompat(
+                        thisObject,
+                        "mCurrentGestureEndTarget");
+                boolean shouldPrepareGestureRelease =
+                        shouldUsePendingGestureRecentsStackRelease(recentsView, endTarget);
+                if (shouldPrepareGestureRelease) {
+                    markPendingGestureRecentsStackRelease(recentsView, true);
+                    applyGestureRecentsStackRelease(recentsView, true);
+                }
                 Object result = chain.proceed();
                 if (thisObject instanceof View) {
-                    View recentsView = (View) thisObject;
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-                    if (LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                            && isRecentsGestureEndTarget(endTarget)) {
+                    if (shouldPrepareGestureRelease) {
                         finishRunningTaskReleaseToStack(recentsView);
                     }
+                    markPendingGestureRecentsStackRelease(recentsView, false);
                 }
                 return result;
             });
@@ -261,14 +329,22 @@ final class LauncherRecentsTransitionController {
     }
 
     static void finishRunningTaskReleaseToStack(View recentsView) {
+        applyGestureRecentsStackRelease(recentsView, true);
+    }
+
+    private static void applyGestureRecentsStackRelease(
+            View recentsView,
+            boolean ensureRunningTaskScreenshot) {
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsCompat.invokeMethodReflectively(
-                recentsView,
-                "setRunningTaskViewShowScreenshot",
-                LauncherRecentsCompat.BOOLEAN_ARG,
-                true);
+        if (ensureRunningTaskScreenshot) {
+            LauncherRecentsCompat.invokeMethodReflectively(
+                    recentsView,
+                    "setRunningTaskViewShowScreenshot",
+                    LauncherRecentsCompat.BOOLEAN_ARG,
+                    true);
+        }
         LauncherRecentsCompat.invokeCompat(
                 recentsView,
                 "setEnableDrawingLiveTile",
@@ -303,5 +379,37 @@ final class LauncherRecentsTransitionController {
                 "setPageAnimOffScreenStart",
                 LauncherRecentsCompat.BOOLEAN_ARG,
                 value);
+    }
+
+    private static boolean shouldUsePendingGestureRecentsStackRelease(
+            View recentsView,
+            Object endTarget) {
+        return recentsView != null
+                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                && isRecentsGestureEndTarget(endTarget);
+    }
+
+    private static boolean isPendingGestureRecentsStackRelease(View recentsView) {
+        Boolean value = LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASES.get(recentsView);
+        return value != null && value;
+    }
+
+    private static boolean shouldSuppressLiveTileForStack(View recentsView) {
+        return isPendingGestureRecentsStackRelease(recentsView)
+                || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView);
+    }
+
+    private static void markPendingGestureRecentsStackRelease(View recentsView, boolean active) {
+        if (recentsView == null) {
+            return;
+        }
+        if (active) {
+            LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASES.put(
+                    recentsView,
+                    Boolean.TRUE);
+        } else {
+            LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASES.remove(recentsView);
+        }
     }
 }
