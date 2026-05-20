@@ -15,9 +15,9 @@ import android.view.ViewParent;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.WeakHashMap;
 
 final class LauncherRecentsTouchController {
@@ -881,99 +881,77 @@ final class LauncherRecentsTouchController {
             View taskView,
             StackDismissGestureState state) {
         Class<?> taskViewClass = resolveTaskViewBaseClass(taskView);
-        rememberSilentNativeDismissAnchor(recentsView, taskView, state);
-        if (taskViewClass != null && invokeSilentNativeDismissTaskView(
-                recentsView,
-                taskView,
-                taskViewClass)) {
-            return true;
+        if (!(recentsView instanceof ViewGroup) || taskViewClass == null) {
+            return false;
         }
-        SILENT_NATIVE_DISMISS_RECENTS.put(recentsView, Boolean.TRUE);
-        if (taskViewClass != null
+        rememberSilentNativeDismissAnchor(recentsView, taskView, state);
+        int targetPage = resolveSilentNativeDismissAnchorPage(recentsView, taskView);
+        ArrayList<FrozenStackDismissTaskState> finalTaskStates =
+                captureFrozenStackDismissTaskStates(state);
+        if (LauncherRecentsCompat.invokeBoolean(taskView, "isRunningTask", false)
                 && LauncherRecentsCompat.invokeMethodReflectively(
                 recentsView,
-                "dismissTaskView",
-                new Class<?>[]{taskViewClass, boolean.class, boolean.class},
-                taskView,
+                "finishRecentsAnimation",
+                new Class<?>[]{boolean.class, boolean.class, Runnable.class},
+                true,
                 false,
-                true)) {
+                (Runnable) () -> commitManualNativeDismiss(
+                        recentsView,
+                        taskView,
+                        taskViewClass,
+                        targetPage,
+                        finalTaskStates))) {
             return true;
         }
-        Object taskIdsObject = LauncherRecentsCompat.invokeCompat(
-                taskView,
-                "getTaskIds",
-                LauncherRecentsCompat.NO_ARGS);
-        if (!(taskIdsObject instanceof int[]) || ((int[]) taskIdsObject).length == 0) {
-            SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
-            SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
-            return false;
-        }
-        int taskId = ((int[]) taskIdsObject)[0];
-        boolean dismissed = LauncherRecentsCompat.invokeMethodReflectively(
+        return commitManualNativeDismiss(
                 recentsView,
-                "dismissTask",
-                new Class<?>[]{int.class, boolean.class, boolean.class},
-                taskId,
-                false,
-                true);
-        if (!dismissed) {
-            SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
-            SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
-        }
-        return dismissed;
+                taskView,
+                taskViewClass,
+                targetPage,
+                finalTaskStates);
     }
 
-    private static boolean invokeSilentNativeDismissTaskView(
+    private static boolean commitManualNativeDismiss(
             View recentsView,
             View taskView,
-            Class<?> taskViewClass) {
-        if (recentsView == null || taskView == null || taskViewClass == null) {
+            Class<?> taskViewClass,
+            int targetPage,
+            ArrayList<FrozenStackDismissTaskState> finalTaskStates) {
+        boolean removedTask = LauncherRecentsCompat.invokeMethodReflectively(
+                recentsView,
+                "removeTaskInternal",
+                new Class<?>[]{taskViewClass},
+                taskView);
+        if (!removedTask) {
+            SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
             return false;
         }
-        try {
-            ClassLoader loader = recentsView.getClass().getClassLoader();
-            Class<?> pendingAnimationClass =
-                    Class.forName("com.android.launcher3.anim.PendingAnimation", false, loader);
-            Constructor<?> constructor = pendingAnimationClass.getDeclaredConstructor(long.class);
-            constructor.setAccessible(true);
-            Object pendingAnimation = constructor.newInstance(1L);
-            boolean created = LauncherRecentsCompat.invokeMethodReflectively(
-                    recentsView,
-                    "createTaskDismissAnimation",
-                    new Class<?>[]{
-                            pendingAnimationClass,
-                            taskViewClass,
-                            boolean.class,
-                            boolean.class,
-                            long.class,
-                            boolean.class,
-                            boolean.class
-                    },
-                    pendingAnimation,
-                    taskView,
-                    false,
-                    true,
-                    1L,
-                    false,
-                    true);
-            if (!created) {
-                return false;
-            }
-            SILENT_NATIVE_DISMISS_RECENTS.put(recentsView, Boolean.TRUE);
-            boolean started = LauncherRecentsCompat.invokeMethodReflectively(
-                    recentsView,
-                    "runDismissAnimation",
-                    new Class<?>[]{pendingAnimationClass},
-                    pendingAnimation);
-            if (!started) {
-                SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
-                LauncherRecentsCompat.writeField(recentsView, "mPendingAnimation", null);
-            }
-            return started;
-        } catch (Throwable ignored) {
-            SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
-            return false;
-        }
+        removeDismissedTaskFromGridState(recentsView, taskView);
+        ((ViewGroup) recentsView).removeViewInLayout(taskView);
+        setStackDismissCurrentPageKeepingScroll(recentsView, targetPage);
+        clearStackDismissLayoutOffsets();
+        applyFrozenStackDismissTaskStates(recentsView, finalTaskStates);
+        LauncherRecentsCompat.writeField(recentsView, "mPendingAnimation", null);
+        clearTaskViewsDismissPrimaryTranslations(recentsView);
+        LauncherRecentsCompat.invokeMethodReflectively(
+                recentsView,
+                "dispatchScrollChanged",
+                LauncherRecentsCompat.NO_ARGS);
+        LauncherRecentsCompat.invokeMethodReflectively(
+                recentsView,
+                "updateActionsViewFocusedScroll",
+                LauncherRecentsCompat.NO_ARGS);
+        LauncherRecentsCompat.invokeMethodReflectively(
+                recentsView,
+                "updateCurrentTaskActionsVisibility",
+                LauncherRecentsCompat.NO_ARGS);
+        LauncherRecentsCompat.invokeMethodReflectively(
+                recentsView,
+                "onDismissAnimationEnds",
+                LauncherRecentsCompat.NO_ARGS);
+        SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
+        recentsView.invalidate();
+        return true;
     }
 
     private static void rememberSilentNativeDismissAnchor(
@@ -1051,13 +1029,43 @@ final class LauncherRecentsTouchController {
         if (anchor == null || anchor.taskStates.isEmpty()) {
             return;
         }
-        for (int i = 0; i < anchor.taskStates.size(); i++) {
-            FrozenStackDismissTaskState taskState = anchor.taskStates.get(i);
+        applyFrozenStackDismissTaskStates(recentsView, anchor.taskStates);
+    }
+
+    private static void applyFrozenStackDismissTaskStates(
+            View recentsView,
+            ArrayList<FrozenStackDismissTaskState> taskStates) {
+        if (taskStates == null || taskStates.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < taskStates.size(); i++) {
+            FrozenStackDismissTaskState taskState = taskStates.get(i);
             if (findTaskViewIndex(recentsView, taskState.taskView) < 0
                     || !isStackDismissTaskCandidate(recentsView, taskState.taskView)) {
                 continue;
             }
             applyStackDismissTaskTransform(taskState.taskView, taskState.transform);
+        }
+    }
+
+    private static void removeDismissedTaskFromGridState(View recentsView, View taskView) {
+        int taskViewId = LauncherRecentsCompat.invokeInt(taskView, "getTaskViewId", -1);
+        if (taskViewId == -1) {
+            return;
+        }
+        Object topRowIdSet = LauncherRecentsCompat.getFieldCompat(recentsView, "mTopRowIdSet");
+        LauncherRecentsCompat.invokeCompat(
+                topRowIdSet,
+                "remove",
+                LauncherRecentsCompat.INT_ARG,
+                taskViewId);
+    }
+
+    private static void clearTaskViewsDismissPrimaryTranslations(View recentsView) {
+        Object value =
+                LauncherRecentsCompat.getFieldCompat(recentsView, "mTaskViewsDismissPrimaryTranslations");
+        if (value instanceof Map) {
+            ((Map<?, ?>) value).clear();
         }
     }
 
