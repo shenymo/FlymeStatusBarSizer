@@ -32,7 +32,7 @@ final class LauncherRecentsTouchController {
     private static final float STACK_DISMISS_VERTICAL_DOMINANCE = 1.2f;
     private static final float STACK_DISMISS_MIN_FLING_VELOCITY = -1200f;
     private static final float STACK_VISIBLE_DATA_LEFT_MARGIN_RATIO = 0.08f;
-    private static final float STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO = 1.35f;
+    private static final float STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO = 2.40f;
     private static final float STACK_LEFT_RELEASE_ALPHA_THRESHOLD = 0.05f;
     private static final ThreadLocal<Boolean> TASK_DISMISS_VISIBILITY_BYPASS =
             new ThreadLocal<>();
@@ -1286,10 +1286,14 @@ final class LauncherRecentsTouchController {
             return false;
         }
         return taskView.getVisibility() == View.VISIBLE
-                && taskView.getAlpha() > 0.01f
+                && readStackTaskDataAlpha(taskView) > STACK_LEFT_RELEASE_ALPHA_THRESHOLD
                 && taskView.getWidth() > 0
                 && taskView.getHeight() > 0
                 && isStackTaskWithinVisibleDataBounds(recentsView, taskView);
+    }
+
+    private static float readStackTaskDataAlpha(View taskView) {
+        return Math.min(taskView.getAlpha(), LauncherRecentsTaskVisuals.readStableAlpha(taskView));
     }
 
     private static boolean isStackTaskWithinVisibleDataBounds(View recentsView, View taskView) {
@@ -1312,7 +1316,7 @@ final class LauncherRecentsTouchController {
         return recentsView != null
                 && taskView != null
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                && taskView.getAlpha() <= STACK_LEFT_RELEASE_ALPHA_THRESHOLD;
+                && readStackTaskDataAlpha(taskView) <= STACK_LEFT_RELEASE_ALPHA_THRESHOLD;
     }
 
     private static boolean shouldSuppressStackTaskDataUnload(View taskView) {
