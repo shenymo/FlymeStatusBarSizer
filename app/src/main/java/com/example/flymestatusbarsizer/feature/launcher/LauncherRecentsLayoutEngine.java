@@ -14,16 +14,11 @@ import java.util.ArrayList;
 
 final class LauncherRecentsLayoutEngine {
     private static final float STACK_DEPTH_CURVE_POWER = 0.82f;
-    private static final float STACK_FRONT_VISIBLE_RATIO = 0.50f;
-    private static final float STACK_FRONT_REVEAL_CURVE_POWER = 0.72f;
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
-    private static final float STACK_ENTRY_REAR_START_SPREAD_RATIO = 0.06f;
     private static final float STACK_ENTRY_REAR_START_SCALE_STEP = 0.045f;
-    private static final float STACK_BACK_SPREAD_RATIO = 0.14f;
-    private static final float STACK_MIN_OVERLAP_RATIO = 0.20f;
+    private static final float STACK_SIDE_SPREAD_RATIO = 0.32f;
     private static final float STACK_SCALE_STEP = 0.065f;
     private static final float STACK_MIN_SCALE = 0.80f;
-    private static final float STACK_LEFT_INSET_RATIO = 0.05f;
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.07f;
     private static final float BLANK_TAP_HOME_EXIT_TRAVEL_RATIO = 0.90f;
@@ -399,17 +394,14 @@ final class LauncherRecentsLayoutEngine {
                         i,
                         runningTaskChildIndex);
             }
-            float stackBaseOffsetPx =
-                    -taskCenteredLeftPx + (taskWidth * STACK_LEFT_INSET_RATIO);
-            float stackFrontLeftPx =
-                    recentsView.getWidth() - (taskWidth * STACK_FRONT_VISIBLE_RATIO);
-            float screenFrontOffsetPx = stackFrontLeftPx - taskCenteredLeftPx;
-            float maxFrontOffsetPx = stackBaseOffsetPx
-                    + (taskWidth * (1.0f - STACK_MIN_OVERLAP_RATIO));
-            float stackFrontOffsetPx = Math.min(screenFrontOffsetPx, maxFrontOffsetPx);
-            float stackBackSpreadPx = Math.min(
-                    taskWidth * STACK_BACK_SPREAD_RATIO,
-                    FlymeStatusBarSizer.dp(recentsView.getContext(), 96));
+            float clampedStackProgress = clamp(progress, -MAX_STACK_LAYERS, MAX_STACK_LAYERS);
+            float stackDepth = Math.abs(clampedStackProgress);
+            float stackDepthCurve = (float) Math.pow(
+                    clamp(stackDepth / MAX_STACK_LAYERS, 0f, 1f),
+                    STACK_DEPTH_CURVE_POWER);
+            float stackSideSpreadPx = Math.min(
+                    taskWidth * STACK_SIDE_SPREAD_RATIO,
+                    FlymeStatusBarSizer.dp(recentsView.getContext(), 260));
             float stackEntryLiftPx = Math.min(
                     taskHeight * STACK_ENTRY_LIFT_RATIO,
                     FlymeStatusBarSizer.dp(recentsView.getContext(), 40));
@@ -421,55 +413,19 @@ final class LauncherRecentsLayoutEngine {
             float finalTranslationZ;
             float finalTaskOffsetY;
 
-            if (progress >= 0f) {
-                float positiveProgress = Math.max(0f, progress);
-                int rightLayer = (int) Math.floor(positiveProgress);
-                float localProgress = positiveProgress - rightLayer;
-                float handoffProgress = smoothStep((float) Math.pow(
-                        localProgress,
-                        STACK_FRONT_REVEAL_CURVE_POWER));
-                float maxLeadSeparationPx = taskWidth * (1.0f - STACK_MIN_OVERLAP_RATIO);
-                finalVisibleOffset = stackFrontOffsetPx
-                        + (rightLayer * maxLeadSeparationPx)
-                        + (handoffProgress * maxLeadSeparationPx);
-                finalScale = 1.0f;
-                finalTranslationZ = maxTranslationZ
-                        + zStepPx
-                        + (Math.min(progress, MAX_STACK_LAYERS) / MAX_STACK_LAYERS * maxTranslationZ);
-                finalTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
-            } else {
-                float stackDepth = clamp(-progress, 0f, MAX_STACK_LAYERS);
-                float revealCurve = (float) Math.pow(
-                        clamp(stackDepth / MAX_STACK_LAYERS, 0f, 1f),
-                        STACK_DEPTH_CURVE_POWER);
-                float visualStackDepth = revealCurve * MAX_STACK_LAYERS;
-                float backgroundSpreadProgress = clamp(
-                        (stackDepth - 1.0f) / Math.max(1.0f, MAX_STACK_LAYERS - 1.0f),
-                        0f,
-                        1f);
-                float backgroundSpreadCurve = (float) Math.pow(
-                        backgroundSpreadProgress,
-                        STACK_DEPTH_CURVE_POWER);
-                float backgroundStackOffset = stackBaseOffsetPx
-                        - (stackBackSpreadPx * backgroundSpreadCurve);
-                float incomingProgress = remapProgress(progress, -1.0f, 0.0f);
-                float frontRevealProgress = smoothStep((float) Math.pow(
-                        incomingProgress,
-                        STACK_FRONT_REVEAL_CURVE_POWER));
-                finalVisibleOffset = lerp(
-                        backgroundStackOffset,
-                        stackFrontOffsetPx,
-                        frontRevealProgress);
-                finalScale = Math.max(
-                        STACK_MIN_SCALE,
-                        1.0f - (STACK_SCALE_STEP * visualStackDepth));
-                finalTranslationZ =
-                        Math.max(0f, maxTranslationZ - (revealCurve * maxTranslationZ));
-                finalTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
+            finalVisibleOffset = clampedStackProgress * stackSideSpreadPx;
+            finalScale = Math.max(
+                    STACK_MIN_SCALE,
+                    1.0f - (STACK_SCALE_STEP * stackDepthCurve * MAX_STACK_LAYERS));
+            finalTranslationZ =
+                    Math.max(0f, maxTranslationZ - (stackDepthCurve * maxTranslationZ));
+            if (stackDepth < 0.5f) {
+                finalTranslationZ += zStepPx * (1.0f - (stackDepth * 2.0f));
             }
+            finalTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
             boolean isLeadCard = appEntrySessionActive
                     ? taskView == runningTaskView
-                    : progress >= 0f && progress < 1.0f;
+                    : Math.abs(progress) < 0.5f;
             float taskEntryProgress = resolveTaskStackEntryProgress(
                     stackEntryProgress,
                     collapsedReferenceProgress);
@@ -817,7 +773,7 @@ final class LauncherRecentsLayoutEngine {
     private static float resolveTaskStackEntryProgress(
             float stackEntryProgress,
             float pageProgress) {
-        if (pageProgress >= 0f && pageProgress < 1.0f) {
+        if (Math.abs(pageProgress) < 0.5f) {
             return smoothStep(stackEntryProgress);
         }
         float layerDepth = clamp(Math.abs(pageProgress), 0f, MAX_STACK_LAYERS);

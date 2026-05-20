@@ -340,6 +340,7 @@ final class LauncherRecentsTouchController {
                         clearNativeDismissTransforms(recentsView);
                         restoreFrozenStackDismissTaskStates(recentsView);
                         clearStackDismissLayoutOffsets();
+                        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                         recentsView.invalidate();
                         recentsView.post(() -> finishSilentNativeDismiss(recentsView));
                     }
@@ -733,8 +734,7 @@ final class LauncherRecentsTouchController {
         if (dismissedIndex < 0) {
             return;
         }
-        int targetPage = resolveSilentNativeDismissAnchorPage(state.recentsView, state.taskView);
-        int targetScrollX = resolveStackDismissScrollForPage(state.recentsView, targetPage);
+        int targetScrollX = state.recentsView.getScrollX();
         int taskViewCount =
                 LauncherRecentsCompat.invokeInt(state.recentsView, "getTaskViewCount", 0);
         for (int i = 0; i < taskViewCount; i++) {
@@ -885,7 +885,7 @@ final class LauncherRecentsTouchController {
             return false;
         }
         rememberSilentNativeDismissAnchor(recentsView, taskView, state);
-        int targetPage = resolveSilentNativeDismissAnchorPage(recentsView, taskView);
+        int targetPage = resolveSilentNativeDismissAnchorPage(recentsView);
         ArrayList<FrozenStackDismissTaskState> finalTaskStates =
                 captureFrozenStackDismissTaskStates(state);
         if (LauncherRecentsCompat.invokeBoolean(taskView, "isRunningTask", false)
@@ -950,6 +950,7 @@ final class LauncherRecentsTouchController {
                 "onDismissAnimationEnds",
                 LauncherRecentsCompat.NO_ARGS);
         SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
+        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
         recentsView.invalidate();
         return true;
     }
@@ -966,18 +967,13 @@ final class LauncherRecentsTouchController {
                 new SilentNativeDismissAnchor(captureFrozenStackDismissTaskStates(state)));
     }
 
-    private static int resolveSilentNativeDismissAnchorPage(View recentsView, View taskView) {
-        int taskIndex = findTaskViewIndex(recentsView, taskView);
+    private static int resolveSilentNativeDismissAnchorPage(View recentsView) {
         int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
-        if (taskIndex >= 0) {
-            return pageCount > 1
-                    ? Math.max(0, Math.min(taskIndex - 1, pageCount - 2))
-                    : 0;
+        if (pageCount <= 1) {
+            return 0;
         }
-        int currentPage = LauncherRecentsCompat.readIntField(recentsView, "mCurrentPage", 0);
-        return pageCount > 1
-                ? Math.max(0, Math.min(currentPage, pageCount - 2))
-                : 0;
+        int nearestPage = resolveNearestStackDismissPageForScroll(recentsView, pageCount);
+        return Math.max(0, Math.min(nearestPage, pageCount - 2));
     }
 
     private static void finishSilentNativeDismiss(View recentsView) {
@@ -1005,13 +1001,18 @@ final class LauncherRecentsTouchController {
             }
             taskStates.add(new FrozenStackDismissTaskState(
                     taskView,
-                    captureStackDismissTaskTransform(taskView)));
+                    captureStackDismissTaskTransform(
+                            taskView,
+                            resolveStackDismissRawOffset(state.recentsView, i))));
         }
         return taskStates;
     }
 
-    private static StackDismissTaskTransform captureStackDismissTaskTransform(View taskView) {
+    private static StackDismissTaskTransform captureStackDismissTaskTransform(
+            View taskView,
+            float rawOffsetX) {
         return new StackDismissTaskTransform(
+                rawOffsetX,
                 LauncherRecentsCompat.readFloatField(taskView, "horizontalOffsetTranslationX", 0f),
                 LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationX", 0f),
                 LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationY", 0f),
@@ -1032,20 +1033,28 @@ final class LauncherRecentsTouchController {
         applyFrozenStackDismissTaskStates(recentsView, anchor.taskStates);
     }
 
-    private static void applyFrozenStackDismissTaskStates(
+    private static boolean applyFrozenStackDismissTaskStates(
             View recentsView,
             ArrayList<FrozenStackDismissTaskState> taskStates) {
         if (taskStates == null || taskStates.isEmpty()) {
-            return;
+            return false;
         }
+        boolean applied = false;
         for (int i = 0; i < taskStates.size(); i++) {
             FrozenStackDismissTaskState taskState = taskStates.get(i);
-            if (findTaskViewIndex(recentsView, taskState.taskView) < 0
+            int taskIndex = findTaskViewIndex(recentsView, taskState.taskView);
+            if (taskIndex < 0
                     || !isStackDismissTaskCandidate(recentsView, taskState.taskView)) {
                 continue;
             }
-            applyStackDismissTaskTransform(taskState.taskView, taskState.transform);
+            applyStackDismissTaskTransform(
+                    recentsView,
+                    taskIndex,
+                    taskState.taskView,
+                    taskState.transform);
+            applied = true;
         }
+        return applied;
     }
 
     private static void removeDismissedTaskFromGridState(View recentsView, View taskView) {
@@ -1070,12 +1079,17 @@ final class LauncherRecentsTouchController {
     }
 
     private static void applyStackDismissTaskTransform(
+            View recentsView,
+            int taskIndex,
             View taskView,
             StackDismissTaskTransform transform) {
         LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(
                 taskView,
                 transform.horizontalOffsetX);
-        LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(taskView, transform.taskOffsetX);
+        float currentRawOffsetX = resolveStackDismissRawOffset(recentsView, taskIndex);
+        LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(
+                taskView,
+                transform.taskOffsetX + transform.rawOffsetX - currentRawOffsetX);
         LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(taskView, transform.taskOffsetY);
         LauncherRecentsTaskVisuals.setBoxTranslationY(taskView, transform.boxTranslationY);
         LauncherRecentsTaskVisuals.setNonGridScale(taskView, transform.nonGridScale);
@@ -1679,6 +1693,7 @@ final class LauncherRecentsTouchController {
     }
 
     private static final class StackDismissTaskTransform {
+        final float rawOffsetX;
         final float horizontalOffsetX;
         final float taskOffsetX;
         final float taskOffsetY;
@@ -1688,6 +1703,7 @@ final class LauncherRecentsTouchController {
         final float translationZ;
 
         StackDismissTaskTransform(
+                float rawOffsetX,
                 float horizontalOffsetX,
                 float taskOffsetX,
                 float taskOffsetY,
@@ -1695,6 +1711,7 @@ final class LauncherRecentsTouchController {
                 float nonGridScale,
                 float stableAlpha,
                 float translationZ) {
+            this.rawOffsetX = rawOffsetX;
             this.horizontalOffsetX = horizontalOffsetX;
             this.taskOffsetX = taskOffsetX;
             this.taskOffsetY = taskOffsetY;
