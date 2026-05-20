@@ -20,6 +20,8 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> GESTURE_STACK_RELEASE_PROGRESS =
             new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> GESTURE_STACK_RELEASED_STABLE =
+            new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> PENDING_GESTURE_RECENTS_STACK_RELEASES =
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> APP_TO_RECENTS_GESTURE_RELEASED =
@@ -183,6 +185,24 @@ final class LauncherRecentsState {
     static boolean isAppToRecentsGestureReleased(View recentsView) {
         Boolean value = recentsView != null
                 ? APP_TO_RECENTS_GESTURE_RELEASED.get(recentsView)
+                : null;
+        return value != null && value;
+    }
+
+    static void setGestureStackReleasedStable(View recentsView, boolean stable) {
+        if (recentsView == null) {
+            return;
+        }
+        if (stable) {
+            GESTURE_STACK_RELEASED_STABLE.put(recentsView, Boolean.TRUE);
+        } else {
+            GESTURE_STACK_RELEASED_STABLE.remove(recentsView);
+        }
+    }
+
+    static boolean isGestureStackReleasedStable(View recentsView) {
+        Boolean value = recentsView != null
+                ? GESTURE_STACK_RELEASED_STABLE.get(recentsView)
                 : null;
         return value != null && value;
     }

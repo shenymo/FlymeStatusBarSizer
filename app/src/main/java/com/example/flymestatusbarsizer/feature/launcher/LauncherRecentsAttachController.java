@@ -50,6 +50,7 @@ final class LauncherRecentsAttachController {
                 LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
                         recentsView,
                         true);
+                LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
                 LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
                 LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
                 LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, true);
@@ -195,6 +196,9 @@ final class LauncherRecentsAttachController {
         LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
                 recentsView,
                 true);
+        if (!keepExpanded) {
+            LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
+        }
         endAppToRecentsEntrySessionWithoutLayout(recentsView);
         LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
         recentsView.requestLayout();

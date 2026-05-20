@@ -50,6 +50,7 @@ final class LauncherRecentsTransitionController {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
                     LauncherRecentsAttachController.clearAppToRecentsEntrySession(
                             recentsView,
                             false);
@@ -394,6 +395,7 @@ final class LauncherRecentsTransitionController {
             animator.cancel();
         }
         if (clearProgress) {
+            LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
             clearGestureRecentsStackReleaseProgress(recentsView);
         }
     }
@@ -472,6 +474,7 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
         LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
         LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
+        LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
         LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
         setGestureRecentsStackReleaseProgress(recentsView, 0f);
         LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
@@ -503,6 +506,7 @@ final class LauncherRecentsTransitionController {
                 }
                 setGestureRecentsStackReleaseProgress(recentsView, 1f);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                LauncherRecentsState.setGestureStackReleasedStable(recentsView, true);
                 clearGestureRecentsStackReleaseProgress(recentsView);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 recentsView.invalidate();
