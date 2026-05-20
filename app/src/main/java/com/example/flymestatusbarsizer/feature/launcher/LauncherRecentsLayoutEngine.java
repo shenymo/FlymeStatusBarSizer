@@ -15,11 +15,9 @@ import java.util.ArrayList;
 final class LauncherRecentsLayoutEngine {
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
     private static final float STACK_ENTRY_INITIAL_SPREAD_RATIO = 0.8f;
-    private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.10f;
+    private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.3f;
     private static final float STACK_RIGHT_VISIBLE_RATIO = 0.80f;
-    private static final float STACK_SPREAD_RIGHT_BIAS = 0.20f;
-    private static final float STACK_LEFT_OFFSCREEN_STEP_RATIO = 0.18f;
-    private static final float STACK_RIGHT_OFFSCREEN_STEP_RATIO = 0.85f;
+    private static final float STACK_SPREAD_POWER = 1f;
     private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
     private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
     private static final float STACK_MIN_SCALE = 0.80f;
@@ -414,6 +412,9 @@ final class LauncherRecentsLayoutEngine {
             float finalScale;
             float finalTranslationZ;
             float finalTaskOffsetY;
+            float stackLayerProgress = Math.max(
+                    0f,
+                    (progress + MAX_STACK_LAYERS) / (MAX_STACK_LAYERS * 2.0f));
 
             finalVisibleOffset = resolveStackVisibleOffset(
                     recentsView,
@@ -421,7 +422,7 @@ final class LauncherRecentsLayoutEngine {
                     taskWidth,
                     taskCenteredLeftPx);
             finalScale = lerp(STACK_MIN_SCALE, 1.0f, stackRightProgress);
-            finalTranslationZ = lerp(0f, maxTranslationZ + zStepPx, stackRightProgress);
+            finalTranslationZ = (maxTranslationZ + zStepPx) * stackLayerProgress;
             finalTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
             float taskEntryProgress = resolveTaskStackEntryProgress(
                     stackEntryProgress,
@@ -736,10 +737,6 @@ final class LauncherRecentsLayoutEngine {
                 clampedStackProgress,
                 -MAX_STACK_LAYERS,
                 MAX_STACK_LAYERS);
-        float stackSpreadBias = clamp(STACK_SPREAD_RIGHT_BIAS, 0f, 1f);
-        float stackSpreadProgress = (float) Math.pow(
-                stackRightProgress,
-                1.0f + (stackSpreadBias * 2.5f));
         float stackLeftOffsetPx =
                 -taskCenteredLeftPx + (taskWidth * STACK_LEFT_EDGE_INSET_RATIO);
         float stackRightOffsetPx = Math.max(
@@ -747,21 +744,21 @@ final class LauncherRecentsLayoutEngine {
                 recentsView.getWidth()
                         - (taskWidth * STACK_RIGHT_VISIBLE_RATIO)
                         - taskCenteredLeftPx);
+        float stackSpreadProgress = (float) Math.pow(stackRightProgress, STACK_SPREAD_POWER);
         float visibleOffset = lerp(
                 stackLeftOffsetPx,
                 stackRightOffsetPx,
                 stackSpreadProgress);
+        float stackStepPx = (stackRightOffsetPx - stackLeftOffsetPx) / (MAX_STACK_LAYERS * 2.0f);
         if (progress < -MAX_STACK_LAYERS) {
             return stackLeftOffsetPx
                     + ((progress + MAX_STACK_LAYERS)
-                    * taskWidth
-                    * STACK_LEFT_OFFSCREEN_STEP_RATIO);
+                    * stackStepPx);
         }
         if (progress > MAX_STACK_LAYERS) {
             return stackRightOffsetPx
                     + ((progress - MAX_STACK_LAYERS)
-                    * taskWidth
-                    * STACK_RIGHT_OFFSCREEN_STEP_RATIO);
+                    * stackStepPx);
         }
         return visibleOffset;
     }
