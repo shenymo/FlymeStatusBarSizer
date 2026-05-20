@@ -20,6 +20,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_SPREAD_POWER = 4.00f;
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
     private static final float STACK_LEFT_EDGE_REVEAL_SHIFT_RATIO = 0.14f;
+    private static final float STACK_LEFT_EDGE_EXTRA_SPACING_RATIO = 0.30f;
     private static final float STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO = 0.30f;
     private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
     private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
@@ -762,9 +763,14 @@ final class LauncherRecentsLayoutEngine {
         float stackSpreadProgress = (float) Math.pow(stackRightProgress, STACK_SPREAD_POWER);
         float visibleOffset = stackLeftOffsetPx
                 + ((stackRightOffsetPx - stackLeftOffsetPx) * stackSpreadProgress);
+        float leftEdgeRevealProgress = resolveLeftEdgeRevealProgress(recentsView);
         visibleOffset += taskWidth
                 * STACK_LEFT_EDGE_REVEAL_SHIFT_RATIO
-                * resolveLeftEdgeRevealProgress(recentsView);
+                * leftEdgeRevealProgress;
+        visibleOffset += taskWidth
+                * STACK_LEFT_EDGE_EXTRA_SPACING_RATIO
+                * leftEdgeRevealProgress
+                * remapProgress(progress, 0f, MAX_STACK_LAYERS);
         float stackStepPx = (stackRightOffsetPx - stackLeftOffsetPx) / (MAX_STACK_LAYERS * 2.0f);
         if (progress < -MAX_STACK_LAYERS) {
             return stackLeftOffsetPx
