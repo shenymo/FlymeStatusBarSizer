@@ -20,6 +20,8 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_SPREAD_RIGHT_BIAS = 1.00f;
     private static final float STACK_LEFT_OFFSCREEN_STEP_RATIO = 0.18f;
     private static final float STACK_RIGHT_OFFSCREEN_STEP_RATIO = 0.85f;
+    private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
+    private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
     private static final float STACK_MIN_SCALE = 0.80f;
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.07f;
@@ -492,6 +494,10 @@ final class LauncherRecentsLayoutEngine {
                     desiredStableAlpha = 0f;
                 }
             }
+            desiredStableAlpha *= remapProgress(
+                    progress,
+                    STACK_LEFT_RELEASE_END_PROGRESS,
+                    STACK_LEFT_RELEASE_START_PROGRESS);
             float translationCompensationX =
                     desiredVisibleOffset - rawOffset - nativeDismissTranslationX;
 
