@@ -422,7 +422,7 @@ final class SettingsCardFactory {
                 SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED);
         activity.addDivider(page);
         activity.addChoiceRow(page, "长触动作",
-                "可选发送 URL / Intent，或者在 mBack 上方直接弹出完整时间窗口。",
+                "可选发送 URL / Intent，或者在 mBack 上方直接弹出时间弹窗。",
                 SettingsStore.KEY_MBACK_LONG_TOUCH_ACTION,
                 SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION,
                 new int[]{

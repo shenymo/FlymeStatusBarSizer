@@ -97,9 +97,6 @@ final class ClockDetailPopupController {
     private static final int RECENT_APP_ITEM_SIZE_DP = 40;
     private static final int RECENT_APP_ICON_PADDING_DP = 4;
     private static final int RECENT_APP_GAP_DP = 10;
-    private static final int MBACK_FULLSCREEN_CONTENT_HORIZONTAL_PADDING_DP = 12;
-    private static final int MBACK_FULLSCREEN_CONTENT_TOP_PADDING_DP = 14;
-    private static final int MBACK_FULLSCREEN_CONTENT_BOTTOM_PADDING_DP = 16;
     private static final int DETAILS_SWIPE_TRIGGER_DP = 20;
     private static final int POPUP_SURFACE_OFFSET_Y_DP = 8;
     private static final int POPUP_SURFACE_RADIUS_DP = 24;
@@ -278,13 +275,12 @@ final class ClockDetailPopupController {
                 ? mainHandler
                 : new Handler(anchor.getContext().getMainLooper());
         Context context = anchor.getContext();
-        this.contentView = buildContentView(context, this.hostMode);
+        this.contentView = buildContentView(context);
         this.popupBackgroundView = buildPopupBackgroundView(context);
         this.popupRootView = buildPopupRootView(
                 context,
                 popupBackgroundView,
-                contentView,
-                this.hostMode);
+                contentView);
         this.overlayView = buildOverlayView(context, popupRootView);
         this.headerView = buildHeaderView(context);
         this.timeRowView = buildTimeRowView(context);
@@ -297,8 +293,7 @@ final class ClockDetailPopupController {
         this.detailsContainerView = buildDetailsContainerView(context);
         this.detailsViewportView = buildDetailsViewportView(
                 context,
-                detailsContainerView,
-                this.hostMode);
+                detailsContainerView);
         this.memoryTile = buildMemoryStatTile(
                 context,
                 "系统内存",
@@ -327,9 +322,7 @@ final class ClockDetailPopupController {
         this.contentView.addView(mediaViewportView, matchWidthWithTop(context, MEDIA_TOP_MARGIN_DP));
         this.contentView.addView(
                 detailsViewportView,
-                this.hostMode == HostMode.MBACK
-                        ? matchWidthWeightWithTop(context, DETAILS_TOP_MARGIN_DP, 1f)
-                        : matchWidthWithTop(context, DETAILS_TOP_MARGIN_DP));
+                matchWidthWithTop(context, DETAILS_TOP_MARGIN_DP));
         this.lunarDateFormatter = new ClockDetailLunarDateFormatter(context.getClassLoader());
         this.mediaProvider = new ClockDetailMediaProvider(
                 context,
@@ -848,19 +841,6 @@ final class ClockDetailPopupController {
         Context context = popupRootView.getContext();
         int rootHorizontalPadding = popupRootView.getPaddingLeft() + popupRootView.getPaddingRight();
         int rootVerticalPadding = popupRootView.getPaddingTop() + popupRootView.getPaddingBottom();
-        if (isFullScreenMBackLayout()) {
-            popupWidth = Math.max(1, getOverlayWidth());
-            popupHeight = Math.max(1, getOverlayHeight());
-            int contentWidth = Math.max(1, popupWidth - rootHorizontalPadding);
-            int contentHeight = Math.max(1, popupHeight - rootVerticalPadding);
-            contentView.measure(
-                    View.MeasureSpec.makeMeasureSpec(contentWidth, View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(contentHeight, View.MeasureSpec.EXACTLY));
-            popupRootView.measure(
-                    View.MeasureSpec.makeMeasureSpec(popupWidth, View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(popupHeight, View.MeasureSpec.EXACTLY));
-            return;
-        }
         int margin = dp(context, HORIZONTAL_MARGIN_DP);
         int popupMaxWidth = Math.max(1, getOverlayWidth() - (margin * 2));
         int contentWidth = Math.max(1, popupMaxWidth - rootHorizontalPadding);
@@ -875,18 +855,12 @@ final class ClockDetailPopupController {
     }
 
     private int resolveTargetPopupLeft(View anchor) {
-        if (isFullScreenMBackLayout()) {
-            return 0;
-        }
         return manualPositionActive
                 ? clampPopupLeft(popupLeft)
                 : calculateAnchoredPopupLeft(anchor);
     }
 
     private int resolveTargetPopupTop(View anchor) {
-        if (isFullScreenMBackLayout()) {
-            return 0;
-        }
         return manualPositionActive
                 ? clampPopupTop(popupTop)
                 : calculateAnchoredPopupTop(anchor);
@@ -929,9 +903,6 @@ final class ClockDetailPopupController {
     }
 
     private int clampPopupLeft(int desiredLeft) {
-        if (isFullScreenMBackLayout()) {
-            return 0;
-        }
         Context context = popupRootView.getContext();
         int margin = dp(context, HORIZONTAL_MARGIN_DP);
         int maxLeft = Math.max(margin, getOverlayWidth() - margin - popupWidth);
@@ -939,9 +910,6 @@ final class ClockDetailPopupController {
     }
 
     private int clampPopupTop(int desiredTop) {
-        if (isFullScreenMBackLayout()) {
-            return 0;
-        }
         Context context = popupRootView.getContext();
         int topInset = overlayView.getPaddingTop();
         int bottomInset = overlayView.getPaddingBottom();
@@ -954,23 +922,14 @@ final class ClockDetailPopupController {
     }
 
     private void applyPopupPosition(int desiredLeft, int desiredTop) {
-        if (isFullScreenMBackLayout()) {
-            popupLeft = 0;
-            popupTop = 0;
-        } else {
-            popupLeft = clampPopupLeft(desiredLeft);
-            popupTop = clampPopupTop(desiredTop);
-        }
+        popupLeft = clampPopupLeft(desiredLeft);
+        popupTop = clampPopupTop(desiredTop);
         FrameLayout.LayoutParams params = popupRootView.getLayoutParams()
                 instanceof FrameLayout.LayoutParams
                 ? (FrameLayout.LayoutParams) popupRootView.getLayoutParams()
                 : frameWrapContent();
-        params.width = isFullScreenMBackLayout()
-                ? FrameLayout.LayoutParams.MATCH_PARENT
-                : popupWidth;
-        params.height = isFullScreenMBackLayout()
-                ? FrameLayout.LayoutParams.MATCH_PARENT
-                : popupHeight;
+        params.width = popupWidth;
+        params.height = popupHeight;
         params.gravity = Gravity.START | Gravity.TOP;
         params.leftMargin = popupLeft;
         params.topMargin = popupTop;
@@ -1230,12 +1189,10 @@ final class ClockDetailPopupController {
         GradientDrawable background = new GradientDrawable();
         background.setShape(GradientDrawable.RECTANGLE);
         background.setColor(adjustAlpha(palette.surfaceColor, 0.88f));
-        background.setCornerRadius(isFullScreenMBackLayout() ? 0f : dp(context, POPUP_SURFACE_RADIUS_DP));
-        if (!isFullScreenMBackLayout()) {
-            background.setStroke(
-                    Math.max(1, dp(context, 1)),
-                    adjustAlpha(palette.strokeColor, 0.86f));
-        }
+        background.setCornerRadius(dp(context, POPUP_SURFACE_RADIUS_DP));
+        background.setStroke(
+                Math.max(1, dp(context, 1)),
+                adjustAlpha(palette.strokeColor, 0.86f));
         return background;
     }
 
@@ -1243,23 +1200,14 @@ final class ClockDetailPopupController {
         GradientDrawable stroke = new GradientDrawable();
         stroke.setShape(GradientDrawable.RECTANGLE);
         stroke.setColor(Color.TRANSPARENT);
-        stroke.setCornerRadius(isFullScreenMBackLayout() ? 0f : dp(context, POPUP_SURFACE_RADIUS_DP));
-        if (!isFullScreenMBackLayout()) {
-            stroke.setStroke(
-                    Math.max(1, dp(context, 1)),
-                    adjustAlpha(palette.strokeColor, 0.86f));
-        }
+        stroke.setCornerRadius(dp(context, POPUP_SURFACE_RADIUS_DP));
+        stroke.setStroke(
+                Math.max(1, dp(context, 1)),
+                adjustAlpha(palette.strokeColor, 0.86f));
         return stroke;
     }
 
     private void applyPopupShadowStyle(Context context, Palette palette) {
-        if (isFullScreenMBackLayout()) {
-            popupBackgroundView.setElevation(0f);
-            popupBackgroundView.setTranslationZ(0f);
-            contentView.setElevation(0f);
-            contentView.setTranslationZ(0f);
-            return;
-        }
         float backgroundElevation = dp(context, POPUP_SHADOW_ELEVATION_DP);
         float backgroundTranslationZ = dp(context, POPUP_SHADOW_TRANSLATION_Z_DP);
         popupBackgroundView.setElevation(backgroundElevation);
@@ -2158,10 +2106,6 @@ final class ClockDetailPopupController {
         return hostMode == HostMode.MBACK;
     }
 
-    private boolean isFullScreenMBackLayout() {
-        return hostMode == HostMode.MBACK;
-    }
-
     private boolean isPanelDragEnabled() {
         return hostMode == HostMode.CLOCK;
     }
@@ -2362,18 +2306,6 @@ final class ClockDetailPopupController {
 
     private void applyDetailsExpandedStateImmediately(boolean expanded) {
         cancelDetailsAnimator();
-        if (isFullScreenMBackLayout()) {
-            detailsViewportView.setAlpha(1f);
-            detailsViewportView.setTranslationY(0f);
-            if (expanded) {
-                setVisibilityIfChanged(detailsViewportView, View.VISIBLE);
-                restoreMBackDetailsViewportLayout();
-            } else {
-                updateDetailsViewportHeight(0);
-                setVisibilityIfChanged(detailsViewportView, View.GONE);
-            }
-            return;
-        }
         if (expanded) {
             detailsViewportView.setAlpha(1f);
             detailsViewportView.setTranslationY(0f);
@@ -2388,10 +2320,6 @@ final class ClockDetailPopupController {
     }
 
     private void animateDetailsExpandedState(boolean expanded) {
-        if (isFullScreenMBackLayout()) {
-            applyDetailsExpandedStateImmediately(expanded);
-            return;
-        }
         cancelDetailsAnimator();
         int startHeight = resolveCurrentDetailsViewportHeight();
         int targetHeight = expanded ? measureDetailsContentHeight() : 0;
@@ -2539,50 +2467,15 @@ final class ClockDetailPopupController {
     private void updateDetailsViewportHeight(int height) {
         ViewGroup.LayoutParams params = detailsViewportView.getLayoutParams();
         if (!(params instanceof LinearLayout.LayoutParams)) {
-            params = isFullScreenMBackLayout()
-                    ? matchWidthWeight(1f)
-                    : matchWidth();
+            params = matchWidth();
         }
         LinearLayout.LayoutParams linearParams = (LinearLayout.LayoutParams) params;
-        if (isFullScreenMBackLayout()) {
-            linearParams.width = LinearLayout.LayoutParams.MATCH_PARENT;
-            if (height == 0) {
-                linearParams.height = 0;
-                linearParams.weight = 0f;
-            } else {
-                linearParams.height = 0;
-                linearParams.weight = 1f;
-            }
-            detailsViewportView.setLayoutParams(linearParams);
-            if (isPopupShowing() && !dismissAnimationRunning) {
-                measureContent();
-                updatePopupPosition();
-            }
-            return;
-        }
         linearParams.height = height;
         detailsViewportView.setLayoutParams(linearParams);
         if (isPopupShowing() && !dismissAnimationRunning) {
             measureContent();
             updatePopupPosition();
         }
-    }
-
-    private void restoreMBackDetailsViewportLayout() {
-        if (!isFullScreenMBackLayout()) {
-            return;
-        }
-        LinearLayout.LayoutParams params = detailsViewportView.getLayoutParams()
-                instanceof LinearLayout.LayoutParams
-                ? (LinearLayout.LayoutParams) detailsViewportView.getLayoutParams()
-                : matchWidthWeight(1f);
-        params.width = LinearLayout.LayoutParams.MATCH_PARENT;
-        params.height = 0;
-        params.weight = 1f;
-        if (params.topMargin == 0) {
-            params.topMargin = dp(detailsViewportView.getContext(), DETAILS_TOP_MARGIN_DP);
-        }
-        detailsViewportView.setLayoutParams(params);
     }
 
     private int resolvePopupChildContentWidth(Context context) {
@@ -2592,14 +2485,6 @@ final class ClockDetailPopupController {
         }
         int overlayWidth = getOverlayWidth();
         int rootHorizontalPadding = popupRootView.getPaddingLeft() + popupRootView.getPaddingRight();
-        if (isFullScreenMBackLayout()) {
-            return Math.max(
-                    1,
-                    overlayWidth
-                            - rootHorizontalPadding
-                            - contentView.getPaddingLeft()
-                            - contentView.getPaddingRight());
-        }
         int margin = dp(context, HORIZONTAL_MARGIN_DP);
         return Math.max(1, overlayWidth - (margin * 2) - rootHorizontalPadding);
     }
@@ -2782,8 +2667,7 @@ final class ClockDetailPopupController {
     private FrameLayout buildPopupRootView(
             Context context,
             View backgroundView,
-            LinearLayout contentView,
-            HostMode hostMode) {
+            LinearLayout contentView) {
         FrameLayout root = new FrameLayout(context) {
             @Override
             public boolean dispatchTouchEvent(MotionEvent event) {
@@ -2804,18 +2688,10 @@ final class ClockDetailPopupController {
         root.setClickable(true);
         root.setClipChildren(false);
         root.setClipToPadding(false);
-        if (hostMode == HostMode.MBACK) {
-            root.setPadding(0, 0, 0, 0);
-        } else {
-            int shadowPadding = dp(context, POPUP_SHADOW_PADDING_DP);
-            root.setPadding(shadowPadding, shadowPadding, shadowPadding, shadowPadding);
-        }
+        int shadowPadding = dp(context, POPUP_SHADOW_PADDING_DP);
+        root.setPadding(shadowPadding, shadowPadding, shadowPadding, shadowPadding);
         root.addView(backgroundView, frameMatchParent());
-        root.addView(
-                contentView,
-                hostMode == HostMode.MBACK
-                        ? frameMatchParent()
-                        : frameMatchWidthWrapContent());
+        root.addView(contentView, frameMatchWidthWrapContent());
         return root;
     }
 
@@ -2825,25 +2701,17 @@ final class ClockDetailPopupController {
         return background;
     }
 
-    private static LinearLayout buildContentView(Context context, HostMode hostMode) {
+    private static LinearLayout buildContentView(Context context) {
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         root.setClipChildren(false);
         root.setClipToPadding(false);
-        if (hostMode == HostMode.MBACK) {
-            root.setPadding(
-                    dp(context, MBACK_FULLSCREEN_CONTENT_HORIZONTAL_PADDING_DP),
-                    dp(context, MBACK_FULLSCREEN_CONTENT_TOP_PADDING_DP),
-                    dp(context, MBACK_FULLSCREEN_CONTENT_HORIZONTAL_PADDING_DP),
-                    dp(context, MBACK_FULLSCREEN_CONTENT_BOTTOM_PADDING_DP));
-        } else {
-            root.setPadding(
-                    dp(context, 18),
-                    dp(context, 14),
-                    dp(context, 18),
-                    dp(context, 14));
-        }
+        root.setPadding(
+                dp(context, 18),
+                dp(context, 14),
+                dp(context, 18),
+                dp(context, 14));
         return root;
     }
 
@@ -2873,16 +2741,13 @@ final class ClockDetailPopupController {
 
     private static FrameLayout buildDetailsViewportView(
             Context context,
-            LinearLayout detailsContainerView,
-            HostMode hostMode) {
+            LinearLayout detailsContainerView) {
         FrameLayout viewport = new FrameLayout(context);
         viewport.setClipChildren(true);
         viewport.setClipToPadding(true);
         viewport.addView(
                 detailsContainerView,
-                hostMode == HostMode.MBACK
-                        ? frameMatchParent()
-                        : frameMatchWidthWrapContent());
+                frameMatchWidthWrapContent());
         return viewport;
     }
 
@@ -4569,22 +4434,6 @@ final class ClockDetailPopupController {
             Context context,
             int topMarginDp) {
         LinearLayout.LayoutParams params = matchWidth();
-        params.topMargin = dp(context, topMarginDp);
-        return params;
-    }
-
-    private static LinearLayout.LayoutParams matchWidthWeight(float weight) {
-        return new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                weight);
-    }
-
-    private static LinearLayout.LayoutParams matchWidthWeightWithTop(
-            Context context,
-            int topMarginDp,
-            float weight) {
-        LinearLayout.LayoutParams params = matchWidthWeight(weight);
         params.topMargin = dp(context, topMarginDp);
         return params;
     }
