@@ -13,11 +13,9 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 
 final class LauncherRecentsLayoutEngine {
-    private static final float STACK_DEPTH_CURVE_POWER = 0.82f;
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
-    private static final float STACK_ENTRY_REAR_START_SCALE_STEP = 0.045f;
     private static final float STACK_SIDE_SPREAD_RATIO = 0.32f;
-    private static final float STACK_SCALE_STEP = 0.065f;
+    private static final float STACK_SPREAD_RIGHT_BIAS = 1.00f;
     private static final float STACK_MIN_SCALE = 0.80f;
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.07f;
@@ -395,10 +393,10 @@ final class LauncherRecentsLayoutEngine {
                         runningTaskChildIndex);
             }
             float clampedStackProgress = clamp(progress, -MAX_STACK_LAYERS, MAX_STACK_LAYERS);
-            float stackDepth = Math.abs(clampedStackProgress);
-            float stackDepthCurve = (float) Math.pow(
-                    clamp(stackDepth / MAX_STACK_LAYERS, 0f, 1f),
-                    STACK_DEPTH_CURVE_POWER);
+            float stackRightProgress = remapProgress(
+                    clampedStackProgress,
+                    -MAX_STACK_LAYERS,
+                    MAX_STACK_LAYERS);
             float stackSideSpreadPx = Math.min(
                     taskWidth * STACK_SIDE_SPREAD_RATIO,
                     FlymeStatusBarSizer.dp(recentsView.getContext(), 260));
@@ -413,39 +411,26 @@ final class LauncherRecentsLayoutEngine {
             float finalTranslationZ;
             float finalTaskOffsetY;
 
-            finalVisibleOffset = clampedStackProgress * stackSideSpreadPx;
-            finalScale = Math.max(
-                    STACK_MIN_SCALE,
-                    1.0f - (STACK_SCALE_STEP * stackDepthCurve * MAX_STACK_LAYERS));
-            finalTranslationZ =
-                    Math.max(0f, maxTranslationZ - (stackDepthCurve * maxTranslationZ));
-            if (stackDepth < 0.5f) {
-                finalTranslationZ += zStepPx * (1.0f - (stackDepth * 2.0f));
-            }
+            finalVisibleOffset = (clampedStackProgress
+                    + (STACK_SPREAD_RIGHT_BIAS
+                    * clampedStackProgress
+                    * clampedStackProgress
+                    / MAX_STACK_LAYERS))
+                    * stackSideSpreadPx;
+            finalScale = lerp(STACK_MIN_SCALE, 1.0f, stackRightProgress);
+            finalTranslationZ = lerp(0f, maxTranslationZ + zStepPx, stackRightProgress);
             finalTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
-            boolean isLeadCard = appEntrySessionActive
-                    ? taskView == runningTaskView
-                    : Math.abs(progress) < 0.5f;
             float taskEntryProgress = resolveTaskStackEntryProgress(
                     stackEntryProgress,
                     collapsedReferenceProgress);
-            float collapsedDepth = clamp(
-                    Math.abs(collapsedReferenceProgress)
-                            + (collapsedReferenceProgress > 0f ? 0.45f : 0.15f),
-                    0f,
-                    MAX_STACK_LAYERS + 0.5f);
+            float collapsedRightProgress = remapProgress(
+                    clamp(collapsedReferenceProgress, -MAX_STACK_LAYERS, MAX_STACK_LAYERS),
+                    -MAX_STACK_LAYERS,
+                    MAX_STACK_LAYERS);
             float collapsedVisibleOffset = 0f;
-            float collapsedScale = isLeadCard
-                    ? 1.0f
-                    : Math.max(
-                    STACK_MIN_SCALE,
-                    1.0f - (STACK_ENTRY_REAR_START_SCALE_STEP * (collapsedDepth + 1.0f)));
-            float collapsedTranslationZ = isLeadCard
-                    ? maxTranslationZ + zStepPx
-                    : Math.max(
-                    0f,
-                    maxTranslationZ - ((Math.min(collapsedDepth, MAX_STACK_LAYERS)
-                    / MAX_STACK_LAYERS) * (maxTranslationZ * 0.6f)));
+            float collapsedScale = lerp(STACK_MIN_SCALE, 1.0f, collapsedRightProgress);
+            float collapsedTranslationZ =
+                    lerp(0f, maxTranslationZ + zStepPx, collapsedRightProgress);
             float collapsedTaskOffsetY = 0f;
             float transformEntryProgress = Math.max(
                     taskEntryProgress,
