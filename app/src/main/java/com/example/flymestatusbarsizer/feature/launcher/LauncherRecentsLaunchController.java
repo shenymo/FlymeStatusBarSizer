@@ -140,6 +140,11 @@ final class LauncherRecentsLaunchController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
+                if (LauncherRecentsTouchController.handleStackDismissSetCurrentPage(
+                        thisObject,
+                        chain.getArg(0))) {
+                    return null;
+                }
                 if (shouldSuppressTaskLaunchPageMutation(thisObject)) {
                     if (thisObject instanceof View) {
                         LauncherRecentsTouchController.clearRecentsDeferredSnap((View) thisObject);
@@ -656,7 +661,10 @@ final class LauncherRecentsLaunchController {
     }
 
     static boolean shouldSuppressTaskLaunchSynchronousLayout(View recentsView) {
-        return recentsView != null && LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView);
+        return recentsView != null
+                && (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
+                || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(
+                recentsView));
     }
 
     private static boolean shouldSuppressTaskPressScale(View taskView) {
@@ -787,7 +795,8 @@ final class LauncherRecentsLaunchController {
             return true;
         }
         return LauncherRecentsCompat.isRecentsViewObject(view)
-                && LauncherRecentsState.isTaskLaunchLayoutFrozen(view);
+                && (LauncherRecentsState.isTaskLaunchLayoutFrozen(view)
+                || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(view));
     }
 
     static boolean shouldSuppressTaskLaunchPageMutation(Object thisObject) {
@@ -796,7 +805,8 @@ final class LauncherRecentsLaunchController {
         }
         View view = (View) thisObject;
         return LauncherRecentsCompat.isRecentsViewObject(view)
-                && LauncherRecentsState.isTaskLaunchLayoutFrozen(view);
+                && (LauncherRecentsState.isTaskLaunchLayoutFrozen(view)
+                || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(view));
     }
 
     private static boolean launchTaskWithoutSystemAnimation(View taskView, View recentsView) {
