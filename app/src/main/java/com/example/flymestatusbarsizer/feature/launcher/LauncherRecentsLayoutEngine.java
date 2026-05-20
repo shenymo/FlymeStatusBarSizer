@@ -14,8 +14,12 @@ import java.util.ArrayList;
 
 final class LauncherRecentsLayoutEngine {
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
-    private static final float STACK_SIDE_SPREAD_RATIO = 0.32f;
+    private static final float STACK_ENTRY_INITIAL_SPREAD_RATIO = 0.32f;
+    private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.10f;
+    private static final float STACK_RIGHT_VISIBLE_RATIO = 0.80f;
     private static final float STACK_SPREAD_RIGHT_BIAS = 1.00f;
+    private static final float STACK_LEFT_OFFSCREEN_STEP_RATIO = 0.18f;
+    private static final float STACK_RIGHT_OFFSCREEN_STEP_RATIO = 0.85f;
     private static final float STACK_MIN_SCALE = 0.80f;
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.07f;
@@ -397,9 +401,6 @@ final class LauncherRecentsLayoutEngine {
                     clampedStackProgress,
                     -MAX_STACK_LAYERS,
                     MAX_STACK_LAYERS);
-            float stackSideSpreadPx = Math.min(
-                    taskWidth * STACK_SIDE_SPREAD_RATIO,
-                    FlymeStatusBarSizer.dp(recentsView.getContext(), 260));
             float stackEntryLiftPx = Math.min(
                     taskHeight * STACK_ENTRY_LIFT_RATIO,
                     FlymeStatusBarSizer.dp(recentsView.getContext(), 40));
@@ -411,12 +412,32 @@ final class LauncherRecentsLayoutEngine {
             float finalTranslationZ;
             float finalTaskOffsetY;
 
-            finalVisibleOffset = (clampedStackProgress
-                    + (STACK_SPREAD_RIGHT_BIAS
-                    * clampedStackProgress
-                    * clampedStackProgress
-                    / MAX_STACK_LAYERS))
-                    * stackSideSpreadPx;
+            float stackSpreadBias = clamp(STACK_SPREAD_RIGHT_BIAS, 0f, 1f);
+            float stackSpreadProgress = (float) Math.pow(
+                    stackRightProgress,
+                    1.0f + (stackSpreadBias * 2.5f));
+            float stackLeftOffsetPx =
+                    -taskCenteredLeftPx + (taskWidth * STACK_LEFT_EDGE_INSET_RATIO);
+            float stackRightOffsetPx = Math.max(
+                    stackLeftOffsetPx,
+                    recentsView.getWidth()
+                            - (taskWidth * STACK_RIGHT_VISIBLE_RATIO)
+                            - taskCenteredLeftPx);
+            finalVisibleOffset = lerp(
+                    stackLeftOffsetPx,
+                    stackRightOffsetPx,
+                    stackSpreadProgress);
+            if (progress < -MAX_STACK_LAYERS) {
+                finalVisibleOffset = stackLeftOffsetPx
+                        + ((progress + MAX_STACK_LAYERS)
+                        * taskWidth
+                        * STACK_LEFT_OFFSCREEN_STEP_RATIO);
+            } else if (progress > MAX_STACK_LAYERS) {
+                finalVisibleOffset = stackRightOffsetPx
+                        + ((progress - MAX_STACK_LAYERS)
+                        * taskWidth
+                        * STACK_RIGHT_OFFSCREEN_STEP_RATIO);
+            }
             finalScale = lerp(STACK_MIN_SCALE, 1.0f, stackRightProgress);
             finalTranslationZ = lerp(0f, maxTranslationZ + zStepPx, stackRightProgress);
             finalTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
@@ -427,7 +448,7 @@ final class LauncherRecentsLayoutEngine {
                     clamp(collapsedReferenceProgress, -MAX_STACK_LAYERS, MAX_STACK_LAYERS),
                     -MAX_STACK_LAYERS,
                     MAX_STACK_LAYERS);
-            float collapsedVisibleOffset = 0f;
+            float collapsedVisibleOffset = finalVisibleOffset * STACK_ENTRY_INITIAL_SPREAD_RATIO;
             float collapsedScale = lerp(STACK_MIN_SCALE, 1.0f, collapsedRightProgress);
             float collapsedTranslationZ =
                     lerp(0f, maxTranslationZ + zStepPx, collapsedRightProgress);
@@ -536,6 +557,7 @@ final class LauncherRecentsLayoutEngine {
         if (launchState != null && launchState.handoffEnabled) {
             LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);
         }
+        LauncherRecentsTouchController.ensureStackVisibleTaskData(recentsView, 15);
     }
 
     private static boolean shouldSuppressStockPageOffsetUpdate(

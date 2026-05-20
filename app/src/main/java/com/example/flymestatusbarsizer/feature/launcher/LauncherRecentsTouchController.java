@@ -6,6 +6,7 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.os.Handler;
+import android.util.SparseBooleanArray;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
@@ -17,6 +18,7 @@ import android.view.animation.OvershootInterpolator;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
@@ -29,11 +31,14 @@ final class LauncherRecentsTouchController {
     private static final long STACK_DISMISS_CANCEL_ANIM_MS = 320L;
     private static final float STACK_DISMISS_VERTICAL_DOMINANCE = 1.2f;
     private static final float STACK_DISMISS_MIN_FLING_VELOCITY = -1200f;
+    private static final float STACK_VISIBLE_DATA_MARGIN_RATIO = 0.35f;
     private static final ThreadLocal<Boolean> TASK_DISMISS_VISIBILITY_BYPASS =
             new ThreadLocal<>();
     private static final WeakHashMap<View, StackDismissGestureState> STACK_DISMISS_GESTURES =
             new WeakHashMap<>();
     private static final WeakHashMap<View, Float> STACK_DISMISS_LAYOUT_OFFSETS =
+            new WeakHashMap<>();
+    private static final WeakHashMap<View, ArrayList<Integer>> STACK_VISIBLE_TASK_IDS =
             new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> SILENT_NATIVE_DISMISS_RECENTS =
             new WeakHashMap<>();
@@ -61,6 +66,7 @@ final class LauncherRecentsTouchController {
                 loader,
                 TASK_VIEW_DISMISS_TOUCH_CONTROLLER_CLASS);
         hookRecentsViewTaskVisibilityForDismiss(module, loader);
+        hookRecentsViewLoadVisibleTaskDataForStack(module, loader);
         hookRecentsViewResetTaskVisualsForSilentDismiss(module, loader);
         hookRecentsViewUpdateTaskSizeForSilentDismiss(module, loader);
         hookTaskViewNativeDismissTransformsForSilentDismiss(module, loader);
@@ -298,6 +304,31 @@ final class LauncherRecentsTouchController {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook RecentsView.isTaskViewVisible",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewLoadVisibleTaskDataForStack(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("loadVisibleTaskData", int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View
+                        && LauncherRecentsLayoutEngine.shouldUseStackLayout((View) thisObject)) {
+                    Object arg0 = chain.getArg(0);
+                    int changes = arg0 instanceof Integer ? (Integer) arg0 : 15;
+                    ensureStackVisibleTaskData((View) thisObject, changes);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.loadVisibleTaskData",
                     t);
         }
     }
@@ -1198,8 +1229,7 @@ final class LauncherRecentsTouchController {
     private static boolean shouldExposeStackTaskForDismissVisibility(
             View recentsView,
             View taskView) {
-        if (!Boolean.TRUE.equals(TASK_DISMISS_VISIBILITY_BYPASS.get())
-                || recentsView == null
+        if (recentsView == null
                 || taskView == null
                 || LauncherRecentsCompat.isDesktopTask(taskView)
                 || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
@@ -1212,7 +1242,92 @@ final class LauncherRecentsTouchController {
         return taskView.getVisibility() == View.VISIBLE
                 && taskView.getAlpha() > 0.01f
                 && taskView.getWidth() > 0
-                && taskView.getHeight() > 0;
+                && taskView.getHeight() > 0
+                && isStackTaskWithinVisibleDataBounds(recentsView, taskView);
+    }
+
+    private static boolean isStackTaskWithinVisibleDataBounds(View recentsView, View taskView) {
+        int[] recentsLocation = new int[2];
+        int[] taskLocation = new int[2];
+        recentsView.getLocationOnScreen(recentsLocation);
+        taskView.getLocationOnScreen(taskLocation);
+        float taskWidth = taskView.getWidth() * Math.max(0.01f, Math.abs(taskView.getScaleX()));
+        float margin = recentsView.getWidth() * STACK_VISIBLE_DATA_MARGIN_RATIO;
+        float viewportLeft = recentsLocation[0] - margin;
+        float viewportRight = recentsLocation[0] + recentsView.getWidth() + margin;
+        float taskLeft = taskLocation[0];
+        float taskRight = taskLeft + taskWidth;
+        return taskRight > viewportLeft && taskLeft < viewportRight;
+    }
+
+    static void ensureStackVisibleTaskData(View recentsView, int changes) {
+        if (recentsView == null || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+            return;
+        }
+        Object visibleTaskData = LauncherRecentsCompat.getFieldCompat(
+                recentsView,
+                "mHasVisibleTaskData");
+        SparseBooleanArray visibleIds = visibleTaskData instanceof SparseBooleanArray
+                ? (SparseBooleanArray) visibleTaskData
+                : null;
+        ArrayList<Integer> visibleTaskIds = new ArrayList<>();
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (!shouldExposeStackTaskForDismissVisibility(recentsView, taskView)) {
+                continue;
+            }
+            boolean needsUpdate = visibleIds == null;
+            Object containersObject =
+                    LauncherRecentsCompat.invokeCompat(taskView, "getTaskContainers");
+            if (containersObject instanceof List) {
+                List<?> taskContainers = (List<?>) containersObject;
+                for (int j = 0; j < taskContainers.size(); j++) {
+                    Object task = LauncherRecentsCompat.invokeCompat(
+                            taskContainers.get(j),
+                            "getTask");
+                    Object key = LauncherRecentsCompat.getFieldCompat(task, "key");
+                    int taskId = LauncherRecentsCompat.readIntField(key, "id", -1);
+                    if (taskId == -1) {
+                        needsUpdate = true;
+                        continue;
+                    }
+                    visibleTaskIds.add(taskId);
+                    if (visibleIds == null) {
+                        needsUpdate = true;
+                        continue;
+                    }
+                    if (!visibleIds.get(taskId)) {
+                        needsUpdate = true;
+                    }
+                    visibleIds.put(taskId, true);
+                }
+            }
+            if (needsUpdate) {
+                LauncherRecentsCompat.invokeCompat(
+                        taskView,
+                        "onTaskListVisibilityChanged",
+                        new Class<?>[]{boolean.class, int.class},
+                        true,
+                        changes);
+            }
+        }
+        ArrayList<Integer> lastVisibleTaskIds = STACK_VISIBLE_TASK_IDS.get(recentsView);
+        boolean visibleTaskIdsChanged = lastVisibleTaskIds == null
+                || !lastVisibleTaskIds.equals(visibleTaskIds);
+        if (visibleTaskIds.isEmpty()) {
+            STACK_VISIBLE_TASK_IDS.remove(recentsView);
+        } else if (visibleTaskIdsChanged) {
+            STACK_VISIBLE_TASK_IDS.put(recentsView, new ArrayList<>(visibleTaskIds));
+        }
+        Object viewModel = LauncherRecentsCompat.getFieldCompat(recentsView, "mRecentsViewModel");
+        if (viewModel != null && !visibleTaskIds.isEmpty() && visibleTaskIdsChanged) {
+            LauncherRecentsCompat.invokeCompat(
+                    viewModel,
+                    "updateVisibleTasks",
+                    new Class<?>[]{List.class},
+                    visibleTaskIds);
+        }
     }
 
     private static boolean shouldKeepStackDismissGestureAwayFromPagedView(
