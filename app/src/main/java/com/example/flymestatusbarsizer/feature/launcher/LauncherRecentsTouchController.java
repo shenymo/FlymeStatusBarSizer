@@ -34,6 +34,8 @@ final class LauncherRecentsTouchController {
     private static final float STACK_VISIBLE_DATA_MARGIN_RATIO = 0.35f;
     private static final ThreadLocal<Boolean> TASK_DISMISS_VISIBILITY_BYPASS =
             new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> STACK_LOAD_VISIBLE_TASK_DATA_ACTIVE =
+            new ThreadLocal<>();
     private static final WeakHashMap<View, StackDismissGestureState> STACK_DISMISS_GESTURES =
             new WeakHashMap<>();
     private static final WeakHashMap<View, Float> STACK_DISMISS_LAYOUT_OFFSETS =
@@ -67,6 +69,7 @@ final class LauncherRecentsTouchController {
                 TASK_VIEW_DISMISS_TOUCH_CONTROLLER_CLASS);
         hookRecentsViewTaskVisibilityForDismiss(module, loader);
         hookRecentsViewLoadVisibleTaskDataForStack(module, loader);
+        hookTaskViewListVisibilityForStack(module, loader);
         hookRecentsViewResetTaskVisualsForSilentDismiss(module, loader);
         hookRecentsViewUpdateTaskSizeForSilentDismiss(module, loader);
         hookTaskViewNativeDismissTransformsForSilentDismiss(module, loader);
@@ -316,10 +319,24 @@ final class LauncherRecentsTouchController {
             Method method = clazz.getDeclaredMethod("loadVisibleTaskData", int.class);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                Object result = chain.proceed();
                 Object thisObject = chain.getThisObject();
-                if (thisObject instanceof View
-                        && LauncherRecentsLayoutEngine.shouldUseStackLayout((View) thisObject)) {
+                if (!(thisObject instanceof View)
+                        || !LauncherRecentsLayoutEngine.shouldUseStackLayout((View) thisObject)) {
+                    return chain.proceed();
+                }
+                Boolean previous = STACK_LOAD_VISIBLE_TASK_DATA_ACTIVE.get();
+                STACK_LOAD_VISIBLE_TASK_DATA_ACTIVE.set(Boolean.TRUE);
+                Object result;
+                try {
+                    result = chain.proceed();
+                } finally {
+                    if (previous == null) {
+                        STACK_LOAD_VISIBLE_TASK_DATA_ACTIVE.remove();
+                    } else {
+                        STACK_LOAD_VISIBLE_TASK_DATA_ACTIVE.set(previous);
+                    }
+                }
+                if (thisObject instanceof View) {
                     Object arg0 = chain.getArg(0);
                     int changes = arg0 instanceof Integer ? (Integer) arg0 : 15;
                     ensureStackVisibleTaskData((View) thisObject, changes);
@@ -329,6 +346,33 @@ final class LauncherRecentsTouchController {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook RecentsView.loadVisibleTaskData",
+                    t);
+        }
+    }
+
+    private static void hookTaskViewListVisibilityForStack(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.TASK_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod(
+                    "onTaskListVisibilityChanged",
+                    boolean.class,
+                    int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                Object arg0 = chain.getArg(0);
+                if (thisObject instanceof View
+                        && Boolean.FALSE.equals(arg0)
+                        && shouldSuppressStackTaskDataUnload((View) thisObject)) {
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook TaskView.onTaskListVisibilityChanged",
                     t);
         }
     }
@@ -1258,6 +1302,14 @@ final class LauncherRecentsTouchController {
         float taskLeft = taskLocation[0];
         float taskRight = taskLeft + taskWidth;
         return taskRight > viewportLeft && taskLeft < viewportRight;
+    }
+
+    private static boolean shouldSuppressStackTaskDataUnload(View taskView) {
+        if (!Boolean.TRUE.equals(STACK_LOAD_VISIBLE_TASK_DATA_ACTIVE.get())) {
+            return false;
+        }
+        View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
+        return shouldExposeStackTaskForDismissVisibility(recentsView, taskView);
     }
 
     static void ensureStackVisibleTaskData(View recentsView, int changes) {
