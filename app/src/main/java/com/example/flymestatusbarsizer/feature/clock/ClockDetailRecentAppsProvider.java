@@ -8,33 +8,23 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.graphics.ColorSpace;
 import android.graphics.drawable.Drawable;
-import android.hardware.HardwareBuffer;
-import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.os.SystemClock;
 import android.text.TextUtils;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
 final class ClockDetailRecentAppsProvider {
     private static final int RECENT_TASK_QUERY_SIZE = Integer.MAX_VALUE;
-    private static final int MBACK_RECENT_TASK_QUERY_SIZE = 6;
     private static final int RECENT_TASK_FLAGS = ActivityManager.RECENT_IGNORE_UNAVAILABLE;
     private static final int ACTIVITY_INFO_FLAGS =
             PackageManager.MATCH_DISABLED_COMPONENTS
                     | PackageManager.MATCH_UNINSTALLED_PACKAGES;
-    private static final int MAX_SNAPSHOT_LONG_EDGE_PX = 1080;
-    private static final String SYSTEM_UI_PACKAGE = "com.android.systemui";
-    private static final String FLYME_LAUNCHER_PACKAGE = "com.meizu.flyme.launcher";
     private static final Object BACKGROUND_LOCK = new Object();
     private static Handler backgroundHandler;
 
@@ -57,7 +47,6 @@ final class ClockDetailRecentAppsProvider {
 
     void requestRecentApps(
             Handler resultHandler,
-            ClockDetailPopupController.HostMode hostMode,
             RecentAppsCallback callback) {
         if (callback == null) {
             return;
@@ -68,20 +57,18 @@ final class ClockDetailRecentAppsProvider {
             return;
         }
         workerHandler.post(() -> {
-            ClockDetailRecentApp[] recentApps = readRecentApps(hostMode);
+            ClockDetailRecentApp[] recentApps = readRecentApps();
             deliverRecentApps(resultHandler, callback, recentApps);
         });
     }
 
-    private ClockDetailRecentApp[] readRecentApps(ClockDetailPopupController.HostMode hostMode) {
+    private ClockDetailRecentApp[] readRecentApps() {
         if (context == null || activityManager == null) {
             return ClockDetailRecentApp.EMPTY_ARRAY;
         }
-        boolean includeSnapshots = hostMode == ClockDetailPopupController.HostMode.MBACK;
-        int querySize = includeSnapshots ? MBACK_RECENT_TASK_QUERY_SIZE : RECENT_TASK_QUERY_SIZE;
         try {
             List<ActivityManager.RecentTaskInfo> recentTasks = activityManager.getRecentTasks(
-                    querySize,
+                    RECENT_TASK_QUERY_SIZE,
                     RECENT_TASK_FLAGS);
             if (recentTasks == null || recentTasks.isEmpty()) {
                 return ClockDetailRecentApp.EMPTY_ARRAY;
@@ -100,10 +87,7 @@ final class ClockDetailRecentAppsProvider {
                 if (component == null) {
                     continue;
                 }
-                if (includeSnapshots && shouldSkipTaskForMBack(taskInfo, component)) {
-                    continue;
-                }
-                ClockDetailRecentApp app = buildRecentApp(taskInfo, component, includeSnapshots);
+                ClockDetailRecentApp app = buildRecentApp(taskInfo, component);
                 if (app == null) {
                     continue;
                 }
@@ -120,8 +104,7 @@ final class ClockDetailRecentAppsProvider {
 
     private ClockDetailRecentApp buildRecentApp(
             ActivityManager.RecentTaskInfo taskInfo,
-            ComponentName component,
-            boolean includeSnapshot) {
+            ComponentName component) {
         PackageManager packageManager = context.getPackageManager();
         if (packageManager == null) {
             return null;
@@ -142,178 +125,18 @@ final class ClockDetailRecentAppsProvider {
             }
             int taskId = resolveTaskId(taskInfo);
             int userId = resolveUserId(taskInfo);
-            TaskSnapshotData snapshotData = includeSnapshot
-                    ? loadTaskSnapshot(taskId)
-                    : TaskSnapshotData.EMPTY;
-            long snapshotId = snapshotData.snapshotId;
-            if (includeSnapshot && snapshotData.bitmap != null && snapshotId <= 0L) {
-                snapshotId = SystemClock.uptimeMillis();
-            }
             return new ClockDetailRecentApp(
                     taskId,
                     userId,
                     component,
                     icon,
                     label,
-                    snapshotData.bitmap,
-                    snapshotId,
                     resolveTaskColor(taskInfo, component));
         } catch (Throwable t) {
             FlymeStatusBarSizer.logClockWarning(
                     "Failed to load recent app icon for " + component.flattenToShortString(),
                     t);
             return null;
-        }
-    }
-
-    private TaskSnapshotData loadTaskSnapshot(int taskId) {
-        if (taskId < 0 || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            return TaskSnapshotData.EMPTY;
-        }
-        try {
-            Object activityTaskManagerService = getActivityTaskManagerService();
-            if (activityTaskManagerService == null) {
-                return TaskSnapshotData.EMPTY;
-            }
-            Object snapshot = invokeTaskSnapshotMethod(
-                    activityTaskManagerService,
-                    "getTaskSnapshot",
-                    taskId,
-                    false);
-            if (snapshot == null) {
-                snapshot = invokeTaskSnapshotMethod(
-                        activityTaskManagerService,
-                        "takeTaskSnapshot",
-                        taskId,
-                        true);
-            }
-            if (snapshot == null) {
-                return TaskSnapshotData.EMPTY;
-            }
-            return new TaskSnapshotData(
-                    createBitmapFromSnapshot(snapshot),
-                    readLongFromNoArgMethod(snapshot, "getId"));
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logClockWarning(
-                    "Failed to load recent task snapshot: " + taskId,
-                    t);
-            return TaskSnapshotData.EMPTY;
-        }
-    }
-
-    private static Object getActivityTaskManagerService() {
-        try {
-            Class<?> activityTaskManagerClass = Class.forName("android.app.ActivityTaskManager");
-            Method method = activityTaskManagerClass.getDeclaredMethod("getService");
-            method.setAccessible(true);
-            return method.invoke(null);
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private static Object invokeTaskSnapshotMethod(
-            Object service,
-            String methodName,
-            int taskId,
-            boolean firstBooleanValue) {
-        if (service == null || methodName == null) {
-            return null;
-        }
-        Method[] methods = service.getClass().getMethods();
-        for (Method method : methods) {
-            if (!methodName.equals(method.getName())) {
-                continue;
-            }
-            Object[] args = buildTaskSnapshotInvocationArgs(
-                    method.getParameterTypes(),
-                    taskId,
-                    firstBooleanValue);
-            if (args == null) {
-                continue;
-            }
-            try {
-                method.setAccessible(true);
-                return method.invoke(service, args);
-            } catch (Throwable ignored) {
-            }
-        }
-        return null;
-    }
-
-    private static Object[] buildTaskSnapshotInvocationArgs(
-            Class<?>[] parameterTypes,
-            int taskId,
-            boolean firstBooleanValue) {
-        if (parameterTypes == null
-                || parameterTypes.length < 2
-                || parameterTypes[0] != int.class) {
-            return null;
-        }
-        Object[] args = new Object[parameterTypes.length];
-        args[0] = taskId;
-        int booleanIndex = 0;
-        for (int i = 1; i < parameterTypes.length; i++) {
-            Class<?> parameterType = parameterTypes[i];
-            if (parameterType == boolean.class) {
-                args[i] = booleanIndex == 0 ? firstBooleanValue : Boolean.FALSE;
-                booleanIndex++;
-                continue;
-            }
-            return null;
-        }
-        return booleanIndex > 0 ? args : null;
-    }
-
-    private static Bitmap createBitmapFromSnapshot(Object snapshot) {
-        if (snapshot == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            return null;
-        }
-        HardwareBuffer hardwareBuffer = null;
-        try {
-            Object hardwareBufferValue = invokeNoArgMethod(snapshot, "getHardwareBuffer");
-            if (!(hardwareBufferValue instanceof HardwareBuffer)) {
-                return null;
-            }
-            hardwareBuffer = (HardwareBuffer) hardwareBufferValue;
-            ColorSpace colorSpace = null;
-            Object colorSpaceValue = invokeNoArgMethod(snapshot, "getColorSpace");
-            if (colorSpaceValue instanceof ColorSpace) {
-                colorSpace = (ColorSpace) colorSpaceValue;
-            }
-            Bitmap bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace);
-            return scaleBitmapIfNeeded(bitmap);
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        } catch (Throwable ignored) {
-            return null;
-        } finally {
-            if (hardwareBuffer != null) {
-                try {
-                    hardwareBuffer.close();
-                } catch (Throwable ignored) {
-                }
-            }
-        }
-    }
-
-    private static Bitmap scaleBitmapIfNeeded(Bitmap bitmap) {
-        if (bitmap == null) {
-            return null;
-        }
-        int width = bitmap.getWidth();
-        int height = bitmap.getHeight();
-        int longEdge = Math.max(width, height);
-        if (longEdge <= 0 || longEdge <= MAX_SNAPSHOT_LONG_EDGE_PX) {
-            return bitmap;
-        }
-        float scale = MAX_SNAPSHOT_LONG_EDGE_PX / (float) longEdge;
-        int targetWidth = Math.max(1, Math.round(width * scale));
-        int targetHeight = Math.max(1, Math.round(height * scale));
-        try {
-            return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true);
-        } catch (Throwable ignored) {
-            return bitmap;
         }
     }
 
@@ -345,23 +168,6 @@ final class ClockDetailRecentAppsProvider {
     private static int resolveUserId(ActivityManager.RecentTaskInfo taskInfo) {
         Object userIdValue = readFieldValue(taskInfo, "userId");
         return userIdValue instanceof Integer ? Math.max(0, (Integer) userIdValue) : 0;
-    }
-
-    private static boolean shouldSkipTaskForMBack(
-            ActivityManager.RecentTaskInfo taskInfo,
-            ComponentName component) {
-        if (component == null) {
-            return true;
-        }
-        String packageName = component.getPackageName();
-        if (TextUtils.isEmpty(packageName)) {
-            return true;
-        }
-        if (SYSTEM_UI_PACKAGE.equals(packageName) || FLYME_LAUNCHER_PACKAGE.equals(packageName)) {
-            return true;
-        }
-        Intent baseIntent = taskInfo != null ? taskInfo.baseIntent : null;
-        return baseIntent != null && baseIntent.hasCategory(Intent.CATEGORY_HOME);
     }
 
     private static int resolveTaskColor(
@@ -412,24 +218,6 @@ final class ClockDetailRecentAppsProvider {
         return null;
     }
 
-    private static Object invokeNoArgMethod(Object target, String methodName) {
-        if (target == null || methodName == null) {
-            return null;
-        }
-        try {
-            Method method = target.getClass().getMethod(methodName);
-            method.setAccessible(true);
-            return method.invoke(target);
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private static long readLongFromNoArgMethod(Object target, String methodName) {
-        Object value = invokeNoArgMethod(target, methodName);
-        return value instanceof Long ? (Long) value : 0L;
-    }
-
     private static Handler getBackgroundHandler() {
         synchronized (BACKGROUND_LOCK) {
             if (backgroundHandler != null) {
@@ -464,15 +252,4 @@ final class ClockDetailRecentAppsProvider {
         resultHandler.post(() -> callback.onRecentApps(safeRecentApps));
     }
 
-    private static final class TaskSnapshotData {
-        static final TaskSnapshotData EMPTY = new TaskSnapshotData(null, 0L);
-
-        final Bitmap bitmap;
-        final long snapshotId;
-
-        TaskSnapshotData(Bitmap bitmap, long snapshotId) {
-            this.bitmap = bitmap;
-            this.snapshotId = snapshotId;
-        }
-    }
 }

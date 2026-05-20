@@ -3,9 +3,7 @@ package com.example.flymestatusbarsizer;
 import android.graphics.Color;
 import android.text.TextUtils;
 import android.view.View;
-import android.widget.CompoundButton;
 import android.widget.LinearLayout;
-import android.widget.Switch;
 import android.widget.TextView;
 
 final class SettingsCardFactory {
@@ -169,53 +167,17 @@ final class SettingsCardFactory {
     View createLauncherRecentsSettingsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
-        final Switch[] stackSwitch = new Switch[1];
-        final Switch[] recentsActivitySwitch = new Switch[1];
-        final boolean[] syncing = new boolean[1];
-        stackSwitch[0] = activity.addSwitchRow(content, "IOS 式堆叠后台",
+        activity.addSwitchRow(content, "IOS 式堆叠后台",
                 "Hook Flyme launcher 的 Recent，把原来的 PagedView 卡片压成重叠 stack carousel，并去掉原有自动横向推开和居中修正。",
                 SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
-                SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
-                (buttonView, isChecked) -> {
-                    if (!isChecked || syncing[0]) {
-                        return;
-                    }
-                    syncing[0] = true;
-                    if (recentsActivitySwitch[0] != null && recentsActivitySwitch[0].isChecked()) {
-                        recentsActivitySwitch[0].setChecked(false);
-                    } else {
-                        activity.putBooleanSetting(
-                                SettingsStore.KEY_LAUNCHER_RECENTS_ACTIVITY_IOS_ENABLED,
-                                false);
-                    }
-                    syncing[0] = false;
-                });
-        activity.addDivider(content);
-        recentsActivitySwitch[0] = activity.addSwitchRow(content, "RecentsActivity IOS 后台",
-                "把 overview 入口切到 RecentsActivity，保留隐藏 FallbackRecentsView 做数据和启动桥接，再在上层重写自己的 IOS 堆叠页面。",
-                SettingsStore.KEY_LAUNCHER_RECENTS_ACTIVITY_IOS_ENABLED,
-                SettingsStore.DEFAULT_LAUNCHER_RECENTS_ACTIVITY_IOS_ENABLED,
-                (buttonView, isChecked) -> {
-                    if (!isChecked || syncing[0]) {
-                        return;
-                    }
-                    syncing[0] = true;
-                    if (stackSwitch[0] != null && stackSwitch[0].isChecked()) {
-                        stackSwitch[0].setChecked(false);
-                    } else {
-                        activity.putBooleanSetting(
-                                SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
-                                false);
-                    }
-                    syncing[0] = false;
-                });
+                SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED);
         activity.addDivider(content);
         activity.addActionButtonRow(content, "重启系统桌面",
-                "两种后台模式都需要重启系统桌面后再看完整效果，而且它们只能启用其中一个。",
+                "后台布局需要重启系统桌面后再看完整效果。",
                 "重启", activity::restartLauncher);
         return activity.buildSectionCard(
                 "系统桌面后台",
-                "作用域是 com.meizu.flyme.launcher。保留原有 Quickstep 手势入口，但在“原地改布局”和“切到 RecentsActivity 重写页面”两条路线里只允许开一条。",
+                "作用域是 com.meizu.flyme.launcher。保留原有 Quickstep 手势入口，只在原地改后台卡片布局。",
                 content);
     }
 
