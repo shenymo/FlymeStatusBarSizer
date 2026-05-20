@@ -15,9 +15,9 @@ import java.util.ArrayList;
 final class LauncherRecentsLayoutEngine {
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
     private static final float STACK_ENTRY_INITIAL_SPREAD_RATIO = 0.8f;
-    private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.3f;
+    private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.02f;
     private static final float STACK_RIGHT_VISIBLE_RATIO = 0.80f;
-    private static final float STACK_SPREAD_POWER = 1f;
+    private static final float STACK_SPREAD_POWER = 4.00f;
     private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
     private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
     private static final float STACK_MIN_SCALE = 0.80f;
@@ -732,11 +732,9 @@ final class LauncherRecentsLayoutEngine {
             float progress,
             float taskWidth,
             float taskCenteredLeftPx) {
-        float clampedStackProgress = clamp(progress, -MAX_STACK_LAYERS, MAX_STACK_LAYERS);
-        float stackRightProgress = remapProgress(
-                clampedStackProgress,
-                -MAX_STACK_LAYERS,
-                MAX_STACK_LAYERS);
+        float stackRightProgress = Math.max(
+                0f,
+                (progress + MAX_STACK_LAYERS) / (MAX_STACK_LAYERS * 2.0f));
         float stackLeftOffsetPx =
                 -taskCenteredLeftPx + (taskWidth * STACK_LEFT_EDGE_INSET_RATIO);
         float stackRightOffsetPx = Math.max(
@@ -745,19 +743,12 @@ final class LauncherRecentsLayoutEngine {
                         - (taskWidth * STACK_RIGHT_VISIBLE_RATIO)
                         - taskCenteredLeftPx);
         float stackSpreadProgress = (float) Math.pow(stackRightProgress, STACK_SPREAD_POWER);
-        float visibleOffset = lerp(
-                stackLeftOffsetPx,
-                stackRightOffsetPx,
-                stackSpreadProgress);
+        float visibleOffset = stackLeftOffsetPx
+                + ((stackRightOffsetPx - stackLeftOffsetPx) * stackSpreadProgress);
         float stackStepPx = (stackRightOffsetPx - stackLeftOffsetPx) / (MAX_STACK_LAYERS * 2.0f);
         if (progress < -MAX_STACK_LAYERS) {
             return stackLeftOffsetPx
                     + ((progress + MAX_STACK_LAYERS)
-                    * stackStepPx);
-        }
-        if (progress > MAX_STACK_LAYERS) {
-            return stackRightOffsetPx
-                    + ((progress - MAX_STACK_LAYERS)
                     * stackStepPx);
         }
         return visibleOffset;
