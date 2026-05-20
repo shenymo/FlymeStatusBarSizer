@@ -18,7 +18,7 @@ final class LauncherRecentsTransitionController {
     private static final String ABS_SWIPE_UP_HANDLER_CLASS =
             "com.android.quickstep.AbsSwipeUpHandler";
     private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 360L;
-    private static final long GESTURE_STACK_RELEASE_DURATION_MS = 220L;
+    private static final long GESTURE_STACK_RELEASE_DURATION_MS = 320L;
     private static final DecelerateInterpolator BLANK_TAP_HOME_EXIT_INTERPOLATOR =
             new DecelerateInterpolator(1.6f);
     private static final DecelerateInterpolator GESTURE_STACK_RELEASE_INTERPOLATOR =

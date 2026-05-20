@@ -15,9 +15,10 @@ import java.util.ArrayList;
 final class LauncherRecentsLayoutEngine {
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
     private static final float STACK_ENTRY_INITIAL_SPREAD_RATIO = 0.8f;
-    private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.02f;
+    private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.12f;
     private static final float STACK_RIGHT_VISIBLE_RATIO = 0.80f;
     private static final float STACK_SPREAD_POWER = 4.00f;
+    private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
     private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
     private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
     private static final float STACK_MIN_SCALE = 0.80f;
@@ -332,6 +333,9 @@ final class LauncherRecentsLayoutEngine {
         float gestureStackReleaseProgress =
                 LauncherRecentsTransitionController.readGestureRecentsStackReleaseProgress(
                         recentsView);
+        float stackReleaseProgress = gestureStackReleaseActive
+                ? clamp(gestureStackReleaseProgress, 0f, 1f)
+                : 1f;
         if (gestureStackReleaseActive) {
             stackEntryProgress = 1f;
             stackVerticalProgress = 1f;
@@ -447,6 +451,12 @@ final class LauncherRecentsLayoutEngine {
                     collapsedVisibleOffset,
                     finalVisibleOffset,
                     taskEntryProgress);
+            if (gestureStackReleaseActive) {
+                desiredVisibleOffset *= lerp(
+                        STACK_RELEASE_INITIAL_SPREAD_RATIO,
+                        1.0f,
+                        smoothStep(stackReleaseProgress));
+            }
             float desiredScale = lerp(
                     collapsedScale,
                     finalScale,
@@ -499,35 +509,34 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView);
             float appliedTranslationZ = desiredTranslationZ;
             if (gestureStackReleaseActive) {
-                float releaseProgress = clamp(gestureStackReleaseProgress, 0f, 1f);
                 appliedHorizontalOffsetX = lerp(
                         LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView),
                         appliedHorizontalOffsetX,
-                        releaseProgress);
+                        stackReleaseProgress);
                 appliedTaskOffsetX = lerp(
                         LauncherRecentsTaskVisuals.readLastStockTaskOffsetX(taskView),
                         appliedTaskOffsetX,
-                        releaseProgress);
+                        stackReleaseProgress);
                 appliedTaskOffsetY = lerp(
                         LauncherRecentsTaskVisuals.readLastStockTaskOffsetY(taskView),
                         appliedTaskOffsetY,
-                        releaseProgress);
+                        stackReleaseProgress);
                 appliedBoxTranslationY = lerp(
                         LauncherRecentsTaskVisuals.readLastStockBoxTranslationY(taskView),
                         appliedBoxTranslationY,
-                        releaseProgress);
+                        stackReleaseProgress);
                 appliedScale = lerp(
                         LauncherRecentsTaskVisuals.readLastStockNonGridScale(taskView),
                         appliedScale,
-                        releaseProgress);
+                        stackReleaseProgress);
                 appliedFullscreenProgress = lerp(
                         LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView),
                         appliedFullscreenProgress,
-                        releaseProgress);
+                        stackReleaseProgress);
                 appliedTranslationZ = lerp(
                         LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView),
                         appliedTranslationZ,
-                        releaseProgress);
+                        stackReleaseProgress);
             }
             LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(
                     taskView,
