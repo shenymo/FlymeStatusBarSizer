@@ -258,6 +258,9 @@ final class LauncherRecentsLayoutEngine {
         if (launchState != null && launchState.frozen) {
             return;
         }
+        if (LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(recentsView)) {
+            return;
+        }
         if (LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                 && !LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView)) {
@@ -371,10 +374,12 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTaskVisuals.captureStockTaskState(taskView);
             }
             float rawOffset = rawOffsets[i];
+            float nativeDismissTranslationX =
+                    LauncherRecentsCompat.readFloatField(taskView, "dismissTranslationX", 0f);
             float dismissTranslationX = LauncherRecentsTouchController
                     .shouldSuppressNativeDismissTranslation(recentsView)
                     ? 0f
-                    : LauncherRecentsCompat.readFloatField(taskView, "dismissTranslationX", 0f);
+                    : nativeDismissTranslationX;
             // Keep the stock gap-closing animation, but remap its logical page position into
             // the compressed stack so sibling cards move into the dismissed slot instead of
             // adding a second full-page horizontal shift on top of it.
@@ -525,7 +530,8 @@ final class LauncherRecentsLayoutEngine {
                     desiredStableAlpha = 0f;
                 }
             }
-            float translationCompensationX = desiredVisibleOffset - physicalRawOffset;
+            float translationCompensationX =
+                    desiredVisibleOffset - rawOffset - nativeDismissTranslationX;
 
             taskView.setPivotX(taskWidth * 0.5f);
             taskView.setPivotY(taskHeight * 0.5f);
@@ -691,6 +697,8 @@ final class LauncherRecentsLayoutEngine {
     static boolean shouldApplyDynamicStackLayout(View recentsView) {
         return shouldUseStackLayout(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
+                && !LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(
+                recentsView)
                 && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView));

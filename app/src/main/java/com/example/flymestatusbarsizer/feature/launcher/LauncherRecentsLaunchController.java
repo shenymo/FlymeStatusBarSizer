@@ -140,9 +140,7 @@ final class LauncherRecentsLaunchController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
-                if (LauncherRecentsTouchController.handleStackDismissSetCurrentPage(
-                        thisObject,
-                        chain.getArg(0))) {
+                if (LauncherRecentsTouchController.handleStackDismissSetCurrentPage(thisObject)) {
                     return null;
                 }
                 if (shouldSuppressTaskLaunchPageMutation(thisObject)) {
@@ -169,7 +167,7 @@ final class LauncherRecentsLaunchController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
-                if (shouldSuppressTaskLaunchPageMutation(thisObject)) {
+                if (shouldSuppressRecentsLaunchScrollMutation(thisObject)) {
                     if (thisObject instanceof View) {
                         LauncherRecentsTouchController.clearRecentsDeferredSnap((View) thisObject);
                     }
@@ -198,7 +196,7 @@ final class LauncherRecentsLaunchController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
-                if (shouldSuppressTaskLaunchPageMutation(thisObject)) {
+                if (shouldSuppressRecentsLaunchScrollMutation(thisObject)) {
                     if (thisObject instanceof View) {
                         LauncherRecentsTouchController.clearRecentsDeferredSnap((View) thisObject);
                     }
@@ -222,7 +220,7 @@ final class LauncherRecentsLaunchController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
-                if (shouldSuppressTaskLaunchPageMutation(thisObject)) {
+                if (shouldSuppressRecentsLaunchScrollMutation(thisObject)) {
                     if (thisObject instanceof View) {
                         LauncherRecentsTouchController.clearRecentsDeferredSnap((View) thisObject);
                     }
@@ -785,6 +783,9 @@ final class LauncherRecentsLaunchController {
     }
 
     static boolean shouldSuppressRecentsLaunchScrollMutation(Object thisObject) {
+        if (LauncherRecentsTouchController.shouldBypassStackDismissScrollSuppression()) {
+            return false;
+        }
         if (!(thisObject instanceof View)) {
             return false;
         }

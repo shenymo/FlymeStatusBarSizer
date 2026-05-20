@@ -27,7 +27,6 @@ final class LauncherRecentsTouchController {
             "com.android.launcher3.uioverrides.touchcontrollers.TaskViewTouchControllerDeprecated";
     private static final long STACK_DISMISS_SUCCESS_ANIM_MS = 180L;
     private static final long STACK_DISMISS_CANCEL_ANIM_MS = 320L;
-    private static final float STACK_DISMISS_NEIGHBOR_SHARE = 0.5f;
     private static final float STACK_DISMISS_VERTICAL_DOMINANCE = 1.2f;
     private static final float STACK_DISMISS_MIN_FLING_VELOCITY = -1200f;
     private static final ThreadLocal<Boolean> TASK_DISMISS_VISIBILITY_BYPASS =
@@ -38,6 +37,10 @@ final class LauncherRecentsTouchController {
             new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> SILENT_NATIVE_DISMISS_RECENTS =
             new WeakHashMap<>();
+    private static final WeakHashMap<View, SilentNativeDismissAnchor> SILENT_NATIVE_DISMISS_ANCHORS =
+            new WeakHashMap<>();
+    private static final ThreadLocal<Boolean> STACK_DISMISS_SCROLL_RESTORE_BYPASS =
+            new ThreadLocal<>();
 
     private LauncherRecentsTouchController() {
     }
@@ -61,6 +64,8 @@ final class LauncherRecentsTouchController {
                 TASK_VIEW_DISMISS_TOUCH_CONTROLLER_CLASS);
         hookRecentsViewTaskVisibilityForDismiss(module, loader);
         hookRecentsViewResetTaskVisualsForSilentDismiss(module, loader);
+        hookRecentsViewUpdateTaskSizeForSilentDismiss(module, loader);
+        hookTaskViewNativeDismissTransformsForSilentDismiss(module, loader);
         hookRecentsViewDismissAnimationEnds(module, loader);
     }
 
@@ -334,10 +339,12 @@ final class LauncherRecentsTouchController {
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
                     if (isSilentNativeDismissActive(recentsView)) {
+                        restoreSilentNativeDismissAnchor(recentsView);
+                        clearNativeDismissTransforms(recentsView);
                         clearStackDismissLayoutOffsets();
                         LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                         recentsView.invalidate();
-                        SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
+                        recentsView.post(() -> finishSilentNativeDismiss(recentsView));
                     }
                 }
                 return result;
@@ -345,6 +352,62 @@ final class LauncherRecentsTouchController {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook RecentsView.onDismissAnimationEnds",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewUpdateTaskSizeForSilentDismiss(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("updateTaskSize");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View
+                        && isSilentNativeDismissActive((View) thisObject)) {
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.updateTaskSize",
+                    t);
+        }
+    }
+
+    private static void hookTaskViewNativeDismissTransformsForSilentDismiss(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.TASK_VIEW_CLASS, false, loader);
+            Method translationMethod = clazz.getDeclaredMethod("setDismissTranslationX", float.class);
+            translationMethod.setAccessible(true);
+            module.intercept(translationMethod, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View
+                        && shouldSuppressNativeTaskDismissTransform((View) thisObject)) {
+                    resetNativeDismissTranslationX((View) thisObject);
+                    return null;
+                }
+                return chain.proceed();
+            });
+            Method scaleMethod = clazz.getDeclaredMethod("setDismissScale", float.class);
+            scaleMethod.setAccessible(true);
+            module.intercept(scaleMethod, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View
+                        && shouldSuppressNativeTaskDismissTransform((View) thisObject)) {
+                    resetNativeDismissScale((View) thisObject);
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook TaskView native dismiss transforms",
                     t);
         }
     }
@@ -363,23 +426,38 @@ final class LauncherRecentsTouchController {
         return isSilentNativeDismissActive(recentsView);
     }
 
+    static boolean isStackDismissPostRemoveAnimationActive(View recentsView) {
+        return false;
+    }
+
+    private static boolean shouldSuppressNativeTaskDismissTransform(View taskView) {
+        View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
+        return isSilentNativeDismissActive(recentsView);
+    }
+
+    static boolean shouldBypassStackDismissScrollSuppression() {
+        return Boolean.TRUE.equals(STACK_DISMISS_SCROLL_RESTORE_BYPASS.get());
+    }
+
     static boolean shouldSuppressStackDismissPageMutation(Object thisObject) {
         return thisObject instanceof View
                 && LauncherRecentsCompat.isRecentsViewObject(thisObject)
                 && isSilentNativeDismissActive((View) thisObject);
     }
 
-    static boolean handleStackDismissSetCurrentPage(Object thisObject, Object pageObject) {
+    static boolean handleStackDismissSetCurrentPage(Object thisObject) {
         if (!shouldSuppressStackDismissPageMutation(thisObject)) {
             return false;
         }
         View recentsView = (View) thisObject;
         int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
-        if (pageCount > 0 && pageObject instanceof Integer) {
-            int page = Math.max(0, Math.min((Integer) pageObject, pageCount - 1));
-            LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", page);
-            LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", page);
-            LauncherRecentsCompat.setIntField(recentsView, "mNextPage", page);
+        if (pageCount > 0) {
+            SilentNativeDismissAnchor anchor = SILENT_NATIVE_DISMISS_ANCHORS.get(recentsView);
+            int targetPage = anchor != null
+                    ? anchor.page
+                    : LauncherRecentsCompat.readIntField(recentsView, "mCurrentPage", 0);
+            int page = Math.max(0, Math.min(targetPage, pageCount - 1));
+            setStackDismissCurrentPageKeepingScroll(recentsView, page);
         }
         clearRecentsDeferredSnap(recentsView);
         return true;
@@ -566,6 +644,38 @@ final class LauncherRecentsTouchController {
             public void onAnimationEnd(Animator animation) {
                 state.animator = null;
                 applyStackDismissProgress(state, end);
+                animateStackDismissReflow(state);
+            }
+        });
+        animator.start();
+    }
+
+    private static void animateStackDismissReflow(StackDismissGestureState state) {
+        if (state.siblingMoves.isEmpty()) {
+            finishStackDismissAfterReflow(state);
+            return;
+        }
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        state.animator = animator;
+        animator.setDuration(STACK_DISMISS_SUCCESS_ANIM_MS);
+        animator.setInterpolator(new DecelerateInterpolator(1.35f));
+        animator.addUpdateListener(animation ->
+                applyStackDismissReflowProgress(state, (Float) animation.getAnimatedValue()));
+        animator.addListener(new AnimatorListenerAdapter() {
+            private boolean canceled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                canceled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                state.animator = null;
+                if (canceled) {
+                    return;
+                }
+                applyStackDismissReflowProgress(state, 1f);
                 finishStackDismissAfterReflow(state);
             }
         });
@@ -604,11 +714,14 @@ final class LauncherRecentsTouchController {
             StackDismissGestureState state,
             float dismissTranslationY) {
         setStackDismissTranslationY(state.taskView, dismissTranslationY);
-        float distance = Math.max(1f, resolveStackDismissDistance(state));
-        float progress = LauncherRecentsLayoutEngine.clamp(
-                -dismissTranslationY / distance,
-                0f,
-                1f);
+        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(state.recentsView);
+        LauncherRecentsTaskVisuals.setStableAlpha(state.taskView, state.originalStableAlpha);
+        state.recentsView.invalidate();
+    }
+
+    private static void applyStackDismissReflowProgress(
+            StackDismissGestureState state,
+            float progress) {
         for (int i = 0; i < state.siblingMoves.size(); i++) {
             StackDismissSiblingMove move = state.siblingMoves.get(i);
             STACK_DISMISS_LAYOUT_OFFSETS.put(
@@ -623,16 +736,12 @@ final class LauncherRecentsTouchController {
     private static void prepareStackDismissSiblingMoves(StackDismissGestureState state) {
         state.siblingMoves.clear();
         clearStackDismissLayoutOffsets();
-        float pageSpan = resolveStackDismissPageSpan(state.recentsView);
-        if (pageSpan <= 1f) {
-            return;
-        }
         int dismissedIndex = findTaskViewIndex(state.recentsView, state.taskView);
         if (dismissedIndex < 0) {
             return;
         }
-        float dismissedProgress =
-                resolveStackDismissTaskProgress(state.recentsView, dismissedIndex, pageSpan);
+        int targetPage = resolveSilentNativeDismissAnchorPage(state.recentsView, state.taskView);
+        int targetScrollX = resolveStackDismissScrollForPage(state.recentsView, targetPage);
         int taskViewCount =
                 LauncherRecentsCompat.invokeInt(state.recentsView, "getTaskViewCount", 0);
         for (int i = 0; i < taskViewCount; i++) {
@@ -641,43 +750,23 @@ final class LauncherRecentsTouchController {
                     || taskView == state.taskView) {
                 continue;
             }
-            float progress = resolveStackDismissTaskProgress(state.recentsView, i, pageSpan);
-            float direction = 0f;
-            if (progress < dismissedProgress - 0.01f) {
-                direction = 1f;
-            } else if (progress > dismissedProgress + 0.01f) {
-                direction = -1f;
-            } else if (i < dismissedIndex) {
-                direction = 1f;
-            } else if (i > dismissedIndex) {
-                direction = -1f;
-            }
-            if (direction != 0f) {
+            int projectedIndex = i > dismissedIndex ? i - 1 : i;
+            float currentRawOffset = resolveStackDismissRawOffset(state.recentsView, i);
+            float targetRawOffset = resolveStackDismissRawOffsetAtScroll(
+                    state.recentsView,
+                    projectedIndex,
+                    targetScrollX);
+            float targetOffsetPx = targetRawOffset - currentRawOffset;
+            if (Math.abs(targetOffsetPx) > 0.5f) {
                 state.siblingMoves.add(new StackDismissSiblingMove(
                         taskView,
-                        direction * pageSpan * STACK_DISMISS_NEIGHBOR_SHARE));
+                        targetOffsetPx));
             }
         }
     }
 
-    private static float resolveStackDismissPageSpan(View recentsView) {
-        float pageSpacing = LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0);
-        float pageSpan = 0f;
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView != null && taskView.getWidth() > 0) {
-                pageSpan = Math.max(pageSpan, taskView.getWidth() + pageSpacing);
-            }
-        }
-        return pageSpan > 1f ? pageSpan : Math.max(1f, recentsView.getWidth());
-    }
-
-    private static float resolveStackDismissTaskProgress(
-            View recentsView,
-            int taskIndex,
-            float pageSpan) {
-        float rawOffset = LauncherRecentsCompat.invokeInt(
+    private static float resolveStackDismissRawOffset(View recentsView, int taskIndex) {
+        return LauncherRecentsCompat.invokeInt(
                 recentsView,
                 "getUnclampedScrollOffset",
                 LauncherRecentsCompat.INT_ARG,
@@ -688,12 +777,15 @@ final class LauncherRecentsTouchController {
                         0,
                         taskIndex),
                 taskIndex);
-        float dismissTranslationX =
-                LauncherRecentsCompat.readFloatField(
-                        LauncherRecentsCompat.getTaskViewAt(recentsView, taskIndex),
-                        "dismissTranslationX",
-                        0f);
-        return (rawOffset + dismissTranslationX) / Math.max(1f, pageSpan);
+    }
+
+    private static float resolveStackDismissRawOffsetAtScroll(
+            View recentsView,
+            int taskIndex,
+            int scrollX) {
+        return resolveStackDismissRawOffset(recentsView, taskIndex)
+                + recentsView.getScrollX()
+                - scrollX;
     }
 
     private static int findTaskViewIndex(View recentsView, View targetTaskView) {
@@ -758,8 +850,42 @@ final class LauncherRecentsTouchController {
                 value);
     }
 
+    private static void clearNativeDismissTransforms(View recentsView) {
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
+                continue;
+            }
+            resetNativeDismissTranslationX(taskView);
+            LauncherRecentsCompat.invokeCompat(
+                    taskView,
+                    "setDismissTranslationY",
+                    LauncherRecentsCompat.FLOAT_ARG,
+                    0f);
+            resetNativeDismissScale(taskView);
+        }
+    }
+
+    private static void resetNativeDismissTranslationX(View taskView) {
+        LauncherRecentsCompat.writeField(taskView, "dismissTranslationX", 0f);
+        LauncherRecentsCompat.invokeCompat(
+                taskView,
+                "applyTranslationX",
+                LauncherRecentsCompat.NO_ARGS);
+    }
+
+    private static void resetNativeDismissScale(View taskView) {
+        LauncherRecentsCompat.writeField(taskView, "dismissScale", 1f);
+        LauncherRecentsCompat.invokeCompat(
+                taskView,
+                "applyScale",
+                LauncherRecentsCompat.NO_ARGS);
+    }
+
     private static boolean invokeNativeDismissTaskView(View recentsView, View taskView) {
         Class<?> taskViewClass = resolveTaskViewBaseClass(taskView);
+        rememberSilentNativeDismissAnchor(recentsView, taskView);
         if (taskViewClass != null && invokeSilentNativeDismissTaskView(
                 recentsView,
                 taskView,
@@ -783,6 +909,7 @@ final class LauncherRecentsTouchController {
                 LauncherRecentsCompat.NO_ARGS);
         if (!(taskIdsObject instanceof int[]) || ((int[]) taskIdsObject).length == 0) {
             SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
+            SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
             return false;
         }
         int taskId = ((int[]) taskIdsObject)[0];
@@ -795,6 +922,7 @@ final class LauncherRecentsTouchController {
                 true);
         if (!dismissed) {
             SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
+            SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
         }
         return dismissed;
     }
@@ -850,6 +978,127 @@ final class LauncherRecentsTouchController {
             SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
             return false;
         }
+    }
+
+    private static void rememberSilentNativeDismissAnchor(View recentsView, View taskView) {
+        if (recentsView == null) {
+            return;
+        }
+        int page = resolveSilentNativeDismissAnchorPage(recentsView, taskView);
+        SILENT_NATIVE_DISMISS_ANCHORS.put(
+                recentsView,
+                new SilentNativeDismissAnchor(
+                        page,
+                        recentsView.getScrollY()));
+    }
+
+    private static int resolveSilentNativeDismissAnchorPage(View recentsView, View taskView) {
+        int taskIndex = findTaskViewIndex(recentsView, taskView);
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        int remainingTaskCount = Math.max(0, taskViewCount - 1);
+        if (taskIndex >= 0 && remainingTaskCount > 0) {
+            return Math.max(0, Math.min(taskIndex, remainingTaskCount - 1));
+        }
+        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
+        int currentPage = LauncherRecentsCompat.readIntField(recentsView, "mCurrentPage", 0);
+        if (taskIndex >= 0 && currentPage > taskIndex) {
+            currentPage--;
+        }
+        return pageCount > 1
+                ? Math.max(0, Math.min(currentPage, pageCount - 2))
+                : 0;
+    }
+
+    private static void restoreSilentNativeDismissAnchor(View recentsView) {
+        SilentNativeDismissAnchor anchor = restoreSilentNativeDismissAnchorPage(recentsView);
+        restoreSilentNativeDismissAnchorScroll(recentsView, anchor);
+        clearRecentsDeferredSnap(recentsView);
+    }
+
+    private static SilentNativeDismissAnchor restoreSilentNativeDismissAnchorPage(View recentsView) {
+        SilentNativeDismissAnchor anchor = SILENT_NATIVE_DISMISS_ANCHORS.get(recentsView);
+        if (anchor == null) {
+            return null;
+        }
+        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
+        if (pageCount > 0) {
+            int page = Math.max(0, Math.min(anchor.page, pageCount - 1));
+            setStackDismissCurrentPageKeepingScroll(recentsView, page);
+        }
+        clearRecentsDeferredSnap(recentsView);
+        return anchor;
+    }
+
+    private static void restoreSilentNativeDismissAnchorScroll(
+            View recentsView,
+            SilentNativeDismissAnchor anchor) {
+        if (recentsView == null || anchor == null) {
+            return;
+        }
+        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
+        if (pageCount <= 0) {
+            return;
+        }
+        int page = Math.max(0, Math.min(anchor.page, pageCount - 1));
+        int scrollX = resolveStackDismissScrollForPage(recentsView, page);
+        setStackDismissCurrentPageForScroll(recentsView, page, scrollX);
+        Boolean previous = STACK_DISMISS_SCROLL_RESTORE_BYPASS.get();
+        STACK_DISMISS_SCROLL_RESTORE_BYPASS.set(Boolean.TRUE);
+        try {
+            recentsView.scrollTo(scrollX, anchor.scrollY);
+        } finally {
+            if (previous == null) {
+                STACK_DISMISS_SCROLL_RESTORE_BYPASS.remove();
+            } else {
+                STACK_DISMISS_SCROLL_RESTORE_BYPASS.set(previous);
+            }
+        }
+    }
+
+    private static void finishSilentNativeDismiss(View recentsView) {
+        if (!isSilentNativeDismissActive(recentsView)) {
+            SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
+            return;
+        }
+        clearNativeDismissTransforms(recentsView);
+        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        recentsView.invalidate();
+        SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
+        SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
+    }
+
+    private static void setStackDismissCurrentPageKeepingScroll(View recentsView, int page) {
+        int pageScroll = resolveStackDismissScrollForPage(recentsView, page);
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", page);
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", page);
+        LauncherRecentsCompat.setIntField(recentsView, "mNextPage", page);
+        LauncherRecentsCompat.setIntField(
+                recentsView,
+                "mCurrentPageScrollDiff",
+                recentsView.getScrollX() - pageScroll);
+    }
+
+    private static void setStackDismissCurrentPageForScroll(
+            View recentsView,
+            int page,
+            int scrollX) {
+        int pageScroll = resolveStackDismissScrollForPage(recentsView, page);
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", page);
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", page);
+        LauncherRecentsCompat.setIntField(recentsView, "mNextPage", page);
+        LauncherRecentsCompat.setIntField(
+                recentsView,
+                "mCurrentPageScrollDiff",
+                scrollX - pageScroll);
+    }
+
+    private static int resolveStackDismissScrollForPage(View recentsView, int page) {
+        return LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getScrollForPage",
+                LauncherRecentsCompat.INT_ARG,
+                recentsView.getScrollX(),
+                page);
     }
 
     private static Class<?> resolveTaskViewBaseClass(View taskView) {
@@ -1390,6 +1639,16 @@ final class LauncherRecentsTouchController {
         StackDismissSiblingMove(View taskView, float targetOffsetPx) {
             this.taskView = taskView;
             this.targetOffsetPx = targetOffsetPx;
+        }
+    }
+
+    private static final class SilentNativeDismissAnchor {
+        final int page;
+        final int scrollY;
+
+        SilentNativeDismissAnchor(int page, int scrollY) {
+            this.page = page;
+            this.scrollY = scrollY;
         }
     }
 
