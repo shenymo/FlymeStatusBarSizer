@@ -19,6 +19,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_RIGHT_VISIBLE_RATIO = 0.80f;
     private static final float STACK_SPREAD_POWER = 0.75f;
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
+    private static final float STACK_RELEASE_SETTLED_PROGRESS_SHIFT = 0.70f;
     private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
     private static final float STACK_LEFT_EDGE_EXTRA_SPACING_RATIO = 0.08f;
     private static final float STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO = 0.30f;
@@ -339,9 +340,14 @@ final class LauncherRecentsLayoutEngine {
         float stackReleaseProgress = gestureStackReleaseActive
                 ? clamp(gestureStackReleaseProgress, 0f, 1f)
                 : 1f;
+        float stackSettledShiftProgress = LauncherRecentsState.isGestureStackReleasedStable(
+                recentsView)
+                ? 1f
+                : 0f;
         if (gestureStackReleaseActive) {
             stackEntryProgress = 1f;
             stackVerticalProgress = 1f;
+            stackSettledShiftProgress = smoothStep(stackReleaseProgress);
         }
         float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
         float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
@@ -392,6 +398,9 @@ final class LauncherRecentsLayoutEngine {
             float physicalRawOffset = rawOffset + dismissTranslationX;
             float effectiveRawOffset = physicalRawOffset + stackDismissLayoutOffset;
             float progress = effectiveRawOffset / pageSpan;
+            float layoutProgress = resolveStackReleaseSettledProgress(
+                    progress,
+                    stackSettledShiftProgress);
             float taskWidth = taskView.getWidth() > 0 ? taskView.getWidth() : referenceWidth;
             float taskHeight = taskView.getHeight() > 0 ? taskView.getHeight() : referenceHeight;
             float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
@@ -415,7 +424,7 @@ final class LauncherRecentsLayoutEngine {
 
             finalVisibleOffset = resolveStackVisibleOffset(
                     recentsView,
-                    progress,
+                    layoutProgress,
                     taskWidth,
                     taskCenteredLeftPx);
             finalTaskOffsetY = stackEntryLiftPx * (1.0f - stackVerticalProgress);
@@ -470,7 +479,7 @@ final class LauncherRecentsLayoutEngine {
                 }
             }
             desiredStableAlpha *= remapProgress(
-                    progress,
+                    layoutProgress,
                     STACK_LEFT_RELEASE_END_PROGRESS,
                     STACK_LEFT_RELEASE_START_PROGRESS);
             float translationCompensationX =
@@ -768,6 +777,15 @@ final class LauncherRecentsLayoutEngine {
             float visibleOffset) {
         float taskCenterX = taskCenteredLeftPx + visibleOffset + (taskWidth * 0.5f);
         return remapProgress(taskCenterX, 0f, recentsView.getWidth());
+    }
+
+    private static float resolveStackReleaseSettledProgress(
+            float progress,
+            float stackSettledShiftProgress) {
+        if (stackSettledShiftProgress <= 0f) {
+            return progress;
+        }
+        return progress + (STACK_RELEASE_SETTLED_PROGRESS_SHIFT * stackSettledShiftProgress);
     }
 
     private static float resolveLeftEdgeRevealProgress(View recentsView) {
