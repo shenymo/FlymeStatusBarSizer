@@ -15,6 +15,7 @@ import android.view.animation.DecelerateInterpolator;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.WeakHashMap;
 
 final class LauncherRecentsLaunchController {
     private static final long TASK_LAUNCH_HANDOFF_DURATION_MS = 360L;
@@ -27,6 +28,8 @@ final class LauncherRecentsLaunchController {
     private static final float TASK_LAUNCH_SIBLING_END_ALPHA = 0.0f;
     private static final DecelerateInterpolator TASK_LAUNCH_HANDOFF_INTERPOLATOR =
             new DecelerateInterpolator(1.12f);
+    private static final WeakHashMap<View, Runnable> PENDING_TASK_LAUNCH_CLEANUPS =
+            new WeakHashMap<>();
 
     private LauncherRecentsLaunchController() {
     }
@@ -871,12 +874,35 @@ final class LauncherRecentsLaunchController {
         // A successful task launch is leaving overview, so delayed cleanup should only clear the
         // frozen handoff state. Restoring the stack while the launcher window is still transitioning
         // out can flash the original recents cards for a frame.
-        Runnable cleanup = () -> clearTaskLaunchHandoff(recentsView, false);
+        cancelPendingTaskLaunchCleanup(recentsView);
+        Runnable cleanup = () -> {
+            PENDING_TASK_LAUNCH_CLEANUPS.remove(recentsView);
+            if (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
+                clearTaskLaunchHandoff(recentsView, false);
+            }
+        };
+        PENDING_TASK_LAUNCH_CLEANUPS.put(recentsView, cleanup);
         Handler handler = LauncherRecentsState.ensureMainHandler();
         if (handler != null) {
             handler.postDelayed(cleanup, TASK_LAUNCH_NO_ANIMATION_CLEANUP_DELAY_MS);
         } else {
             recentsView.postDelayed(cleanup, TASK_LAUNCH_NO_ANIMATION_CLEANUP_DELAY_MS);
+        }
+    }
+
+    private static void cancelPendingTaskLaunchCleanup(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        Runnable cleanup = PENDING_TASK_LAUNCH_CLEANUPS.remove(recentsView);
+        if (cleanup == null) {
+            return;
+        }
+        Handler handler = LauncherRecentsState.ensureMainHandler();
+        if (handler != null) {
+            handler.removeCallbacks(cleanup);
+        } else {
+            recentsView.removeCallbacks(cleanup);
         }
     }
 
@@ -1072,10 +1098,18 @@ final class LauncherRecentsLaunchController {
         }
     }
 
+    static void clearTaskLaunchFrozenForNewGesture(View recentsView) {
+        cancelPendingTaskLaunchCleanup(recentsView);
+        if (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
+            clearTaskLaunchHandoff(recentsView, false);
+        }
+    }
+
     static void clearTaskLaunchHandoff(View recentsView, boolean restoreStack) {
         if (recentsView == null) {
             return;
         }
+        cancelPendingTaskLaunchCleanup(recentsView);
         LauncherRecentsState.TASK_LAUNCH_REQUEST_STARTED.remove(recentsView);
         LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFFS.remove(recentsView);
         cancelTaskLaunchHandoff(recentsView, false);

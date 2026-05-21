@@ -47,6 +47,7 @@ final class LauncherRecentsAttachController {
                         recentsView)) {
                     return chain.proceed();
                 }
+                LauncherRecentsLaunchController.clearTaskLaunchFrozenForNewGesture(recentsView);
                 LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
                         recentsView,
                         true);
