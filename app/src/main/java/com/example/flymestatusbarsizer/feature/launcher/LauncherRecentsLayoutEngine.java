@@ -15,7 +15,7 @@ import java.util.ArrayList;
 final class LauncherRecentsLayoutEngine {
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
     private static final float STACK_ENTRY_INITIAL_SPREAD_RATIO = 0.8f;
-    private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.12f;
+    private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.5f;
     private static final float STACK_RIGHT_VISIBLE_RATIO = 0.80f;
     private static final float STACK_SPREAD_POWER = 0.75f;
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
@@ -24,7 +24,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO = 0.30f;
     private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
     private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
-    private static final float STACK_MIN_SCALE = 0.80f;
+    private static final float STACK_MIN_SCALE = 0.85f;
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.07f;
     private static final float BLANK_TAP_HOME_EXIT_TRAVEL_RATIO = 0.90f;

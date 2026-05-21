@@ -1584,7 +1584,7 @@ final class LauncherRecentsTouchController {
         if (scroller == null) {
             return;
         }
-        setScrollerFriction(scroller, 0.015f);
+        setScrollerFriction(scroller, 0.01f);
         if (!startScrollerFling(
                 recentsView,
                 scroller,
