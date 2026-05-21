@@ -19,7 +19,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_RIGHT_VISIBLE_RATIO = 0.80f;
     private static final float STACK_SPREAD_POWER = 0.75f;
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
-    private static final float STACK_LEFT_REST_INSET_RATIO = 0.00f;
+    private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
     private static final float STACK_LEFT_EDGE_EXTRA_SPACING_RATIO = 0.08f;
     private static final float STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO = 0.30f;
     private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
