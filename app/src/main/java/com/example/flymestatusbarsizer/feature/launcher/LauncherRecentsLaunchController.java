@@ -15,12 +15,10 @@ import android.view.animation.DecelerateInterpolator;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.WeakHashMap;
 
 final class LauncherRecentsLaunchController {
     private static final long TASK_LAUNCH_HANDOFF_DURATION_MS = 360L;
     private static final long TASK_LAUNCH_FRONT_HANDOFF_DURATION_MS = 320L;
-    private static final long TASK_LAUNCH_NO_ANIMATION_CLEANUP_DELAY_MS = 1200L;
     private static final float TASK_LAUNCH_REAR_PROMOTE_FRACTION = 0.42f;
     private static final float TASK_LAUNCH_TARGET_END_SCALE_BLEED = 1.0f;
     private static final float TASK_LAUNCH_TARGET_END_FULLSCREEN_PROGRESS = 0.94f;
@@ -28,8 +26,6 @@ final class LauncherRecentsLaunchController {
     private static final float TASK_LAUNCH_SIBLING_END_ALPHA = 0.0f;
     private static final DecelerateInterpolator TASK_LAUNCH_HANDOFF_INTERPOLATOR =
             new DecelerateInterpolator(1.12f);
-    private static final WeakHashMap<View, Runnable> PENDING_TASK_LAUNCH_CLEANUPS =
-            new WeakHashMap<>();
 
     private LauncherRecentsLaunchController() {
     }
@@ -846,9 +842,7 @@ final class LauncherRecentsLaunchController {
                                 && args.length > 0
                                 && args[0] instanceof Boolean
                                 && (Boolean) args[0];
-                        if (launched) {
-                            scheduleTaskLaunchNoAnimationCleanup(callbackRecentsView);
-                        } else {
+                        if (!launched) {
                             clearTaskLaunchHandoff(callbackRecentsView, true);
                         }
                         return kotlinUnitInstance;
@@ -864,45 +858,6 @@ final class LauncherRecentsLaunchController {
                     "Failed to replace task launch animation with launchWithoutAnimation",
                     t);
             return false;
-        }
-    }
-
-    private static void scheduleTaskLaunchNoAnimationCleanup(View recentsView) {
-        if (recentsView == null) {
-            return;
-        }
-        // A successful task launch is leaving overview, so delayed cleanup should only clear the
-        // frozen handoff state. Restoring the stack while the launcher window is still transitioning
-        // out can flash the original recents cards for a frame.
-        cancelPendingTaskLaunchCleanup(recentsView);
-        Runnable cleanup = () -> {
-            PENDING_TASK_LAUNCH_CLEANUPS.remove(recentsView);
-            if (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
-                clearTaskLaunchHandoff(recentsView, false);
-            }
-        };
-        PENDING_TASK_LAUNCH_CLEANUPS.put(recentsView, cleanup);
-        Handler handler = LauncherRecentsState.ensureMainHandler();
-        if (handler != null) {
-            handler.postDelayed(cleanup, TASK_LAUNCH_NO_ANIMATION_CLEANUP_DELAY_MS);
-        } else {
-            recentsView.postDelayed(cleanup, TASK_LAUNCH_NO_ANIMATION_CLEANUP_DELAY_MS);
-        }
-    }
-
-    private static void cancelPendingTaskLaunchCleanup(View recentsView) {
-        if (recentsView == null) {
-            return;
-        }
-        Runnable cleanup = PENDING_TASK_LAUNCH_CLEANUPS.remove(recentsView);
-        if (cleanup == null) {
-            return;
-        }
-        Handler handler = LauncherRecentsState.ensureMainHandler();
-        if (handler != null) {
-            handler.removeCallbacks(cleanup);
-        } else {
-            recentsView.removeCallbacks(cleanup);
         }
     }
 
@@ -1099,7 +1054,6 @@ final class LauncherRecentsLaunchController {
     }
 
     static void clearTaskLaunchFrozenForNewGesture(View recentsView) {
-        cancelPendingTaskLaunchCleanup(recentsView);
         if (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
             clearTaskLaunchHandoff(recentsView, false);
         }
@@ -1109,7 +1063,6 @@ final class LauncherRecentsLaunchController {
         if (recentsView == null) {
             return;
         }
-        cancelPendingTaskLaunchCleanup(recentsView);
         LauncherRecentsState.TASK_LAUNCH_REQUEST_STARTED.remove(recentsView);
         LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFFS.remove(recentsView);
         cancelTaskLaunchHandoff(recentsView, false);
