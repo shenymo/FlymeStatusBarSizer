@@ -19,6 +19,7 @@ final class LauncherRecentsTransitionController {
             "com.android.quickstep.AbsSwipeUpHandler";
     private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 360L;
     private static final long GESTURE_STACK_RELEASE_DURATION_MS = 320L;
+    private static final int APP_TO_RECENTS_STACK_ANCHOR_PAGE = 0;
     private static final DecelerateInterpolator BLANK_TAP_HOME_EXIT_INTERPOLATOR =
             new DecelerateInterpolator(1.6f);
     private static final DecelerateInterpolator GESTURE_STACK_RELEASE_INTERPOLATOR =
@@ -501,6 +502,7 @@ final class LauncherRecentsTransitionController {
                 "setRunningTaskHidden",
                 LauncherRecentsCompat.BOOLEAN_ARG,
                 false);
+        normalizeAppToRecentsStackAnchor(recentsView);
         final float releaseStartTranslationY = recentsView.getTranslationY();
         LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
         LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
@@ -555,6 +557,26 @@ final class LauncherRecentsTransitionController {
         } else {
             animator.start();
         }
+    }
+
+    private static void normalizeAppToRecentsStackAnchor(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
+        if (pageCount <= 0) {
+            return;
+        }
+        int anchorPage = Math.min(APP_TO_RECENTS_STACK_ANCHOR_PAGE, pageCount - 1);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "snapToPageImmediately",
+                LauncherRecentsCompat.INT_ARG,
+                anchorPage);
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", anchorPage);
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", anchorPage);
+        LauncherRecentsCompat.setIntField(recentsView, "mNextPage", anchorPage);
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentPageScrollDiff", 0);
     }
 
     static void finishRunningTaskRecentsAnimation(View recentsView) {
