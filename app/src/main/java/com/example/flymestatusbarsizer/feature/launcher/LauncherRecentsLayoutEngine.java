@@ -461,6 +461,9 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsTaskVisuals.readLastStockBoxTranslationY(taskView),
                     LauncherRecentsTaskVisuals.readOriginalBoxTranslationY(taskView),
                     Math.max(stackVerticalProgress, taskEntryProgress * 0.6f));
+            if (gestureStackReleaseActive) {
+                desiredBoxTranslationY = 0f;
+            }
             float desiredTranslationZ = (maxTranslationZ + zStepPx) * desiredLayerProgress;
             float desiredStableAlpha = 1f;
             if (blankTapExitProgress > 0f) {
