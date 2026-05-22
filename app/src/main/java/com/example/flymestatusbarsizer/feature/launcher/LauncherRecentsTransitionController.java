@@ -427,6 +427,7 @@ final class LauncherRecentsTransitionController {
             LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
             clearGestureRecentsStackReleaseProgress(recentsView);
             clearForcedRecentsTranslationY(recentsView);
+            LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
         }
     }
 
@@ -507,6 +508,10 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
         LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
         LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
+        LauncherRecentsLayoutEngine.captureGestureStackReleaseTaskStates(
+                recentsView,
+                stackAnchorStartScroll,
+                stackAnchorTargetScroll);
         setGestureRecentsStackReleaseProgress(recentsView, 0f);
         LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
         recentsView.invalidate();
@@ -543,6 +548,7 @@ final class LauncherRecentsTransitionController {
                 if (cancelled) {
                     clearGestureRecentsStackReleaseProgress(recentsView);
                     clearForcedRecentsTranslationY(recentsView);
+                    LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
                     return;
                 }
                 setForcedRecentsTranslationY(recentsView, 0f);
@@ -552,6 +558,7 @@ final class LauncherRecentsTransitionController {
                 LauncherRecentsState.setGestureStackReleasedStable(recentsView, true);
                 clearGestureRecentsStackReleaseProgress(recentsView);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
                 recentsView.invalidate();
             }
         });
