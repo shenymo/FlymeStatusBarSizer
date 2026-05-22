@@ -477,33 +477,31 @@ final class LauncherRecentsTransitionController {
         if (runningAnimator != null) {
             return;
         }
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "setEnableDrawingLiveTile",
-                LauncherRecentsCompat.BOOLEAN_ARG,
-                false);
         if (ensureRunningTaskScreenshot) {
-            if (!LauncherRecentsCompat.invokeMethodReflectively(
+            prepareRunningTaskScreenshotForStackRelease(recentsView);
+        } else {
+            LauncherRecentsCompat.invokeCompat(
                     recentsView,
-                    "switchToScreenshot",
-                    new Class<?>[]{Runnable.class},
-                    (Runnable) () -> {
-                    })) {
-                LauncherRecentsCompat.invokeMethodReflectively(
-                        recentsView,
-                        "setRunningTaskViewShowScreenshot",
-                        LauncherRecentsCompat.BOOLEAN_ARG,
-                        true);
-            }
-            finishRunningTaskRecentsAnimation(recentsView);
+                    "setEnableDrawingLiveTile",
+                    LauncherRecentsCompat.BOOLEAN_ARG,
+                    false);
         }
         LauncherRecentsCompat.invokeCompat(
                 recentsView,
                 "setRunningTaskHidden",
                 LauncherRecentsCompat.BOOLEAN_ARG,
                 false);
-        normalizeAppToRecentsStackAnchor(recentsView);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "forceFinishScroller",
+                LauncherRecentsCompat.NO_ARGS);
         final float releaseStartTranslationY = recentsView.getTranslationY();
+        final int stackAnchorPage = resolveAppToRecentsStackAnchorPage(recentsView);
+        final int stackAnchorStartScroll = resolvePrimaryScroll(recentsView);
+        final int stackAnchorTargetScroll = resolveScrollForPage(
+                recentsView,
+                stackAnchorPage,
+                stackAnchorStartScroll);
         LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
         LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
         LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
@@ -523,6 +521,11 @@ final class LauncherRecentsTransitionController {
                     0f,
                     progress));
             setGestureRecentsStackReleaseProgress(recentsView, progress);
+            applyAppToRecentsStackAnchorScroll(
+                    recentsView,
+                    stackAnchorStartScroll,
+                    stackAnchorTargetScroll,
+                    progress);
             LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
             recentsView.invalidate();
         });
@@ -544,6 +547,7 @@ final class LauncherRecentsTransitionController {
                 }
                 setForcedRecentsTranslationY(recentsView, 0f);
                 setGestureRecentsStackReleaseProgress(recentsView, 1f);
+                normalizeAppToRecentsStackAnchor(recentsView, stackAnchorPage);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 LauncherRecentsState.setGestureStackReleasedStable(recentsView, true);
                 clearGestureRecentsStackReleaseProgress(recentsView);
@@ -559,24 +563,119 @@ final class LauncherRecentsTransitionController {
         }
     }
 
-    private static void normalizeAppToRecentsStackAnchor(View recentsView) {
+    private static void prepareRunningTaskScreenshotForStackRelease(View recentsView) {
         if (recentsView == null) {
             return;
         }
+        Runnable finishRunnable = () -> {
+            LauncherRecentsCompat.invokeCompat(
+                    recentsView,
+                    "setEnableDrawingLiveTile",
+                    LauncherRecentsCompat.BOOLEAN_ARG,
+                    false);
+            finishRunningTaskRecentsAnimation(recentsView);
+        };
+        if (!LauncherRecentsCompat.invokeMethodReflectively(
+                recentsView,
+                "switchToScreenshot",
+                new Class<?>[]{Runnable.class},
+                finishRunnable)) {
+            LauncherRecentsCompat.invokeMethodReflectively(
+                    recentsView,
+                    "setRunningTaskViewShowScreenshot",
+                    LauncherRecentsCompat.BOOLEAN_ARG,
+                    true);
+            finishRunnable.run();
+        }
+    }
+
+    private static int resolveAppToRecentsStackAnchorPage(View recentsView) {
+        if (recentsView == null) {
+            return -1;
+        }
         int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
         if (pageCount <= 0) {
+            return -1;
+        }
+        return Math.min(APP_TO_RECENTS_STACK_ANCHOR_PAGE, pageCount - 1);
+    }
+
+    private static void normalizeAppToRecentsStackAnchor(View recentsView, int anchorPage) {
+        if (recentsView == null || anchorPage < 0) {
             return;
         }
-        int anchorPage = Math.min(APP_TO_RECENTS_STACK_ANCHOR_PAGE, pageCount - 1);
-        LauncherRecentsCompat.invokeCompat(
+        setPrimaryScroll(recentsView, resolveScrollForPage(
                 recentsView,
-                "snapToPageImmediately",
-                LauncherRecentsCompat.INT_ARG,
-                anchorPage);
+                anchorPage,
+                resolvePrimaryScroll(recentsView)));
         LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", anchorPage);
         LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", anchorPage);
         LauncherRecentsCompat.setIntField(recentsView, "mNextPage", anchorPage);
         LauncherRecentsCompat.setIntField(recentsView, "mCurrentPageScrollDiff", 0);
+    }
+
+    private static void applyAppToRecentsStackAnchorScroll(
+            View recentsView,
+            int startScroll,
+            int targetScroll,
+            float progress) {
+        if (recentsView == null || startScroll == targetScroll) {
+            return;
+        }
+        int primaryScroll = Math.round(LauncherRecentsLayoutEngine.lerp(
+                startScroll,
+                targetScroll,
+                progress));
+        setPrimaryScroll(recentsView, primaryScroll);
+    }
+
+    private static int resolveScrollForPage(View recentsView, int page, int fallback) {
+        if (recentsView == null || page < 0) {
+            return fallback;
+        }
+        return LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getScrollForPage",
+                LauncherRecentsCompat.INT_ARG,
+                fallback,
+                page);
+    }
+
+    private static int resolvePrimaryScroll(View recentsView) {
+        if (recentsView == null) {
+            return 0;
+        }
+        Object orientationHandler =
+                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
+        Object value = LauncherRecentsCompat.invokeCompat(
+                orientationHandler,
+                "getPrimaryScroll",
+                new Class<?>[]{View.class},
+                recentsView);
+        return value instanceof Integer ? (Integer) value : recentsView.getScrollX();
+    }
+
+    private static void setPrimaryScroll(View recentsView, int primaryScroll) {
+        if (recentsView == null) {
+            return;
+        }
+        if (isPrimaryScrollHorizontal(recentsView)) {
+            recentsView.scrollTo(primaryScroll, recentsView.getScrollY());
+        } else {
+            recentsView.scrollTo(recentsView.getScrollX(), primaryScroll);
+        }
+    }
+
+    private static boolean isPrimaryScrollHorizontal(View recentsView) {
+        Object orientationHandler =
+                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
+        Object value = LauncherRecentsCompat.invokeCompat(
+                orientationHandler,
+                "getPrimaryValue",
+                new Class<?>[]{int.class, int.class},
+                1,
+                0);
+        return !(value instanceof Integer) || (Integer) value == 1;
     }
 
     static void finishRunningTaskRecentsAnimation(View recentsView) {

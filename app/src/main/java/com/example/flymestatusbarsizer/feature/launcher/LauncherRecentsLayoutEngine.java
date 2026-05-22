@@ -529,6 +529,14 @@ final class LauncherRecentsLayoutEngine {
                         LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView),
                         appliedTranslationZ,
                         stackReleaseProgress);
+                appliedAttachAlpha = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockAttachAlpha(taskView),
+                        appliedAttachAlpha,
+                        stackReleaseProgress);
+                appliedStableAlpha = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView),
+                        appliedStableAlpha,
+                        stackReleaseProgress);
             }
             LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(
                     taskView,
