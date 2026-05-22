@@ -37,6 +37,7 @@ final class LauncherRecentsTransitionController {
         hookRecentsViewEnableDrawingLiveTile(module, loader);
         hookRecentsViewGestureAnimationEnd(module, loader);
         hookAbsSwipeUpHandlerGestureEnded(module, loader);
+        hookAbsSwipeUpHandlerLauncherTransitionProgress(module, loader);
     }
 
     private static void hookRecentsViewStartHome(
@@ -272,6 +273,25 @@ final class LauncherRecentsTransitionController {
         }
     }
 
+    private static void hookAbsSwipeUpHandlerLauncherTransitionProgress(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(ABS_SWIPE_UP_HANDLER_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("updateLauncherTransitionProgressForFlyme");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                applyForcedRecentsTranslationY(resolveHandlerRecentsView(chain.getThisObject()));
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook AbsSwipeUpHandler.updateLauncherTransitionProgressForFlyme",
+                    t);
+        }
+    }
+
     static boolean shouldAnimateBlankTapHomeExit(View recentsView) {
         return recentsView != null
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
@@ -405,6 +425,7 @@ final class LauncherRecentsTransitionController {
         if (clearProgress) {
             LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
             clearGestureRecentsStackReleaseProgress(recentsView);
+            clearForcedRecentsTranslationY(recentsView);
         }
     }
 
@@ -495,7 +516,7 @@ final class LauncherRecentsTransitionController {
         animator.addUpdateListener(animation -> {
             Object value = animation.getAnimatedValue();
             float progress = value instanceof Float ? (Float) value : 1f;
-            recentsView.setTranslationY(LauncherRecentsLayoutEngine.lerp(
+            setForcedRecentsTranslationY(recentsView, LauncherRecentsLayoutEngine.lerp(
                     releaseStartTranslationY,
                     0f,
                     progress));
@@ -516,9 +537,10 @@ final class LauncherRecentsTransitionController {
                 LauncherRecentsState.ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS.remove(recentsView);
                 if (cancelled) {
                     clearGestureRecentsStackReleaseProgress(recentsView);
+                    clearForcedRecentsTranslationY(recentsView);
                     return;
                 }
-                recentsView.setTranslationY(0f);
+                setForcedRecentsTranslationY(recentsView, 0f);
                 setGestureRecentsStackReleaseProgress(recentsView, 1f);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 LauncherRecentsState.setGestureStackReleasedStable(recentsView, true);
@@ -608,5 +630,29 @@ final class LauncherRecentsTransitionController {
             return;
         }
         LauncherRecentsState.GESTURE_STACK_RELEASE_PROGRESS.remove(recentsView);
+    }
+
+    private static void setForcedRecentsTranslationY(View recentsView, float translationY) {
+        if (recentsView == null) {
+            return;
+        }
+        LauncherRecentsState.FORCED_RECENTS_TRANSLATION_YS.put(recentsView, translationY);
+        recentsView.setTranslationY(translationY);
+    }
+
+    private static void clearForcedRecentsTranslationY(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        LauncherRecentsState.FORCED_RECENTS_TRANSLATION_YS.remove(recentsView);
+    }
+
+    private static void applyForcedRecentsTranslationY(View recentsView) {
+        Float value = recentsView != null
+                ? LauncherRecentsState.FORCED_RECENTS_TRANSLATION_YS.get(recentsView)
+                : null;
+        if (value != null) {
+            recentsView.setTranslationY(value);
+        }
     }
 }
