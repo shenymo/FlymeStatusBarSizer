@@ -20,6 +20,8 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> GESTURE_STACK_RELEASE_PROGRESS =
             new WeakHashMap<>();
+    static final WeakHashMap<View, Float> FORCED_RECENTS_TRANSLATION_XS =
+            new WeakHashMap<>();
     static final WeakHashMap<View, Float> FORCED_RECENTS_TRANSLATION_YS =
             new WeakHashMap<>();
     static final WeakHashMap<View, GestureReleaseTaskState> GESTURE_STACK_RELEASE_TASK_STATES =

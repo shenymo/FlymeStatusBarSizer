@@ -283,7 +283,7 @@ final class LauncherRecentsTransitionController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object result = chain.proceed();
-                applyForcedRecentsTranslationY(resolveHandlerRecentsView(chain.getThisObject()));
+                applyForcedRecentsTranslation(resolveHandlerRecentsView(chain.getThisObject()));
                 return result;
             });
         } catch (Throwable t) {
@@ -426,6 +426,7 @@ final class LauncherRecentsTransitionController {
         if (clearProgress) {
             LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
             clearGestureRecentsStackReleaseProgress(recentsView);
+            clearForcedRecentsTranslationX(recentsView);
             clearForcedRecentsTranslationY(recentsView);
             LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
         }
@@ -496,6 +497,7 @@ final class LauncherRecentsTransitionController {
                 recentsView,
                 "forceFinishScroller",
                 LauncherRecentsCompat.NO_ARGS);
+        final float releaseStartTranslationX = recentsView.getTranslationX();
         final float releaseStartTranslationY = recentsView.getTranslationY();
         final int stackAnchorPage = resolveAppToRecentsStackAnchorPage(recentsView);
         final int stackAnchorStartScroll = resolvePrimaryScroll(recentsView);
@@ -521,6 +523,10 @@ final class LauncherRecentsTransitionController {
         animator.addUpdateListener(animation -> {
             Object value = animation.getAnimatedValue();
             float progress = value instanceof Float ? (Float) value : 1f;
+            setForcedRecentsTranslationX(recentsView, LauncherRecentsLayoutEngine.lerp(
+                    releaseStartTranslationX,
+                    0f,
+                    progress));
             setForcedRecentsTranslationY(recentsView, LauncherRecentsLayoutEngine.lerp(
                     releaseStartTranslationY,
                     0f,
@@ -547,10 +553,12 @@ final class LauncherRecentsTransitionController {
                 LauncherRecentsState.ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS.remove(recentsView);
                 if (cancelled) {
                     clearGestureRecentsStackReleaseProgress(recentsView);
+                    clearForcedRecentsTranslationX(recentsView);
                     clearForcedRecentsTranslationY(recentsView);
                     LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
                     return;
                 }
+                setForcedRecentsTranslationX(recentsView, 0f);
                 setForcedRecentsTranslationY(recentsView, 0f);
                 setGestureRecentsStackReleaseProgress(recentsView, 1f);
                 normalizeAppToRecentsStackAnchor(recentsView, stackAnchorPage);
@@ -768,6 +776,14 @@ final class LauncherRecentsTransitionController {
         recentsView.setTranslationY(translationY);
     }
 
+    private static void setForcedRecentsTranslationX(View recentsView, float translationX) {
+        if (recentsView == null) {
+            return;
+        }
+        LauncherRecentsState.FORCED_RECENTS_TRANSLATION_XS.put(recentsView, translationX);
+        recentsView.setTranslationX(translationX);
+    }
+
     private static void clearForcedRecentsTranslationY(View recentsView) {
         if (recentsView == null) {
             return;
@@ -775,12 +791,25 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsState.FORCED_RECENTS_TRANSLATION_YS.remove(recentsView);
     }
 
-    private static void applyForcedRecentsTranslationY(View recentsView) {
-        Float value = recentsView != null
+    private static void clearForcedRecentsTranslationX(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        LauncherRecentsState.FORCED_RECENTS_TRANSLATION_XS.remove(recentsView);
+    }
+
+    private static void applyForcedRecentsTranslation(View recentsView) {
+        Float translationX = recentsView != null
+                ? LauncherRecentsState.FORCED_RECENTS_TRANSLATION_XS.get(recentsView)
+                : null;
+        if (translationX != null) {
+            recentsView.setTranslationX(translationX);
+        }
+        Float translationY = recentsView != null
                 ? LauncherRecentsState.FORCED_RECENTS_TRANSLATION_YS.get(recentsView)
                 : null;
-        if (value != null) {
-            recentsView.setTranslationY(value);
+        if (translationY != null) {
+            recentsView.setTranslationY(translationY);
         }
     }
 }
