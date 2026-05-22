@@ -37,6 +37,7 @@ final class LauncherRecentsTransitionController {
         hookRecentsViewEnableDrawingLiveTile(module, loader);
         hookRecentsViewGestureAnimationEnd(module, loader);
         hookAbsSwipeUpHandlerGestureEnded(module, loader);
+        hookAbsSwipeUpHandlerLauncherTransitionProgress(module, loader);
     }
 
     private static void hookRecentsViewStartHome(
@@ -264,6 +265,28 @@ final class LauncherRecentsTransitionController {
         }
     }
 
+    private static void hookAbsSwipeUpHandlerLauncherTransitionProgress(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(ABS_SWIPE_UP_HANDLER_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("updateLauncherTransitionProgressForFlyme");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                View recentsView = resolveHandlerRecentsView(chain.getThisObject());
+                if (shouldOverrideGestureRecentsTranslationY(recentsView)) {
+                    applyGestureRecentsReleaseTranslationY(recentsView);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook AbsSwipeUpHandler.updateLauncherTransitionProgressForFlyme",
+                    t);
+        }
+    }
+
     static boolean shouldAnimateBlankTapHomeExit(View recentsView) {
         return recentsView != null
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
@@ -476,6 +499,9 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
         LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
         LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
+        LauncherRecentsState.GESTURE_STACK_RELEASE_START_TRANSLATION_YS.put(
+                recentsView,
+                recentsView.getTranslationY());
         setGestureRecentsStackReleaseProgress(recentsView, 0f);
         LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
         recentsView.invalidate();
@@ -486,6 +512,7 @@ final class LauncherRecentsTransitionController {
             Object value = animation.getAnimatedValue();
             float progress = value instanceof Float ? (Float) value : 1f;
             setGestureRecentsStackReleaseProgress(recentsView, progress);
+            applyGestureRecentsReleaseTranslationY(recentsView);
             LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
             recentsView.invalidate();
         });
@@ -501,14 +528,25 @@ final class LauncherRecentsTransitionController {
             public void onAnimationEnd(Animator animation) {
                 LauncherRecentsState.ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS.remove(recentsView);
                 if (cancelled) {
+                    LauncherRecentsState.GESTURE_STACK_RELEASE_START_TRANSLATION_YS.remove(
+                            recentsView);
                     clearGestureRecentsStackReleaseProgress(recentsView);
                     return;
                 }
                 setGestureRecentsStackReleaseProgress(recentsView, 1f);
+                applyGestureRecentsReleaseTranslationY(recentsView);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 LauncherRecentsState.setGestureStackReleasedStable(recentsView, true);
+                LauncherRecentsState.GESTURE_STACK_RELEASE_START_TRANSLATION_YS.remove(
+                        recentsView);
                 clearGestureRecentsStackReleaseProgress(recentsView);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                recentsView.post(() -> {
+                    if (shouldOverrideGestureRecentsTranslationY(recentsView)) {
+                        applyGestureRecentsReleaseTranslationY(recentsView);
+                        recentsView.invalidate();
+                    }
+                });
                 recentsView.invalidate();
             }
         });
@@ -593,5 +631,28 @@ final class LauncherRecentsTransitionController {
             return;
         }
         LauncherRecentsState.GESTURE_STACK_RELEASE_PROGRESS.remove(recentsView);
+    }
+
+    private static boolean shouldOverrideGestureRecentsTranslationY(View recentsView) {
+        return recentsView != null
+                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                && (hasGestureRecentsStackReleaseProgress(recentsView)
+                || LauncherRecentsState.isGestureStackReleasedStable(recentsView));
+    }
+
+    private static void applyGestureRecentsReleaseTranslationY(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        float progress = LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                ? 1f
+                : LauncherRecentsLayoutEngine.clamp(
+                readGestureRecentsStackReleaseProgress(recentsView),
+                0f,
+                1f);
+        Float startTranslationY =
+                LauncherRecentsState.GESTURE_STACK_RELEASE_START_TRANSLATION_YS.get(recentsView);
+        float startY = startTranslationY != null ? startTranslationY : recentsView.getTranslationY();
+        recentsView.setTranslationY(LauncherRecentsLayoutEngine.lerp(startY, 0f, progress));
     }
 }
