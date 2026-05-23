@@ -122,17 +122,19 @@ final class LauncherRecentsLayoutEngine {
                     if (shouldSuppressStockPageScaleUpdate(methodName, recentsView)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
-                        if (shouldApplyDynamicStackLayout(recentsView)) {
-                            requestDynamicStackLayout(recentsView, true);
-                        }
+                        applySuppressedStockStackLayout(recentsView);
                         return null;
                     }
                     if (shouldSuppressStockPageOffsetUpdate(methodName, recentsView)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
-                        if (shouldApplyDynamicStackLayout(recentsView)) {
-                            requestDynamicStackLayout(recentsView, true);
-                        }
+                        applySuppressedStockStackLayout(recentsView);
+                        return null;
+                    }
+                    if (shouldSuppressStockAttachAlphaUpdate(methodName, recentsView)) {
+                        LauncherRecentsState.trackRecentsView(recentsView);
+                        prepareRecentsView(recentsView);
+                        applySuppressedStockStackLayout(recentsView);
                         return null;
                     }
                 }
@@ -142,7 +144,7 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (shouldApplyDynamicStackLayout(recentsView)) {
-                        requestDynamicStackLayout(recentsView, true);
+                        applyOrRequestDynamicStackLayout(recentsView, true);
                     }
                 }
                 return result;
@@ -201,7 +203,7 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (shouldApplyDynamicStackLayout(recentsView)) {
-                        requestDynamicStackLayout(recentsView, true);
+                        applyOrRequestDynamicStackLayout(recentsView, true);
                     }
                 }
                 return result;
@@ -678,8 +680,53 @@ final class LauncherRecentsLayoutEngine {
                 recentsView)
                 || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(
                 recentsView)
+                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                 recentsView));
+    }
+
+    private static boolean shouldSuppressStockAttachAlphaUpdate(
+            String methodName,
+            View recentsView) {
+        return "applyAttachAlpha".equals(methodName)
+                && shouldUseStackLayout(recentsView)
+                && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                && (LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                recentsView)
+                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView));
+    }
+
+    private static void applySuppressedStockStackLayout(View recentsView) {
+        if (shouldApplyDynamicStackLayout(recentsView)) {
+            applyOrRequestDynamicStackLayout(recentsView, true);
+        }
+    }
+
+    private static void applyOrRequestDynamicStackLayout(
+            View recentsView,
+            boolean captureStockState) {
+        if (shouldApplyStackLayoutSynchronously(recentsView)) {
+            applyDynamicStackLayoutImmediately(recentsView, captureStockState);
+        } else {
+            requestDynamicStackLayout(recentsView, captureStockState);
+        }
+    }
+
+    private static boolean shouldApplyStackLayoutSynchronously(View recentsView) {
+        return LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                recentsView)
+                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView);
+    }
+
+    static boolean shouldSuppressStockStackVisualReset(View recentsView) {
+        return recentsView != null
+                && shouldUseStackLayout(recentsView)
+                && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                && shouldApplyStackLayoutSynchronously(recentsView);
     }
 
     static void restoreTaskTransforms(View recentsView, int taskViewCount) {
