@@ -507,6 +507,10 @@ final class LauncherRecentsTouchController {
         return value != null ? value : 0f;
     }
 
+    private static boolean hasStackDismissLayoutOffset(View taskView) {
+        return STACK_DISMISS_LAYOUT_OFFSETS.containsKey(taskView);
+    }
+
     private static boolean isSilentNativeDismissActive(View recentsView) {
         return Boolean.TRUE.equals(SILENT_NATIVE_DISMISS_RECENTS.get(recentsView))
                 && LauncherRecentsLayoutEngine.shouldDeferStackLayoutForAppToRecents(recentsView);
@@ -650,6 +654,19 @@ final class LauncherRecentsTouchController {
                 || LauncherRecentsCompat.isDesktopTask(taskView)
                 || taskView.getVisibility() != View.VISIBLE
                 || taskView.getAlpha() <= 0.01f
+                || taskView.getWidth() <= 0
+                || taskView.getHeight() <= 0) {
+            return false;
+        }
+        return !(recentsView instanceof ViewGroup)
+                || ((ViewGroup) recentsView).indexOfChild(taskView) >= 0;
+    }
+
+    private static boolean isStackDismissReflowTaskCandidate(View recentsView, View taskView) {
+        if (recentsView == null
+                || taskView == null
+                || LauncherRecentsCompat.isDesktopTask(taskView)
+                || taskView.getVisibility() != View.VISIBLE
                 || taskView.getWidth() <= 0
                 || taskView.getHeight() <= 0) {
             return false;
@@ -828,7 +845,7 @@ final class LauncherRecentsTouchController {
                 LauncherRecentsCompat.invokeInt(state.recentsView, "getTaskViewCount", 0);
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(state.recentsView, i);
-            if (!isStackDismissTaskCandidate(state.recentsView, taskView)
+            if (!isStackDismissReflowTaskCandidate(state.recentsView, taskView)
                     || taskView == state.taskView) {
                 continue;
             }
@@ -921,7 +938,8 @@ final class LauncherRecentsTouchController {
         float taskHeight = Math.max(1f, state.taskView.getHeight());
         return Math.max(
                 taskTop + taskHeight + FlymeStatusBarSizer.dp(state.recentsView.getContext(), 48),
-                state.recentsView.getHeight() * 0.72f);
+                state.recentsView.getHeight() * 0.72f)
+                - Math.min(0f, state.currentDismissTranslationY);
     }
 
     private static void setStackDismissTranslationY(View taskView, float value) {
@@ -1324,7 +1342,8 @@ final class LauncherRecentsTouchController {
             return false;
         }
         return taskView.getVisibility() == View.VISIBLE
-                && readStackTaskDataAlpha(taskView) > STACK_LEFT_RELEASE_ALPHA_THRESHOLD
+                && (readStackTaskDataAlpha(taskView) > STACK_LEFT_RELEASE_ALPHA_THRESHOLD
+                || hasStackDismissLayoutOffset(taskView))
                 && taskView.getWidth() > 0
                 && taskView.getHeight() > 0
                 && isStackTaskWithinVisibleDataBounds(recentsView, taskView);
