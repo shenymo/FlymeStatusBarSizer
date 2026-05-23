@@ -20,7 +20,6 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
     private static final float STACK_RELEASE_SETTLED_PROGRESS_SHIFT = 0.70f;
     private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
-    private static final float STACK_LEFT_EDGE_EXTRA_SPACING_RATIO = 0.08f;
     private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
     private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
     private static final float STACK_MIN_SCALE = 0.85f;
@@ -573,7 +572,9 @@ final class LauncherRecentsLayoutEngine {
                     desiredStableAlpha = 0f;
                 }
             }
-            desiredStableAlpha *= remapProgress(
+            desiredStableAlpha *= layoutProgress < 0f
+                    ? remapProgress(desiredLayerProgress, 0f, 0.35f)
+                    : remapProgress(
                     layoutProgress,
                     STACK_LEFT_RELEASE_END_PROGRESS,
                     STACK_LEFT_RELEASE_START_PROGRESS);
@@ -943,7 +944,7 @@ final class LauncherRecentsLayoutEngine {
             float taskWidth,
             float taskCenteredLeftPx) {
         float stackLeftOffsetPx =
-                -taskCenteredLeftPx + (taskWidth * STACK_LEFT_REST_INSET_RATIO);
+                (recentsView.getWidth() * STACK_LEFT_REST_INSET_RATIO) - taskCenteredLeftPx;
         float stackRightOffsetPx = Math.max(
                 0f,
                 recentsView.getWidth()
@@ -956,11 +957,11 @@ final class LauncherRecentsLayoutEngine {
         float stackSpreadProgress = (float) Math.pow(
                 remapProgress(stackDepth, 0f, 1f),
                 STACK_SPREAD_POWER);
-        float stackDepthSpacing = taskWidth
-                * STACK_LEFT_EDGE_EXTRA_SPACING_RATIO
-                * (1f - remapProgress(stackDepth, 0f, MAX_STACK_LAYERS));
         if (progress < 0f) {
-            return (stackLeftOffsetPx + stackDepthSpacing) * stackSpreadProgress;
+            if (stackDepth >= 1f) {
+                return stackLeftOffsetPx;
+            }
+            return stackLeftOffsetPx * stackSpreadProgress;
         }
         float rightOffsetPx = stackRightOffsetPx * stackSpreadProgress;
         if (progress > 1f) {
