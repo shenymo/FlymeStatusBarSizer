@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
+import android.graphics.RectF;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
@@ -21,7 +22,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-final class EdgeGestureDebugHooks {
+final class BottomCornerGestureDebugHooks {
     private static final int INTERNAL_WINDOW_TYPE_STATUS_BAR_ADDITIONAL = 2041;
     private static final int INTERNAL_WINDOW_TYPE_STATUS_BAR_SUB_PANEL = 2017;
     private static final int INTERNAL_WINDOW_TYPE_NOTIFICATION_SHADE = 2040;
@@ -29,20 +30,22 @@ final class EdgeGestureDebugHooks {
     private static final int[] WINDOW_TYPE_CANDIDATES = new int[]{
             INTERNAL_WINDOW_TYPE_STATUS_BAR_ADDITIONAL,
             INTERNAL_WINDOW_TYPE_STATUS_BAR_SUB_PANEL,
-            INTERNAL_WINDOW_TYPE_NOTIFICATION_SHADE
+            INTERNAL_WINDOW_TYPE_NOTIFICATION_SHADE,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
     };
-    private static final String EDGE_BACK_HANDLER_CLASS =
-            "com.android.systemui.navigationbar.gestural.EdgeBackGestureHandler";
-    private static final String WINDOW_TITLE = "EdgeGestureDebug";
+    private static final String ROTATION_TOUCH_HELPER_CLASS =
+            "com.android.quickstep.RotationTouchHelper";
+    private static final String WINDOW_TITLE = "BottomCornerGestureDebug";
 
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static DebugOverlayView overlayView;
+    private static WindowManager overlayWindowManager;
     private static Method trustedOverlayMethod;
     private static boolean trustedOverlayMethodResolved;
     private static Field trustedOverlayPrivateFlagsField;
     private static boolean trustedOverlayPrivateFlagsFieldResolved;
 
-    private EdgeGestureDebugHooks() {
+    private BottomCornerGestureDebugHooks() {
     }
 
     static void install(FlymeStatusBarSizer module, ClassLoader loader) {
@@ -50,7 +53,7 @@ final class EdgeGestureDebugHooks {
             return;
         }
         try {
-            Class<?> clazz = Class.forName(EDGE_BACK_HANDLER_CLASS, false, loader);
+            Class<?> clazz = Class.forName(ROTATION_TOUCH_HELPER_CLASS, false, loader);
             for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
                 constructor.setAccessible(true);
                 module.intercept(constructor, chain -> {
@@ -59,93 +62,123 @@ final class EdgeGestureDebugHooks {
                     return result;
                 });
             }
-            hookRefreshMethod(module, clazz, "updateCurrentUserResources");
-            hookRefreshMethod(module, clazz, "updateDisplaySize");
-            hookRefreshMethod(module, clazz, "updateIsEnabled");
+            hookRefreshMethod(module, clazz, "updateGestureTouchRegions");
+            hookRefreshMethod(module, clazz, "onDisplayInfoChanged");
+            hookRefreshMethod(module, clazz, "setGesturalHeight");
+            hookRefreshMethod(module, clazz, "touchInAssistantRegion");
         } catch (Throwable t) {
-            FlymeStatusBarSizer.logMBackWarning("Failed to hook edge gesture debug overlay", t);
+            FlymeStatusBarSizer.logMBackWarning("Failed to hook bottom corner gesture debug overlay", t);
         }
     }
 
     private static void hookRefreshMethod(FlymeStatusBarSizer module, Class<?> clazz, String name) {
-        try {
-            Method method = clazz.getDeclaredMethod(name);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object result = chain.proceed();
-                scheduleRefresh(chain.getThisObject());
-                return result;
-            });
-        } catch (Throwable ignored) {
+        for (Method method : clazz.getDeclaredMethods()) {
+            if (!name.equals(method.getName())) {
+                continue;
+            }
+            try {
+                method.setAccessible(true);
+                module.intercept(method, chain -> {
+                    Object result = chain.proceed();
+                    scheduleRefresh(chain.getThisObject());
+                    return result;
+                });
+            } catch (Throwable ignored) {
+            }
         }
     }
 
-    private static void scheduleRefresh(Object handler) {
-        if (handler == null) {
+    private static void scheduleRefresh(Object helper) {
+        if (helper == null) {
             return;
         }
-        MAIN_HANDLER.post(() -> refresh(handler));
+        MAIN_HANDLER.post(() -> refresh(helper));
+        MAIN_HANDLER.postDelayed(() -> refresh(helper), 300L);
     }
 
-    private static void refresh(Object handler) {
-        Context context = ReflectUtils.getField(handler, "mContext") instanceof Context
-                ? (Context) ReflectUtils.getField(handler, "mContext")
-                : null;
-        if (context == null) {
+    private static void refresh(Object helper) {
+        Object contextObject = ReflectUtils.getField(helper, "mContext");
+        if (!(contextObject instanceof Context)) {
             return;
         }
-        int width = 0;
-        int height = 0;
-        Object displaySizeObject = ReflectUtils.getField(handler, "mDisplaySize");
-        if (displaySizeObject instanceof Point) {
-            Point displaySize = (Point) displaySizeObject;
-            width = displaySize.x;
-            height = displaySize.y;
+        Object transformer = ReflectUtils.getField(helper, "mOrientationTouchTransformer");
+        if (transformer == null) {
+            return;
+        }
+        RectF left = copyRect(ReflectUtils.getField(transformer, "mAssistantLeftRegion"));
+        RectF right = copyRect(ReflectUtils.getField(transformer, "mAssistantRightRegion"));
+        if (left == null || right == null) {
+            return;
+        }
+        Context context = (Context) contextObject;
+        Point displaySize = resolveDisplaySize(context, transformer, left, right);
+        ensureOverlay(context);
+        if (overlayView != null) {
+            overlayView.setRegions(displaySize.x, displaySize.y, left, right);
+        }
+    }
+
+    private static RectF copyRect(Object value) {
+        return value instanceof RectF ? new RectF((RectF) value) : null;
+    }
+
+    private static Point resolveDisplaySize(Context context, Object transformer, RectF left, RectF right) {
+        Object cachedDisplayInfo = ReflectUtils.getField(transformer, "mCachedDisplayInfo");
+        Object size = ReflectUtils.getField(cachedDisplayInfo, "size");
+        if (size instanceof Point) {
+            Point point = (Point) size;
+            if (point.x > 0 && point.y > 0) {
+                return new Point(point.x, point.y);
+            }
+        }
+        int width = Math.round(Math.max(left.right, right.right));
+        int height = Math.round(Math.max(left.bottom, right.bottom));
+        if ((width <= 0 || height <= 0) && context.getDisplay() != null) {
+            Point point = new Point();
+            context.getDisplay().getRealSize(point);
+            width = point.x;
+            height = point.y;
         }
         if (width <= 0 || height <= 0) {
             DisplayMetrics metrics = context.getResources().getDisplayMetrics();
             width = metrics.widthPixels;
             height = metrics.heightPixels;
         }
-        int leftInset = ReflectUtils.getIntField(handler, "mLeftInset", 0);
-        int rightInset = ReflectUtils.getIntField(handler, "mRightInset", 0);
-        int leftWidth = Math.max(1,
-                (ReflectUtils.getIntField(handler, "mEdgeWidthLeft", 0) + leftInset) * 2);
-        int rightWidth = Math.max(1,
-                (ReflectUtils.getIntField(handler, "mEdgeWidthRight", 0) + rightInset) * 2);
-        int bottomCutout = Math.max(0, Math.round(getFloatField(handler, "mBottomGestureHeight", 0f)));
-        ensureOverlay(context);
-        if (overlayView != null) {
-            overlayView.setRegions(width, height, leftWidth, rightWidth, bottomCutout);
-        }
-    }
-
-    private static float getFloatField(Object target, String name, float fallback) {
-        Object value = ReflectUtils.getField(target, name);
-        return value instanceof Float ? (Float) value : fallback;
+        return new Point(Math.max(1, width), Math.max(1, height));
     }
 
     private static void ensureOverlay(Context context) {
         if (overlayView != null && overlayView.isAttachedToWindow()) {
             return;
         }
-        removeOverlayFromParent();
-        Object wm = context.getSystemService(Context.WINDOW_SERVICE);
+        removeOverlay();
+        Context appContext = context.getApplicationContext() != null
+                ? context.getApplicationContext()
+                : context;
+        Object wm = appContext.getSystemService(Context.WINDOW_SERVICE);
         if (!(wm instanceof WindowManager)) {
             return;
         }
         if (overlayView == null) {
-            overlayView = new DebugOverlayView(context);
+            overlayView = new DebugOverlayView(appContext);
         }
         WindowManager target = (WindowManager) wm;
+        Throwable lastError = null;
         for (int type : WINDOW_TYPE_CANDIDATES) {
             try {
-                target.addView(overlayView, buildLayoutParams(context, type));
+                target.addView(overlayView, buildLayoutParams(appContext, type));
+                overlayWindowManager = target;
                 return;
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
+                lastError = t;
+                try {
+                    target.removeViewImmediate(overlayView);
+                } catch (Throwable ignored) {
+                }
                 removeOverlayFromParent();
             }
         }
+        FlymeStatusBarSizer.logMBackWarning("Failed to attach bottom corner gesture debug overlay", lastError);
     }
 
     private static WindowManager.LayoutParams buildLayoutParams(Context context, int type) {
@@ -171,6 +204,18 @@ final class EdgeGestureDebugHooks {
         }
         applyTrustedOverlayFlags(params);
         return params;
+    }
+
+    private static void removeOverlay() {
+        WindowManager target = overlayWindowManager;
+        overlayWindowManager = null;
+        if (target != null && overlayView != null) {
+            try {
+                target.removeViewImmediate(overlayView);
+            } catch (Throwable ignored) {
+            }
+        }
+        removeOverlayFromParent();
     }
 
     private static void removeOverlayFromParent() {
@@ -230,46 +275,50 @@ final class EdgeGestureDebugHooks {
     private static final class DebugOverlayView extends View {
         private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF leftRegion = new RectF();
+        private final RectF rightRegion = new RectF();
         private int displayWidth;
         private int displayHeight;
-        private int leftWidth;
-        private int rightWidth;
-        private int bottomCutout;
 
         DebugOverlayView(Context context) {
             super(context);
-            fillPaint.setColor(0x55FF0000);
+            fillPaint.setColor(0x66FF0000);
             fillPaint.setStyle(Paint.Style.FILL);
             strokePaint.setColor(Color.RED);
             strokePaint.setStyle(Paint.Style.STROKE);
-            strokePaint.setStrokeWidth(2f);
+            strokePaint.setStrokeWidth(3f);
             setWillNotDraw(false);
         }
 
-        void setRegions(int width, int height, int left, int right, int bottom) {
-            displayWidth = Math.max(0, width);
-            displayHeight = Math.max(0, height);
-            leftWidth = Math.max(0, left);
-            rightWidth = Math.max(0, right);
-            bottomCutout = Math.max(0, bottom);
+        void setRegions(int width, int height, RectF left, RectF right) {
+            displayWidth = Math.max(1, width);
+            displayHeight = Math.max(1, height);
+            leftRegion.set(left);
+            rightRegion.set(right);
             invalidate();
         }
 
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
-            int width = displayWidth > 0 ? displayWidth : getWidth();
-            int height = displayHeight > 0 ? displayHeight : getHeight();
-            int bottom = Math.max(0, height - bottomCutout);
-            if (width <= 0 || bottom <= 0) {
+            if (leftRegion.isEmpty() && rightRegion.isEmpty()) {
                 return;
             }
-            int left = Math.min(leftWidth, width);
-            int right = Math.max(0, width - Math.min(rightWidth, width));
-            canvas.drawRect(0, 0, left, bottom, fillPaint);
-            canvas.drawRect(0, 0, left, bottom, strokePaint);
-            canvas.drawRect(right, 0, width, bottom, fillPaint);
-            canvas.drawRect(right, 0, width, bottom, strokePaint);
+            float scaleX = getWidth() > 0 ? getWidth() / (float) displayWidth : 1f;
+            float scaleY = getHeight() > 0 ? getHeight() / (float) displayHeight : 1f;
+            canvas.save();
+            canvas.scale(scaleX, scaleY);
+            drawRegion(canvas, leftRegion);
+            drawRegion(canvas, rightRegion);
+            canvas.restore();
+        }
+
+        private void drawRegion(Canvas canvas, RectF rect) {
+            if (rect.isEmpty()) {
+                return;
+            }
+            canvas.drawRect(rect, fillPaint);
+            canvas.drawRect(rect, strokePaint);
         }
     }
 }

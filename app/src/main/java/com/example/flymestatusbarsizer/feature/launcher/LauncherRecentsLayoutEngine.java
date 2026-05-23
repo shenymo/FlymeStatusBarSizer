@@ -15,14 +15,12 @@ import java.util.ArrayList;
 final class LauncherRecentsLayoutEngine {
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
     private static final float STACK_ENTRY_INITIAL_SPREAD_RATIO = 0.8f;
-    private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.5f;
     private static final float STACK_RIGHT_VISIBLE_RATIO = 0.80f;
     private static final float STACK_SPREAD_POWER = 0.75f;
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
     private static final float STACK_RELEASE_SETTLED_PROGRESS_SHIFT = 0.70f;
     private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
     private static final float STACK_LEFT_EDGE_EXTRA_SPACING_RATIO = 0.08f;
-    private static final float STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO = 0.30f;
     private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
     private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
     private static final float STACK_MIN_SCALE = 0.85f;
@@ -300,9 +298,6 @@ final class LauncherRecentsLayoutEngine {
             pageSpan = Math.max(1f, referenceWidth);
         }
         float scrollDelta = startScroll - targetScroll;
-        float targetLeftEdgeRevealProgress = resolveLeftEdgeRevealProgress(
-                recentsView,
-                targetScroll);
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             if (taskView == null
@@ -320,8 +315,7 @@ final class LauncherRecentsLayoutEngine {
                     recentsView,
                     resolveStackReleaseSettledProgress(targetProgress, 1f),
                     taskWidth,
-                    taskCenteredLeftPx,
-                    targetLeftEdgeRevealProgress);
+                    taskCenteredLeftPx);
             float startVisibleOffset =
                     startRawOffset
                             + LauncherRecentsCompat.readFloatField(
@@ -948,33 +942,13 @@ final class LauncherRecentsLayoutEngine {
             float progress,
             float taskWidth,
             float taskCenteredLeftPx) {
-        return resolveStackVisibleOffset(
-                recentsView,
-                progress,
-                taskWidth,
-                taskCenteredLeftPx,
-                resolveLeftEdgeRevealProgress(recentsView));
-    }
-
-    private static float resolveStackVisibleOffset(
-            View recentsView,
-            float progress,
-            float taskWidth,
-            float taskCenteredLeftPx,
-            float leftEdgeRevealProgress) {
         float stackLeftOffsetPx =
-                -taskCenteredLeftPx + (taskWidth * STACK_LEFT_EDGE_INSET_RATIO);
-        float stackLeftRestOffsetPx =
                 -taskCenteredLeftPx + (taskWidth * STACK_LEFT_REST_INSET_RATIO);
         float stackRightOffsetPx = Math.max(
                 0f,
                 recentsView.getWidth()
                         - (taskWidth * STACK_RIGHT_VISIBLE_RATIO)
                         - taskCenteredLeftPx);
-        float stackLeftTargetOffsetPx = lerp(
-                stackLeftRestOffsetPx,
-                stackLeftOffsetPx,
-                leftEdgeRevealProgress);
         float stackDepth = Math.abs(progress);
         if (stackDepth <= 0.001f) {
             return 0f;
@@ -986,7 +960,7 @@ final class LauncherRecentsLayoutEngine {
                 * STACK_LEFT_EDGE_EXTRA_SPACING_RATIO
                 * (1f - remapProgress(stackDepth, 0f, MAX_STACK_LAYERS));
         if (progress < 0f) {
-            return (stackLeftTargetOffsetPx + stackDepthSpacing) * stackSpreadProgress;
+            return (stackLeftOffsetPx + stackDepthSpacing) * stackSpreadProgress;
         }
         float rightOffsetPx = stackRightOffsetPx * stackSpreadProgress;
         if (progress > 1f) {
@@ -1011,21 +985,6 @@ final class LauncherRecentsLayoutEngine {
             return progress;
         }
         return progress + (STACK_RELEASE_SETTLED_PROGRESS_SHIFT * stackSettledShiftProgress);
-    }
-
-    private static float resolveLeftEdgeRevealProgress(View recentsView) {
-        return resolveLeftEdgeRevealProgress(recentsView, recentsView.getScrollX());
-    }
-
-    private static float resolveLeftEdgeRevealProgress(View recentsView, int primaryScroll) {
-        int minScroll = LauncherRecentsCompat.readIntField(
-                recentsView,
-                "mMinScroll",
-                recentsView.getScrollX());
-        float revealRange = Math.max(
-                1f,
-                recentsView.getWidth() * STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO);
-        return 1.0f - remapProgress(primaryScroll - minScroll, 0f, revealRange);
     }
 
     private static float resolveAppEntryCollapsedProgress(
