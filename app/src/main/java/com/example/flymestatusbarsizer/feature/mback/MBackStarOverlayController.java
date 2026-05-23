@@ -16,6 +16,8 @@ import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Shader;
+import android.graphics.SweepGradient;
 import android.graphics.drawable.GradientDrawable;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
@@ -182,7 +184,7 @@ final class MBackStarOverlayController {
         hidePreview();
         iconsLayer.removeAllViews();
         iconHolders.clear();
-        overlayView.setBackgroundColor(Color.argb(178, 0, 0, 0));
+        overlayView.setBackgroundColor(getOverlayBackgroundColor(context));
         overlayView.setAlpha(0f);
         overlayView.animate()
                 .alpha(1f)
@@ -268,6 +270,9 @@ final class MBackStarOverlayController {
                 | WindowManager.LayoutParams.FLAG_SPLIT_TOUCH
                 | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                 | WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS;
+        if (Build.VERSION.SDK_INT >= 31) {
+            flags |= WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
+        }
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -282,6 +287,9 @@ final class MBackStarOverlayController {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             params.layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+        }
+        if (Build.VERSION.SDK_INT >= 31) {
+            params.setBlurBehindRadius(dp(30));
         }
         applyTrustedOverlayFlags(params);
         return params;
@@ -381,7 +389,8 @@ final class MBackStarOverlayController {
                     .scaleX(1f)
                     .scaleY(1f)
                     .setStartDelay(Math.min(180L, i * 12L))
-                    .setDuration(160L)
+                    .setDuration(260L)
+                    .setInterpolator(new android.view.animation.OvershootInterpolator(1.3f))
                     .start();
         }
         updateHoverFromLastMotion();
@@ -650,16 +659,21 @@ final class MBackStarOverlayController {
                     .setStartDelay(0L)
                     .scaleX(1f)
                     .scaleY(1f)
-                    .setDuration(90L)
+                    .setDuration(180L)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.2f))
                     .start();
         }
         if (holder != null) {
+            if (holder != previous) {
+                overlayView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            }
             holder.root.bringToFront();
             holder.root.animate()
                     .setStartDelay(0L)
                     .scaleX(1.32f)
                     .scaleY(1.32f)
-                    .setDuration(90L)
+                    .setDuration(200L)
+                    .setInterpolator(new android.view.animation.OvershootInterpolator(1.8f))
                     .start();
             startHoverTimer(holder);
             showPreview(holder);
@@ -1241,7 +1255,12 @@ final class MBackStarOverlayController {
         FrameLayout container = new FrameLayout(context);
         container.setVisibility(View.GONE);
         container.setClipToOutline(true);
-        container.setElevation(dp(18));
+        container.setElevation(dp(10)); // 降低硬高度以优化阴影表现
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            // 使用淡雅、通透的软阴影参数，取代固有生硬的纯黑硬投影
+            container.setOutlineAmbientShadowColor(Color.argb(38, 0, 0, 0));
+            container.setOutlineSpotShadowColor(Color.argb(58, 8, 10, 16));
+        }
         previewCornerRadius = dp(PREVIEW_CORNER_RADIUS_DP);
         previewBackground = new GradientDrawable();
         previewBackground.setShape(GradientDrawable.RECTANGLE);
@@ -1280,7 +1299,7 @@ final class MBackStarOverlayController {
                 return true;
             }
         };
-        overlay.setBackgroundColor(Color.argb(178, 0, 0, 0));
+        overlay.setBackgroundColor(getOverlayBackgroundColor(context));
         overlay.setClipChildren(false);
         overlay.setClipToPadding(false);
         overlay.addView(
@@ -1532,8 +1551,17 @@ final class MBackStarOverlayController {
         if (previewBackground == null) {
             return;
         }
-        previewBackground.setColor(Color.argb(235, 16, 18, 24));
-        previewBackground.setStroke(0, Color.TRANSPARENT);
+        // 根据日夜模式微调填充色，使之呈半透且带有呼吸感
+        int bgColor = isNightMode() 
+                ? Color.argb(205, 20, 22, 30) 
+                : Color.argb(220, 255, 255, 255);
+        previewBackground.setColor(bgColor);
+        
+        // 引入 1dp 的极其纤细、高雅半透明微光边框，在磨砂玻璃背景下完美浮现
+        int strokeColor = isNightMode() 
+                ? Color.argb(40, 255, 255, 255) 
+                : Color.argb(48, 255, 255, 255);
+        previewBackground.setStroke(Math.max(1, dp(1)), strokeColor);
     }
 
     private boolean isNightMode() {
@@ -1543,6 +1571,25 @@ final class MBackStarOverlayController {
                     == Configuration.UI_MODE_NIGHT_YES;
         } catch (Throwable ignored) {
             return false;
+        }
+    }
+
+    private static int getOverlayBackgroundColor(Context context) {
+        boolean nightMode = false;
+        try {
+            nightMode = (context.getResources().getConfiguration().uiMode
+                    & Configuration.UI_MODE_NIGHT_MASK)
+                    == Configuration.UI_MODE_NIGHT_YES;
+        } catch (Throwable ignored) {
+        }
+        if (Build.VERSION.SDK_INT >= 31) {
+            return nightMode
+                    ? Color.argb(90, 10, 10, 15)
+                    : Color.argb(45, 0, 0, 0);
+        } else {
+            return nightMode
+                    ? Color.argb(190, 8, 8, 12)
+                    : Color.argb(135, 0, 0, 0);
         }
     }
 
@@ -1559,17 +1606,29 @@ final class MBackStarOverlayController {
         private final Paint progressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF arcBounds = new RectF();
         private float progress;
+        private Shader gradientShader;
+        private final float density;
 
         HoverTimerView(Context context) {
             super(context);
-            float density = context.getResources().getDisplayMetrics().density;
+            setLayerType(LAYER_TYPE_SOFTWARE, null); // 启用软件渲染以完美展示霓虹阴影
+            density = context.getResources().getDisplayMetrics().density;
+            
             trackPaint.setStyle(Paint.Style.STROKE);
-            trackPaint.setStrokeWidth(1.5f * density);
-            trackPaint.setColor(Color.argb(58, 255, 255, 255));
+            trackPaint.setStrokeWidth(1.2f * density);
+            trackPaint.setColor(Color.argb(38, 255, 255, 255)); // 更内敛高透的白色轨道
+            
             progressPaint.setStyle(Paint.Style.STROKE);
-            progressPaint.setStrokeWidth(2.4f * density);
+            progressPaint.setStrokeWidth(2.6f * density); // 略微加粗使极光色彩更饱和
             progressPaint.setStrokeCap(Paint.Cap.ROUND);
-            progressPaint.setColor(Color.WHITE);
+            
+            // 为圆弧进度设置耀眼的极光蓝外发光光晕
+            progressPaint.setShadowLayer(
+                    4.2f * density, 
+                    0f, 
+                    0f, 
+                    Color.parseColor("#00F2FE")
+            );
         }
 
         void setProgress(float progress) {
@@ -1578,16 +1637,44 @@ final class MBackStarOverlayController {
         }
 
         @Override
+        protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+            super.onSizeChanged(w, h, oldw, oldh);
+            if (w > 0 && h > 0) {
+                float cx = w / 2f;
+                float cy = h / 2f;
+                int[] colors = new int[] {
+                    Color.parseColor("#00F2FE"), // 天蓝
+                    Color.parseColor("#4FACFE"), // 耀蓝
+                    Color.parseColor("#8EC5FC"), // 柔蓝
+                    Color.parseColor("#E0C3FC"), // 优雅紫
+                    Color.parseColor("#00F2FE")  // 天蓝（闭环）
+                };
+                Shader sweep = new SweepGradient(cx, cy, colors, null);
+                android.graphics.Matrix matrix = new android.graphics.Matrix();
+                matrix.postRotate(-90f, cx, cy); // 旋转 90 度使渐变起点完美对齐 12 点钟的进度起点
+                sweep.setLocalMatrix(matrix);
+                gradientShader = sweep;
+            }
+        }
+
+        @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             float stroke = progressPaint.getStrokeWidth();
+            // 考虑阴影边缘所需的外边距，保证发光不会被容器剪切
+            float margin = stroke + 2.0f * density;
             arcBounds.set(
-                    stroke,
-                    stroke,
-                    getWidth() - stroke,
-                    getHeight() - stroke);
+                    margin,
+                    margin,
+                    getWidth() - margin,
+                    getHeight() - margin);
+            
             canvas.drawOval(arcBounds, trackPaint);
-            canvas.drawArc(arcBounds, -90f, 360f * progress, false, progressPaint);
+            
+            if (progress > 0.01f) {
+                progressPaint.setShader(gradientShader);
+                canvas.drawArc(arcBounds, -90f, 360f * progress, false, progressPaint);
+            }
         }
     }
 
