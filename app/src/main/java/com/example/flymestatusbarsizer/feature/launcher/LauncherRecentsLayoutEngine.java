@@ -351,7 +351,8 @@ final class LauncherRecentsLayoutEngine {
         if (launchState != null && launchState.frozen) {
             return;
         }
-        if (LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(recentsView)) {
+        if (LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(recentsView)
+                && !LauncherRecentsTouchController.shouldBypassStackDismissLayoutFreeze()) {
             return;
         }
         if (LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
@@ -765,8 +766,9 @@ final class LauncherRecentsLayoutEngine {
     static boolean shouldApplyDynamicStackLayout(View recentsView) {
         return shouldUseStackLayout(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
-                && !LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(
+                && (!LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(
                 recentsView)
+                || LauncherRecentsTouchController.shouldBypassStackDismissLayoutFreeze())
                 && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView));
