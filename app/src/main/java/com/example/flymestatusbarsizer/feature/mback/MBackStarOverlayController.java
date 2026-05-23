@@ -4,8 +4,11 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import android.app.ActivityManager;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Outline;
 import android.graphics.PixelFormat;
+import android.graphics.drawable.GradientDrawable;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -20,6 +23,7 @@ import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import android.view.ViewParent;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
@@ -28,6 +32,7 @@ import android.widget.ImageView;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashMap;
 
 final class MBackStarOverlayController {
     private static final int INTERNAL_WINDOW_TYPE_STATUS_BAR_SUB_PANEL = 2017;
@@ -45,6 +50,8 @@ final class MBackStarOverlayController {
     private static final float ICON_GAP_RATIO = 0.5f;
     private static final float GYRO_PARALLAX_SCALE = 120f;
     private static final int GYRO_PARALLAX_MAX_OFFSET_DP = 10;
+    private static final int PREVIEW_WIDTH_DP = 180;
+    private static final int PREVIEW_TOP_MARGIN_DP = 14;
     private static Method trustedOverlayMethod;
     private static boolean trustedOverlayMethodResolved;
     private static Field trustedOverlayPrivateFlagsField;
@@ -54,9 +61,13 @@ final class MBackStarOverlayController {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ActivityManager activityManager;
     private final MBackStarAppProvider appProvider;
+    private final MBackTaskSnapshotProvider snapshotProvider;
     private final FrameLayout overlayView;
     private final FrameLayout iconsLayer;
+    private final FrameLayout previewContainer;
+    private final ImageView previewImageView;
     private final ArrayList<IconHolder> iconHolders = new ArrayList<>();
+    private final HashMap<Integer, Bitmap> previewCache = new HashMap<>();
     private final SensorEventListener gyroListener = new SensorEventListener() {
         @Override
         public void onSensorChanged(SensorEvent event) {
@@ -92,8 +103,11 @@ final class MBackStarOverlayController {
                 ? (ActivityManager) this.context.getSystemService(Context.ACTIVITY_SERVICE)
                 : null;
         this.appProvider = new MBackStarAppProvider(this.context);
+        this.snapshotProvider = new MBackTaskSnapshotProvider(this.context);
         this.iconsLayer = new FrameLayout(this.context);
-        this.overlayView = buildOverlayView(this.context, iconsLayer);
+        this.previewImageView = buildPreviewImageView(this.context);
+        this.previewContainer = buildPreviewContainer(this.context, previewImageView);
+        this.overlayView = buildOverlayView(this.context, iconsLayer, previewContainer);
         Object sensorObject = this.context != null
                 ? this.context.getSystemService(Context.SENSOR_SERVICE)
                 : null;
@@ -120,6 +134,8 @@ final class MBackStarOverlayController {
         showing = true;
         hoveredHolder = null;
         apps = MBackStarApp.EMPTY_ARRAY;
+        previewCache.clear();
+        hidePreview();
         iconsLayer.removeAllViews();
         iconHolders.clear();
         overlayView.setAlpha(0f);
@@ -232,6 +248,8 @@ final class MBackStarOverlayController {
         mBackRawY = Float.NaN;
         resetParallax();
         apps = MBackStarApp.EMPTY_ARRAY;
+        previewCache.clear();
+        hidePreview();
         iconHolders.clear();
         iconsLayer.removeAllViews();
         overlayView.animate().cancel();
@@ -266,6 +284,7 @@ final class MBackStarOverlayController {
         iconsLayer.removeAllViews();
         iconHolders.clear();
         hoveredHolder = null;
+        hidePreview();
         MBackStarApp[] safeApps = apps != null ? apps : MBackStarApp.EMPTY_ARRAY;
         int count = safeApps.length;
         float originX = resolveOverlayOriginX(width);
@@ -504,6 +523,9 @@ final class MBackStarOverlayController {
             holder.root.setRotationY(clamp(parallaxX * depth * 0.42f, -5.5f, 5.5f));
             holder.root.setRotationX(clamp(-parallaxY * depth * 0.42f, -5.5f, 5.5f));
         }
+        if (hoveredHolder != null && previewContainer.getVisibility() == View.VISIBLE) {
+            updatePreviewPosition(hoveredHolder);
+        }
     }
 
     private void updateHover(float rawX, float rawY) {
@@ -558,7 +580,106 @@ final class MBackStarOverlayController {
                     .scaleY(1.32f)
                     .setDuration(90L)
                     .start();
+            showPreview(holder);
+        } else {
+            hidePreview();
         }
+    }
+
+    private void showPreview(IconHolder holder) {
+        if (holder == null || holder.app == null || holder.app.taskId < 0) {
+            hidePreview();
+            return;
+        }
+        int taskId = holder.app.taskId;
+        Bitmap cachedBitmap = previewCache.get(taskId);
+        if (cachedBitmap != null && !cachedBitmap.isRecycled()) {
+            showPreviewBitmap(holder, cachedBitmap);
+            return;
+        }
+        previewImageView.setImageBitmap(null);
+        setPreviewVisible(false);
+        snapshotProvider.requestSnapshot(taskId, handler, (resolvedTaskId, bitmap) -> {
+            if (!showing
+                    || bitmap == null
+                    || bitmap.isRecycled()
+                    || hoveredHolder == null
+                    || hoveredHolder.app == null
+                    || hoveredHolder.app.taskId != resolvedTaskId) {
+                return;
+            }
+            previewCache.put(resolvedTaskId, bitmap);
+            showPreviewBitmap(hoveredHolder, bitmap);
+        });
+    }
+
+    private void showPreviewBitmap(IconHolder holder, Bitmap bitmap) {
+        if (holder == null || bitmap == null || bitmap.isRecycled()) {
+            hidePreview();
+            return;
+        }
+        previewImageView.setImageBitmap(bitmap);
+        updatePreviewPosition(holder);
+        setPreviewVisible(true);
+    }
+
+    private void updatePreviewPosition(IconHolder holder) {
+        if (holder == null || previewContainer == null || overlayView.getWidth() <= 0) {
+            return;
+        }
+        int previewWidth = Math.min(dp(PREVIEW_WIDTH_DP), overlayView.getWidth() - dp(24));
+        int imageWidth = previewImageView.getDrawable() != null
+                ? previewImageView.getDrawable().getIntrinsicWidth()
+                : 0;
+        int imageHeight = previewImageView.getDrawable() != null
+                ? previewImageView.getDrawable().getIntrinsicHeight()
+                : 0;
+        int previewHeight = imageWidth > 0 && imageHeight > 0
+                ? Math.round(previewWidth * (imageHeight / (float) imageWidth))
+                : Math.round(previewWidth * 1.72f);
+        FrameLayout.LayoutParams params =
+                previewContainer.getLayoutParams() instanceof FrameLayout.LayoutParams
+                        ? (FrameLayout.LayoutParams) previewContainer.getLayoutParams()
+                        : new FrameLayout.LayoutParams(previewWidth, previewHeight);
+        params.width = previewWidth;
+        params.height = previewHeight;
+        float centerX = holder.root.getX() + (holder.root.getWidth() / 2f);
+        int margin = dp(12);
+        params.leftMargin = Math.round(clamp(
+                centerX - (previewWidth / 2f),
+                margin,
+                Math.max(margin, overlayView.getWidth() - previewWidth - margin)));
+        params.topMargin = Math.round(clamp(
+                holder.root.getY() - previewHeight - dp(PREVIEW_TOP_MARGIN_DP),
+                margin,
+                Math.max(margin, overlayView.getHeight() - previewHeight - margin)));
+        previewContainer.setLayoutParams(params);
+    }
+
+    private void hidePreview() {
+        previewImageView.setImageBitmap(null);
+        setPreviewVisible(false);
+    }
+
+    private void setPreviewVisible(boolean visible) {
+        if (previewContainer.getVisibility() == (visible ? View.VISIBLE : View.GONE)) {
+            return;
+        }
+        if (visible) {
+            previewContainer.setAlpha(0f);
+            previewContainer.setScaleX(0.96f);
+            previewContainer.setScaleY(0.96f);
+            previewContainer.setVisibility(View.VISIBLE);
+            previewContainer.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(100L)
+                    .start();
+            return;
+        }
+        previewContainer.animate().cancel();
+        previewContainer.setVisibility(View.GONE);
     }
 
     private void launchApp(MBackStarApp app) {
@@ -575,7 +696,42 @@ final class MBackStarOverlayController {
         }
     }
 
-    private static FrameLayout buildOverlayView(Context context, FrameLayout iconsLayer) {
+    private FrameLayout buildPreviewContainer(Context context, ImageView imageView) {
+        FrameLayout container = new FrameLayout(context);
+        container.setVisibility(View.GONE);
+        container.setClipToOutline(true);
+        container.setElevation(dp(18));
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setCornerRadius(dp(22));
+        background.setColor(Color.argb(235, 16, 18, 24));
+        background.setStroke(Math.max(1, dp(1)), Color.argb(92, 255, 255, 255));
+        container.setBackground(background);
+        container.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, Outline outline) {
+                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dp(22));
+            }
+        });
+        container.addView(
+                imageView,
+                new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT));
+        return container;
+    }
+
+    private static ImageView buildPreviewImageView(Context context) {
+        ImageView imageView = new ImageView(context);
+        imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        imageView.setAdjustViewBounds(false);
+        return imageView;
+    }
+
+    private static FrameLayout buildOverlayView(
+            Context context,
+            FrameLayout iconsLayer,
+            View previewContainer) {
         FrameLayout overlay = new FrameLayout(context) {
             @Override
             public boolean dispatchTouchEvent(MotionEvent event) {
@@ -591,6 +747,9 @@ final class MBackStarOverlayController {
                 new FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.MATCH_PARENT));
+        overlay.addView(
+                previewContainer,
+                new FrameLayout.LayoutParams(1, 1));
         return overlay;
     }
 
