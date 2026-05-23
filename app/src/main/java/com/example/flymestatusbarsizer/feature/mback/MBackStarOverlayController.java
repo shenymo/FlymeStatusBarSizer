@@ -5,7 +5,6 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
-import android.app.ActivityManager;
 import android.app.ActivityOptions;
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -65,14 +64,17 @@ final class MBackStarOverlayController {
             new DecelerateInterpolator(1.18f);
     private static Method trustedOverlayMethod;
     private static boolean trustedOverlayMethodResolved;
-    private static Method moveTaskToFrontWithOptionsMethod;
-    private static boolean moveTaskToFrontWithOptionsMethodResolved;
+    private static Method activityTaskManagerGetServiceMethod;
+    private static boolean activityTaskManagerGetServiceMethodResolved;
+    private static Method startActivityFromRecentsMethod;
+    private static boolean startActivityFromRecentsMethodResolved;
+    private static Method makeCustomTaskAnimationMethod;
+    private static boolean makeCustomTaskAnimationMethodResolved;
     private static Field trustedOverlayPrivateFlagsField;
     private static boolean trustedOverlayPrivateFlagsFieldResolved;
 
     private final Context context;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final ActivityManager activityManager;
     private final MBackStarAppProvider appProvider;
     private final MBackTaskSnapshotProvider snapshotProvider;
     private final FrameLayout overlayView;
@@ -116,9 +118,6 @@ final class MBackStarOverlayController {
                 ? context.getApplicationContext()
                 : context;
         this.context = appContext != null ? appContext : context;
-        this.activityManager = this.context != null
-                ? (ActivityManager) this.context.getSystemService(Context.ACTIVITY_SERVICE)
-                : null;
         this.appProvider = new MBackStarAppProvider(this.context);
         this.snapshotProvider = new MBackTaskSnapshotProvider(this.context);
         this.iconsLayer = new FrameLayout(this.context);
@@ -721,7 +720,7 @@ final class MBackStarOverlayController {
     }
 
     private void launchApp(MBackStarApp app) {
-        if (app == null || app.taskId < 0 || activityManager == null) {
+        if (app == null || app.taskId < 0) {
             dismiss();
             return;
         }
@@ -734,7 +733,7 @@ final class MBackStarOverlayController {
             return;
         }
         dismiss();
-        moveTaskToFront(taskId);
+        startTaskFromRecents(taskId);
     }
 
     private boolean startLaunchAnimation(int taskId) {
@@ -792,7 +791,7 @@ final class MBackStarOverlayController {
         launchAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
-                if (!moveTaskToFront(taskId)) {
+                if (!startTaskFromRecents(taskId)) {
                     dismiss();
                     return;
                 }
@@ -825,55 +824,32 @@ final class MBackStarOverlayController {
         setPreviewCornerRadius(dp(PREVIEW_CORNER_RADIUS_DP));
     }
 
-    private boolean moveTaskToFront(int taskId) {
+    private boolean startTaskFromRecents(int taskId) {
         try {
-            Bundle options = buildNoAnimationOptions();
-            if (startActivityFromRecents(taskId, options)) {
-                return true;
+            Bundle options = buildNoAnimationTaskOptions();
+            Object service = resolveActivityTaskManagerService();
+            Method method = resolveStartActivityFromRecentsMethod();
+            if (options == null || service == null || method == null) {
+                return false;
             }
-            Method method = resolveMoveTaskToFrontWithOptionsMethod();
-            if (method != null && options != null) {
-                method.invoke(activityManager, taskId, 0, options);
-            } else {
-                activityManager.moveTaskToFront(taskId, 0);
-            }
-            return true;
+            Object result = method.invoke(service, taskId, options);
+            return !(result instanceof Number) || ((Number) result).intValue() >= 0;
         } catch (Throwable t) {
-            FlymeStatusBarSizer.logMBackWarning("Failed to move mBack star task to front: " + taskId, t);
-            try {
-                activityManager.moveTaskToFront(taskId, 0);
-                return true;
-            } catch (Throwable fallback) {
-                FlymeStatusBarSizer.logMBackWarning(
-                        "Failed to fallback move mBack star task to front: " + taskId,
-                        fallback);
-            }
+            FlymeStatusBarSizer.logMBackWarning(
+                    "Failed to start mBack star task from recents: " + taskId,
+                    t);
         }
         return false;
     }
 
-    private boolean startActivityFromRecents(int taskId, Bundle options) {
+    private Bundle buildNoAnimationTaskOptions() {
         try {
-            Class<?> activityTaskManagerClass = Class.forName("android.app.ActivityTaskManager");
-            Method getServiceMethod = activityTaskManagerClass.getDeclaredMethod("getService");
-            getServiceMethod.setAccessible(true);
-            Object service = getServiceMethod.invoke(null);
-            if (service == null) {
-                return false;
+            Method method = resolveMakeCustomTaskAnimationMethod();
+            if (method == null) {
+                return null;
             }
-            Class<?> serviceClass = Class.forName("android.app.IActivityTaskManager");
-            Method method = serviceClass.getMethod("startActivityFromRecents", int.class, Bundle.class);
-            method.setAccessible(true);
-            Object result = method.invoke(service, taskId, options);
-            return !(result instanceof Integer) || (Integer) result >= 0;
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
-
-    private Bundle buildNoAnimationOptions() {
-        try {
-            return ActivityOptions.makeCustomAnimation(context, 0, 0).toBundle();
+            Object options = method.invoke(null, context, 0, 0, null, null, null);
+            return options instanceof ActivityOptions ? ((ActivityOptions) options).toBundle() : null;
         } catch (Throwable ignored) {
             return null;
         }
@@ -981,20 +957,68 @@ final class MBackStarOverlayController {
         return trustedOverlayPrivateFlagsField;
     }
 
-    private static Method resolveMoveTaskToFrontWithOptionsMethod() {
-        if (!moveTaskToFrontWithOptionsMethodResolved) {
+    private static Object resolveActivityTaskManagerService() {
+        try {
+            Method method = resolveActivityTaskManagerGetServiceMethod();
+            return method != null ? method.invoke(null) : null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static Method resolveActivityTaskManagerGetServiceMethod() {
+        if (!activityTaskManagerGetServiceMethodResolved) {
             try {
-                moveTaskToFrontWithOptionsMethod = ActivityManager.class.getMethod(
-                        "moveTaskToFront",
-                        int.class,
+                Class<?> clazz = Class.forName("android.app.ActivityTaskManager");
+                activityTaskManagerGetServiceMethod = clazz.getMethod("getService");
+                activityTaskManagerGetServiceMethod.setAccessible(true);
+            } catch (Throwable ignored) {
+                activityTaskManagerGetServiceMethod = null;
+            }
+            activityTaskManagerGetServiceMethodResolved = true;
+        }
+        return activityTaskManagerGetServiceMethod;
+    }
+
+    private static Method resolveStartActivityFromRecentsMethod() {
+        if (!startActivityFromRecentsMethodResolved) {
+            try {
+                Class<?> clazz = Class.forName("android.app.IActivityTaskManager");
+                startActivityFromRecentsMethod = clazz.getMethod(
+                        "startActivityFromRecents",
                         int.class,
                         Bundle.class);
+                startActivityFromRecentsMethod.setAccessible(true);
             } catch (Throwable ignored) {
-                moveTaskToFrontWithOptionsMethod = null;
+                startActivityFromRecentsMethod = null;
             }
-            moveTaskToFrontWithOptionsMethodResolved = true;
+            startActivityFromRecentsMethodResolved = true;
         }
-        return moveTaskToFrontWithOptionsMethod;
+        return startActivityFromRecentsMethod;
+    }
+
+    private static Method resolveMakeCustomTaskAnimationMethod() {
+        if (!makeCustomTaskAnimationMethodResolved) {
+            try {
+                Method[] methods = ActivityOptions.class.getDeclaredMethods();
+                for (Method method : methods) {
+                    Class<?>[] parameterTypes = method.getParameterTypes();
+                    if ("makeCustomTaskAnimation".equals(method.getName())
+                            && parameterTypes.length == 6
+                            && parameterTypes[0] == Context.class
+                            && parameterTypes[1] == int.class
+                            && parameterTypes[2] == int.class) {
+                        method.setAccessible(true);
+                        makeCustomTaskAnimationMethod = method;
+                        break;
+                    }
+                }
+            } catch (Throwable ignored) {
+                makeCustomTaskAnimationMethod = null;
+            }
+            makeCustomTaskAnimationMethodResolved = true;
+        }
+        return makeCustomTaskAnimationMethod;
     }
 
     private int dp(int value) {
