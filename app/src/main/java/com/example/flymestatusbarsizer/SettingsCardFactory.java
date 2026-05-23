@@ -102,6 +102,11 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_WIFI_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_WIFI_CODE_DRAW_ENABLED);
         activity.addDivider(content);
+        activity.addSwitchRow(content, "交换 Wi-Fi 与信号位置",
+                "让 Wi-Fi 图标显示在电池和移动信号之间。",
+                SettingsStore.KEY_SIGNAL_WIFI_SWAP_ENABLED,
+                SettingsStore.DEFAULT_SIGNAL_WIFI_SWAP_ENABLED);
+        activity.addDivider(content);
         activity.addProfileSectionHeader(content, "说明",
                 "移动信号由模块统一接管，5G/5GA 标识仍然跟随系统真实网络状态或 Telephony 调试结果。");
         return activity.buildSectionCard(

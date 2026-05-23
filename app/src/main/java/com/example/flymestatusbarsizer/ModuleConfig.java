@@ -27,6 +27,7 @@ final class ModuleConfig {
     boolean batteryCodeDrawEnabled = SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED;
     boolean signalCodeDrawEnabled = SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED;
     boolean wifiCodeDrawEnabled = SettingsStore.DEFAULT_WIFI_CODE_DRAW_ENABLED;
+    boolean signalWifiSwapEnabled = SettingsStore.DEFAULT_SIGNAL_WIFI_SWAP_ENABLED;
     int batteryIconStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
     boolean batteryLevelTextEnabled = SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED;
     boolean batteryHollowEnabled = SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED;
@@ -191,6 +192,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WIFI_CODE_DRAW_ENABLED,
                     SettingsStore.DEFAULT_WIFI_CODE_DRAW_ENABLED);
+            config.signalWifiSwapEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_SIGNAL_WIFI_SWAP_ENABLED,
+                    SettingsStore.DEFAULT_SIGNAL_WIFI_SWAP_ENABLED);
             config.batteryLevelTextEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,

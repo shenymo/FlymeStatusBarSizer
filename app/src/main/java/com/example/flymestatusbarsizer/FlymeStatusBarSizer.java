@@ -74,6 +74,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, BatteryViewState> BATTERY_VIEW_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_BATTERY_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_STATUS_BAR_ICON_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<ViewGroup, Boolean> TRACKED_STATUS_ICON_CONTAINERS =
+            new WeakHashMap<>();
     private static final WeakHashMap<ImageView, Boolean> TRACKED_WIFI_SIGNAL_VIEWS =
             new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_WIFI_ACTIVITY_ROOTS =
@@ -221,6 +223,7 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private void installStatusBarHooks(ClassLoader loader) {
         ConnectionRateHooks.install(this, loader);
+        hookStatusIconContainerTranslations(loader);
         hookStatusBarIconConstructors(loader);
     }
 
@@ -568,6 +571,28 @@ public class FlymeStatusBarSizer extends XposedModule {
                 });
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setColorFilter(ColorFilter)", t);
+        }
+    }
+
+    private void hookStatusIconContainerTranslations(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.statusbar.phone.StatusIconContainer",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("calculateIconTranslations");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof ViewGroup) {
+                    applyStatusIconWifiSignalTranslationSwap((ViewGroup) target);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook StatusIconContainer.calculateIconTranslations", t);
         }
     }
 
@@ -3030,6 +3055,119 @@ public class FlymeStatusBarSizer extends XposedModule {
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook " + className, t);
         }
+    }
+
+    private static boolean isSignalWifiSwapEnabled(ModuleConfig config) {
+        return config != null && config.enabled && config.signalWifiSwapEnabled;
+    }
+
+    private static void trackStatusIconContainer(ViewGroup parent) {
+        if (parent != null && isStatusIconsContainer(parent)) {
+            TRACKED_STATUS_ICON_CONTAINERS.put(parent, Boolean.TRUE);
+        }
+    }
+
+    private static boolean isStatusIconsContainer(View view) {
+        return view != null && "statusIcons".equals(getSystemUiIdName(view));
+    }
+
+    private static void applyStatusIconWifiSignalTranslationSwap(ViewGroup parent) {
+        if (parent == null || !isStatusIconsContainer(parent)) {
+            return;
+        }
+        trackStatusIconContainer(parent);
+        ModuleConfig config = ModuleConfig.load(parent.getContext());
+        if (!isSignalWifiSwapEnabled(config)) {
+            return;
+        }
+        View wifiView = findPrimaryWifiIconView(parent);
+        View mobileView = findRightmostMobileIconView(parent);
+        if (wifiView == null || mobileView == null || wifiView == mobileView) {
+            return;
+        }
+        Object wifiState = getStatusIconViewState(wifiView);
+        Object mobileState = getStatusIconViewState(mobileView);
+        if (wifiState == null || mobileState == null) {
+            return;
+        }
+        float wifiX = getStatusIconStateX(wifiState);
+        float mobileX = getStatusIconStateX(mobileState);
+        if (wifiX > mobileX) {
+            return;
+        }
+        float wifiRight = wifiX + getStatusIconViewTotalWidth(wifiView);
+        float mobileRight = mobileX + getStatusIconViewTotalWidth(mobileView);
+        setStatusIconStateX(wifiState, mobileRight - getStatusIconViewTotalWidth(wifiView));
+        setStatusIconStateX(mobileState, wifiRight - getStatusIconViewTotalWidth(mobileView));
+    }
+
+    private static Object getStatusIconViewState(View view) {
+        if (view == null) {
+            return null;
+        }
+        int tagId = getSystemUiId(view.getContext(), "status_bar_view_state_tag");
+        return tagId == 0 ? null : view.getTag(tagId);
+    }
+
+    private static float getStatusIconStateX(Object state) {
+        Object value = ReflectUtils.invokeNoArg(state, "getXTranslation");
+        return value instanceof Number ? ((Number) value).floatValue() : 0f;
+    }
+
+    private static void setStatusIconStateX(Object state, float x) {
+        ReflectUtils.invokeMethod(state, "setXTranslation", new Class[]{float.class}, x);
+    }
+
+    private static int getStatusIconViewTotalWidth(View view) {
+        return view == null ? 0 : view.getWidth() + view.getPaddingStart() + view.getPaddingEnd();
+    }
+
+    private static boolean isStatusIconStateVisible(View view) {
+        Object state = getStatusIconViewState(view);
+        return state != null && ReflectUtils.getIntField(state, "visibleState", 2) == 0;
+    }
+
+    private static View findPrimaryWifiIconView(ViewGroup parent) {
+        if (parent == null) {
+            return null;
+        }
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            View child = parent.getChildAt(i);
+            if (isPrimaryWifiIconContainer(child) && isStatusIconStateVisible(child)) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    private static View findRightmostMobileIconView(ViewGroup parent) {
+        if (parent == null) {
+            return null;
+        }
+        View result = null;
+        float rightmostX = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            View child = parent.getChildAt(i);
+            if (!isMobileIconContainer(child) || !isStatusIconStateVisible(child)) {
+                continue;
+            }
+            float x = getStatusIconStateX(getStatusIconViewState(child));
+            if (x > rightmostX) {
+                rightmostX = x;
+                result = child;
+            }
+        }
+        return result;
+    }
+
+    private static boolean isPrimaryWifiIconContainer(View view) {
+        return view != null
+                && findSystemUiChild(view, "wifi_signal") != null
+                && WIFI_SLOT_PRIMARY.equals(resolveWifiSlot(view));
+    }
+
+    private static boolean isMobileIconContainer(View view) {
+        return view != null && findSystemUiChild(view, "mobile_signal") != null;
     }
 
     private static void trackStatusBarIconView(View view) {
@@ -5822,9 +5960,26 @@ public class FlymeStatusBarSizer extends XposedModule {
         ConnectionRateHooks.refreshTrackedViews();
         refreshTrackedBatteryViews();
         refreshTrackedStatusBarIconViews();
+        refreshTrackedStatusIconLayout();
         ClockHooks.refreshTrackedViews();
         refreshTrackedInputMethodViews();
         LauncherRecentsHooks.refreshTrackedViews();
+    }
+
+    private static void refreshTrackedStatusIconLayout() {
+        Handler handler = MAIN_HANDLER;
+        if (handler == null) {
+            return;
+        }
+        handler.post(() -> {
+            ArrayList<ViewGroup> parents = new ArrayList<>(TRACKED_STATUS_ICON_CONTAINERS.keySet());
+            for (ViewGroup parent : parents) {
+                if (parent != null) {
+                    parent.requestLayout();
+                    parent.invalidate();
+                }
+            }
+        });
     }
 
     private static void refreshTrackedBatteryViews() {
