@@ -683,6 +683,8 @@ final class LauncherRecentsLayoutEngine {
                 && (LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView)
+                || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(
+                recentsView)
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                 recentsView));
     }

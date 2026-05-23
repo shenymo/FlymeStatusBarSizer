@@ -100,8 +100,9 @@ final class LauncherRecentsTouchController {
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
                     if (isStackDismissPostRemoveAnimationActive(recentsView)) {
-                        releasePagedTouchForStackDismiss(recentsView);
-                        return true;
+                        if (shouldConsumeStackDismissPostRemoveTouch(recentsView, motionEvent)) {
+                            return true;
+                        }
                     }
                     if (shouldKeepStackDismissGestureAwayFromPagedView(
                             recentsView,
@@ -134,8 +135,9 @@ final class LauncherRecentsTouchController {
                         && motionEvent != null) {
                     View recentsView = (View) thisObject;
                     if (isStackDismissPostRemoveAnimationActive(recentsView)) {
-                        releasePagedTouchForStackDismiss(recentsView);
-                        return true;
+                        if (shouldConsumeStackDismissPostRemoveTouch(recentsView, motionEvent)) {
+                            return true;
+                        }
                     }
                     if (shouldKeepStackDismissGestureAwayFromPagedView(
                             recentsView,
@@ -1104,7 +1106,7 @@ final class LauncherRecentsTouchController {
                 applyStackDismissFinalLayout(recentsView);
                 recentsView.invalidate();
             }
-            recentsView.post(() -> finishSilentNativeDismiss(recentsView));
+            recentsView.postOnAnimation(() -> finishSilentNativeDismiss(recentsView));
         });
     }
 
@@ -1113,15 +1115,38 @@ final class LauncherRecentsTouchController {
             SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
             SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
             setStackDismissPostRemoveAnimationActive(recentsView, false);
+            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+            if (recentsView != null) {
+                recentsView.invalidate();
+            }
             return;
         }
         clearNativeDismissTransforms(recentsView);
         clearStackDismissLayoutOffsets();
         applyStackDismissFinalLayout(recentsView);
-        recentsView.invalidate();
         SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
         SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
         setStackDismissPostRemoveAnimationActive(recentsView, false);
+        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        recentsView.invalidate();
+    }
+
+    private static boolean shouldConsumeStackDismissPostRemoveTouch(
+            View recentsView,
+            MotionEvent motionEvent) {
+        if (motionEvent != null
+                && motionEvent.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            releasePagedTouchForStackDismiss(recentsView);
+            finishSilentNativeDismiss(recentsView);
+            return false;
+        }
+        releasePagedTouchForStackDismiss(recentsView);
+        if (motionEvent != null
+                && (motionEvent.getActionMasked() == MotionEvent.ACTION_UP
+                || motionEvent.getActionMasked() == MotionEvent.ACTION_CANCEL)) {
+            finishSilentNativeDismiss(recentsView);
+        }
+        return true;
     }
 
     private static void setStackDismissPostRemoveAnimationActive(
