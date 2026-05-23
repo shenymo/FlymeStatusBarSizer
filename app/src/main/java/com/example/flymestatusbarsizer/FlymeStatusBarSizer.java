@@ -3095,10 +3095,14 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (wifiX > mobileX) {
             return;
         }
-        float wifiRight = wifiX + getStatusIconViewTotalWidth(wifiView);
-        float mobileRight = mobileX + getStatusIconViewTotalWidth(mobileView);
-        setStatusIconStateX(wifiState, mobileRight - getStatusIconViewTotalWidth(wifiView));
-        setStatusIconStateX(mobileState, wifiRight - getStatusIconViewTotalWidth(mobileView));
+        int wifiWidth = getStatusIconViewTotalWidth(wifiView);
+        int mobileWidth = getStatusIconViewTotalWidth(mobileView);
+        if (wifiWidth <= 0 || mobileWidth <= 0) {
+            return;
+        }
+        float spacing = Math.max(0f, mobileX - (wifiX + wifiWidth));
+        setStatusIconStateX(mobileState, wifiX);
+        setStatusIconStateX(wifiState, wifiX + mobileWidth + spacing);
     }
 
     private static Object getStatusIconViewState(View view) {
