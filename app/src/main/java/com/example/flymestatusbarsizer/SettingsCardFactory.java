@@ -97,6 +97,11 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED);
         activity.addDivider(content);
+        activity.addSwitchRow(content, "显示 5G/5GA 标识",
+                "关闭后只保留移动信号图标，不显示右侧移动网络类型标识。",
+                SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED,
+                SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED);
+        activity.addDivider(content);
         activity.addSwitchRow(content, "重绘 Wi-Fi 图标",
                 "在信号总开关开启时，单独控制是否继续接管 Wi-Fi 图标。",
                 SettingsStore.KEY_WIFI_CODE_DRAW_ENABLED,
@@ -108,7 +113,7 @@ final class SettingsCardFactory {
                 SettingsStore.DEFAULT_SIGNAL_WIFI_SWAP_ENABLED);
         activity.addDivider(content);
         activity.addProfileSectionHeader(content, "说明",
-                "移动信号由模块统一接管，5G/5GA 标识仍然跟随系统真实网络状态或 Telephony 调试结果。");
+                "5G/5GA 标识开启时跟随系统真实网络状态或 Telephony 调试结果。");
         return activity.buildSectionCard(
                 "信号与 Wi-Fi",
                 "移动网络图标统一由模块接管，同时保留 Wi-Fi 的独立开关。",

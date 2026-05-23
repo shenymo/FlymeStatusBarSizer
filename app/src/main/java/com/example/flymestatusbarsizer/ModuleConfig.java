@@ -26,6 +26,7 @@ final class ModuleConfig {
     boolean enabled = SettingsStore.DEFAULT_ENABLED;
     boolean batteryCodeDrawEnabled = SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED;
     boolean signalCodeDrawEnabled = SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED;
+    boolean signalMobileTypeBadgeEnabled = SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED;
     boolean wifiCodeDrawEnabled = SettingsStore.DEFAULT_WIFI_CODE_DRAW_ENABLED;
     boolean signalWifiSwapEnabled = SettingsStore.DEFAULT_SIGNAL_WIFI_SWAP_ENABLED;
     int batteryIconStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
@@ -188,6 +189,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
                     SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED);
+            config.signalMobileTypeBadgeEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED,
+                    SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED);
             config.wifiCodeDrawEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_WIFI_CODE_DRAW_ENABLED,

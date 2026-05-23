@@ -1798,9 +1798,11 @@ public class FlymeStatusBarSizer extends XposedModule {
         return resolveClockFontWeight(config);
     }
 
-    static int resolveSignalMobileTypeBadge() {
-        return resolveSignalMobileTypeBadgeForActiveDataSubscription(
-                ModuleConfig.getSystemUiContext());
+    static int resolveSignalMobileTypeBadge(ModuleConfig config, Context context) {
+        if (config == null || !config.signalMobileTypeBadgeEnabled) {
+            return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
+        }
+        return resolveSignalMobileTypeBadgeForActiveDataSubscription(context);
     }
 
     private static int resolveSignalMobileTypeBadgeFromText(String value) {
@@ -4213,7 +4215,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         alignSignalIconVertically(view);
         bindSignalViewState(view);
-        int mobileTypeBadge = resolveSignalMobileTypeBadge();
+        int mobileTypeBadge = resolveSignalMobileTypeBadge(config, context);
         MergedSignalLevels mergedSignalLevels = mergedDual
                 ? resolveMergedSignalLevels(view, mobileGroup)
                 : null;
