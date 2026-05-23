@@ -946,7 +946,10 @@ final class LauncherRecentsLaunchController {
         if (recentsView == null) {
             return;
         }
-        clearTaskLaunchHandoff(recentsView, false);
+        LauncherRecentsState.TASK_LAUNCH_REQUEST_STARTED.remove(recentsView);
+        if (!LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
+            return;
+        }
         LauncherRecentsCompat.invokeMethodReflectively(
                 recentsView,
                 "onTaskLaunchAnimationEnd",
