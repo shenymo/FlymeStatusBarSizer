@@ -89,8 +89,7 @@ final class LauncherRecentsLayoutEngine {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         recentsView.post(() -> {
                             prepareRecentsView(recentsView);
-                            LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
-                            applyDynamicStackLayoutIfNeeded(recentsView);
+                            requestDynamicStackLayout(recentsView, true);
                         });
                     }
                     return result;
@@ -124,8 +123,7 @@ final class LauncherRecentsLayoutEngine {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
                         if (shouldApplyDynamicStackLayout(recentsView)) {
-                            LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
-                            applyStackLayout(recentsView, false);
+                            requestDynamicStackLayout(recentsView, true);
                         }
                         return null;
                     }
@@ -133,8 +131,7 @@ final class LauncherRecentsLayoutEngine {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
                         if (shouldApplyDynamicStackLayout(recentsView)) {
-                            LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
-                            applyStackLayout(recentsView, false);
+                            requestDynamicStackLayout(recentsView, true);
                         }
                         return null;
                     }
@@ -145,8 +142,7 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (shouldApplyDynamicStackLayout(recentsView)) {
-                        LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
-                        applyStackLayout(recentsView, false);
+                        requestDynamicStackLayout(recentsView, true);
                     }
                 }
                 return result;
@@ -178,8 +174,7 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (shouldApplyDynamicStackLayout(recentsView)) {
-                        LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
-                        applyStackLayout(recentsView, false);
+                        requestDynamicStackLayout(recentsView, true);
                     }
                 }
                 return result;
@@ -206,8 +201,7 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (shouldApplyDynamicStackLayout(recentsView)) {
-                        LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
-                        applyStackLayout(recentsView, false);
+                        requestDynamicStackLayout(recentsView, true);
                     }
                 }
                 return result;
@@ -771,6 +765,14 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static boolean applyDynamicStackLayoutIfNeeded(View recentsView) {
+        return requestDynamicStackLayout(recentsView, false);
+    }
+
+    static boolean requestDynamicStackLayout(View recentsView) {
+        return requestDynamicStackLayout(recentsView, false);
+    }
+
+    static boolean requestDynamicStackLayout(View recentsView, boolean captureStockState) {
         if (recentsView == null) {
             return false;
         }
@@ -779,7 +781,38 @@ final class LauncherRecentsLayoutEngine {
         if (!shouldApplyDynamicStackLayout(recentsView)) {
             return false;
         }
-        applyStackLayout(recentsView, false);
+        if (captureStockState) {
+            LauncherRecentsState.PENDING_DYNAMIC_STACK_CAPTURE_STOCK_STATES.put(
+                    recentsView,
+                    Boolean.TRUE);
+        }
+        if (Boolean.TRUE.equals(
+                LauncherRecentsState.PENDING_DYNAMIC_STACK_LAYOUTS.get(recentsView))) {
+            return true;
+        }
+        LauncherRecentsState.PENDING_DYNAMIC_STACK_LAYOUTS.put(recentsView, Boolean.TRUE);
+        recentsView.postOnAnimation(() -> {
+            boolean shouldCaptureStockState = Boolean.TRUE.equals(
+                    LauncherRecentsState.PENDING_DYNAMIC_STACK_CAPTURE_STOCK_STATES.remove(
+                            recentsView));
+            LauncherRecentsState.PENDING_DYNAMIC_STACK_LAYOUTS.remove(recentsView);
+            if (applyDynamicStackLayoutNow(recentsView, shouldCaptureStockState)) {
+                recentsView.invalidate();
+            }
+        });
+        return true;
+    }
+
+    static boolean applyDynamicStackLayoutNow(View recentsView, boolean captureStockState) {
+        if (recentsView == null) {
+            return false;
+        }
+        LauncherRecentsState.trackRecentsView(recentsView);
+        prepareRecentsView(recentsView);
+        if (!shouldApplyDynamicStackLayout(recentsView)) {
+            return false;
+        }
+        applyStackLayout(recentsView, captureStockState);
         return true;
     }
 

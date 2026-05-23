@@ -44,6 +44,10 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> TASK_LAUNCH_REQUEST_STARTED =
             new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> PENDING_DYNAMIC_STACK_LAYOUTS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> PENDING_DYNAMIC_STACK_CAPTURE_STOCK_STATES =
+            new WeakHashMap<>();
     static final WeakHashMap<View, Float> ORIGINAL_NON_GRID_SCALES = new WeakHashMap<>();
     static final WeakHashMap<View, Float> ORIGINAL_BOX_TRANSLATION_YS = new WeakHashMap<>();
     static final WeakHashMap<View, Float> LAST_STOCK_TASK_OFFSET_XS = new WeakHashMap<>();
