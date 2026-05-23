@@ -82,6 +82,7 @@ final class LauncherRecentsTouchController {
         hookRecentsViewUpdateTaskSizeForSilentDismiss(module, loader);
         hookTaskViewNativeDismissTransformsForSilentDismiss(module, loader);
         hookRecentsViewDismissAnimationEnds(module, loader);
+        hookRecentsViewClearAllAnimationPage(module, loader);
     }
 
     private static void hookPagedViewOnInterceptTouchEvent(
@@ -444,6 +445,50 @@ final class LauncherRecentsTouchController {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook RecentsView.onDismissAnimationEnds",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewClearAllAnimationPage(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("createAllTasksDismissAnimationMz", long.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (!(thisObject instanceof View)) {
+                    return chain.proceed();
+                }
+                View recentsView = (View) thisObject;
+                int page = resolveStackClearAllAnimationPage(recentsView);
+                if (page < 0) {
+                    return chain.proceed();
+                }
+                Object originalPage = LauncherRecentsCompat.getFieldCompat(
+                        recentsView,
+                        "mCurrentPage");
+                if (!(originalPage instanceof Integer)) {
+                    return chain.proceed();
+                }
+                int originalPageValue = (Integer) originalPage;
+                if (originalPageValue == page) {
+                    return chain.proceed();
+                }
+                LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", page);
+                try {
+                    return chain.proceed();
+                } finally {
+                    LauncherRecentsCompat.setIntField(
+                            recentsView,
+                            "mCurrentPage",
+                            originalPageValue);
+                }
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView clear all animation page",
                     t);
         }
     }
@@ -1407,6 +1452,64 @@ final class LauncherRecentsTouchController {
         }
         View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
         return shouldExposeStackTaskForDismissVisibility(recentsView, taskView);
+    }
+
+    private static int resolveStackClearAllAnimationPage(View recentsView) {
+        if (recentsView == null || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+            return -1;
+        }
+        ArrayList<Integer> visiblePages = new ArrayList<>();
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (isStackClearAllAnimationTaskVisible(recentsView, taskView)) {
+                visiblePages.add(i);
+            }
+        }
+        if (visiblePages.isEmpty()) {
+            return -1;
+        }
+        return visiblePages.get(visiblePages.size() / 2);
+    }
+
+    private static boolean isStackClearAllAnimationTaskVisible(
+            View recentsView,
+            View taskView) {
+        return recentsView != null
+                && taskView != null
+                && taskView.getVisibility() == View.VISIBLE
+                && readStackTaskDataAlpha(taskView) > STACK_LEFT_RELEASE_ALPHA_THRESHOLD
+                && taskView.getWidth() > 0
+                && taskView.getHeight() > 0
+                && isStackTaskWithinRecentsViewport(recentsView, taskView);
+    }
+
+    private static boolean isStackTaskWithinRecentsViewport(View recentsView, View taskView) {
+        if (recentsView.getWidth() <= 0 || recentsView.getHeight() <= 0) {
+            return false;
+        }
+        int[] recentsLocation = new int[2];
+        int[] taskLocation = new int[2];
+        recentsView.getLocationOnScreen(recentsLocation);
+        taskView.getLocationOnScreen(taskLocation);
+
+        float scaleX = Math.max(0.01f, Math.abs(taskView.getScaleX()));
+        float scaleY = Math.max(0.01f, Math.abs(taskView.getScaleY()));
+        float taskLeft = taskLocation[0] + taskView.getPivotX()
+                - (taskView.getPivotX() * scaleX);
+        float taskTop = taskLocation[1] + taskView.getPivotY()
+                - (taskView.getPivotY() * scaleY);
+        float taskRight = taskLeft + (taskView.getWidth() * scaleX);
+        float taskBottom = taskTop + (taskView.getHeight() * scaleY);
+
+        float recentsLeft = recentsLocation[0];
+        float recentsTop = recentsLocation[1];
+        float recentsRight = recentsLeft + recentsView.getWidth();
+        float recentsBottom = recentsTop + recentsView.getHeight();
+        return taskRight > recentsLeft
+                && taskLeft < recentsRight
+                && taskBottom > recentsTop
+                && taskTop < recentsBottom;
     }
 
     static void ensureStackVisibleTaskData(View recentsView, int changes) {
