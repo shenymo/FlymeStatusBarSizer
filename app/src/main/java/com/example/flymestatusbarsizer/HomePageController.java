@@ -4,6 +4,7 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -71,6 +72,10 @@ final class HomePageController {
         title.setTextSize(24);
         card.addView(title, PageViewUtils.matchWrap());
 
+        LinearLayout buttonRow = new LinearLayout(activity);
+        buttonRow.setOrientation(LinearLayout.HORIZONTAL);
+        buttonRow.setGravity(Gravity.CENTER_VERTICAL);
+
         TextView restartButton = buildChip(activity, "重启 SystemUI", Color.WHITE, 0x26FFFFFF);
         restartButton.setPadding(
                 PageViewUtils.dp(activity, 14),
@@ -78,7 +83,26 @@ final class HomePageController {
                 PageViewUtils.dp(activity, 14),
                 PageViewUtils.dp(activity, 10));
         activity.setTapClickListener(restartButton, v -> activity.restartSystemUi());
-        card.addView(restartButton, PageViewUtils.wrapWrapWithTop(activity, 18));
+        buttonRow.addView(restartButton, PageViewUtils.wrapWrap());
+
+        ImageView donationButton = new ImageView(activity);
+        donationButton.setImageResource(R.drawable.ic_donate_copy);
+        donationButton.setContentDescription("捐赠");
+        donationButton.setScaleType(ImageView.ScaleType.CENTER);
+        donationButton.setPadding(
+                PageViewUtils.dp(activity, 10),
+                PageViewUtils.dp(activity, 10),
+                PageViewUtils.dp(activity, 10),
+                PageViewUtils.dp(activity, 10));
+        donationButton.setBackground(buildSolidBackground(0x26FFFFFF, 999, activity));
+        activity.setTapClickListener(donationButton, v -> activity.openPage(MainActivity.Page.DONATION));
+        LinearLayout.LayoutParams donationLp = new LinearLayout.LayoutParams(
+                PageViewUtils.dp(activity, 40),
+                PageViewUtils.dp(activity, 40));
+        donationLp.leftMargin = PageViewUtils.dp(activity, 10);
+        buttonRow.addView(donationButton, donationLp);
+
+        card.addView(buttonRow, PageViewUtils.wrapWrapWithTop(activity, 18));
         return card;
     }
 

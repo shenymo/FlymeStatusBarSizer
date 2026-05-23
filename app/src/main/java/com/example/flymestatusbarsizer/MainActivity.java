@@ -141,6 +141,7 @@ public class MainActivity extends Activity {
         SYSTEM_INTERACTION("系统交互", "MBack 长触、导航栏沉浸与高度、输入法控制栏接管，以及系统桌面后台卡片布局调整。", null, true),
         ADVANCED_DEBUG("高级与调试", "配置管理、WIFI 性能打点，以及高阶工具入口。", null, true),
         ABOUT("关于与支持", "项目地址、交流群、版本构建信息和目标作用域说明。", null, false),
+        DONATION("捐赠", null, null, false),
         POSITION_TUNING("布局微调", "单独调整时钟、电池、信号、Wi-Fi 与输入法控制栏的细节位置。", null, true),
         TELEPHONY_DEBUG("Telephony 调试", "伪造 Telephony 读数，验证双卡、网络制式与信号等级对图标布局的影响。", null, true);
 
@@ -238,6 +239,7 @@ public class MainActivity extends Activity {
                 SystemInteractionPageController::bind);
         registerPage(Page.ADVANCED_DEBUG, R.layout.page_advanced_debug, AdvancedDebugPageController::bind);
         registerPage(Page.ABOUT, R.layout.page_about, AboutPageController::bind);
+        registerPage(Page.DONATION, R.layout.page_donation, null);
         registerPage(Page.POSITION_TUNING, R.layout.page_position_tuning, PositionTuningPageController::bind);
         registerPage(Page.TELEPHONY_DEBUG, R.layout.page_telephony_debug, TelephonyDebugPageController::bind);
     }

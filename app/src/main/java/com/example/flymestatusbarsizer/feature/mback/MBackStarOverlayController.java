@@ -7,10 +7,15 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.app.ActivityOptions;
 import android.content.Context;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Outline;
+import android.graphics.Paint;
 import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
@@ -32,6 +37,7 @@ import android.view.ViewOutlineProvider;
 import android.view.ViewParent;
 import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
+import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
@@ -59,9 +65,14 @@ final class MBackStarOverlayController {
     private static final int PREVIEW_WIDTH_DP = 180;
     private static final int PREVIEW_TOP_MARGIN_DP = 14;
     private static final int PREVIEW_CORNER_RADIUS_DP = 22;
+    private static final float SMALL_WINDOW_ICON_SCALE = 1f / 3f;
+    private static final int FLYME_WINDOW_MODE_MINI = 11;
+    private static final int FLYME_WINDOW_MODE_FREEFORM = 1035;
     private static final String START_WINDOW_MODE_BUNDLE_KEY = "start_windowmode";
-    private static final long SMALL_WINDOW_HOVER_TIMEOUT_MS = 500L;
-    private static final long SMALL_WINDOW_OVERLAY_DISMISS_DELAY_MS = 220L;
+    private static final long SMALL_WINDOW_ANIMATION_START_DELAY_MS = 48L;
+    private static final long SMALL_WINDOW_ANIMATION_DURATION_MS = 260L;
+    private static final long SMALL_WINDOW_HOVER_TIMEOUT_MS = 1000L;
+    private static final long SMALL_WINDOW_OVERLAY_DISMISS_DELAY_MS = 60L;
     private static final long LAUNCH_ANIMATION_DURATION_MS = 260L;
     private static final long LAUNCH_OVERLAY_DISMISS_DELAY_MS = 360L;
     private static final DecelerateInterpolator LAUNCH_ANIMATION_INTERPOLATOR =
@@ -78,6 +89,8 @@ final class MBackStarOverlayController {
     private static boolean windowManagerExtGetInstanceMethodResolved;
     private static Method setStartWindowModeMethod;
     private static boolean setStartWindowModeMethodResolved;
+    private static Method getWindowModeBoundMethod;
+    private static boolean getWindowModeBoundMethodResolved;
     private static Field trustedOverlayPrivateFlagsField;
     private static boolean trustedOverlayPrivateFlagsFieldResolved;
 
@@ -119,6 +132,8 @@ final class MBackStarOverlayController {
     private float mBackRawX = Float.NaN;
     private float mBackRawY = Float.NaN;
     private ValueAnimator launchAnimator;
+    private ValueAnimator hoverTimerAnimator;
+    private boolean smallWindowReadyHapticFired;
     private GradientDrawable previewBackground;
     private float previewCornerRadius;
 
@@ -158,13 +173,16 @@ final class MBackStarOverlayController {
             return;
         }
         showing = true;
+        cancelHoverTimer();
         hoveredHolder = null;
         hoveredHolderStartTimeMs = 0L;
+        smallWindowReadyHapticFired = false;
         apps = MBackStarApp.EMPTY_ARRAY;
         previewCache.clear();
         hidePreview();
         iconsLayer.removeAllViews();
         iconHolders.clear();
+        overlayView.setBackgroundColor(Color.argb(178, 0, 0, 0));
         overlayView.setAlpha(0f);
         overlayView.animate()
                 .alpha(1f)
@@ -276,6 +294,7 @@ final class MBackStarOverlayController {
         showing = false;
         launchAnimationRunning = false;
         stopGyro();
+        cancelHoverTimer();
         hoveredHolder = null;
         hoveredHolderStartTimeMs = 0L;
         lastRawX = Float.NaN;
@@ -318,6 +337,7 @@ final class MBackStarOverlayController {
             overlayView.post(this::renderApps);
             return;
         }
+        cancelHoverTimer();
         iconsLayer.removeAllViews();
         iconHolders.clear();
         hoveredHolder = null;
@@ -337,6 +357,7 @@ final class MBackStarOverlayController {
                 continue;
             }
             FrameLayout root = buildIconRoot(app, hitSize, iconSize);
+            HoverTimerView timerView = findHoverTimerView(root);
             float[] point = resolveSemicirclePoint(
                     i,
                     count,
@@ -349,7 +370,7 @@ final class MBackStarOverlayController {
             params.leftMargin = Math.round(point[0]);
             params.topMargin = Math.round(point[1]);
             iconsLayer.addView(root, params);
-            IconHolder holder = new IconHolder(app, root, resolveIconDepth(i, count));
+            IconHolder holder = new IconHolder(app, root, timerView, resolveIconDepth(i, count));
             iconHolders.add(holder);
             root.setCameraDistance(dp(900));
             root.setAlpha(0f);
@@ -379,8 +400,22 @@ final class MBackStarOverlayController {
         FrameLayout.LayoutParams iconParams = new FrameLayout.LayoutParams(iconSize, iconSize);
         iconParams.gravity = Gravity.CENTER;
         root.addView(iconView, iconParams);
+        HoverTimerView timerView = new HoverTimerView(context);
+        timerView.setVisibility(View.GONE);
+        int timerSize = Math.min(hitSize, Math.round(iconSize * 1.36f));
+        FrameLayout.LayoutParams timerParams = new FrameLayout.LayoutParams(timerSize, timerSize);
+        timerParams.gravity = Gravity.CENTER;
+        root.addView(timerView, timerParams);
         root.setLayoutParams(new FrameLayout.LayoutParams(hitSize, hitSize));
         return root;
+    }
+
+    private static HoverTimerView findHoverTimerView(FrameLayout root) {
+        if (root == null || root.getChildCount() == 0) {
+            return null;
+        }
+        View child = root.getChildAt(root.getChildCount() - 1);
+        return child instanceof HoverTimerView ? (HoverTimerView) child : null;
     }
 
     private float[] resolveSemicirclePoint(
@@ -607,6 +642,7 @@ final class MBackStarOverlayController {
             return;
         }
         IconHolder previous = hoveredHolder;
+        stopHoverTimer(previous);
         hoveredHolder = holder;
         hoveredHolderStartTimeMs = holder != null ? SystemClock.uptimeMillis() : 0L;
         if (previous != null) {
@@ -618,7 +654,6 @@ final class MBackStarOverlayController {
                     .start();
         }
         if (holder != null) {
-            overlayView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
             holder.root.bringToFront();
             holder.root.animate()
                     .setStartDelay(0L)
@@ -626,10 +661,77 @@ final class MBackStarOverlayController {
                     .scaleY(1.32f)
                     .setDuration(90L)
                     .start();
+            startHoverTimer(holder);
             showPreview(holder);
         } else {
             hidePreview();
         }
+    }
+
+    private void startHoverTimer(IconHolder holder) {
+        if (holder == null || holder.timerView == null) {
+            return;
+        }
+        smallWindowReadyHapticFired = false;
+        holder.timerView.setProgress(0f);
+        holder.timerView.setVisibility(View.VISIBLE);
+        hoverTimerAnimator = ValueAnimator.ofFloat(0f, 1f);
+        hoverTimerAnimator.setDuration(SMALL_WINDOW_HOVER_TIMEOUT_MS);
+        hoverTimerAnimator.setInterpolator(new LinearInterpolator());
+        hoverTimerAnimator.addUpdateListener(animation -> {
+            if (holder != hoveredHolder || launchAnimationRunning) {
+                return;
+            }
+            float progress = (Float) animation.getAnimatedValue();
+            holder.timerView.setProgress(progress);
+            if (!smallWindowReadyHapticFired && progress >= 1f) {
+                fireSmallWindowReadyHaptic();
+            }
+        });
+        hoverTimerAnimator.addListener(new AnimatorListenerAdapter() {
+            private boolean canceled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                canceled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (!canceled
+                        && holder == hoveredHolder
+                        && !launchAnimationRunning
+                        && !smallWindowReadyHapticFired) {
+                    holder.timerView.setProgress(1f);
+                    fireSmallWindowReadyHaptic();
+                }
+            }
+        });
+        hoverTimerAnimator.start();
+    }
+
+    private void fireSmallWindowReadyHaptic() {
+        if (smallWindowReadyHapticFired) {
+            return;
+        }
+        smallWindowReadyHapticFired = true;
+        overlayView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+    }
+
+    private void stopHoverTimer(IconHolder holder) {
+        if (hoverTimerAnimator != null) {
+            hoverTimerAnimator.cancel();
+            hoverTimerAnimator = null;
+        }
+        smallWindowReadyHapticFired = false;
+        if (holder != null && holder.timerView != null) {
+            holder.timerView.setProgress(0f);
+            holder.timerView.setVisibility(View.GONE);
+        }
+    }
+
+    private void cancelHoverTimer() {
+        stopHoverTimer(hoveredHolder);
     }
 
     private boolean shouldLaunchSmallWindow(IconHolder holder) {
@@ -715,7 +817,10 @@ final class MBackStarOverlayController {
     }
 
     private void hidePreview() {
-        previewImageView.setImageBitmap(null);
+        previewImageView.setImageDrawable(null);
+        previewImageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        previewImageView.setPadding(0, 0, 0, 0);
+        resetPreviewBackground();
         setPreviewVisible(false);
     }
 
@@ -765,7 +870,25 @@ final class MBackStarOverlayController {
         if (holder == null || holder.app == null || holder.app.taskId < 0) {
             return false;
         }
+        if (!prepareSmallWindowPreview(holder)) {
+            return false;
+        }
+        FrameLayout.LayoutParams params =
+                previewContainer.getLayoutParams() instanceof FrameLayout.LayoutParams
+                        ? (FrameLayout.LayoutParams) previewContainer.getLayoutParams()
+                        : null;
+        if (params == null) {
+            return false;
+        }
+        int startWidth = previewContainer.getWidth() > 0 ? previewContainer.getWidth() : params.width;
+        int startHeight = previewContainer.getHeight() > 0 ? previewContainer.getHeight() : params.height;
+        if (startWidth <= 0 || startHeight <= 0 || overlayView.getWidth() <= 0
+                || overlayView.getHeight() <= 0) {
+            return false;
+        }
+        fireSmallWindowReadyHaptic();
         launchAnimationRunning = true;
+        stopHoverTimer(holder);
         stopGyro();
         overlayView.animate().cancel();
         overlayView.setAlpha(1f);
@@ -784,21 +907,182 @@ final class MBackStarOverlayController {
         previewContainer.setClipToOutline(true);
         setPreviewCornerRadius(dp(PREVIEW_CORNER_RADIUS_DP));
 
+        final int startLeft = params.leftMargin;
+        final int startTop = params.topMargin;
+        final int taskId = holder.app.taskId;
         boolean started = startTaskFromRecentsInSmallWindow(holder.app);
         if (!started) {
             resetLaunchAnimationState();
             return false;
         }
-        overlayView.animate()
-                .alpha(0f)
-                .setDuration(160L)
-                .start();
-        handler.postDelayed(() -> {
-            if (launchAnimationRunning) {
-                dismiss();
-            }
-        }, SMALL_WINDOW_OVERLAY_DISMISS_DELAY_MS);
+        handler.postDelayed(
+                () -> startSmallWindowPreviewAnimation(
+                        taskId,
+                        startLeft,
+                        startTop,
+                        startWidth,
+                        startHeight),
+                SMALL_WINDOW_ANIMATION_START_DELAY_MS);
         return true;
+    }
+
+    private boolean prepareSmallWindowPreview(IconHolder holder) {
+        if (holder == null || holder.app == null) {
+            return false;
+        }
+        boolean hasPreviewFrame = previewContainer.getVisibility() == View.VISIBLE
+                && previewContainer.getLayoutParams() instanceof FrameLayout.LayoutParams
+                && ((FrameLayout.LayoutParams) previewContainer.getLayoutParams()).width > 1
+                && ((FrameLayout.LayoutParams) previewContainer.getLayoutParams()).height > 1;
+        if (!hasPreviewFrame) {
+            updatePreviewPosition(holder);
+        }
+        previewImageView.setImageDrawable(holder.app.icon);
+        applySmallWindowIconPadding();
+        setPreviewTransitionBackground();
+        previewContainer.animate().cancel();
+        previewContainer.bringToFront();
+        previewContainer.setVisibility(View.VISIBLE);
+        previewContainer.setAlpha(1f);
+        previewContainer.setScaleX(1f);
+        previewContainer.setScaleY(1f);
+        previewContainer.setTranslationX(0f);
+        previewContainer.setTranslationY(0f);
+        previewImageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        return previewContainer.getLayoutParams() instanceof FrameLayout.LayoutParams;
+    }
+
+    private void startSmallWindowPreviewAnimation(
+            int taskId,
+            int startLeft,
+            int startTop,
+            int startWidth,
+            int startHeight) {
+        if (!launchAnimationRunning) {
+            return;
+        }
+        Rect target = resolveSmallWindowTargetRect(taskId, startWidth, startHeight);
+        if (target == null || target.isEmpty()) {
+            target = buildFallbackSmallWindowTargetRect(startWidth, startHeight);
+        }
+        if (target == null || target.isEmpty()) {
+            dismiss();
+            return;
+        }
+        final Rect finalTarget = target;
+        launchAnimator = ValueAnimator.ofFloat(0f, 1f);
+        launchAnimator.setDuration(SMALL_WINDOW_ANIMATION_DURATION_MS);
+        launchAnimator.setInterpolator(LAUNCH_ANIMATION_INTERPOLATOR);
+        launchAnimator.addUpdateListener(animation -> {
+            float progress = animation.getAnimatedFraction();
+            FrameLayout.LayoutParams currentParams =
+                    previewContainer.getLayoutParams() instanceof FrameLayout.LayoutParams
+                            ? (FrameLayout.LayoutParams) previewContainer.getLayoutParams()
+                            : new FrameLayout.LayoutParams(startWidth, startHeight);
+            currentParams.leftMargin = Math.round(lerp(startLeft, finalTarget.left, progress));
+            currentParams.topMargin = Math.round(lerp(startTop, finalTarget.top, progress));
+            currentParams.width = Math.max(1, Math.round(lerp(startWidth, finalTarget.width(), progress)));
+            currentParams.height = Math.max(1, Math.round(lerp(startHeight, finalTarget.height(), progress)));
+            previewContainer.setLayoutParams(currentParams);
+            applySmallWindowIconPadding();
+            previewContainer.invalidateOutline();
+        });
+        launchAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                previewImageView.setImageDrawable(null);
+                previewImageView.setPadding(0, 0, 0, 0);
+                previewContainer.setVisibility(View.GONE);
+                overlayView.setBackgroundColor(Color.TRANSPARENT);
+                handler.postDelayed(() -> {
+                    if (launchAnimationRunning) {
+                        dismiss();
+                    }
+                }, SMALL_WINDOW_OVERLAY_DISMISS_DELAY_MS);
+            }
+        });
+        launchAnimator.start();
+    }
+
+    private Rect resolveSmallWindowTargetRect(int taskId, int startWidth, int startHeight) {
+        try {
+            Object windowManagerExt = resolveWindowManagerExtInstance(context);
+            Method method = resolveGetWindowModeBoundMethod();
+            if (windowManagerExt == null || method == null) {
+                return null;
+            }
+            Rect rect = resolveWindowModeBound(
+                    windowManagerExt,
+                    method,
+                    taskId,
+                    FLYME_WINDOW_MODE_MINI);
+            if (rect.isEmpty()) {
+                rect = resolveWindowModeBound(
+                        windowManagerExt,
+                        method,
+                        taskId,
+                        FLYME_WINDOW_MODE_FREEFORM);
+            }
+            if (rect.isEmpty()) {
+                return null;
+            }
+            int[] location = new int[2];
+            overlayView.getLocationOnScreen(location);
+            rect.offset(-location[0], -location[1]);
+            return clampRectToOverlay(rect, startWidth, startHeight);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private Rect resolveWindowModeBound(
+            Object windowManagerExt,
+            Method method,
+            int taskId,
+            int windowMode) throws Exception {
+        Object result = method.invoke(windowManagerExt, resolveDisplayId(), taskId, windowMode);
+        return result instanceof Rect ? new Rect((Rect) result) : new Rect();
+    }
+
+    private Rect buildFallbackSmallWindowTargetRect(int startWidth, int startHeight) {
+        int overlayWidth = overlayView.getWidth();
+        int overlayHeight = overlayView.getHeight();
+        if (overlayWidth <= 0 || overlayHeight <= 0 || startWidth <= 0 || startHeight <= 0) {
+            return null;
+        }
+        float aspect = startHeight / (float) startWidth;
+        int targetWidth = Math.round(overlayWidth * 0.68f);
+        int targetHeight = Math.round(targetWidth * aspect);
+        int maxHeight = Math.round(overlayHeight * 0.68f);
+        if (targetHeight > maxHeight) {
+            targetHeight = maxHeight;
+            targetWidth = Math.round(targetHeight / Math.max(0.1f, aspect));
+        }
+        int left = Math.round((overlayWidth - targetWidth) / 2f);
+        int top = Math.round(((overlayHeight - targetHeight) / 2f) - dp(28));
+        return clampRectToOverlay(
+                new Rect(left, top, left + targetWidth, top + targetHeight),
+                startWidth,
+                startHeight);
+    }
+
+    private Rect clampRectToOverlay(Rect rect, int startWidth, int startHeight) {
+        if (rect == null || rect.isEmpty()) {
+            return null;
+        }
+        int overlayWidth = overlayView.getWidth();
+        int overlayHeight = overlayView.getHeight();
+        if (overlayWidth <= 0 || overlayHeight <= 0) {
+            return null;
+        }
+        int minWidth = Math.max(dp(120), Math.round(startWidth * 0.72f));
+        int minHeight = Math.max(dp(160), Math.round(startHeight * 0.72f));
+        int width = Math.round(clamp(rect.width(), minWidth, overlayWidth - dp(24)));
+        int height = Math.round(clamp(rect.height(), minHeight, overlayHeight - dp(48)));
+        int margin = dp(12);
+        int left = Math.round(clamp(rect.left, margin, Math.max(margin, overlayWidth - width - margin)));
+        int top = Math.round(clamp(rect.top, margin, Math.max(margin, overlayHeight - height - margin)));
+        return new Rect(left, top, left + width, top + height);
     }
 
     private boolean startLaunchAnimation(int taskId) {
@@ -886,6 +1170,9 @@ final class MBackStarOverlayController {
         previewContainer.setTranslationX(0f);
         previewContainer.setTranslationY(0f);
         previewContainer.setClipToOutline(true);
+        previewImageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        previewImageView.setPadding(0, 0, 0, 0);
+        resetPreviewBackground();
         setPreviewCornerRadius(dp(PREVIEW_CORNER_RADIUS_DP));
     }
 
@@ -959,8 +1246,7 @@ final class MBackStarOverlayController {
         previewBackground = new GradientDrawable();
         previewBackground.setShape(GradientDrawable.RECTANGLE);
         previewBackground.setCornerRadius(previewCornerRadius);
-        previewBackground.setColor(Color.argb(235, 16, 18, 24));
-        previewBackground.setStroke(Math.max(1, dp(1)), Color.argb(92, 255, 255, 255));
+        resetPreviewBackground();
         container.setBackground(previewBackground);
         container.setOutlineProvider(new ViewOutlineProvider() {
             @Override
@@ -1139,6 +1425,34 @@ final class MBackStarOverlayController {
         return windowManagerExtGetInstanceMethod;
     }
 
+    private static Method resolveGetWindowModeBoundMethod() {
+        if (!getWindowModeBoundMethodResolved) {
+            try {
+                Class<?> clazz = Class.forName("flyme.view.WindowManagerExt");
+                getWindowModeBoundMethod = clazz.getMethod(
+                        "getWindowModeBound",
+                        int.class,
+                        int.class,
+                        int.class);
+                getWindowModeBoundMethod.setAccessible(true);
+            } catch (Throwable ignored) {
+                getWindowModeBoundMethod = null;
+            }
+            getWindowModeBoundMethodResolved = true;
+        }
+        return getWindowModeBoundMethod;
+    }
+
+    private int resolveDisplayId() {
+        try {
+            if (overlayView.getDisplay() != null) {
+                return overlayView.getDisplay().getDisplayId();
+            }
+        } catch (Throwable ignored) {
+        }
+        return 0;
+    }
+
     private void markFlymeStartWindowMode(String packageName) {
         if (packageName == null || packageName.trim().isEmpty()) {
             return;
@@ -1188,6 +1502,50 @@ final class MBackStarOverlayController {
         }
     }
 
+    private void applySmallWindowIconPadding() {
+        if (previewContainer == null || previewImageView == null) {
+            return;
+        }
+        int width = previewContainer.getWidth();
+        int height = previewContainer.getHeight();
+        if (width <= 0 || height <= 0) {
+            ViewGroup.LayoutParams params = previewContainer.getLayoutParams();
+            if (params != null) {
+                width = params.width;
+                height = params.height;
+            }
+        }
+        int minSide = Math.max(1, Math.min(width, height));
+        int padding = Math.max(0, Math.round(minSide * (1f - SMALL_WINDOW_ICON_SCALE) / 2f));
+        previewImageView.setPadding(padding, padding, padding, padding);
+    }
+
+    private void setPreviewTransitionBackground() {
+        if (previewBackground == null) {
+            return;
+        }
+        previewBackground.setColor(isNightMode() ? Color.BLACK : Color.WHITE);
+        previewBackground.setStroke(0, Color.TRANSPARENT);
+    }
+
+    private void resetPreviewBackground() {
+        if (previewBackground == null) {
+            return;
+        }
+        previewBackground.setColor(Color.argb(235, 16, 18, 24));
+        previewBackground.setStroke(0, Color.TRANSPARENT);
+    }
+
+    private boolean isNightMode() {
+        try {
+            return (context.getResources().getConfiguration().uiMode
+                    & Configuration.UI_MODE_NIGHT_MASK)
+                    == Configuration.UI_MODE_NIGHT_YES;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
     private static float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
     }
@@ -1196,14 +1554,53 @@ final class MBackStarOverlayController {
         return start + ((end - start) * progress);
     }
 
+    private static final class HoverTimerView extends View {
+        private final Paint trackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint progressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF arcBounds = new RectF();
+        private float progress;
+
+        HoverTimerView(Context context) {
+            super(context);
+            float density = context.getResources().getDisplayMetrics().density;
+            trackPaint.setStyle(Paint.Style.STROKE);
+            trackPaint.setStrokeWidth(1.5f * density);
+            trackPaint.setColor(Color.argb(58, 255, 255, 255));
+            progressPaint.setStyle(Paint.Style.STROKE);
+            progressPaint.setStrokeWidth(2.4f * density);
+            progressPaint.setStrokeCap(Paint.Cap.ROUND);
+            progressPaint.setColor(Color.WHITE);
+        }
+
+        void setProgress(float progress) {
+            this.progress = Math.max(0f, Math.min(1f, progress));
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float stroke = progressPaint.getStrokeWidth();
+            arcBounds.set(
+                    stroke,
+                    stroke,
+                    getWidth() - stroke,
+                    getHeight() - stroke);
+            canvas.drawOval(arcBounds, trackPaint);
+            canvas.drawArc(arcBounds, -90f, 360f * progress, false, progressPaint);
+        }
+    }
+
     private static final class IconHolder {
         final MBackStarApp app;
         final View root;
+        final HoverTimerView timerView;
         final float depth;
 
-        IconHolder(MBackStarApp app, View root, float depth) {
+        IconHolder(MBackStarApp app, View root, HoverTimerView timerView, float depth) {
             this.app = app;
             this.root = root;
+            this.timerView = timerView;
             this.depth = depth;
         }
     }
