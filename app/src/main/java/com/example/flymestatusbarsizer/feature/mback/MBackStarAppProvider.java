@@ -108,7 +108,7 @@ final class MBackStarAppProvider {
             if (label == null || label.toString().trim().isEmpty()) {
                 label = component.getPackageName();
             }
-            return new MBackStarApp(taskId, icon, label);
+            return new MBackStarApp(taskId, icon, label, component.getPackageName());
         } catch (Throwable t) {
             FlymeStatusBarSizer.logMBackWarning(
                     "Failed to load recent app for mBack star overlay: "
