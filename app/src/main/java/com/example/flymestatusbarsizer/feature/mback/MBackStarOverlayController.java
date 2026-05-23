@@ -61,7 +61,7 @@ final class MBackStarOverlayController {
     private static final String WINDOW_TITLE = "MBackStarApps";
     private static final float SEMICIRCLE_START_RADIANS = 3.4906585f;
     private static final float SEMICIRCLE_END_RADIANS = 5.9341195f;
-    private static final float ICON_GAP_RATIO = 0.5f;
+    private static final float ICON_GAP_RATIO = 0.35f; // 调紧图标排列间距比例
     private static final float GYRO_PARALLAX_SCALE = 120f;
     private static final int GYRO_PARALLAX_MAX_OFFSET_DP = 10;
     private static final int PREVIEW_WIDTH_DP = 180;
@@ -476,7 +476,7 @@ final class MBackStarOverlayController {
         float rightRoom = Math.max(1f, width - originX - margin);
         float topRoom = Math.max(1f, originY - margin);
         float radius = Math.min(Math.min(leftRoom, rightRoom), topRoom);
-        return Math.max(dp(72), radius);
+        return clamp(radius, dp(72), dp(135)); // 限制最大半径上限为 135dp
     }
 
     private int resolveAdaptiveHitSize(int count, float maxRadius) {
@@ -496,13 +496,15 @@ final class MBackStarOverlayController {
     }
 
     private float resolveSemicircleRadius(int count, int iconSize, float maxRadius) {
-        float minRadius = dp(82);
+        float minRadius = dp(75); // 稍微调低最小基准半径
         float requiredRadius = count <= 1
                 ? minRadius
                 : (iconSize * (1f + ICON_GAP_RATIO) * Math.max(1, count - 1))
                         / (SEMICIRCLE_END_RADIANS - SEMICIRCLE_START_RADIANS)
-                        * 1.02f;
-        return clamp(requiredRadius, minRadius, maxRadius);
+                        * 0.95f;
+        // 乘以 0.75 的收聚收紧比例，使整体距离向手势原点聚拢收缩，操作更为省力
+        float finalRadius = clamp(requiredRadius, minRadius, maxRadius) * 0.75f;
+        return Math.max(dp(68), finalRadius); // 确保绝对不低于 68dp 避开大拇指遮挡
     }
 
     private static float resolveIconDepth(int index, int count) {
