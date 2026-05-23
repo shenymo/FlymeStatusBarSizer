@@ -657,7 +657,6 @@ final class LauncherRecentsLayoutEngine {
         if (launchState != null && launchState.handoffEnabled) {
             LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);
         }
-        LauncherRecentsTouchController.ensureStackVisibleTaskData(recentsView, 15);
     }
 
     private static boolean shouldSuppressStockPageOffsetUpdate(
