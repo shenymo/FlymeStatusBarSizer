@@ -767,6 +767,25 @@ final class LauncherRecentsLayoutEngine {
         return requestDynamicStackLayout(recentsView, false);
     }
 
+    static boolean applyDynamicStackLayoutImmediately(View recentsView) {
+        return applyDynamicStackLayoutImmediately(recentsView, false);
+    }
+
+    static boolean applyDynamicStackLayoutImmediately(View recentsView, boolean captureStockState) {
+        if (recentsView == null) {
+            return false;
+        }
+        boolean shouldCaptureStockState = captureStockState || Boolean.TRUE.equals(
+                LauncherRecentsState.PENDING_DYNAMIC_STACK_CAPTURE_STOCK_STATES.remove(
+                        recentsView));
+        LauncherRecentsState.PENDING_DYNAMIC_STACK_LAYOUTS.remove(recentsView);
+        if (applyDynamicStackLayoutNow(recentsView, shouldCaptureStockState)) {
+            recentsView.invalidate();
+            return true;
+        }
+        return false;
+    }
+
     static boolean requestDynamicStackLayout(View recentsView) {
         return requestDynamicStackLayout(recentsView, false);
     }
