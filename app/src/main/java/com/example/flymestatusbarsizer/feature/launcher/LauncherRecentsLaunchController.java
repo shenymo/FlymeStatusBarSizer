@@ -66,12 +66,6 @@ final class LauncherRecentsLaunchController {
                     if (shouldSuppressStockTaskLaunchVisualReset(recentsView)) {
                         return null;
                     }
-                    if (LauncherRecentsLayoutEngine.shouldSuppressStockStackVisualReset(
-                            recentsView)) {
-                        LauncherRecentsLayoutEngine.applyDynamicStackLayoutImmediately(
-                                recentsView);
-                        return null;
-                    }
                 }
                 return chain.proceed();
             });

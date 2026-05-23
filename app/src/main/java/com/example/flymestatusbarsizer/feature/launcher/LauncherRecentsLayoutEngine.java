@@ -15,11 +15,14 @@ import java.util.ArrayList;
 final class LauncherRecentsLayoutEngine {
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
     private static final float STACK_ENTRY_INITIAL_SPREAD_RATIO = 0.8f;
+    private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.5f;
     private static final float STACK_RIGHT_VISIBLE_RATIO = 0.80f;
     private static final float STACK_SPREAD_POWER = 0.75f;
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
     private static final float STACK_RELEASE_SETTLED_PROGRESS_SHIFT = 0.70f;
     private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
+    private static final float STACK_LEFT_EDGE_EXTRA_SPACING_RATIO = 0.08f;
+    private static final float STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO = 0.30f;
     private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
     private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
     private static final float STACK_MIN_SCALE = 0.85f;
@@ -86,7 +89,8 @@ final class LauncherRecentsLayoutEngine {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         recentsView.post(() -> {
                             prepareRecentsView(recentsView);
-                            requestDynamicStackLayout(recentsView, true);
+                            LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
+                            applyDynamicStackLayoutIfNeeded(recentsView);
                         });
                     }
                     return result;
@@ -119,19 +123,19 @@ final class LauncherRecentsLayoutEngine {
                     if (shouldSuppressStockPageScaleUpdate(methodName, recentsView)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
-                        applySuppressedStockStackLayout(recentsView);
+                        if (shouldApplyDynamicStackLayout(recentsView)) {
+                            LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
+                            applyStackLayout(recentsView, false);
+                        }
                         return null;
                     }
                     if (shouldSuppressStockPageOffsetUpdate(methodName, recentsView)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
-                        applySuppressedStockStackLayout(recentsView);
-                        return null;
-                    }
-                    if (shouldSuppressStockAttachAlphaUpdate(methodName, recentsView)) {
-                        LauncherRecentsState.trackRecentsView(recentsView);
-                        prepareRecentsView(recentsView);
-                        applySuppressedStockStackLayout(recentsView);
+                        if (shouldApplyDynamicStackLayout(recentsView)) {
+                            LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
+                            applyStackLayout(recentsView, false);
+                        }
                         return null;
                     }
                 }
@@ -141,7 +145,8 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (shouldApplyDynamicStackLayout(recentsView)) {
-                        applyOrRequestDynamicStackLayout(recentsView, true);
+                        LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
+                        applyStackLayout(recentsView, false);
                     }
                 }
                 return result;
@@ -173,7 +178,8 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (shouldApplyDynamicStackLayout(recentsView)) {
-                        requestDynamicStackLayout(recentsView, true);
+                        LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
+                        applyStackLayout(recentsView, false);
                     }
                 }
                 return result;
@@ -200,7 +206,8 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (shouldApplyDynamicStackLayout(recentsView)) {
-                        applyOrRequestDynamicStackLayout(recentsView, true);
+                        LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
+                        applyStackLayout(recentsView, false);
                     }
                 }
                 return result;
@@ -297,6 +304,9 @@ final class LauncherRecentsLayoutEngine {
             pageSpan = Math.max(1f, referenceWidth);
         }
         float scrollDelta = startScroll - targetScroll;
+        float targetLeftEdgeRevealProgress = resolveLeftEdgeRevealProgress(
+                recentsView,
+                targetScroll);
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             if (taskView == null
@@ -314,7 +324,8 @@ final class LauncherRecentsLayoutEngine {
                     recentsView,
                     resolveStackReleaseSettledProgress(targetProgress, 1f),
                     taskWidth,
-                    taskCenteredLeftPx);
+                    taskCenteredLeftPx,
+                    targetLeftEdgeRevealProgress);
             float startVisibleOffset =
                     startRawOffset
                             + LauncherRecentsCompat.readFloatField(
@@ -572,9 +583,7 @@ final class LauncherRecentsLayoutEngine {
                     desiredStableAlpha = 0f;
                 }
             }
-            desiredStableAlpha *= layoutProgress < 0f
-                    ? remapProgress(desiredLayerProgress, 0f, 0.35f)
-                    : remapProgress(
+            desiredStableAlpha *= remapProgress(
                     layoutProgress,
                     STACK_LEFT_RELEASE_END_PROGRESS,
                     STACK_LEFT_RELEASE_START_PROGRESS);
@@ -654,6 +663,7 @@ final class LauncherRecentsLayoutEngine {
         if (launchState != null && launchState.handoffEnabled) {
             LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);
         }
+        LauncherRecentsTouchController.ensureStackVisibleTaskData(recentsView, 15);
     }
 
     private static boolean shouldSuppressStockPageOffsetUpdate(
@@ -675,53 +685,8 @@ final class LauncherRecentsLayoutEngine {
                 recentsView)
                 || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(
                 recentsView)
-                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                 recentsView));
-    }
-
-    private static boolean shouldSuppressStockAttachAlphaUpdate(
-            String methodName,
-            View recentsView) {
-        return "applyAttachAlpha".equals(methodName)
-                && shouldUseStackLayout(recentsView)
-                && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                && (LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
-                recentsView)
-                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)
-                || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
-                recentsView));
-    }
-
-    private static void applySuppressedStockStackLayout(View recentsView) {
-        if (shouldApplyDynamicStackLayout(recentsView)) {
-            applyOrRequestDynamicStackLayout(recentsView, true);
-        }
-    }
-
-    private static void applyOrRequestDynamicStackLayout(
-            View recentsView,
-            boolean captureStockState) {
-        if (shouldApplyStackLayoutSynchronously(recentsView)) {
-            applyDynamicStackLayoutImmediately(recentsView, captureStockState);
-        } else {
-            requestDynamicStackLayout(recentsView, captureStockState);
-        }
-    }
-
-    private static boolean shouldApplyStackLayoutSynchronously(View recentsView) {
-        return LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
-                recentsView)
-                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)
-                || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
-                recentsView);
-    }
-
-    static boolean shouldSuppressStockStackVisualReset(View recentsView) {
-        return recentsView != null
-                && shouldUseStackLayout(recentsView)
-                && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                && shouldApplyStackLayoutSynchronously(recentsView);
     }
 
     static void restoreTaskTransforms(View recentsView, int taskViewCount) {
@@ -806,33 +771,6 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static boolean applyDynamicStackLayoutIfNeeded(View recentsView) {
-        return requestDynamicStackLayout(recentsView, false);
-    }
-
-    static boolean applyDynamicStackLayoutImmediately(View recentsView) {
-        return applyDynamicStackLayoutImmediately(recentsView, false);
-    }
-
-    static boolean applyDynamicStackLayoutImmediately(View recentsView, boolean captureStockState) {
-        if (recentsView == null) {
-            return false;
-        }
-        boolean shouldCaptureStockState = captureStockState || Boolean.TRUE.equals(
-                LauncherRecentsState.PENDING_DYNAMIC_STACK_CAPTURE_STOCK_STATES.remove(
-                        recentsView));
-        LauncherRecentsState.PENDING_DYNAMIC_STACK_LAYOUTS.remove(recentsView);
-        if (applyDynamicStackLayoutNow(recentsView, shouldCaptureStockState)) {
-            recentsView.invalidate();
-            return true;
-        }
-        return false;
-    }
-
-    static boolean requestDynamicStackLayout(View recentsView) {
-        return requestDynamicStackLayout(recentsView, false);
-    }
-
-    static boolean requestDynamicStackLayout(View recentsView, boolean captureStockState) {
         if (recentsView == null) {
             return false;
         }
@@ -841,38 +779,7 @@ final class LauncherRecentsLayoutEngine {
         if (!shouldApplyDynamicStackLayout(recentsView)) {
             return false;
         }
-        if (captureStockState) {
-            LauncherRecentsState.PENDING_DYNAMIC_STACK_CAPTURE_STOCK_STATES.put(
-                    recentsView,
-                    Boolean.TRUE);
-        }
-        if (Boolean.TRUE.equals(
-                LauncherRecentsState.PENDING_DYNAMIC_STACK_LAYOUTS.get(recentsView))) {
-            return true;
-        }
-        LauncherRecentsState.PENDING_DYNAMIC_STACK_LAYOUTS.put(recentsView, Boolean.TRUE);
-        recentsView.postOnAnimation(() -> {
-            boolean shouldCaptureStockState = Boolean.TRUE.equals(
-                    LauncherRecentsState.PENDING_DYNAMIC_STACK_CAPTURE_STOCK_STATES.remove(
-                            recentsView));
-            LauncherRecentsState.PENDING_DYNAMIC_STACK_LAYOUTS.remove(recentsView);
-            if (applyDynamicStackLayoutNow(recentsView, shouldCaptureStockState)) {
-                recentsView.invalidate();
-            }
-        });
-        return true;
-    }
-
-    static boolean applyDynamicStackLayoutNow(View recentsView, boolean captureStockState) {
-        if (recentsView == null) {
-            return false;
-        }
-        LauncherRecentsState.trackRecentsView(recentsView);
-        prepareRecentsView(recentsView);
-        if (!shouldApplyDynamicStackLayout(recentsView)) {
-            return false;
-        }
-        applyStackLayout(recentsView, captureStockState);
+        applyStackLayout(recentsView, false);
         return true;
     }
 
@@ -943,13 +850,33 @@ final class LauncherRecentsLayoutEngine {
             float progress,
             float taskWidth,
             float taskCenteredLeftPx) {
+        return resolveStackVisibleOffset(
+                recentsView,
+                progress,
+                taskWidth,
+                taskCenteredLeftPx,
+                resolveLeftEdgeRevealProgress(recentsView));
+    }
+
+    private static float resolveStackVisibleOffset(
+            View recentsView,
+            float progress,
+            float taskWidth,
+            float taskCenteredLeftPx,
+            float leftEdgeRevealProgress) {
         float stackLeftOffsetPx =
-                (recentsView.getWidth() * STACK_LEFT_REST_INSET_RATIO) - taskCenteredLeftPx;
+                -taskCenteredLeftPx + (taskWidth * STACK_LEFT_EDGE_INSET_RATIO);
+        float stackLeftRestOffsetPx =
+                -taskCenteredLeftPx + (taskWidth * STACK_LEFT_REST_INSET_RATIO);
         float stackRightOffsetPx = Math.max(
                 0f,
                 recentsView.getWidth()
                         - (taskWidth * STACK_RIGHT_VISIBLE_RATIO)
                         - taskCenteredLeftPx);
+        float stackLeftTargetOffsetPx = lerp(
+                stackLeftRestOffsetPx,
+                stackLeftOffsetPx,
+                leftEdgeRevealProgress);
         float stackDepth = Math.abs(progress);
         if (stackDepth <= 0.001f) {
             return 0f;
@@ -957,11 +884,11 @@ final class LauncherRecentsLayoutEngine {
         float stackSpreadProgress = (float) Math.pow(
                 remapProgress(stackDepth, 0f, 1f),
                 STACK_SPREAD_POWER);
+        float stackDepthSpacing = taskWidth
+                * STACK_LEFT_EDGE_EXTRA_SPACING_RATIO
+                * (1f - remapProgress(stackDepth, 0f, MAX_STACK_LAYERS));
         if (progress < 0f) {
-            if (stackDepth >= 1f) {
-                return stackLeftOffsetPx;
-            }
-            return stackLeftOffsetPx * stackSpreadProgress;
+            return (stackLeftTargetOffsetPx + stackDepthSpacing) * stackSpreadProgress;
         }
         float rightOffsetPx = stackRightOffsetPx * stackSpreadProgress;
         if (progress > 1f) {
@@ -986,6 +913,21 @@ final class LauncherRecentsLayoutEngine {
             return progress;
         }
         return progress + (STACK_RELEASE_SETTLED_PROGRESS_SHIFT * stackSettledShiftProgress);
+    }
+
+    private static float resolveLeftEdgeRevealProgress(View recentsView) {
+        return resolveLeftEdgeRevealProgress(recentsView, recentsView.getScrollX());
+    }
+
+    private static float resolveLeftEdgeRevealProgress(View recentsView, int primaryScroll) {
+        int minScroll = LauncherRecentsCompat.readIntField(
+                recentsView,
+                "mMinScroll",
+                recentsView.getScrollX());
+        float revealRange = Math.max(
+                1f,
+                recentsView.getWidth() * STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO);
+        return 1.0f - remapProgress(primaryScroll - minScroll, 0f, revealRange);
     }
 
     private static float resolveAppEntryCollapsedProgress(
