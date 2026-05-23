@@ -6,7 +6,10 @@ import android.app.ActivityManager;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
-import android.graphics.drawable.GradientDrawable;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
@@ -37,7 +40,11 @@ final class MBackStarOverlayController {
             INTERNAL_WINDOW_TYPE_NOTIFICATION_SHADE
     };
     private static final String WINDOW_TITLE = "MBackStarApps";
-    private static final float GOLDEN_ANGLE = 2.3999631f;
+    private static final float SEMICIRCLE_START_RADIANS = 3.4906585f;
+    private static final float SEMICIRCLE_END_RADIANS = 5.9341195f;
+    private static final float ICON_GAP_RATIO = 0.5f;
+    private static final float GYRO_PARALLAX_SCALE = 120f;
+    private static final int GYRO_PARALLAX_MAX_OFFSET_DP = 10;
     private static Method trustedOverlayMethod;
     private static boolean trustedOverlayMethodResolved;
     private static Field trustedOverlayPrivateFlagsField;
@@ -50,13 +57,31 @@ final class MBackStarOverlayController {
     private final FrameLayout overlayView;
     private final FrameLayout iconsLayer;
     private final ArrayList<IconHolder> iconHolders = new ArrayList<>();
+    private final SensorEventListener gyroListener = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent event) {
+            handleGyroEvent(event);
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        }
+    };
 
     private WindowManager windowManager;
+    private SensorManager sensorManager;
+    private Sensor gyroSensor;
     private MBackStarApp[] apps = MBackStarApp.EMPTY_ARRAY;
     private IconHolder hoveredHolder;
     private boolean showing;
+    private boolean gyroRegistered;
+    private long lastGyroTimestampNanos;
+    private float parallaxX;
+    private float parallaxY;
     private float lastRawX = Float.NaN;
     private float lastRawY = Float.NaN;
+    private float mBackRawX = Float.NaN;
+    private float mBackRawY = Float.NaN;
 
     MBackStarOverlayController(Context context) {
         Context appContext = context != null && context.getApplicationContext() != null
@@ -69,13 +94,26 @@ final class MBackStarOverlayController {
         this.appProvider = new MBackStarAppProvider(this.context);
         this.iconsLayer = new FrameLayout(this.context);
         this.overlayView = buildOverlayView(this.context, iconsLayer);
+        Object sensorObject = this.context != null
+                ? this.context.getSystemService(Context.SENSOR_SERVICE)
+                : null;
+        if (sensorObject instanceof SensorManager) {
+            sensorManager = (SensorManager) sensorObject;
+            gyroSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+        }
     }
 
     void show(View anchor, MotionEvent startEvent) {
         if (anchor == null || !anchor.isAttachedToWindow()) {
             return;
         }
+        lastRawX = Float.NaN;
+        lastRawY = Float.NaN;
+        mBackRawX = Float.NaN;
+        mBackRawY = Float.NaN;
+        resetParallax();
         rememberMotion(startEvent);
+        rememberMBackOrigin(anchor, startEvent);
         if (!attachOverlay(anchor.getContext())) {
             return;
         }
@@ -89,6 +127,7 @@ final class MBackStarOverlayController {
                 .alpha(1f)
                 .setDuration(120L)
                 .start();
+        startGyro();
         appProvider.requestApps(handler, resolvedApps -> {
             if (!showing) {
                 return;
@@ -185,7 +224,13 @@ final class MBackStarOverlayController {
             return;
         }
         showing = false;
+        stopGyro();
         hoveredHolder = null;
+        lastRawX = Float.NaN;
+        lastRawY = Float.NaN;
+        mBackRawX = Float.NaN;
+        mBackRawY = Float.NaN;
+        resetParallax();
         apps = MBackStarApp.EMPTY_ARRAY;
         iconHolders.clear();
         iconsLayer.removeAllViews();
@@ -223,21 +268,33 @@ final class MBackStarOverlayController {
         hoveredHolder = null;
         MBackStarApp[] safeApps = apps != null ? apps : MBackStarApp.EMPTY_ARRAY;
         int count = safeApps.length;
-        int hitSize = dp(78);
-        int iconSize = dp(56);
+        float originX = resolveOverlayOriginX(width);
+        float originY = resolveOverlayOriginY(height);
+        float maxRadius = resolveMaxSemicircleRadius(width, height, originX, originY);
+        int hitSize = resolveAdaptiveHitSize(count, maxRadius);
+        int iconSize = resolveAdaptiveIconSize(hitSize);
+        float radius = resolveSemicircleRadius(count, iconSize, maxRadius);
         for (int i = 0; i < count; i++) {
             MBackStarApp app = safeApps[i];
             if (app == null || app.taskId < 0) {
                 continue;
             }
             FrameLayout root = buildIconRoot(app, hitSize, iconSize);
-            float[] point = resolveStarPoint(i, count, width, height, hitSize);
+            float[] point = resolveSemicirclePoint(
+                    i,
+                    count,
+                    hitSize,
+                    iconSize,
+                    originX,
+                    originY,
+                    radius);
             FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(hitSize, hitSize);
             params.leftMargin = Math.round(point[0]);
             params.topMargin = Math.round(point[1]);
             iconsLayer.addView(root, params);
-            IconHolder holder = new IconHolder(app, root);
+            IconHolder holder = new IconHolder(app, root, resolveIconDepth(i, count));
             iconHolders.add(holder);
+            root.setCameraDistance(dp(900));
             root.setAlpha(0f);
             root.setScaleX(0.72f);
             root.setScaleY(0.72f);
@@ -257,11 +314,6 @@ final class MBackStarOverlayController {
         root.setClipChildren(false);
         root.setClipToPadding(false);
         root.setContentDescription(app.label);
-        GradientDrawable background = new GradientDrawable();
-        background.setShape(GradientDrawable.OVAL);
-        background.setColor(Color.argb(42, 255, 255, 255));
-        background.setStroke(Math.max(1, dp(1)), Color.argb(60, 255, 255, 255));
-        root.setBackground(background);
         ImageView iconView = new ImageView(context);
         iconView.setImageDrawable(app.icon);
         iconView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
@@ -274,24 +326,103 @@ final class MBackStarOverlayController {
         return root;
     }
 
-    private float[] resolveStarPoint(int index, int count, int width, int height, int hitSize) {
-        int margin = dp(20);
-        float minX = margin;
-        float maxX = Math.max(minX, width - hitSize - margin);
-        float minY = margin + dp(18);
-        float maxY = Math.max(minY, height - hitSize - margin - dp(28));
-        float centerX = (width - hitSize) / 2f;
-        float centerY = (height * 0.42f) - (hitSize / 2f);
-        if (count <= 1) {
-            return new float[]{clamp(centerX, minX, maxX), clamp(centerY, minY, maxY)};
+    private float[] resolveSemicirclePoint(
+            int index,
+            int count,
+            int hitSize,
+            int iconSize,
+            float originX,
+            float originY,
+            float radius) {
+        float centerAngle = (SEMICIRCLE_START_RADIANS + SEMICIRCLE_END_RADIANS) / 2f;
+        float maxAngleRange = SEMICIRCLE_END_RADIANS - SEMICIRCLE_START_RADIANS;
+        float targetStep = (iconSize * (1f + ICON_GAP_RATIO)) / Math.max(1f, radius);
+        float step = count <= 1
+                ? 0f
+                : Math.min(maxAngleRange / Math.max(1f, count - 1f), targetStep);
+        float startAngle = centerAngle - (step * (count - 1f) / 2f);
+        float angle = startAngle + (step * index);
+        float x = originX + ((float) Math.cos(angle) * radius) - (hitSize / 2f);
+        float y = originY + ((float) Math.sin(angle) * radius) - (hitSize / 2f);
+        int margin = dp(12);
+        return new float[]{
+                clamp(x, margin, Math.max(margin, overlayView.getWidth() - hitSize - margin)),
+                clamp(y, margin, Math.max(margin, overlayView.getHeight() - hitSize - margin))
+        };
+    }
+
+    private float resolveOverlayOriginX(int width) {
+        int[] location = new int[2];
+        overlayView.getLocationOnScreen(location);
+        if (!Float.isNaN(mBackRawX)) {
+            return clamp(mBackRawX - location[0], dp(24), width - dp(24));
         }
-        float radiusX = Math.max(1f, (maxX - minX) / 2f);
-        float radiusY = Math.max(1f, (maxY - minY) / 2f);
-        float fraction = (float) Math.sqrt((index + 1f) / count);
-        float angle = -1.5707964f + (index * GOLDEN_ANGLE);
-        float x = centerX + ((float) Math.cos(angle) * radiusX * fraction);
-        float y = centerY + ((float) Math.sin(angle) * radiusY * fraction * 0.86f);
-        return new float[]{clamp(x, minX, maxX), clamp(y, minY, maxY)};
+        return width / 2f;
+    }
+
+    private float resolveOverlayOriginY(int height) {
+        int[] location = new int[2];
+        overlayView.getLocationOnScreen(location);
+        if (!Float.isNaN(mBackRawY)) {
+            return clamp(mBackRawY - location[1], dp(80), height - dp(8));
+        }
+        return height - dp(24);
+    }
+
+    private float resolveMaxSemicircleRadius(int width, int height, float originX, float originY) {
+        float margin = dp(18);
+        float leftRoom = Math.max(1f, originX - margin);
+        float rightRoom = Math.max(1f, width - originX - margin);
+        float topRoom = Math.max(1f, originY - margin);
+        float radius = Math.min(Math.min(leftRoom, rightRoom), topRoom);
+        return Math.max(dp(72), radius);
+    }
+
+    private int resolveAdaptiveHitSize(int count, float maxRadius) {
+        int safeCount = Math.max(1, count);
+        float arcLength = (SEMICIRCLE_END_RADIANS - SEMICIRCLE_START_RADIANS) * maxRadius;
+        float spacing = arcLength / Math.max(1, safeCount - 1);
+        int bySpacing = Math.round((spacing / (1f + ICON_GAP_RATIO)) + dp(18));
+        int byCount = dp(82 - Math.min(42, safeCount * 3));
+        return Math.round(clamp(
+                Math.min(bySpacing, byCount),
+                dp(42),
+                dp(78)));
+    }
+
+    private int resolveAdaptiveIconSize(int hitSize) {
+        return Math.max(dp(28), hitSize - dp(18));
+    }
+
+    private float resolveSemicircleRadius(int count, int iconSize, float maxRadius) {
+        float minRadius = dp(82);
+        float requiredRadius = count <= 1
+                ? minRadius
+                : (iconSize * (1f + ICON_GAP_RATIO) * Math.max(1, count - 1))
+                        / (SEMICIRCLE_END_RADIANS - SEMICIRCLE_START_RADIANS)
+                        * 1.02f;
+        return clamp(requiredRadius, minRadius, maxRadius);
+    }
+
+    private static float resolveIconDepth(int index, int count) {
+        if (count <= 1) {
+            return 1f;
+        }
+        float center = (count - 1f) / 2f;
+        float edgeDistance = Math.abs(index - center) / Math.max(1f, center);
+        return 0.72f + ((1f - edgeDistance) * 0.38f);
+    }
+
+    private void rememberMBackOrigin(View anchor, MotionEvent startEvent) {
+        if (startEvent != null) {
+            mBackRawX = startEvent.getRawX();
+            mBackRawY = startEvent.getRawY();
+            return;
+        }
+        int[] location = new int[2];
+        anchor.getLocationOnScreen(location);
+        mBackRawX = location[0] + (anchor.getWidth() / 2f);
+        mBackRawY = location[1] + (anchor.getHeight() / 2f);
     }
 
     private void rememberMotion(MotionEvent event) {
@@ -305,6 +436,73 @@ final class MBackStarOverlayController {
     private void updateHoverFromLastMotion() {
         if (!Float.isNaN(lastRawX) && !Float.isNaN(lastRawY)) {
             updateHover(lastRawX, lastRawY);
+        }
+    }
+
+    private void startGyro() {
+        if (gyroRegistered || sensorManager == null || gyroSensor == null) {
+            return;
+        }
+        try {
+            gyroRegistered = sensorManager.registerListener(
+                    gyroListener,
+                    gyroSensor,
+                    SensorManager.SENSOR_DELAY_GAME,
+                    handler);
+        } catch (Throwable ignored) {
+            gyroRegistered = false;
+        }
+    }
+
+    private void stopGyro() {
+        if (!gyroRegistered || sensorManager == null) {
+            return;
+        }
+        try {
+            sensorManager.unregisterListener(gyroListener);
+        } catch (Throwable ignored) {
+        }
+        gyroRegistered = false;
+        lastGyroTimestampNanos = 0L;
+    }
+
+    private void handleGyroEvent(SensorEvent event) {
+        if (!showing || event == null || event.values == null || event.values.length < 2) {
+            return;
+        }
+        long timestamp = event.timestamp;
+        float dt = lastGyroTimestampNanos == 0L
+                ? 0.016f
+                : Math.min(0.05f, (timestamp - lastGyroTimestampNanos) / 1000000000f);
+        lastGyroTimestampNanos = timestamp;
+        float maxOffset = dp(GYRO_PARALLAX_MAX_OFFSET_DP);
+        parallaxX = clamp(
+                (parallaxX * 0.88f) + (-event.values[1] * GYRO_PARALLAX_SCALE * dt),
+                -maxOffset,
+                maxOffset);
+        parallaxY = clamp(
+                (parallaxY * 0.88f) + (event.values[0] * GYRO_PARALLAX_SCALE * dt),
+                -maxOffset,
+                maxOffset);
+        applyParallax();
+    }
+
+    private void resetParallax() {
+        parallaxX = 0f;
+        parallaxY = 0f;
+        lastGyroTimestampNanos = 0L;
+    }
+
+    private void applyParallax() {
+        if (iconHolders.isEmpty()) {
+            return;
+        }
+        for (IconHolder holder : iconHolders) {
+            float depth = holder.depth;
+            holder.root.setTranslationX(parallaxX * depth);
+            holder.root.setTranslationY(parallaxY * depth);
+            holder.root.setRotationY(clamp(parallaxX * depth * 0.42f, -5.5f, 5.5f));
+            holder.root.setRotationX(clamp(-parallaxY * depth * 0.42f, -5.5f, 5.5f));
         }
     }
 
@@ -454,10 +652,12 @@ final class MBackStarOverlayController {
     private static final class IconHolder {
         final MBackStarApp app;
         final View root;
+        final float depth;
 
-        IconHolder(MBackStarApp app, View root) {
+        IconHolder(MBackStarApp app, View root, float depth) {
             this.app = app;
             this.root = root;
+            this.depth = depth;
         }
     }
 }
