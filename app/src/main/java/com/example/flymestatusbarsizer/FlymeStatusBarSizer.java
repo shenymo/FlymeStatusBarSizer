@@ -3083,28 +3083,43 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         View wifiView = findPrimaryWifiIconView(parent);
-        View mobileView = findRightmostMobileIconView(parent);
-        if (wifiView == null || mobileView == null || wifiView == mobileView) {
+        ArrayList<View> mobileViews = findOccupiedMobileIconViews(parent);
+        if (wifiView == null || mobileViews.isEmpty() || mobileViews.contains(wifiView)) {
             return;
         }
         Object wifiState = getStatusIconViewState(wifiView);
-        Object mobileState = getStatusIconViewState(mobileView);
-        if (wifiState == null || mobileState == null) {
+        if (wifiState == null) {
             return;
         }
         float wifiX = getStatusIconStateX(wifiState);
-        float mobileX = getStatusIconStateX(mobileState);
-        if (wifiX > mobileX) {
+        View firstMobileView = mobileViews.get(0);
+        View lastMobileView = mobileViews.get(mobileViews.size() - 1);
+        Object firstMobileState = getStatusIconViewState(firstMobileView);
+        Object lastMobileState = getStatusIconViewState(lastMobileView);
+        if (firstMobileState == null || lastMobileState == null) {
+            return;
+        }
+        float mobileStartX = getStatusIconStateX(firstMobileState);
+        float mobileEndX = getStatusIconStateX(lastMobileState)
+                + getStatusIconViewTotalWidth(lastMobileView);
+        if (wifiX > mobileStartX) {
             return;
         }
         int wifiWidth = getStatusIconViewTotalWidth(wifiView);
-        int mobileWidth = getStatusIconViewTotalWidth(mobileView);
-        if (wifiWidth <= 0 || mobileWidth <= 0) {
+        float mobileGroupWidth = mobileEndX - mobileStartX;
+        if (wifiWidth <= 0 || mobileGroupWidth <= 0f) {
             return;
         }
-        float spacing = Math.max(0f, mobileX - (wifiX + wifiWidth));
-        setStatusIconStateX(mobileState, wifiX);
-        setStatusIconStateX(wifiState, wifiX + mobileWidth + spacing);
+        float spacing = Math.max(0f, mobileStartX - (wifiX + wifiWidth));
+        float mobileOffset = wifiX - mobileStartX;
+        for (View mobileView : mobileViews) {
+            Object mobileState = getStatusIconViewState(mobileView);
+            if (mobileState != null) {
+                setStatusIconStateX(mobileState,
+                        getStatusIconStateX(mobileState) + mobileOffset);
+            }
+        }
+        setStatusIconStateX(wifiState, wifiX + mobileGroupWidth + spacing);
     }
 
     private static Object getStatusIconViewState(View view) {
@@ -3146,23 +3161,20 @@ public class FlymeStatusBarSizer extends XposedModule {
         return null;
     }
 
-    private static View findRightmostMobileIconView(ViewGroup parent) {
+    private static ArrayList<View> findOccupiedMobileIconViews(ViewGroup parent) {
+        ArrayList<View> result = new ArrayList<>();
         if (parent == null) {
-            return null;
+            return result;
         }
-        View result = null;
-        float rightmostX = Float.NEGATIVE_INFINITY;
         for (int i = 0; i < parent.getChildCount(); i++) {
             View child = parent.getChildAt(i);
-            if (!isMobileIconContainer(child) || !isStatusIconStateVisible(child)) {
-                continue;
-            }
-            float x = getStatusIconStateX(getStatusIconViewState(child));
-            if (x > rightmostX) {
-                rightmostX = x;
-                result = child;
+            if (isOccupiedMobileIconContainer(child)) {
+                result.add(child);
             }
         }
+        Collections.sort(result, (left, right) -> Float.compare(
+                getStatusIconStateX(getStatusIconViewState(left)),
+                getStatusIconStateX(getStatusIconViewState(right))));
         return result;
     }
 
@@ -3174,6 +3186,19 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static boolean isMobileIconContainer(View view) {
         return view != null && findSystemUiChild(view, "mobile_signal") != null;
+    }
+
+    private static boolean isOccupiedMobileIconContainer(View view) {
+        if (!isMobileIconContainer(view)
+                || !isStatusIconStateVisible(view)
+                || !isViewVisibleWithWidth(view)) {
+            return false;
+        }
+        return isViewVisibleWithWidth(findSystemUiChild(view, "mobile_signal"));
+    }
+
+    private static boolean isViewVisibleWithWidth(View view) {
+        return view != null && view.getVisibility() == View.VISIBLE && view.getWidth() > 0;
     }
 
     private static void trackStatusBarIconView(View view) {
@@ -4210,7 +4235,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (simCount <= 0) {
             return;
         }
-        if (mergedDual && !isPrimarySignalView(view, mobileGroup)) {
+        if (!isPrimarySignalView(view, mobileGroup)) {
             return;
         }
         alignSignalIconVertically(view);
@@ -4953,15 +4978,61 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (groups.isEmpty()) {
             return;
         }
+        View primaryGroup = findPrimaryMobileSignalGroup(mobileGroup, groups, simCount);
         for (int i = 0; i < groups.size(); i++) {
             View group = groups.get(i);
-            boolean shouldShow = simCount > 0 && i == 0;
+            boolean shouldShow = group == primaryGroup;
             updateSignalSlotFootprint(group, shouldShow);
             int visibility = shouldShow ? View.VISIBLE : View.GONE;
             if (group.getVisibility() != visibility) {
                 group.setVisibility(visibility);
             }
         }
+    }
+
+    private static View findPrimaryMobileSignalGroup(View mobileGroup,
+                                                     ArrayList<View> groups,
+                                                     int simCount) {
+        if (groups == null || groups.isEmpty() || simCount <= 0) {
+            return null;
+        }
+        Context context = mobileGroup == null ? null : mobileGroup.getContext();
+        ModuleConfig config = ModuleConfig.load(
+                context == null ? ModuleConfig.getSystemUiContext() : context);
+        if (isTelephonyDebugEnabled(config)) {
+            return groups.get(0);
+        }
+        View firstValidGroup = null;
+        View firstActiveGroup = null;
+        View slotOneGroup = null;
+        for (int i = 0; i < groups.size(); i++) {
+            View group = groups.get(i);
+            int subId = resolveSubIdFromCarrierCallbackOwner(group);
+            if (!SubscriptionManager.isValidSubscriptionId(subId)) {
+                continue;
+            }
+            if (firstValidGroup == null) {
+                firstValidGroup = group;
+            }
+            int slotIndex = resolveSignalSubSlotIndex(context, subId);
+            if (slotIndex >= 0 && firstActiveGroup == null) {
+                firstActiveGroup = group;
+            }
+            if (slotIndex == 0) {
+                slotOneGroup = group;
+                break;
+            }
+        }
+        if (simCount >= 2 && slotOneGroup != null) {
+            return slotOneGroup;
+        }
+        if (firstActiveGroup != null) {
+            return firstActiveGroup;
+        }
+        if (firstValidGroup != null) {
+            return firstValidGroup;
+        }
+        return groups.get(0);
     }
 
     private static void refreshLinkedSignalViews(View anchorView) {
@@ -5010,7 +5081,11 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (groups.isEmpty()) {
             return true;
         }
-        View primaryGroup = groups.get(0);
+        int simCount = resolveActiveSubscriptionCount(view == null ? null : view.getContext());
+        View primaryGroup = findPrimaryMobileSignalGroup(mobileGroup, groups, simCount);
+        if (primaryGroup == null) {
+            return false;
+        }
         View primarySignalView = findSystemUiChild(primaryGroup, "mobile_signal");
         return primarySignalView == view;
     }
