@@ -213,6 +213,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         installSignalHooks(loader);
         NotificationHooks.install(this, loader);
         MBackHooks.install(this, loader);
+        EdgeGestureDebugHooks.install(this, loader);
         installBatteryHooks(loader);
         ClockHooks.install(this, loader);
     }
