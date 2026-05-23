@@ -9,6 +9,7 @@ import android.graphics.Insets;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 
@@ -21,6 +22,7 @@ import java.lang.reflect.Method;
 public final class MBackHooks {
     private static final int MBACK_LONG_TOUCH_ACTION_INTENT_URI = 0;
     private static final int MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP = 1;
+    private static final int MBACK_LONG_TOUCH_ACTION_STAR_APPS = 2;
     private static WeakReference<View> latestMBackButtonRef = new WeakReference<>(null);
 
     private MBackHooks() {
@@ -31,6 +33,7 @@ public final class MBackHooks {
             return;
         }
         hookLongTouchIntent(module, loader);
+        hookMBackMotionEvents(module, loader);
         hookNavBarExperiments(module, loader);
         hookPillVisibility(module, loader);
     }
@@ -54,6 +57,13 @@ public final class MBackHooks {
         FlymeStatusBarSizer.MBackConfigSnapshot config = FlymeStatusBarSizer.loadMBackConfig(context);
         return config.mbackLongTouchIntentEnabled
                 && config.mbackLongTouchAction == MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP
+                && "press_navigation".equals(fromWhere);
+    }
+
+    public static boolean shouldShowStarApps(Context context, String fromWhere) {
+        FlymeStatusBarSizer.MBackConfigSnapshot config = FlymeStatusBarSizer.loadMBackConfig(context);
+        return config.mbackLongTouchIntentEnabled
+                && config.mbackLongTouchAction == MBACK_LONG_TOUCH_ACTION_STAR_APPS
                 && "press_navigation".equals(fromWhere);
     }
 
@@ -272,6 +282,15 @@ public final class MBackHooks {
                 module.intercept(method, chain -> {
                     Context context = (Context) chain.getArg(0);
                     String fromWhere = (String) chain.getArg(1);
+                    if (shouldShowStarApps(context, fromWhere)) {
+                        View anchor = resolveMBackButtonAnchor();
+                        if (anchor == null) {
+                            return chain.proceed();
+                        }
+                        requestCancelSwipeUp(cancelMethod, "show mback star apps from " + fromWhere);
+                        anchor.post(() -> MBackStarOverlayBridge.show(anchor));
+                        return null;
+                    }
                     if (shouldShowClockPopup(context, fromWhere)) {
                         View anchor = resolveMBackButtonAnchor();
                         if (anchor == null) {
@@ -301,6 +320,62 @@ public final class MBackHooks {
             }
         } catch (Throwable t) {
             FlymeStatusBarSizer.logMBackWarning("Failed to hook mBack long touch intent", t);
+        }
+    }
+
+    private static void requestCancelSwipeUp(Method cancelMethod, String reason) {
+        if (cancelMethod != null) {
+            try {
+                cancelMethod.invoke(null, reason);
+            } catch (Throwable ignored) {
+            }
+        }
+        try {
+            ClassLoader loader = cancelMethod != null
+                    ? cancelMethod.getDeclaringClass().getClassLoader()
+                    : MBackHooks.class.getClassLoader();
+            Class<?> dependencyClass = Class.forName("com.android.systemui.Dependency", false, loader);
+            Class<?> proxyServiceClass =
+                    Class.forName("com.android.systemui.recents.LauncherProxyService", false, loader);
+            Method getMethod = dependencyClass.getDeclaredMethod("get", Class.class);
+            getMethod.setAccessible(true);
+            Object proxyService = getMethod.invoke(null, proxyServiceClass);
+            if (proxyService == null) {
+                return;
+            }
+            Method getProxyMethod = proxyServiceClass.getDeclaredMethod("getProxy");
+            getProxyMethod.setAccessible(true);
+            Object proxy = getProxyMethod.invoke(proxyService);
+            if (proxy == null) {
+                return;
+            }
+            Method requestCancelSwipeUpMethod = proxy.getClass().getMethod("requestCancelSwipeUp");
+            requestCancelSwipeUpMethod.setAccessible(true);
+            requestCancelSwipeUpMethod.invoke(proxy);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void hookMBackMotionEvents(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.navigationbar.actions.NavBarMBackLongTouchHelper",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod(
+                    "onMotionEventFromMBackButton",
+                    MotionEvent.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                MotionEvent motionEvent = chain.getArg(0) instanceof MotionEvent
+                        ? (MotionEvent) chain.getArg(0)
+                        : null;
+                Object result = chain.proceed();
+                MBackStarOverlayBridge.dispatchMBackMotionEvent(motionEvent);
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logMBackWarning("Failed to hook mBack motion events", t);
         }
     }
 

@@ -415,21 +415,22 @@ final class SettingsCardFactory {
         page.setOrientation(LinearLayout.VERTICAL);
 
         activity.addProfileSectionHeader(page, "长触动作",
-                "只接管 mBack 长触分支，保留单击和系统其他来源。现在可以在 URL / Intent 和底部时间弹窗之间切换。");
+                "只接管 mBack 长触分支，保留单击和系统其他来源。");
         activity.addSwitchRow(page, "接管长触 mBack",
                 "拦截 Flyme SystemUI 里原本唤醒 AICY 的 mBack/Home 长触入口，改为执行这里配置的长触动作。",
                 SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
                 SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED);
         activity.addDivider(page);
         activity.addChoiceRow(page, "长触动作",
-                "可选发送 URL / Intent，或者在 mBack 上方直接弹出时间弹窗。",
+                "可选发送 URL / Intent、底部时间弹窗，或者后台应用星图。",
                 SettingsStore.KEY_MBACK_LONG_TOUCH_ACTION,
                 SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION,
                 new int[]{
                         SettingsStore.MBACK_LONG_TOUCH_ACTION_INTENT_URI,
-                        SettingsStore.MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP
+                        SettingsStore.MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP,
+                        SettingsStore.MBACK_LONG_TOUCH_ACTION_STAR_APPS
                 },
-                new String[]{"URL / Intent", "底部时间弹窗"});
+                new String[]{"URL / Intent", "底部时间弹窗", "后台应用星图"});
         activity.addDivider(page);
         activity.addTextSettingRow(page, "目标 URL / Intent URI",
                 "只在“URL / Intent”模式下生效。支持 https://、自定义 scheme 和 intent:// URI。点击右侧内容编辑，留空则回退原始 AICY 行为。",

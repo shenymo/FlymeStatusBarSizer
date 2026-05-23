@@ -125,7 +125,8 @@ final class SettingsStore {
     static final boolean DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED = false;
     static final int MBACK_LONG_TOUCH_ACTION_INTENT_URI = 0;
     static final int MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP = 1;
-    static final int DEFAULT_MBACK_LONG_TOUCH_ACTION = MBACK_LONG_TOUCH_ACTION_INTENT_URI;
+    static final int MBACK_LONG_TOUCH_ACTION_STAR_APPS = 2;
+    static final int DEFAULT_MBACK_LONG_TOUCH_ACTION = MBACK_LONG_TOUCH_ACTION_STAR_APPS;
     static final String DEFAULT_MBACK_LONG_TOUCH_INTENT_URI = "";
     static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
     static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
@@ -488,9 +489,13 @@ final class SettingsStore {
     }
 
     static int normalizeMBackLongTouchAction(int value) {
-        return value == MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP
-                ? MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP
-                : MBACK_LONG_TOUCH_ACTION_INTENT_URI;
+        switch (value) {
+            case MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP:
+            case MBACK_LONG_TOUCH_ACTION_STAR_APPS:
+                return value;
+            default:
+                return MBACK_LONG_TOUCH_ACTION_INTENT_URI;
+        }
     }
 
     static int normalizeBatteryTextFont(int value) {
