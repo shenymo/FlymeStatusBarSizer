@@ -8,7 +8,6 @@ import android.animation.ValueAnimator;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.Handler;
-import android.os.SystemClock;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
 
@@ -248,6 +247,9 @@ final class LauncherRecentsLaunchController {
                     }
                     View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
                     if (shouldStartTaskLaunchHandoff(taskView, recentsView)) {
+                        if (!prepareTaskLaunchPreflight(taskView, recentsView)) {
+                            return null;
+                        }
                         startTaskLaunchHandoff(taskView, recentsView);
                         return null;
                     }
@@ -675,14 +677,9 @@ final class LauncherRecentsLaunchController {
         if (!shouldReplaceTaskLaunchWithNoAnimation(recentsView, taskView)) {
             return false;
         }
-        Object splitSelectResult = LauncherRecentsCompat.invokeCompat(
-                taskView,
-                "confirmSecondSplitSelectApp",
-                LauncherRecentsCompat.NO_ARGS);
-        if (splitSelectResult instanceof Boolean && (Boolean) splitSelectResult) {
+        if (!prepareTaskLaunchPreflight(taskView, recentsView)) {
             return true;
         }
-        LauncherRecentsCompat.invokeCompat(taskView, "updateUsageState", LauncherRecentsCompat.NO_ARGS);
         prepareTaskLaunchWithoutSystemAnimation(recentsView, taskView);
         return launchTaskWithoutSystemAnimation(taskView, recentsView);
     }
@@ -714,6 +711,88 @@ final class LauncherRecentsLaunchController {
                 && recentsView != null
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
                 && !LauncherRecentsCompat.isDesktopTask(taskView);
+    }
+
+    private static boolean prepareTaskLaunchPreflight(View taskView, View recentsView) {
+        if (taskView == null || recentsView == null) {
+            return false;
+        }
+        Object clearAllButton = LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "getClearAllButton",
+                LauncherRecentsCompat.NO_ARGS);
+        if (clearAllButton == null) {
+            return false;
+        }
+        Object splitSelectResult = LauncherRecentsCompat.invokeCompat(
+                taskView,
+                "confirmSecondSplitSelectApp",
+                LauncherRecentsCompat.NO_ARGS);
+        if (splitSelectResult instanceof Boolean && (Boolean) splitSelectResult) {
+            return false;
+        }
+        LauncherRecentsCompat.invokeCompat(taskView, "updateUsageState", LauncherRecentsCompat.NO_ARGS);
+        logTaskLaunchTap(taskView);
+        return true;
+    }
+
+    private static void logTaskLaunchTap(View taskView) {
+        if (taskView == null) {
+            return;
+        }
+        ClassLoader loader = taskView.getClass().getClassLoader();
+        if (loader == null) {
+            return;
+        }
+        try {
+            Object container = LauncherRecentsCompat.invokeCompat(
+                    taskView,
+                    "getContainer",
+                    LauncherRecentsCompat.NO_ARGS);
+            Object statsLogManager = LauncherRecentsCompat.invokeCompat(
+                    container,
+                    "getStatsLogManager",
+                    LauncherRecentsCompat.NO_ARGS);
+            Object logger = LauncherRecentsCompat.invokeCompat(
+                    statsLogManager,
+                    "logger",
+                    LauncherRecentsCompat.NO_ARGS);
+            if (logger == null) {
+                return;
+            }
+            Object itemInfo = LauncherRecentsCompat.invokeCompat(
+                    taskView,
+                    "getItemInfo",
+                    LauncherRecentsCompat.NO_ARGS);
+            Object loggerWithItemInfo = LauncherRecentsCompat.invokeCompat(
+                    logger,
+                    "withItemInfo",
+                    new Class<?>[]{
+                            Class.forName(
+                                    "com.android.launcher3.model.data.ItemInfo",
+                                    false,
+                                    loader)
+                    },
+                    itemInfo);
+            if (loggerWithItemInfo == null) {
+                loggerWithItemInfo = logger;
+            }
+            Object event = LauncherRecentsCompat.readStaticFieldCompat(
+                    "com.android.launcher3.logging.StatsLogManager$LauncherEvent",
+                    "LAUNCHER_TASK_LAUNCH_TAP",
+                    loader);
+            LauncherRecentsCompat.invokeCompat(
+                    loggerWithItemInfo,
+                    "log",
+                    new Class<?>[]{
+                            Class.forName(
+                                    "com.android.launcher3.logging.StatsLogManager$EventEnum",
+                                    false,
+                                    loader)
+                    },
+                    event);
+        } catch (Throwable ignored) {
+        }
     }
 
     static boolean shouldOverrideTaskLaunchStockGeometry(View recentsView, View taskView) {
@@ -842,7 +921,9 @@ final class LauncherRecentsLaunchController {
                                 && args.length > 0
                                 && args[0] instanceof Boolean
                                 && (Boolean) args[0];
-                        if (!launched) {
+                        if (launched) {
+                            finishTaskLaunchWithoutSystemAnimation(callbackRecentsView);
+                        } else {
                             clearTaskLaunchHandoff(callbackRecentsView, true);
                         }
                         return kotlinUnitInstance;
@@ -859,6 +940,18 @@ final class LauncherRecentsLaunchController {
                     t);
             return false;
         }
+    }
+
+    private static void finishTaskLaunchWithoutSystemAnimation(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        clearTaskLaunchHandoff(recentsView, false);
+        LauncherRecentsCompat.invokeMethodReflectively(
+                recentsView,
+                "onTaskLaunchAnimationEnd",
+                new Class<?>[]{boolean.class},
+                true);
     }
 
     private static LauncherRecentsState.TaskLaunchTaskRectTranslation
@@ -970,7 +1063,10 @@ final class LauncherRecentsLaunchController {
                     return;
                 }
                 completeTaskLaunchHandoff(recentsView, state);
-                continueTaskLaunchClick(taskView, recentsView);
+                LauncherRecentsState.TASK_LAUNCH_REQUEST_STARTED.put(recentsView, Boolean.TRUE);
+                if (!launchTaskWithoutSystemAnimation(taskView, recentsView)) {
+                    clearTaskLaunchHandoff(recentsView, true);
+                }
             }
         });
         LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFF_ANIMATORS.put(recentsView, animator);
@@ -987,30 +1083,6 @@ final class LauncherRecentsLaunchController {
         LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
         state.frozen = true;
         recentsView.invalidate();
-    }
-
-    private static void continueTaskLaunchClick(View taskView, View recentsView) {
-        if (taskView == null) {
-            clearTaskLaunchHandoff(recentsView, true);
-            return;
-        }
-        LauncherRecentsState.BYPASS_TASK_CLICK_INTERCEPTION.put(taskView, Boolean.TRUE);
-        LauncherRecentsCompat.writeField(taskView, "mDownTime", SystemClock.uptimeMillis());
-        try {
-            if (!LauncherRecentsCompat.invokeMethodReflectively(
-                    taskView,
-                    "onClick",
-                    LauncherRecentsCompat.NO_ARGS)) {
-                clearTaskLaunchHandoff(recentsView, true);
-                return;
-            }
-            if (!LauncherRecentsState.consumeTaskLaunchRequestStarted(recentsView)
-                    && LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
-                clearTaskLaunchHandoff(recentsView, true);
-            }
-        } finally {
-            LauncherRecentsState.BYPASS_TASK_CLICK_INTERCEPTION.remove(taskView);
-        }
     }
 
     private static void freezeTaskLaunchLayoutIfNeeded(View recentsView, View taskView) {
