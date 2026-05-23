@@ -740,14 +740,8 @@ final class LauncherRecentsLayoutEngine {
         }
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
                 FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
-        return config != null
-                && config.enabled
-                && config.launcherIosStackRecentsEnabled
-                && !LauncherRecentsCompat.invokeBoolean(recentsView, "showAsGrid", false)
-                && !LauncherRecentsCompat.invokeBoolean(
-                        recentsView,
-                        "isSplitSelectionActive",
-                        false);
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        return shouldUseStackLayout(config, recentsView, taskViewCount);
     }
 
     static boolean shouldUseStackLayout(
@@ -757,7 +751,7 @@ final class LauncherRecentsLayoutEngine {
         return config != null
                 && config.enabled
                 && config.launcherIosStackRecentsEnabled
-                && taskViewCount > 0
+                && taskViewCount > 1
                 && !LauncherRecentsCompat.invokeBoolean(recentsView, "showAsGrid", false)
                 && !LauncherRecentsCompat.invokeBoolean(
                         recentsView,
