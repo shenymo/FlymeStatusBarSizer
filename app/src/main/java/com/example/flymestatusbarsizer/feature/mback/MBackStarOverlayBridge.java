@@ -42,6 +42,14 @@ public final class MBackStarOverlayBridge {
         return target != null && target.handleMBackMotionEvent(event);
     }
 
+    public static boolean isActive() {
+        MBackStarOverlayController target;
+        synchronized (LOCK) {
+            target = controller;
+        }
+        return target != null && target.isActive();
+    }
+
     private static void rememberLatestMotionEvent(MotionEvent event) {
         if (event == null) {
             return;

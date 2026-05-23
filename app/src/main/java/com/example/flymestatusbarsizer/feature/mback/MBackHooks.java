@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.graphics.Insets;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
+import android.os.Handler;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -33,7 +34,9 @@ public final class MBackHooks {
             return;
         }
         hookLongTouchIntent(module, loader);
+        hookMBackControllerTouch(module, loader);
         hookMBackMotionEvents(module, loader);
+        hookNavBarPressureEvents(module, loader);
         hookNavBarExperiments(module, loader);
         hookPillVisibility(module, loader);
     }
@@ -287,6 +290,8 @@ public final class MBackHooks {
                         if (anchor == null) {
                             return chain.proceed();
                         }
+                        suppressMBackController(anchor);
+                        cancelPendingMBackLongTouch(loader);
                         requestCancelSwipeUp(cancelMethod, "show mback star apps from " + fromWhere);
                         anchor.post(() -> MBackStarOverlayBridge.show(anchor));
                         return null;
@@ -356,6 +361,29 @@ public final class MBackHooks {
         }
     }
 
+    private static void hookMBackControllerTouch(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.navigationbar.MBackButtonController",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("handleTouch", MotionEvent.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                MotionEvent motionEvent = chain.getArg(0) instanceof MotionEvent
+                        ? (MotionEvent) chain.getArg(0)
+                        : null;
+                if (MBackStarOverlayBridge.dispatchMBackMotionEvent(motionEvent)) {
+                    suppressMBackController(chain.getThisObject());
+                    return true;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logMBackWarning("Failed to hook mBack controller touch", t);
+        }
+    }
+
     private static void hookMBackMotionEvents(FlymeStatusBarSizer module, ClassLoader loader) {
         try {
             Class<?> clazz = Class.forName(
@@ -370,12 +398,93 @@ public final class MBackHooks {
                 MotionEvent motionEvent = chain.getArg(0) instanceof MotionEvent
                         ? (MotionEvent) chain.getArg(0)
                         : null;
-                Object result = chain.proceed();
-                MBackStarOverlayBridge.dispatchMBackMotionEvent(motionEvent);
-                return result;
+                if (MBackStarOverlayBridge.dispatchMBackMotionEvent(motionEvent)) {
+                    return null;
+                }
+                return chain.proceed();
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logMBackWarning("Failed to hook mBack motion events", t);
+        }
+    }
+
+    private static void hookNavBarPressureEvents(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.navigationbar.NavBarExt",
+                    false,
+                    loader);
+            for (String methodName : new String[]{"onPressureDown", "onPressureUp"}) {
+                Method method = clazz.getDeclaredMethod(methodName);
+                method.setAccessible(true);
+                module.intercept(method, chain -> {
+                    if (MBackStarOverlayBridge.isActive()) {
+                        return null;
+                    }
+                    return chain.proceed();
+                });
+            }
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logMBackWarning("Failed to hook mBack pressure events", t);
+        }
+    }
+
+    private static void suppressMBackController(Object target) {
+        Object controller = target instanceof View ? readField(target, "mMBackButtonController") : target;
+        if (controller == null) {
+            return;
+        }
+        Object handlerObject = readField(controller, "mHandler");
+        if (handlerObject instanceof Handler) {
+            Handler handler = (Handler) handlerObject;
+            handler.removeMessages(5);
+            handler.removeMessages(6);
+            handler.removeMessages(7);
+        }
+        writeField(controller, "mTouchEventDown", false);
+        writeField(controller, "mIsLongClick", true);
+        writeField(controller, "mTouchFlag", 0);
+        try {
+            Class<?> configClass = Class.forName(
+                    "com.flyme.systemui.navigationbar.actions.NavBarActionsConfig",
+                    false,
+                    controller.getClass().getClassLoader());
+            Field field = configClass.getDeclaredField("needCancelThisFingerprintForMBack");
+            field.setAccessible(true);
+            field.setBoolean(null, true);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void cancelPendingMBackLongTouch(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.navigationbar.actions.NavBarMBackLongTouchHelper",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("cancelAnyPendingLongTouch");
+            method.setAccessible(true);
+            method.invoke(null);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void writeField(Object target, String name, Object value) {
+        if (target == null || name == null) {
+            return;
+        }
+        Class<?> clazz = target.getClass();
+        while (clazz != null) {
+            try {
+                Field field = clazz.getDeclaredField(name);
+                field.setAccessible(true);
+                field.set(target, value);
+                return;
+            } catch (NoSuchFieldException ignored) {
+                clazz = clazz.getSuperclass();
+            } catch (Throwable ignored) {
+                return;
+            }
         }
     }
 

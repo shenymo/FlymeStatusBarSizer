@@ -2,7 +2,11 @@ package com.example.flymestatusbarsizer.feature.mback;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.app.ActivityManager;
+import android.app.ActivityOptions;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -15,6 +19,7 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.TypedValue;
@@ -26,6 +31,7 @@ import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.ViewParent;
 import android.view.WindowManager;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
@@ -52,8 +58,15 @@ final class MBackStarOverlayController {
     private static final int GYRO_PARALLAX_MAX_OFFSET_DP = 10;
     private static final int PREVIEW_WIDTH_DP = 180;
     private static final int PREVIEW_TOP_MARGIN_DP = 14;
+    private static final int PREVIEW_CORNER_RADIUS_DP = 22;
+    private static final long LAUNCH_ANIMATION_DURATION_MS = 260L;
+    private static final long LAUNCH_OVERLAY_DISMISS_DELAY_MS = 360L;
+    private static final DecelerateInterpolator LAUNCH_ANIMATION_INTERPOLATOR =
+            new DecelerateInterpolator(1.18f);
     private static Method trustedOverlayMethod;
     private static boolean trustedOverlayMethodResolved;
+    private static Method moveTaskToFrontWithOptionsMethod;
+    private static boolean moveTaskToFrontWithOptionsMethodResolved;
     private static Field trustedOverlayPrivateFlagsField;
     private static boolean trustedOverlayPrivateFlagsFieldResolved;
 
@@ -86,6 +99,7 @@ final class MBackStarOverlayController {
     private IconHolder hoveredHolder;
     private boolean showing;
     private boolean gyroRegistered;
+    private boolean launchAnimationRunning;
     private long lastGyroTimestampNanos;
     private float parallaxX;
     private float parallaxY;
@@ -93,6 +107,9 @@ final class MBackStarOverlayController {
     private float lastRawY = Float.NaN;
     private float mBackRawX = Float.NaN;
     private float mBackRawY = Float.NaN;
+    private ValueAnimator launchAnimator;
+    private GradientDrawable previewBackground;
+    private float previewCornerRadius;
 
     MBackStarOverlayController(Context context) {
         Context appContext = context != null && context.getApplicationContext() != null
@@ -125,6 +142,7 @@ final class MBackStarOverlayController {
         lastRawY = Float.NaN;
         mBackRawX = Float.NaN;
         mBackRawY = Float.NaN;
+        resetLaunchAnimationState();
         resetParallax();
         rememberMotion(startEvent);
         rememberMBackOrigin(anchor, startEvent);
@@ -157,6 +175,9 @@ final class MBackStarOverlayController {
         if (!showing || event == null) {
             return false;
         }
+        if (launchAnimationRunning) {
+            return true;
+        }
         rememberMotion(event);
         int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_DOWN) {
@@ -178,6 +199,10 @@ final class MBackStarOverlayController {
             return true;
         }
         return true;
+    }
+
+    boolean isActive() {
+        return showing || launchAnimationRunning;
     }
 
     private boolean attachOverlay(Context sourceContext) {
@@ -240,6 +265,7 @@ final class MBackStarOverlayController {
             return;
         }
         showing = false;
+        launchAnimationRunning = false;
         stopGyro();
         hoveredHolder = null;
         lastRawX = Float.NaN;
@@ -249,6 +275,7 @@ final class MBackStarOverlayController {
         resetParallax();
         apps = MBackStarApp.EMPTY_ARRAY;
         previewCache.clear();
+        resetLaunchAnimationState();
         hidePreview();
         iconHolders.clear();
         iconsLayer.removeAllViews();
@@ -272,7 +299,7 @@ final class MBackStarOverlayController {
     }
 
     private void renderApps() {
-        if (!showing || !overlayView.isAttachedToWindow()) {
+        if (!showing || launchAnimationRunning || !overlayView.isAttachedToWindow()) {
             return;
         }
         int width = overlayView.getWidth();
@@ -486,7 +513,11 @@ final class MBackStarOverlayController {
     }
 
     private void handleGyroEvent(SensorEvent event) {
-        if (!showing || event == null || event.values == null || event.values.length < 2) {
+        if (!showing
+                || launchAnimationRunning
+                || event == null
+                || event.values == null
+                || event.values.length < 2) {
             return;
         }
         long timestamp = event.timestamp;
@@ -529,6 +560,9 @@ final class MBackStarOverlayController {
     }
 
     private void updateHover(float rawX, float rawY) {
+        if (launchAnimationRunning) {
+            return;
+        }
         setHoveredHolder(findHitHolder(rawX, rawY));
     }
 
@@ -587,6 +621,9 @@ final class MBackStarOverlayController {
     }
 
     private void showPreview(IconHolder holder) {
+        if (launchAnimationRunning) {
+            return;
+        }
         if (holder == null || holder.app == null || holder.app.taskId < 0) {
             hidePreview();
             return;
@@ -601,6 +638,7 @@ final class MBackStarOverlayController {
         setPreviewVisible(false);
         snapshotProvider.requestSnapshot(taskId, handler, (resolvedTaskId, bitmap) -> {
             if (!showing
+                    || launchAnimationRunning
                     || bitmap == null
                     || bitmap.isRecycled()
                     || hoveredHolder == null
@@ -688,11 +726,156 @@ final class MBackStarOverlayController {
             return;
         }
         int taskId = app.taskId;
+        if (previewContainer.getVisibility() == View.VISIBLE
+                && previewImageView.getDrawable() != null
+                && overlayView.getWidth() > 0
+                && overlayView.getHeight() > 0
+                && startLaunchAnimation(taskId)) {
+            return;
+        }
         dismiss();
+        moveTaskToFront(taskId);
+    }
+
+    private boolean startLaunchAnimation(int taskId) {
+        FrameLayout.LayoutParams params =
+                previewContainer.getLayoutParams() instanceof FrameLayout.LayoutParams
+                        ? (FrameLayout.LayoutParams) previewContainer.getLayoutParams()
+                        : null;
+        if (params == null) {
+            return false;
+        }
+        int startWidth = previewContainer.getWidth() > 0 ? previewContainer.getWidth() : params.width;
+        int startHeight = previewContainer.getHeight() > 0 ? previewContainer.getHeight() : params.height;
+        int targetWidth = overlayView.getWidth();
+        int targetHeight = overlayView.getHeight();
+        if (startWidth <= 0 || startHeight <= 0 || targetWidth <= 0 || targetHeight <= 0) {
+            return false;
+        }
+        launchAnimationRunning = true;
+        stopGyro();
+        overlayView.animate().cancel();
+        overlayView.setAlpha(1f);
+        iconsLayer.animate().cancel();
+        iconsLayer.animate()
+                .alpha(0f)
+                .setDuration(90L)
+                .start();
+        previewContainer.animate().cancel();
+        previewContainer.bringToFront();
+        previewContainer.setAlpha(1f);
+        previewContainer.setScaleX(1f);
+        previewContainer.setScaleY(1f);
+        previewContainer.setTranslationX(0f);
+        previewContainer.setTranslationY(0f);
+        previewContainer.setClipToOutline(true);
+        setPreviewCornerRadius(dp(PREVIEW_CORNER_RADIUS_DP));
+
+        final int startLeft = params.leftMargin;
+        final int startTop = params.topMargin;
+        launchAnimator = ValueAnimator.ofFloat(0f, 1f);
+        launchAnimator.setDuration(LAUNCH_ANIMATION_DURATION_MS);
+        launchAnimator.setInterpolator(LAUNCH_ANIMATION_INTERPOLATOR);
+        launchAnimator.addUpdateListener(animation -> {
+            float progress = animation.getAnimatedFraction();
+            FrameLayout.LayoutParams currentParams =
+                    previewContainer.getLayoutParams() instanceof FrameLayout.LayoutParams
+                            ? (FrameLayout.LayoutParams) previewContainer.getLayoutParams()
+                            : new FrameLayout.LayoutParams(startWidth, startHeight);
+            currentParams.leftMargin = Math.round(lerp(startLeft, 0f, progress));
+            currentParams.topMargin = Math.round(lerp(startTop, 0f, progress));
+            currentParams.width = Math.max(1, Math.round(lerp(startWidth, targetWidth, progress)));
+            currentParams.height = Math.max(1, Math.round(lerp(startHeight, targetHeight, progress)));
+            previewContainer.setLayoutParams(currentParams);
+            previewContainer.invalidateOutline();
+        });
+        launchAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (!moveTaskToFront(taskId)) {
+                    dismiss();
+                    return;
+                }
+                handler.postDelayed(() -> {
+                    if (launchAnimationRunning) {
+                        dismiss();
+                    }
+                }, LAUNCH_OVERLAY_DISMISS_DELAY_MS);
+            }
+        });
+        launchAnimator.start();
+        return true;
+    }
+
+    private void resetLaunchAnimationState() {
+        if (launchAnimator != null) {
+            launchAnimator.cancel();
+            launchAnimator = null;
+        }
+        launchAnimationRunning = false;
+        iconsLayer.animate().cancel();
+        iconsLayer.setAlpha(1f);
+        previewContainer.animate().cancel();
+        previewContainer.setAlpha(1f);
+        previewContainer.setScaleX(1f);
+        previewContainer.setScaleY(1f);
+        previewContainer.setTranslationX(0f);
+        previewContainer.setTranslationY(0f);
+        previewContainer.setClipToOutline(true);
+        setPreviewCornerRadius(dp(PREVIEW_CORNER_RADIUS_DP));
+    }
+
+    private boolean moveTaskToFront(int taskId) {
         try {
-            activityManager.moveTaskToFront(taskId, 0);
+            Bundle options = buildNoAnimationOptions();
+            if (startActivityFromRecents(taskId, options)) {
+                return true;
+            }
+            Method method = resolveMoveTaskToFrontWithOptionsMethod();
+            if (method != null && options != null) {
+                method.invoke(activityManager, taskId, 0, options);
+            } else {
+                activityManager.moveTaskToFront(taskId, 0);
+            }
+            return true;
         } catch (Throwable t) {
             FlymeStatusBarSizer.logMBackWarning("Failed to move mBack star task to front: " + taskId, t);
+            try {
+                activityManager.moveTaskToFront(taskId, 0);
+                return true;
+            } catch (Throwable fallback) {
+                FlymeStatusBarSizer.logMBackWarning(
+                        "Failed to fallback move mBack star task to front: " + taskId,
+                        fallback);
+            }
+        }
+        return false;
+    }
+
+    private boolean startActivityFromRecents(int taskId, Bundle options) {
+        try {
+            Class<?> activityTaskManagerClass = Class.forName("android.app.ActivityTaskManager");
+            Method getServiceMethod = activityTaskManagerClass.getDeclaredMethod("getService");
+            getServiceMethod.setAccessible(true);
+            Object service = getServiceMethod.invoke(null);
+            if (service == null) {
+                return false;
+            }
+            Class<?> serviceClass = Class.forName("android.app.IActivityTaskManager");
+            Method method = serviceClass.getMethod("startActivityFromRecents", int.class, Bundle.class);
+            method.setAccessible(true);
+            Object result = method.invoke(service, taskId, options);
+            return !(result instanceof Integer) || (Integer) result >= 0;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private Bundle buildNoAnimationOptions() {
+        try {
+            return ActivityOptions.makeCustomAnimation(context, 0, 0).toBundle();
+        } catch (Throwable ignored) {
+            return null;
         }
     }
 
@@ -701,16 +884,17 @@ final class MBackStarOverlayController {
         container.setVisibility(View.GONE);
         container.setClipToOutline(true);
         container.setElevation(dp(18));
-        GradientDrawable background = new GradientDrawable();
-        background.setShape(GradientDrawable.RECTANGLE);
-        background.setCornerRadius(dp(22));
-        background.setColor(Color.argb(235, 16, 18, 24));
-        background.setStroke(Math.max(1, dp(1)), Color.argb(92, 255, 255, 255));
-        container.setBackground(background);
+        previewCornerRadius = dp(PREVIEW_CORNER_RADIUS_DP);
+        previewBackground = new GradientDrawable();
+        previewBackground.setShape(GradientDrawable.RECTANGLE);
+        previewBackground.setCornerRadius(previewCornerRadius);
+        previewBackground.setColor(Color.argb(235, 16, 18, 24));
+        previewBackground.setStroke(Math.max(1, dp(1)), Color.argb(92, 255, 255, 255));
+        container.setBackground(previewBackground);
         container.setOutlineProvider(new ViewOutlineProvider() {
             @Override
             public void getOutline(View view, Outline outline) {
-                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dp(22));
+                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), previewCornerRadius);
             }
         });
         container.addView(
@@ -797,6 +981,22 @@ final class MBackStarOverlayController {
         return trustedOverlayPrivateFlagsField;
     }
 
+    private static Method resolveMoveTaskToFrontWithOptionsMethod() {
+        if (!moveTaskToFrontWithOptionsMethodResolved) {
+            try {
+                moveTaskToFrontWithOptionsMethod = ActivityManager.class.getMethod(
+                        "moveTaskToFront",
+                        int.class,
+                        int.class,
+                        Bundle.class);
+            } catch (Throwable ignored) {
+                moveTaskToFrontWithOptionsMethod = null;
+            }
+            moveTaskToFrontWithOptionsMethodResolved = true;
+        }
+        return moveTaskToFrontWithOptionsMethod;
+    }
+
     private int dp(int value) {
         return Math.round(TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_DIP,
@@ -804,8 +1004,22 @@ final class MBackStarOverlayController {
                 context.getResources().getDisplayMetrics()));
     }
 
+    private void setPreviewCornerRadius(float radius) {
+        previewCornerRadius = radius;
+        if (previewBackground != null) {
+            previewBackground.setCornerRadius(radius);
+        }
+        if (previewContainer != null) {
+            previewContainer.invalidateOutline();
+        }
+    }
+
     private static float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static float lerp(float start, float end, float progress) {
+        return start + ((end - start) * progress);
     }
 
     private static final class IconHolder {
