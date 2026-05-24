@@ -28,6 +28,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.07f;
     private static final float BLANK_TAP_HOME_EXIT_TRAVEL_RATIO = 0.90f;
+    private static final float STACK_TITLE_FADE_END_CARD_ALPHA = 0.42f;
     private static final int STACK_TASK_SHADOW_ELEVATION_DP = 10;
 
     private LauncherRecentsLayoutEngine() {
@@ -463,12 +464,14 @@ final class LauncherRecentsLayoutEngine {
                 restoreTaskTransform(taskView);
                 LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
                 continue;
             }
             if (appEntrySessionActive && taskView == runningTaskView) {
                 LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
                 continue;
             }
@@ -656,6 +659,9 @@ final class LauncherRecentsLayoutEngine {
                     taskView,
                     appliedAttachAlpha);
             LauncherRecentsTaskVisuals.setStableAlpha(taskView, appliedStableAlpha);
+            LauncherRecentsTaskVisuals.setActivityTitleAlpha(
+                    taskView,
+                    resolveStackTitleAlpha(appliedStableAlpha));
             LauncherRecentsTaskVisuals.setFullscreenProgress(
                     taskView,
                     appliedFullscreenProgress);
@@ -721,6 +727,7 @@ final class LauncherRecentsLayoutEngine {
         LauncherRecentsTaskVisuals.setStableAlpha(
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView));
+        LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 1f);
         LauncherRecentsTaskVisuals.setFullscreenProgress(
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView));
@@ -729,6 +736,10 @@ final class LauncherRecentsLayoutEngine {
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView));
         LauncherRecentsTaskVisuals.clearAppliedTaskState(taskView);
+    }
+
+    private static float resolveStackTitleAlpha(float taskAlpha) {
+        return remapProgress(taskAlpha, STACK_TITLE_FADE_END_CARD_ALPHA, 1f);
     }
 
     static boolean shouldUseStackLayout(View recentsView) {

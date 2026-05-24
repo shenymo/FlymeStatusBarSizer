@@ -10,6 +10,7 @@ import android.view.ViewOutlineProvider;
 
 final class LauncherRecentsTaskVisuals {
     private static final float MODULE_APPLIED_EPSILON = 0.01f;
+    private static final String ACTIVITY_TITLE_FIELD = "mActivityTitle";
     private static final ViewOutlineProvider STACK_TASK_SHADOW_OUTLINE_PROVIDER =
             new ViewOutlineProvider() {
                 @Override
@@ -166,6 +167,13 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_APPLIED_STABLE_ALPHAS.put(taskView, clampedValue);
     }
 
+    static void setActivityTitleAlpha(View taskView, float value) {
+        View titleView = resolveActivityTitleView(taskView);
+        if (titleView != null) {
+            titleView.setAlpha(LauncherRecentsLayoutEngine.clamp(value, 0f, 1f));
+        }
+    }
+
     static void setFullscreenProgress(View taskView, float value) {
         float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
         LauncherRecentsCompat.invokeCompat(
@@ -285,6 +293,11 @@ final class LauncherRecentsTaskVisuals {
             return (Float) value;
         }
         return taskView.getAlpha();
+    }
+
+    private static View resolveActivityTitleView(View taskView) {
+        Object value = LauncherRecentsCompat.getFieldCompat(taskView, ACTIVITY_TITLE_FIELD);
+        return value instanceof View ? (View) value : null;
     }
 
     static float readAttachAlpha(View taskView) {
