@@ -11,6 +11,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
+import android.view.animation.LinearInterpolator;
 
 import java.lang.reflect.Method;
 
@@ -20,8 +21,8 @@ final class LauncherRecentsTransitionController {
     private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 360L;
     private static final long GESTURE_STACK_RELEASE_DURATION_MS = 320L;
     private static final int APP_TO_RECENTS_STACK_ANCHOR_PAGE = 0;
-    private static final DecelerateInterpolator BLANK_TAP_HOME_EXIT_INTERPOLATOR =
-            new DecelerateInterpolator(1.6f);
+    private static final LinearInterpolator BLANK_TAP_HOME_EXIT_INTERPOLATOR =
+            new LinearInterpolator();
     private static final DecelerateInterpolator GESTURE_STACK_RELEASE_INTERPOLATOR =
             new DecelerateInterpolator(1.35f);
 
@@ -52,6 +53,14 @@ final class LauncherRecentsTransitionController {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    if (shouldAnimateBlankTapHomeExit(recentsView)
+                            && LauncherRecentsCompat.invokeBoolean(
+                            recentsView,
+                            "canStartHomeSafely",
+                            false)) {
+                        LauncherRecentsLayoutEngine.captureBlankTapHomeExitTaskStates(recentsView);
+                        setBlankTapHomeExitProgress(recentsView, 0f);
+                    }
                     LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
                     LauncherRecentsAttachController.clearAppToRecentsEntrySession(
                             recentsView,
@@ -314,7 +323,7 @@ final class LauncherRecentsTransitionController {
             }
             LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.remove(recentsView);
         }
-        setPageAnimOffScreenStart(recentsView, true);
+        setPageAnimOffScreenStart(recentsView, false);
         setBlankTapHomeExitProgress(recentsView, 0f);
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(BLANK_TAP_HOME_EXIT_DURATION_MS);
@@ -352,11 +361,7 @@ final class LauncherRecentsTransitionController {
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "handleStartHome",
-                new Class[]{boolean.class},
-                false);
+        startBlankTapHomeExitHome(recentsView);
         Runnable resetRunnable = () -> clearBlankTapHomeExitProgress(recentsView);
         Handler handler = LauncherRecentsState.ensureMainHandler();
         if (handler != null && Looper.myLooper() != handler.getLooper()) {
@@ -364,6 +369,14 @@ final class LauncherRecentsTransitionController {
         } else {
             recentsView.post(resetRunnable);
         }
+    }
+
+    private static void startBlankTapHomeExitHome(View recentsView) {
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "handleStartHome",
+                new Class[]{boolean.class},
+                false);
     }
 
     static void cancelBlankTapHomeExitAnimation(View recentsView, boolean resetTransform) {
@@ -381,6 +394,7 @@ final class LauncherRecentsTransitionController {
             return;
         }
         LauncherRecentsState.BLANK_TAP_HOME_EXIT_PROGRESS.remove(recentsView);
+        LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.clear();
         setPageAnimOffScreenStart(recentsView, false);
         LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
         recentsView.invalidate();
