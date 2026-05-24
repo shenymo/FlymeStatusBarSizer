@@ -33,6 +33,7 @@ public final class MBackHooks {
         if (module == null || loader == null) {
             return;
         }
+        hookSystemUiApplicationCreate(module, loader);
         hookLongTouchIntent(module, loader);
         hookMBackControllerTouch(module, loader);
         hookMBackMotionEvents(module, loader);
@@ -189,6 +190,27 @@ public final class MBackHooks {
             setInsetsFrameProviderInsetsSize(Array.get(result, 2), Insets.of(0, 0, 0, bottomInsetPx));
         }
         return result;
+    }
+
+    private static void hookSystemUiApplicationCreate(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.SystemUIApplication",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("onCreate");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof Context) {
+                    MBackStarAppProvider.preload((Context) thisObject);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logMBackWarning("Failed to hook SystemUI app cache preload", t);
+        }
     }
 
     public static void applyNavBarHeightOverride(Object layoutParamsObject, Object navigationBar) {
