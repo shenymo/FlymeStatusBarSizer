@@ -28,6 +28,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.07f;
     private static final float BLANK_TAP_HOME_EXIT_TRAVEL_RATIO = 0.90f;
+    private static final int STACK_TASK_SHADOW_ELEVATION_DP = 10;
 
     private LauncherRecentsLayoutEngine() {
     }
@@ -658,6 +659,11 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsTaskVisuals.setFullscreenProgress(
                     taskView,
                     appliedFullscreenProgress);
+            LauncherRecentsTaskVisuals.setStackShadowElevation(
+                    taskView,
+                    FlymeStatusBarSizer.dp(
+                            recentsView.getContext(),
+                            STACK_TASK_SHADOW_ELEVATION_DP));
             LauncherRecentsTaskVisuals.setTranslationZ(taskView, appliedTranslationZ);
         }
         if (launchState != null && launchState.handoffEnabled) {
@@ -718,6 +724,7 @@ final class LauncherRecentsLayoutEngine {
         LauncherRecentsTaskVisuals.setFullscreenProgress(
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView));
+        LauncherRecentsTaskVisuals.restoreTaskShadow(taskView);
         LauncherRecentsTaskVisuals.setTranslationZ(
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView));

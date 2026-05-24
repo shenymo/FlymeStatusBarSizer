@@ -1,10 +1,34 @@
 package com.example.flymestatusbarsizer.feature.launcher;
 
+import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
+
 import android.animation.Animator;
+import android.graphics.Outline;
+import android.graphics.Rect;
 import android.view.View;
+import android.view.ViewOutlineProvider;
 
 final class LauncherRecentsTaskVisuals {
     private static final float MODULE_APPLIED_EPSILON = 0.01f;
+    private static final ViewOutlineProvider STACK_TASK_SHADOW_OUTLINE_PROVIDER =
+            new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    Rect bounds = new Rect();
+                    LauncherRecentsCompat.invokeCompat(
+                            view,
+                            "getThumbnailBounds",
+                            new Class<?>[]{Rect.class, boolean.class},
+                            bounds,
+                            false);
+                    if (bounds.isEmpty()) {
+                        bounds.set(0, 0, view.getWidth(), view.getHeight());
+                    }
+                    outline.setRoundRect(
+                            bounds,
+                            FlymeStatusBarSizer.dp(view.getContext(), 22));
+                }
+            };
 
     private LauncherRecentsTaskVisuals() {
     }
@@ -160,6 +184,17 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_APPLIED_TRANSLATION_ZS.put(taskView, value);
     }
 
+    static void setStackShadowElevation(View taskView, float value) {
+        if (taskView == null) {
+            return;
+        }
+        rememberOriginalTaskState(taskView);
+        taskView.setOutlineProvider(STACK_TASK_SHADOW_OUTLINE_PROVIDER);
+        taskView.setElevation(value);
+        taskView.invalidateOutline();
+        LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.put(taskView, value);
+    }
+
     static void rememberOriginalTaskState(View taskView) {
         if (taskView == null) {
             return;
@@ -173,6 +208,14 @@ final class LauncherRecentsTaskVisuals {
             LauncherRecentsState.ORIGINAL_BOX_TRANSLATION_YS.put(
                     taskView,
                     LauncherRecentsCompat.readFloatField(taskView, "boxTranslationY", 0f));
+        }
+        if (!LauncherRecentsState.ORIGINAL_TASK_ELEVATIONS.containsKey(taskView)) {
+            LauncherRecentsState.ORIGINAL_TASK_ELEVATIONS.put(taskView, taskView.getElevation());
+        }
+        if (!LauncherRecentsState.ORIGINAL_TASK_OUTLINE_PROVIDERS.containsKey(taskView)) {
+            LauncherRecentsState.ORIGINAL_TASK_OUTLINE_PROVIDERS.put(
+                    taskView,
+                    taskView.getOutlineProvider());
         }
     }
 
@@ -226,6 +269,11 @@ final class LauncherRecentsTaskVisuals {
         return value != null ? value : 0f;
     }
 
+    static float readOriginalTaskElevation(View taskView) {
+        Float value = LauncherRecentsState.ORIGINAL_TASK_ELEVATIONS.get(taskView);
+        return value != null ? value : 0f;
+    }
+
     static float readLastStockFullscreenProgress(View taskView) {
         Float value = LauncherRecentsState.LAST_STOCK_FULLSCREEN_PROGRESSES.get(taskView);
         return value != null ? value : 0f;
@@ -260,6 +308,21 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_APPLIED_STABLE_ALPHAS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_TRANSLATION_ZS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_FULLSCREEN_PROGRESSES.remove(taskView);
+        LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.remove(taskView);
+    }
+
+    static void restoreTaskShadow(View taskView) {
+        if (taskView == null) {
+            return;
+        }
+        if (!LauncherRecentsState.ORIGINAL_TASK_ELEVATIONS.containsKey(taskView)) {
+            return;
+        }
+        taskView.setElevation(readOriginalTaskElevation(taskView));
+        taskView.setOutlineProvider(LauncherRecentsState.ORIGINAL_TASK_OUTLINE_PROVIDERS.get(
+                taskView));
+        taskView.invalidateOutline();
+        LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.remove(taskView);
     }
 
     private static boolean isCurrentTaskStateModuleApplied(View taskView) {
