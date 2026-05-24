@@ -465,6 +465,7 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.setStackContentBlur(taskView, 0f);
                 LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
                 continue;
             }
@@ -472,6 +473,7 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.setStackContentBlur(taskView, 0f);
                 LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
                 continue;
             }
@@ -662,6 +664,7 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsTaskVisuals.setActivityTitleAlpha(
                     taskView,
                     resolveStackTitleAlpha(appliedStableAlpha));
+            LauncherRecentsTaskVisuals.setStackContentBlur(taskView, appliedStableAlpha);
             LauncherRecentsTaskVisuals.setFullscreenProgress(
                     taskView,
                     appliedFullscreenProgress);
@@ -728,6 +731,7 @@ final class LauncherRecentsLayoutEngine {
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView));
         LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 1f);
+        LauncherRecentsTaskVisuals.clearStackContentBlur(taskView);
         LauncherRecentsTaskVisuals.setFullscreenProgress(
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView));

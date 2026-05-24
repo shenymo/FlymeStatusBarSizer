@@ -76,6 +76,12 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> LAST_APPLIED_TASK_SHADOW_ELEVATIONS =
             new WeakHashMap<>();
+    static final WeakHashMap<View, Float> LAST_APPLIED_STACK_CONTENT_BLURS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, ViewOutlineProvider> ORIGINAL_STACK_ICON_OUTLINE_PROVIDERS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES =
+            new WeakHashMap<>();
     static final ThreadLocal<TaskLaunchSimulatorTranslationContext>
             ACTIVE_TASK_LAUNCH_SIMULATOR_TRANSLATION = new ThreadLocal<>();
     static final ThreadLocal<View> ACTIVE_TASK_LAUNCH_SCROLL_COMPENSATION_BYPASS =

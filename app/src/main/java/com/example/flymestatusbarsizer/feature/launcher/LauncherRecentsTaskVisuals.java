@@ -5,11 +5,17 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import android.animation.Animator;
 import android.graphics.Outline;
 import android.graphics.Rect;
+import android.graphics.RenderEffect;
+import android.graphics.Shader;
+import android.os.Build;
 import android.view.View;
 import android.view.ViewOutlineProvider;
 
+import java.util.List;
+
 final class LauncherRecentsTaskVisuals {
     private static final float MODULE_APPLIED_EPSILON = 0.01f;
+    private static final int STACK_CONTENT_MAX_BLUR_DP = 18;
     private static final String ACTIVITY_TITLE_FIELD = "mActivityTitle";
     private static final ViewOutlineProvider STACK_TASK_SHADOW_OUTLINE_PROVIDER =
             new ViewOutlineProvider() {
@@ -174,6 +180,36 @@ final class LauncherRecentsTaskVisuals {
         }
     }
 
+    static void setStackContentBlur(View taskView, float stableAlpha) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || taskView == null) {
+            return;
+        }
+        float alpha = LauncherRecentsLayoutEngine.clamp(stableAlpha, 0f, 1f);
+        float blurPx = FlymeStatusBarSizer.dp(
+                taskView.getContext(),
+                STACK_CONTENT_MAX_BLUR_DP) * (1f - alpha);
+        Object containersObject = LauncherRecentsCompat.invokeCompat(taskView, "getTaskContainers");
+        if (!(containersObject instanceof List)) {
+            return;
+        }
+        List<?> taskContainers = (List<?>) containersObject;
+        for (int i = 0; i < taskContainers.size(); i++) {
+            Object taskContainer = taskContainers.get(i);
+            Object snapshotView = LauncherRecentsCompat.invokeCompat(taskContainer, "getSnapshotView");
+            applyStackContentBlur(snapshotView instanceof View ? (View) snapshotView : null, blurPx);
+            Object iconView = LauncherRecentsCompat.invokeCompat(taskContainer, "getIconView");
+            Object iconAsView = LauncherRecentsCompat.invokeCompat(iconView, "asView");
+            applyStackIconBlur(
+                    iconView,
+                    iconAsView instanceof View ? (View) iconAsView : null,
+                    blurPx);
+        }
+    }
+
+    static void clearStackContentBlur(View taskView) {
+        setStackContentBlur(taskView, 1f);
+    }
+
     static void setFullscreenProgress(View taskView, float value) {
         float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
         LauncherRecentsCompat.invokeCompat(
@@ -322,6 +358,97 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_APPLIED_TRANSLATION_ZS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_FULLSCREEN_PROGRESSES.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.remove(taskView);
+        LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.remove(taskView);
+    }
+
+    private static void applyStackContentBlur(View view, float blurPx) {
+        if (view == null) {
+            return;
+        }
+        float appliedBlurPx = blurPx > MODULE_APPLIED_EPSILON ? blurPx : 0f;
+        Float lastAppliedBlurPx = LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.get(view);
+        if (lastAppliedBlurPx != null
+                && Math.abs(lastAppliedBlurPx - appliedBlurPx) < MODULE_APPLIED_EPSILON) {
+            return;
+        }
+        if (appliedBlurPx == 0f) {
+            view.setRenderEffect(null);
+        } else {
+            view.setRenderEffect(RenderEffect.createBlurEffect(
+                    appliedBlurPx,
+                    appliedBlurPx,
+                    Shader.TileMode.CLAMP));
+        }
+        LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.put(view, appliedBlurPx);
+    }
+
+    private static void applyStackIconBlur(Object iconView, View view, float blurPx) {
+        if (view == null) {
+            return;
+        }
+        float appliedBlurPx = blurPx > MODULE_APPLIED_EPSILON ? blurPx : 0f;
+        if (appliedBlurPx == 0f) {
+            restoreStackIconClip(view);
+            applyStackContentBlur(view, 0f);
+            return;
+        }
+        rememberStackIconClip(view);
+        int iconWidth = readIconSize(iconView, "getDrawableWidth", view.getWidth());
+        int iconHeight = readIconSize(iconView, "getDrawableHeight", view.getHeight());
+        view.setOutlineProvider(createStackIconBlurOutlineProvider(iconWidth, iconHeight));
+        view.setClipToOutline(true);
+        view.invalidateOutline();
+        applyStackContentBlur(view, appliedBlurPx);
+    }
+
+    private static void rememberStackIconClip(View view) {
+        if (!LauncherRecentsState.ORIGINAL_STACK_ICON_OUTLINE_PROVIDERS.containsKey(view)) {
+            LauncherRecentsState.ORIGINAL_STACK_ICON_OUTLINE_PROVIDERS.put(
+                    view,
+                    view.getOutlineProvider());
+        }
+        if (!LauncherRecentsState.ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES.containsKey(view)) {
+            LauncherRecentsState.ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES.put(
+                    view,
+                    view.getClipToOutline());
+        }
+    }
+
+    private static void restoreStackIconClip(View view) {
+        if (!LauncherRecentsState.ORIGINAL_STACK_ICON_OUTLINE_PROVIDERS.containsKey(view)) {
+            return;
+        }
+        view.setOutlineProvider(LauncherRecentsState.ORIGINAL_STACK_ICON_OUTLINE_PROVIDERS.remove(
+                view));
+        Boolean clipToOutline =
+                LauncherRecentsState.ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES.remove(view);
+        view.setClipToOutline(clipToOutline != null && clipToOutline);
+        view.invalidateOutline();
+    }
+
+    private static ViewOutlineProvider createStackIconBlurOutlineProvider(
+            int iconWidth,
+            int iconHeight) {
+        return new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, Outline outline) {
+                int width = iconWidth > 0 ? Math.min(iconWidth, view.getWidth()) : view.getWidth();
+                int height = iconHeight > 0 ? Math.min(iconHeight, view.getHeight()) : view.getHeight();
+                if (width <= 0 || height <= 0) {
+                    outline.setEmpty();
+                    return;
+                }
+                int left = Math.max(0, (view.getWidth() - width) / 2);
+                int top = Math.max(0, (view.getHeight() - height) / 2);
+                float radius = Math.min(width, height) * 0.22f;
+                outline.setRoundRect(left, top, left + width, top + height, radius);
+            }
+        };
+    }
+
+    private static int readIconSize(Object iconView, String methodName, int fallback) {
+        Object value = LauncherRecentsCompat.invokeCompat(iconView, methodName);
+        return value instanceof Integer ? (Integer) value : fallback;
     }
 
     static void restoreTaskShadow(View taskView) {
