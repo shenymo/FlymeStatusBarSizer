@@ -184,7 +184,11 @@ final class LauncherRecentsTaskVisuals {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || taskView == null) {
             return;
         }
-        float alpha = LauncherRecentsLayoutEngine.clamp(stableAlpha, 0f, 1f);
+        View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
+        float alpha = LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView)
+                ? 1f
+                : LauncherRecentsLayoutEngine.clamp(stableAlpha, 0f, 1f);
         float blurPx = FlymeStatusBarSizer.dp(
                 taskView.getContext(),
                 STACK_CONTENT_MAX_BLUR_DP) * (1f - alpha);
