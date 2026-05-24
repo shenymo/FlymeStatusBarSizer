@@ -21,7 +21,6 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
     private static final float STACK_RELEASE_SETTLED_PROGRESS_SHIFT = 0.70f;
     private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
-    private static final float STACK_LEFT_EDGE_EXTRA_SPACING_RATIO = 0.08f;
     private static final float STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO = 0.30f;
     private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
     private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
@@ -583,10 +582,11 @@ final class LauncherRecentsLayoutEngine {
                     desiredStableAlpha = 0f;
                 }
             }
-            desiredStableAlpha *= remapProgress(
+            desiredStableAlpha *= resolveStackLeftClampAlpha(
+                    recentsView,
                     layoutProgress,
-                    STACK_LEFT_RELEASE_END_PROGRESS,
-                    STACK_LEFT_RELEASE_START_PROGRESS);
+                    taskWidth,
+                    taskCenteredLeftPx);
             float translationCompensationX =
                     desiredVisibleOffset - rawOffset - nativeDismissTranslationX;
 
@@ -864,19 +864,28 @@ final class LauncherRecentsLayoutEngine {
             float taskWidth,
             float taskCenteredLeftPx,
             float leftEdgeRevealProgress) {
-        float stackLeftOffsetPx =
-                -taskCenteredLeftPx + (taskWidth * STACK_LEFT_EDGE_INSET_RATIO);
-        float stackLeftRestOffsetPx =
-                -taskCenteredLeftPx + (taskWidth * STACK_LEFT_REST_INSET_RATIO);
+        float leftBoundOffsetPx = resolveStackLeftBoundOffset(
+                taskWidth,
+                taskCenteredLeftPx,
+                leftEdgeRevealProgress);
+        float visibleOffset = resolveStackUnclampedVisibleOffset(
+                recentsView,
+                progress,
+                taskWidth,
+                taskCenteredLeftPx);
+        return Math.max(leftBoundOffsetPx, visibleOffset);
+    }
+
+    private static float resolveStackUnclampedVisibleOffset(
+            View recentsView,
+            float progress,
+            float taskWidth,
+            float taskCenteredLeftPx) {
         float stackRightOffsetPx = Math.max(
                 0f,
                 recentsView.getWidth()
                         - (taskWidth * STACK_RIGHT_VISIBLE_RATIO)
                         - taskCenteredLeftPx);
-        float stackLeftTargetOffsetPx = lerp(
-                stackLeftRestOffsetPx,
-                stackLeftOffsetPx,
-                leftEdgeRevealProgress);
         float stackDepth = Math.abs(progress);
         if (stackDepth <= 0.001f) {
             return 0f;
@@ -884,17 +893,56 @@ final class LauncherRecentsLayoutEngine {
         float stackSpreadProgress = (float) Math.pow(
                 remapProgress(stackDepth, 0f, 1f),
                 STACK_SPREAD_POWER);
-        float stackDepthSpacing = taskWidth
-                * STACK_LEFT_EDGE_EXTRA_SPACING_RATIO
-                * (1f - remapProgress(stackDepth, 0f, MAX_STACK_LAYERS));
-        if (progress < 0f) {
-            return (stackLeftTargetOffsetPx + stackDepthSpacing) * stackSpreadProgress;
+        float visibleOffset = stackRightOffsetPx * stackSpreadProgress;
+        if (stackDepth > 1f) {
+            visibleOffset += (stackDepth - 1f) * taskWidth * STACK_RIGHT_VISIBLE_RATIO;
         }
-        float rightOffsetPx = stackRightOffsetPx * stackSpreadProgress;
-        if (progress > 1f) {
-            rightOffsetPx += (progress - 1f) * taskWidth * STACK_RIGHT_VISIBLE_RATIO;
+        return progress < 0f ? -visibleOffset : visibleOffset;
+    }
+
+    private static float resolveStackLeftBoundOffset(
+            float taskWidth,
+            float taskCenteredLeftPx,
+            float leftEdgeRevealProgress) {
+        float stackLeftOffsetPx =
+                -taskCenteredLeftPx + (taskWidth * STACK_LEFT_EDGE_INSET_RATIO);
+        float stackLeftRestOffsetPx =
+                -taskCenteredLeftPx + (taskWidth * STACK_LEFT_REST_INSET_RATIO);
+        return lerp(
+                stackLeftRestOffsetPx,
+                stackLeftOffsetPx,
+                leftEdgeRevealProgress);
+    }
+
+    private static float resolveStackLeftClampAlpha(
+            View recentsView,
+            float progress,
+            float taskWidth,
+            float taskCenteredLeftPx) {
+        if (progress >= 0f) {
+            return 1f;
         }
-        return rightOffsetPx;
+        float leftBoundOffsetPx = resolveStackLeftBoundOffset(
+                taskWidth,
+                taskCenteredLeftPx,
+                resolveLeftEdgeRevealProgress(recentsView));
+        float visibleOffset = resolveStackUnclampedVisibleOffset(
+                recentsView,
+                progress,
+                taskWidth,
+                taskCenteredLeftPx);
+        float overflowPx = leftBoundOffsetPx - visibleOffset;
+        if (overflowPx <= 0f) {
+            return 1f;
+        }
+        float fadeStartOverflowPx = 0f;
+        float fadeEndOverflowPx = Math.max(
+                1f,
+                (Math.abs(STACK_LEFT_RELEASE_END_PROGRESS)
+                        - Math.abs(STACK_LEFT_RELEASE_START_PROGRESS))
+                        * taskWidth
+                        * STACK_RIGHT_VISIBLE_RATIO);
+        return 1f - remapProgress(overflowPx, fadeStartOverflowPx, fadeEndOverflowPx);
     }
 
     private static float resolveStackLayerProgress(
