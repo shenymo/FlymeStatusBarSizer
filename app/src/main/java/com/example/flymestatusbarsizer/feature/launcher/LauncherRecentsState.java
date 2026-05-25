@@ -134,6 +134,8 @@ final class LauncherRecentsState {
     }
 
     static final class BlankTapHomeExitTaskState {
+        final float startRawOffset;
+        final float startDismissTranslationX;
         final float startVisibleOffset;
         final float startScale;
         final float startTaskOffsetY;
@@ -141,11 +143,15 @@ final class LauncherRecentsState {
         final float startStableAlpha;
 
         BlankTapHomeExitTaskState(
+                float startRawOffset,
+                float startDismissTranslationX,
                 float startVisibleOffset,
                 float startScale,
                 float startTaskOffsetY,
                 float startBoxTranslationY,
                 float startStableAlpha) {
+            this.startRawOffset = startRawOffset;
+            this.startDismissTranslationX = startDismissTranslationX;
             this.startVisibleOffset = startVisibleOffset;
             this.startScale = startScale;
             this.startTaskOffsetY = startTaskOffsetY;

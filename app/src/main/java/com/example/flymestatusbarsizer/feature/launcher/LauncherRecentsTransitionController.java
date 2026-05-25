@@ -26,7 +26,6 @@ final class LauncherRecentsTransitionController {
     private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 360L;
     private static final long GESTURE_STACK_RELEASE_DURATION_MS = 320L;
     private static final int APP_TO_RECENTS_STACK_ANCHOR_PAGE = 0;
-    private static final float BLANK_TAP_HOME_EXIT_HOME_START_PROGRESS = 0.88f;
     private static final float BLANK_TAP_HOME_EXIT_VIEW_FADE_START_PROGRESS = 0.78f;
     private static final float BLANK_TAP_HOME_EXIT_VIEW_BLUR_START_PROGRESS = 0.68f;
     private static final int BLANK_TAP_HOME_EXIT_MAX_BLUR_DP = 26;
@@ -337,26 +336,18 @@ final class LauncherRecentsTransitionController {
         setPageAnimOffScreenStart(recentsView, false);
         setBlankTapHomeExitProgress(recentsView, 0f);
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
-        final boolean[] homeStarted = new boolean[]{false};
         animator.setDuration(BLANK_TAP_HOME_EXIT_DURATION_MS);
         animator.setInterpolator(BLANK_TAP_HOME_EXIT_INTERPOLATOR);
         animator.addUpdateListener(animation -> {
             Object value = animation.getAnimatedValue();
             float progress = value instanceof Float ? (Float) value : 0f;
             setBlankTapHomeExitProgress(recentsView, progress);
+            LauncherRecentsLayoutEngine.applyBlankTapHomeExitFrame(recentsView, progress);
             recentsView.setAlpha(1f - LauncherRecentsLayoutEngine.remapProgress(
                     progress,
                     BLANK_TAP_HOME_EXIT_VIEW_FADE_START_PROGRESS,
                     1f));
-            applyBlankTapHomeExitViewBlur(recentsView, progress);
-            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
             recentsView.invalidate();
-            if (!homeStarted[0]
-                    && progress >= BLANK_TAP_HOME_EXIT_HOME_START_PROGRESS) {
-                homeStarted[0] = true;
-                startBlankTapHomeExitHomeReveal(recentsView);
-                startBlankTapHomeExitHome(recentsView);
-            }
         });
         animator.addListener(new AnimatorListenerAdapter() {
             private boolean cancelled;
@@ -375,31 +366,29 @@ final class LauncherRecentsTransitionController {
                     clearBlankTapHomeExitProgress(recentsView);
                     return;
                 }
-                finishBlankTapHomeExit(recentsView, homeStarted[0]);
+                finishBlankTapHomeExit(recentsView);
             }
         });
         LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.put(recentsView, animator);
         animator.start();
     }
 
-    private static void finishBlankTapHomeExit(View recentsView, boolean homeStarted) {
+    private static void finishBlankTapHomeExit(View recentsView) {
         if (recentsView == null) {
             return;
         }
-        if (!homeStarted) {
-            startBlankTapHomeExitHomeReveal(recentsView);
-            startBlankTapHomeExitHome(recentsView);
-        }
+        recentsView.setAlpha(0f);
+        startBlankTapHomeExitHome(recentsView);
         Runnable resetRunnable = () -> {
             recentsView.setAlpha(1f);
             clearBlankTapHomeExitViewBlur(recentsView);
-            clearBlankTapHomeExitProgress(recentsView);
+            clearBlankTapHomeExitProgress(recentsView, false);
         };
         Handler handler = LauncherRecentsState.ensureMainHandler();
         if (handler != null && Looper.myLooper() != handler.getLooper()) {
-            handler.post(resetRunnable);
+            handler.postDelayed(resetRunnable, 80L);
         } else {
-            recentsView.post(resetRunnable);
+            recentsView.postDelayed(resetRunnable, 80L);
         }
     }
 
@@ -478,13 +467,19 @@ final class LauncherRecentsTransitionController {
     }
 
     static void clearBlankTapHomeExitProgress(View recentsView) {
+        clearBlankTapHomeExitProgress(recentsView, true);
+    }
+
+    private static void clearBlankTapHomeExitProgress(View recentsView, boolean reapplyLayout) {
         if (recentsView == null) {
             return;
         }
         LauncherRecentsState.BLANK_TAP_HOME_EXIT_PROGRESS.remove(recentsView);
         LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.clear();
         setPageAnimOffScreenStart(recentsView, false);
-        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        if (reapplyLayout) {
+            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        }
         recentsView.invalidate();
     }
 

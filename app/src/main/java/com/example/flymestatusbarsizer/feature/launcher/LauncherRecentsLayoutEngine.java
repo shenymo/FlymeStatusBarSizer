@@ -279,12 +279,13 @@ final class LauncherRecentsLayoutEngine {
                             0,
                             i),
                     i);
+            float dismissTranslationX = LauncherRecentsCompat.readFloatField(
+                    taskView,
+                    "dismissTranslationX",
+                    0f);
             float visibleOffset =
                     rawOffset
-                            + LauncherRecentsCompat.readFloatField(
-                            taskView,
-                            "dismissTranslationX",
-                            0f)
+                            + dismissTranslationX
                             + LauncherRecentsCompat.readFloatField(
                             taskView,
                             "taskOffsetTranslationX",
@@ -296,6 +297,8 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.put(
                     taskView,
                     new LauncherRecentsState.BlankTapHomeExitTaskState(
+                            rawOffset,
+                            dismissTranslationX,
                             visibleOffset,
                             LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f),
                             LauncherRecentsCompat.readFloatField(
@@ -308,6 +311,79 @@ final class LauncherRecentsLayoutEngine {
                                     LauncherRecentsTaskVisuals.readOriginalBoxTranslationY(
                                             taskView)),
                             LauncherRecentsTaskVisuals.readStableAlpha(taskView)));
+        }
+    }
+
+    static void applyBlankTapHomeExitFrame(View recentsView, float progress) {
+        if (recentsView == null) {
+            return;
+        }
+        float clampedProgress = clamp(progress, 0f, 1f);
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            LauncherRecentsState.BlankTapHomeExitTaskState state =
+                    LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.get(taskView);
+            if (taskView == null || state == null) {
+                continue;
+            }
+            float taskWidth = taskView.getWidth() > 0
+                    ? taskView.getWidth()
+                    : Math.max(1f, recentsView.getWidth());
+            float taskHeight = taskView.getHeight() > 0
+                    ? taskView.getHeight()
+                    : Math.max(1f, recentsView.getHeight());
+            float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
+            float desiredVisibleOffset = state.startVisibleOffset;
+            float desiredScale = state.startScale;
+            float desiredStableAlpha = state.startStableAlpha;
+            if (isTaskVisibleInViewport(
+                    recentsView,
+                    taskCenteredLeftPx,
+                    taskWidth,
+                    desiredVisibleOffset,
+                    desiredScale)) {
+                float taskLeftPx = taskCenteredLeftPx + desiredVisibleOffset;
+                float distanceProgress = clamp(
+                        taskLeftPx / Math.max(1f, recentsView.getWidth()),
+                        0f,
+                        1f);
+                float exitStart = distanceProgress * BLANK_TAP_HOME_EXIT_MAX_DELAY;
+                float exitEnd = lerp(
+                        BLANK_TAP_HOME_EXIT_LEFT_FINISH,
+                        1f,
+                        distanceProgress);
+                float taskExitProgress = smoothStep(remapProgress(
+                        clampedProgress,
+                        exitStart,
+                        exitEnd));
+                float exitTravelPx = Math.max(
+                        taskLeftPx + taskWidth + FlymeStatusBarSizer.dp(
+                                recentsView.getContext(),
+                                64),
+                        taskWidth * (1f + BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO));
+                desiredVisibleOffset -= exitTravelPx * taskExitProgress;
+                desiredScale *= 1.0f - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * taskExitProgress);
+                desiredStableAlpha *= resolveBlankTapExitAlpha(taskExitProgress);
+            } else {
+                desiredStableAlpha = 0f;
+            }
+            float taskOffsetX =
+                    desiredVisibleOffset - state.startRawOffset - state.startDismissTranslationX;
+            taskView.setPivotX(taskWidth * 0.5f);
+            taskView.setPivotY(taskHeight * 0.5f);
+            LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(taskView, 0f);
+            LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(taskView, taskOffsetX);
+            LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(
+                    taskView,
+                    state.startTaskOffsetY);
+            LauncherRecentsTaskVisuals.setBoxTranslationY(taskView, state.startBoxTranslationY);
+            LauncherRecentsTaskVisuals.setNonGridScale(taskView, desiredScale);
+            LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 1f);
+            LauncherRecentsTaskVisuals.setStableAlpha(taskView, desiredStableAlpha);
+            LauncherRecentsTaskVisuals.setActivityTitleAlpha(
+                    taskView,
+                    resolveStackTitleAlpha(desiredStableAlpha));
         }
     }
 
