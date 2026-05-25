@@ -236,6 +236,14 @@ final class LauncherRecentsTaskVisuals {
         if (taskView == null) {
             return;
         }
+        Float lastAppliedElevation =
+                LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.get(taskView);
+        if (lastAppliedElevation != null
+                && approximatelyEqual(lastAppliedElevation, value)
+                && taskView.getOutlineProvider() == STACK_TASK_SHADOW_OUTLINE_PROVIDER
+                && approximatelyEqual(taskView.getElevation(), value)) {
+            return;
+        }
         rememberOriginalTaskState(taskView);
         taskView.setOutlineProvider(STACK_TASK_SHADOW_OUTLINE_PROVIDER);
         taskView.setElevation(value);
