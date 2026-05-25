@@ -191,6 +191,26 @@ final class SettingsCardFactory {
                 content);
     }
 
+    View createSystemAppearanceSettingsCard() {
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        activity.addTextSettingRow(content, "文件夹圆角背景颜色",
+                "填写 #AARRGGBB。留空跟随系统；原浅色约为 #73FFFFFF，纯透明为 #00000000。",
+                SettingsStore.KEY_LAUNCHER_FOLDER_BG_COLOR,
+                SettingsStore.DEFAULT_LAUNCHER_FOLDER_BG_COLOR,
+                "跟随系统",
+                "#73FFFFFF",
+                true);
+        activity.addDivider(content);
+        activity.addActionButtonRow(content, "重启系统桌面",
+                "桌面文件夹背景通常需要重启桌面后刷新。",
+                "重启", activity::restartLauncher);
+        return activity.buildSectionCard(
+                "系统桌面文件夹",
+                "修改 Flyme 桌面文件夹图标的圆角背景颜色。",
+                content);
+    }
+
     View createAdvancedToolsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);

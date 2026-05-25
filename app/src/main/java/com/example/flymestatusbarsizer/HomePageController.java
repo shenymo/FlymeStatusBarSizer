@@ -34,6 +34,13 @@ final class HomePageController {
                 v -> activity.openPage(MainActivity.Page.TIME_NETWORK)),
                 PageViewUtils.matchWrapWithTop(activity, 12));
         root.addView(buildEntryCard(activity,
+                "系统外观",
+                "Flyme 桌面文件夹和系统外观细节",
+                activity.tertiaryColor(),
+                0x1A964500,
+                v -> activity.openPage(MainActivity.Page.SYSTEM_APPEARANCE)),
+                PageViewUtils.matchWrapWithTop(activity, 12));
+        root.addView(buildEntryCard(activity,
                 "系统交互",
                 "MBack 长触、导航栏沉浸和输入法控制栏",
                 activity.tertiaryColor(),

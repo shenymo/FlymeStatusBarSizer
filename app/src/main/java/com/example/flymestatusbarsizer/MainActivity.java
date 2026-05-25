@@ -138,6 +138,7 @@ public class MainActivity extends Activity {
         HOME(null, null, null, false),
         ICONS_BATTERY("图标与电池", "状态栏图标缩放、电池样式、通知图标以及信号与 Wi-Fi 接管设置。", null, true),
         TIME_NETWORK("时间与网络", "实时网速显隐阈值、时间表达式、时钟详情弹窗，以及时间字重字号设置。", null, true),
+        SYSTEM_APPEARANCE("系统外观", "Flyme 桌面文件夹、系统界面外观相关设置。", null, true),
         SYSTEM_INTERACTION("系统交互", "MBack 长触、导航栏沉浸与高度、输入法控制栏接管，以及系统桌面后台卡片布局调整。", null, true),
         ADVANCED_DEBUG("高级与调试", "配置管理、WIFI 性能打点，以及高阶工具入口。", null, true),
         ABOUT("关于与支持", "项目地址、交流群、版本构建信息和目标作用域说明。", null, false),
@@ -235,6 +236,8 @@ public class MainActivity extends Activity {
         registerPage(Page.HOME, R.layout.page_home, HomePageController::bind);
         registerPage(Page.ICONS_BATTERY, R.layout.page_icons_battery, IconsBatteryPageController::bind);
         registerPage(Page.TIME_NETWORK, R.layout.page_time_network, TimeNetworkPageController::bind);
+        registerPage(Page.SYSTEM_APPEARANCE, R.layout.page_system_appearance,
+                SystemAppearancePageController::bind);
         registerPage(Page.SYSTEM_INTERACTION, R.layout.page_system_interaction,
                 SystemInteractionPageController::bind);
         registerPage(Page.ADVANCED_DEBUG, R.layout.page_advanced_debug, AdvancedDebugPageController::bind);
@@ -1802,6 +1805,10 @@ public class MainActivity extends Activity {
 
     View createLauncherRecentsSettingsCard() {
         return settingsCardFactory.createLauncherRecentsSettingsCard();
+    }
+
+    View createSystemAppearanceSettingsCard() {
+        return settingsCardFactory.createSystemAppearanceSettingsCard();
     }
 
     View createAdvancedToolsCard() {

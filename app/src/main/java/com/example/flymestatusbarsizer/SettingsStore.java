@@ -5,6 +5,7 @@ import com.example.flymestatusbarsizer.feature.clock.ClockDetailActionCodec;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import java.util.Locale;
 import java.util.Map;
 
 final class SettingsStore {
@@ -60,6 +61,7 @@ final class SettingsStore {
     static final String KEY_NOTIFICATION_APP_ICON_PADDING_DP = "notification_app_icon_padding_dp";
     static final String KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED =
             "launcher_ios_stack_recents_enabled";
+    static final String KEY_LAUNCHER_FOLDER_BG_COLOR = "launcher_folder_bg_color";
     static final String KEY_MBACK_INSET_SIZE = "mback_inset_size";
     static final String KEY_MBACK_NAV_BAR_HEIGHT = "mback_nav_bar_height";
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
@@ -137,6 +139,7 @@ final class SettingsStore {
     static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
     static final int DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP = 0;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED = false;
+    static final String DEFAULT_LAUNCHER_FOLDER_BG_COLOR = "";
     static final int DEFAULT_MBACK_INSET_SIZE = -1;
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
@@ -231,6 +234,7 @@ final class SettingsStore {
             KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON,
             KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON,
             KEY_MBACK_LONG_TOUCH_INTENT_URI,
+            KEY_LAUNCHER_FOLDER_BG_COLOR,
             KEY_IME_CONTROL_BAR_BUTTON_SLOTS
     };
 
@@ -488,6 +492,9 @@ final class SettingsStore {
         if (KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON.equals(key)) {
             return DEFAULT_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON;
         }
+        if (KEY_LAUNCHER_FOLDER_BG_COLOR.equals(key)) {
+            return DEFAULT_LAUNCHER_FOLDER_BG_COLOR;
+        }
         if (KEY_IME_CONTROL_BAR_BUTTON_SLOTS.equals(key)) {
             return DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;
         }
@@ -629,6 +636,46 @@ final class SettingsStore {
 
     static int normalizeNotificationAppIconPaddingDp(int value) {
         return Math.max(0, Math.min(8, value));
+    }
+
+    static String normalizeColorString(String value) {
+        if (value == null) {
+            return "";
+        }
+        String text = value.trim();
+        if (text.isEmpty()) {
+            return "";
+        }
+        if (text.startsWith("#")) {
+            text = text.substring(1);
+        } else if (text.startsWith("0x") || text.startsWith("0X")) {
+            text = text.substring(2);
+        }
+        if (text.length() == 6) {
+            text = "ff" + text;
+        }
+        if (text.length() != 8) {
+            return "";
+        }
+        try {
+            long color = Long.parseLong(text, 16);
+            return String.format(Locale.US, "#%08X", color & 0xffffffffL);
+        } catch (NumberFormatException ignored) {
+            return "";
+        }
+    }
+
+    static Integer parseColorString(String value) {
+        String normalized = normalizeColorString(value);
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        try {
+            long color = Long.parseLong(normalized.substring(1), 16);
+            return (int) (color & 0xffffffffL);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     static int normalizeImeControlBarIconScalePercent(int value) {

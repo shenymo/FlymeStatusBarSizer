@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer;
 
 import com.example.flymestatusbarsizer.feature.clock.ClockHooks;
 import com.example.flymestatusbarsizer.feature.ime.ImeHooks;
+import com.example.flymestatusbarsizer.feature.launcher.LauncherAppearanceHooks;
 import com.example.flymestatusbarsizer.feature.launcher.LauncherRecentsHooks;
 import com.example.flymestatusbarsizer.feature.mback.MBackHooks;
 import com.example.flymestatusbarsizer.feature.notification.NotificationHooks;
@@ -218,6 +219,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private void hookFlymeLauncher(ClassLoader loader) {
+        LauncherAppearanceHooks.install(this, loader);
         LauncherRecentsHooks.install(this, loader);
     }
 
@@ -302,6 +304,11 @@ public class FlymeStatusBarSizer extends XposedModule {
     public static LauncherRecentsConfigSnapshot loadLauncherRecentsConfig(Context context) {
         ModuleConfig config = ModuleConfig.load(context);
         return new LauncherRecentsConfigSnapshot(config);
+    }
+
+    public static LauncherAppearanceConfigSnapshot loadLauncherAppearanceConfig(Context context) {
+        ModuleConfig config = ModuleConfig.load(context);
+        return new LauncherAppearanceConfigSnapshot(config);
     }
 
     public static void logMBackWarning(String message, Throwable throwable) {
@@ -6766,6 +6773,19 @@ public class FlymeStatusBarSizer extends XposedModule {
             launcherIosStackRecentsEnabled = enabled
                     && config != null
                     && config.launcherIosStackRecentsEnabled;
+        }
+    }
+
+    public static final class LauncherAppearanceConfigSnapshot {
+        public final boolean enabled;
+        public final boolean launcherFolderBgColorEnabled;
+        public final int launcherFolderBgColor;
+
+        private LauncherAppearanceConfigSnapshot(ModuleConfig config) {
+            enabled = config != null && config.enabled;
+            Integer color = config == null ? null : SettingsStore.parseColorString(config.launcherFolderBgColor);
+            launcherFolderBgColorEnabled = enabled && color != null;
+            launcherFolderBgColor = color == null ? 0 : color;
         }
     }
 

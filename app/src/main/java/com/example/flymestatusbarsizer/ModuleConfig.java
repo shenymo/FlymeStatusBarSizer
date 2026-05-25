@@ -68,6 +68,7 @@ final class ModuleConfig {
     int notificationAppIconPaddingDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP;
     boolean launcherIosStackRecentsEnabled =
             SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED;
+    String launcherFolderBgColor = SettingsStore.DEFAULT_LAUNCHER_FOLDER_BG_COLOR;
     boolean mbackHidePill = SettingsStore.DEFAULT_MBACK_HIDE_PILL;
     int mbackInsetSize = SettingsStore.DEFAULT_MBACK_INSET_SIZE;
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
@@ -356,6 +357,11 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
                     SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED);
+            config.launcherFolderBgColor = SettingsStore.normalizeColorString(
+                    SettingsStore.readString(
+                            prefs,
+                            SettingsStore.KEY_LAUNCHER_FOLDER_BG_COLOR,
+                            SettingsStore.DEFAULT_LAUNCHER_FOLDER_BG_COLOR));
             config.mbackHidePill = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_MBACK_HIDE_PILL,
