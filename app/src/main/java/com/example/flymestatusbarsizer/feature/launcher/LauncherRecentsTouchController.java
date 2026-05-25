@@ -2115,6 +2115,16 @@ final class LauncherRecentsTouchController {
         if (taskIndex < 0) {
             return false;
         }
+        if (pkgName.isEmpty()) {
+            String lastPkg = LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.get(taskView);
+            if (!STACK_APP_FLOW_HIDDEN.equals(lastPkg)) {
+                LauncherRecentsCompat.invokeCompat(taskView, "hideFlowViews");
+                LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.put(
+                        taskView,
+                        STACK_APP_FLOW_HIDDEN);
+            }
+            return true;
+        }
         if (Math.abs(taskIndex - anchorIndex) > STACK_APP_FLOW_LIGHT_RADIUS) {
             String lastPkg = LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.get(taskView);
             if (!STACK_APP_FLOW_HIDDEN.equals(lastPkg)) {
