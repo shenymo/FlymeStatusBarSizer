@@ -6757,6 +6757,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final int notificationAppIconPaddingDp;
         public final boolean notificationBackgroundColorEnabled;
         public final int notificationBackgroundColor;
+        public final boolean notificationSystemBlurOnlyEnabled;
 
         private NotificationConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
@@ -6768,6 +6769,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                     : SettingsStore.parseColorString(config.notificationBackgroundColor);
             notificationBackgroundColorEnabled = enabled && color != null;
             notificationBackgroundColor = color == null ? 0 : color;
+            notificationSystemBlurOnlyEnabled = enabled
+                    && config != null
+                    && config.notificationSystemBlurOnlyEnabled;
         }
     }
 

@@ -70,6 +70,8 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED;
     String launcherFolderBgColor = SettingsStore.DEFAULT_LAUNCHER_FOLDER_BG_COLOR;
     String notificationBackgroundColor = SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_COLOR;
+    boolean notificationSystemBlurOnlyEnabled =
+            SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED;
     boolean mbackHidePill = SettingsStore.DEFAULT_MBACK_HIDE_PILL;
     int mbackInsetSize = SettingsStore.DEFAULT_MBACK_INSET_SIZE;
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
@@ -368,6 +370,10 @@ final class ModuleConfig {
                             prefs,
                             SettingsStore.KEY_NOTIFICATION_BACKGROUND_COLOR,
                             SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_COLOR));
+            config.notificationSystemBlurOnlyEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
+                    SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED);
             config.mbackHidePill = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_MBACK_HIDE_PILL,

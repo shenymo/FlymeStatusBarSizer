@@ -42,6 +42,8 @@ public final class NotificationHooks {
     private static final int MAX_RENDERED_NOTIFICATION_APP_ICON_CACHE_SIZE = 64;
     private static final int FLYME_LIGHT_NOTIFICATION_BLUR_MASK = 0xB2FFFFFF;
     private static final int FLYME_DARK_NOTIFICATION_BLUR_MASK = 0xB21A1A1A;
+    private static final int NOTIFICATION_SYSTEM_BLUR_RADIUS = 180;
+    private static final int NOTIFICATION_SYSTEM_BLUR_ONLY_COLOR = 0x1A000000;
 
     private static volatile Method flymeGetApplicationIconMethod;
     private static volatile Method flymeClearApplicationIconCacheMethod;
@@ -229,17 +231,23 @@ public final class NotificationHooks {
                                 ? FlymeStatusBarSizer.loadNotificationConfig(
                                         ((View) target).getContext())
                                 : FlymeStatusBarSizer.loadNotificationConfig(null);
-                if (!config.enabled || !config.notificationBackgroundColorEnabled) {
+                if (!config.enabled
+                        || (!config.notificationSystemBlurOnlyEnabled
+                        && !config.notificationBackgroundColorEnabled)) {
                     return chain.proceed();
                 }
                 boolean isStatic = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
                 int radius = chain.getArg(2) instanceof Integer ? (Integer) chain.getArg(2) : 0;
                 try {
-                    applyNotificationBlurColor(
-                            target,
-                            isStatic,
-                            radius,
-                            config.notificationBackgroundColor);
+                    if (config.notificationSystemBlurOnlyEnabled) {
+                        applyNotificationSystemBlurOnly(target, radius);
+                    } else {
+                        applyNotificationBlurColor(
+                                target,
+                                isStatic,
+                                radius,
+                                config.notificationBackgroundColor);
+                    }
                     return null;
                 } catch (Throwable t) {
                     FlymeStatusBarSizer.logNotificationWarning(
@@ -282,6 +290,78 @@ public final class NotificationHooks {
                 int.class);
         method.setAccessible(true);
         method.invoke(target, color, radius);
+    }
+
+    private static void applyNotificationSystemBlurOnly(Object target, int radius) throws Exception {
+        if (target == null) {
+            return;
+        }
+        writeField(target, "mIsStatic", false);
+        writeField(target, "mBlurColor", NOTIFICATION_SYSTEM_BLUR_ONLY_COLOR);
+        writeField(target, "mClipCornerRadius", radius);
+        writeField(target, "mTotalAlpha", 255);
+        if (!(target instanceof View)) {
+            return;
+        }
+        View view = (View) target;
+        if (!view.isAttachedToWindow()) {
+            view.post(() -> {
+                try {
+                    applyNotificationSystemBlurOnly(target, radius);
+                } catch (Throwable t) {
+                    FlymeStatusBarSizer.logNotificationWarning(
+                            "Failed to apply module notification blur",
+                            t);
+                }
+            });
+            return;
+        }
+        Drawable blurDrawable = createModuleNotificationBlurDrawable(view, radius);
+        if (blurDrawable == null) {
+            return;
+        }
+        Method method = findMethod(target.getClass(), "setCustomBackground", Drawable.class);
+        method.setAccessible(true);
+        method.invoke(target, blurDrawable);
+        view.invalidate();
+    }
+
+    private static Drawable createModuleNotificationBlurDrawable(View view, int radius) {
+        try {
+            Method getRootMethod = findMethod(view.getClass(), "getViewRootImpl");
+            getRootMethod.setAccessible(true);
+            Object root = getRootMethod.invoke(view);
+            if (root == null) {
+                return null;
+            }
+            Method createMethod = findMethod(root.getClass(), "createBackgroundBlurDrawable");
+            createMethod.setAccessible(true);
+            Object drawable = createMethod.invoke(root);
+            if (!(drawable instanceof Drawable)) {
+                return null;
+            }
+            invokeBlurDrawableMethod(drawable, "setBlurRadius", int.class,
+                    NOTIFICATION_SYSTEM_BLUR_RADIUS);
+            invokeBlurDrawableMethod(drawable, "setClipCornerRadius", float.class,
+                    (float) radius);
+            invokeBlurDrawableMethod(drawable, "setColor", int.class,
+                    NOTIFICATION_SYSTEM_BLUR_ONLY_COLOR);
+            invokeBlurDrawableMethod(drawable, "setAlpha", int.class, 255);
+            invokeBlurDrawableMethod(drawable, "setZAdjustment", int.class, 0);
+            return (Drawable) drawable;
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to create module notification blur",
+                    t);
+            return null;
+        }
+    }
+
+    private static void invokeBlurDrawableMethod(
+            Object target, String name, Class<?> parameterType, Object value) throws Exception {
+        Method method = findMethod(target.getClass(), name, parameterType);
+        method.setAccessible(true);
+        method.invoke(target, value);
     }
 
     private static void writeField(Object target, String name, Object value) throws Exception {

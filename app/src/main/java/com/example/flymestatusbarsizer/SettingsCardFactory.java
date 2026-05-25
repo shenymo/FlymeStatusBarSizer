@@ -196,8 +196,13 @@ final class SettingsCardFactory {
         content.setOrientation(LinearLayout.VERTICAL);
         activity.addProfileSectionHeader(content, "系统通知",
                 "修改 SystemUI 通知卡片的模糊背景前景色。");
+        activity.addSwitchRow(content, "仅保留系统模糊",
+                "开启后忽略下面的通知背景颜色，移除通知背景，只保留系统动态模糊层。",
+                SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
+                SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED);
+        activity.addDivider(content);
         activity.addTextSettingRow(content, "通知背景颜色",
-                "填写 #AARRGGBB。默认 #1A000000；留空跟随系统；全透明会连模糊一起不可见。",
+                "填写 #AARRGGBB。默认 #1A000000；留空跟随系统；上方开关开启时此项不生效。",
                 SettingsStore.KEY_NOTIFICATION_BACKGROUND_COLOR,
                 SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_COLOR,
                 "跟随系统",
