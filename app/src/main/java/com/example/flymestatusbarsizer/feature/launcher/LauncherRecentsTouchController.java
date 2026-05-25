@@ -2060,6 +2060,10 @@ final class LauncherRecentsTouchController {
                 }
                 View taskView = (View) thisObject;
                 String pkgName = (String) arg0;
+                if (pkgName.isEmpty()) {
+                    hideStackAppFlowIfNeeded(taskView);
+                    return null;
+                }
                 if (!shouldThrottleStackAppFlow(taskView, pkgName)) {
                     Object result = chain.proceed();
                     LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.put(taskView, pkgName);
@@ -2106,41 +2110,43 @@ final class LauncherRecentsTouchController {
     private static boolean shouldThrottleStackAppFlow(View taskView, String pkgName) {
         View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
         if (recentsView == null
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                || !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
-                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
-                recentsView)
-                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
             return false;
         }
-        int anchorIndex = resolveStackAppFlowAnchorIndex(recentsView);
         int taskIndex = findTaskViewIndex(recentsView, taskView);
         if (taskIndex < 0) {
             return false;
         }
-        if (pkgName.isEmpty()) {
-            String lastPkg = LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.get(taskView);
-            if (!STACK_APP_FLOW_HIDDEN.equals(lastPkg)) {
-                LauncherRecentsCompat.invokeCompat(taskView, "hideFlowViews");
-                LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.put(
-                        taskView,
-                        STACK_APP_FLOW_HIDDEN);
-            }
-            return true;
-        }
-        if (Math.abs(taskIndex - anchorIndex) > STACK_APP_FLOW_LIGHT_RADIUS) {
-            String lastPkg = LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.get(taskView);
-            if (!STACK_APP_FLOW_HIDDEN.equals(lastPkg)) {
-                LauncherRecentsCompat.invokeCompat(taskView, "hideFlowViews");
-                LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.put(
-                        taskView,
-                        STACK_APP_FLOW_HIDDEN);
-            }
-            return true;
-        }
         String lastPkg = LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.get(taskView);
+        if (pkgName.isEmpty()) {
+            hideStackAppFlowIfNeeded(taskView);
+            return true;
+        }
+        Object castDevicesObject = LauncherRecentsCompat.invokeCompat(recentsView, "getCastDevices");
+        if (!(castDevicesObject instanceof List) || ((List<?>) castDevicesObject).size() <= 1) {
+            hideStackAppFlowIfNeeded(taskView);
+            return true;
+        }
+        if (LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                && !LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
+                && !LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
+                recentsView)
+                && !LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                && Math.abs(taskIndex - resolveStackAppFlowAnchorIndex(recentsView))
+                > STACK_APP_FLOW_LIGHT_RADIUS) {
+            hideStackAppFlowIfNeeded(taskView);
+            return true;
+        }
         return pkgName.equals(lastPkg);
+    }
+
+    private static void hideStackAppFlowIfNeeded(View taskView) {
+        String lastPkg = LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.get(taskView);
+        if (STACK_APP_FLOW_HIDDEN.equals(lastPkg)) {
+            return;
+        }
+        LauncherRecentsCompat.invokeCompat(taskView, "hideFlowViews");
+        LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.put(taskView, STACK_APP_FLOW_HIDDEN);
     }
 
     private static int resolveStackAppFlowAnchorIndex(View recentsView) {
