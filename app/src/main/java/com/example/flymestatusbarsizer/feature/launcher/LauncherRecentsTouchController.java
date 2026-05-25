@@ -2088,7 +2088,11 @@ final class LauncherRecentsTouchController {
             return false;
         }
         if (!visible) {
-            return true;
+            boolean suppressUnload = shouldSuppressStackTaskDataUnload(taskView);
+            if (!suppressUnload) {
+                LauncherRecentsState.LAST_STACK_TASK_LIST_VISIBILITY_CHANGES.remove(taskView);
+            }
+            return suppressUnload;
         }
         Integer lastChanges =
                 LauncherRecentsState.LAST_STACK_TASK_LIST_VISIBILITY_CHANGES.get(taskView);
