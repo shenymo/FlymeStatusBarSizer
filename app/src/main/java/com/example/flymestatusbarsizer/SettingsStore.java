@@ -62,6 +62,7 @@ final class SettingsStore {
     static final String KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED =
             "launcher_ios_stack_recents_enabled";
     static final String KEY_LAUNCHER_FOLDER_BG_COLOR = "launcher_folder_bg_color";
+    static final String KEY_NOTIFICATION_BACKGROUND_COLOR = "notification_background_color";
     static final String KEY_MBACK_INSET_SIZE = "mback_inset_size";
     static final String KEY_MBACK_NAV_BAR_HEIGHT = "mback_nav_bar_height";
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
@@ -140,6 +141,7 @@ final class SettingsStore {
     static final int DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP = 0;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED = false;
     static final String DEFAULT_LAUNCHER_FOLDER_BG_COLOR = "";
+    static final String DEFAULT_NOTIFICATION_BACKGROUND_COLOR = "#1A000000";
     static final int DEFAULT_MBACK_INSET_SIZE = -1;
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
@@ -235,6 +237,7 @@ final class SettingsStore {
             KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON,
             KEY_MBACK_LONG_TOUCH_INTENT_URI,
             KEY_LAUNCHER_FOLDER_BG_COLOR,
+            KEY_NOTIFICATION_BACKGROUND_COLOR,
             KEY_IME_CONTROL_BAR_BUTTON_SLOTS
     };
 
@@ -494,6 +497,9 @@ final class SettingsStore {
         }
         if (KEY_LAUNCHER_FOLDER_BG_COLOR.equals(key)) {
             return DEFAULT_LAUNCHER_FOLDER_BG_COLOR;
+        }
+        if (KEY_NOTIFICATION_BACKGROUND_COLOR.equals(key)) {
+            return DEFAULT_NOTIFICATION_BACKGROUND_COLOR;
         }
         if (KEY_IME_CONTROL_BAR_BUTTON_SLOTS.equals(key)) {
             return DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;

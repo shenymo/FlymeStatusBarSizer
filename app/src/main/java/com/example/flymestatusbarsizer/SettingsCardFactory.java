@@ -194,6 +194,22 @@ final class SettingsCardFactory {
     View createSystemAppearanceSettingsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
+        activity.addProfileSectionHeader(content, "系统通知",
+                "修改 SystemUI 通知卡片的模糊背景前景色。");
+        activity.addTextSettingRow(content, "通知背景颜色",
+                "填写 #AARRGGBB。默认 #1A000000；留空跟随系统；全透明会连模糊一起不可见。",
+                SettingsStore.KEY_NOTIFICATION_BACKGROUND_COLOR,
+                SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_COLOR,
+                "跟随系统",
+                "#1A000000",
+                true);
+        activity.addDivider(content);
+        activity.addActionButtonRow(content, "重启 SystemUI",
+                "通知背景需要重启 SystemUI 后刷新。",
+                "重启", activity::restartSystemUi);
+        activity.addDivider(content);
+        activity.addProfileSectionHeader(content, "系统桌面文件夹",
+                "修改 Flyme 桌面文件夹图标的圆角背景颜色。");
         activity.addTextSettingRow(content, "文件夹圆角背景颜色",
                 "填写 #AARRGGBB。留空跟随系统；原浅色约为 #73FFFFFF，纯透明为 #00000000。",
                 SettingsStore.KEY_LAUNCHER_FOLDER_BG_COLOR,
@@ -206,8 +222,8 @@ final class SettingsCardFactory {
                 "桌面文件夹背景通常需要重启桌面后刷新。",
                 "重启", activity::restartLauncher);
         return activity.buildSectionCard(
-                "系统桌面文件夹",
-                "修改 Flyme 桌面文件夹图标的圆角背景颜色。",
+                "系统外观",
+                "修改通知背景和 Flyme 桌面文件夹背景。",
                 content);
     }
 

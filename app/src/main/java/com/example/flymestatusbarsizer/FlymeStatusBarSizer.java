@@ -6755,12 +6755,19 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean notificationAppIconEnabled;
         public final int notificationAppIconSizeDp;
         public final int notificationAppIconPaddingDp;
+        public final boolean notificationBackgroundColorEnabled;
+        public final int notificationBackgroundColor;
 
         private NotificationConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
             notificationAppIconEnabled = config != null && config.notificationAppIconEnabled;
             notificationAppIconSizeDp = config == null ? 0 : config.notificationAppIconSizeDp;
             notificationAppIconPaddingDp = config == null ? 0 : config.notificationAppIconPaddingDp;
+            Integer color = config == null
+                    ? null
+                    : SettingsStore.parseColorString(config.notificationBackgroundColor);
+            notificationBackgroundColorEnabled = enabled && color != null;
+            notificationBackgroundColor = color == null ? 0 : color;
         }
     }
 

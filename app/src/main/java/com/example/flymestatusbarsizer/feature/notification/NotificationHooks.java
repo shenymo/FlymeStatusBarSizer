@@ -22,6 +22,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -39,6 +40,8 @@ public final class NotificationHooks {
     private static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
     private static final int DEFAULT_NOTIFICATION_APP_ICON_INSET_DP = 1;
     private static final int MAX_RENDERED_NOTIFICATION_APP_ICON_CACHE_SIZE = 64;
+    private static final int FLYME_LIGHT_NOTIFICATION_BLUR_MASK = 0xB2FFFFFF;
+    private static final int FLYME_DARK_NOTIFICATION_BLUR_MASK = 0xB21A1A1A;
 
     private static volatile Method flymeGetApplicationIconMethod;
     private static volatile Method flymeClearApplicationIconCacheMethod;
@@ -82,6 +85,7 @@ public final class NotificationHooks {
         if (module == null || loader == null) {
             return;
         }
+        hookNotificationBlurMask(module, loader);
         hookNotificationAppIcons(module, loader);
     }
 
@@ -199,6 +203,116 @@ public final class NotificationHooks {
     private static void hookNotificationAppIcons(FlymeStatusBarSizer module, ClassLoader loader) {
         hookNotificationIconTint(module, loader);
         hookNotificationStatusBarIconUpdate(module, loader);
+    }
+
+    private static void hookNotificationBlurMask(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.statusbar.notification.row.NotificationBackgroundView",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod(
+                    "setBlurBackground",
+                    boolean.class,
+                    int.class,
+                    int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object colorArg = chain.getArg(1);
+                if (!(colorArg instanceof Integer)
+                        || !shouldReplaceNotificationBackgroundColor((Integer) colorArg)) {
+                    return chain.proceed();
+                }
+                Object target = chain.getThisObject();
+                FlymeStatusBarSizer.NotificationConfigSnapshot config =
+                        target instanceof View
+                                ? FlymeStatusBarSizer.loadNotificationConfig(
+                                        ((View) target).getContext())
+                                : FlymeStatusBarSizer.loadNotificationConfig(null);
+                if (!config.enabled || !config.notificationBackgroundColorEnabled) {
+                    return chain.proceed();
+                }
+                boolean isStatic = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
+                int radius = chain.getArg(2) instanceof Integer ? (Integer) chain.getArg(2) : 0;
+                try {
+                    applyNotificationBlurColor(
+                            target,
+                            isStatic,
+                            radius,
+                            config.notificationBackgroundColor);
+                    return null;
+                } catch (Throwable t) {
+                    FlymeStatusBarSizer.logNotificationWarning(
+                            "Failed to apply notification background color",
+                            t);
+                    return chain.proceed();
+                }
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook notification blur mask",
+                    t);
+        }
+    }
+
+    private static boolean shouldReplaceNotificationBackgroundColor(int color) {
+        if (color == FLYME_LIGHT_NOTIFICATION_BLUR_MASK
+                || color == FLYME_DARK_NOTIFICATION_BLUR_MASK) {
+            return true;
+        }
+        int alpha = Color.alpha(color);
+        return alpha > 0
+                && Color.red(color) >= 245
+                && Color.green(color) >= 245
+                && Color.blue(color) >= 245;
+    }
+
+    private static void applyNotificationBlurColor(
+            Object target, boolean isStatic, int radius, int color) throws Exception {
+        if (target == null) {
+            return;
+        }
+        writeField(target, "mIsStatic", isStatic);
+        writeField(target, "mBlurColor", color);
+        writeField(target, "mClipCornerRadius", radius);
+        Method method = findMethod(
+                target.getClass(),
+                isStatic ? "setBlurBgForStatic" : "setBlurBgForLive",
+                int.class,
+                int.class);
+        method.setAccessible(true);
+        method.invoke(target, color, radius);
+    }
+
+    private static void writeField(Object target, String name, Object value) throws Exception {
+        Field field = findField(target.getClass(), name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    private static Field findField(Class<?> clazz, String name) throws NoSuchFieldException {
+        Class<?> current = clazz;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        throw new NoSuchFieldException(name);
+    }
+
+    private static Method findMethod(
+            Class<?> clazz, String name, Class<?>... parameterTypes) throws NoSuchMethodException {
+        Class<?> current = clazz;
+        while (current != null) {
+            try {
+                return current.getDeclaredMethod(name, parameterTypes);
+            } catch (NoSuchMethodException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        throw new NoSuchMethodException(name);
     }
 
     private static void hookNotificationIconTint(FlymeStatusBarSizer module, ClassLoader loader) {
