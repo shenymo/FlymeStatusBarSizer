@@ -80,6 +80,12 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> LAST_APPLIED_STACK_CONTENT_BLURS =
             new WeakHashMap<>();
+    static final WeakHashMap<View, Float> LAST_APPLIED_ACTIVITY_TITLE_ALPHAS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, StackContentTargets> STACK_CONTENT_TARGETS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, StackIconBlurState> STACK_ICON_BLUR_STATES =
+            new WeakHashMap<>();
     static final WeakHashMap<View, ViewOutlineProvider> ORIGINAL_STACK_ICON_OUTLINE_PROVIDERS =
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES =
@@ -159,6 +165,45 @@ final class LauncherRecentsState {
         TaskLaunchTaskRectTranslation(int translationX, int translationY) {
             this.translationX = translationX;
             this.translationY = translationY;
+        }
+    }
+
+    static final class StackContentTargets {
+        final Object containersObject;
+        final View[] snapshotViews;
+        final Object[] iconViews;
+        final View[] iconAsViews;
+
+        StackContentTargets(
+                Object containersObject,
+                View[] snapshotViews,
+                Object[] iconViews,
+                View[] iconAsViews) {
+            this.containersObject = containersObject;
+            this.snapshotViews = snapshotViews;
+            this.iconViews = iconViews;
+            this.iconAsViews = iconAsViews;
+        }
+    }
+
+    static final class StackIconBlurState {
+        final int iconWidth;
+        final int iconHeight;
+        final int viewWidth;
+        final int viewHeight;
+        final ViewOutlineProvider outlineProvider;
+
+        StackIconBlurState(
+                int iconWidth,
+                int iconHeight,
+                int viewWidth,
+                int viewHeight,
+                ViewOutlineProvider outlineProvider) {
+            this.iconWidth = iconWidth;
+            this.iconHeight = iconHeight;
+            this.viewWidth = viewWidth;
+            this.viewHeight = viewHeight;
+            this.outlineProvider = outlineProvider;
         }
     }
 

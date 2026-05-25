@@ -222,9 +222,18 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setActivityTitleAlpha(View taskView, float value) {
+        float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
+        if (taskView != null
+                && shouldSkipAppliedFloat(
+                        LauncherRecentsState.LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.get(taskView),
+                        clampedValue,
+                        readActivityTitleAlpha(taskView))) {
+            return;
+        }
         View titleView = resolveActivityTitleView(taskView);
         if (titleView != null) {
-            titleView.setAlpha(LauncherRecentsLayoutEngine.clamp(value, 0f, 1f));
+            titleView.setAlpha(clampedValue);
+            LauncherRecentsState.LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.put(taskView, clampedValue);
         }
     }
 
@@ -240,20 +249,15 @@ final class LauncherRecentsTaskVisuals {
         float blurPx = FlymeStatusBarSizer.dp(
                 taskView.getContext(),
                 STACK_CONTENT_MAX_BLUR_DP) * (1f - alpha);
-        Object containersObject = LauncherRecentsCompat.invokeCompat(taskView, "getTaskContainers");
-        if (!(containersObject instanceof List)) {
+        LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
+        if (targets == null) {
             return;
         }
-        List<?> taskContainers = (List<?>) containersObject;
-        for (int i = 0; i < taskContainers.size(); i++) {
-            Object taskContainer = taskContainers.get(i);
-            Object snapshotView = LauncherRecentsCompat.invokeCompat(taskContainer, "getSnapshotView");
-            applyStackContentBlur(snapshotView instanceof View ? (View) snapshotView : null, blurPx);
-            Object iconView = LauncherRecentsCompat.invokeCompat(taskContainer, "getIconView");
-            Object iconAsView = LauncherRecentsCompat.invokeCompat(iconView, "asView");
+        for (int i = 0; i < targets.snapshotViews.length; i++) {
+            applyStackContentBlur(targets.snapshotViews[i], blurPx);
             applyStackIconBlur(
-                    iconView,
-                    iconAsView instanceof View ? (View) iconAsView : null,
+                    targets.iconViews[i],
+                    targets.iconAsViews[i],
                     blurPx);
         }
     }
@@ -264,6 +268,16 @@ final class LauncherRecentsTaskVisuals {
 
     static void setFullscreenProgress(View taskView, float value) {
         float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
+        if (taskView != null
+                && shouldSkipAppliedFloat(
+                        LauncherRecentsState.LAST_APPLIED_FULLSCREEN_PROGRESSES.get(taskView),
+                        clampedValue,
+                        LauncherRecentsCompat.readFloatField(
+                                taskView,
+                                "fullscreenProgress",
+                                0f))) {
+            return;
+        }
         LauncherRecentsCompat.invokeCompat(
                 taskView,
                 "setFullscreenProgress",
@@ -403,6 +417,11 @@ final class LauncherRecentsTaskVisuals {
         return value instanceof View ? (View) value : null;
     }
 
+    private static float readActivityTitleAlpha(View taskView) {
+        View titleView = resolveActivityTitleView(taskView);
+        return titleView != null ? titleView.getAlpha() : 1f;
+    }
+
     static float readAttachAlpha(View taskView) {
         Object value = LauncherRecentsCompat.invokeCompat(taskView, "getAttachAlpha");
         if (value instanceof Float) {
@@ -426,6 +445,47 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_APPLIED_FULLSCREEN_PROGRESSES.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.remove(taskView);
+        LauncherRecentsState.LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.remove(taskView);
+        LauncherRecentsState.STACK_CONTENT_TARGETS.remove(taskView);
+    }
+
+    private static LauncherRecentsState.StackContentTargets resolveStackContentTargets(
+            View taskView) {
+        LauncherRecentsState.StackContentTargets cachedTargets =
+                LauncherRecentsState.STACK_CONTENT_TARGETS.get(taskView);
+        Object containersObject = LauncherRecentsCompat.invokeCompat(taskView, "getTaskContainers");
+        if (!(containersObject instanceof List)) {
+            LauncherRecentsState.STACK_CONTENT_TARGETS.remove(taskView);
+            return null;
+        }
+        List<?> taskContainers = (List<?>) containersObject;
+        if (cachedTargets != null
+                && cachedTargets.containersObject == containersObject
+                && cachedTargets.snapshotViews.length == taskContainers.size()) {
+            return cachedTargets;
+        }
+        View[] snapshotViews = new View[taskContainers.size()];
+        Object[] iconViews = new Object[taskContainers.size()];
+        View[] iconAsViews = new View[taskContainers.size()];
+        for (int i = 0; i < taskContainers.size(); i++) {
+            Object taskContainer = taskContainers.get(i);
+            Object snapshotView = LauncherRecentsCompat.invokeCompat(
+                    taskContainer,
+                    "getSnapshotView");
+            snapshotViews[i] = snapshotView instanceof View ? (View) snapshotView : null;
+            Object iconView = LauncherRecentsCompat.invokeCompat(taskContainer, "getIconView");
+            iconViews[i] = iconView;
+            Object iconAsView = LauncherRecentsCompat.invokeCompat(iconView, "asView");
+            iconAsViews[i] = iconAsView instanceof View ? (View) iconAsView : null;
+        }
+        LauncherRecentsState.StackContentTargets targets =
+                new LauncherRecentsState.StackContentTargets(
+                        containersObject,
+                        snapshotViews,
+                        iconViews,
+                        iconAsViews);
+        LauncherRecentsState.STACK_CONTENT_TARGETS.put(taskView, targets);
+        return targets;
     }
 
     private static void applyStackContentBlur(View view, float blurPx) {
@@ -462,9 +522,31 @@ final class LauncherRecentsTaskVisuals {
         rememberStackIconClip(view);
         int iconWidth = readIconSize(iconView, "getDrawableWidth", view.getWidth());
         int iconHeight = readIconSize(iconView, "getDrawableHeight", view.getHeight());
-        view.setOutlineProvider(createStackIconBlurOutlineProvider(iconWidth, iconHeight));
-        view.setClipToOutline(true);
-        view.invalidateOutline();
+        LauncherRecentsState.StackIconBlurState state =
+                LauncherRecentsState.STACK_ICON_BLUR_STATES.get(view);
+        if (state == null
+                || state.iconWidth != iconWidth
+                || state.iconHeight != iconHeight
+                || state.viewWidth != view.getWidth()
+                || state.viewHeight != view.getHeight()) {
+            ViewOutlineProvider outlineProvider =
+                    createStackIconBlurOutlineProvider(iconWidth, iconHeight);
+            view.setOutlineProvider(outlineProvider);
+            view.setClipToOutline(true);
+            view.invalidateOutline();
+            LauncherRecentsState.STACK_ICON_BLUR_STATES.put(
+                    view,
+                    new LauncherRecentsState.StackIconBlurState(
+                            iconWidth,
+                            iconHeight,
+                            view.getWidth(),
+                            view.getHeight(),
+                            outlineProvider));
+        } else if (view.getOutlineProvider() != state.outlineProvider || !view.getClipToOutline()) {
+            view.setOutlineProvider(state.outlineProvider);
+            view.setClipToOutline(true);
+            view.invalidateOutline();
+        }
         applyStackContentBlur(view, appliedBlurPx);
     }
 
@@ -491,6 +573,7 @@ final class LauncherRecentsTaskVisuals {
                 LauncherRecentsState.ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES.remove(view);
         view.setClipToOutline(clipToOutline != null && clipToOutline);
         view.invalidateOutline();
+        LauncherRecentsState.STACK_ICON_BLUR_STATES.remove(view);
     }
 
     private static ViewOutlineProvider createStackIconBlurOutlineProvider(

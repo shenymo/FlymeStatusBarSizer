@@ -499,14 +499,14 @@ final class LauncherRecentsLayoutEngine {
             stackVerticalProgress = 1f;
             stackSettledShiftProgress = smoothStep(stackReleaseProgress);
         }
-        float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
-        float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
         boolean appEntrySessionActive =
                 LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
         int runningTaskChildIndex = -1;
         if (runningTaskView != null && recentsView instanceof ViewGroup) {
             runningTaskChildIndex = ((ViewGroup) recentsView).indexOfChild(runningTaskView);
         }
+        float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
+        float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
 
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);

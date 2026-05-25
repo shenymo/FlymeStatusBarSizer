@@ -664,7 +664,6 @@ final class LauncherRecentsTransitionController {
                 setForcedRecentsTranslationY(recentsView, 0f);
                 setGestureRecentsStackReleaseProgress(recentsView, 1f);
                 normalizeAppToRecentsStackAnchor(recentsView, stackAnchorPage);
-                LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 LauncherRecentsState.setGestureStackReleasedStable(recentsView, true);
                 clearGestureRecentsStackReleaseProgress(recentsView);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
