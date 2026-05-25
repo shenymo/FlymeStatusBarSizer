@@ -242,8 +242,7 @@ final class LauncherRecentsTaskVisuals {
             return;
         }
         View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
-        float alpha = LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
-                recentsView)
+        float alpha = isStackEntryAnimationActive(recentsView)
                 ? 1f
                 : LauncherRecentsLayoutEngine.clamp(stableAlpha, 0f, 1f);
         float blurPx = FlymeStatusBarSizer.dp(
@@ -264,6 +263,13 @@ final class LauncherRecentsTaskVisuals {
 
     static void clearStackContentBlur(View taskView) {
         setStackContentBlur(taskView, 1f);
+    }
+
+    private static boolean isStackEntryAnimationActive(View recentsView) {
+        return LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView)
+                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+                || LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView);
     }
 
     static void setFullscreenProgress(View taskView, float value) {

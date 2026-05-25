@@ -8,8 +8,6 @@ import android.animation.AnimatorSet;
 import android.animation.ValueAnimator;
 import android.graphics.Color;
 import android.graphics.PointF;
-import android.graphics.RenderEffect;
-import android.graphics.Shader;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
 import android.os.Handler;
@@ -27,8 +25,6 @@ final class LauncherRecentsTransitionController {
     private static final long GESTURE_STACK_RELEASE_DURATION_MS = 320L;
     private static final int APP_TO_RECENTS_STACK_ANCHOR_PAGE = 0;
     private static final float BLANK_TAP_HOME_EXIT_VIEW_FADE_START_PROGRESS = 0.78f;
-    private static final float BLANK_TAP_HOME_EXIT_VIEW_BLUR_START_PROGRESS = 0.68f;
-    private static final int BLANK_TAP_HOME_EXIT_MAX_BLUR_DP = 26;
     private static final long BLANK_TAP_HOME_EXIT_HOME_REVEAL_MS = 180L;
     private static final int BLANK_TAP_HOME_EXIT_REVEAL_SCRIM_ALPHA = 150;
     private static final LinearInterpolator BLANK_TAP_HOME_EXIT_INTERPOLATOR =
@@ -385,25 +381,9 @@ final class LauncherRecentsTransitionController {
     }
 
     private static void applyBlankTapHomeExitViewBlur(View recentsView, float progress) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || recentsView == null) {
-            return;
-        }
-        float blurProgress = LauncherRecentsLayoutEngine.smoothStep(
-                LauncherRecentsLayoutEngine.remapProgress(
-                        progress,
-                        BLANK_TAP_HOME_EXIT_VIEW_BLUR_START_PROGRESS,
-                        1f));
-        float blurPx = FlymeStatusBarSizer.dp(
-                recentsView.getContext(),
-                BLANK_TAP_HOME_EXIT_MAX_BLUR_DP) * blurProgress;
-        if (blurPx <= 0.5f) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && recentsView != null) {
             recentsView.setRenderEffect(null);
-            return;
         }
-        recentsView.setRenderEffect(RenderEffect.createBlurEffect(
-                blurPx,
-                blurPx,
-                Shader.TileMode.CLAMP));
     }
 
     private static void clearBlankTapHomeExitViewBlur(View recentsView) {
