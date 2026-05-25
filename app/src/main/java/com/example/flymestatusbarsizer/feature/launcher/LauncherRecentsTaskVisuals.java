@@ -228,6 +228,13 @@ final class LauncherRecentsTaskVisuals {
         if (taskView == null) {
             return;
         }
+        Float lastAppliedTranslationZ =
+                LauncherRecentsState.LAST_APPLIED_TRANSLATION_ZS.get(taskView);
+        if (lastAppliedTranslationZ != null
+                && approximatelyEqual(lastAppliedTranslationZ, value)
+                && approximatelyEqual(taskView.getTranslationZ(), value)) {
+            return;
+        }
         taskView.setTranslationZ(value);
         LauncherRecentsState.LAST_APPLIED_TRANSLATION_ZS.put(taskView, value);
     }
