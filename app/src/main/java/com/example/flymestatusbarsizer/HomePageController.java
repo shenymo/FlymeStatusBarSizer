@@ -41,6 +41,13 @@ final class HomePageController {
                 v -> activity.openPage(MainActivity.Page.SYSTEM_INTERACTION)),
                 PageViewUtils.matchWrapWithTop(activity, 12));
         root.addView(buildEntryCard(activity,
+                "系统外观",
+                "云端图标下发和 Flyme 桌面外观控制",
+                activity.primaryContainerColor(),
+                0x1A0074D9,
+                v -> activity.openPage(MainActivity.Page.SYSTEM_APPEARANCE)),
+                PageViewUtils.matchWrapWithTop(activity, 12));
+        root.addView(buildEntryCard(activity,
                 "高级与调试",
                 "配置管理、SystemUI 操作、布局微调和 Telephony 调试",
                 activity.errorColor(),

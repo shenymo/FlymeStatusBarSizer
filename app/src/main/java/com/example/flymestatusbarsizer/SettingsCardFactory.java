@@ -174,6 +174,23 @@ final class SettingsCardFactory {
                 activity.imeToolbarEditor().buildSettingsContent());
     }
 
+    View createSystemAppearanceSettingsCard() {
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        activity.addSwitchRow(content, "禁用云端图标下发",
+                "拦截 Flyme 主题资源里的云端图标入口，关闭后恢复系统原流程。",
+                SettingsStore.KEY_DISABLE_FLYME_CLOUD_ICONS,
+                SettingsStore.DEFAULT_DISABLE_FLYME_CLOUD_ICONS);
+        activity.addDivider(content);
+        activity.addActionButtonRow(content, "重启系统桌面",
+                "切换后重启桌面可重新加载图标缓存。",
+                "重启", activity::restartLauncher);
+        return activity.buildSectionCard(
+                "系统外观",
+                "控制 Flyme 桌面和系统外观相关的系统级替换逻辑。",
+                content);
+    }
+
     View createLauncherRecentsSettingsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
