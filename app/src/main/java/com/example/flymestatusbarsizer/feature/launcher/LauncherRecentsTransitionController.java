@@ -69,6 +69,9 @@ final class LauncherRecentsTransitionController {
                             false);
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+                    if (shouldAnimateBlankTapHomeExit(recentsView)) {
+                        startBlankTapHomeExitAnimation(recentsView);
+                    }
                 }
                 return chain.proceed();
             });
@@ -311,12 +314,11 @@ final class LauncherRecentsTransitionController {
         ValueAnimator runningAnimator =
                 LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.get(recentsView);
         if (runningAnimator != null) {
-            if (runningAnimator.isStarted() || runningAnimator.isRunning()) {
-                return;
-            }
             LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.remove(recentsView);
+            runningAnimator.cancel();
         }
         setPageAnimOffScreenStart(recentsView, false);
+        LauncherRecentsLayoutEngine.captureBlankTapHomeExitTaskStates(recentsView);
         setBlankTapHomeExitProgress(recentsView, 0f);
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(BLANK_TAP_HOME_EXIT_DURATION_MS);
@@ -325,11 +327,7 @@ final class LauncherRecentsTransitionController {
             Object value = animation.getAnimatedValue();
             float progress = value instanceof Float ? (Float) value : 0f;
             setBlankTapHomeExitProgress(recentsView, progress);
-            LauncherRecentsLayoutEngine.applyBlankTapHomeExitFrame(recentsView, progress);
-            recentsView.setAlpha(1f - LauncherRecentsLayoutEngine.remapProgress(
-                    progress,
-                    BLANK_TAP_HOME_EXIT_VIEW_FADE_START_PROGRESS,
-                    1f));
+            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
             recentsView.invalidate();
         });
         animator.addListener(new AnimatorListenerAdapter() {
@@ -344,12 +342,15 @@ final class LauncherRecentsTransitionController {
             public void onAnimationEnd(Animator animation) {
                 LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.remove(recentsView);
                 if (cancelled) {
-                    recentsView.setAlpha(1f);
                     clearBlankTapHomeExitViewBlur(recentsView);
                     clearBlankTapHomeExitProgress(recentsView);
                     return;
                 }
-                finishBlankTapHomeExit(recentsView);
+                setBlankTapHomeExitProgress(recentsView, 1f);
+                LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                recentsView.postDelayed(
+                        () -> clearBlankTapHomeExitProgress(recentsView, false),
+                        80L);
             }
         });
         LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.put(recentsView, animator);
