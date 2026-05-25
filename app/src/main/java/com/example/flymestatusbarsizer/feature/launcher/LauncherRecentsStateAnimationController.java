@@ -241,6 +241,7 @@ final class LauncherRecentsStateAnimationController {
     private static void clearOverviewStateStackAnimation(View recentsView) {
         markOverviewStateStackAnimation(recentsView, false);
         LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
     }
 
     private static void finishRunningTaskReleaseToStackIfReady(View recentsView) {

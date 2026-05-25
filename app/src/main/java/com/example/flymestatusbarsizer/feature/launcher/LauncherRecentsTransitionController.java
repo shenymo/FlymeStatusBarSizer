@@ -668,6 +668,7 @@ final class LauncherRecentsTransitionController {
                 LauncherRecentsState.setGestureStackReleasedStable(recentsView, true);
                 clearGestureRecentsStackReleaseProgress(recentsView);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
                 LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
                 recentsView.invalidate();
             }

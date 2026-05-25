@@ -61,6 +61,7 @@ final class LauncherRecentsLayoutEngine {
                 prepareRecentsView(recentsView);
                 if (shouldApplyDynamicStackLayout(recentsView)) {
                     applyStackLayout(recentsView, false);
+                    LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
                 } else if (!shouldUseStackLayout(recentsView)) {
                     reapplyOriginalTransforms(recentsView);
                 }
@@ -759,7 +760,7 @@ final class LauncherRecentsLayoutEngine {
         if (launchState != null && launchState.handoffEnabled) {
             LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);
         }
-        LauncherRecentsTouchController.ensureStackVisibleTaskData(recentsView, 15);
+        LauncherRecentsTouchController.ensureStackVisibleTaskDataIfNeeded(recentsView, 15);
     }
 
     private static boolean shouldSuppressStockPageOffsetUpdate(

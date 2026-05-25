@@ -44,6 +44,8 @@ final class LauncherRecentsTouchController {
             new WeakHashMap<>();
     private static final WeakHashMap<View, ArrayList<Integer>> STACK_VISIBLE_TASK_IDS =
             new WeakHashMap<>();
+    private static final WeakHashMap<View, StackVisibleTaskDataSyncState>
+            STACK_VISIBLE_TASK_DATA_SYNC_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> SILENT_NATIVE_DISMISS_RECENTS =
             new WeakHashMap<>();
     private static final WeakHashMap<View, SilentNativeDismissAnchor> SILENT_NATIVE_DISMISS_ANCHORS =
@@ -359,7 +361,7 @@ final class LauncherRecentsTouchController {
                 if (thisObject instanceof View) {
                     Object arg0 = chain.getArg(0);
                     int changes = arg0 instanceof Integer ? (Integer) arg0 : 15;
-                    ensureStackVisibleTaskData((View) thisObject, changes);
+                    forceEnsureStackVisibleTaskData((View) thisObject, changes);
                 }
                 return result;
             });
@@ -1171,6 +1173,7 @@ final class LauncherRecentsTouchController {
             runStackDismissPendingLayout(recentsView);
             syncStackDismissSnappedPage(recentsView);
             LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+            forceEnsureStackVisibleTaskData(recentsView, 15);
         } finally {
             if (previousLayoutBypass == null) {
                 STACK_DISMISS_LAYOUT_FREEZE_BYPASS.remove();
@@ -1407,6 +1410,56 @@ final class LauncherRecentsTouchController {
         }
         View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
         return shouldExposeStackTaskForDismissVisibility(recentsView, taskView);
+    }
+
+    static void ensureStackVisibleTaskDataIfNeeded(View recentsView, int changes) {
+        if (recentsView == null || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+            return;
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        int width = recentsView.getWidth();
+        if (width <= 0) {
+            forceEnsureStackVisibleTaskData(recentsView, changes);
+            return;
+        }
+        int bucket = recentsView.getScrollX() / Math.max(1, width / 4);
+        StackVisibleTaskDataSyncState state =
+                STACK_VISIBLE_TASK_DATA_SYNC_STATES.get(recentsView);
+        if (state != null
+                && state.taskViewCount == taskViewCount
+                && state.scrollBucket == bucket
+                && !isLastStackVisibleTaskIdsEmpty(recentsView)) {
+            return;
+        }
+        forceEnsureStackVisibleTaskData(recentsView, changes);
+    }
+
+    static void forceEnsureStackVisibleTaskData(View recentsView, int changes) {
+        if (recentsView == null) {
+            return;
+        }
+        StackVisibleTaskDataSyncState state =
+                STACK_VISIBLE_TASK_DATA_SYNC_STATES.get(recentsView);
+        if (state == null) {
+            state = new StackVisibleTaskDataSyncState();
+            STACK_VISIBLE_TASK_DATA_SYNC_STATES.put(recentsView, state);
+        }
+        state.taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        state.scrollBucket = resolveStackVisibleTaskDataBucket(recentsView);
+        ensureStackVisibleTaskData(recentsView, changes);
+    }
+
+    private static int resolveStackVisibleTaskDataBucket(View recentsView) {
+        int width = recentsView != null ? recentsView.getWidth() : 0;
+        if (width <= 0) {
+            return Integer.MIN_VALUE;
+        }
+        return recentsView.getScrollX() / Math.max(1, width / 4);
+    }
+
+    private static boolean isLastStackVisibleTaskIdsEmpty(View recentsView) {
+        ArrayList<Integer> lastVisibleTaskIds = STACK_VISIBLE_TASK_IDS.get(recentsView);
+        return lastVisibleTaskIds == null || lastVisibleTaskIds.isEmpty();
     }
 
     static void ensureStackVisibleTaskData(View recentsView, int changes) {
@@ -1977,6 +2030,11 @@ final class LauncherRecentsTouchController {
         SilentNativeDismissAnchor(int targetPage) {
             this.targetPage = targetPage;
         }
+    }
+
+    private static final class StackVisibleTaskDataSyncState {
+        int taskViewCount;
+        int scrollBucket;
     }
 
     static void clearRecentsDeferredSnap(View recentsView) {
