@@ -109,6 +109,16 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setHorizontalOffsetTranslationX(View taskView, float value) {
+        if (taskView != null
+                && shouldSkipAppliedFloat(
+                        LauncherRecentsState.LAST_APPLIED_HORIZONTAL_OFFSET_XS.get(taskView),
+                        value,
+                        LauncherRecentsCompat.readFloatField(
+                                taskView,
+                                "horizontalOffsetTranslationX",
+                                0f))) {
+            return;
+        }
         LauncherRecentsCompat.invokeCompat(
                 taskView,
                 "setHorizontalOffsetTranslationX",
@@ -118,6 +128,13 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setTaskOffsetTranslationX(View taskView, float value) {
+        if (taskView != null
+                && shouldSkipAppliedFloat(
+                        LauncherRecentsState.LAST_APPLIED_TASK_OFFSET_XS.get(taskView),
+                        value,
+                        LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationX", 0f))) {
+            return;
+        }
         LauncherRecentsCompat.invokeCompat(
                 taskView,
                 "setTaskOffsetTranslationX",
@@ -127,6 +144,13 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setTaskOffsetTranslationY(View taskView, float value) {
+        if (taskView != null
+                && shouldSkipAppliedFloat(
+                        LauncherRecentsState.LAST_APPLIED_TASK_OFFSET_YS.get(taskView),
+                        value,
+                        LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationY", 0f))) {
+            return;
+        }
         LauncherRecentsCompat.invokeCompat(
                 taskView,
                 "setTaskOffsetTranslationY",
@@ -145,6 +169,16 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setBoxTranslationY(View taskView, float value) {
+        if (taskView != null
+                && shouldSkipAppliedFloat(
+                        LauncherRecentsState.LAST_APPLIED_BOX_TRANSLATION_YS.get(taskView),
+                        value,
+                        LauncherRecentsCompat.readFloatField(
+                                taskView,
+                                "boxTranslationY",
+                                readOriginalBoxTranslationY(taskView)))) {
+            return;
+        }
         LauncherRecentsCompat.invokeCompat(
                 taskView,
                 "setBoxTranslationY",
@@ -155,6 +189,13 @@ final class LauncherRecentsTaskVisuals {
 
     static void setAttachAlpha(View taskView, float value) {
         float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
+        if (taskView != null
+                && shouldSkipAppliedFloat(
+                        LauncherRecentsState.LAST_APPLIED_ATTACH_ALPHAS.get(taskView),
+                        clampedValue,
+                        readAttachAlpha(taskView))) {
+            return;
+        }
         LauncherRecentsCompat.invokeCompat(
                 taskView,
                 "setAttachAlpha",
@@ -165,6 +206,13 @@ final class LauncherRecentsTaskVisuals {
 
     static void setStableAlpha(View taskView, float value) {
         float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
+        if (taskView != null
+                && shouldSkipAppliedFloat(
+                        LauncherRecentsState.LAST_APPLIED_STABLE_ALPHAS.get(taskView),
+                        clampedValue,
+                        readStableAlpha(taskView))) {
+            return;
+        }
         LauncherRecentsCompat.invokeCompat(
                 taskView,
                 "setStableAlpha",
@@ -542,6 +590,15 @@ final class LauncherRecentsTaskVisuals {
 
     private static boolean approximatelyEqual(float a, float b) {
         return Math.abs(a - b) <= MODULE_APPLIED_EPSILON;
+    }
+
+    private static boolean shouldSkipAppliedFloat(
+            Float lastAppliedValue,
+            float value,
+            float currentValue) {
+        return lastAppliedValue != null
+                && Float.compare(lastAppliedValue, value) == 0
+                && Float.compare(currentValue, value) == 0;
     }
 
     static void resetTaskTouchScale(View taskView) {
