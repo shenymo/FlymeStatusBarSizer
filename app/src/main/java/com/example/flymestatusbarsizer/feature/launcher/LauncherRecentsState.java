@@ -39,6 +39,12 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> ACTIVE_OVERVIEW_STATE_STACK_ANIMATIONS =
             new WeakHashMap<>();
+    static final WeakHashMap<View, Integer> STACK_LAYOUT_RECOVERY_RADII =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, String> LAST_STACK_APP_FLOW_PACKAGES =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Integer> LAST_STACK_TASK_LIST_VISIBILITY_CHANGES =
+            new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> ACTIVE_APP_TO_RECENTS_ENTRY_SESSIONS =
             new WeakHashMap<>();
     static final WeakHashMap<View, LaunchHandoffState> ACTIVE_TASK_LAUNCH_HANDOFFS =

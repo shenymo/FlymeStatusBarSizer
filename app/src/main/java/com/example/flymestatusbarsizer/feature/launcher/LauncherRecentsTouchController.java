@@ -34,6 +34,8 @@ final class LauncherRecentsTouchController {
     private static final float STACK_VISIBLE_DATA_LEFT_MARGIN_RATIO = 0.08f;
     private static final float STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO = 2.40f;
     private static final float STACK_LEFT_RELEASE_ALPHA_THRESHOLD = 0.05f;
+    private static final int STACK_APP_FLOW_LIGHT_RADIUS = 3;
+    private static final String STACK_APP_FLOW_HIDDEN = "<stack-hidden>";
     private static final ThreadLocal<Boolean> TASK_DISMISS_VISIBILITY_BYPASS =
             new ThreadLocal<>();
     private static final ThreadLocal<Boolean> STACK_LOAD_VISIBLE_TASK_DATA_ACTIVE =
@@ -80,6 +82,7 @@ final class LauncherRecentsTouchController {
         hookRecentsViewTaskVisibilityForDismiss(module, loader);
         hookRecentsViewLoadVisibleTaskDataForStack(module, loader);
         hookTaskViewListVisibilityForStack(module, loader);
+        hookTaskViewAppFlowVisibilityForStack(module, loader);
         hookRecentsViewResetTaskVisualsForSilentDismiss(module, loader);
         hookRecentsViewUpdateTaskSizeForSilentDismiss(module, loader);
         hookTaskViewNativeDismissTransformsForSilentDismiss(module, loader);
@@ -385,6 +388,16 @@ final class LauncherRecentsTouchController {
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
                 Object arg0 = chain.getArg(0);
+                Object arg1 = chain.getArg(1);
+                if (thisObject instanceof View
+                        && arg0 instanceof Boolean
+                        && arg1 instanceof Integer
+                        && shouldThrottleStackTaskListVisibility(
+                        (View) thisObject,
+                        (Boolean) arg0,
+                        (Integer) arg1)) {
+                    return null;
+                }
                 if (thisObject instanceof View
                         && Boolean.FALSE.equals(arg0)
                         && shouldSuppressStackTaskDataUnload((View) thisObject)) {
@@ -2030,6 +2043,104 @@ final class LauncherRecentsTouchController {
         SilentNativeDismissAnchor(int targetPage) {
             this.targetPage = targetPage;
         }
+    }
+
+    private static void hookTaskViewAppFlowVisibilityForStack(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.TASK_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("setAppFlowViewVisible", String.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                Object arg0 = chain.getArg(0);
+                if (!(thisObject instanceof View) || !(arg0 instanceof String)) {
+                    return chain.proceed();
+                }
+                View taskView = (View) thisObject;
+                String pkgName = (String) arg0;
+                if (!shouldThrottleStackAppFlow(taskView, pkgName)) {
+                    Object result = chain.proceed();
+                    LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.put(taskView, pkgName);
+                    return result;
+                }
+                return null;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook TaskView.setAppFlowViewVisible",
+                    t);
+        }
+    }
+
+    static void clearStackAppFlowVisibilityCache() {
+        LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.clear();
+        LauncherRecentsState.LAST_STACK_TASK_LIST_VISIBILITY_CHANGES.clear();
+    }
+
+    private static boolean shouldThrottleStackTaskListVisibility(
+            View taskView,
+            boolean visible,
+            int changes) {
+        View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
+        if (recentsView == null || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+            return false;
+        }
+        if (!visible) {
+            return true;
+        }
+        Integer lastChanges =
+                LauncherRecentsState.LAST_STACK_TASK_LIST_VISIBILITY_CHANGES.get(taskView);
+        if (lastChanges != null && lastChanges == changes) {
+            return true;
+        }
+        LauncherRecentsState.LAST_STACK_TASK_LIST_VISIBILITY_CHANGES.put(taskView, changes);
+        return false;
+    }
+
+    private static boolean shouldThrottleStackAppFlow(View taskView, String pkgName) {
+        View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
+        if (recentsView == null
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
+                recentsView)
+                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+            return false;
+        }
+        int anchorIndex = resolveStackAppFlowAnchorIndex(recentsView);
+        int taskIndex = findTaskViewIndex(recentsView, taskView);
+        if (taskIndex < 0) {
+            return false;
+        }
+        if (Math.abs(taskIndex - anchorIndex) > STACK_APP_FLOW_LIGHT_RADIUS) {
+            String lastPkg = LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.get(taskView);
+            if (!STACK_APP_FLOW_HIDDEN.equals(lastPkg)) {
+                LauncherRecentsCompat.invokeCompat(taskView, "hideFlowViews");
+                LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.put(
+                        taskView,
+                        STACK_APP_FLOW_HIDDEN);
+            }
+            return true;
+        }
+        String lastPkg = LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.get(taskView);
+        return pkgName.equals(lastPkg);
+    }
+
+    private static int resolveStackAppFlowAnchorIndex(View recentsView) {
+        Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "getRunningTaskView");
+        if (runningTaskObject instanceof View) {
+            int runningIndex = findTaskViewIndex(recentsView, (View) runningTaskObject);
+            if (runningIndex >= 0) {
+                return runningIndex;
+            }
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        return Math.max(0, taskViewCount - 1);
     }
 
     private static final class StackVisibleTaskDataSyncState {

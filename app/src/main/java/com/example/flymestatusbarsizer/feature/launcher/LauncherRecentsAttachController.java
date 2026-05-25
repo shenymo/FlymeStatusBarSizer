@@ -55,6 +55,7 @@ final class LauncherRecentsAttachController {
                 LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
                 LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
                 LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, true);
+                LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                 LauncherRecentsState.trackRecentsView(recentsView);
                 LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                 return chain.proceed();
@@ -83,6 +84,7 @@ final class LauncherRecentsAttachController {
                         : null;
                 if (recentsView != null
                         && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+                    LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                     if (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)) {
@@ -214,6 +216,7 @@ final class LauncherRecentsAttachController {
         LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
         LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
         LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASES.remove(recentsView);
+        LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
         LauncherRecentsLayoutEngine.resetTaskPageViewScales(recentsView);
     }
 

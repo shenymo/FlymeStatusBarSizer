@@ -18,6 +18,7 @@ final class LauncherRecentsStateAnimationController {
             "com.android.launcher3.anim.PendingAnimation";
     private static final String FLYME_LAUNCHER_STATE_CLASS =
             "com.meizu.flyme.launcher.FlymeLauncherState";
+    private static final long OVERVIEW_STATE_STACK_ANIMATION_FALLBACK_CLEAR_DELAY_MS = 350L;
 
     private LauncherRecentsStateAnimationController() {
     }
@@ -177,8 +178,16 @@ final class LauncherRecentsStateAnimationController {
         if (recentsView == null) {
             return;
         }
+        LauncherRecentsLayoutEngine.cancelStackLayoutRecovery(recentsView);
         markOverviewStateStackAnimation(recentsView, true);
         attachOverviewStateAnimationCallbacks(recentsView, pendingAnimation);
+        if (pendingAnimation == null) {
+            recentsView.postDelayed(() -> {
+                if (isOverviewStateStackAnimationActive(recentsView)) {
+                    clearOverviewStateStackAnimation(recentsView);
+                }
+            }, OVERVIEW_STATE_STACK_ANIMATION_FALLBACK_CLEAR_DELAY_MS);
+        }
     }
 
     private static boolean shouldTakeOverOverviewPeekToOverview(
@@ -240,7 +249,7 @@ final class LauncherRecentsStateAnimationController {
 
     private static void clearOverviewStateStackAnimation(View recentsView) {
         markOverviewStateStackAnimation(recentsView, false);
-        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        LauncherRecentsLayoutEngine.startStackLayoutRecovery(recentsView);
         LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
     }
 

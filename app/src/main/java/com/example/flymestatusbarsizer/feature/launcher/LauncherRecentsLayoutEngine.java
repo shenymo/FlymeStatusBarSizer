@@ -32,6 +32,8 @@ final class LauncherRecentsLayoutEngine {
     private static final float BLANK_TAP_HOME_EXIT_LEFT_FINISH = 0.74f;
     private static final float STACK_TITLE_FADE_END_CARD_ALPHA = 0.42f;
     private static final int STACK_TASK_SHADOW_ELEVATION_DP = 10;
+    private static final int STACK_ENTRY_LIGHT_RADIUS = 3;
+    private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
 
     private LauncherRecentsLayoutEngine() {
     }
@@ -401,6 +403,13 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static void applyStackLayout(View recentsView, boolean captureStockState) {
+        applyStackLayout(recentsView, captureStockState, resolveStackLayoutRadius(recentsView));
+    }
+
+    private static void applyStackLayout(
+            View recentsView,
+            boolean captureStockState,
+            int stackLayoutRadius) {
         if (recentsView == null) {
             return;
         }
@@ -433,6 +442,14 @@ final class LauncherRecentsLayoutEngine {
         View runningTaskView = runningTaskObject instanceof View
                 ? (View) runningTaskObject
                 : null;
+        int runningTaskChildIndex = -1;
+        if (runningTaskView != null && recentsView instanceof ViewGroup) {
+            runningTaskChildIndex = ((ViewGroup) recentsView).indexOfChild(runningTaskView);
+        }
+        int lightAnchorIndex = resolveStackLayoutAnchorIndex(
+                recentsView,
+                runningTaskChildIndex,
+                taskViewCount);
         float referenceWidth = 0f;
         float referenceHeight = 0f;
         float pageSpan = 0f;
@@ -441,6 +458,9 @@ final class LauncherRecentsLayoutEngine {
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             if (taskView == null) {
+                continue;
+            }
+            if (shouldHideStackLayoutTask(i, lightAnchorIndex, stackLayoutRadius)) {
                 continue;
             }
             LauncherRecentsTaskVisuals.rememberOriginalTaskState(taskView);
@@ -501,10 +521,6 @@ final class LauncherRecentsLayoutEngine {
         }
         boolean appEntrySessionActive =
                 LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
-        int runningTaskChildIndex = -1;
-        if (runningTaskView != null && recentsView instanceof ViewGroup) {
-            runningTaskChildIndex = ((ViewGroup) recentsView).indexOfChild(runningTaskView);
-        }
         float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
         float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
 
@@ -524,6 +540,10 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setStackContentBlur(taskView, 0f);
                 LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
+                continue;
+            }
+            if (shouldHideStackLayoutTask(i, lightAnchorIndex, stackLayoutRadius)) {
+                hideLightStackTask(taskView);
                 continue;
             }
             if (appEntrySessionActive && taskView == runningTaskView) {
@@ -761,6 +781,93 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);
         }
         LauncherRecentsTouchController.ensureStackVisibleTaskDataIfNeeded(recentsView, 15);
+    }
+
+    static void cancelStackLayoutRecovery(View recentsView) {
+        LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.remove(recentsView);
+    }
+
+    static void startStackLayoutRecovery(View recentsView) {
+        if (recentsView == null || !shouldApplyDynamicStackLayout(recentsView)) {
+            return;
+        }
+        LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.put(
+                recentsView,
+                STACK_ENTRY_LIGHT_RADIUS + STACK_LAYOUT_RECOVERY_RADIUS_STEP);
+        recentsView.postOnAnimation(() -> runStackLayoutRecoveryFrame(recentsView));
+    }
+
+    private static void runStackLayoutRecoveryFrame(View recentsView) {
+        Integer radius = LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.get(recentsView);
+        if (recentsView == null
+                || radius == null
+                || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView)
+                || !shouldApplyDynamicStackLayout(recentsView)) {
+            LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.remove(recentsView);
+            return;
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        if (radius >= taskViewCount) {
+            LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.remove(recentsView);
+            applyStackLayout(recentsView, false, -1);
+            return;
+        }
+        applyStackLayout(recentsView, false, radius);
+        LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.put(
+                recentsView,
+                radius + STACK_LAYOUT_RECOVERY_RADIUS_STEP);
+        recentsView.postOnAnimation(() -> runStackLayoutRecoveryFrame(recentsView));
+    }
+
+    private static int resolveStackLayoutRadius(View recentsView) {
+        Integer recoveryRadius = LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.get(recentsView);
+        if (recoveryRadius != null) {
+            return recoveryRadius;
+        }
+        if (LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(recentsView)
+                || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                recentsView)) {
+            return STACK_ENTRY_LIGHT_RADIUS;
+        }
+        return -1;
+    }
+
+    private static int resolveStackLayoutAnchorIndex(
+            View recentsView,
+            int runningTaskChildIndex,
+            int taskViewCount) {
+        if (runningTaskChildIndex >= 0) {
+            return runningTaskChildIndex;
+        }
+        int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
+        return Math.max(0, Math.min(currentPage, Math.max(0, taskViewCount - 1)));
+    }
+
+    private static boolean shouldHideStackLayoutTask(int index, int anchorIndex, int radius) {
+        return radius >= 0 && Math.abs(index - anchorIndex) > radius;
+    }
+
+    private static void hideLightStackTask(View taskView) {
+        if (isLightStackTaskHidden(taskView)) {
+            return;
+        }
+        LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
+        LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
+        LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 0f);
+        LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
+    }
+
+    private static boolean isLightStackTaskHidden(View taskView) {
+        return isAppliedZero(LauncherRecentsState.LAST_APPLIED_ATTACH_ALPHAS.get(taskView))
+                && isAppliedZero(LauncherRecentsState.LAST_APPLIED_STABLE_ALPHAS.get(taskView))
+                && isAppliedZero(
+                LauncherRecentsState.LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.get(taskView))
+                && isAppliedZero(LauncherRecentsState.LAST_APPLIED_TRANSLATION_ZS.get(taskView));
+    }
+
+    private static boolean isAppliedZero(Float value) {
+        return value != null && Math.abs(value) < 0.001f;
     }
 
     private static boolean shouldSuppressStockPageOffsetUpdate(
