@@ -63,29 +63,12 @@ final class LauncherRecentsTransitionController {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
-                    if (shouldAnimateBlankTapHomeExit(recentsView)
-                            && LauncherRecentsCompat.invokeBoolean(
-                            recentsView,
-                            "canStartHomeSafely",
-                            false)) {
-                        LauncherRecentsLayoutEngine.captureBlankTapHomeExitTaskStates(recentsView);
-                        setBlankTapHomeExitProgress(recentsView, 0f);
-                    }
                     LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
                     LauncherRecentsAttachController.clearAppToRecentsEntrySession(
                             recentsView,
                             false);
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-                    if (shouldAnimateBlankTapHomeExit(recentsView)) {
-                        if (LauncherRecentsCompat.invokeBoolean(
-                                recentsView,
-                                "canStartHomeSafely",
-                                false)) {
-                            startBlankTapHomeExitAnimation(recentsView);
-                            return null;
-                        }
-                    }
                 }
                 return chain.proceed();
             });
