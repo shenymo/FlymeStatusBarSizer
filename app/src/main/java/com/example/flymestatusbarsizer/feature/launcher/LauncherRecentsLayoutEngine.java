@@ -527,10 +527,10 @@ final class LauncherRecentsLayoutEngine {
                 continue;
             }
             if (appEntrySessionActive && taskView == runningTaskView) {
-                LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.setStackContentBlur(taskView, 0f);
+                LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 1f);
+                LauncherRecentsTaskVisuals.setStableAlpha(taskView, 1f);
+                LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 1f);
+                LauncherRecentsTaskVisuals.setStackContentBlur(taskView, 1f);
                 LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
                 continue;
             }
