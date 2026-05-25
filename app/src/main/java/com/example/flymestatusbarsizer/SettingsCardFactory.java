@@ -202,7 +202,7 @@ final class SettingsCardFactory {
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED);
         activity.addDivider(content);
         activity.addTextSettingRow(content, "通知背景颜色",
-                "填写 #AARRGGBB。默认 #1A000000；留空跟随系统；上方开关开启时此项不生效。",
+                "填写 #AARRGGBB。留空跟随系统；可填 #1A000000；上方开关开启时此项不生效。",
                 SettingsStore.KEY_NOTIFICATION_BACKGROUND_COLOR,
                 SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_COLOR,
                 "跟随系统",

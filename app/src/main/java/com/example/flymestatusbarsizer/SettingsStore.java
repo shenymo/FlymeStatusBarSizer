@@ -143,7 +143,7 @@ final class SettingsStore {
     static final int DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP = 0;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED = false;
     static final String DEFAULT_LAUNCHER_FOLDER_BG_COLOR = "";
-    static final String DEFAULT_NOTIFICATION_BACKGROUND_COLOR = "#1A000000";
+    static final String DEFAULT_NOTIFICATION_BACKGROUND_COLOR = "";
     static final boolean DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED = false;
     static final int DEFAULT_MBACK_INSET_SIZE = -1;
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
