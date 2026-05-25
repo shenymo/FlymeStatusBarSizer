@@ -66,7 +66,6 @@ final class ModuleConfig {
     boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
     int notificationAppIconSizeDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
     int notificationAppIconPaddingDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP;
-    boolean disableFlymeCloudIcons = SettingsStore.DEFAULT_DISABLE_FLYME_CLOUD_ICONS;
     boolean launcherIosStackRecentsEnabled =
             SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED;
     boolean mbackHidePill = SettingsStore.DEFAULT_MBACK_HIDE_PILL;
@@ -353,10 +352,6 @@ final class ModuleConfig {
                             prefs,
                             SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP,
                             SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP));
-            config.disableFlymeCloudIcons = SettingsStore.readBoolean(
-                    prefs,
-                    SettingsStore.KEY_DISABLE_FLYME_CLOUD_ICONS,
-                    SettingsStore.DEFAULT_DISABLE_FLYME_CLOUD_ICONS);
             config.launcherIosStackRecentsEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,

@@ -5,7 +5,6 @@ import com.example.flymestatusbarsizer.feature.ime.ImeHooks;
 import com.example.flymestatusbarsizer.feature.launcher.LauncherRecentsHooks;
 import com.example.flymestatusbarsizer.feature.mback.MBackHooks;
 import com.example.flymestatusbarsizer.feature.notification.NotificationHooks;
-import com.example.flymestatusbarsizer.feature.theme.FlymeCloudIconHooks;
 
 import android.content.ComponentCallbacks;
 import android.content.Context;
@@ -210,7 +209,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private void hookSystemUi(ClassLoader loader) {
-        FlymeCloudIconHooks.install(this, loader);
         installStatusBarHooks(loader);
         installSignalHooks(loader);
         NotificationHooks.install(this, loader);
@@ -220,7 +218,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private void hookFlymeLauncher(ClassLoader loader) {
-        FlymeCloudIconHooks.install(this, loader);
         LauncherRecentsHooks.install(this, loader);
     }
 
@@ -305,11 +302,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     public static LauncherRecentsConfigSnapshot loadLauncherRecentsConfig(Context context) {
         ModuleConfig config = ModuleConfig.load(context);
         return new LauncherRecentsConfigSnapshot(config);
-    }
-
-    public static boolean shouldDisableFlymeCloudIcons() {
-        ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
-        return config.enabled && config.disableFlymeCloudIcons;
     }
 
     public static void logMBackWarning(String message, Throwable throwable) {

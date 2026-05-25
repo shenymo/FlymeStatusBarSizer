@@ -58,7 +58,6 @@ final class SettingsStore {
     static final String KEY_NOTIFICATION_APP_ICON_ENABLED = "notification_app_icon_enabled";
     static final String KEY_NOTIFICATION_APP_ICON_SIZE_DP = "notification_app_icon_size_dp";
     static final String KEY_NOTIFICATION_APP_ICON_PADDING_DP = "notification_app_icon_padding_dp";
-    static final String KEY_DISABLE_FLYME_CLOUD_ICONS = "disable_flyme_cloud_icons";
     static final String KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED =
             "launcher_ios_stack_recents_enabled";
     static final String KEY_MBACK_INSET_SIZE = "mback_inset_size";
@@ -137,7 +136,6 @@ final class SettingsStore {
     static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
     static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
     static final int DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP = 0;
-    static final boolean DEFAULT_DISABLE_FLYME_CLOUD_ICONS = false;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED = false;
     static final int DEFAULT_MBACK_INSET_SIZE = -1;
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
@@ -220,7 +218,6 @@ final class SettingsStore {
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
-            KEY_DISABLE_FLYME_CLOUD_ICONS,
             KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
             KEY_MBACK_HIDE_PILL,
             KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
@@ -460,8 +457,6 @@ final class SettingsStore {
                 return DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
             case KEY_NOTIFICATION_APP_ICON_ENABLED:
                 return DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
-            case KEY_DISABLE_FLYME_CLOUD_ICONS:
-                return DEFAULT_DISABLE_FLYME_CLOUD_ICONS;
             case KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED:
                 return DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED;
             case KEY_MBACK_HIDE_PILL:
