@@ -18,6 +18,8 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.5f;
     private static final float STACK_RIGHT_VISIBLE_RATIO = 0.80f;
     private static final float STACK_SPREAD_POWER = 0.75f;
+    private static final float STACK_LEFT_DAMPING_POWER = 1.55f;
+    private static final float STACK_LEFT_DAMPING_MIN_WEIGHT = 0.10f;
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
     private static final float STACK_RELEASE_SETTLED_PROGRESS_SHIFT = 0.70f;
     private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
@@ -1213,6 +1215,22 @@ final class LauncherRecentsLayoutEngine {
             float progress,
             float taskWidth,
             float taskCenteredLeftPx) {
+        float visibleOffset = resolveStackVirtualVisibleOffset(
+                recentsView,
+                progress,
+                taskWidth,
+                taskCenteredLeftPx);
+        if (progress >= 0f) {
+            return visibleOffset;
+        }
+        return -resolveLeftDampedVisibleOffset(visibleOffset, taskWidth, taskCenteredLeftPx);
+    }
+
+    private static float resolveStackVirtualVisibleOffset(
+            View recentsView,
+            float progress,
+            float taskWidth,
+            float taskCenteredLeftPx) {
         float stackRightOffsetPx = Math.max(
                 0f,
                 recentsView.getWidth()
@@ -1229,7 +1247,26 @@ final class LauncherRecentsLayoutEngine {
         if (stackDepth > 1f) {
             visibleOffset += (stackDepth - 1f) * taskWidth * STACK_RIGHT_VISIBLE_RATIO;
         }
-        return progress < 0f ? -visibleOffset : visibleOffset;
+        return visibleOffset;
+    }
+
+    private static float resolveLeftDampedVisibleOffset(
+            float virtualOffset,
+            float taskWidth,
+            float taskCenteredLeftPx) {
+        float dampingStartPx = Math.max(1f, taskCenteredLeftPx);
+        if (virtualOffset <= dampingStartPx) {
+            return virtualOffset;
+        }
+        float stackRangePx = Math.max(1f, taskWidth * STACK_RIGHT_VISIBLE_RATIO);
+        float overflowPx = virtualOffset - dampingStartPx;
+        float dampingProgress = overflowPx / stackRangePx;
+        float dampedOverflowPx = stackRangePx
+                * STACK_LEFT_DAMPING_MIN_WEIGHT
+                * (1.0f - (float) Math.pow(
+                STACK_LEFT_DAMPING_MIN_WEIGHT / (dampingProgress + STACK_LEFT_DAMPING_MIN_WEIGHT),
+                STACK_LEFT_DAMPING_POWER));
+        return dampingStartPx + dampedOverflowPx;
     }
 
     private static float resolveStackLeftBoundOffset(
@@ -1258,7 +1295,7 @@ final class LauncherRecentsLayoutEngine {
                 taskWidth,
                 taskCenteredLeftPx,
                 resolveLeftEdgeRevealProgress(recentsView));
-        float visibleOffset = resolveStackUnclampedVisibleOffset(
+        float visibleOffset = -resolveStackVirtualVisibleOffset(
                 recentsView,
                 progress,
                 taskWidth,
