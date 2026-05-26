@@ -345,13 +345,29 @@ final class LauncherRecentsLayoutEngine {
                             taskView,
                             "horizontalOffsetTranslationX",
                             0f);
+            float taskWidth = taskView.getWidth() > 0
+                    ? taskView.getWidth()
+                    : Math.max(1f, recentsView.getWidth());
+            float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
+            float taskScale = LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f);
+            if (taskView.getVisibility() != View.VISIBLE
+                    || taskView.getWidth() <= 0
+                    || taskView.getHeight() <= 0
+                    || !isTaskVisibleInViewport(
+                    recentsView,
+                    taskCenteredLeftPx,
+                    taskWidth,
+                    visibleOffset,
+                    taskScale)) {
+                continue;
+            }
             LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.put(
                     taskView,
                     new LauncherRecentsState.BlankTapHomeExitTaskState(
                             rawOffset,
                             dismissTranslationX,
                             visibleOffset,
-                            LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f),
+                            taskScale,
                             LauncherRecentsCompat.readFloatField(
                                     taskView,
                                     "taskOffsetTranslationY",
@@ -366,17 +382,7 @@ final class LauncherRecentsLayoutEngine {
                             LauncherRecentsTaskVisuals.readActivityTitleAlpha(taskView),
                             LauncherRecentsTaskVisuals.readStackContentBlurProgress(taskView),
                             taskView.getTranslationZ()));
-            float taskWidth = taskView.getWidth() > 0
-                    ? taskView.getWidth()
-                    : Math.max(1f, recentsView.getWidth());
-            float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
-            if (isTaskVisibleInViewport(
-                    recentsView,
-                    taskCenteredLeftPx,
-                    taskWidth,
-                    visibleOffset,
-                    LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f))
-                    && (!hasVisibleAnchor || visibleOffset > anchorVisibleOffset)) {
+            if (!hasVisibleAnchor || visibleOffset > anchorVisibleOffset) {
                 anchorVisibleOffset = visibleOffset;
                 hasVisibleAnchor = true;
             }

@@ -1399,7 +1399,8 @@ final class LauncherRecentsTouchController {
                     && state.startStableAlpha > STACK_LEFT_RELEASE_ALPHA_THRESHOLD
                     && taskView.getVisibility() == View.VISIBLE
                     && taskView.getWidth() > 0
-                    && taskView.getHeight() > 0;
+                    && taskView.getHeight() > 0
+                    && isBlankTapHomeExitTaskWithinViewport(recentsView, taskView, state);
         }
         return taskView.getVisibility() == View.VISIBLE
                 && (readStackTaskDataAlpha(taskView) > STACK_LEFT_RELEASE_ALPHA_THRESHOLD
@@ -1427,6 +1428,22 @@ final class LauncherRecentsTouchController {
         float taskLeft = taskLocation[0];
         float taskRight = taskLeft + taskWidth;
         return taskRight > viewportLeft && taskLeft < viewportRight;
+    }
+
+    private static boolean isBlankTapHomeExitTaskWithinViewport(
+            View recentsView,
+            View taskView,
+            LauncherRecentsState.BlankTapHomeExitTaskState state) {
+        float taskWidth = taskView.getWidth() > 0
+                ? taskView.getWidth()
+                : Math.max(1f, recentsView.getWidth());
+        float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
+        return LauncherRecentsLayoutEngine.isTaskVisibleInViewport(
+                recentsView,
+                taskCenteredLeftPx,
+                taskWidth,
+                state.startVisibleOffset,
+                state.startScale);
     }
 
     private static boolean shouldReleaseStackTaskData(View recentsView, View taskView) {
