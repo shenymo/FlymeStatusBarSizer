@@ -224,17 +224,16 @@ final class LauncherRecentsTaskVisuals {
         }
     }
 
-    static void setStackContentBlur(View taskView, float stableAlpha) {
+    static void setStackContentBlurProgress(View taskView, float blurProgress) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || taskView == null) {
             return;
         }
-        View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
-        float alpha = isStackEntryAnimationActive(recentsView)
-                ? 1f
-                : LauncherRecentsLayoutEngine.clamp(stableAlpha, 0f, 1f);
         float blurPx = FlymeStatusBarSizer.dp(
                 taskView.getContext(),
-                STACK_CONTENT_MAX_BLUR_DP) * (1f - alpha);
+                STACK_CONTENT_MAX_BLUR_DP) * LauncherRecentsLayoutEngine.clamp(
+                blurProgress,
+                0f,
+                1f);
         LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
         if (targets == null) {
             return;
@@ -249,14 +248,7 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void clearStackContentBlur(View taskView) {
-        setStackContentBlur(taskView, 1f);
-    }
-
-    private static boolean isStackEntryAnimationActive(View recentsView) {
-        return LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
-                recentsView)
-                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
-                || LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView);
+        setStackContentBlurProgress(taskView, 0f);
     }
 
     static void setFullscreenProgress(View taskView, float value) {

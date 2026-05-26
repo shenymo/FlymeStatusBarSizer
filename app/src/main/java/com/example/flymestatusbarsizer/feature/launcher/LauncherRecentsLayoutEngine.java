@@ -31,6 +31,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float BLANK_TAP_HOME_EXIT_MAX_DELAY = 0.22f;
     private static final float BLANK_TAP_HOME_EXIT_LEFT_FINISH = 0.74f;
     private static final float STACK_TITLE_FADE_END_CARD_ALPHA = 0.42f;
+    private static final float STACK_CONTENT_BLUR_START_ALPHA = 0.85f;
     private static final int STACK_ENTRY_LIGHT_RADIUS = 3;
     private static final int STACK_STABLE_VISIBLE_RADIUS = 4;
     private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
@@ -615,7 +616,7 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.setStackContentBlur(taskView, 0f);
+                LauncherRecentsTaskVisuals.setStackContentBlurProgress(taskView, 0f);
                 LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
                 continue;
             }
@@ -627,7 +628,7 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 1f);
                 LauncherRecentsTaskVisuals.setStableAlpha(taskView, 1f);
                 LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 1f);
-                LauncherRecentsTaskVisuals.setStackContentBlur(taskView, 1f);
+                LauncherRecentsTaskVisuals.setStackContentBlurProgress(taskView, 0f);
                 LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
                 continue;
             }
@@ -767,11 +768,15 @@ final class LauncherRecentsLayoutEngine {
                     desiredStableAlpha = 0f;
                 }
             }
-            desiredStableAlpha *= resolveStackLeftClampAlpha(
+            float stackLeftClampAlpha = resolveStackLeftClampAlpha(
                     recentsView,
                     layoutProgress,
                     taskWidth,
                     taskCenteredLeftPx);
+            desiredStableAlpha *= stackLeftClampAlpha;
+            float targetBlurProgress = resolveStackContentBlurProgress(
+                    stackLeftClampAlpha,
+                    taskEntryProgress);
             float translationCompensationX =
                     desiredVisibleOffset - rawOffset - nativeDismissTranslationX;
 
@@ -784,6 +789,7 @@ final class LauncherRecentsLayoutEngine {
             float appliedScale = desiredScale;
             float appliedAttachAlpha = 1f;
             float appliedStableAlpha = desiredStableAlpha;
+            float appliedBlurProgress = targetBlurProgress;
             float appliedFullscreenProgress =
                     LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView);
             float appliedTranslationZ = desiredTranslationZ;
@@ -828,6 +834,7 @@ final class LauncherRecentsLayoutEngine {
                         LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView),
                         appliedStableAlpha,
                         stackReleaseProgress);
+                appliedBlurProgress = lerp(0f, appliedBlurProgress, stackReleaseProgress);
             }
             LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(
                     taskView,
@@ -843,7 +850,7 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsTaskVisuals.setActivityTitleAlpha(
                     taskView,
                     resolveStackTitleAlpha(appliedStableAlpha));
-            LauncherRecentsTaskVisuals.setStackContentBlur(taskView, appliedStableAlpha);
+            LauncherRecentsTaskVisuals.setStackContentBlurProgress(taskView, appliedBlurProgress);
             LauncherRecentsTaskVisuals.setFullscreenProgress(
                     taskView,
                     appliedFullscreenProgress);
@@ -1030,6 +1037,16 @@ final class LauncherRecentsLayoutEngine {
 
     private static float resolveStackTitleAlpha(float taskAlpha) {
         return remapProgress(taskAlpha, STACK_TITLE_FADE_END_CARD_ALPHA, 1f);
+    }
+
+    private static float resolveStackContentBlurProgress(
+            float stackLeftClampAlpha,
+            float stackEntryProgress) {
+        float alphaFadeProgress = remapProgress(
+                1f - stackLeftClampAlpha,
+                1f - STACK_CONTENT_BLUR_START_ALPHA,
+                1f);
+        return clamp(alphaFadeProgress * stackEntryProgress, 0f, 1f);
     }
 
     private static float resolveBlankTapExitAlpha(float progress) {
