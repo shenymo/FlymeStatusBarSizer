@@ -1392,6 +1392,15 @@ final class LauncherRecentsTouchController {
                 || ((ViewGroup) recentsView).indexOfChild(taskView) < 0) {
             return false;
         }
+        if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)) {
+            LauncherRecentsState.BlankTapHomeExitTaskState state =
+                    LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.get(taskView);
+            return state != null
+                    && state.startStableAlpha > STACK_LEFT_RELEASE_ALPHA_THRESHOLD
+                    && taskView.getVisibility() == View.VISIBLE
+                    && taskView.getWidth() > 0
+                    && taskView.getHeight() > 0;
+        }
         return taskView.getVisibility() == View.VISIBLE
                 && (readStackTaskDataAlpha(taskView) > STACK_LEFT_RELEASE_ALPHA_THRESHOLD
                 || hasStackDismissLayoutOffset(taskView))
@@ -1424,6 +1433,7 @@ final class LauncherRecentsTouchController {
         return recentsView != null
                 && taskView != null
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
                 && readStackTaskDataAlpha(taskView) <= STACK_LEFT_RELEASE_ALPHA_THRESHOLD;
     }
 

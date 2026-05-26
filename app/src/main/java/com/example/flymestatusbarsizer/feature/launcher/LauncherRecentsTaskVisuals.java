@@ -247,6 +247,26 @@ final class LauncherRecentsTaskVisuals {
         }
     }
 
+    static float readStackContentBlurProgress(View taskView) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || taskView == null) {
+            return 0f;
+        }
+        float maxBlurPx = FlymeStatusBarSizer.dp(taskView.getContext(), STACK_CONTENT_MAX_BLUR_DP);
+        if (maxBlurPx <= MODULE_APPLIED_EPSILON) {
+            return 0f;
+        }
+        LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
+        if (targets == null) {
+            return 0f;
+        }
+        float blurPx = 0f;
+        for (int i = 0; i < targets.snapshotViews.length; i++) {
+            blurPx = Math.max(blurPx, readAppliedStackContentBlurPx(targets.snapshotViews[i]));
+            blurPx = Math.max(blurPx, readAppliedStackContentBlurPx(targets.iconAsViews[i]));
+        }
+        return LauncherRecentsLayoutEngine.clamp(blurPx / maxBlurPx, 0f, 1f);
+    }
+
     static void clearStackContentBlur(View taskView) {
         setStackContentBlurProgress(taskView, 0f);
     }
@@ -402,7 +422,7 @@ final class LauncherRecentsTaskVisuals {
         return value instanceof View ? (View) value : null;
     }
 
-    private static float readActivityTitleAlpha(View taskView) {
+    static float readActivityTitleAlpha(View taskView) {
         View titleView = resolveActivityTitleView(taskView);
         return titleView != null ? titleView.getAlpha() : 1f;
     }
@@ -492,6 +512,14 @@ final class LauncherRecentsTaskVisuals {
                     Shader.TileMode.CLAMP));
         }
         LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.put(view, appliedBlurPx);
+    }
+
+    private static float readAppliedStackContentBlurPx(View view) {
+        if (view == null) {
+            return 0f;
+        }
+        Float value = LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.get(view);
+        return value != null ? value : 0f;
     }
 
     private static void applyStackIconBlur(Object iconView, View view, float blurPx) {

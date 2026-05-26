@@ -361,7 +361,10 @@ final class LauncherRecentsLayoutEngine {
                                     "boxTranslationY",
                             LauncherRecentsTaskVisuals.readOriginalBoxTranslationY(
                                             taskView)),
-                            LauncherRecentsTaskVisuals.readStableAlpha(taskView)));
+                            LauncherRecentsTaskVisuals.readAttachAlpha(taskView),
+                            LauncherRecentsTaskVisuals.readStableAlpha(taskView),
+                            LauncherRecentsTaskVisuals.readActivityTitleAlpha(taskView),
+                            LauncherRecentsTaskVisuals.readStackContentBlurProgress(taskView)));
             float taskWidth = taskView.getWidth() > 0
                     ? taskView.getWidth()
                     : Math.max(1f, recentsView.getWidth());
@@ -408,12 +411,7 @@ final class LauncherRecentsLayoutEngine {
             float desiredVisibleOffset = state.startVisibleOffset;
             float desiredScale = state.startScale;
             float desiredStableAlpha = state.startStableAlpha;
-            if (isTaskVisibleInViewport(
-                    recentsView,
-                    taskCenteredLeftPx,
-                    taskWidth,
-                    desiredVisibleOffset,
-                    desiredScale)) {
+            if (state.startStableAlpha > 0f) {
                 float pathProgress = smoothStep(clampedProgress);
                 float controlVisibleOffset = state.centerVisibleOffset;
                 float taskLeftPx = taskCenteredLeftPx + controlVisibleOffset;
@@ -444,11 +442,14 @@ final class LauncherRecentsLayoutEngine {
                     state.startTaskOffsetY);
             LauncherRecentsTaskVisuals.setBoxTranslationY(taskView, state.startBoxTranslationY);
             LauncherRecentsTaskVisuals.setNonGridScale(taskView, desiredScale);
-            LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 1f);
+            LauncherRecentsTaskVisuals.setAttachAlpha(taskView, state.startAttachAlpha);
             LauncherRecentsTaskVisuals.setStableAlpha(taskView, desiredStableAlpha);
             LauncherRecentsTaskVisuals.setActivityTitleAlpha(
                     taskView,
-                    resolveStackTitleAlpha(desiredStableAlpha));
+                    state.startActivityTitleAlpha * resolveBlankTapExitAlpha(clampedProgress));
+            LauncherRecentsTaskVisuals.setStackContentBlurProgress(
+                    taskView,
+                    state.startStackContentBlurProgress);
         }
     }
 
@@ -803,19 +804,19 @@ final class LauncherRecentsLayoutEngine {
                 desiredBoxTranslationY = blankTapExitState.startBoxTranslationY;
                 desiredStableAlpha = blankTapExitState.startStableAlpha;
             }
-            if (blankTapExitProgress > 0f) {
-                if (isTaskVisibleInViewport(
-                        recentsView,
-                        taskCenteredLeftPx,
-                        taskWidth,
-                        desiredVisibleOffset,
-                        desiredScale)) {
-                    float startVisibleOffset = blankTapExitState != null
-                            ? blankTapExitState.startVisibleOffset
-                            : desiredVisibleOffset;
-                    float centerVisibleOffset = blankTapExitState != null
-                            ? blankTapExitState.centerVisibleOffset
-                            : desiredVisibleOffset;
+            float desiredAttachAlpha = blankTapExitState != null
+                    ? blankTapExitState.startAttachAlpha
+                    : 1f;
+            float activityTitleAlpha = resolveStackTitleAlpha(desiredStableAlpha);
+            boolean blankTapExitActive =
+                    LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView);
+            boolean blankTapExitTaskActive = blankTapExitActive
+                    && blankTapExitState != null
+                    && blankTapExitState.startStableAlpha > 0f;
+            if (blankTapExitActive) {
+                if (blankTapExitTaskActive) {
+                    float startVisibleOffset = blankTapExitState.startVisibleOffset;
+                    float centerVisibleOffset = blankTapExitState.centerVisibleOffset;
                     float pathProgress = smoothStep(blankTapExitProgress);
                     float controlVisibleOffset = centerVisibleOffset;
                     float taskLeftPx = taskCenteredLeftPx + controlVisibleOffset;
@@ -833,8 +834,11 @@ final class LauncherRecentsLayoutEngine {
                     desiredScale *= 1.0f
                             - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * pathProgress);
                     desiredStableAlpha *= resolveBlankTapExitAlpha(pathProgress);
+                    activityTitleAlpha = blankTapExitState.startActivityTitleAlpha
+                            * resolveBlankTapExitAlpha(pathProgress);
                 } else {
                     desiredStableAlpha = 0f;
+                    activityTitleAlpha = 0f;
                 }
             }
             float stackLeftClampAlpha = resolveStackLeftClampAlpha(
@@ -842,10 +846,15 @@ final class LauncherRecentsLayoutEngine {
                     layoutProgress,
                     taskWidth,
                     taskCenteredLeftPx);
-            desiredStableAlpha *= stackLeftClampAlpha;
+            if (!blankTapExitTaskActive) {
+                desiredStableAlpha *= stackLeftClampAlpha;
+            }
             float targetBlurProgress = resolveStackContentBlurProgress(
                     stackLeftClampAlpha,
                     taskEntryProgress);
+            if (blankTapExitTaskActive) {
+                targetBlurProgress = blankTapExitState.startStackContentBlurProgress;
+            }
             float translationCompensationX =
                     desiredVisibleOffset - rawOffset - nativeDismissTranslationX;
 
@@ -856,7 +865,7 @@ final class LauncherRecentsLayoutEngine {
             float appliedTaskOffsetY = desiredTaskOffsetY;
             float appliedBoxTranslationY = desiredBoxTranslationY;
             float appliedScale = desiredScale;
-            float appliedAttachAlpha = 1f;
+            float appliedAttachAlpha = desiredAttachAlpha;
             float appliedStableAlpha = desiredStableAlpha;
             float appliedBlurProgress = targetBlurProgress;
             float appliedFullscreenProgress =
@@ -918,7 +927,9 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsTaskVisuals.setStableAlpha(taskView, appliedStableAlpha);
             LauncherRecentsTaskVisuals.setActivityTitleAlpha(
                     taskView,
-                    resolveStackTitleAlpha(appliedStableAlpha));
+                    blankTapExitActive
+                            ? activityTitleAlpha
+                            : resolveStackTitleAlpha(appliedStableAlpha));
             LauncherRecentsTaskVisuals.setStackContentBlurProgress(taskView, appliedBlurProgress);
             LauncherRecentsTaskVisuals.setFullscreenProgress(
                     taskView,

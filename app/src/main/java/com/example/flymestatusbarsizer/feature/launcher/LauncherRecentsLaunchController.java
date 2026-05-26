@@ -649,7 +649,9 @@ final class LauncherRecentsLaunchController {
     }
 
     static boolean shouldSuppressStockTaskLaunchVisualReset(View recentsView) {
-        return recentsView != null && LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView);
+        return recentsView != null
+                && (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
+                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView));
     }
 
     static boolean shouldSuppressStockTaskLaunchAnimationBuild(
