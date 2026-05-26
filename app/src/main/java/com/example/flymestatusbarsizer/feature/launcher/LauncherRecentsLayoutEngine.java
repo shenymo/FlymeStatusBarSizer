@@ -31,8 +31,6 @@ final class LauncherRecentsLayoutEngine {
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.04f;
     private static final float BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO = 0.18f;
-    private static final float BLANK_TAP_HOME_EXIT_MAX_DELAY = 0.22f;
-    private static final float BLANK_TAP_HOME_EXIT_LEFT_FINISH = 0.74f;
     private static final float STACK_TITLE_FADE_END_CARD_ALPHA = 0.42f;
     private static final float STACK_CONTENT_BLUR_START_ALPHA = 0.85f;
     private static final int STACK_ENTRY_LIGHT_RADIUS = 3;
@@ -129,6 +127,14 @@ final class LauncherRecentsLayoutEngine {
                     if (LauncherRecentsLaunchController.shouldSuppressStockTaskLaunchTransformMethod(
                             recentsView,
                             methodName)) {
+                        return null;
+                    }
+                    if (shouldSuppressBlankTapHomeExitStockTransformMethod(
+                            methodName,
+                            recentsView)) {
+                        LauncherRecentsState.trackRecentsView(recentsView);
+                        prepareRecentsView(recentsView);
+                        applyStackLayout(recentsView, false);
                         return null;
                     }
                     if (shouldSuppressStockPageScaleUpdate(methodName, recentsView)) {
@@ -235,8 +241,21 @@ final class LauncherRecentsLayoutEngine {
             Method method = clazz.getDeclaredMethod("setContentAlpha", float.class);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                Object result = chain.proceed();
                 Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View) {
+                    View recentsView = (View) thisObject;
+                    Object arg0 = chain.getArg(0);
+                    if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
+                            && arg0 instanceof Float
+                            && (Float) arg0 < 1f) {
+                        LauncherRecentsState.trackRecentsView(recentsView);
+                        prepareRecentsView(recentsView);
+                        applyStackLayout(recentsView, false);
+                        recentsView.invalidate();
+                        return null;
+                    }
+                }
+                Object result = chain.proceed();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
                     LauncherRecentsState.trackRecentsView(recentsView);
@@ -293,6 +312,8 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        float anchorVisibleOffset = 0f;
+        boolean hasVisibleAnchor = false;
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
@@ -338,9 +359,29 @@ final class LauncherRecentsLayoutEngine {
                             LauncherRecentsCompat.readFloatField(
                                     taskView,
                                     "boxTranslationY",
-                                    LauncherRecentsTaskVisuals.readOriginalBoxTranslationY(
+                            LauncherRecentsTaskVisuals.readOriginalBoxTranslationY(
                                             taskView)),
                             LauncherRecentsTaskVisuals.readStableAlpha(taskView)));
+            float taskWidth = taskView.getWidth() > 0
+                    ? taskView.getWidth()
+                    : Math.max(1f, recentsView.getWidth());
+            float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
+            if (isTaskVisibleInViewport(
+                    recentsView,
+                    taskCenteredLeftPx,
+                    taskWidth,
+                    visibleOffset,
+                    LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f))
+                    && (!hasVisibleAnchor || visibleOffset > anchorVisibleOffset)) {
+                anchorVisibleOffset = visibleOffset;
+                hasVisibleAnchor = true;
+            }
+        }
+        if (hasVisibleAnchor) {
+            for (LauncherRecentsState.BlankTapHomeExitTaskState state
+                    : LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.values()) {
+                state.centerVisibleOffset = state.startVisibleOffset - anchorVisibleOffset;
+            }
         }
     }
 
@@ -373,28 +414,22 @@ final class LauncherRecentsLayoutEngine {
                     taskWidth,
                     desiredVisibleOffset,
                     desiredScale)) {
-                float taskLeftPx = taskCenteredLeftPx + desiredVisibleOffset;
-                float distanceProgress = clamp(
-                        taskLeftPx / Math.max(1f, recentsView.getWidth()),
-                        0f,
-                        1f);
-                float exitStart = distanceProgress * BLANK_TAP_HOME_EXIT_MAX_DELAY;
-                float exitEnd = lerp(
-                        BLANK_TAP_HOME_EXIT_LEFT_FINISH,
-                        1f,
-                        distanceProgress);
-                float taskExitProgress = smoothStep(remapProgress(
-                        clampedProgress,
-                        exitStart,
-                        exitEnd));
+                float pathProgress = smoothStep(clampedProgress);
+                float controlVisibleOffset = state.centerVisibleOffset;
+                float taskLeftPx = taskCenteredLeftPx + controlVisibleOffset;
                 float exitTravelPx = Math.max(
                         taskLeftPx + taskWidth + FlymeStatusBarSizer.dp(
                                 recentsView.getContext(),
                                 64),
                         taskWidth * (1f + BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO));
-                desiredVisibleOffset -= exitTravelPx * taskExitProgress;
-                desiredScale *= 1.0f - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * taskExitProgress);
-                desiredStableAlpha *= resolveBlankTapExitAlpha(taskExitProgress);
+                float exitVisibleOffset = controlVisibleOffset - exitTravelPx;
+                desiredVisibleOffset = quadraticBezier(
+                        state.startVisibleOffset,
+                        controlVisibleOffset,
+                        exitVisibleOffset,
+                        pathProgress);
+                desiredScale *= 1.0f - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * pathProgress);
+                desiredStableAlpha *= resolveBlankTapExitAlpha(pathProgress);
             } else {
                 desiredStableAlpha = 0f;
             }
@@ -775,29 +810,29 @@ final class LauncherRecentsLayoutEngine {
                         taskWidth,
                         desiredVisibleOffset,
                         desiredScale)) {
-                    float taskLeftPx = taskCenteredLeftPx + desiredVisibleOffset;
-                    float distanceProgress = clamp(
-                            taskLeftPx / Math.max(1f, recentsView.getWidth()),
-                            0f,
-                            1f);
-                    float exitStart = distanceProgress * BLANK_TAP_HOME_EXIT_MAX_DELAY;
-                    float exitEnd = lerp(
-                            BLANK_TAP_HOME_EXIT_LEFT_FINISH,
-                            1f,
-                            distanceProgress);
-                    float taskExitProgress = smoothStep(remapProgress(
-                            blankTapExitProgress,
-                            exitStart,
-                            exitEnd));
+                    float startVisibleOffset = blankTapExitState != null
+                            ? blankTapExitState.startVisibleOffset
+                            : desiredVisibleOffset;
+                    float centerVisibleOffset = blankTapExitState != null
+                            ? blankTapExitState.centerVisibleOffset
+                            : desiredVisibleOffset;
+                    float pathProgress = smoothStep(blankTapExitProgress);
+                    float controlVisibleOffset = centerVisibleOffset;
+                    float taskLeftPx = taskCenteredLeftPx + controlVisibleOffset;
                     float exitTravelPx = Math.max(
                             taskLeftPx + taskWidth + FlymeStatusBarSizer.dp(
                                     recentsView.getContext(),
                                     64),
                             taskWidth * (1f + BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO));
-                    desiredVisibleOffset -= exitTravelPx * taskExitProgress;
+                    float exitVisibleOffset = controlVisibleOffset - exitTravelPx;
+                    desiredVisibleOffset = quadraticBezier(
+                            startVisibleOffset,
+                            controlVisibleOffset,
+                            exitVisibleOffset,
+                            pathProgress);
                     desiredScale *= 1.0f
-                            - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * taskExitProgress);
-                    desiredStableAlpha *= resolveBlankTapExitAlpha(taskExitProgress);
+                            - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * pathProgress);
+                    desiredStableAlpha *= resolveBlankTapExitAlpha(pathProgress);
                 } else {
                     desiredStableAlpha = 0f;
                 }
@@ -1031,6 +1066,15 @@ final class LauncherRecentsLayoutEngine {
                 recentsView));
     }
 
+    private static boolean shouldSuppressBlankTapHomeExitStockTransformMethod(
+            String methodName,
+            View recentsView) {
+        return ("updatePageOffsetsForFlyme".equals(methodName)
+                || "updatePageScales".equals(methodName))
+                && shouldUseStackLayout(recentsView)
+                && LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView);
+    }
+
     static void restoreTaskTransforms(View recentsView, int taskViewCount) {
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
@@ -1084,10 +1128,10 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static float resolveBlankTapExitAlpha(float progress) {
-        if (progress < 0.5f) {
-            return lerp(1f, 0.85f, smoothStep(progress * 2f));
+        if (progress < 0.88f) {
+            return 1f;
         }
-        return lerp(0.85f, 0f, smoothStep((progress - 0.5f) * 2f));
+        return lerp(1f, 0f, smoothStep(remapProgress(progress, 0.88f, 1f)));
     }
 
     static boolean shouldUseStackLayout(View recentsView) {
@@ -1468,6 +1512,14 @@ final class LauncherRecentsLayoutEngine {
 
     static float lerp(float start, float end, float progress) {
         return start + ((end - start) * clamp(progress, 0f, 1f));
+    }
+
+    private static float quadraticBezier(float start, float control, float end, float progress) {
+        float p = clamp(progress, 0f, 1f);
+        float oneMinusP = 1f - p;
+        return (oneMinusP * oneMinusP * start)
+                + (2f * oneMinusP * p * control)
+                + (p * p * end);
     }
 
     static float remapProgress(float value, float start, float end) {

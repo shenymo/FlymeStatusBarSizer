@@ -874,6 +874,7 @@ final class LauncherRecentsLaunchController {
         }
         return LauncherRecentsCompat.isRecentsViewObject(view)
                 && (LauncherRecentsState.isTaskLaunchLayoutFrozen(view)
+                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(view)
                 || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(view));
     }
 
@@ -884,6 +885,7 @@ final class LauncherRecentsLaunchController {
         View view = (View) thisObject;
         return LauncherRecentsCompat.isRecentsViewObject(view)
                 && (LauncherRecentsState.isTaskLaunchLayoutFrozen(view)
+                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(view)
                 || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(view));
     }
 

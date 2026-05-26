@@ -21,7 +21,7 @@ import java.lang.reflect.Method;
 final class LauncherRecentsTransitionController {
     private static final String ABS_SWIPE_UP_HANDLER_CLASS =
             "com.android.quickstep.AbsSwipeUpHandler";
-    private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 360L;
+    private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 460L;
     private static final long GESTURE_STACK_RELEASE_DURATION_MS = 320L;
     private static final int APP_TO_RECENTS_STACK_ANCHOR_PAGE = 0;
     private static final float BLANK_TAP_HOME_EXIT_VIEW_FADE_START_PROGRESS = 0.78f;
@@ -66,7 +66,9 @@ final class LauncherRecentsTransitionController {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                     if (shouldAnimateBlankTapHomeExit(recentsView)) {
-                        startBlankTapHomeExitAnimation(recentsView);
+                        prepareBlankTapHomeExitAnimation(recentsView);
+                        Object result = chain.proceed();
+                        return result;
                     }
                 }
                 return chain.proceed();
@@ -304,6 +306,11 @@ final class LauncherRecentsTransitionController {
     }
 
     static void startBlankTapHomeExitAnimation(View recentsView) {
+        prepareBlankTapHomeExitAnimation(recentsView);
+        startPreparedBlankTapHomeExitAnimation(recentsView);
+    }
+
+    static void prepareBlankTapHomeExitAnimation(View recentsView) {
         if (recentsView == null) {
             return;
         }
@@ -314,8 +321,28 @@ final class LauncherRecentsTransitionController {
             runningAnimator.cancel();
         }
         setPageAnimOffScreenStart(recentsView, false);
-        LauncherRecentsLayoutEngine.captureBlankTapHomeExitTaskStates(recentsView);
+        if (!isBlankTapHomeExitActive(recentsView)
+                || LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.isEmpty()) {
+            LauncherRecentsLayoutEngine.captureBlankTapHomeExitTaskStates(recentsView);
+        }
+        markBlankTapHomeExitActive(recentsView, true);
         setBlankTapHomeExitProgress(recentsView, 0f);
+        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        recentsView.invalidate();
+    }
+
+    private static void startPreparedBlankTapHomeExitAnimation(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        ValueAnimator runningAnimator =
+                LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.get(recentsView);
+        if (runningAnimator != null) {
+            return;
+        }
+        setBlankTapHomeExitProgress(recentsView, 0f);
+        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        recentsView.invalidate();
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(BLANK_TAP_HOME_EXIT_DURATION_MS);
         animator.setInterpolator(BLANK_TAP_HOME_EXIT_INTERPOLATOR);
@@ -439,6 +466,7 @@ final class LauncherRecentsTransitionController {
             return;
         }
         LauncherRecentsState.BLANK_TAP_HOME_EXIT_PROGRESS.remove(recentsView);
+        markBlankTapHomeExitActive(recentsView, false);
         LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.clear();
         setPageAnimOffScreenStart(recentsView, false);
         if (reapplyLayout) {
@@ -447,7 +475,7 @@ final class LauncherRecentsTransitionController {
         recentsView.invalidate();
     }
 
-    private static void setBlankTapHomeExitProgress(View recentsView, float progress) {
+    static void setBlankTapHomeExitProgress(View recentsView, float progress) {
         if (recentsView == null) {
             return;
         }
@@ -456,9 +484,29 @@ final class LauncherRecentsTransitionController {
                 LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f));
     }
 
+    static void clearBlankTapHomeExitProgressWithoutLayout(View recentsView) {
+        clearBlankTapHomeExitProgress(recentsView, false);
+    }
+
     static float readBlankTapHomeExitProgress(View recentsView) {
         Float value = LauncherRecentsState.BLANK_TAP_HOME_EXIT_PROGRESS.get(recentsView);
         return value != null ? value : 0f;
+    }
+
+    static boolean isBlankTapHomeExitActive(View recentsView) {
+        return recentsView != null
+                && LauncherRecentsState.ACTIVE_BLANK_TAP_HOME_EXITS.containsKey(recentsView);
+    }
+
+    private static void markBlankTapHomeExitActive(View recentsView, boolean active) {
+        if (recentsView == null) {
+            return;
+        }
+        if (active) {
+            LauncherRecentsState.ACTIVE_BLANK_TAP_HOME_EXITS.put(recentsView, Boolean.TRUE);
+        } else {
+            LauncherRecentsState.ACTIVE_BLANK_TAP_HOME_EXITS.remove(recentsView);
+        }
     }
 
     static boolean hasGestureRecentsStackReleaseProgress(View recentsView) {

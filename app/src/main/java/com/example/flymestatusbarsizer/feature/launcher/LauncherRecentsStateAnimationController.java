@@ -4,6 +4,7 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.view.View;
 
 import java.lang.reflect.Method;
@@ -59,6 +60,9 @@ final class LauncherRecentsStateAnimationController {
                     beginOverviewStateStackAnimation(recentsView, pendingAnimation);
                 }
                 Object result = chain.proceed();
+                if (shouldAttachBlankTapHomeExitToSystemAnimation(recentsView, toState, loader)) {
+                    attachBlankTapHomeExitSystemCallbacks(recentsView, pendingAnimation, loader);
+                }
                 if (shouldTakeOver) {
                     LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 }
@@ -172,6 +176,56 @@ final class LauncherRecentsStateAnimationController {
                 });
     }
 
+    private static void attachBlankTapHomeExitSystemCallbacks(
+            View recentsView,
+            Object pendingAnimation,
+            ClassLoader loader) {
+        if (recentsView == null || pendingAnimation == null) {
+            return;
+        }
+        LauncherRecentsCompat.invokeMethodReflectively(
+                pendingAnimation,
+                "addOnFrameListener",
+                new Class<?>[]{ValueAnimator.AnimatorUpdateListener.class},
+                (ValueAnimator.AnimatorUpdateListener) animation -> {
+                    Object value = animation.getAnimatedValue();
+                    float progress = value instanceof Float
+                            ? (Float) value
+                            : animation.getAnimatedFraction();
+                    LauncherRecentsTransitionController.setBlankTapHomeExitProgress(
+                            recentsView,
+                            progress);
+                    LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                    recentsView.invalidate();
+                });
+        LauncherRecentsCompat.invokeMethodReflectively(
+                pendingAnimation,
+                "addListener",
+                new Class<?>[]{Animator.AnimatorListener.class},
+                new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationCancel(Animator animation) {
+                        finishBlankTapHomeExitSystemAnimation(recentsView);
+                    }
+
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        finishBlankTapHomeExitSystemAnimation(recentsView);
+                    }
+                });
+    }
+
+    private static void finishBlankTapHomeExitSystemAnimation(View recentsView) {
+        LauncherRecentsTransitionController.setBlankTapHomeExitProgress(recentsView, 1f);
+        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        LauncherRecentsTransitionController.clearBlankTapHomeExitProgressWithoutLayout(recentsView);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setContentAlpha",
+                LauncherRecentsCompat.FLOAT_ARG,
+                0f);
+    }
+
     private static void beginOverviewStateStackAnimation(
             View recentsView,
             Object pendingAnimation) {
@@ -222,6 +276,20 @@ final class LauncherRecentsStateAnimationController {
         return currentState == overviewPeekState
                 || stableState == overviewPeekState
                 || targetState == overviewPeekState;
+    }
+
+    private static boolean shouldAttachBlankTapHomeExitToSystemAnimation(
+            View recentsView,
+            Object toState,
+            ClassLoader loader) {
+        if (recentsView == null
+                || toState == null
+                || !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)) {
+            return false;
+        }
+        Object normalState =
+                LauncherRecentsCompat.readStaticFieldCompat(LAUNCHER_STATE_CLASS, "NORMAL", loader);
+        return toState == normalState;
     }
 
     private static View resolveControllerRecentsView(Object controller) {

@@ -150,6 +150,16 @@ final class LauncherRecentsTouchController {
                         releasePagedTouchForStackDismiss(recentsView);
                         return false;
                     }
+                    if (shouldSkipBlankTapPagedRelease(recentsView, motionEvent)) {
+                        LauncherRecentsTransitionController.prepareBlankTapHomeExitAnimation(
+                                recentsView);
+                        releasePagedEdgeEffects(recentsView, motionEvent);
+                        LauncherRecentsCompat.invokeCompat(
+                                recentsView,
+                                "resetTouchState",
+                                LauncherRecentsCompat.NO_ARGS);
+                        return false;
+                    }
                     if (LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
                             && shouldSuppressPagedRelease(recentsView, motionEvent)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
@@ -1722,6 +1732,21 @@ final class LauncherRecentsTouchController {
         int action = motionEvent.getActionMasked();
         return (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)
                 && LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false);
+    }
+
+    private static boolean shouldSkipBlankTapPagedRelease(
+            View recentsView,
+            MotionEvent motionEvent) {
+        if (recentsView == null || motionEvent == null) {
+            return false;
+        }
+        int action = motionEvent.getActionMasked();
+        return (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)
+                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                && LauncherRecentsCompat.readBooleanField(
+                recentsView,
+                "mTouchDownToStartHome",
+                false);
     }
 
     private static void suppressPagedRelease(View recentsView, MotionEvent motionEvent) {
