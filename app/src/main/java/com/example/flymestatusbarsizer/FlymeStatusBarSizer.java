@@ -502,6 +502,33 @@ public class FlymeStatusBarSizer extends XposedModule {
         hook(constructor).intercept(hooker);
     }
 
+    @SuppressWarnings("rawtypes")
+    public static XposedInterface.Invoker getMethodInvokerCompat(Method method) {
+        FlymeStatusBarSizer module = MODULE;
+        if (module == null || method == null) {
+            return null;
+        }
+        try {
+            return module.getInvoker(method);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings("rawtypes")
+    public static XposedInterface.CtorInvoker getConstructorInvokerCompat(
+            Constructor<?> constructor) {
+        FlymeStatusBarSizer module = MODULE;
+        if (module == null || constructor == null) {
+            return null;
+        }
+        try {
+            return module.getInvoker(constructor);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     private void hookSignalImageAssignments() {
         try {
             Method setImageResource = ImageView.class.getDeclaredMethod("setImageResource", int.class);

@@ -9,6 +9,9 @@ import android.view.ViewParent;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.HashMap;
+
+import io.github.libxposed.api.XposedInterface;
 
 final class LauncherRecentsCompat {
     static final Class<?>[] NO_ARGS = new Class[0];
@@ -27,6 +30,14 @@ final class LauncherRecentsCompat {
             "com.android.quickstep.util.TaskViewSimulator";
     static final String TASK_VIEW_UTILS_CLASS = "com.android.quickstep.TaskViewUtils";
 
+    private static final HashMap<String, Method> METHOD_CACHE = new HashMap<>();
+    @SuppressWarnings("rawtypes")
+    private static final HashMap<Method, XposedInterface.Invoker> METHOD_INVOKER_CACHE =
+            new HashMap<>();
+    @SuppressWarnings("rawtypes")
+    private static final HashMap<Constructor<?>, XposedInterface.CtorInvoker>
+            CONSTRUCTOR_INVOKER_CACHE = new HashMap<>();
+
     private LauncherRecentsCompat() {
     }
 
@@ -39,7 +50,7 @@ final class LauncherRecentsCompat {
             String methodName,
             Class<?>[] parameterTypes,
             Object... args) {
-        return FlymeStatusBarSizer.invokeMethodCompat(target, methodName, parameterTypes, args);
+        return invokeMethod(target, methodName, parameterTypes, args);
     }
 
     static Object getFieldCompat(Object target, String name) {
@@ -192,20 +203,12 @@ final class LauncherRecentsCompat {
         if (target == null || methodName == null) {
             return false;
         }
-        Class<?> clazz = target.getClass();
-        while (clazz != null) {
-            try {
-                Method method = clazz.getDeclaredMethod(methodName, parameterTypes);
-                method.setAccessible(true);
-                method.invoke(target, args);
-                return true;
-            } catch (NoSuchMethodException e) {
-                clazz = clazz.getSuperclass();
-            } catch (Throwable ignored) {
-                return false;
-            }
+        Method method = findCachedMethod(target.getClass(), methodName, parameterTypes);
+        if (method == null) {
+            return false;
         }
-        return false;
+        return invokeCachedMethod(method, target, args, false) != null
+                || method.getReturnType() == Void.TYPE;
     }
 
     static Object createPendingAnimationInstance(
@@ -215,6 +218,10 @@ final class LauncherRecentsCompat {
             return null;
         }
         try {
+            XposedInterface.CtorInvoker invoker = getCachedConstructorInvoker(constructor);
+            if (invoker != null) {
+                return invoker.newInstance(durationMs);
+            }
             return constructor.newInstance(durationMs);
         } catch (Throwable ignored) {
             return null;
@@ -229,5 +236,124 @@ final class LauncherRecentsCompat {
         } catch (Throwable ignored) {
             return null;
         }
+    }
+
+    private static Object invokeMethod(
+            Object target,
+            String methodName,
+            Class<?>[] parameterTypes,
+            Object... args) {
+        if (target == null || methodName == null) {
+            return null;
+        }
+        Method method = findCachedMethod(target.getClass(), methodName, parameterTypes);
+        if (method == null) {
+            return null;
+        }
+        return invokeCachedMethod(method, target, args, true);
+    }
+
+    private static Object invokeCachedMethod(
+            Method method,
+            Object target,
+            Object[] args,
+            boolean returnResult) {
+        try {
+            XposedInterface.Invoker invoker = getCachedMethodInvoker(method);
+            if (invoker != null) {
+                Object result = invoker.invoke(target, args);
+                return returnResult ? result : Boolean.TRUE;
+            }
+            Object result = method.invoke(target, args);
+            return returnResult ? result : Boolean.TRUE;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static Method findCachedMethod(
+            Class<?> targetClass,
+            String methodName,
+            Class<?>[] parameterTypes) {
+        if (targetClass == null || methodName == null) {
+            return null;
+        }
+        Class<?>[] resolvedParameterTypes = parameterTypes == null ? NO_ARGS : parameterTypes;
+        String key = methodCacheKey(targetClass, methodName, resolvedParameterTypes);
+        synchronized (METHOD_CACHE) {
+            Method cached = METHOD_CACHE.get(key);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        Class<?> clazz = targetClass;
+        while (clazz != null) {
+            try {
+                Method method = clazz.getDeclaredMethod(methodName, resolvedParameterTypes);
+                method.setAccessible(true);
+                synchronized (METHOD_CACHE) {
+                    METHOD_CACHE.put(key, method);
+                }
+                return method;
+            } catch (NoSuchMethodException e) {
+                clazz = clazz.getSuperclass();
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static String methodCacheKey(
+            Class<?> targetClass,
+            String methodName,
+            Class<?>[] parameterTypes) {
+        StringBuilder builder = new StringBuilder(targetClass.getName())
+                .append('#')
+                .append(methodName)
+                .append('(');
+        if (parameterTypes != null) {
+            for (Class<?> parameterType : parameterTypes) {
+                builder.append(parameterType == null ? "null" : parameterType.getName()).append(',');
+            }
+        }
+        return builder.append(')').toString();
+    }
+
+    @SuppressWarnings("rawtypes")
+    private static XposedInterface.Invoker getCachedMethodInvoker(Method method) {
+        synchronized (METHOD_INVOKER_CACHE) {
+            XposedInterface.Invoker cached = METHOD_INVOKER_CACHE.get(method);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        XposedInterface.Invoker invoker =
+                FlymeStatusBarSizer.getMethodInvokerCompat(method);
+        if (invoker != null) {
+            synchronized (METHOD_INVOKER_CACHE) {
+                METHOD_INVOKER_CACHE.put(method, invoker);
+            }
+        }
+        return invoker;
+    }
+
+    @SuppressWarnings("rawtypes")
+    private static XposedInterface.CtorInvoker getCachedConstructorInvoker(
+            Constructor<?> constructor) {
+        synchronized (CONSTRUCTOR_INVOKER_CACHE) {
+            XposedInterface.CtorInvoker cached = CONSTRUCTOR_INVOKER_CACHE.get(constructor);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        XposedInterface.CtorInvoker invoker =
+                FlymeStatusBarSizer.getConstructorInvokerCompat(constructor);
+        if (invoker != null) {
+            synchronized (CONSTRUCTOR_INVOKER_CACHE) {
+                CONSTRUCTOR_INVOKER_CACHE.put(constructor, invoker);
+            }
+        }
+        return invoker;
     }
 }
