@@ -1494,30 +1494,18 @@ final class LauncherRecentsTouchController {
                 continue;
             }
             boolean needsUpdate = visibleIds == null;
-            Object containersObject =
-                    LauncherRecentsCompat.invokeCompat(taskView, "getTaskContainers");
-            if (containersObject instanceof List) {
-                List<?> taskContainers = (List<?>) containersObject;
-                for (int j = 0; j < taskContainers.size(); j++) {
-                    Object task = LauncherRecentsCompat.invokeCompat(
-                            taskContainers.get(j),
-                            "getTask");
-                    Object key = LauncherRecentsCompat.getFieldCompat(task, "key");
-                    int taskId = LauncherRecentsCompat.readIntField(key, "id", -1);
-                    if (taskId == -1) {
-                        needsUpdate = true;
-                        continue;
-                    }
-                    visibleTaskIds.add(taskId);
-                    if (visibleIds == null) {
-                        needsUpdate = true;
-                        continue;
-                    }
-                    if (!visibleIds.get(taskId)) {
-                        needsUpdate = true;
-                    }
-                    visibleIds.put(taskId, true);
+            ArrayList<Integer> taskIds = resolveStackTaskIds(taskView);
+            for (int j = 0; j < taskIds.size(); j++) {
+                int taskId = taskIds.get(j);
+                visibleTaskIds.add(taskId);
+                if (visibleIds == null) {
+                    needsUpdate = true;
+                    continue;
                 }
+                if (!visibleIds.get(taskId)) {
+                    needsUpdate = true;
+                }
+                visibleIds.put(taskId, true);
             }
             if (needsUpdate) {
                 LauncherRecentsCompat.invokeCompat(
@@ -1554,18 +1542,11 @@ final class LauncherRecentsTouchController {
         if (visibleIds == null || !shouldReleaseStackTaskData(recentsView, taskView)) {
             return;
         }
-        Object containersObject =
-                LauncherRecentsCompat.invokeCompat(taskView, "getTaskContainers");
-        if (!(containersObject instanceof List)) {
-            return;
-        }
         boolean hadVisibleData = false;
-        List<?> taskContainers = (List<?>) containersObject;
-        for (int i = 0; i < taskContainers.size(); i++) {
-            Object task = LauncherRecentsCompat.invokeCompat(taskContainers.get(i), "getTask");
-            Object key = LauncherRecentsCompat.getFieldCompat(task, "key");
-            int taskId = LauncherRecentsCompat.readIntField(key, "id", -1);
-            if (taskId != -1 && visibleIds.get(taskId)) {
+        ArrayList<Integer> taskIds = resolveStackTaskIds(taskView);
+        for (int i = 0; i < taskIds.size(); i++) {
+            int taskId = taskIds.get(i);
+            if (visibleIds.get(taskId)) {
                 visibleIds.delete(taskId);
                 hadVisibleData = true;
             }
@@ -1578,6 +1559,72 @@ final class LauncherRecentsTouchController {
                     false,
                     changes);
         }
+    }
+
+    private static ArrayList<Integer> resolveStackTaskIds(View taskView) {
+        ArrayList<Integer> taskIds = new ArrayList<>();
+        if (taskView == null) {
+            return taskIds;
+        }
+        Object containersObject =
+                LauncherRecentsCompat.invokeCompat(taskView, "getTaskContainers");
+        if (containersObject instanceof List) {
+            List<?> taskContainers = (List<?>) containersObject;
+            for (int i = 0; i < taskContainers.size(); i++) {
+                addStackTaskIdFromTask(
+                        taskIds,
+                        LauncherRecentsCompat.invokeCompat(taskContainers.get(i), "getTask"));
+            }
+            if (!taskIds.isEmpty()) {
+                return taskIds;
+            }
+        }
+        Object attributeContainersObject =
+                LauncherRecentsCompat.invokeCompat(taskView, "getTaskIdAttributeContainers");
+        if (attributeContainersObject instanceof Object[]) {
+            Object[] attributeContainers = (Object[]) attributeContainersObject;
+            for (int i = 0; i < attributeContainers.length; i++) {
+                addStackTaskIdFromTask(
+                        taskIds,
+                        LauncherRecentsCompat.invokeCompat(attributeContainers[i], "getTask"));
+            }
+            if (!taskIds.isEmpty()) {
+                return taskIds;
+            }
+        }
+        addStackTaskIdFromTask(
+                taskIds,
+                LauncherRecentsCompat.invokeCompat(taskView, "getTask"));
+        if (!taskIds.isEmpty()) {
+            return taskIds;
+        }
+        addStackTaskIdFromTask(
+                taskIds,
+                LauncherRecentsCompat.getFieldCompat(taskView, "mTask"));
+        if (!taskIds.isEmpty()) {
+            return taskIds;
+        }
+        Object taskIdsObject =
+                LauncherRecentsCompat.invokeCompat(taskView, "getTaskIds");
+        if (taskIdsObject instanceof int[]) {
+            int[] ids = (int[]) taskIdsObject;
+            for (int i = 0; i < ids.length; i++) {
+                addStackTaskId(taskIds, ids[i]);
+            }
+        }
+        return taskIds;
+    }
+
+    private static void addStackTaskIdFromTask(ArrayList<Integer> taskIds, Object task) {
+        Object key = LauncherRecentsCompat.getFieldCompat(task, "key");
+        addStackTaskId(taskIds, LauncherRecentsCompat.readIntField(key, "id", -1));
+    }
+
+    private static void addStackTaskId(ArrayList<Integer> taskIds, int taskId) {
+        if (taskId == -1 || taskIds.contains(taskId)) {
+            return;
+        }
+        taskIds.add(taskId);
     }
 
     private static boolean shouldKeepStackDismissGestureAwayFromPagedView(
