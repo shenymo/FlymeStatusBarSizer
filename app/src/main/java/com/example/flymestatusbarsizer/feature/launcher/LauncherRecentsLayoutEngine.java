@@ -33,6 +33,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_TITLE_FADE_END_CARD_ALPHA = 0.42f;
     private static final int STACK_TASK_SHADOW_ELEVATION_DP = 10;
     private static final int STACK_ENTRY_LIGHT_RADIUS = 3;
+    private static final int STACK_STABLE_VISIBLE_RADIUS = 4;
     private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
 
     private LauncherRecentsLayoutEngine() {
@@ -525,7 +526,8 @@ final class LauncherRecentsLayoutEngine {
         int lightAnchorIndex = resolveStackLayoutAnchorIndex(
                 recentsView,
                 runningTaskChildIndex,
-                taskViewCount);
+                taskViewCount,
+                stackLayoutRadius);
         float referenceWidth = 0f;
         float referenceHeight = 0f;
         float pageSpan = 0f;
@@ -906,18 +908,42 @@ final class LauncherRecentsLayoutEngine {
                 recentsView)) {
             return STACK_ENTRY_LIGHT_RADIUS;
         }
-        return -1;
+        return STACK_STABLE_VISIBLE_RADIUS;
     }
 
     private static int resolveStackLayoutAnchorIndex(
             View recentsView,
             int runningTaskChildIndex,
-            int taskViewCount) {
+            int taskViewCount,
+            int stackLayoutRadius) {
+        if (stackLayoutRadius == STACK_STABLE_VISIBLE_RADIUS) {
+            return resolveNearestStackLayoutPage(recentsView, taskViewCount);
+        }
         if (runningTaskChildIndex >= 0) {
             return runningTaskChildIndex;
         }
         int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
         return Math.max(0, Math.min(currentPage, Math.max(0, taskViewCount - 1)));
+    }
+
+    private static int resolveNearestStackLayoutPage(View recentsView, int taskViewCount) {
+        int scrollX = recentsView.getScrollX();
+        int nearestPage = 0;
+        int nearestDistance = Integer.MAX_VALUE;
+        for (int i = 0; i < taskViewCount; i++) {
+            int pageScroll = LauncherRecentsCompat.invokeInt(
+                    recentsView,
+                    "getScrollForPage",
+                    LauncherRecentsCompat.INT_ARG,
+                    scrollX,
+                    i);
+            int distance = Math.abs(pageScroll - scrollX);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestPage = i;
+            }
+        }
+        return nearestPage;
     }
 
     private static boolean shouldHideStackLayoutTask(int index, int anchorIndex, int radius) {
