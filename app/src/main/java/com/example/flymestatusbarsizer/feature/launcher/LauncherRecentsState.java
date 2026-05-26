@@ -143,9 +143,10 @@ final class LauncherRecentsState {
         final float startTaskOffsetY;
         final float startBoxTranslationY;
         final float startAttachAlpha;
-        final float startStableAlpha;
+        float startStableAlpha;
         final float startActivityTitleAlpha;
         final float startStackContentBlurProgress;
+        final float startTranslationZ;
         float centerVisibleOffset;
 
         BlankTapHomeExitTaskState(
@@ -158,7 +159,8 @@ final class LauncherRecentsState {
                 float startAttachAlpha,
                 float startStableAlpha,
                 float startActivityTitleAlpha,
-                float startStackContentBlurProgress) {
+                float startStackContentBlurProgress,
+                float startTranslationZ) {
             this.startRawOffset = startRawOffset;
             this.startDismissTranslationX = startDismissTranslationX;
             this.startVisibleOffset = startVisibleOffset;
@@ -169,6 +171,7 @@ final class LauncherRecentsState {
             this.startStableAlpha = startStableAlpha;
             this.startActivityTitleAlpha = startActivityTitleAlpha;
             this.startStackContentBlurProgress = startStackContentBlurProgress;
+            this.startTranslationZ = startTranslationZ;
             this.centerVisibleOffset = startVisibleOffset;
         }
     }

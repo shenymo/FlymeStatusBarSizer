@@ -364,7 +364,8 @@ final class LauncherRecentsLayoutEngine {
                             LauncherRecentsTaskVisuals.readAttachAlpha(taskView),
                             LauncherRecentsTaskVisuals.readStableAlpha(taskView),
                             LauncherRecentsTaskVisuals.readActivityTitleAlpha(taskView),
-                            LauncherRecentsTaskVisuals.readStackContentBlurProgress(taskView)));
+                            LauncherRecentsTaskVisuals.readStackContentBlurProgress(taskView),
+                            taskView.getTranslationZ()));
             float taskWidth = taskView.getWidth() > 0
                     ? taskView.getWidth()
                     : Math.max(1f, recentsView.getWidth());
@@ -385,6 +386,7 @@ final class LauncherRecentsLayoutEngine {
                     : LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.values()) {
                 state.centerVisibleOffset = state.startVisibleOffset - anchorVisibleOffset;
             }
+            normalizeBlankTapHomeExitSiblingAlpha(anchorVisibleOffset);
         }
     }
 
@@ -803,6 +805,7 @@ final class LauncherRecentsLayoutEngine {
                 desiredTaskOffsetY = blankTapExitState.startTaskOffsetY;
                 desiredBoxTranslationY = blankTapExitState.startBoxTranslationY;
                 desiredStableAlpha = blankTapExitState.startStableAlpha;
+                desiredTranslationZ = blankTapExitState.startTranslationZ;
             }
             float desiredAttachAlpha = blankTapExitState != null
                     ? blankTapExitState.startAttachAlpha
@@ -1136,6 +1139,22 @@ final class LauncherRecentsLayoutEngine {
                 1f - STACK_CONTENT_BLUR_START_ALPHA,
                 1f);
         return clamp(alphaFadeProgress * stackEntryProgress, 0f, 1f);
+    }
+
+    private static void normalizeBlankTapHomeExitSiblingAlpha(float anchorVisibleOffset) {
+        LauncherRecentsState.BlankTapHomeExitTaskState siblingState = null;
+        for (LauncherRecentsState.BlankTapHomeExitTaskState state
+                : LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.values()) {
+            if (state.startStableAlpha <= 0f || state.startVisibleOffset >= anchorVisibleOffset) {
+                continue;
+            }
+            if (siblingState == null || state.startVisibleOffset > siblingState.startVisibleOffset) {
+                siblingState = state;
+            }
+        }
+        if (siblingState != null) {
+            siblingState.startStableAlpha = 1f;
+        }
     }
 
     private static float resolveBlankTapExitAlpha(float progress) {
