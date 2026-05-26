@@ -31,7 +31,6 @@ final class LauncherRecentsLayoutEngine {
     private static final float BLANK_TAP_HOME_EXIT_MAX_DELAY = 0.22f;
     private static final float BLANK_TAP_HOME_EXIT_LEFT_FINISH = 0.74f;
     private static final float STACK_TITLE_FADE_END_CARD_ALPHA = 0.42f;
-    private static final int STACK_TASK_SHADOW_ELEVATION_DP = 10;
     private static final int STACK_ENTRY_LIGHT_RADIUS = 3;
     private static final int STACK_STABLE_VISIBLE_RADIUS = 4;
     private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
@@ -848,11 +847,7 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsTaskVisuals.setFullscreenProgress(
                     taskView,
                     appliedFullscreenProgress);
-            LauncherRecentsTaskVisuals.setStackShadowElevation(
-                    taskView,
-                    FlymeStatusBarSizer.dp(
-                            recentsView.getContext(),
-                            STACK_TASK_SHADOW_ELEVATION_DP));
+            LauncherRecentsTaskVisuals.clearStackShadow(taskView);
             LauncherRecentsTaskVisuals.setTranslationZ(taskView, appliedTranslationZ);
         }
         if (launchState != null && launchState.handoffEnabled) {

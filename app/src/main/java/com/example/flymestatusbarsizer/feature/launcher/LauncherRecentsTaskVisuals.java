@@ -4,7 +4,6 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import android.animation.Animator;
 import android.graphics.Outline;
-import android.graphics.Rect;
 import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.os.Build;
@@ -17,23 +16,11 @@ final class LauncherRecentsTaskVisuals {
     private static final float MODULE_APPLIED_EPSILON = 0.01f;
     private static final int STACK_CONTENT_MAX_BLUR_DP = 18;
     private static final String ACTIVITY_TITLE_FIELD = "mActivityTitle";
-    private static final ViewOutlineProvider STACK_TASK_SHADOW_OUTLINE_PROVIDER =
+    private static final ViewOutlineProvider STACK_TASK_NO_SHADOW_OUTLINE_PROVIDER =
             new ViewOutlineProvider() {
                 @Override
                 public void getOutline(View view, Outline outline) {
-                    Rect bounds = new Rect();
-                    LauncherRecentsCompat.invokeCompat(
-                            view,
-                            "getThumbnailBounds",
-                            new Class<?>[]{Rect.class, boolean.class},
-                            bounds,
-                            false);
-                    if (bounds.isEmpty()) {
-                        bounds.set(0, 0, view.getWidth(), view.getHeight());
-                    }
-                    outline.setRoundRect(
-                            bounds,
-                            FlymeStatusBarSizer.dp(view.getContext(), 22));
+                    outline.setEmpty();
                 }
             };
 
@@ -307,23 +294,23 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_APPLIED_TRANSLATION_ZS.put(taskView, value);
     }
 
-    static void setStackShadowElevation(View taskView, float value) {
+    static void clearStackShadow(View taskView) {
         if (taskView == null) {
             return;
         }
         Float lastAppliedElevation =
                 LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.get(taskView);
         if (lastAppliedElevation != null
-                && approximatelyEqual(lastAppliedElevation, value)
-                && taskView.getOutlineProvider() == STACK_TASK_SHADOW_OUTLINE_PROVIDER
-                && approximatelyEqual(taskView.getElevation(), value)) {
+                && approximatelyEqual(lastAppliedElevation, 0f)
+                && taskView.getOutlineProvider() == STACK_TASK_NO_SHADOW_OUTLINE_PROVIDER
+                && approximatelyEqual(taskView.getElevation(), 0f)) {
             return;
         }
         rememberOriginalTaskState(taskView);
-        taskView.setOutlineProvider(STACK_TASK_SHADOW_OUTLINE_PROVIDER);
-        taskView.setElevation(value);
+        taskView.setOutlineProvider(STACK_TASK_NO_SHADOW_OUTLINE_PROVIDER);
+        taskView.setElevation(0f);
         taskView.invalidateOutline();
-        LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.put(taskView, value);
+        LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.put(taskView, 0f);
     }
 
     static void rememberOriginalTaskState(View taskView) {
