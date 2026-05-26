@@ -600,6 +600,10 @@ final class LauncherRecentsLayoutEngine {
             stackVerticalProgress = 1f;
             stackSettledShiftProgress = smoothStep(stackReleaseProgress);
         }
+        int overScrollShift = LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getOverScrollShift",
+                0);
         boolean appEntrySessionActive =
                 LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
         float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
@@ -654,7 +658,8 @@ final class LauncherRecentsLayoutEngine {
             // adding a second full-page horizontal shift on top of it.
             float stackDismissLayoutOffset =
                     LauncherRecentsTouchController.readStackDismissLayoutOffset(taskView);
-            float physicalRawOffset = rawOffset + dismissTranslationX;
+            float layoutRawOffset = rawOffset - overScrollShift;
+            float physicalRawOffset = layoutRawOffset + dismissTranslationX;
             float effectiveRawOffset = physicalRawOffset + stackDismissLayoutOffset;
             float progress = effectiveRawOffset / pageSpan;
             float layoutProgress = resolveStackReleaseSettledProgress(
@@ -1202,7 +1207,7 @@ final class LauncherRecentsLayoutEngine {
         float leftBoundOffsetPx = resolveStackLeftBoundOffset(
                 taskWidth,
                 taskCenteredLeftPx,
-                leftEdgeRevealProgress);
+                progress < 0f ? 1f : leftEdgeRevealProgress);
         float visibleOffset = resolveStackUnclampedVisibleOffset(
                 recentsView,
                 progress,
