@@ -51,6 +51,7 @@ final class LauncherRecentsLayoutEngine {
         hookRecentsViewMethod(module, loader, "updatePageOffsetsForFlyme");
         hookRecentsViewMethod(module, loader, "applyAttachAlpha");
         hookRecentsViewOnScrollChanged(module, loader);
+        hookRecentsViewDispatchScrollChanged(module, loader);
         hookRecentsViewContentAlpha(module, loader);
     }
 
@@ -197,6 +198,31 @@ final class LauncherRecentsLayoutEngine {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook RecentsView.onScrollChanged",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewDispatchScrollChanged(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("dispatchScrollChanged");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View) {
+                    View recentsView = (View) thisObject;
+                    if (applyDynamicStackLayoutIfNeeded(recentsView)) {
+                        recentsView.invalidate();
+                    }
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.dispatchScrollChanged",
                     t);
         }
     }
