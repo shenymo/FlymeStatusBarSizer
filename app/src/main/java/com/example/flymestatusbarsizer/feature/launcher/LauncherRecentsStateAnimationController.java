@@ -373,8 +373,14 @@ final class LauncherRecentsStateAnimationController {
     }
 
     private static void clearOverviewStateStackAnimation(View recentsView) {
+        markOverviewPeekStockAnimation(recentsView, false);
         markOverviewStateStackAnimation(recentsView, false);
         LauncherRecentsLayoutEngine.startStackLayoutRecovery(recentsView);
+        LauncherRecentsLayoutEngine.applyStackLayout(
+                recentsView,
+                false,
+                "overviewStateClearRestore",
+                true);
         LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
     }
 

@@ -203,7 +203,12 @@ final class LauncherRecentsAttachController {
             LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
         }
         endAppToRecentsEntrySessionWithoutLayout(recentsView);
-        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        LauncherRecentsLayoutEngine.startStackLayoutRecovery(recentsView);
+        LauncherRecentsLayoutEngine.applyStackLayout(
+                recentsView,
+                false,
+                "appEntryClearRestore",
+                true);
         recentsView.requestLayout();
         recentsView.invalidate();
     }

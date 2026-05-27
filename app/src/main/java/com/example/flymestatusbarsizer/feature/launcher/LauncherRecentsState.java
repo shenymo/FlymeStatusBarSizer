@@ -36,6 +36,8 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, StackLayoutApplyState> LAST_STACK_LAYOUT_APPLIES =
             new WeakHashMap<>();
+    static final WeakHashMap<View, PendingStackLayoutApplyState> PENDING_STACK_LAYOUT_APPLIES =
+            new WeakHashMap<>();
     static final WeakHashMap<View, String> LAST_STACK_APP_FLOW_PACKAGES =
             new WeakHashMap<>();
     static final WeakHashMap<View, Integer> LAST_STACK_TASK_LIST_VISIBILITY_CHANGES =
@@ -189,6 +191,24 @@ final class LauncherRecentsState {
             this.key = key;
             this.timeNs = timeNs;
             this.syncedVisibleTaskData = syncedVisibleTaskData;
+        }
+    }
+
+    static final class PendingStackLayoutApplyState {
+        boolean captureStockState;
+        boolean syncVisibleTaskData;
+        boolean dynamicOnly;
+        String source;
+
+        PendingStackLayoutApplyState(
+                boolean captureStockState,
+                boolean syncVisibleTaskData,
+                boolean dynamicOnly,
+                String source) {
+            this.captureStockState = captureStockState;
+            this.syncVisibleTaskData = syncVisibleTaskData;
+            this.dynamicOnly = dynamicOnly;
+            this.source = source;
         }
     }
 

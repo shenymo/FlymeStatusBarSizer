@@ -854,6 +854,7 @@ final class LauncherRecentsTouchController {
                     move.targetOffsetPx * progress);
         }
         LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(state.recentsView);
+        forceEnsureStackVisibleTaskData(state.recentsView, 15);
         LauncherRecentsTaskVisuals.setStableAlpha(state.taskView, state.originalStableAlpha);
         state.recentsView.invalidate();
     }
@@ -1463,6 +1464,7 @@ final class LauncherRecentsTouchController {
             return;
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
         int width = recentsView.getWidth();
         if (width <= 0) {
             forceEnsureStackVisibleTaskData(recentsView, changes);
@@ -1473,6 +1475,7 @@ final class LauncherRecentsTouchController {
                 STACK_VISIBLE_TASK_DATA_SYNC_STATES.get(recentsView);
         if (state != null
                 && state.taskViewCount == taskViewCount
+                && state.currentPage == currentPage
                 && state.scrollBucket == bucket
                 && !isLastStackVisibleTaskIdsEmpty(recentsView)) {
             return;
@@ -1491,6 +1494,7 @@ final class LauncherRecentsTouchController {
             STACK_VISIBLE_TASK_DATA_SYNC_STATES.put(recentsView, state);
         }
         state.taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        state.currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
         state.scrollBucket = resolveStackVisibleTaskDataBucket(recentsView);
         ensureStackVisibleTaskData(recentsView, changes);
     }
@@ -2260,6 +2264,7 @@ final class LauncherRecentsTouchController {
 
     private static final class StackVisibleTaskDataSyncState {
         int taskViewCount;
+        int currentPage;
         int scrollBucket;
     }
 
