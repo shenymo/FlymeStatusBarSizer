@@ -1035,7 +1035,7 @@ final class LauncherRecentsLaunchController {
                         shouldPromoteRearTaskDuringLaunch(recentsView, taskView),
                         true);
         LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFFS.put(recentsView, state);
-        LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
+        LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, "launchHandoffStart");
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(state.promoteRearCard
                 ? TASK_LAUNCH_HANDOFF_DURATION_MS
@@ -1086,7 +1086,7 @@ final class LauncherRecentsLaunchController {
             return;
         }
         state.progress = 1f;
-        LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
+        LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, "launchHandoffComplete");
         state.frozen = true;
         recentsView.invalidate();
     }
@@ -1110,7 +1110,7 @@ final class LauncherRecentsLaunchController {
         }
         state.progress = 1f;
         if (state.handoffEnabled) {
-            LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
+            LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, "launchFreeze");
         }
         state.frozen = true;
         recentsView.invalidate();
@@ -1149,7 +1149,7 @@ final class LauncherRecentsLaunchController {
         }
         LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
         if (LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
-            LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
+            LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, "launchClearRestore");
         } else {
             LauncherRecentsLayoutEngine.reapplyOriginalTransforms(recentsView);
         }

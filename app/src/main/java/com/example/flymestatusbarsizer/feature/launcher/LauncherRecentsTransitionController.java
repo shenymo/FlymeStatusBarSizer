@@ -737,7 +737,10 @@ final class LauncherRecentsTransitionController {
                 stackAnchorStartScroll,
                 stackAnchorTargetScroll);
         setGestureRecentsStackReleaseProgress(recentsView, 0f);
-        LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
+        LauncherRecentsLayoutEngine.applyStackLayout(
+                recentsView,
+                false,
+                "gestureReleaseHandoffBegin");
         recentsView.invalidate();
     }
 

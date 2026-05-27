@@ -31,8 +31,7 @@ final class LauncherRecentsTouchController {
     private static final long STACK_DISMISS_CANCEL_ANIM_MS = 320L;
     private static final float STACK_DISMISS_VERTICAL_DOMINANCE = 1.2f;
     private static final float STACK_DISMISS_MIN_FLING_VELOCITY = -1200f;
-    private static final float STACK_VISIBLE_DATA_LEFT_MARGIN_RATIO = 0.08f;
-    private static final float STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO = 2.40f;
+    private static final float STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO = 1.40f;
     private static final float STACK_LEFT_RELEASE_ALPHA_THRESHOLD = 0.05f;
     private static final int STACK_APP_FLOW_LIGHT_RADIUS = 3;
     private static final String STACK_APP_FLOW_HIDDEN = "<stack-hidden>";
@@ -1419,15 +1418,11 @@ final class LauncherRecentsTouchController {
         int[] taskLocation = new int[2];
         recentsView.getLocationOnScreen(recentsLocation);
         taskView.getLocationOnScreen(taskLocation);
-        float taskWidth = taskView.getWidth() * Math.max(0.01f, Math.abs(taskView.getScaleX()));
-        float viewportLeft = recentsLocation[0]
-                - (recentsView.getWidth() * STACK_VISIBLE_DATA_LEFT_MARGIN_RATIO);
         float viewportRight = recentsLocation[0]
                 + recentsView.getWidth()
                 + (recentsView.getWidth() * STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO);
         float taskLeft = taskLocation[0];
-        float taskRight = taskLeft + taskWidth;
-        return taskRight > viewportLeft && taskLeft < viewportRight;
+        return taskLeft < viewportRight;
     }
 
     private static boolean isBlankTapHomeExitTaskWithinViewport(
@@ -1451,7 +1446,8 @@ final class LauncherRecentsTouchController {
                 && taskView != null
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
                 && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
-                && readStackTaskDataAlpha(taskView) <= STACK_LEFT_RELEASE_ALPHA_THRESHOLD;
+                && (readStackTaskDataAlpha(taskView) <= STACK_LEFT_RELEASE_ALPHA_THRESHOLD
+                || !isStackTaskWithinVisibleDataBounds(recentsView, taskView));
     }
 
     private static boolean shouldSuppressStackTaskDataUnload(View taskView) {
