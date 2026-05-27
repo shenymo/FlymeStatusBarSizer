@@ -9,20 +9,28 @@ import java.util.ArrayList;
 public final class ImeToolbarSpec {
     static final String STOCK_CONTROL_BAR_BACK = "stock_back";
     static final String STOCK_CONTROL_BAR_PLACEHOLDER = "stock_placeholder";
+    private static final String CAPTCHA = "captcha";
     private static final String[] ACTION_BUTTONS = {
-            "paste", "undo", "delete", "select_all", "copy", "switch_ime"
+            "paste", "undo", "delete", "select_all", "copy", "switch_ime", CAPTCHA
     };
     private static final String[] ALL_BUTTONS = {
-            "paste", "undo", "delete", "select_all", "copy", "switch_ime", STOCK_CONTROL_BAR_BACK
+            "paste", "undo", "delete", "select_all", "copy", "switch_ime", CAPTCHA,
+            STOCK_CONTROL_BAR_BACK
     };
+    private static final String[] DEFAULT_BUTTONS = {
+            "paste", "undo", "delete", "select_all", "copy", "switch_ime",
+            STOCK_CONTROL_BAR_BACK
+    };
+    private static final int STOCK_CONTROL_BAR_SLOT_COUNT = 7;
     private static final String STOCK_CONTROL_BAR_BUTTON_SIZE = "[7WC]";
+    private static final String STOCK_CONTROL_BAR_WIDE_BUTTON_SIZE = "[14WC]";
     private static final String SLOT_EMPTY_TOKEN = "__empty__";
 
     private ImeToolbarSpec() {
     }
 
     public static int getButtonSlotCount() {
-        return ALL_BUTTONS.length;
+        return STOCK_CONTROL_BAR_SLOT_COUNT;
     }
 
     public static ArrayList<String> getAllButtons() {
@@ -64,10 +72,21 @@ public final class ImeToolbarSpec {
         if ("switch_ime".equals(button)) {
             return "切换输入法";
         }
+        if (CAPTCHA.equals(button)) {
+            return "验证码";
+        }
         if (STOCK_CONTROL_BAR_BACK.equals(button)) {
             return "返回";
         }
         return button;
+    }
+
+    public static int getButtonSpan(String button) {
+        return CAPTCHA.equals(button) ? 2 : 1;
+    }
+
+    static boolean isCaptchaButton(String button) {
+        return CAPTCHA.equals(button);
     }
 
     static boolean shouldReplaceOriginalControlBar(FlymeStatusBarSizer.ImeConfigSnapshot config) {
@@ -115,6 +134,11 @@ public final class ImeToolbarSpec {
                 builder.append(',');
             }
             String button = normalized.get(i);
+            if (isCaptchaButton(button)) {
+                builder.append(button).append(STOCK_CONTROL_BAR_WIDE_BUTTON_SIZE);
+                i++;
+                continue;
+            }
             builder.append(TextUtils.isEmpty(button) ? STOCK_CONTROL_BAR_PLACEHOLDER : button)
                     .append(STOCK_CONTROL_BAR_BUTTON_SIZE);
         }
@@ -137,7 +161,7 @@ public final class ImeToolbarSpec {
                 result.set(i, token);
             }
         }
-        return result;
+        return normalizeButtonSlots(result);
     }
 
     private static ArrayList<String> normalizeButtonSlots(ArrayList<String> slots) {
@@ -145,11 +169,19 @@ public final class ImeToolbarSpec {
         if (slots == null) {
             return normalized;
         }
+        boolean[] occupied = new boolean[normalized.size()];
         int slotCount = Math.min(slots.size(), normalized.size());
         for (int i = 0; i < slotCount; i++) {
             String button = slots.get(i);
-            if (isValidButtonName(button) && !normalized.contains(button)) {
+            int span = getButtonSpan(button);
+            if (isValidButtonName(button)
+                    && !normalized.contains(button)
+                    && i + span <= normalized.size()
+                    && canPlaceButton(occupied, i, span)) {
                 normalized.set(i, button);
+                for (int j = 0; j < span; j++) {
+                    occupied[i + j] = true;
+                }
             }
         }
         return normalized;
@@ -157,18 +189,30 @@ public final class ImeToolbarSpec {
 
     private static ArrayList<String> defaultButtonSlots() {
         ArrayList<String> result = emptySlotList();
-        for (int i = 0; i < ALL_BUTTONS.length; i++) {
-            result.set(i, ALL_BUTTONS[i]);
+        for (int i = 0; i < DEFAULT_BUTTONS.length; i++) {
+            result.set(i, DEFAULT_BUTTONS[i]);
         }
         return result;
     }
 
     private static ArrayList<String> emptySlotList() {
-        ArrayList<String> result = new ArrayList<>(ALL_BUTTONS.length);
-        for (int i = 0; i < ALL_BUTTONS.length; i++) {
+        ArrayList<String> result = new ArrayList<>(STOCK_CONTROL_BAR_SLOT_COUNT);
+        for (int i = 0; i < STOCK_CONTROL_BAR_SLOT_COUNT; i++) {
             result.add(null);
         }
         return result;
+    }
+
+    private static boolean canPlaceButton(boolean[] occupied, int start, int span) {
+        if (occupied == null || start < 0 || span <= 0 || start + span > occupied.length) {
+            return false;
+        }
+        for (int i = 0; i < span; i++) {
+            if (occupied[start + i]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean isValidAction(String action) {

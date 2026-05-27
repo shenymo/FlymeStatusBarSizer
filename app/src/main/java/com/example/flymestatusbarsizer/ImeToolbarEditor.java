@@ -111,7 +111,7 @@ final class ImeToolbarEditor {
         buttonContainer.addView(slotTitle, activity.matchWrap());
 
         TextView slotHint = new TextView(activity);
-        slotHint.setText("从左到右对应输入法控制栏的实际位置；空槽位会保留占位。");
+        slotHint.setText("从左到右对应输入法控制栏的实际位置；空槽位会保留占位，验证码占 2 格。");
         slotHint.setTextColor(activity.subtextColor());
         slotHint.setTextSize(12);
         slotHint.setPadding(0, activity.dp(6), 0, 0);
@@ -225,22 +225,23 @@ final class ImeToolbarEditor {
     }
 
     private View buildSlotView(int slotIndex, String button) {
+        boolean covered = isCoveredByWideButton(slotIndex);
         LinearLayout slot = new LinearLayout(activity);
         slot.setOrientation(LinearLayout.VERTICAL);
         slot.setGravity(Gravity.CENTER);
         slot.setPadding(activity.dp(4), activity.dp(10), activity.dp(4), activity.dp(10));
         slot.setMinimumHeight(activity.dp(72));
         slot.setTag(Integer.valueOf(slotIndex));
-        slot.setBackground(buildSlotBackground(!TextUtils.isEmpty(button), false));
+        slot.setBackground(buildSlotBackground(!TextUtils.isEmpty(button) || covered, false));
         slot.setOnDragListener(this::handleSlotDrag);
-        if (!TextUtils.isEmpty(button)) {
+        if (!TextUtils.isEmpty(button) && !covered) {
             slot.setOnLongClickListener(v -> startDrag(v, button, slotIndex));
         }
 
         TextView label = new TextView(activity);
-        label.setText(TextUtils.isEmpty(button) ? "空槽" : ImeToolbarSpec.getButtonLabel(button));
-        label.setTextColor(TextUtils.isEmpty(button) ? activity.subtextColor() : activity.textColor());
-        label.setTextSize(TextUtils.isEmpty(button) ? 11 : 13);
+        label.setText(covered ? "占用" : (TextUtils.isEmpty(button) ? "空槽" : ImeToolbarSpec.getButtonLabel(button)));
+        label.setTextColor((TextUtils.isEmpty(button) && !covered) ? activity.subtextColor() : activity.textColor());
+        label.setTextSize((TextUtils.isEmpty(button) && !covered) ? 11 : 13);
         label.setGravity(Gravity.CENTER);
         label.setMaxLines(2);
         slot.addView(label, activity.matchWrap());
@@ -330,21 +331,29 @@ final class ImeToolbarEditor {
         if (TextUtils.isEmpty(button) || targetSlotIndex < 0 || targetSlotIndex >= buttonSlots.size()) {
             return;
         }
+        int span = ImeToolbarSpec.getButtonSpan(button);
+        if (targetSlotIndex + span > buttonSlots.size()) {
+            targetSlotIndex = buttonSlots.size() - span;
+        }
         int sourceSlotIndex = findButtonSlotIndex(button);
         if (sourceSlotIndex == targetSlotIndex) {
             return;
         }
-        String replacedButton = buttonSlots.get(targetSlotIndex);
         if (sourceSlotIndex >= 0) {
-            buttonSlots.set(sourceSlotIndex, replacedButton);
+            clearButtonSpan(sourceSlotIndex);
+        }
+        for (int i = 0; i < span; i++) {
+            clearSlotOrOwner(targetSlotIndex + i);
         }
         buttonSlots.set(targetSlotIndex, button);
+        normalizeButtonSlots();
     }
 
     private void removeButtonFromSlots(String button) {
         int slotIndex = findButtonSlotIndex(button);
         if (slotIndex >= 0) {
-            buttonSlots.set(slotIndex, null);
+            clearButtonSpan(slotIndex);
+            normalizeButtonSlots();
         }
     }
 
@@ -361,7 +370,51 @@ final class ImeToolbarEditor {
     }
 
     private boolean isOccupied(int slotIndex) {
-        return slotIndex < buttonSlots.size() && !TextUtils.isEmpty(buttonSlots.get(slotIndex));
+        return slotIndex < buttonSlots.size()
+                && (!TextUtils.isEmpty(buttonSlots.get(slotIndex)) || isCoveredByWideButton(slotIndex));
+    }
+
+    private boolean isCoveredByWideButton(int slotIndex) {
+        int owner = findWideButtonOwner(slotIndex);
+        return owner >= 0 && owner != slotIndex;
+    }
+
+    private int findWideButtonOwner(int slotIndex) {
+        for (int i = 0; i < buttonSlots.size(); i++) {
+            String button = buttonSlots.get(i);
+            int span = ImeToolbarSpec.getButtonSpan(button);
+            if (!TextUtils.isEmpty(button) && span > 1 && slotIndex >= i && slotIndex < i + span) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void clearSlotOrOwner(int slotIndex) {
+        int owner = findWideButtonOwner(slotIndex);
+        if (owner >= 0) {
+            clearButtonSpan(owner);
+        } else if (slotIndex >= 0 && slotIndex < buttonSlots.size()) {
+            buttonSlots.set(slotIndex, null);
+        }
+    }
+
+    private void clearButtonSpan(int slotIndex) {
+        if (slotIndex < 0 || slotIndex >= buttonSlots.size()) {
+            return;
+        }
+        String button = buttonSlots.get(slotIndex);
+        int span = ImeToolbarSpec.getButtonSpan(button);
+        for (int i = 0; i < span && slotIndex + i < buttonSlots.size(); i++) {
+            buttonSlots.set(slotIndex + i, null);
+        }
+    }
+
+    private void normalizeButtonSlots() {
+        ArrayList<String> normalized =
+                ImeToolbarSpec.resolveButtonSlots(ImeToolbarSpec.serializeButtonSlots(buttonSlots));
+        buttonSlots.clear();
+        buttonSlots.addAll(normalized);
     }
 
     private android.graphics.drawable.GradientDrawable buildPoolBackground(boolean active) {

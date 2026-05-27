@@ -8,6 +8,7 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.inputmethodservice.InputMethodService;
+import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -18,6 +19,7 @@ import android.view.WindowInsets;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.TextView;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -35,6 +37,7 @@ public final class ImeHooks {
     private static final String PACKAGE_TENCENT_WETYPE = "com.tencent.wetype";
     private static final int DEFAULT_IME_ICON_SCALE_PERCENT = 100;
     private static final int DEFAULT_IME_ICON_ALPHA_PERCENT = 100;
+    private static final int FLYME_QS_ACTION_ITEMS_LAYOUT_ID = 17367445;
 
     private static final WeakHashMap<Object, View> TRACKED_INPUT_METHOD_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<Object, Boolean> TRACKED_INPUT_METHOD_MANAGER_SERVICES =
@@ -66,6 +69,7 @@ public final class ImeHooks {
             hookNavigationBarInsetsVisibility(module, loader);
             hookNavigationBarBackgroundRefresh(module, loader);
             hookInputMethodService(module, loader);
+            hookFlymeCaptchaCandidate(module, loader);
         }
         if (PACKAGE_ANDROID.equals(packageName)) {
             hookInputMethodManagerServiceNavFlags(module, loader);
@@ -380,6 +384,112 @@ public final class ImeHooks {
         }
     }
 
+    private static void hookFlymeCaptchaCandidate(FlymeStatusBarSizer module, ClassLoader loader) {
+        Class<?> itemClass = findClass(loader, "flyme.inputmethod.QsActionItem");
+        if (itemClass == null) {
+            return;
+        }
+        hookFlymeCaptchaMessageView(module, loader, itemClass);
+        hookFlymeCaptchaActionListener(module, loader, itemClass);
+        hookFlymeCaptchaManager(module, loader, itemClass);
+    }
+
+    private static void hookFlymeCaptchaMessageView(
+            FlymeStatusBarSizer module, ClassLoader loader, Class<?> itemClass) {
+        try {
+            Class<?> viewClass = Class.forName("flyme.inputmethod.QsActionItemsView", false, loader);
+            Method method = viewClass.getDeclaredMethod("updateMessageState", itemClass);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                updateFlymeCaptchaCandidate(chain.getArg(0), chain.getThisObject());
+                return result;
+            });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void hookFlymeCaptchaActionListener(
+            FlymeStatusBarSizer module, ClassLoader loader, Class<?> itemClass) {
+        try {
+            Class<?> listenerClass = Class.forName("flyme.inputmethod.QsActionItemsView$1", false, loader);
+            Method method = listenerClass.getDeclaredMethod("onItemActionChange", itemClass, int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                if (asInt(chain.getArg(1), -1) == 16) {
+                    updateFlymeCaptchaCandidate(chain.getArg(0), chain.getThisObject());
+                }
+                return result;
+            });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void hookFlymeCaptchaManager(
+            FlymeStatusBarSizer module, ClassLoader loader, Class<?> itemClass) {
+        try {
+            Class<?> managerClass = Class.forName("flyme.inputmethod.QsActionManager", false, loader);
+            Class<?> callbackClass = Class.forName("flyme.inputmethod.IQsActionCallback", false, loader);
+            Method registerActionItem = managerClass.getDeclaredMethod(
+                    "registerActionItem",
+                    itemClass,
+                    callbackClass);
+            registerActionItem.setAccessible(true);
+            module.intercept(registerActionItem, chain -> {
+                Object result = chain.proceed();
+                updateFlymeCaptchaCandidate(chain.getArg(0), null);
+                return result;
+            });
+
+            Method getActionItemList = managerClass.getDeclaredMethod("getActionItemList", int.class);
+            getActionItemList.setAccessible(true);
+            module.intercept(getActionItemList, chain -> {
+                Object result = chain.proceed();
+                if (ImeToolbarActions.updateFlymeCaptchaCandidateFromList(result)) {
+                    scheduleCaptchaButtonRefresh(null);
+                }
+                return result;
+            });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void updateFlymeCaptchaCandidate(Object item, Object anchorObject) {
+        if (ImeToolbarActions.updateFlymeCaptchaCandidate(item)) {
+            scheduleCaptchaButtonRefresh(anchorObject);
+        }
+    }
+
+    private static void scheduleCaptchaButtonRefresh(Object anchorObject) {
+        Runnable refreshRunnable = ImeHooks::refreshTrackedInputMethodViews;
+        View anchor = anchorObject instanceof View ? (View) anchorObject : null;
+        if (anchor != null && anchor.post(refreshRunnable)) {
+            scheduleCaptchaButtonExpiryRefresh(anchor);
+            return;
+        }
+        if (FlymeStatusBarSizer.getMainHandler() != null) {
+            FlymeStatusBarSizer.postToMainHandler(refreshRunnable);
+            scheduleCaptchaButtonExpiryRefresh(null);
+            return;
+        }
+        refreshRunnable.run();
+    }
+
+    private static void scheduleCaptchaButtonExpiryRefresh(View anchor) {
+        long delay = ImeToolbarActions.getCaptchaRefreshDelayMs();
+        if (delay < 0L) {
+            return;
+        }
+        if (anchor != null && anchor.postDelayed(ImeHooks::refreshTrackedInputMethodViews, delay + 100L)) {
+            return;
+        }
+        if (FlymeStatusBarSizer.getMainHandler() != null) {
+            FlymeStatusBarSizer.getMainHandler()
+                    .postDelayed(ImeHooks::refreshTrackedInputMethodViews, delay + 100L);
+        }
+    }
+
     private static void scheduleImeControlBarRefresh(Object inputMethodService, View anchorView) {
         if (inputMethodService == null) {
             return;
@@ -496,7 +606,8 @@ public final class ImeHooks {
                 navigationBarInflaterView,
                 "getDefaultLayout",
                 new Class[0]);
-        String layoutSpec = ImeToolbarSpec.shouldReplaceOriginalControlBar(config)
+        boolean replaceControlBar = ImeToolbarSpec.shouldReplaceOriginalControlBar(config);
+        String layoutSpec = replaceControlBar
                 ? ImeToolbarSpec.buildStockControlBarLayout(config)
                 : (defaultLayout instanceof String ? (String) defaultLayout : null);
         FlymeStatusBarSizer.invokeMethodCompat(
@@ -504,6 +615,57 @@ public final class ImeHooks {
                 "inflateLayout",
                 new Class[]{String.class},
                 layoutSpec);
+        if (replaceControlBar) {
+            ensureFlymeCaptchaBridgeView(navigationBarInflaterView);
+        }
+    }
+
+    private static void ensureFlymeCaptchaBridgeView(Object navigationBarInflaterView) {
+        if (!(navigationBarInflaterView instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup parent = (ViewGroup) navigationBarInflaterView;
+        View existing = findFlymeQsActionItemsView(parent);
+        if (existing != null) {
+            existing.setVisibility(View.GONE);
+            existing.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            return;
+        }
+        try {
+            View bridge = LayoutInflater.from(parent.getContext())
+                    .inflate(FLYME_QS_ACTION_ITEMS_LAYOUT_ID, parent, false);
+            if (bridge == null || !isFlymeQsActionItemsView(bridge)) {
+                return;
+            }
+            bridge.setVisibility(View.GONE);
+            bridge.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            parent.addView(bridge);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static View findFlymeQsActionItemsView(View root) {
+        if (root == null) {
+            return null;
+        }
+        if (isFlymeQsActionItemsView(root)) {
+            return root;
+        }
+        if (!(root instanceof ViewGroup)) {
+            return null;
+        }
+        ViewGroup group = (ViewGroup) root;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View result = findFlymeQsActionItemsView(group.getChildAt(i));
+            if (result != null) {
+                return result;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isFlymeQsActionItemsView(View view) {
+        return view != null && "flyme.inputmethod.QsActionItemsView".equals(view.getClass().getName());
     }
 
     private static void refreshImeControlBarNow(Object inputMethodService) {
@@ -968,6 +1130,9 @@ public final class ImeHooks {
         if (context == null || !ImeToolbarSpec.isValidActionName(action)) {
             return null;
         }
+        if (ImeToolbarSpec.isCaptchaButton(action)) {
+            return createStockControlBarCaptchaButton(context);
+        }
         return createBaseStockControlBarButton(
                 context,
                 action,
@@ -984,6 +1149,27 @@ public final class ImeHooks {
                 STOCK_CONTROL_BAR_BACK,
                 ImeToolbarIcons.createKeyboardDismissDrawable(context),
                 ImeToolbarSpec.getButtonLabel(STOCK_CONTROL_BAR_BACK));
+    }
+
+    private static View createStockControlBarCaptchaButton(Context context) {
+        TextView button = new TextView(context);
+        button.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER));
+        button.setTag("captcha");
+        button.setText(ImeToolbarSpec.getButtonLabel("captcha"));
+        button.setSingleLine(true);
+        button.setEllipsize(TextUtils.TruncateAt.END);
+        button.setGravity(Gravity.CENTER);
+        button.setTextSize(14);
+        int horizontalPadding = FlymeStatusBarSizer.dp(context, 6);
+        button.setPadding(horizontalPadding, 0, horizontalPadding, 0);
+        button.setContentDescription(ImeToolbarSpec.getButtonLabel("captcha"));
+        button.setBackground(resolveBorderlessSelectableBackground(context));
+        button.setClickable(true);
+        button.setFocusable(true);
+        return button;
     }
 
     private static View createStockControlBarPlaceholderView(Context context) {
@@ -1038,6 +1224,11 @@ public final class ImeHooks {
             return;
         }
         FlymeStatusBarSizer.ImeConfigSnapshot config = FlymeStatusBarSizer.loadImeConfig(null);
+        if (ImeToolbarSpec.shouldReplaceOriginalControlBar(config)) {
+            ensureFlymeCaptchaBridgeView(navigationBarFrame);
+        }
+        ImeToolbarActions.refreshFlymeCaptchaCandidate(navigationBarFrame.getContext());
+        scheduleCaptchaButtonExpiryRefresh(navigationBarFrame);
         StockControlBarFrameState frameState = getOrCreateStockControlBarFrameState(navigationBarFrame);
         bindStockControlBarButtonsIfNeeded(frameState, inputMethodService);
         refreshStockControlBarButtonStates(frameState, inputMethodService);
@@ -1086,6 +1277,9 @@ public final class ImeHooks {
         for (int i = 0; i < frameState.buttonRefs.size(); i++) {
             View button = frameState.buttonRefs.get(i).view;
             if (!(button instanceof ImageView)) {
+                if (button instanceof TextView) {
+                    ((TextView) button).setTextColor(applyAlphaToColor(color, alpha));
+                }
                 continue;
             }
             ImageView imageView = (ImageView) button;
@@ -1094,6 +1288,10 @@ public final class ImeHooks {
             applyStockControlBarButtonVisualStyle(imageView, config);
         }
         frameState.buttonRenderSignature = signature;
+    }
+
+    private static int applyAlphaToColor(int color, int alpha) {
+        return (color & 0x00FFFFFF) | ((alpha & 0xFF) << 24);
     }
 
     private static int resolveStockControlBarIconAlpha(FlymeStatusBarSizer.ImeConfigSnapshot config) {
