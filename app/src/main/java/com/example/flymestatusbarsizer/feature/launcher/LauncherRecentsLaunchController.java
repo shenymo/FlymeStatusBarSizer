@@ -873,9 +873,7 @@ final class LauncherRecentsLaunchController {
             return true;
         }
         return LauncherRecentsCompat.isRecentsViewObject(view)
-                && (LauncherRecentsState.isTaskLaunchLayoutFrozen(view)
-                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(view)
-                || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(view));
+                && LauncherRecentsLayoutEngine.shouldSuppressStockLayoutMutation(view);
     }
 
     static boolean shouldSuppressTaskLaunchPageMutation(Object thisObject) {
@@ -884,9 +882,7 @@ final class LauncherRecentsLaunchController {
         }
         View view = (View) thisObject;
         return LauncherRecentsCompat.isRecentsViewObject(view)
-                && (LauncherRecentsState.isTaskLaunchLayoutFrozen(view)
-                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(view)
-                || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(view));
+                && LauncherRecentsLayoutEngine.shouldSuppressStockLayoutMutation(view);
     }
 
     private static boolean launchTaskWithoutSystemAnimation(View taskView, View recentsView) {

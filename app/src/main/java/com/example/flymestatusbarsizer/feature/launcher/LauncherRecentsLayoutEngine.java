@@ -1577,6 +1577,14 @@ final class LauncherRecentsLayoutEngine {
                 recentsView));
     }
 
+    static boolean shouldSuppressStockLayoutMutation(View recentsView) {
+        return recentsView != null
+                && (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
+                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
+                || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(
+                recentsView));
+    }
+
     private static boolean shouldApplyDynamicStackLayoutOnSystemFrame(View recentsView) {
         if (!shouldApplyDynamicStackLayout(recentsView)) {
             return false;
