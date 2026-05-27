@@ -740,7 +740,8 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsLayoutEngine.applyStackLayout(
                 recentsView,
                 false,
-                "gestureReleaseHandoffBegin");
+                "gestureReleaseHandoffBegin",
+                true);
         recentsView.invalidate();
     }
 
