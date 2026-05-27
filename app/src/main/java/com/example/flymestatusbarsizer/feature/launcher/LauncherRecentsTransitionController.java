@@ -61,6 +61,7 @@ final class LauncherRecentsTransitionController {
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
                     LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
+                    LauncherRecentsStateAnimationController.clearOverviewEntryState(recentsView);
                     LauncherRecentsAttachController.clearAppToRecentsEntrySession(
                             recentsView,
                             false);

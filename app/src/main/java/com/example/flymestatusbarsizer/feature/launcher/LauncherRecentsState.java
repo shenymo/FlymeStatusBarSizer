@@ -47,6 +47,8 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> OVERVIEW_STATE_STACK_START_ADJACENT_OFFSETS =
             new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> OVERVIEW_STATE_STACK_BASELINES_CAPTURED =
+            new WeakHashMap<>();
     static final WeakHashMap<View, Integer> STACK_LAYOUT_RECOVERY_RADII =
             new WeakHashMap<>();
     static final WeakHashMap<View, String> LAST_STACK_APP_FLOW_PACKAGES =

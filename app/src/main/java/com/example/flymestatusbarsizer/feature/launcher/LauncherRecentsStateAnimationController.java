@@ -244,6 +244,10 @@ final class LauncherRecentsStateAnimationController {
                         recentsView,
                         "mAdjacentPageHorizontalOffset",
                         0.53f));
+        LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
+        LauncherRecentsState.OVERVIEW_STATE_STACK_BASELINES_CAPTURED.put(
+                recentsView,
+                Boolean.TRUE);
         markOverviewStateStackAnimation(recentsView, true);
         attachOverviewStateAnimationCallbacks(recentsView, pendingAnimation);
         if (pendingAnimation == null) {
@@ -350,7 +354,7 @@ final class LauncherRecentsStateAnimationController {
         if (toState == overviewPeekState) {
             markOverviewPeekStockAnimation(recentsView, true);
         } else if (toState != overviewState) {
-            markOverviewPeekStockAnimation(recentsView, false);
+            clearOverviewEntryState(recentsView);
         }
     }
 
@@ -365,6 +369,7 @@ final class LauncherRecentsStateAnimationController {
         } else {
             LauncherRecentsState.ACTIVE_OVERVIEW_STATE_STACK_ANIMATIONS.remove(recentsView);
             LauncherRecentsState.OVERVIEW_STATE_STACK_START_ADJACENT_OFFSETS.remove(recentsView);
+            LauncherRecentsState.OVERVIEW_STATE_STACK_BASELINES_CAPTURED.remove(recentsView);
         }
     }
 
@@ -389,5 +394,10 @@ final class LauncherRecentsStateAnimationController {
         markOverviewStateStackAnimation(recentsView, false);
         LauncherRecentsLayoutEngine.startStackLayoutRecovery(recentsView);
         LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
+    }
+
+    static void clearOverviewEntryState(View recentsView) {
+        markOverviewPeekStockAnimation(recentsView, false);
+        markOverviewStateStackAnimation(recentsView, false);
     }
 }
