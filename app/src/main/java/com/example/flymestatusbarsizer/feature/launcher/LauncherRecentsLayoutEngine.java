@@ -1545,14 +1545,28 @@ final class LauncherRecentsLayoutEngine {
             View recentsView) {
         return "updatePageScales".equals(methodName)
                 && shouldUseStackLayout(recentsView)
-                && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView))
-                && (LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+                && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
+                && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
+                recentsView)
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                 recentsView)
                 || isStackLayoutRecoveryActive(recentsView)
+                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+                || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView)
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
+                recentsView))
+                && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+                || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
+                || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                recentsView)
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
+                recentsView))
+                && (!LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(
+                recentsView)
+                || LauncherRecentsTouchController.shouldBypassStackDismissLayoutFreeze()
                 || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(
                 recentsView));
     }

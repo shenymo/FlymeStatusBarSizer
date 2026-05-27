@@ -319,19 +319,7 @@ final class LauncherRecentsStateAnimationController {
     }
 
     static boolean shouldKeepOverviewPeekStockLayout(View recentsView) {
-        if (recentsView == null) {
-            return false;
-        }
-        if (isOverviewPeekStockAnimationActive(recentsView)) {
-            return true;
-        }
-        Object container = LauncherRecentsCompat.getFieldCompat(recentsView, "mContainer");
-        Object stateManager = LauncherRecentsCompat.invokeCompat(container, "getStateManager");
-        return isOverviewPeekStateObject(LauncherRecentsCompat.invokeCompat(stateManager, "getState"))
-                || isOverviewPeekStateObject(
-                LauncherRecentsCompat.invokeCompat(stateManager, "getCurrentStableState"))
-                || isOverviewPeekStateObject(
-                LauncherRecentsCompat.invokeCompat(stateManager, "getTargetState"));
+        return recentsView != null && isOverviewPeekStockAnimationActive(recentsView);
     }
 
     private static void updateOverviewPeekStockAnimation(
@@ -349,7 +337,9 @@ final class LauncherRecentsStateAnimationController {
                 LauncherRecentsCompat.readStaticFieldCompat(LAUNCHER_STATE_CLASS, "OVERVIEW", loader);
         if (toState == overviewPeekState) {
             markOverviewPeekStockAnimation(recentsView, true);
-        } else if (toState != overviewState) {
+        } else if (toState == overviewState) {
+            markOverviewPeekStockAnimation(recentsView, false);
+        } else {
             clearOverviewEntryState(recentsView);
         }
     }
@@ -366,10 +356,6 @@ final class LauncherRecentsStateAnimationController {
             return;
         }
         LauncherRecentsState.setOverviewPeekStockAnimationActive(recentsView, active);
-    }
-
-    private static boolean isOverviewPeekStateObject(Object value) {
-        return value != null && value.getClass().getName().endsWith("OverviewPeekState");
     }
 
     private static void clearOverviewStateStackAnimation(View recentsView) {
