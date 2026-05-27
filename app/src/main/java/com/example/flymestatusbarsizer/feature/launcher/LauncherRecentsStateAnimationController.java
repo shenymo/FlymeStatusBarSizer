@@ -96,11 +96,12 @@ final class LauncherRecentsStateAnimationController {
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
                 Object toState = chain.getArg(0);
+                Object pendingAnimation = chain.getArg(2);
                 View recentsView = resolveControllerRecentsView(thisObject);
                 boolean shouldTakeOver =
                         shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
                 if (shouldTakeOver) {
-                    beginOverviewStateStackAnimation(recentsView, null);
+                    beginOverviewStateStackAnimation(recentsView, pendingAnimation);
                 } else {
                     updateOverviewPeekStockAnimation(recentsView, toState, loader);
                 }
@@ -286,7 +287,8 @@ final class LauncherRecentsStateAnimationController {
         Object currentState = LauncherRecentsCompat.invokeCompat(stateManager, "getState");
         Object stableState = LauncherRecentsCompat.invokeCompat(stateManager, "getCurrentStableState");
         Object targetState = LauncherRecentsCompat.invokeCompat(stateManager, "getTargetState");
-        return currentState == overviewPeekState
+        return isOverviewPeekStockAnimationActive(recentsView)
+                || currentState == overviewPeekState
                 || stableState == overviewPeekState
                 || targetState == overviewPeekState;
     }

@@ -1328,11 +1328,11 @@ final class LauncherRecentsLayoutEngine {
                     appliedTranslationZ,
                     context.stackReleaseProgress);
             appliedAttachAlpha = lerp(
-                    LauncherRecentsTaskVisuals.readLastStockAttachAlpha(taskView),
+                    1f,
                     appliedAttachAlpha,
                     context.stackReleaseProgress);
             appliedStableAlpha = lerp(
-                    LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView),
+                    1f,
                     appliedStableAlpha,
                     context.stackReleaseProgress);
             appliedBlurProgress = lerp(0f, appliedBlurProgress, context.stackReleaseProgress);
@@ -1535,9 +1535,9 @@ final class LauncherRecentsLayoutEngine {
                 && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                 && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
                 recentsView)
-                || isStackLayoutRecoveryActive(recentsView))
-                && !LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
-                recentsView);
+                || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView)
+                || isStackLayoutRecoveryActive(recentsView));
     }
 
     private static boolean shouldSuppressStockPageScaleUpdate(
