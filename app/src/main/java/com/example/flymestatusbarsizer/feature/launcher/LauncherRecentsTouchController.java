@@ -1396,11 +1396,9 @@ final class LauncherRecentsTouchController {
             LauncherRecentsState.BlankTapHomeExitTaskState state =
                     LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.get(taskView);
             return state != null
-                    && state.startStableAlpha > STACK_LEFT_RELEASE_ALPHA_THRESHOLD
                     && taskView.getVisibility() == View.VISIBLE
                     && taskView.getWidth() > 0
-                    && taskView.getHeight() > 0
-                    && isBlankTapHomeExitTaskWithinViewport(recentsView, taskView, state);
+                    && taskView.getHeight() > 0;
         }
         return taskView.getVisibility() == View.VISIBLE
                 && (readStackTaskDataAlpha(taskView) > STACK_LEFT_RELEASE_ALPHA_THRESHOLD
@@ -1426,22 +1424,6 @@ final class LauncherRecentsTouchController {
         return taskLeft < viewportRight;
     }
 
-    private static boolean isBlankTapHomeExitTaskWithinViewport(
-            View recentsView,
-            View taskView,
-            LauncherRecentsState.BlankTapHomeExitTaskState state) {
-        float taskWidth = taskView.getWidth() > 0
-                ? taskView.getWidth()
-                : Math.max(1f, recentsView.getWidth());
-        float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
-        return LauncherRecentsLayoutEngine.isTaskVisibleInViewport(
-                recentsView,
-                taskCenteredLeftPx,
-                taskWidth,
-                state.startVisibleOffset,
-                state.startScale);
-    }
-
     private static boolean shouldReleaseStackTaskData(View recentsView, View taskView) {
         return recentsView != null
                 && taskView != null
@@ -1452,10 +1434,13 @@ final class LauncherRecentsTouchController {
     }
 
     private static boolean shouldSuppressStackTaskDataUnload(View taskView) {
+        View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
+        if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)) {
+            return shouldExposeStackTaskForDismissVisibility(recentsView, taskView);
+        }
         if (!Boolean.TRUE.equals(STACK_LOAD_VISIBLE_TASK_DATA_ACTIVE.get())) {
             return false;
         }
-        View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
         return shouldExposeStackTaskForDismissVisibility(recentsView, taskView);
     }
 

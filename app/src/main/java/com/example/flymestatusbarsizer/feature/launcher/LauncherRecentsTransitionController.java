@@ -332,6 +332,7 @@ final class LauncherRecentsTransitionController {
         }
         markBlankTapHomeExitActive(recentsView, true);
         setBlankTapHomeExitProgress(recentsView, 0f);
+        LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
         LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
         recentsView.invalidate();
     }

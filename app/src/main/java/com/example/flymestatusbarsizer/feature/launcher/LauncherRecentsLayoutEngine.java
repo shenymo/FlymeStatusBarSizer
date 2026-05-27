@@ -537,7 +537,6 @@ final class LauncherRecentsLayoutEngine {
                     : LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.values()) {
                 state.centerVisibleOffset = state.startVisibleOffset - anchorVisibleOffset;
             }
-            normalizeBlankTapHomeExitSiblingAlpha(anchorVisibleOffset);
         }
     }
 
@@ -1237,8 +1236,7 @@ final class LauncherRecentsLayoutEngine {
                 : 1f;
         float activityTitleAlpha = resolveStackTitleAlpha(desiredStableAlpha);
         boolean blankTapExitTaskActive = context.blankTapExitActive
-                && blankTapExitState != null
-                && blankTapExitState.startStableAlpha > 0f;
+                && blankTapExitState != null;
         if (context.blankTapExitActive) {
             if (blankTapExitTaskActive) {
                 float startVisibleOffset = blankTapExitState.startVisibleOffset;
@@ -1630,22 +1628,6 @@ final class LauncherRecentsLayoutEngine {
                 1f - STACK_CONTENT_BLUR_START_ALPHA,
                 1f);
         return clamp(alphaFadeProgress * stackEntryProgress, 0f, 1f);
-    }
-
-    private static void normalizeBlankTapHomeExitSiblingAlpha(float anchorVisibleOffset) {
-        LauncherRecentsState.BlankTapHomeExitTaskState siblingState = null;
-        for (LauncherRecentsState.BlankTapHomeExitTaskState state
-                : LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.values()) {
-            if (state.startStableAlpha <= 0f || state.startVisibleOffset >= anchorVisibleOffset) {
-                continue;
-            }
-            if (siblingState == null || state.startVisibleOffset > siblingState.startVisibleOffset) {
-                siblingState = state;
-            }
-        }
-        if (siblingState != null) {
-            siblingState.startStableAlpha = 1f;
-        }
     }
 
     private static float resolveBlankTapExitAlpha(float progress) {
