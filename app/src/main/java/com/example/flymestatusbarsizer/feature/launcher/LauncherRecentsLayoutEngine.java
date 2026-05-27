@@ -36,6 +36,7 @@ final class LauncherRecentsLayoutEngine {
     private static final int STACK_ENTRY_LIGHT_RADIUS = 3;
     private static final int STACK_STABLE_VISIBLE_RADIUS = -1;
     private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
+    private static final long STACK_LAYOUT_DUPLICATE_WINDOW_NS = 12_000_000L;
 
     private LauncherRecentsLayoutEngine() {
     }
@@ -606,6 +607,13 @@ final class LauncherRecentsLayoutEngine {
             int stackLayoutRadius,
             String source,
             boolean syncVisibleTaskData) {
+        if (shouldSkipDuplicateStackLayout(
+                recentsView,
+                stackLayoutRadius,
+                source,
+                syncVisibleTaskData)) {
+            return;
+        }
         long perfStartNs = LauncherRecentsPerf.start();
         try {
             applyStackLayoutMeasured(
@@ -616,6 +624,91 @@ final class LauncherRecentsLayoutEngine {
         } finally {
             LauncherRecentsPerf.end("applyStackLayout:" + source, perfStartNs);
         }
+    }
+
+    private static boolean shouldSkipDuplicateStackLayout(
+            View recentsView,
+            int stackLayoutRadius,
+            String source,
+            boolean syncVisibleTaskData) {
+        if (recentsView == null || !shouldCoalesceStackLayoutSource(source)) {
+            return false;
+        }
+        long key = resolveStackLayoutApplyKey(recentsView, stackLayoutRadius);
+        long nowNs = System.nanoTime();
+        LauncherRecentsState.StackLayoutApplyState lastState =
+                LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.get(recentsView);
+        if (lastState != null
+                && lastState.key == key
+                && nowNs - lastState.timeNs <= STACK_LAYOUT_DUPLICATE_WINDOW_NS
+                && (!syncVisibleTaskData || lastState.syncedVisibleTaskData)) {
+            return true;
+        }
+        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.put(
+                recentsView,
+                new LauncherRecentsState.StackLayoutApplyState(
+                        key,
+                        nowNs,
+                        syncVisibleTaskData));
+        return false;
+    }
+
+    private static boolean shouldCoalesceStackLayoutSource(String source) {
+        return "applyDynamic".equals(source)
+                || "onScrollChanged".equals(source)
+                || "updatePageOffsetsForFlyme_offsetSuppress".equals(source)
+                || "updatePageOffsetsForFlyme_after".equals(source)
+                || "updatePageScales_scaleSuppress".equals(source);
+    }
+
+    private static long resolveStackLayoutApplyKey(View recentsView, int stackLayoutRadius) {
+        long key = 17L;
+        key = mixStackLayoutApplyKey(key, stackLayoutRadius);
+        key = mixStackLayoutApplyKey(key, recentsView.getScrollX());
+        key = mixStackLayoutApplyKey(key, recentsView.getScrollY());
+        key = mixStackLayoutApplyKey(key, recentsView.getWidth());
+        key = mixStackLayoutApplyKey(key, recentsView.getHeight());
+        key = mixStackLayoutApplyKey(
+                key,
+                LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0));
+        key = mixStackLayoutApplyKey(
+                key,
+                LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0));
+        key = mixStackLayoutApplyKey(
+                key,
+                quantizeStackLayoutFloat(LauncherRecentsCompat.readFloatField(
+                        recentsView,
+                        "mAdjacentPageHorizontalOffset",
+                        0f)));
+        key = mixStackLayoutApplyKey(
+                key,
+                quantizeStackLayoutFloat(
+                        LauncherRecentsTransitionController.readBlankTapHomeExitProgress(
+                                recentsView)));
+        key = mixStackLayoutApplyKey(
+                key,
+                quantizeStackLayoutFloat(
+                        LauncherRecentsTransitionController.readGestureRecentsStackReleaseProgress(
+                                recentsView)));
+        key = mixStackLayoutApplyKey(
+                key,
+                LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                        recentsView) ? 1 : 0);
+        key = mixStackLayoutApplyKey(
+                key,
+                LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView) ? 1 : 0);
+        key = mixStackLayoutApplyKey(
+                key,
+                LauncherRecentsState.isGestureStackReleasedStable(recentsView) ? 1 : 0);
+        return key;
+    }
+
+    private static long mixStackLayoutApplyKey(long key, int value) {
+        return key * 31L + value;
+    }
+
+    private static int quantizeStackLayoutFloat(float value) {
+        return Math.round(value * 1000f);
     }
 
     private static void applyStackLayoutMeasured(
@@ -936,8 +1029,6 @@ final class LauncherRecentsLayoutEngine {
             float translationCompensationX =
                     desiredVisibleOffset - rawOffset - nativeDismissTranslationX;
 
-            taskView.setPivotX(taskWidth * 0.5f);
-            taskView.setPivotY(taskHeight * 0.5f);
             float appliedHorizontalOffsetX = 0f;
             float appliedTaskOffsetX = translationCompensationX;
             float appliedTaskOffsetY = desiredTaskOffsetY;
@@ -1031,28 +1122,27 @@ final class LauncherRecentsLayoutEngine {
                         overviewStateStackHandoffProgress);
                 appliedBlurProgress = lerp(0f, appliedBlurProgress, overviewStateStackHandoffProgress);
             }
-            LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(
-                    taskView,
-                    appliedHorizontalOffsetX);
-            LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(taskView, appliedTaskOffsetX);
-            LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(taskView, appliedTaskOffsetY);
-            LauncherRecentsTaskVisuals.setBoxTranslationY(taskView, appliedBoxTranslationY);
-            LauncherRecentsTaskVisuals.setNonGridScale(taskView, appliedScale);
-            LauncherRecentsTaskVisuals.setAttachAlpha(
-                    taskView,
-                    appliedAttachAlpha);
-            LauncherRecentsTaskVisuals.setStableAlpha(taskView, appliedStableAlpha);
-            LauncherRecentsTaskVisuals.setActivityTitleAlpha(
-                    taskView,
+            float appliedActivityTitleAlpha =
                     blankTapExitActive
                             ? activityTitleAlpha
-                            : resolveStackTitleAlpha(appliedStableAlpha));
-            LauncherRecentsTaskVisuals.setStackContentBlurProgress(taskView, appliedBlurProgress);
-            LauncherRecentsTaskVisuals.setFullscreenProgress(
+                            : resolveStackTitleAlpha(appliedStableAlpha);
+            LauncherRecentsTaskVisuals.applyStackTaskVisualState(
                     taskView,
-                    appliedFullscreenProgress);
-            LauncherRecentsTaskVisuals.clearStackShadow(taskView);
-            LauncherRecentsTaskVisuals.setTranslationZ(taskView, appliedTranslationZ);
+                    new LauncherRecentsTaskVisuals.StackTaskVisualState(
+                            taskWidth * 0.5f,
+                            taskHeight * 0.5f,
+                            appliedHorizontalOffsetX,
+                            appliedTaskOffsetX,
+                            appliedTaskOffsetY,
+                            appliedBoxTranslationY,
+                            appliedScale,
+                            appliedAttachAlpha,
+                            appliedStableAlpha,
+                            appliedActivityTitleAlpha,
+                            appliedBlurProgress,
+                            appliedFullscreenProgress,
+                            appliedTranslationZ,
+                            true));
         }
         if (launchState != null && launchState.handoffEnabled) {
             LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);

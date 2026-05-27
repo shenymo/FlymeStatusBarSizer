@@ -51,6 +51,8 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Integer> STACK_LAYOUT_RECOVERY_RADII =
             new WeakHashMap<>();
+    static final WeakHashMap<View, StackLayoutApplyState> LAST_STACK_LAYOUT_APPLIES =
+            new WeakHashMap<>();
     static final WeakHashMap<View, String> LAST_STACK_APP_FLOW_PACKAGES =
             new WeakHashMap<>();
     static final WeakHashMap<View, Integer> LAST_STACK_TASK_LIST_VISIBILITY_CHANGES =
@@ -181,6 +183,18 @@ final class LauncherRecentsState {
             this.startStackContentBlurProgress = startStackContentBlurProgress;
             this.startTranslationZ = startTranslationZ;
             this.centerVisibleOffset = startVisibleOffset;
+        }
+    }
+
+    static final class StackLayoutApplyState {
+        final long key;
+        final long timeNs;
+        final boolean syncedVisibleTaskData;
+
+        StackLayoutApplyState(long key, long timeNs, boolean syncedVisibleTaskData) {
+            this.key = key;
+            this.timeNs = timeNs;
+            this.syncedVisibleTaskData = syncedVisibleTaskData;
         }
     }
 

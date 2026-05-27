@@ -27,6 +27,80 @@ final class LauncherRecentsTaskVisuals {
     private LauncherRecentsTaskVisuals() {
     }
 
+    static final class StackTaskVisualState {
+        final float pivotX;
+        final float pivotY;
+        final float horizontalOffsetX;
+        final float taskOffsetX;
+        final float taskOffsetY;
+        final float boxTranslationY;
+        final float scale;
+        final float attachAlpha;
+        final float stableAlpha;
+        final float activityTitleAlpha;
+        final float blurProgress;
+        final float fullscreenProgress;
+        final float translationZ;
+        final boolean clearShadow;
+
+        StackTaskVisualState(
+                float pivotX,
+                float pivotY,
+                float horizontalOffsetX,
+                float taskOffsetX,
+                float taskOffsetY,
+                float boxTranslationY,
+                float scale,
+                float attachAlpha,
+                float stableAlpha,
+                float activityTitleAlpha,
+                float blurProgress,
+                float fullscreenProgress,
+                float translationZ,
+                boolean clearShadow) {
+            this.pivotX = pivotX;
+            this.pivotY = pivotY;
+            this.horizontalOffsetX = horizontalOffsetX;
+            this.taskOffsetX = taskOffsetX;
+            this.taskOffsetY = taskOffsetY;
+            this.boxTranslationY = boxTranslationY;
+            this.scale = scale;
+            this.attachAlpha = attachAlpha;
+            this.stableAlpha = stableAlpha;
+            this.activityTitleAlpha = activityTitleAlpha;
+            this.blurProgress = blurProgress;
+            this.fullscreenProgress = fullscreenProgress;
+            this.translationZ = translationZ;
+            this.clearShadow = clearShadow;
+        }
+    }
+
+    static void applyStackTaskVisualState(View taskView, StackTaskVisualState state) {
+        if (taskView == null || state == null) {
+            return;
+        }
+        if (!approximatelyEqual(taskView.getPivotX(), state.pivotX)) {
+            taskView.setPivotX(state.pivotX);
+        }
+        if (!approximatelyEqual(taskView.getPivotY(), state.pivotY)) {
+            taskView.setPivotY(state.pivotY);
+        }
+        setHorizontalOffsetTranslationX(taskView, state.horizontalOffsetX);
+        setTaskOffsetTranslationX(taskView, state.taskOffsetX);
+        setTaskOffsetTranslationY(taskView, state.taskOffsetY);
+        setBoxTranslationY(taskView, state.boxTranslationY);
+        setNonGridScale(taskView, state.scale);
+        setAttachAlpha(taskView, state.attachAlpha);
+        setStableAlpha(taskView, state.stableAlpha);
+        setActivityTitleAlpha(taskView, state.activityTitleAlpha);
+        setStackContentBlurProgress(taskView, state.blurProgress);
+        setFullscreenProgress(taskView, state.fullscreenProgress);
+        if (state.clearShadow) {
+            clearStackShadow(taskView);
+        }
+        setTranslationZ(taskView, state.translationZ);
+    }
+
     static void captureStockTaskStates(View recentsView) {
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         for (int i = 0; i < taskViewCount; i++) {
@@ -147,6 +221,13 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setNonGridScale(View taskView, float value) {
+        if (taskView != null
+                && shouldSkipAppliedFloat(
+                        LauncherRecentsState.LAST_APPLIED_NON_GRID_SCALES.get(taskView),
+                        value,
+                        LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f))) {
+            return;
+        }
         LauncherRecentsCompat.invokeCompat(
                 taskView,
                 "setNonGridScale",
