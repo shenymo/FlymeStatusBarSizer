@@ -238,16 +238,14 @@ final class LauncherRecentsStateAnimationController {
         }
         LauncherRecentsLayoutEngine.cancelStackLayoutRecovery(recentsView);
         markOverviewPeekStockAnimation(recentsView, false);
-        LauncherRecentsState.OVERVIEW_STATE_STACK_START_ADJACENT_OFFSETS.put(
+        LauncherRecentsState.setOverviewStateStackStartAdjacentOffset(
                 recentsView,
                 LauncherRecentsCompat.readFloatField(
                         recentsView,
                         "mAdjacentPageHorizontalOffset",
                         0.53f));
         LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
-        LauncherRecentsState.OVERVIEW_STATE_STACK_BASELINES_CAPTURED.put(
-                recentsView,
-                Boolean.TRUE);
+        LauncherRecentsState.setOverviewStateStackBaselineCaptured(recentsView, true);
         markOverviewStateStackAnimation(recentsView, true);
         attachOverviewStateAnimationCallbacks(recentsView, pendingAnimation);
         if (pendingAnimation == null) {
@@ -313,13 +311,11 @@ final class LauncherRecentsStateAnimationController {
     }
 
     static boolean isOverviewStateStackAnimationActive(View recentsView) {
-        Boolean value = LauncherRecentsState.ACTIVE_OVERVIEW_STATE_STACK_ANIMATIONS.get(recentsView);
-        return value != null && value;
+        return LauncherRecentsState.isOverviewStateStackAnimationActive(recentsView);
     }
 
     static boolean isOverviewPeekStockAnimationActive(View recentsView) {
-        Boolean value = LauncherRecentsState.ACTIVE_OVERVIEW_PEEK_STOCK_ANIMATIONS.get(recentsView);
-        return value != null && value;
+        return LauncherRecentsState.isOverviewPeekStockAnimationActive(recentsView);
     }
 
     static boolean shouldKeepOverviewPeekStockLayout(View recentsView) {
@@ -362,28 +358,14 @@ final class LauncherRecentsStateAnimationController {
         if (recentsView == null) {
             return;
         }
-        if (active) {
-            LauncherRecentsState.ACTIVE_OVERVIEW_STATE_STACK_ANIMATIONS.put(
-                    recentsView,
-                    Boolean.TRUE);
-        } else {
-            LauncherRecentsState.ACTIVE_OVERVIEW_STATE_STACK_ANIMATIONS.remove(recentsView);
-            LauncherRecentsState.OVERVIEW_STATE_STACK_START_ADJACENT_OFFSETS.remove(recentsView);
-            LauncherRecentsState.OVERVIEW_STATE_STACK_BASELINES_CAPTURED.remove(recentsView);
-        }
+        LauncherRecentsState.setOverviewStateStackAnimationActive(recentsView, active);
     }
 
     private static void markOverviewPeekStockAnimation(View recentsView, boolean active) {
         if (recentsView == null) {
             return;
         }
-        if (active) {
-            LauncherRecentsState.ACTIVE_OVERVIEW_PEEK_STOCK_ANIMATIONS.put(
-                    recentsView,
-                    Boolean.TRUE);
-        } else {
-            LauncherRecentsState.ACTIVE_OVERVIEW_PEEK_STOCK_ANIMATIONS.remove(recentsView);
-        }
+        LauncherRecentsState.setOverviewPeekStockAnimationActive(recentsView, active);
     }
 
     private static boolean isOverviewPeekStateObject(Object value) {

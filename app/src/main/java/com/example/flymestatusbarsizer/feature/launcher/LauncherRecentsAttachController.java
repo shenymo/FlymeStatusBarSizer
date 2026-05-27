@@ -215,8 +215,8 @@ final class LauncherRecentsAttachController {
         LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
         LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
         LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
-        LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASES.remove(recentsView);
-        LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASE_HANDOFFS.remove(recentsView);
+        LauncherRecentsState.setPendingGestureRecentsStackRelease(recentsView, false);
+        LauncherRecentsState.setPendingGestureRecentsStackReleaseHandoff(recentsView, false);
         LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
         LauncherRecentsLayoutEngine.resetTaskPageViewScales(recentsView);
     }

@@ -890,8 +890,7 @@ final class LauncherRecentsTransitionController {
     }
 
     private static boolean isPendingGestureRecentsStackRelease(View recentsView) {
-        Boolean value = LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASES.get(recentsView);
-        return value != null && value;
+        return LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView);
     }
 
     private static boolean shouldSuppressLiveTileForStack(View recentsView) {
@@ -902,40 +901,17 @@ final class LauncherRecentsTransitionController {
     }
 
     private static void markPendingGestureRecentsStackRelease(View recentsView, boolean active) {
-        if (recentsView == null) {
-            return;
-        }
-        if (active) {
-            LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASES.put(
-                    recentsView,
-                    Boolean.TRUE);
-        } else {
-            LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASES.remove(recentsView);
-        }
+        LauncherRecentsState.setPendingGestureRecentsStackRelease(recentsView, active);
     }
 
     static boolean isGestureRecentsStackReleaseHandoffPending(View recentsView) {
-        Boolean value = recentsView != null
-                ? LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASE_HANDOFFS.get(
-                recentsView)
-                : null;
-        return value != null && value;
+        return LauncherRecentsState.isPendingGestureRecentsStackReleaseHandoff(recentsView);
     }
 
     private static void markGestureRecentsStackReleaseHandoffPending(
             View recentsView,
             boolean active) {
-        if (recentsView == null) {
-            return;
-        }
-        if (active) {
-            LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASE_HANDOFFS.put(
-                    recentsView,
-                    Boolean.TRUE);
-        } else {
-            LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASE_HANDOFFS.remove(
-                    recentsView);
-        }
+        LauncherRecentsState.setPendingGestureRecentsStackReleaseHandoff(recentsView, active);
     }
 
     private static View resolveHandlerRecentsView(Object handler) {

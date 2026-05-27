@@ -291,9 +291,7 @@ final class LauncherRecentsLaunchController {
                             && !LauncherRecentsCompat.isDesktopTask(taskView)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-                        LauncherRecentsState.TASK_LAUNCH_REQUEST_STARTED.put(
-                                recentsView,
-                                Boolean.TRUE);
+                        LauncherRecentsState.setTaskLaunchRequestStarted(recentsView, true);
                         freezeTaskLaunchLayoutIfNeeded(recentsView, taskView);
                     }
                 }
@@ -702,7 +700,7 @@ final class LauncherRecentsLaunchController {
                 && recentsView.getHeight() > 0
                 && resolveTaskViewIndex(recentsView, taskView) >= 0
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
-                && !LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFFS.containsKey(recentsView);
+                && !LauncherRecentsState.hasActiveTaskLaunchHandoff(recentsView);
     }
 
     static boolean shouldReplaceTaskLaunchWithNoAnimation(
@@ -804,7 +802,7 @@ final class LauncherRecentsLaunchController {
             return false;
         }
         LauncherRecentsState.LaunchHandoffState state =
-                LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFFS.get(recentsView);
+                LauncherRecentsState.getActiveTaskLaunchHandoff(recentsView);
         return state != null
                 && state.frozen
                 && state.targetTaskView == taskView;
@@ -854,7 +852,7 @@ final class LauncherRecentsLaunchController {
             return;
         }
         cancelTaskLaunchHandoff(recentsView, true);
-        LauncherRecentsState.TASK_LAUNCH_REQUEST_STARTED.put(recentsView, Boolean.TRUE);
+        LauncherRecentsState.setTaskLaunchRequestStarted(recentsView, true);
         LauncherRecentsState.trackRecentsView(recentsView);
         LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
         freezeTaskLaunchLayoutIfNeeded(recentsView, taskView);
@@ -949,7 +947,7 @@ final class LauncherRecentsLaunchController {
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsState.TASK_LAUNCH_REQUEST_STARTED.remove(recentsView);
+        LauncherRecentsState.setTaskLaunchRequestStarted(recentsView, false);
         if (!LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
             return;
         }
@@ -1025,7 +1023,7 @@ final class LauncherRecentsLaunchController {
             return;
         }
         cancelTaskLaunchHandoff(recentsView, true);
-        LauncherRecentsState.TASK_LAUNCH_REQUEST_STARTED.remove(recentsView);
+        LauncherRecentsState.setTaskLaunchRequestStarted(recentsView, false);
         LauncherRecentsState.trackRecentsView(recentsView);
         LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
         LauncherRecentsState.LaunchHandoffState state =
@@ -1034,7 +1032,7 @@ final class LauncherRecentsLaunchController {
                         resolveTaskViewIndex(recentsView, taskView),
                         shouldPromoteRearTaskDuringLaunch(recentsView, taskView),
                         true);
-        LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFFS.put(recentsView, state);
+        LauncherRecentsState.setActiveTaskLaunchHandoff(recentsView, state);
         LauncherRecentsLayoutEngine.applyStackLayout(
                 recentsView,
                 false,
@@ -1065,7 +1063,7 @@ final class LauncherRecentsLaunchController {
                         == animation) {
                     LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFF_ANIMATORS.remove(recentsView);
                 }
-                if (LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFFS.get(recentsView) != state) {
+                if (LauncherRecentsState.getActiveTaskLaunchHandoff(recentsView) != state) {
                     return;
                 }
                 if (cancelled) {
@@ -1073,7 +1071,7 @@ final class LauncherRecentsLaunchController {
                     return;
                 }
                 completeTaskLaunchHandoff(recentsView, state);
-                LauncherRecentsState.TASK_LAUNCH_REQUEST_STARTED.put(recentsView, Boolean.TRUE);
+                LauncherRecentsState.setTaskLaunchRequestStarted(recentsView, true);
                 if (!launchTaskWithoutSystemAnimation(taskView, recentsView)) {
                     clearTaskLaunchHandoff(recentsView, true);
                 }
@@ -1104,14 +1102,14 @@ final class LauncherRecentsLaunchController {
             return;
         }
         LauncherRecentsState.LaunchHandoffState state =
-                LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFFS.get(recentsView);
+                LauncherRecentsState.getActiveTaskLaunchHandoff(recentsView);
         if (state == null) {
             state = new LauncherRecentsState.LaunchHandoffState(
                     taskView,
                     resolveTaskViewIndex(recentsView, taskView),
                     false,
                     false);
-            LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFFS.put(recentsView, state);
+            LauncherRecentsState.setActiveTaskLaunchHandoff(recentsView, state);
         }
         if (state.frozen) {
             return;
@@ -1153,8 +1151,8 @@ final class LauncherRecentsLaunchController {
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsState.TASK_LAUNCH_REQUEST_STARTED.remove(recentsView);
-        LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFFS.remove(recentsView);
+        LauncherRecentsState.setTaskLaunchRequestStarted(recentsView, false);
+        LauncherRecentsState.clearActiveTaskLaunchHandoff(recentsView);
         cancelTaskLaunchHandoff(recentsView, false);
         if (!restoreStack || !recentsView.isAttachedToWindow() || !recentsView.isShown()) {
             return;
@@ -1179,7 +1177,7 @@ final class LauncherRecentsLaunchController {
             animator.cancel();
         }
         if (restoreStack) {
-            LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFFS.remove(recentsView);
+            LauncherRecentsState.clearActiveTaskLaunchHandoff(recentsView);
         }
     }
 

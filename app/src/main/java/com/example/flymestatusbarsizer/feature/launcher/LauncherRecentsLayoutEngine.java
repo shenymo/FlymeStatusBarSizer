@@ -317,14 +317,11 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
             return;
         }
-        if (LauncherRecentsState.OVERVIEW_STATE_STACK_BASELINES_CAPTURED.containsKey(
-                recentsView)) {
+        if (LauncherRecentsState.isOverviewStateStackBaselineCaptured(recentsView)) {
             return;
         }
         LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
-        LauncherRecentsState.OVERVIEW_STATE_STACK_BASELINES_CAPTURED.put(
-                recentsView,
-                Boolean.TRUE);
+        LauncherRecentsState.setOverviewStateStackBaselineCaptured(recentsView, true);
     }
 
     static void captureBlankTapHomeExitTaskStates(View recentsView) {
@@ -725,7 +722,7 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         LauncherRecentsState.LaunchHandoffState launchState =
-                LauncherRecentsState.ACTIVE_TASK_LAUNCH_HANDOFFS.get(recentsView);
+                LauncherRecentsState.getActiveTaskLaunchHandoff(recentsView);
         if (launchState != null && launchState.frozen) {
             return;
         }
@@ -1450,8 +1447,7 @@ final class LauncherRecentsLayoutEngine {
         }
         if (LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                 recentsView)
-                && !LauncherRecentsState.OVERVIEW_STATE_STACK_BASELINES_CAPTURED.containsKey(
-                recentsView)) {
+                && !LauncherRecentsState.isOverviewStateStackBaselineCaptured(recentsView)) {
             captureStockTaskStatesForStackApply(recentsView);
         }
         applyStackLayout(recentsView, false, "applyDynamic", false);
@@ -1509,11 +1505,11 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static float resolveOverviewPeekToOverviewProgress(View recentsView) {
-        Float startValue = LauncherRecentsState.OVERVIEW_STATE_STACK_START_ADJACENT_OFFSETS.get(
-                recentsView);
-        float startAdjacentOffset = startValue != null
-                ? Math.max(0.001f, startValue)
-                : 0.53f;
+        float startAdjacentOffset = Math.max(
+                0.001f,
+                LauncherRecentsState.readOverviewStateStackStartAdjacentOffset(
+                        recentsView,
+                        0.53f));
         float currentAdjacentOffset = clamp(
                 LauncherRecentsCompat.readFloatField(
                         recentsView,

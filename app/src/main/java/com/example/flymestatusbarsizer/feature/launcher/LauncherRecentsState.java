@@ -10,7 +10,8 @@ import java.util.ArrayList;
 import java.util.WeakHashMap;
 
 final class LauncherRecentsState {
-    static final WeakHashMap<View, Boolean> TRACKED_RECENTS_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<View, RecentsViewState> RECENTS_VIEW_STATES =
+            new WeakHashMap<>();
     static final WeakHashMap<View, ValueAnimator> ACTIVE_HOME_EXIT_ANIMATORS =
             new WeakHashMap<>();
     static final WeakHashMap<View, ValueAnimator> ACTIVE_TASK_LAUNCH_HANDOFF_ANIMATORS =
@@ -31,24 +32,6 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, GestureReleaseTaskState> GESTURE_STACK_RELEASE_TASK_STATES =
             new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> GESTURE_STACK_RELEASED_STABLE =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> PENDING_GESTURE_RECENTS_STACK_RELEASES =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> PENDING_GESTURE_RECENTS_STACK_RELEASE_HANDOFFS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> APP_TO_RECENTS_GESTURE_RELEASED =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> DEFERRED_APP_TO_RECENTS_STACK_LAYOUTS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> ACTIVE_OVERVIEW_STATE_STACK_ANIMATIONS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> ACTIVE_OVERVIEW_PEEK_STOCK_ANIMATIONS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Float> OVERVIEW_STATE_STACK_START_ADJACENT_OFFSETS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> OVERVIEW_STATE_STACK_BASELINES_CAPTURED =
-            new WeakHashMap<>();
     static final WeakHashMap<View, Integer> STACK_LAYOUT_RECOVERY_RADII =
             new WeakHashMap<>();
     static final WeakHashMap<View, StackLayoutApplyState> LAST_STACK_LAYOUT_APPLIES =
@@ -57,13 +40,7 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Integer> LAST_STACK_TASK_LIST_VISIBILITY_CHANGES =
             new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> ACTIVE_APP_TO_RECENTS_ENTRY_SESSIONS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, LaunchHandoffState> ACTIVE_TASK_LAUNCH_HANDOFFS =
-            new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> BYPASS_TASK_CLICK_INTERCEPTION =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> TASK_LAUNCH_REQUEST_STARTED =
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> ORIGINAL_NON_GRID_SCALES = new WeakHashMap<>();
     static final WeakHashMap<View, Float> ORIGINAL_BOX_TRANSLATION_YS = new WeakHashMap<>();
@@ -116,6 +93,21 @@ final class LauncherRecentsState {
             new ThreadLocal<>();
 
     private static volatile Handler mainHandler;
+
+    static final class RecentsViewState {
+        boolean appToRecentsEntrySessionActive;
+        boolean appToRecentsStackLayoutDeferred;
+        boolean appToRecentsGestureReleased;
+        boolean gestureStackReleasedStable;
+        boolean pendingGestureRecentsStackRelease;
+        boolean pendingGestureRecentsStackReleaseHandoff;
+        boolean overviewStateStackAnimationActive;
+        boolean overviewPeekStockAnimationActive;
+        boolean overviewStateStackBaselineCaptured;
+        boolean taskLaunchRequestStarted;
+        Float overviewStateStackStartAdjacentOffset;
+        LaunchHandoffState activeTaskLaunchHandoff;
+    }
 
     static final class LaunchHandoffState {
         final View targetTaskView;
@@ -262,15 +254,32 @@ final class LauncherRecentsState {
     private LauncherRecentsState() {
     }
 
-    static void trackRecentsView(View recentsView) {
+    private static RecentsViewState recentsViewState(View recentsView, boolean create) {
         if (recentsView == null) {
-            return;
+            return null;
         }
-        TRACKED_RECENTS_VIEWS.put(recentsView, Boolean.TRUE);
+        RecentsViewState state = RECENTS_VIEW_STATES.get(recentsView);
+        if (state == null && create) {
+            state = new RecentsViewState();
+            RECENTS_VIEW_STATES.put(recentsView, state);
+        }
+        return state;
+    }
+
+    private static RecentsViewState ensureRecentsViewState(View recentsView) {
+        return recentsViewState(recentsView, true);
+    }
+
+    private static RecentsViewState findRecentsViewState(View recentsView) {
+        return recentsViewState(recentsView, false);
+    }
+
+    static void trackRecentsView(View recentsView) {
+        ensureRecentsViewState(recentsView);
     }
 
     static ArrayList<View> snapshotTrackedRecentsViews() {
-        return new ArrayList<>(TRACKED_RECENTS_VIEWS.keySet());
+        return new ArrayList<>(RECENTS_VIEW_STATES.keySet());
     }
 
     static boolean consumeTaskClickBypass(View taskView) {
@@ -279,84 +288,195 @@ final class LauncherRecentsState {
     }
 
     static boolean consumeTaskLaunchRequestStarted(View recentsView) {
-        Boolean value = TASK_LAUNCH_REQUEST_STARTED.remove(recentsView);
-        return value != null && value;
+        RecentsViewState state = findRecentsViewState(recentsView);
+        if (state == null || !state.taskLaunchRequestStarted) {
+            return false;
+        }
+        state.taskLaunchRequestStarted = false;
+        return true;
+    }
+
+    static void setTaskLaunchRequestStarted(View recentsView, boolean started) {
+        RecentsViewState state = started
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.taskLaunchRequestStarted = started;
+        }
     }
 
     static void setAppToRecentsEntrySessionActive(View recentsView, boolean active) {
-        if (recentsView == null) {
-            return;
-        }
-        if (active) {
-            ACTIVE_APP_TO_RECENTS_ENTRY_SESSIONS.put(recentsView, Boolean.TRUE);
-        } else {
-            ACTIVE_APP_TO_RECENTS_ENTRY_SESSIONS.remove(recentsView);
+        RecentsViewState state = active
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.appToRecentsEntrySessionActive = active;
         }
     }
 
     static boolean isAppToRecentsEntrySessionActive(View recentsView) {
-        Boolean value = recentsView != null
-                ? ACTIVE_APP_TO_RECENTS_ENTRY_SESSIONS.get(recentsView)
-                : null;
-        return value != null && value;
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.appToRecentsEntrySessionActive;
     }
 
     static void setAppToRecentsStackLayoutDeferred(View recentsView, boolean deferred) {
-        if (recentsView == null) {
-            return;
-        }
-        if (deferred) {
-            DEFERRED_APP_TO_RECENTS_STACK_LAYOUTS.put(recentsView, Boolean.TRUE);
-        } else {
-            DEFERRED_APP_TO_RECENTS_STACK_LAYOUTS.remove(recentsView);
+        RecentsViewState state = deferred
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.appToRecentsStackLayoutDeferred = deferred;
         }
     }
 
     static boolean isAppToRecentsStackLayoutDeferred(View recentsView) {
-        Boolean value = recentsView != null
-                ? DEFERRED_APP_TO_RECENTS_STACK_LAYOUTS.get(recentsView)
-                : null;
-        return value != null && value;
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.appToRecentsStackLayoutDeferred;
     }
 
     static void setAppToRecentsGestureReleased(View recentsView, boolean released) {
-        if (recentsView == null) {
-            return;
-        }
-        if (released) {
-            APP_TO_RECENTS_GESTURE_RELEASED.put(recentsView, Boolean.TRUE);
-        } else {
-            APP_TO_RECENTS_GESTURE_RELEASED.remove(recentsView);
+        RecentsViewState state = released
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.appToRecentsGestureReleased = released;
         }
     }
 
     static boolean isAppToRecentsGestureReleased(View recentsView) {
-        Boolean value = recentsView != null
-                ? APP_TO_RECENTS_GESTURE_RELEASED.get(recentsView)
-                : null;
-        return value != null && value;
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.appToRecentsGestureReleased;
     }
 
     static void setGestureStackReleasedStable(View recentsView, boolean stable) {
-        if (recentsView == null) {
-            return;
-        }
-        if (stable) {
-            GESTURE_STACK_RELEASED_STABLE.put(recentsView, Boolean.TRUE);
-        } else {
-            GESTURE_STACK_RELEASED_STABLE.remove(recentsView);
+        RecentsViewState state = stable
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.gestureStackReleasedStable = stable;
         }
     }
 
     static boolean isGestureStackReleasedStable(View recentsView) {
-        Boolean value = recentsView != null
-                ? GESTURE_STACK_RELEASED_STABLE.get(recentsView)
-                : null;
-        return value != null && value;
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.gestureStackReleasedStable;
+    }
+
+    static void setPendingGestureRecentsStackRelease(View recentsView, boolean active) {
+        RecentsViewState state = active
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.pendingGestureRecentsStackRelease = active;
+        }
+    }
+
+    static boolean isPendingGestureRecentsStackRelease(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.pendingGestureRecentsStackRelease;
+    }
+
+    static void setPendingGestureRecentsStackReleaseHandoff(View recentsView, boolean active) {
+        RecentsViewState state = active
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.pendingGestureRecentsStackReleaseHandoff = active;
+        }
+    }
+
+    static boolean isPendingGestureRecentsStackReleaseHandoff(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.pendingGestureRecentsStackReleaseHandoff;
+    }
+
+    static void setOverviewStateStackAnimationActive(View recentsView, boolean active) {
+        RecentsViewState state = active
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state == null) {
+            return;
+        }
+        state.overviewStateStackAnimationActive = active;
+        if (!active) {
+            state.overviewStateStackStartAdjacentOffset = null;
+            state.overviewStateStackBaselineCaptured = false;
+        }
+    }
+
+    static boolean isOverviewStateStackAnimationActive(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.overviewStateStackAnimationActive;
+    }
+
+    static void setOverviewPeekStockAnimationActive(View recentsView, boolean active) {
+        RecentsViewState state = active
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.overviewPeekStockAnimationActive = active;
+        }
+    }
+
+    static boolean isOverviewPeekStockAnimationActive(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.overviewPeekStockAnimationActive;
+    }
+
+    static void setOverviewStateStackStartAdjacentOffset(View recentsView, float value) {
+        RecentsViewState state = ensureRecentsViewState(recentsView);
+        if (state != null) {
+            state.overviewStateStackStartAdjacentOffset = value;
+        }
+    }
+
+    static float readOverviewStateStackStartAdjacentOffset(View recentsView, float fallback) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.overviewStateStackStartAdjacentOffset != null
+                ? state.overviewStateStackStartAdjacentOffset
+                : fallback;
+    }
+
+    static void setOverviewStateStackBaselineCaptured(View recentsView, boolean captured) {
+        RecentsViewState state = captured
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.overviewStateStackBaselineCaptured = captured;
+        }
+    }
+
+    static boolean isOverviewStateStackBaselineCaptured(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.overviewStateStackBaselineCaptured;
+    }
+
+    static LaunchHandoffState getActiveTaskLaunchHandoff(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null ? state.activeTaskLaunchHandoff : null;
+    }
+
+    static void setActiveTaskLaunchHandoff(View recentsView, LaunchHandoffState state) {
+        RecentsViewState recentsState = state != null
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (recentsState != null) {
+            recentsState.activeTaskLaunchHandoff = state;
+        }
+    }
+
+    static void clearActiveTaskLaunchHandoff(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        if (state != null) {
+            state.activeTaskLaunchHandoff = null;
+        }
+    }
+
+    static boolean hasActiveTaskLaunchHandoff(View recentsView) {
+        return getActiveTaskLaunchHandoff(recentsView) != null;
     }
 
     static boolean isTaskLaunchLayoutFrozen(View recentsView) {
-        LaunchHandoffState state = ACTIVE_TASK_LAUNCH_HANDOFFS.get(recentsView);
+        LaunchHandoffState state = getActiveTaskLaunchHandoff(recentsView);
         return state != null && state.frozen;
     }
 
