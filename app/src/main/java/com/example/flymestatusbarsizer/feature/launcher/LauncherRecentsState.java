@@ -100,6 +100,8 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> LAST_APPLIED_ACTIVITY_TITLE_ALPHAS =
             new WeakHashMap<>();
+    static final WeakHashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState>
+            LAST_APPLIED_STACK_TASK_VISUAL_STATES = new WeakHashMap<>();
     static final WeakHashMap<View, StackContentTargets> STACK_CONTENT_TARGETS =
             new WeakHashMap<>();
     static final WeakHashMap<View, StackIconBlurState> STACK_ICON_BLUR_STATES =

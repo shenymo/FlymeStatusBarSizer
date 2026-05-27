@@ -462,23 +462,27 @@ final class LauncherRecentsLayoutEngine {
             }
             float taskOffsetX =
                     desiredVisibleOffset - state.startRawOffset - state.startDismissTranslationX;
-            taskView.setPivotX(taskWidth * 0.5f);
-            taskView.setPivotY(taskHeight * 0.5f);
-            LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(taskView, 0f);
-            LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(taskView, taskOffsetX);
-            LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(
+            LauncherRecentsTaskVisuals.applyStackTaskVisualState(
                     taskView,
-                    state.startTaskOffsetY);
-            LauncherRecentsTaskVisuals.setBoxTranslationY(taskView, state.startBoxTranslationY);
-            LauncherRecentsTaskVisuals.setNonGridScale(taskView, desiredScale);
-            LauncherRecentsTaskVisuals.setAttachAlpha(taskView, state.startAttachAlpha);
-            LauncherRecentsTaskVisuals.setStableAlpha(taskView, desiredStableAlpha);
-            LauncherRecentsTaskVisuals.setActivityTitleAlpha(
-                    taskView,
-                    state.startActivityTitleAlpha * resolveBlankTapExitAlpha(clampedProgress));
-            LauncherRecentsTaskVisuals.setStackContentBlurProgress(
-                    taskView,
-                    state.startStackContentBlurProgress);
+                    new LauncherRecentsTaskVisuals.StackTaskVisualState(
+                            taskWidth * 0.5f,
+                            taskHeight * 0.5f,
+                            0f,
+                            taskOffsetX,
+                            state.startTaskOffsetY,
+                            state.startBoxTranslationY,
+                            desiredScale,
+                            state.startAttachAlpha,
+                            desiredStableAlpha,
+                            state.startActivityTitleAlpha * resolveBlankTapExitAlpha(
+                                    clampedProgress),
+                            state.startStackContentBlurProgress,
+                            LauncherRecentsCompat.readFloatField(
+                                    taskView,
+                                    "fullscreenProgress",
+                                    0f),
+                            taskView.getTranslationZ(),
+                            false));
         }
     }
 
@@ -641,7 +645,8 @@ final class LauncherRecentsLayoutEngine {
         if (lastState != null
                 && lastState.key == key
                 && nowNs - lastState.timeNs <= STACK_LAYOUT_DUPLICATE_WINDOW_NS
-                && (!syncVisibleTaskData || lastState.syncedVisibleTaskData)) {
+                && (!syncVisibleTaskData || lastState.syncedVisibleTaskData)
+                && !LauncherRecentsTaskVisuals.hasAppliedTaskScaleMismatch(recentsView)) {
             return true;
         }
         LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.put(

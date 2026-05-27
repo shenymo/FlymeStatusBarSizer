@@ -15,6 +15,7 @@ import java.util.List;
 final class LauncherRecentsTaskVisuals {
     private static final float MODULE_APPLIED_EPSILON = 0.01f;
     private static final int STACK_CONTENT_MAX_BLUR_DP = 18;
+    private static final float STACK_CONTENT_BLUR_STEP_PX = 0.5f;
     private static final String ACTIVITY_TITLE_FIELD = "mActivityTitle";
     private static final ViewOutlineProvider STACK_TASK_NO_SHADOW_OUTLINE_PROVIDER =
             new ViewOutlineProvider() {
@@ -73,10 +74,35 @@ final class LauncherRecentsTaskVisuals {
             this.translationZ = translationZ;
             this.clearShadow = clearShadow;
         }
+
+        boolean approximatelyEquals(StackTaskVisualState other) {
+            return other != null
+                    && approximatelyEqual(pivotX, other.pivotX)
+                    && approximatelyEqual(pivotY, other.pivotY)
+                    && approximatelyEqual(horizontalOffsetX, other.horizontalOffsetX)
+                    && approximatelyEqual(taskOffsetX, other.taskOffsetX)
+                    && approximatelyEqual(taskOffsetY, other.taskOffsetY)
+                    && approximatelyEqual(boxTranslationY, other.boxTranslationY)
+                    && approximatelyEqual(scale, other.scale)
+                    && approximatelyEqual(attachAlpha, other.attachAlpha)
+                    && approximatelyEqual(stableAlpha, other.stableAlpha)
+                    && approximatelyEqual(activityTitleAlpha, other.activityTitleAlpha)
+                    && approximatelyEqual(blurProgress, other.blurProgress)
+                    && approximatelyEqual(fullscreenProgress, other.fullscreenProgress)
+                    && approximatelyEqual(translationZ, other.translationZ)
+                    && clearShadow == other.clearShadow;
+        }
     }
 
     static void applyStackTaskVisualState(View taskView, StackTaskVisualState state) {
         if (taskView == null || state == null) {
+            return;
+        }
+        StackTaskVisualState lastState =
+                LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.get(taskView);
+        if (lastState != null
+                && lastState.approximatelyEquals(state)
+                && isCurrentStackTaskVisualStateApplied(taskView, state)) {
             return;
         }
         if (!approximatelyEqual(taskView.getPivotX(), state.pivotX)) {
@@ -99,6 +125,56 @@ final class LauncherRecentsTaskVisuals {
             clearStackShadow(taskView);
         }
         setTranslationZ(taskView, state.translationZ);
+        LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.put(taskView, state);
+    }
+
+    private static boolean isCurrentStackTaskVisualStateApplied(
+            View taskView,
+            StackTaskVisualState state) {
+        return approximatelyEqual(taskView.getPivotX(), state.pivotX)
+                && approximatelyEqual(taskView.getPivotY(), state.pivotY)
+                && approximatelyEqual(
+                LauncherRecentsCompat.readFloatField(
+                        taskView,
+                        "horizontalOffsetTranslationX",
+                        0f),
+                state.horizontalOffsetX)
+                && approximatelyEqual(
+                LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationX", 0f),
+                state.taskOffsetX)
+                && approximatelyEqual(
+                LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationY", 0f),
+                state.taskOffsetY)
+                && approximatelyEqual(
+                LauncherRecentsCompat.readFloatField(
+                        taskView,
+                        "boxTranslationY",
+                        readOriginalBoxTranslationY(taskView)),
+                state.boxTranslationY)
+                && approximatelyEqual(
+                LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f),
+                state.scale)
+                && isTaskViewScaleApplied(taskView, state.scale)
+                && approximatelyEqual(readAttachAlpha(taskView), state.attachAlpha)
+                && approximatelyEqual(readStableAlpha(taskView), state.stableAlpha)
+                && approximatelyEqual(readActivityTitleAlpha(taskView), state.activityTitleAlpha)
+                && approximatelyEqual(
+                LauncherRecentsCompat.readFloatField(taskView, "fullscreenProgress", 0f),
+                state.fullscreenProgress)
+                && approximatelyEqual(taskView.getTranslationZ(), state.translationZ)
+                && (!state.clearShadow || isStackShadowCleared(taskView));
+    }
+
+    private static boolean isStackShadowCleared(View taskView) {
+        return taskView != null
+                && taskView.getOutlineProvider() == STACK_TASK_NO_SHADOW_OUTLINE_PROVIDER
+                && approximatelyEqual(taskView.getElevation(), 0f);
+    }
+
+    private static void markStackTaskVisualStateDirty(View taskView) {
+        if (taskView != null) {
+            LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.remove(taskView);
+        }
     }
 
     static void captureStockTaskStates(View recentsView) {
@@ -170,14 +246,19 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setHorizontalOffsetTranslationX(View taskView, float value) {
-        if (taskView != null
-                && shouldSkipAppliedFloat(
-                        LauncherRecentsState.LAST_APPLIED_HORIZONTAL_OFFSET_XS.get(taskView),
-                        value,
-                        LauncherRecentsCompat.readFloatField(
-                                taskView,
-                                "horizontalOffsetTranslationX",
-                                0f))) {
+        if (taskView == null) {
+            return;
+        }
+        markStackTaskVisualStateDirty(taskView);
+        Float lastAppliedValue =
+                LauncherRecentsState.LAST_APPLIED_HORIZONTAL_OFFSET_XS.get(taskView);
+        if (shouldSkipAppliedFloat(lastAppliedValue, value)
+                && Float.compare(
+                LauncherRecentsCompat.readFloatField(
+                        taskView,
+                        "horizontalOffsetTranslationX",
+                        0f),
+                value) == 0) {
             return;
         }
         LauncherRecentsCompat.invokeCompat(
@@ -189,11 +270,15 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setTaskOffsetTranslationX(View taskView, float value) {
-        if (taskView != null
-                && shouldSkipAppliedFloat(
-                        LauncherRecentsState.LAST_APPLIED_TASK_OFFSET_XS.get(taskView),
-                        value,
-                        LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationX", 0f))) {
+        if (taskView == null) {
+            return;
+        }
+        markStackTaskVisualStateDirty(taskView);
+        Float lastAppliedValue = LauncherRecentsState.LAST_APPLIED_TASK_OFFSET_XS.get(taskView);
+        if (shouldSkipAppliedFloat(lastAppliedValue, value)
+                && Float.compare(
+                LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationX", 0f),
+                value) == 0) {
             return;
         }
         LauncherRecentsCompat.invokeCompat(
@@ -205,11 +290,15 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setTaskOffsetTranslationY(View taskView, float value) {
-        if (taskView != null
-                && shouldSkipAppliedFloat(
-                        LauncherRecentsState.LAST_APPLIED_TASK_OFFSET_YS.get(taskView),
-                        value,
-                        LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationY", 0f))) {
+        if (taskView == null) {
+            return;
+        }
+        markStackTaskVisualStateDirty(taskView);
+        Float lastAppliedValue = LauncherRecentsState.LAST_APPLIED_TASK_OFFSET_YS.get(taskView);
+        if (shouldSkipAppliedFloat(lastAppliedValue, value)
+                && Float.compare(
+                LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationY", 0f),
+                value) == 0) {
             return;
         }
         LauncherRecentsCompat.invokeCompat(
@@ -221,11 +310,16 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setNonGridScale(View taskView, float value) {
-        if (taskView != null
-                && shouldSkipAppliedFloat(
-                        LauncherRecentsState.LAST_APPLIED_NON_GRID_SCALES.get(taskView),
-                        value,
-                        LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f))) {
+        if (taskView == null) {
+            return;
+        }
+        markStackTaskVisualStateDirty(taskView);
+        Float lastAppliedValue = LauncherRecentsState.LAST_APPLIED_NON_GRID_SCALES.get(taskView);
+        if (shouldSkipAppliedFloat(lastAppliedValue, value)
+                && Float.compare(
+                LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f),
+                value) == 0
+                && isTaskViewScaleApplied(taskView, value)) {
             return;
         }
         LauncherRecentsCompat.invokeCompat(
@@ -237,14 +331,19 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setBoxTranslationY(View taskView, float value) {
-        if (taskView != null
-                && shouldSkipAppliedFloat(
-                        LauncherRecentsState.LAST_APPLIED_BOX_TRANSLATION_YS.get(taskView),
-                        value,
-                        LauncherRecentsCompat.readFloatField(
-                                taskView,
-                                "boxTranslationY",
-                                readOriginalBoxTranslationY(taskView)))) {
+        if (taskView == null) {
+            return;
+        }
+        markStackTaskVisualStateDirty(taskView);
+        Float lastAppliedValue =
+                LauncherRecentsState.LAST_APPLIED_BOX_TRANSLATION_YS.get(taskView);
+        if (shouldSkipAppliedFloat(lastAppliedValue, value)
+                && Float.compare(
+                LauncherRecentsCompat.readFloatField(
+                        taskView,
+                        "boxTranslationY",
+                        readOriginalBoxTranslationY(taskView)),
+                value) == 0) {
             return;
         }
         LauncherRecentsCompat.invokeCompat(
@@ -256,12 +355,14 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setAttachAlpha(View taskView, float value) {
+        if (taskView == null) {
+            return;
+        }
+        markStackTaskVisualStateDirty(taskView);
         float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
-        if (taskView != null
-                && shouldSkipAppliedFloat(
-                        LauncherRecentsState.LAST_APPLIED_ATTACH_ALPHAS.get(taskView),
-                        clampedValue,
-                        readAttachAlpha(taskView))) {
+        Float lastAppliedValue = LauncherRecentsState.LAST_APPLIED_ATTACH_ALPHAS.get(taskView);
+        if (shouldSkipAppliedFloat(lastAppliedValue, clampedValue)
+                && Float.compare(readAttachAlpha(taskView), clampedValue) == 0) {
             return;
         }
         LauncherRecentsCompat.invokeCompat(
@@ -273,12 +374,14 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setStableAlpha(View taskView, float value) {
+        if (taskView == null) {
+            return;
+        }
+        markStackTaskVisualStateDirty(taskView);
         float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
-        if (taskView != null
-                && shouldSkipAppliedFloat(
-                        LauncherRecentsState.LAST_APPLIED_STABLE_ALPHAS.get(taskView),
-                        clampedValue,
-                        readStableAlpha(taskView))) {
+        Float lastAppliedValue = LauncherRecentsState.LAST_APPLIED_STABLE_ALPHAS.get(taskView);
+        if (shouldSkipAppliedFloat(lastAppliedValue, clampedValue)
+                && Float.compare(readStableAlpha(taskView), clampedValue) == 0) {
             return;
         }
         LauncherRecentsCompat.invokeCompat(
@@ -290,12 +393,15 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void setActivityTitleAlpha(View taskView, float value) {
+        if (taskView == null) {
+            return;
+        }
+        markStackTaskVisualStateDirty(taskView);
         float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
-        if (taskView != null
-                && shouldSkipAppliedFloat(
-                        LauncherRecentsState.LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.get(taskView),
-                        clampedValue,
-                        readActivityTitleAlpha(taskView))) {
+        Float lastAppliedValue =
+                LauncherRecentsState.LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.get(taskView);
+        if (shouldSkipAppliedFloat(lastAppliedValue, clampedValue)
+                && Float.compare(readActivityTitleAlpha(taskView), clampedValue) == 0) {
             return;
         }
         View titleView = resolveActivityTitleView(taskView);
@@ -309,6 +415,7 @@ final class LauncherRecentsTaskVisuals {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || taskView == null) {
             return;
         }
+        markStackTaskVisualStateDirty(taskView);
         float blurPx = FlymeStatusBarSizer.dp(
                 taskView.getContext(),
                 STACK_CONTENT_MAX_BLUR_DP) * LauncherRecentsLayoutEngine.clamp(
@@ -352,16 +459,30 @@ final class LauncherRecentsTaskVisuals {
         setStackContentBlurProgress(taskView, 0f);
     }
 
+    static boolean hasAppliedTaskScaleMismatch(View recentsView) {
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            Float appliedScale = LauncherRecentsState.LAST_APPLIED_NON_GRID_SCALES.get(taskView);
+            if (appliedScale != null && !isTaskViewScaleApplied(taskView, appliedScale)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     static void setFullscreenProgress(View taskView, float value) {
+        if (taskView == null) {
+            return;
+        }
+        markStackTaskVisualStateDirty(taskView);
         float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
-        if (taskView != null
-                && shouldSkipAppliedFloat(
-                        LauncherRecentsState.LAST_APPLIED_FULLSCREEN_PROGRESSES.get(taskView),
-                        clampedValue,
-                        LauncherRecentsCompat.readFloatField(
-                                taskView,
-                                "fullscreenProgress",
-                                0f))) {
+        Float lastAppliedValue =
+                LauncherRecentsState.LAST_APPLIED_FULLSCREEN_PROGRESSES.get(taskView);
+        if (shouldSkipAppliedFloat(lastAppliedValue, clampedValue)
+                && Float.compare(
+                LauncherRecentsCompat.readFloatField(taskView, "fullscreenProgress", 0f),
+                clampedValue) == 0) {
             return;
         }
         LauncherRecentsCompat.invokeCompat(
@@ -376,6 +497,7 @@ final class LauncherRecentsTaskVisuals {
         if (taskView == null) {
             return;
         }
+        markStackTaskVisualStateDirty(taskView);
         Float lastAppliedTranslationZ =
                 LauncherRecentsState.LAST_APPLIED_TRANSLATION_ZS.get(taskView);
         if (lastAppliedTranslationZ != null
@@ -391,6 +513,7 @@ final class LauncherRecentsTaskVisuals {
         if (taskView == null) {
             return;
         }
+        markStackTaskVisualStateDirty(taskView);
         Float lastAppliedElevation =
                 LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.get(taskView);
         if (lastAppliedElevation != null
@@ -520,6 +643,7 @@ final class LauncherRecentsTaskVisuals {
         if (taskView == null) {
             return;
         }
+        LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_TASK_OFFSET_XS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_TASK_OFFSET_YS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_HORIZONTAL_OFFSET_XS.remove(taskView);
@@ -578,7 +702,7 @@ final class LauncherRecentsTaskVisuals {
         if (view == null) {
             return;
         }
-        float appliedBlurPx = blurPx > MODULE_APPLIED_EPSILON ? blurPx : 0f;
+        float appliedBlurPx = quantizeStackContentBlurPx(blurPx);
         Float lastAppliedBlurPx = LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.get(view);
         if (lastAppliedBlurPx != null
                 && Math.abs(lastAppliedBlurPx - appliedBlurPx) < MODULE_APPLIED_EPSILON) {
@@ -593,6 +717,13 @@ final class LauncherRecentsTaskVisuals {
                     Shader.TileMode.CLAMP));
         }
         LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.put(view, appliedBlurPx);
+    }
+
+    private static float quantizeStackContentBlurPx(float blurPx) {
+        if (blurPx <= MODULE_APPLIED_EPSILON) {
+            return 0f;
+        }
+        return Math.round(blurPx / STACK_CONTENT_BLUR_STEP_PX) * STACK_CONTENT_BLUR_STEP_PX;
     }
 
     private static float readAppliedStackContentBlurPx(View view) {
@@ -699,6 +830,7 @@ final class LauncherRecentsTaskVisuals {
         if (taskView == null) {
             return;
         }
+        markStackTaskVisualStateDirty(taskView);
         if (!LauncherRecentsState.ORIGINAL_TASK_ELEVATIONS.containsKey(taskView)) {
             return;
         }
@@ -751,6 +883,7 @@ final class LauncherRecentsTaskVisuals {
                 && approximatelyEqual(
                 LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f),
                 appliedNonGridScale)
+                && isTaskViewScaleApplied(taskView, appliedNonGridScale)
                 && approximatelyEqual(
                 LauncherRecentsCompat.readFloatField(
                         taskView,
@@ -769,13 +902,28 @@ final class LauncherRecentsTaskVisuals {
         return Math.abs(a - b) <= MODULE_APPLIED_EPSILON;
     }
 
-    private static boolean shouldSkipAppliedFloat(
-            Float lastAppliedValue,
-            float value,
-            float currentValue) {
+    private static boolean shouldSkipAppliedFloat(Float lastAppliedValue, float value) {
         return lastAppliedValue != null
-                && Float.compare(lastAppliedValue, value) == 0
-                && Float.compare(currentValue, value) == 0;
+                && Float.compare(lastAppliedValue, value) == 0;
+    }
+
+    private static boolean isTaskViewScaleApplied(View taskView, float nonGridScale) {
+        if (taskView == null) {
+            return false;
+        }
+        float expectedScale = resolveExpectedTaskViewScale(taskView, nonGridScale);
+        return approximatelyEqual(taskView.getScaleX(), expectedScale)
+                && approximatelyEqual(taskView.getScaleY(), expectedScale);
+    }
+
+    private static float resolveExpectedTaskViewScale(View taskView, float nonGridScale) {
+        float gridProgress = LauncherRecentsCompat.readFloatField(taskView, "gridProgress", 0f);
+        float dismissScale = LauncherRecentsCompat.readFloatField(taskView, "dismissScale", 1f);
+        float modalness = LauncherRecentsCompat.readFloatField(taskView, "modalness", 0f);
+        float modalScale = LauncherRecentsCompat.readFloatField(taskView, "modalScale", 1f);
+        float persistentScale = nonGridScale + ((1f - nonGridScale) * gridProgress);
+        float modalMappedScale = 1f + ((modalScale - 1f) * modalness);
+        return persistentScale * dismissScale * modalMappedScale;
     }
 
     static void resetTaskTouchScale(View taskView) {
