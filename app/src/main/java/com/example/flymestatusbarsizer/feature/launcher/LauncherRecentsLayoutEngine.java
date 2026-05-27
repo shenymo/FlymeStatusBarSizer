@@ -161,7 +161,7 @@ final class LauncherRecentsLayoutEngine {
                     View recentsView = (View) thisObject;
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    if (shouldApplyDynamicStackLayout(recentsView)) {
+                    if (shouldApplyDynamicStackLayoutOnSystemFrame(recentsView)) {
                         LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
                         applyStackLayout(recentsView, false);
                     }
@@ -655,9 +655,15 @@ final class LauncherRecentsLayoutEngine {
         boolean gestureStackReleaseActive =
                 LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                         recentsView);
+        boolean overviewStateStackAnimationActive =
+                LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                        recentsView);
         float gestureStackReleaseProgress =
                 LauncherRecentsTransitionController.readGestureRecentsStackReleaseProgress(
                         recentsView);
+        float overviewStateStackHandoffProgress = overviewStateStackAnimationActive
+                ? smoothStep(resolveOverviewPeekToOverviewProgress(recentsView))
+                : 1f;
         float stackReleaseProgress = gestureStackReleaseActive
                 ? clamp(gestureStackReleaseProgress, 0f, 1f)
                 : 1f;
@@ -923,6 +929,45 @@ final class LauncherRecentsLayoutEngine {
                         stackReleaseProgress);
                 appliedBlurProgress = lerp(0f, appliedBlurProgress, stackReleaseProgress);
             }
+            if (overviewStateStackAnimationActive) {
+                appliedHorizontalOffsetX = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView),
+                        appliedHorizontalOffsetX,
+                        overviewStateStackHandoffProgress);
+                appliedTaskOffsetX = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockTaskOffsetX(taskView),
+                        appliedTaskOffsetX,
+                        overviewStateStackHandoffProgress);
+                appliedTaskOffsetY = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockTaskOffsetY(taskView),
+                        appliedTaskOffsetY,
+                        overviewStateStackHandoffProgress);
+                appliedBoxTranslationY = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockBoxTranslationY(taskView),
+                        appliedBoxTranslationY,
+                        overviewStateStackHandoffProgress);
+                appliedScale = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockNonGridScale(taskView),
+                        appliedScale,
+                        overviewStateStackHandoffProgress);
+                appliedFullscreenProgress = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView),
+                        appliedFullscreenProgress,
+                        overviewStateStackHandoffProgress);
+                appliedTranslationZ = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView),
+                        appliedTranslationZ,
+                        overviewStateStackHandoffProgress);
+                appliedAttachAlpha = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockAttachAlpha(taskView),
+                        appliedAttachAlpha,
+                        overviewStateStackHandoffProgress);
+                appliedStableAlpha = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView),
+                        appliedStableAlpha,
+                        overviewStateStackHandoffProgress);
+                appliedBlurProgress = lerp(0f, appliedBlurProgress, overviewStateStackHandoffProgress);
+            }
             LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(
                     taskView,
                     appliedHorizontalOffsetX);
@@ -1068,7 +1113,11 @@ final class LauncherRecentsLayoutEngine {
             View recentsView) {
         return "updatePageOffsetsForFlyme".equals(methodName)
                 && shouldUseStackLayout(recentsView)
-                && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView);
+                && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                && !LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
+                recentsView)
+                && !LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView);
     }
 
     private static boolean shouldSuppressStockPageScaleUpdate(
@@ -1081,8 +1130,6 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView)
                 || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(
-                recentsView)
-                || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                 recentsView));
     }
 
@@ -1208,6 +1255,10 @@ final class LauncherRecentsLayoutEngine {
     static boolean shouldApplyDynamicStackLayout(View recentsView) {
         return shouldUseStackLayout(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
+                && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
+                recentsView)
+                || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView))
                 && (!LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(
                 recentsView)
                 || LauncherRecentsTouchController.shouldBypassStackDismissLayoutFreeze())
@@ -1216,14 +1267,29 @@ final class LauncherRecentsLayoutEngine {
                 recentsView));
     }
 
+    private static boolean shouldApplyDynamicStackLayoutOnSystemFrame(View recentsView) {
+        if (!shouldApplyDynamicStackLayout(recentsView)) {
+            return false;
+        }
+        if (!LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView)) {
+            return true;
+        }
+        return true;
+    }
+
     static boolean applyDynamicStackLayoutIfNeeded(View recentsView) {
         if (recentsView == null) {
             return false;
         }
         LauncherRecentsState.trackRecentsView(recentsView);
         prepareRecentsView(recentsView);
-        if (!shouldApplyDynamicStackLayout(recentsView)) {
+        if (!shouldApplyDynamicStackLayoutOnSystemFrame(recentsView)) {
             return false;
+        }
+        if (LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView)) {
+            LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
         }
         applyStackLayout(recentsView, false);
         return true;
@@ -1277,6 +1343,22 @@ final class LauncherRecentsLayoutEngine {
                 1f);
         float collapsedProgress = Math.max(adjacentOffset, fullscreenProgress);
         return clamp((1.0f - collapsedProgress) * contentAlpha, 0f, 1f);
+    }
+
+    private static float resolveOverviewPeekToOverviewProgress(View recentsView) {
+        Float startValue = LauncherRecentsState.OVERVIEW_STATE_STACK_START_ADJACENT_OFFSETS.get(
+                recentsView);
+        float startAdjacentOffset = startValue != null
+                ? Math.max(0.001f, startValue)
+                : 0.53f;
+        float currentAdjacentOffset = clamp(
+                LauncherRecentsCompat.readFloatField(
+                        recentsView,
+                        "mAdjacentPageHorizontalOffset",
+                        startAdjacentOffset),
+                0f,
+                1f);
+        return clamp((startAdjacentOffset - currentAdjacentOffset) / startAdjacentOffset, 0f, 1f);
     }
 
     static float resolveStockStackVerticalProgress(View recentsView) {

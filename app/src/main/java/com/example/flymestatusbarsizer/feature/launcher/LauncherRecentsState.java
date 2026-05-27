@@ -35,11 +35,17 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> PENDING_GESTURE_RECENTS_STACK_RELEASES =
             new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> PENDING_GESTURE_RECENTS_STACK_RELEASE_HANDOFFS =
+            new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> APP_TO_RECENTS_GESTURE_RELEASED =
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> DEFERRED_APP_TO_RECENTS_STACK_LAYOUTS =
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> ACTIVE_OVERVIEW_STATE_STACK_ANIMATIONS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> ACTIVE_OVERVIEW_PEEK_STOCK_ANIMATIONS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Float> OVERVIEW_STATE_STACK_START_ADJACENT_OFFSETS =
             new WeakHashMap<>();
     static final WeakHashMap<View, Integer> STACK_LAYOUT_RECOVERY_RADII =
             new WeakHashMap<>();

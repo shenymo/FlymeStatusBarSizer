@@ -58,6 +58,8 @@ final class LauncherRecentsStateAnimationController {
                         shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
                 if (shouldTakeOver) {
                     beginOverviewStateStackAnimation(recentsView, pendingAnimation);
+                } else {
+                    updateOverviewPeekStockAnimation(recentsView, toState, loader);
                 }
                 Object result = chain.proceed();
                 if (shouldAttachBlankTapHomeExitToSystemAnimation(recentsView, toState, loader)) {
@@ -99,7 +101,8 @@ final class LauncherRecentsStateAnimationController {
                         shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
                 if (shouldTakeOver) {
                     beginOverviewStateStackAnimation(recentsView, null);
-                    finishRunningTaskReleaseToStackIfReady(recentsView);
+                } else {
+                    updateOverviewPeekStockAnimation(recentsView, toState, loader);
                 }
                 Object result = chain.proceed();
                 if (shouldTakeOver) {
@@ -130,10 +133,11 @@ final class LauncherRecentsStateAnimationController {
                         shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
                 if (shouldTakeOver) {
                     beginOverviewStateStackAnimation(recentsView, null);
+                } else {
+                    updateOverviewPeekStockAnimation(recentsView, toState, loader);
                 }
                 Object result = chain.proceed();
                 if (shouldTakeOver) {
-                    finishRunningTaskReleaseToStackIfReady(recentsView);
                     LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                     clearOverviewStateStackAnimation(recentsView);
                 }
@@ -233,6 +237,13 @@ final class LauncherRecentsStateAnimationController {
             return;
         }
         LauncherRecentsLayoutEngine.cancelStackLayoutRecovery(recentsView);
+        markOverviewPeekStockAnimation(recentsView, false);
+        LauncherRecentsState.OVERVIEW_STATE_STACK_START_ADJACENT_OFFSETS.put(
+                recentsView,
+                LauncherRecentsCompat.readFloatField(
+                        recentsView,
+                        "mAdjacentPageHorizontalOffset",
+                        0.53f));
         markOverviewStateStackAnimation(recentsView, true);
         attachOverviewStateAnimationCallbacks(recentsView, pendingAnimation);
         if (pendingAnimation == null) {
@@ -302,6 +313,47 @@ final class LauncherRecentsStateAnimationController {
         return value != null && value;
     }
 
+    static boolean isOverviewPeekStockAnimationActive(View recentsView) {
+        Boolean value = LauncherRecentsState.ACTIVE_OVERVIEW_PEEK_STOCK_ANIMATIONS.get(recentsView);
+        return value != null && value;
+    }
+
+    static boolean shouldKeepOverviewPeekStockLayout(View recentsView) {
+        if (recentsView == null) {
+            return false;
+        }
+        if (isOverviewPeekStockAnimationActive(recentsView)) {
+            return true;
+        }
+        Object container = LauncherRecentsCompat.getFieldCompat(recentsView, "mContainer");
+        Object stateManager = LauncherRecentsCompat.invokeCompat(container, "getStateManager");
+        return isOverviewPeekStateObject(LauncherRecentsCompat.invokeCompat(stateManager, "getState"))
+                || isOverviewPeekStateObject(
+                LauncherRecentsCompat.invokeCompat(stateManager, "getCurrentStableState"))
+                || isOverviewPeekStateObject(
+                LauncherRecentsCompat.invokeCompat(stateManager, "getTargetState"));
+    }
+
+    private static void updateOverviewPeekStockAnimation(
+            View recentsView,
+            Object toState,
+            ClassLoader loader) {
+        if (recentsView == null || toState == null) {
+            return;
+        }
+        Object overviewPeekState = LauncherRecentsCompat.readStaticFieldCompat(
+                FLYME_LAUNCHER_STATE_CLASS,
+                "OVERVIEW_PEEK",
+                loader);
+        Object overviewState =
+                LauncherRecentsCompat.readStaticFieldCompat(LAUNCHER_STATE_CLASS, "OVERVIEW", loader);
+        if (toState == overviewPeekState) {
+            markOverviewPeekStockAnimation(recentsView, true);
+        } else if (toState != overviewState) {
+            markOverviewPeekStockAnimation(recentsView, false);
+        }
+    }
+
     private static void markOverviewStateStackAnimation(View recentsView, boolean active) {
         if (recentsView == null) {
             return;
@@ -312,19 +364,30 @@ final class LauncherRecentsStateAnimationController {
                     Boolean.TRUE);
         } else {
             LauncherRecentsState.ACTIVE_OVERVIEW_STATE_STACK_ANIMATIONS.remove(recentsView);
+            LauncherRecentsState.OVERVIEW_STATE_STACK_START_ADJACENT_OFFSETS.remove(recentsView);
         }
+    }
+
+    private static void markOverviewPeekStockAnimation(View recentsView, boolean active) {
+        if (recentsView == null) {
+            return;
+        }
+        if (active) {
+            LauncherRecentsState.ACTIVE_OVERVIEW_PEEK_STOCK_ANIMATIONS.put(
+                    recentsView,
+                    Boolean.TRUE);
+        } else {
+            LauncherRecentsState.ACTIVE_OVERVIEW_PEEK_STOCK_ANIMATIONS.remove(recentsView);
+        }
+    }
+
+    private static boolean isOverviewPeekStateObject(Object value) {
+        return value != null && value.getClass().getName().endsWith("OverviewPeekState");
     }
 
     private static void clearOverviewStateStackAnimation(View recentsView) {
         markOverviewStateStackAnimation(recentsView, false);
         LauncherRecentsLayoutEngine.startStackLayoutRecovery(recentsView);
         LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
-    }
-
-    private static void finishRunningTaskReleaseToStackIfReady(View recentsView) {
-        if (!LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
-                && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)) {
-            LauncherRecentsTransitionController.finishRunningTaskReleaseToStack(recentsView);
-        }
     }
 }

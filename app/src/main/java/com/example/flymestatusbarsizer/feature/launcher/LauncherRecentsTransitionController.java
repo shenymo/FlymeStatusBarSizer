@@ -24,6 +24,7 @@ final class LauncherRecentsTransitionController {
     private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 460L;
     private static final long GESTURE_STACK_RELEASE_DURATION_MS = 320L;
     private static final int APP_TO_RECENTS_STACK_ANCHOR_PAGE = 0;
+    private static final float GESTURE_STACK_RELEASE_HANDOFF_START_PROGRESS = 0.42f;
     private static final float BLANK_TAP_HOME_EXIT_VIEW_FADE_START_PROGRESS = 0.78f;
     private static final long BLANK_TAP_HOME_EXIT_HOME_REVEAL_MS = 180L;
     private static final int BLANK_TAP_HOME_EXIT_REVEAL_SCRIM_ALPHA = 150;
@@ -211,6 +212,9 @@ final class LauncherRecentsTransitionController {
                             isGestureRecentsStackReleaseAnimationActive(recentsView);
                     boolean releaseAnimationFinished =
                             LauncherRecentsState.isGestureStackReleasedStable(recentsView);
+                    if (isGestureRecentsStackReleaseHandoffPending(recentsView)) {
+                        return result;
+                    }
                     if (LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                             && !gestureReleased
                             && !releaseAnimationActive
@@ -532,6 +536,7 @@ final class LauncherRecentsTransitionController {
         if (animator != null) {
             animator.cancel();
         }
+        markGestureRecentsStackReleaseHandoffPending(recentsView, false);
         if (clearProgress) {
             LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
             clearGestureRecentsStackReleaseProgress(recentsView);
@@ -588,64 +593,59 @@ final class LauncherRecentsTransitionController {
         if (runningAnimator != null) {
             return;
         }
-        if (ensureRunningTaskScreenshot) {
-            prepareRunningTaskScreenshotForStackRelease(recentsView);
-        } else {
-            LauncherRecentsCompat.invokeCompat(
-                    recentsView,
-                    "setEnableDrawingLiveTile",
-                    LauncherRecentsCompat.BOOLEAN_ARG,
-                    false);
-        }
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "setRunningTaskHidden",
-                LauncherRecentsCompat.BOOLEAN_ARG,
-                false);
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "forceFinishScroller",
-                LauncherRecentsCompat.NO_ARGS);
         final float releaseStartTranslationX = recentsView.getTranslationX();
         final float releaseStartTranslationY = recentsView.getTranslationY();
         final int stackAnchorPage = resolveAppToRecentsStackAnchorPage(recentsView);
-        final int stackAnchorStartScroll = resolvePrimaryScroll(recentsView);
         final int stackAnchorTargetScroll = resolveScrollForPage(
                 recentsView,
                 stackAnchorPage,
-                stackAnchorStartScroll);
-        LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
-        LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
-        LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
-        LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
-        LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
-        LauncherRecentsLayoutEngine.captureGestureStackReleaseTaskStates(
-                recentsView,
-                stackAnchorStartScroll,
-                stackAnchorTargetScroll);
-        setGestureRecentsStackReleaseProgress(recentsView, 0f);
-        LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
-        recentsView.invalidate();
+                resolvePrimaryScroll(recentsView));
+        final boolean[] handoffStarted = new boolean[]{false};
+        final float[] handoffStartTranslationX = new float[]{releaseStartTranslationX};
+        final float[] handoffStartTranslationY = new float[]{releaseStartTranslationY};
+        final int[] handoffStartScroll = new int[]{resolvePrimaryScroll(recentsView)};
+        markGestureRecentsStackReleaseHandoffPending(recentsView, true);
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(GESTURE_STACK_RELEASE_DURATION_MS);
         animator.setInterpolator(GESTURE_STACK_RELEASE_INTERPOLATOR);
         animator.addUpdateListener(animation -> {
             Object value = animation.getAnimatedValue();
             float progress = value instanceof Float ? (Float) value : 1f;
+            if (!handoffStarted[0]
+                    && progress < GESTURE_STACK_RELEASE_HANDOFF_START_PROGRESS) {
+                recentsView.invalidate();
+                return;
+            }
+            if (!handoffStarted[0]) {
+                handoffStartTranslationX[0] = recentsView.getTranslationX();
+                handoffStartTranslationY[0] = recentsView.getTranslationY();
+                handoffStartScroll[0] = resolvePrimaryScroll(recentsView);
+                beginGestureRecentsStackReleaseHandoff(
+                        recentsView,
+                        handoffStartScroll[0],
+                        stackAnchorTargetScroll,
+                        ensureRunningTaskScreenshot);
+                handoffStarted[0] = true;
+            }
+            float handoffProgress = LauncherRecentsLayoutEngine.smoothStep(
+                    LauncherRecentsLayoutEngine.remapProgress(
+                            progress,
+                            GESTURE_STACK_RELEASE_HANDOFF_START_PROGRESS,
+                            1f));
             setForcedRecentsTranslationX(recentsView, LauncherRecentsLayoutEngine.lerp(
-                    releaseStartTranslationX,
+                    handoffStartTranslationX[0],
                     0f,
-                    progress));
+                    handoffProgress));
             setForcedRecentsTranslationY(recentsView, LauncherRecentsLayoutEngine.lerp(
-                    releaseStartTranslationY,
+                    handoffStartTranslationY[0],
                     0f,
-                    progress));
-            setGestureRecentsStackReleaseProgress(recentsView, progress);
+                    handoffProgress));
+            setGestureRecentsStackReleaseProgress(recentsView, handoffProgress);
             applyAppToRecentsStackAnchorScroll(
                     recentsView,
-                    stackAnchorStartScroll,
+                    handoffStartScroll[0],
                     stackAnchorTargetScroll,
-                    progress);
+                    handoffProgress);
             LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
             recentsView.invalidate();
         });
@@ -661,12 +661,23 @@ final class LauncherRecentsTransitionController {
             public void onAnimationEnd(Animator animation) {
                 LauncherRecentsState.ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS.remove(recentsView);
                 if (cancelled) {
+                    markGestureRecentsStackReleaseHandoffPending(recentsView, false);
                     clearGestureRecentsStackReleaseProgress(recentsView);
                     clearForcedRecentsTranslationX(recentsView);
                     clearForcedRecentsTranslationY(recentsView);
                     LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
                     return;
                 }
+                if (!handoffStarted[0]) {
+                    handoffStartScroll[0] = resolvePrimaryScroll(recentsView);
+                    beginGestureRecentsStackReleaseHandoff(
+                            recentsView,
+                            handoffStartScroll[0],
+                            stackAnchorTargetScroll,
+                            ensureRunningTaskScreenshot);
+                    handoffStarted[0] = true;
+                }
+                markGestureRecentsStackReleaseHandoffPending(recentsView, false);
                 setForcedRecentsTranslationX(recentsView, 0f);
                 setForcedRecentsTranslationY(recentsView, 0f);
                 setGestureRecentsStackReleaseProgress(recentsView, 1f);
@@ -685,6 +696,48 @@ final class LauncherRecentsTransitionController {
         } else {
             animator.start();
         }
+    }
+
+    private static void beginGestureRecentsStackReleaseHandoff(
+            View recentsView,
+            int stackAnchorStartScroll,
+            int stackAnchorTargetScroll,
+            boolean ensureRunningTaskScreenshot) {
+        if (recentsView == null) {
+            return;
+        }
+        if (ensureRunningTaskScreenshot) {
+            prepareRunningTaskScreenshotForStackRelease(recentsView);
+        } else {
+            LauncherRecentsCompat.invokeCompat(
+                    recentsView,
+                    "setEnableDrawingLiveTile",
+                    LauncherRecentsCompat.BOOLEAN_ARG,
+                    false);
+        }
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setRunningTaskHidden",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                false);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "forceFinishScroller",
+                LauncherRecentsCompat.NO_ARGS);
+        markGestureRecentsStackReleaseHandoffPending(recentsView, false);
+        markPendingGestureRecentsStackRelease(recentsView, false);
+        LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
+        LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
+        LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
+        LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
+        LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
+        LauncherRecentsLayoutEngine.captureGestureStackReleaseTaskStates(
+                recentsView,
+                stackAnchorStartScroll,
+                stackAnchorTargetScroll);
+        setGestureRecentsStackReleaseProgress(recentsView, 0f);
+        LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false);
+        recentsView.invalidate();
     }
 
     private static void prepareRunningTaskScreenshotForStackRelease(View recentsView) {
@@ -853,6 +906,30 @@ final class LauncherRecentsTransitionController {
                     Boolean.TRUE);
         } else {
             LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASES.remove(recentsView);
+        }
+    }
+
+    static boolean isGestureRecentsStackReleaseHandoffPending(View recentsView) {
+        Boolean value = recentsView != null
+                ? LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASE_HANDOFFS.get(
+                recentsView)
+                : null;
+        return value != null && value;
+    }
+
+    private static void markGestureRecentsStackReleaseHandoffPending(
+            View recentsView,
+            boolean active) {
+        if (recentsView == null) {
+            return;
+        }
+        if (active) {
+            LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASE_HANDOFFS.put(
+                    recentsView,
+                    Boolean.TRUE);
+        } else {
+            LauncherRecentsState.PENDING_GESTURE_RECENTS_STACK_RELEASE_HANDOFFS.remove(
+                    recentsView);
         }
     }
 
