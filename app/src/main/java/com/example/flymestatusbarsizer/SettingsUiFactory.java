@@ -1,5 +1,6 @@
 package com.example.flymestatusbarsizer;
 
+import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
@@ -122,7 +123,9 @@ final class SettingsUiFactory {
 
     private View buildDividerView() {
         View divider = new View(activity);
-        divider.setBackgroundColor(activity.strokeColor());
+        int stroke = activity.strokeColor();
+        int softDividerColor = Color.argb(0x3B, Color.red(stroke), Color.green(stroke), Color.blue(stroke));
+        divider.setBackgroundColor(softDividerColor);
         return divider;
     }
 }

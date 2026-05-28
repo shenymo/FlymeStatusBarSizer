@@ -9,22 +9,11 @@ final class MBackStarApp {
     final Drawable icon;
     final CharSequence label;
     final String packageName;
-    final String activityName;
 
     MBackStarApp(int taskId, Drawable icon, CharSequence label, String packageName) {
-        this(taskId, icon, label, packageName, "");
-    }
-
-    MBackStarApp(
-            int taskId,
-            Drawable icon,
-            CharSequence label,
-            String packageName,
-            String activityName) {
         this.taskId = taskId;
         this.icon = icon;
         this.label = label == null ? "" : label;
         this.packageName = packageName == null ? "" : packageName;
-        this.activityName = activityName == null ? "" : activityName;
     }
 }

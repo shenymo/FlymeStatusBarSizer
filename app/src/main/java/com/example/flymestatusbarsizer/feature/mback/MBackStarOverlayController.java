@@ -6,10 +6,9 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.app.ActivityOptions;
-import android.content.ComponentName;
 import android.content.Context;
-import android.content.Intent;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Outline;
@@ -19,13 +18,11 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.SweepGradient;
-import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
-import android.icu.text.Transliterator;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Bundle;
@@ -45,13 +42,11 @@ import android.view.animation.DecelerateInterpolator;
 import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.widget.TextView;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Locale;
 
 final class MBackStarOverlayController {
     private static final int INTERNAL_WINDOW_TYPE_STATUS_BAR_SUB_PANEL = 2017;
@@ -69,17 +64,14 @@ final class MBackStarOverlayController {
     private static final float ICON_GAP_RATIO = 0.35f; // 调紧图标排列间距比例
     private static final float GYRO_PARALLAX_SCALE = 120f;
     private static final int GYRO_PARALLAX_MAX_OFFSET_DP = 10;
-    private static final int PREVIEW_WIDTH_DP = 128;
+    private static final int PREVIEW_WIDTH_DP = 180;
+    private static final int PREVIEW_TOP_MARGIN_DP = 14;
     private static final int PREVIEW_CORNER_RADIUS_DP = 22;
-    private static final String[] LETTER_BUCKETS = new String[]{
-            "A", "B", "C", "D", "E", "F", "G", "H", "I",
-            "J", "K", "L", "M", "N", "O", "P", "Q", "R",
-            "S", "T", "U", "V", "W", "X", "Y", "Z", "#"
-    };
     private static final float SMALL_WINDOW_ICON_SCALE = 1f / 3f;
     private static final int FLYME_WINDOW_MODE_MINI = 11;
     private static final int FLYME_WINDOW_MODE_FREEFORM = 1035;
     private static final String START_WINDOW_MODE_BUNDLE_KEY = "start_windowmode";
+    private static final long SMALL_WINDOW_ANIMATION_START_DELAY_MS = 48L;
     private static final long SMALL_WINDOW_ANIMATION_DURATION_MS = 260L;
     private static final long SMALL_WINDOW_HOVER_TIMEOUT_MS = 1000L;
     private static final long SMALL_WINDOW_OVERLAY_DISMISS_DELAY_MS = 60L;
@@ -103,19 +95,17 @@ final class MBackStarOverlayController {
     private static boolean getWindowModeBoundMethodResolved;
     private static Field trustedOverlayPrivateFlagsField;
     private static boolean trustedOverlayPrivateFlagsFieldResolved;
-    private static Transliterator pinyinTransliterator;
-    private static boolean pinyinTransliteratorResolved;
 
     private final Context context;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final MBackStarAppProvider appProvider;
+    private final MBackTaskSnapshotProvider snapshotProvider;
     private final FrameLayout overlayView;
     private final FrameLayout iconsLayer;
     private final FrameLayout previewContainer;
     private final ImageView previewImageView;
-    private final TextView previewTextView;
     private final ArrayList<IconHolder> iconHolders = new ArrayList<>();
-    private final HashMap<String, ArrayList<MBackStarApp>> appGroups = new HashMap<>();
+    private final HashMap<Integer, Bitmap> previewCache = new HashMap<>();
     private final SensorEventListener gyroListener = new SensorEventListener() {
         @Override
         public void onSensorChanged(SensorEvent event) {
@@ -132,8 +122,6 @@ final class MBackStarOverlayController {
     private Sensor gyroSensor;
     private MBackStarApp[] apps = MBackStarApp.EMPTY_ARRAY;
     private IconHolder hoveredHolder;
-    private String selectedLetter;
-    private int selectedLetterIndex = -1;
     private long hoveredHolderStartTimeMs;
     private boolean showing;
     private boolean gyroRegistered;
@@ -145,7 +133,6 @@ final class MBackStarOverlayController {
     private float lastRawY = Float.NaN;
     private float mBackRawX = Float.NaN;
     private float mBackRawY = Float.NaN;
-    private float letterSlideStartRawX = Float.NaN;
     private ValueAnimator launchAnimator;
     private ValueAnimator hoverTimerAnimator;
     private boolean smallWindowReadyHapticFired;
@@ -158,10 +145,10 @@ final class MBackStarOverlayController {
                 : context;
         this.context = appContext != null ? appContext : context;
         this.appProvider = new MBackStarAppProvider(this.context);
+        this.snapshotProvider = new MBackTaskSnapshotProvider(this.context);
         this.iconsLayer = new FrameLayout(this.context);
         this.previewImageView = buildPreviewImageView(this.context);
-        this.previewTextView = buildPreviewTextView(this.context);
-        this.previewContainer = buildPreviewContainer(this.context, previewImageView, previewTextView);
+        this.previewContainer = buildPreviewContainer(this.context, previewImageView);
         this.overlayView = buildOverlayView(this.context, iconsLayer, previewContainer);
         Object sensorObject = this.context != null
                 ? this.context.getSystemService(Context.SENSOR_SERVICE)
@@ -180,7 +167,6 @@ final class MBackStarOverlayController {
         lastRawY = Float.NaN;
         mBackRawX = Float.NaN;
         mBackRawY = Float.NaN;
-        letterSlideStartRawX = Float.NaN;
         resetLaunchAnimationState();
         resetParallax();
         rememberMotion(startEvent);
@@ -191,12 +177,10 @@ final class MBackStarOverlayController {
         showing = true;
         cancelHoverTimer();
         hoveredHolder = null;
-        selectedLetter = null;
-        selectedLetterIndex = -1;
         hoveredHolderStartTimeMs = 0L;
         smallWindowReadyHapticFired = false;
         apps = MBackStarApp.EMPTY_ARRAY;
-        appGroups.clear();
+        previewCache.clear();
         hidePreview();
         iconsLayer.removeAllViews();
         iconHolders.clear();
@@ -320,17 +304,14 @@ final class MBackStarOverlayController {
         stopGyro();
         cancelHoverTimer();
         hoveredHolder = null;
-        selectedLetter = null;
-        selectedLetterIndex = -1;
         hoveredHolderStartTimeMs = 0L;
         lastRawX = Float.NaN;
         lastRawY = Float.NaN;
         mBackRawX = Float.NaN;
         mBackRawY = Float.NaN;
-        letterSlideStartRawX = Float.NaN;
         resetParallax();
         apps = MBackStarApp.EMPTY_ARRAY;
-        appGroups.clear();
+        previewCache.clear();
         resetLaunchAnimationState();
         hidePreview();
         iconHolders.clear();
@@ -358,47 +339,10 @@ final class MBackStarOverlayController {
         if (!showing || launchAnimationRunning || !overlayView.isAttachedToWindow()) {
             return;
         }
-        buildAppGroups();
-        selectedLetter = null;
-        selectedLetterIndex = -1;
-        renderStarMap(true);
-        updateHoverFromLastMotion();
-    }
-
-    private void buildAppGroups() {
-        appGroups.clear();
-        for (String letter : LETTER_BUCKETS) {
-            appGroups.put(letter, new ArrayList<>());
-        }
-        MBackStarApp[] safeApps = apps != null ? apps : MBackStarApp.EMPTY_ARRAY;
-        for (MBackStarApp app : safeApps) {
-            if (app == null) {
-                continue;
-            }
-            String bucket = resolveAppBucket(app);
-            ArrayList<MBackStarApp> group = appGroups.get(bucket);
-            if (group == null) {
-                group = appGroups.get("#");
-            }
-            if (group != null) {
-                group.add(app);
-            }
-        }
-    }
-
-    private boolean hasAppsForLetter(String letter) {
-        ArrayList<MBackStarApp> group = appGroups.get(letter);
-        return group != null && !group.isEmpty();
-    }
-
-    private void renderStarMap(boolean animate) {
-        if (!showing || launchAnimationRunning || !overlayView.isAttachedToWindow()) {
-            return;
-        }
         int width = overlayView.getWidth();
         int height = overlayView.getHeight();
         if (width <= 0 || height <= 0) {
-            overlayView.post(() -> renderStarMap(animate));
+            overlayView.post(this::renderApps);
             return;
         }
         cancelHoverTimer();
@@ -407,72 +351,24 @@ final class MBackStarOverlayController {
         hoveredHolder = null;
         hoveredHolderStartTimeMs = 0L;
         hidePreview();
+        MBackStarApp[] safeApps = apps != null ? apps : MBackStarApp.EMPTY_ARRAY;
+        int count = safeApps.length;
         float originX = resolveOverlayOriginX(width);
         float originY = resolveOverlayOriginY(height);
-        float maxRadius = resolveMaxLetterRadius(width, height, originX, originY);
-        int letterHitSize = dp(28);
-        int letterSize = dp(28);
-        float letterRadius = resolveLetterRadius(maxRadius);
-        for (int i = 0; i < LETTER_BUCKETS.length; i++) {
-            String letter = LETTER_BUCKETS[i];
-            boolean enabled = hasAppsForLetter(letter);
-            FrameLayout root = buildLetterRoot(letter, enabled, letterHitSize, letterSize);
-            int visualIndex = selectedLetterIndex >= 0
-                    ? i - selectedLetterIndex + (LETTER_BUCKETS.length / 2)
-                    : i;
-            float[] point = resolveSemicirclePoint(
-                    visualIndex,
-                    LETTER_BUCKETS.length,
-                    letterHitSize,
-                    letterSize,
-                    originX,
-                    originY,
-                    letterRadius);
-            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(letterHitSize, letterHitSize);
-            params.leftMargin = Math.round(point[0]);
-            params.topMargin = Math.round(point[1]);
-            iconsLayer.addView(root, params);
-            IconHolder holder = new IconHolder(null, letter, enabled, root, null,
-                    resolveIconDepth(visualIndex, LETTER_BUCKETS.length));
-            iconHolders.add(holder);
-            animateHolder(root, animate, i);
-        }
-        renderSelectedLetterApps(originX, originY, letterRadius, maxRadius, animate);
-    }
-
-    private void renderSelectedLetterApps(
-            float originX,
-            float originY,
-            float letterRadius,
-            float maxRadius,
-            boolean animate) {
-        ArrayList<MBackStarApp> group = selectedLetter != null ? appGroups.get(selectedLetter) : null;
-        if (group == null || group.isEmpty()) {
-            return;
-        }
-        int count = group.size();
-        int hitSize = Math.round(clamp(dp(54) - Math.min(dp(12), count), dp(42), dp(56)));
+        float maxRadius = resolveMaxSemicircleRadius(width, height, originX, originY);
+        int hitSize = resolveAdaptiveHitSize(count, maxRadius);
         int iconSize = resolveAdaptiveIconSize(hitSize);
-        float layerGap = hitSize * 0.78f;
-        int availableLayers = Math.max(1, (int) Math.floor(
-                Math.max(1f, maxRadius - letterRadius - dp(34)) / Math.max(1f, layerGap)) + 1);
-        int desiredLayers = Math.max(1, (int) Math.ceil(count / 12f));
-        int layerCount = Math.min(desiredLayers, availableLayers);
-        int appsPerLayer = (int) Math.ceil(count / (float) layerCount);
+        float radius = resolveSemicircleRadius(count, iconSize, maxRadius);
         for (int i = 0; i < count; i++) {
-            MBackStarApp app = group.get(i);
-            if (app == null) {
+            MBackStarApp app = safeApps[i];
+            if (app == null || app.taskId < 0) {
                 continue;
             }
-            int layer = Math.min(layerCount - 1, i / Math.max(1, appsPerLayer));
-            int ringIndex = i - (layer * appsPerLayer);
-            int ringCount = Math.min(appsPerLayer, count - (layer * appsPerLayer));
-            float radius = maxRadius - (layer * layerGap);
             FrameLayout root = buildIconRoot(app, hitSize, iconSize);
             HoverTimerView timerView = findHoverTimerView(root);
             float[] point = resolveSemicirclePoint(
-                    ringIndex,
-                    ringCount,
+                    i,
+                    count,
                     hitSize,
                     iconSize,
                     originX,
@@ -482,16 +378,9 @@ final class MBackStarOverlayController {
             params.leftMargin = Math.round(point[0]);
             params.topMargin = Math.round(point[1]);
             iconsLayer.addView(root, params);
-            IconHolder holder = new IconHolder(app, null, true, root, timerView,
-                    resolveIconDepth(ringIndex, ringCount));
+            IconHolder holder = new IconHolder(app, root, timerView, resolveIconDepth(i, count));
             iconHolders.add(holder);
-            animateHolder(root, animate, i);
-        }
-    }
-
-    private void animateHolder(View root, boolean animate, int index) {
-        root.setCameraDistance(dp(900));
-        if (animate) {
+            root.setCameraDistance(dp(900));
             root.setAlpha(0f);
             root.setScaleX(0.72f);
             root.setScaleY(0.72f);
@@ -499,15 +388,12 @@ final class MBackStarOverlayController {
                     .alpha(1f)
                     .scaleX(1f)
                     .scaleY(1f)
-                    .setStartDelay(Math.min(180L, index * 12L))
+                    .setStartDelay(Math.min(180L, i * 12L))
                     .setDuration(260L)
                     .setInterpolator(new android.view.animation.OvershootInterpolator(1.3f))
                     .start();
-        } else {
-            root.setAlpha(1f);
-            root.setScaleX(1f);
-            root.setScaleY(1f);
         }
+        updateHoverFromLastMotion();
     }
 
     private FrameLayout buildIconRoot(MBackStarApp app, int hitSize, int iconSize) {
@@ -529,26 +415,6 @@ final class MBackStarOverlayController {
         FrameLayout.LayoutParams timerParams = new FrameLayout.LayoutParams(timerSize, timerSize);
         timerParams.gravity = Gravity.CENTER;
         root.addView(timerView, timerParams);
-        root.setLayoutParams(new FrameLayout.LayoutParams(hitSize, hitSize));
-        return root;
-    }
-
-    private FrameLayout buildLetterRoot(String letter, boolean enabled, int hitSize, int iconSize) {
-        FrameLayout root = new FrameLayout(context);
-        root.setClipChildren(false);
-        root.setClipToPadding(false);
-        root.setContentDescription(letter);
-        TextView textView = new TextView(context);
-        textView.setText(letter);
-        textView.setGravity(Gravity.CENTER);
-        textView.setTextColor(enabled
-                ? (isNightMode() ? Color.WHITE : Color.argb(230, 20, 24, 32))
-                : Color.argb(105, 180, 185, 195));
-        textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        textView.setTypeface(Typeface.DEFAULT_BOLD);
-        FrameLayout.LayoutParams textParams = new FrameLayout.LayoutParams(iconSize, iconSize);
-        textParams.gravity = Gravity.CENTER;
-        root.addView(textView, textParams);
         root.setLayoutParams(new FrameLayout.LayoutParams(hitSize, hitSize));
         return root;
     }
@@ -610,20 +476,7 @@ final class MBackStarOverlayController {
         float rightRoom = Math.max(1f, width - originX - margin);
         float topRoom = Math.max(1f, originY - margin);
         float radius = Math.min(Math.min(leftRoom, rightRoom), topRoom);
-        return clamp(radius, dp(72), dp(135)); // 限制最大半径上限为 135dp
-    }
-
-    private float resolveMaxLetterRadius(int width, int height, float originX, float originY) {
-        float margin = dp(18);
-        float leftRoom = Math.max(1f, originX - margin);
-        float rightRoom = Math.max(1f, width - originX - margin);
-        float topRoom = Math.max(1f, originY - margin);
-        float radius = Math.min(Math.min(leftRoom, rightRoom), topRoom);
-        return clamp(radius, dp(190), dp(320));
-    }
-
-    private float resolveLetterRadius(float maxRadius) {
-        return clamp(maxRadius * 0.74f, dp(132), maxRadius);
+        return clamp(radius, dp(72), dp(160)); // 限制最大半径上限为 160dp
     }
 
     private int resolveAdaptiveHitSize(int count, float maxRadius) {
@@ -649,9 +502,9 @@ final class MBackStarOverlayController {
                 : (iconSize * (1f + ICON_GAP_RATIO) * Math.max(1, count - 1))
                         / (SEMICIRCLE_END_RADIANS - SEMICIRCLE_START_RADIANS)
                         * 0.95f;
-        // 乘以 0.75 的收聚收紧比例，使整体距离向手势原点聚拢收缩，操作更为省力
-        float finalRadius = clamp(requiredRadius, minRadius, maxRadius) * 0.75f;
-        return Math.max(dp(68), finalRadius); // 确保绝对不低于 68dp 避开大拇指遮挡
+        // 将收缩收聚比例从 0.75 提高至 0.92，整体圆圈更向外层扩张移动
+        float finalRadius = clamp(requiredRadius, minRadius, maxRadius) * 0.92f;
+        return Math.max(dp(72), finalRadius); // 确保绝对不低于 72dp 避开大拇指遮挡
     }
 
     private static float resolveIconDepth(int index, int count) {
@@ -767,45 +620,7 @@ final class MBackStarOverlayController {
         if (launchAnimationRunning) {
             return;
         }
-        int letterIndex = resolveLetterIndexFromSlide(rawX);
-        if (letterIndex >= 0 && letterIndex != selectedLetterIndex) {
-            selectedLetterIndex = letterIndex;
-            selectedLetter = LETTER_BUCKETS[letterIndex];
-            renderStarMap(false);
-            setHoveredHolder(findLetterHolder(selectedLetter));
-            return;
-        }
-        IconHolder holder = findHitHolder(rawX, rawY);
-        if (holder != null && holder.isLetter()) {
-            holder = findLetterHolder(selectedLetter);
-        }
-        setHoveredHolder(holder);
-    }
-
-    private int resolveLetterIndexFromSlide(float rawX) {
-        if (Float.isNaN(letterSlideStartRawX)) {
-            letterSlideStartRawX = rawX;
-        }
-        float step = dp(18);
-        int delta = Math.round((rawX - letterSlideStartRawX) / Math.max(1f, step));
-        int base = selectedLetterIndex >= 0 ? selectedLetterIndex : LETTER_BUCKETS.length / 2;
-        int index = Math.round(clamp(base + delta, 0, LETTER_BUCKETS.length - 1));
-        if (index != base) {
-            letterSlideStartRawX = rawX;
-        }
-        return index;
-    }
-
-    private IconHolder findLetterHolder(String letter) {
-        if (letter == null) {
-            return null;
-        }
-        for (IconHolder holder : iconHolders) {
-            if (holder != null && letter.equals(holder.letter)) {
-                return holder;
-            }
-        }
-        return null;
+        setHoveredHolder(findHitHolder(rawX, rawY));
     }
 
     private IconHolder findHitHolder(float rawX, float rawY) {
@@ -816,8 +631,7 @@ final class MBackStarOverlayController {
         overlayView.getLocationOnScreen(location);
         float x = rawX - location[0];
         float y = rawY - location[1];
-        for (int i = iconHolders.size() - 1; i >= 0; i--) {
-            IconHolder holder = iconHolders.get(i);
+        for (IconHolder holder : iconHolders) {
             View root = holder.root;
             if (root.getVisibility() != View.VISIBLE) {
                 continue;
@@ -863,9 +677,7 @@ final class MBackStarOverlayController {
                     .setDuration(200L)
                     .setInterpolator(new android.view.animation.OvershootInterpolator(1.8f))
                     .start();
-            if (holder.app != null) {
-                startHoverTimer(holder);
-            }
+            startHoverTimer(holder);
             showPreview(holder);
         } else {
             hidePreview();
@@ -950,40 +762,40 @@ final class MBackStarOverlayController {
         if (launchAnimationRunning) {
             return;
         }
-        if (holder == null) {
+        if (holder == null || holder.app == null || holder.app.taskId < 0) {
             hidePreview();
             return;
         }
-        if (holder.isLetter()) {
-            previewImageView.setImageDrawable(null);
-            previewImageView.setVisibility(View.GONE);
-            previewTextView.setVisibility(View.VISIBLE);
-            previewTextView.setText(holder.letter);
-            previewTextView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 42);
-            previewTextView.setTypeface(Typeface.DEFAULT_BOLD);
-            previewTextView.setGravity(Gravity.CENTER);
-            previewTextView.setTextColor(isNightMode() ? Color.WHITE : Color.argb(235, 18, 22, 30));
-            previewTextView.setPadding(dp(8), dp(8), dp(8), dp(8));
-            setCenteredPreviewSize(dp(96), dp(96));
-            setPreviewVisible(true);
+        int taskId = holder.app.taskId;
+        Bitmap cachedBitmap = previewCache.get(taskId);
+        if (cachedBitmap != null && !cachedBitmap.isRecycled()) {
+            showPreviewBitmap(holder, cachedBitmap);
             return;
         }
-        if (holder.app == null) {
+        previewImageView.setImageBitmap(null);
+        setPreviewVisible(false);
+        snapshotProvider.requestSnapshot(taskId, handler, (resolvedTaskId, bitmap) -> {
+            if (!showing
+                    || launchAnimationRunning
+                    || bitmap == null
+                    || bitmap.isRecycled()
+                    || hoveredHolder == null
+                    || hoveredHolder.app == null
+                    || hoveredHolder.app.taskId != resolvedTaskId) {
+                return;
+            }
+            previewCache.put(resolvedTaskId, bitmap);
+            showPreviewBitmap(hoveredHolder, bitmap);
+        });
+    }
+
+    private void showPreviewBitmap(IconHolder holder, Bitmap bitmap) {
+        if (holder == null || bitmap == null || bitmap.isRecycled()) {
             hidePreview();
             return;
         }
-        previewImageView.setVisibility(View.VISIBLE);
-        previewImageView.setImageDrawable(holder.app.icon);
-        previewImageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        previewImageView.setPadding(dp(18), dp(14), dp(18), dp(42));
-        previewTextView.setVisibility(View.VISIBLE);
-        previewTextView.setText(holder.app.label);
-        previewTextView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        previewTextView.setTypeface(Typeface.DEFAULT);
-        previewTextView.setGravity(Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        previewTextView.setTextColor(isNightMode() ? Color.WHITE : Color.argb(235, 18, 22, 30));
-        previewTextView.setPadding(dp(8), dp(8), dp(8), dp(11));
-        setCenteredPreviewSize(dp(PREVIEW_WIDTH_DP), dp(132));
+        previewImageView.setImageBitmap(bitmap);
+        updatePreviewPosition(holder);
         setPreviewVisible(true);
     }
 
@@ -991,33 +803,39 @@ final class MBackStarOverlayController {
         if (holder == null || previewContainer == null || overlayView.getWidth() <= 0) {
             return;
         }
-        int width = holder.isLetter() ? dp(96) : dp(PREVIEW_WIDTH_DP);
-        int height = holder.isLetter() ? dp(96) : dp(132);
-        setCenteredPreviewSize(width, height);
-    }
-
-    private void setCenteredPreviewSize(int width, int height) {
-        if (overlayView == null || overlayView.getWidth() <= 0 || overlayView.getHeight() <= 0) {
-            return;
-        }
+        int previewWidth = Math.min(dp(PREVIEW_WIDTH_DP), overlayView.getWidth() - dp(24));
+        int imageWidth = previewImageView.getDrawable() != null
+                ? previewImageView.getDrawable().getIntrinsicWidth()
+                : 0;
+        int imageHeight = previewImageView.getDrawable() != null
+                ? previewImageView.getDrawable().getIntrinsicHeight()
+                : 0;
+        int previewHeight = imageWidth > 0 && imageHeight > 0
+                ? Math.round(previewWidth * (imageHeight / (float) imageWidth))
+                : Math.round(previewWidth * 1.72f);
         FrameLayout.LayoutParams params =
                 previewContainer.getLayoutParams() instanceof FrameLayout.LayoutParams
                         ? (FrameLayout.LayoutParams) previewContainer.getLayoutParams()
-                        : new FrameLayout.LayoutParams(width, height);
-        params.width = Math.min(width, overlayView.getWidth() - dp(24));
-        params.height = Math.min(height, overlayView.getHeight() - dp(48));
-        params.leftMargin = Math.round((overlayView.getWidth() - params.width) / 2f);
-        params.topMargin = Math.round((overlayView.getHeight() - params.height) / 2f);
+                        : new FrameLayout.LayoutParams(previewWidth, previewHeight);
+        params.width = previewWidth;
+        params.height = previewHeight;
+        float centerX = holder.root.getX() + (holder.root.getWidth() / 2f);
+        int margin = dp(12);
+        params.leftMargin = Math.round(clamp(
+                centerX - (previewWidth / 2f),
+                margin,
+                Math.max(margin, overlayView.getWidth() - previewWidth - margin)));
+        params.topMargin = Math.round(clamp(
+                holder.root.getY() - previewHeight - dp(PREVIEW_TOP_MARGIN_DP),
+                margin,
+                Math.max(margin, overlayView.getHeight() - previewHeight - margin)));
         previewContainer.setLayoutParams(params);
     }
 
     private void hidePreview() {
         previewImageView.setImageDrawable(null);
-        previewImageView.setVisibility(View.VISIBLE);
         previewImageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         previewImageView.setPadding(0, 0, 0, 0);
-        previewTextView.setText("");
-        previewTextView.setVisibility(View.GONE);
         resetPreviewBackground();
         setPreviewVisible(false);
     }
@@ -1045,7 +863,7 @@ final class MBackStarOverlayController {
 
     private void launchApp(IconHolder holder, boolean smallWindow) {
         MBackStarApp app = holder != null ? holder.app : null;
-        if (app == null) {
+        if (app == null || app.taskId < 0) {
             dismiss();
             return;
         }
@@ -1053,27 +871,75 @@ final class MBackStarOverlayController {
         if (smallWindow && startSmallWindowLaunch(holder)) {
             return;
         }
-        dismiss();
-        if (taskId >= 0) {
-            startTaskFromRecents(taskId);
-        } else {
-            startLauncherApp(app);
+        if (previewContainer.getVisibility() == View.VISIBLE
+                && previewImageView.getDrawable() != null
+                && overlayView.getWidth() > 0
+                && overlayView.getHeight() > 0
+                && startLaunchAnimation(taskId)) {
+            return;
         }
+        dismiss();
+        startTaskFromRecents(taskId);
     }
 
     private boolean startSmallWindowLaunch(IconHolder holder) {
-        if (holder == null || holder.app == null) {
+        if (holder == null || holder.app == null || holder.app.taskId < 0) {
+            return false;
+        }
+        if (!prepareSmallWindowPreview(holder)) {
+            return false;
+        }
+        FrameLayout.LayoutParams params =
+                previewContainer.getLayoutParams() instanceof FrameLayout.LayoutParams
+                        ? (FrameLayout.LayoutParams) previewContainer.getLayoutParams()
+                        : null;
+        if (params == null) {
+            return false;
+        }
+        int startWidth = previewContainer.getWidth() > 0 ? previewContainer.getWidth() : params.width;
+        int startHeight = previewContainer.getHeight() > 0 ? previewContainer.getHeight() : params.height;
+        if (startWidth <= 0 || startHeight <= 0 || overlayView.getWidth() <= 0
+                || overlayView.getHeight() <= 0) {
             return false;
         }
         fireSmallWindowReadyHaptic();
+        launchAnimationRunning = true;
         stopHoverTimer(holder);
-        boolean started = holder.app.taskId >= 0
-                ? startTaskFromRecentsInSmallWindow(holder.app)
-                : startLauncherAppInSmallWindow(holder.app);
-        if (started) {
-            dismiss();
+        stopGyro();
+        overlayView.animate().cancel();
+        overlayView.setAlpha(1f);
+        iconsLayer.animate().cancel();
+        iconsLayer.animate()
+                .alpha(0f)
+                .setDuration(90L)
+                .start();
+        previewContainer.animate().cancel();
+        previewContainer.bringToFront();
+        previewContainer.setAlpha(1f);
+        previewContainer.setScaleX(1f);
+        previewContainer.setScaleY(1f);
+        previewContainer.setTranslationX(0f);
+        previewContainer.setTranslationY(0f);
+        previewContainer.setClipToOutline(true);
+        setPreviewCornerRadius(dp(PREVIEW_CORNER_RADIUS_DP));
+
+        final int startLeft = params.leftMargin;
+        final int startTop = params.topMargin;
+        final int taskId = holder.app.taskId;
+        boolean started = startTaskFromRecentsInSmallWindow(holder.app);
+        if (!started) {
+            resetLaunchAnimationState();
+            return false;
         }
-        return started;
+        handler.postDelayed(
+                () -> startSmallWindowPreviewAnimation(
+                        taskId,
+                        startLeft,
+                        startTop,
+                        startWidth,
+                        startHeight),
+                SMALL_WINDOW_ANIMATION_START_DELAY_MS);
+        return true;
     }
 
     private boolean prepareSmallWindowPreview(IconHolder holder) {
@@ -1100,6 +966,58 @@ final class MBackStarOverlayController {
         previewContainer.setTranslationY(0f);
         previewImageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         return previewContainer.getLayoutParams() instanceof FrameLayout.LayoutParams;
+    }
+
+    private void startSmallWindowPreviewAnimation(
+            int taskId,
+            int startLeft,
+            int startTop,
+            int startWidth,
+            int startHeight) {
+        if (!launchAnimationRunning) {
+            return;
+        }
+        Rect target = resolveSmallWindowTargetRect(taskId, startWidth, startHeight);
+        if (target == null || target.isEmpty()) {
+            target = buildFallbackSmallWindowTargetRect(startWidth, startHeight);
+        }
+        if (target == null || target.isEmpty()) {
+            dismiss();
+            return;
+        }
+        final Rect finalTarget = target;
+        launchAnimator = ValueAnimator.ofFloat(0f, 1f);
+        launchAnimator.setDuration(SMALL_WINDOW_ANIMATION_DURATION_MS);
+        launchAnimator.setInterpolator(LAUNCH_ANIMATION_INTERPOLATOR);
+        launchAnimator.addUpdateListener(animation -> {
+            float progress = animation.getAnimatedFraction();
+            FrameLayout.LayoutParams currentParams =
+                    previewContainer.getLayoutParams() instanceof FrameLayout.LayoutParams
+                            ? (FrameLayout.LayoutParams) previewContainer.getLayoutParams()
+                            : new FrameLayout.LayoutParams(startWidth, startHeight);
+            currentParams.leftMargin = Math.round(lerp(startLeft, finalTarget.left, progress));
+            currentParams.topMargin = Math.round(lerp(startTop, finalTarget.top, progress));
+            currentParams.width = Math.max(1, Math.round(lerp(startWidth, finalTarget.width(), progress)));
+            currentParams.height = Math.max(1, Math.round(lerp(startHeight, finalTarget.height(), progress)));
+            previewContainer.setLayoutParams(currentParams);
+            applySmallWindowIconPadding();
+            previewContainer.invalidateOutline();
+        });
+        launchAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                previewImageView.setImageDrawable(null);
+                previewImageView.setPadding(0, 0, 0, 0);
+                previewContainer.setVisibility(View.GONE);
+                overlayView.setBackgroundColor(Color.TRANSPARENT);
+                handler.postDelayed(() -> {
+                    if (launchAnimationRunning) {
+                        dismiss();
+                    }
+                }, SMALL_WINDOW_OVERLAY_DISMISS_DELAY_MS);
+            }
+        });
+        launchAnimator.start();
     }
 
     private Rect resolveSmallWindowTargetRect(int taskId, int startWidth, int startHeight) {
@@ -1292,47 +1210,6 @@ final class MBackStarOverlayController {
                 "Failed to start mBack star task in small window: ");
     }
 
-    private boolean startLauncherApp(MBackStarApp app) {
-        return startLauncherApp(
-                app,
-                buildNoAnimationTaskOptions(),
-                "Failed to start mBack star launcher app: ");
-    }
-
-    private boolean startLauncherAppInSmallWindow(MBackStarApp app) {
-        if (app == null) {
-            return false;
-        }
-        markFlymeStartWindowMode(app.packageName);
-        return startLauncherApp(
-                app,
-                buildSmallWindowTaskOptions(),
-                "Failed to start mBack star launcher app in small window: ");
-    }
-
-    private boolean startLauncherApp(MBackStarApp app, Bundle options, String warningPrefix) {
-        if (app == null || app.packageName.isEmpty() || app.activityName.isEmpty()) {
-            return false;
-        }
-        try {
-            Intent intent = new Intent(Intent.ACTION_MAIN);
-            intent.addCategory(Intent.CATEGORY_LAUNCHER);
-            intent.setComponent(new ComponentName(app.packageName, app.activityName));
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-            if (options != null) {
-                context.startActivity(intent, options);
-            } else {
-                context.startActivity(intent);
-            }
-            return true;
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logMBackWarning(
-                    warningPrefix + app.packageName,
-                    t);
-            return false;
-        }
-    }
-
     private boolean startTaskFromRecents(int taskId, Bundle options, String warningPrefix) {
         try {
             Object service = resolveActivityTaskManagerService();
@@ -1376,10 +1253,7 @@ final class MBackStarOverlayController {
         }
     }
 
-    private FrameLayout buildPreviewContainer(
-            Context context,
-            ImageView imageView,
-            TextView textView) {
+    private FrameLayout buildPreviewContainer(Context context, ImageView imageView) {
         FrameLayout container = new FrameLayout(context);
         container.setVisibility(View.GONE);
         container.setClipToOutline(true);
@@ -1406,10 +1280,6 @@ final class MBackStarOverlayController {
                 new FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.MATCH_PARENT));
-        FrameLayout.LayoutParams textParams = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT);
-        container.addView(textView, textParams);
         return container;
     }
 
@@ -1418,17 +1288,6 @@ final class MBackStarOverlayController {
         imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         imageView.setAdjustViewBounds(false);
         return imageView;
-    }
-
-    private static TextView buildPreviewTextView(Context context) {
-        TextView textView = new TextView(context);
-        textView.setGravity(Gravity.CENTER);
-        textView.setTextColor(Color.WHITE);
-        textView.setSingleLine(true);
-        textView.setShadowLayer(3f, 0f, 1f, Color.argb(120, 0, 0, 0));
-        textView.setPadding(8, 8, 8, 8);
-        textView.setVisibility(View.GONE);
-        return textView;
     }
 
     private static FrameLayout buildOverlayView(
@@ -1717,71 +1576,6 @@ final class MBackStarOverlayController {
         }
     }
 
-    private static String resolveAppBucket(MBackStarApp app) {
-        if (app == null) {
-            return "#";
-        }
-        String label = app.label != null ? app.label.toString().trim() : "";
-        char directLetter = findFirstAsciiLetter(label);
-        if (directLetter != 0) {
-            return String.valueOf(directLetter);
-        }
-        String pinyin = transliterateToPinyin(label);
-        char pinyinLetter = findFirstAsciiLetter(pinyin);
-        if (pinyinLetter != 0) {
-            return String.valueOf(pinyinLetter);
-        }
-        String packageName = app.packageName != null ? app.packageName.trim() : "";
-        char packageLetter = findFirstAsciiLetter(packageName);
-        return packageLetter != 0 ? String.valueOf(packageLetter) : "#";
-    }
-
-    private static char findFirstAsciiLetter(String value) {
-        if (value == null) {
-            return 0;
-        }
-        for (int i = 0; i < value.length(); i++) {
-            char ch = value.charAt(i);
-            if (ch >= 'A' && ch <= 'Z') {
-                return ch;
-            }
-            if (ch >= 'a' && ch <= 'z') {
-                return Character.toUpperCase(ch);
-            }
-            if (Character.isLetterOrDigit(ch)) {
-                return 0;
-            }
-        }
-        return 0;
-    }
-
-    private static String transliterateToPinyin(String value) {
-        if (value == null || value.trim().isEmpty()) {
-            return "";
-        }
-        Transliterator transliterator = resolvePinyinTransliterator();
-        if (transliterator == null) {
-            return "";
-        }
-        try {
-            return transliterator.transliterate(value).toUpperCase(Locale.ROOT);
-        } catch (Throwable ignored) {
-            return "";
-        }
-    }
-
-    private static Transliterator resolvePinyinTransliterator() {
-        if (!pinyinTransliteratorResolved) {
-            try {
-                pinyinTransliterator = Transliterator.getInstance("Han-Latin/Names; Latin-ASCII");
-            } catch (Throwable ignored) {
-                pinyinTransliterator = null;
-            }
-            pinyinTransliteratorResolved = true;
-        }
-        return pinyinTransliterator;
-    }
-
     private static int getOverlayBackgroundColor(Context context) {
         boolean nightMode = false;
         try {
@@ -1888,29 +1682,15 @@ final class MBackStarOverlayController {
 
     private static final class IconHolder {
         final MBackStarApp app;
-        final String letter;
-        final boolean enabled;
         final View root;
         final HoverTimerView timerView;
         final float depth;
 
-        IconHolder(
-                MBackStarApp app,
-                String letter,
-                boolean enabled,
-                View root,
-                HoverTimerView timerView,
-                float depth) {
+        IconHolder(MBackStarApp app, View root, HoverTimerView timerView, float depth) {
             this.app = app;
-            this.letter = letter;
-            this.enabled = enabled;
             this.root = root;
             this.timerView = timerView;
             this.depth = depth;
-        }
-
-        boolean isLetter() {
-            return letter != null;
         }
     }
 }

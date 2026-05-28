@@ -208,6 +208,10 @@ public class MainActivity extends Activity {
     }
 
     private void bindHostViews() {
+        View mainRoot = findViewById(R.id.main_root);
+        if (mainRoot != null) {
+            mainRoot.setBackgroundColor(colorBackground);
+        }
         topBar = findViewById(R.id.top_bar);
         backButtonView = findViewById(R.id.back_button);
         moreButtonView = findViewById(R.id.more_button);
@@ -226,6 +230,12 @@ public class MainActivity extends Activity {
         }
         if (pageHostView != null) {
             pageHostView.setBackgroundColor(colorBackground);
+        }
+        if (backButtonView != null) {
+            backButtonView.setBackground(roundRect(colorSurfaceSoft, 999));
+        }
+        if (moreButtonView != null) {
+            moreButtonView.setBackground(roundRect(colorSurfaceSoft, 999));
         }
         setTapClickListener(backButtonView, v -> onBackPressed());
         setTapClickListener(moreButtonView, this::showMoreMenu);
@@ -252,6 +262,7 @@ public class MainActivity extends Activity {
             return;
         }
         View pageView = getLayoutInflater().inflate(layoutResId, pageHostView, false);
+        pageView.setBackgroundColor(colorBackground);
         LinearLayout container = pageView.findViewById(R.id.page_content);
         if (binder != null && container != null) {
             binder.bind(this, container);
@@ -1888,30 +1899,73 @@ public class MainActivity extends Activity {
     }
 
     private void initPalette() {
-        colorBackground = FALLBACK_BACKGROUND;
-        colorSurface = FALLBACK_SURFACE;
-        colorSurfaceSoft = FALLBACK_SURFACE_SOFT;
-        colorSurfaceStrong = FALLBACK_SURFACE_STRONG;
-        colorFeatureSurface = FALLBACK_FEATURE_SURFACE;
-        colorFeatureStroke = FALLBACK_FEATURE_STROKE;
-        colorText = FALLBACK_TEXT;
-        colorSubtext = FALLBACK_SUBTEXT;
-        colorPrimary = FALLBACK_PRIMARY;
-        colorPrimaryContainer = FALLBACK_PRIMARY_CONTAINER;
-        colorPrimaryDeep = FALLBACK_PRIMARY_DEEP;
-        colorStroke = FALLBACK_STROKE;
+        boolean isDark = (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+
+        if (isDark) {
+            int darkBackground = Color.rgb(18, 20, 24);
+            int darkSurface = Color.rgb(28, 31, 38);
+            int darkSurfaceSoft = Color.rgb(38, 42, 51);
+            int darkSurfaceStrong = Color.rgb(48, 54, 66);
+            int darkFeatureSurface = Color.rgb(26, 38, 57);
+            int darkFeatureStroke = Color.rgb(44, 62, 92);
+            int darkText = Color.rgb(235, 240, 245);
+            int darkSubtext = Color.rgb(160, 172, 189);
+            int darkPrimary = Color.rgb(82, 166, 255);
+            int darkPrimaryContainer = Color.rgb(0, 92, 174);
+            int darkPrimaryDeep = Color.rgb(0, 48, 100);
+            int darkStroke = Color.rgb(44, 49, 58);
+
+            colorBackground = resolveMonetColor("system_neutral1_900", darkBackground);
+            colorSurface = resolveMonetColor("system_neutral1_800", darkSurface);
+            colorSurfaceSoft = resolveMonetColor("system_neutral1_700", darkSurfaceSoft);
+            colorSurfaceStrong = resolveMonetColor("system_neutral1_600", darkSurfaceStrong);
+            colorFeatureSurface = resolveMonetColor("system_accent1_800", darkFeatureSurface);
+            colorFeatureStroke = resolveMonetColor("system_accent1_600", darkFeatureStroke);
+            colorText = resolveMonetColor("system_neutral1_100", darkText);
+            colorSubtext = resolveMonetColor("system_neutral2_200", darkSubtext);
+            colorPrimary = resolveMonetColor("system_accent1_200", darkPrimary);
+            colorPrimaryContainer = resolveMonetColor("system_accent1_700", darkPrimaryContainer);
+            colorPrimaryDeep = resolveMonetColor("system_accent1_800", darkPrimaryDeep);
+            colorStroke = resolveMonetColor("system_neutral1_700", darkStroke);
+        } else {
+            colorBackground = resolveMonetColor("system_neutral1_10", FALLBACK_BACKGROUND);
+            colorSurface = resolveMonetColor("system_neutral1_0", FALLBACK_SURFACE);
+            colorSurfaceSoft = resolveMonetColor("system_neutral1_50", FALLBACK_SURFACE_SOFT);
+            colorSurfaceStrong = resolveMonetColor("system_neutral1_100", FALLBACK_SURFACE_STRONG);
+            colorFeatureSurface = resolveMonetColor("system_accent1_50", FALLBACK_FEATURE_SURFACE);
+            colorFeatureStroke = resolveMonetColor("system_accent1_200", FALLBACK_FEATURE_STROKE);
+            colorText = resolveMonetColor("system_neutral1_900", FALLBACK_TEXT);
+            colorSubtext = resolveMonetColor("system_neutral2_700", FALLBACK_SUBTEXT);
+            colorPrimary = resolveMonetColor("system_accent1_600", FALLBACK_PRIMARY);
+            colorPrimaryContainer = resolveMonetColor("system_accent1_100", FALLBACK_PRIMARY_CONTAINER);
+            colorPrimaryDeep = resolveMonetColor("system_accent1_800", FALLBACK_PRIMARY_DEEP);
+            colorStroke = resolveMonetColor("system_neutral1_100", FALLBACK_STROKE);
+        }
     }
 
     private void configureSystemBars() {
+        boolean isDark = (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-            getWindow().setStatusBarColor(colorSurface);
-            getWindow().setNavigationBarColor(colorSurface);
+            getWindow().setStatusBarColor(colorBackground);
+            getWindow().setNavigationBarColor(colorBackground);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             int flags = getWindow().getDecorView().getSystemUiVisibility();
-            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            if (isDark) {
+                flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    flags &= ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                }
+            } else {
+                flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                }
+            }
             getWindow().getDecorView().setSystemUiVisibility(flags);
         }
     }
