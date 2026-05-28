@@ -1415,14 +1415,8 @@ final class LauncherRecentsTouchController {
     }
 
     private static boolean isStackTaskWithinVisibleDataBounds(View recentsView, View taskView) {
-        int[] recentsLocation = new int[2];
-        int[] taskLocation = new int[2];
-        recentsView.getLocationOnScreen(recentsLocation);
-        taskView.getLocationOnScreen(taskLocation);
-        float viewportRight = recentsLocation[0]
-                + recentsView.getWidth()
-                + (recentsView.getWidth() * STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO);
-        float taskLeft = taskLocation[0];
+        float taskLeft = taskView.getX() - recentsView.getScrollX();
+        float viewportRight = recentsView.getWidth() * (1f + STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO);
         return taskLeft < viewportRight;
     }
 
@@ -1446,8 +1440,24 @@ final class LauncherRecentsTouchController {
         return shouldExposeStackTaskForDismissVisibility(recentsView, taskView);
     }
 
+    private static boolean isTransitionAnimationActive(View recentsView) {
+        if (recentsView == null) {
+            return false;
+        }
+        return LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+                || LauncherRecentsState.isOverviewStateStackAnimationActive(recentsView)
+                || LauncherRecentsState.isOverviewPeekStockAnimationActive(recentsView)
+                || LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
+                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(recentsView)
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(recentsView);
+    }
+
     static void ensureStackVisibleTaskDataIfNeeded(View recentsView, int changes) {
         if (recentsView == null || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+            return;
+        }
+        if (isTransitionAnimationActive(recentsView)) {
             return;
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
@@ -1471,7 +1481,14 @@ final class LauncherRecentsTouchController {
     }
 
     static void forceEnsureStackVisibleTaskData(View recentsView, int changes) {
+        forceEnsureStackVisibleTaskData(recentsView, changes, false);
+    }
+
+    static void forceEnsureStackVisibleTaskData(View recentsView, int changes, boolean forceRelease) {
         if (recentsView == null) {
+            return;
+        }
+        if (isTransitionAnimationActive(recentsView)) {
             return;
         }
         long perfStartNs = LauncherRecentsPerf.start(recentsView);
@@ -1486,7 +1503,7 @@ final class LauncherRecentsTouchController {
                     LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
             state.currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
             state.scrollBucket = resolveStackVisibleTaskDataBucket(recentsView);
-            ensureStackVisibleTaskData(recentsView, changes);
+            ensureStackVisibleTaskData(recentsView, changes, forceRelease);
         } finally {
             LauncherRecentsPerf.end("visibleTaskDataSync:force", perfStartNs);
         }
@@ -1506,6 +1523,10 @@ final class LauncherRecentsTouchController {
     }
 
     static void ensureStackVisibleTaskData(View recentsView, int changes) {
+        ensureStackVisibleTaskData(recentsView, changes, false);
+    }
+
+    static void ensureStackVisibleTaskData(final View recentsView, final int changes, boolean forceRelease) {
         if (recentsView == null || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
             return;
         }
@@ -1517,10 +1538,16 @@ final class LauncherRecentsTouchController {
                 : null;
         ArrayList<Integer> visibleTaskIds = new ArrayList<>();
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        boolean hasPendingReleases = false;
+
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             if (!shouldExposeStackTaskForDismissVisibility(recentsView, taskView)) {
-                releaseStackTaskDataIfNeeded(recentsView, taskView, visibleIds, changes);
+                if (forceRelease) {
+                    releaseStackTaskDataIfNeeded(recentsView, taskView, visibleIds, changes);
+                } else {
+                    hasPendingReleases = true;
+                }
                 continue;
             }
             boolean needsUpdate = visibleIds == null;
@@ -1558,10 +1585,40 @@ final class LauncherRecentsTouchController {
         if (viewModel != null && !visibleTaskIds.isEmpty() && visibleTaskIdsChanged) {
             LauncherRecentsCompat.invokeCompat(
                     viewModel,
-                        "updateVisibleTasks",
-                        new Class<?>[]{List.class},
-                        visibleTaskIds);
+                    "updateVisibleTasks",
+                    new Class<?>[]{List.class},
+                    visibleTaskIds);
         }
+
+        StackVisibleTaskDataSyncState state = STACK_VISIBLE_TASK_DATA_SYNC_STATES.get(recentsView);
+        if (state != null) {
+            if (forceRelease) {
+                state.pendingCleanupRunnable = null;
+            } else if (hasPendingReleases) {
+                scheduleDeferredCleanup(recentsView, state, changes);
+            }
+        }
+    }
+
+    private static void scheduleDeferredCleanup(
+            final View recentsView,
+            final StackVisibleTaskDataSyncState state,
+            final int changes) {
+        if (state.pendingCleanupRunnable != null) {
+            recentsView.removeCallbacks(state.pendingCleanupRunnable);
+        }
+        state.pendingCleanupRunnable = new Runnable() {
+            @Override
+            public void run() {
+                long startNs = LauncherRecentsPerf.start(recentsView);
+                try {
+                    ensureStackVisibleTaskData(recentsView, changes, true);
+                } finally {
+                    LauncherRecentsPerf.end("visibleTaskDataSync:deferredCleanup", startNs);
+                }
+            }
+        };
+        recentsView.postDelayed(state.pendingCleanupRunnable, 300);
     }
 
     private static void releaseStackTaskDataIfNeeded(
@@ -1591,11 +1648,36 @@ final class LauncherRecentsTouchController {
         }
     }
 
-    private static ArrayList<Integer> resolveStackTaskIds(View taskView) {
-        ArrayList<Integer> taskIds = new ArrayList<>();
-        if (taskView == null) {
-            return taskIds;
+    private static final int KEY_TASK_IDS_CACHE = 0x7f999999;
+
+    private static final class TaskIdsCache {
+        final Object taskInstance;
+        final ArrayList<Integer> taskIds;
+
+        TaskIdsCache(Object taskInstance, ArrayList<Integer> taskIds) {
+            this.taskInstance = taskInstance;
+            this.taskIds = taskIds;
         }
+    }
+
+    private static ArrayList<Integer> resolveStackTaskIds(View taskView) {
+        if (taskView == null) {
+            return new ArrayList<>();
+        }
+        Object currentTask = LauncherRecentsCompat.getFieldCompat(taskView, "mTask");
+        if (currentTask == null) {
+            currentTask = LauncherRecentsCompat.invokeCompat(taskView, "getTask");
+        }
+        if (currentTask != null) {
+            Object cached = taskView.getTag(KEY_TASK_IDS_CACHE);
+            if (cached instanceof TaskIdsCache) {
+                TaskIdsCache cache = (TaskIdsCache) cached;
+                if (cache.taskInstance == currentTask) {
+                    return cache.taskIds;
+                }
+            }
+        }
+        ArrayList<Integer> taskIds = new ArrayList<>();
         Object containersObject =
                 LauncherRecentsCompat.invokeCompat(taskView, "getTaskContainers");
         if (containersObject instanceof List) {
@@ -1606,6 +1688,9 @@ final class LauncherRecentsTouchController {
                         LauncherRecentsCompat.invokeCompat(taskContainers.get(i), "getTask"));
             }
             if (!taskIds.isEmpty()) {
+                if (currentTask != null) {
+                    taskView.setTag(KEY_TASK_IDS_CACHE, new TaskIdsCache(currentTask, taskIds));
+                }
                 return taskIds;
             }
         }
@@ -1619,6 +1704,9 @@ final class LauncherRecentsTouchController {
                         LauncherRecentsCompat.invokeCompat(attributeContainers[i], "getTask"));
             }
             if (!taskIds.isEmpty()) {
+                if (currentTask != null) {
+                    taskView.setTag(KEY_TASK_IDS_CACHE, new TaskIdsCache(currentTask, taskIds));
+                }
                 return taskIds;
             }
         }
@@ -1626,12 +1714,18 @@ final class LauncherRecentsTouchController {
                 taskIds,
                 LauncherRecentsCompat.invokeCompat(taskView, "getTask"));
         if (!taskIds.isEmpty()) {
+            if (currentTask != null) {
+                taskView.setTag(KEY_TASK_IDS_CACHE, new TaskIdsCache(currentTask, taskIds));
+            }
             return taskIds;
         }
         addStackTaskIdFromTask(
                 taskIds,
                 LauncherRecentsCompat.getFieldCompat(taskView, "mTask"));
         if (!taskIds.isEmpty()) {
+            if (currentTask != null) {
+                taskView.setTag(KEY_TASK_IDS_CACHE, new TaskIdsCache(currentTask, taskIds));
+            }
             return taskIds;
         }
         Object taskIdsObject =
@@ -1641,6 +1735,9 @@ final class LauncherRecentsTouchController {
             for (int i = 0; i < ids.length; i++) {
                 addStackTaskId(taskIds, ids[i]);
             }
+        }
+        if (currentTask != null && !taskIds.isEmpty()) {
+            taskView.setTag(KEY_TASK_IDS_CACHE, new TaskIdsCache(currentTask, taskIds));
         }
         return taskIds;
     }
@@ -2259,6 +2356,7 @@ final class LauncherRecentsTouchController {
         int taskViewCount;
         int currentPage;
         int scrollBucket;
+        Runnable pendingCleanupRunnable;
     }
 
     static void clearRecentsDeferredSnap(View recentsView) {
