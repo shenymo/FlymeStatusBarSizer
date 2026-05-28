@@ -1042,6 +1042,7 @@ final class LauncherRecentsLaunchController {
         animator.addUpdateListener(animation -> {
             Object value = animation.getAnimatedValue();
             state.progress = value instanceof Float ? (Float) value : 0f;
+            LauncherRecentsPerf.hit("animationFrame:launchHandoff", recentsView);
             LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
             recentsView.invalidate();
         });

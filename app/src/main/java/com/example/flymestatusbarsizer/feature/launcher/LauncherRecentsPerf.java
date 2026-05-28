@@ -1,12 +1,15 @@
 package com.example.flymestatusbarsizer.feature.launcher;
 
+import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
+
+import android.content.Context;
 import android.util.Log;
+import android.view.View;
 
 import java.util.HashMap;
 import java.util.Map;
 
 final class LauncherRecentsPerf {
-    private static final boolean ENABLED = true;
     private static final String TAG = "FSBS-RecentsPerf";
     private static final long REPORT_WINDOW_NS = 1_000_000_000L;
     private static final long SLOW_CALL_NS = 4_000_000L;
@@ -16,12 +19,21 @@ final class LauncherRecentsPerf {
     private LauncherRecentsPerf() {
     }
 
-    static long start() {
-        return ENABLED ? System.nanoTime() : 0L;
+    static boolean enabled(View view) {
+        return FlymeStatusBarSizer.isLauncherRecentsPerfLoggingEnabled(
+                view != null ? view.getContext() : null);
+    }
+
+    private static boolean enabled(Context context) {
+        return FlymeStatusBarSizer.isLauncherRecentsPerfLoggingEnabled(context);
+    }
+
+    static long start(View view) {
+        return enabled(view) ? System.nanoTime() : 0L;
     }
 
     static void end(String name, long startNs) {
-        if (!ENABLED || startNs == 0L) {
+        if (startNs == 0L) {
             return;
         }
         long nowNs = System.nanoTime();
@@ -53,12 +65,19 @@ final class LauncherRecentsPerf {
     }
 
     static void hit(String name) {
-        long startNs = start();
+        long startNs = System.nanoTime();
         end(name, startNs);
     }
 
+    static void hit(String name, View view) {
+        if (!enabled(view)) {
+            return;
+        }
+        hit(name);
+    }
+
     static void reportPending() {
-        if (!ENABLED || STATS.isEmpty()) {
+        if (STATS.isEmpty()) {
             return;
         }
         for (Map.Entry<String, Stats> entry : STATS.entrySet()) {

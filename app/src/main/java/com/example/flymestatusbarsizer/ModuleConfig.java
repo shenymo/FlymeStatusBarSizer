@@ -82,6 +82,8 @@ final class ModuleConfig {
     int imeControlBarYOffsetTenthDp = SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10;
     boolean telephonyDebugEnabled = SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED;
     boolean wifiPerfLoggingEnabled = SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED;
+    boolean launcherRecentsPerfLoggingEnabled =
+            SettingsStore.DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED;
     int telephonyDebugSimCount = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
     int telephonyDebugDefaultDataSlot = SettingsStore.DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT;
     int telephonyDebugSlot1NetworkProfile = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE;
@@ -416,6 +418,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WIFI_PERF_LOGGING_ENABLED,
                     SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED);
+            config.launcherRecentsPerfLoggingEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED,
+                    SettingsStore.DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED);
             config.telephonyDebugSimCount = SettingsStore.normalizeTelephonyDebugSimCount(
                     SettingsStore.readInt(
                             prefs,

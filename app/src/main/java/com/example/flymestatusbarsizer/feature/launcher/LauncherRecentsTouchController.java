@@ -783,6 +783,7 @@ final class LauncherRecentsTouchController {
             float value = (Float) animation.getAnimatedValue();
             state.currentDismissTranslationY = value;
             float progress = end != start ? (value - start) / (end - start) : 1f;
+            LauncherRecentsPerf.hit("animationFrame:dismissSuccess", state.recentsView);
             applyStackDismissSuccessProgress(state, value, progress);
         });
         animator.addListener(new AnimatorListenerAdapter() {
@@ -812,6 +813,7 @@ final class LauncherRecentsTouchController {
         animator.addUpdateListener(animation -> {
             float value = (Float) animation.getAnimatedValue();
             state.currentDismissTranslationY = value;
+            LauncherRecentsPerf.hit("animationFrame:dismissCancel", state.recentsView);
             applyStackDismissProgress(state, value);
         });
         animator.addListener(new AnimatorListenerAdapter() {
@@ -1472,16 +1474,22 @@ final class LauncherRecentsTouchController {
         if (recentsView == null) {
             return;
         }
-        StackVisibleTaskDataSyncState state =
-                STACK_VISIBLE_TASK_DATA_SYNC_STATES.get(recentsView);
-        if (state == null) {
-            state = new StackVisibleTaskDataSyncState();
-            STACK_VISIBLE_TASK_DATA_SYNC_STATES.put(recentsView, state);
+        long perfStartNs = LauncherRecentsPerf.start(recentsView);
+        try {
+            StackVisibleTaskDataSyncState state =
+                    STACK_VISIBLE_TASK_DATA_SYNC_STATES.get(recentsView);
+            if (state == null) {
+                state = new StackVisibleTaskDataSyncState();
+                STACK_VISIBLE_TASK_DATA_SYNC_STATES.put(recentsView, state);
+            }
+            state.taskViewCount =
+                    LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+            state.currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
+            state.scrollBucket = resolveStackVisibleTaskDataBucket(recentsView);
+            ensureStackVisibleTaskData(recentsView, changes);
+        } finally {
+            LauncherRecentsPerf.end("visibleTaskDataSync:force", perfStartNs);
         }
-        state.taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        state.currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
-        state.scrollBucket = resolveStackVisibleTaskDataBucket(recentsView);
-        ensureStackVisibleTaskData(recentsView, changes);
     }
 
     private static int resolveStackVisibleTaskDataBucket(View recentsView) {

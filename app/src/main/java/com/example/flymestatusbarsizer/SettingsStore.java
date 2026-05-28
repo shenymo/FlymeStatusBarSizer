@@ -78,6 +78,8 @@ final class SettingsStore {
     static final String KEY_IME_CONTROL_BAR_ALIGNMENT = "ime_control_bar_alignment";
     static final String KEY_TELEPHONY_DEBUG_ENABLED = "telephony_debug_enabled";
     static final String KEY_WIFI_PERF_LOGGING_ENABLED = "wifi_perf_logging_enabled";
+    static final String KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED =
+            "launcher_recents_perf_logging_enabled";
     static final String KEY_TELEPHONY_DEBUG_SIM_COUNT = "telephony_debug_sim_count";
     static final String KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT = "telephony_debug_default_data_slot";
     static final String KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE = "telephony_debug_slot1_network_profile";
@@ -156,6 +158,7 @@ final class SettingsStore {
     static final int DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP = 0;
     static final boolean DEFAULT_TELEPHONY_DEBUG_ENABLED = false;
     static final boolean DEFAULT_WIFI_PERF_LOGGING_ENABLED = false;
+    static final boolean DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED = false;
     static final int DEFAULT_TELEPHONY_DEBUG_SIM_COUNT = 2;
     static final int TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_NONE = -1;
     static final int TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_CARD1 = 0;
@@ -231,7 +234,8 @@ final class SettingsStore {
             KEY_MBACK_HIDE_PILL,
             KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
             KEY_TELEPHONY_DEBUG_ENABLED,
-            KEY_WIFI_PERF_LOGGING_ENABLED
+            KEY_WIFI_PERF_LOGGING_ENABLED,
+            KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED
     };
 
     static final String[] STRING_KEYS = {
@@ -480,6 +484,8 @@ final class SettingsStore {
                 return DEFAULT_TELEPHONY_DEBUG_ENABLED;
             case KEY_WIFI_PERF_LOGGING_ENABLED:
                 return DEFAULT_WIFI_PERF_LOGGING_ENABLED;
+            case KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED:
+                return DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED;
             default:
                 return false;
         }

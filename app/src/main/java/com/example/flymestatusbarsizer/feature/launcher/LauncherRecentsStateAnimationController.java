@@ -161,6 +161,7 @@ final class LauncherRecentsStateAnimationController {
                 new Class<?>[]{Runnable.class},
                 (Runnable) () -> {
                     if (isOverviewStateStackAnimationActive(recentsView)) {
+                        LauncherRecentsPerf.hit("animationFrame:overviewState", recentsView);
                         LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                     }
                 });
@@ -200,6 +201,7 @@ final class LauncherRecentsStateAnimationController {
                     LauncherRecentsTransitionController.setBlankTapHomeExitProgress(
                             recentsView,
                             progress);
+                    LauncherRecentsPerf.hit("animationFrame:blankTapSystem", recentsView);
                     LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                     recentsView.invalidate();
                 });
@@ -245,8 +247,13 @@ final class LauncherRecentsStateAnimationController {
                         recentsView,
                         "mAdjacentPageHorizontalOffset",
                         0.53f));
-        LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
-        LauncherRecentsState.setOverviewStateStackBaselineCaptured(recentsView, true);
+        long perfStartNs = LauncherRecentsPerf.start(recentsView);
+        try {
+            LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
+            LauncherRecentsState.setOverviewStateStackBaselineCaptured(recentsView, true);
+        } finally {
+            LauncherRecentsPerf.end("captureStockTaskStates:overviewBegin", perfStartNs);
+        }
         markOverviewStateStackAnimation(recentsView, true);
         attachOverviewStateAnimationCallbacks(recentsView, pendingAnimation);
         if (pendingAnimation == null) {

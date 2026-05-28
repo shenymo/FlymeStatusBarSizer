@@ -209,6 +209,7 @@ final class LauncherRecentsLayoutEngine {
                         recentsView.post(() -> {
                             prepareRecentsView(recentsView);
                             captureStockTaskStatesForStackApply(recentsView);
+                            LauncherRecentsPerf.hit("animationFrame:constructorPost", recentsView);
                             applyDynamicStackLayoutIfNeeded(recentsView);
                         });
                     }
@@ -407,15 +408,21 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static void prepareRecentsView(View recentsView) {
+        long perfStartNs = LauncherRecentsPerf.start(recentsView);
         if (!(recentsView instanceof ViewGroup)) {
+            LauncherRecentsPerf.end("prepareRecentsView", perfStartNs);
             return;
         }
-        ViewGroup group = (ViewGroup) recentsView;
-        group.setClipChildren(false);
-        group.setClipToPadding(false);
-        ViewParent parent = group.getParent();
-        if (parent instanceof ViewGroup) {
-            ((ViewGroup) parent).setClipChildren(false);
+        try {
+            ViewGroup group = (ViewGroup) recentsView;
+            group.setClipChildren(false);
+            group.setClipToPadding(false);
+            ViewParent parent = group.getParent();
+            if (parent instanceof ViewGroup) {
+                ((ViewGroup) parent).setClipChildren(false);
+            }
+        } finally {
+            LauncherRecentsPerf.end("prepareRecentsView", perfStartNs);
         }
     }
 
@@ -439,16 +446,21 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static void captureStockTaskStatesForStackApply(View recentsView) {
-        if (!LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
-                recentsView)) {
-            LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
-            return;
+        long perfStartNs = LauncherRecentsPerf.start(recentsView);
+        try {
+            if (!LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                    recentsView)) {
+                LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
+                return;
+            }
+            if (LauncherRecentsState.isOverviewStateStackBaselineCaptured(recentsView)) {
+                return;
+            }
+            LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
+            LauncherRecentsState.setOverviewStateStackBaselineCaptured(recentsView, true);
+        } finally {
+            LauncherRecentsPerf.end("captureStockTaskStates", perfStartNs);
         }
-        if (LauncherRecentsState.isOverviewStateStackBaselineCaptured(recentsView)) {
-            return;
-        }
-        LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
-        LauncherRecentsState.setOverviewStateStackBaselineCaptured(recentsView, true);
     }
 
     static void captureBlankTapHomeExitTaskStates(View recentsView) {
@@ -810,21 +822,29 @@ final class LauncherRecentsLayoutEngine {
                 stackLayoutRadius,
                 source,
                 syncVisibleTaskData)) {
+            LauncherRecentsPerf.hit("skipDuplicate:" + source, recentsView);
             return;
         }
         boolean layoutApplied = false;
-        long perfStartNs = LauncherRecentsPerf.start();
+        long totalStartNs = LauncherRecentsPerf.start(recentsView);
+        long layoutStartNs = LauncherRecentsPerf.start(recentsView);
         try {
             layoutApplied = applyStackLayoutMeasured(
                     recentsView,
                     captureStockState,
                     stackLayoutRadius);
         } finally {
-            LauncherRecentsPerf.end("applyStackLayout:" + source, perfStartNs);
+            LauncherRecentsPerf.end("layoutCompute:" + source, layoutStartNs);
         }
         if (syncVisibleTaskData && layoutApplied) {
-            LauncherRecentsTouchController.ensureStackVisibleTaskDataIfNeeded(recentsView, 15);
+            long visibleDataStartNs = LauncherRecentsPerf.start(recentsView);
+            try {
+                LauncherRecentsTouchController.ensureStackVisibleTaskDataIfNeeded(recentsView, 15);
+            } finally {
+                LauncherRecentsPerf.end("visibleTaskDataSync:" + source, visibleDataStartNs);
+            }
         }
+        LauncherRecentsPerf.end("applyStackLayoutTotal:" + source, totalStartNs);
     }
 
     private static boolean shouldSkipDuplicateStackLayout(
@@ -1721,6 +1741,7 @@ final class LauncherRecentsLayoutEngine {
         if (recentsView == null) {
             return false;
         }
+        LauncherRecentsPerf.hit("animationFrame:applyDynamic", recentsView);
         LauncherRecentsState.trackRecentsView(recentsView);
         prepareRecentsView(recentsView);
         if (!shouldApplyDynamicStackLayoutOnSystemFrame(recentsView)) {

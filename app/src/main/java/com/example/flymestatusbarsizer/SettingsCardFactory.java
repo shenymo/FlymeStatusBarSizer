@@ -275,9 +275,14 @@ final class SettingsCardFactory {
                 "打开后会给 Wi-Fi 更新链路输出详细耗时日志，方便在 logcat 里分析刷新开销。",
                 SettingsStore.KEY_WIFI_PERF_LOGGING_ENABLED,
                 SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED);
+        activity.addDivider(content);
+        activity.addSwitchRow(content, "启用后台堆叠性能打点",
+                "打开后输出 IOS 式堆叠后台的布局、状态准备、可见任务同步和跳过次数日志。",
+                SettingsStore.KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED,
+                SettingsStore.DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED);
         return activity.buildSectionCard(
                 "性能调试",
-                "只保留和现有模块实现直接相关的 Wi-Fi 链路打点开关。",
+                "只保留和现有模块实现直接相关的性能打点开关。",
                 content);
     }
 
