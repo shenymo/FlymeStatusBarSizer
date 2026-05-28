@@ -8,6 +8,7 @@ import android.content.Context;
 import android.os.SystemClock;
 import android.text.TextUtils;
 import android.view.HapticFeedbackConstants;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -382,7 +383,9 @@ final class ImeToolbarActions {
         int displayId = resolveDisplayId(button.getContext());
         String label = getActiveCaptchaLabel(displayId);
         if (button instanceof TextView) {
-            ((TextView) button).setText(TextUtils.isEmpty(label) ? "验证码" : label);
+            TextView textButton = (TextView) button;
+            textButton.setGravity(Gravity.CENTER);
+            textButton.setText(TextUtils.isEmpty(label) ? "" : label);
         }
         boolean enabled = !TextUtils.isEmpty(label)
                 && !TextUtils.isEmpty(getActiveCaptchaInput(displayId))

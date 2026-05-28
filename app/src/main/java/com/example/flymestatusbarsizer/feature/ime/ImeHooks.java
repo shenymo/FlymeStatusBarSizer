@@ -31,10 +31,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class ImeHooks {
     private static final String STOCK_CONTROL_BAR_BACK = ImeToolbarSpec.STOCK_CONTROL_BAR_BACK;
     private static final String PACKAGE_ANDROID = "android";
-    private static final String PACKAGE_ANDROID_LATIN = "com.android.inputmethod.latin";
-    private static final String PACKAGE_FLYME_INPUTMETHOD = "flyme.inputmethod";
-    private static final String PACKAGE_GOOGLE_LATIN = "com.google.android.inputmethod.latin";
-    private static final String PACKAGE_TENCENT_WETYPE = "com.tencent.wetype";
     private static final int DEFAULT_IME_ICON_SCALE_PERCENT = 100;
     private static final int DEFAULT_IME_ICON_ALPHA_PERCENT = 100;
     private static final int FLYME_QS_ACTION_ITEMS_LAYOUT_ID = 17367445;
@@ -61,7 +57,7 @@ public final class ImeHooks {
         if (module == null || loader == null || packageName == null) {
             return;
         }
-        if (isImeClientPackage(packageName)) {
+        if (!PACKAGE_ANDROID.equals(packageName) && hasImeControlBarClasses(loader)) {
             hookNavigationBarInflaterOnFinishInflate(module, loader);
             hookNavigationBarInflaterCreateView(module, loader);
             hookNavigationBarViewSetNavbarFlags(module, loader);
@@ -99,11 +95,11 @@ public final class ImeHooks {
         }
     }
 
-    private static boolean isImeClientPackage(String packageName) {
-        return PACKAGE_ANDROID_LATIN.equals(packageName)
-                || PACKAGE_GOOGLE_LATIN.equals(packageName)
-                || PACKAGE_TENCENT_WETYPE.equals(packageName)
-                || PACKAGE_FLYME_INPUTMETHOD.equals(packageName);
+    private static boolean hasImeControlBarClasses(ClassLoader loader) {
+        return findClass(loader, "android.inputmethodservice.InputMethodService") != null
+                && findClass(loader, "android.inputmethodservice.navigationbar.NavigationBarInflaterView") != null
+                && findClass(loader, "android.inputmethodservice.navigationbar.NavigationBarView") != null
+                && findClass(loader, "android.inputmethodservice.NavigationBarController$Impl") != null;
     }
 
     private static boolean shouldReplaceOriginalImeControlBar() {

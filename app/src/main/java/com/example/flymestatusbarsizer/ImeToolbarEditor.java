@@ -214,13 +214,17 @@ final class ImeToolbarEditor {
         buttonSlotContainer.removeAllViews();
         for (int i = 0; i < ImeToolbarSpec.getButtonSlotCount(); i++) {
             String button = i < buttonSlots.size() ? buttonSlots.get(i) : null;
+            int span = ImeToolbarSpec.getButtonSpan(button);
             View slotView = buildSlotView(i, button);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, span);
             if (i > 0) {
                 lp.leftMargin = activity.dp(6);
             }
             buttonSlotContainer.addView(slotView, lp);
+            if (span > 1) {
+                i += span - 1;
+            }
         }
     }
 
