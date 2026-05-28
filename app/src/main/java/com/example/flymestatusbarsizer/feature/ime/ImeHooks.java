@@ -34,6 +34,7 @@ public final class ImeHooks {
     private static final int DEFAULT_IME_ICON_SCALE_PERCENT = 100;
     private static final int DEFAULT_IME_ICON_ALPHA_PERCENT = 100;
     private static final int FLYME_QS_ACTION_ITEMS_LAYOUT_ID = 17367445;
+    private static final int STOCK_CONTROL_BAR_CAPTCHA_WIDTH_DP = 96;
 
     private static final WeakHashMap<Object, View> TRACKED_INPUT_METHOD_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<Object, Boolean> TRACKED_INPUT_METHOD_MANAGER_SERVICES =
@@ -153,7 +154,11 @@ public final class ImeHooks {
                 }
                 String action = extractButtonName((String) specArg);
                 if (ImeToolbarSpec.isValidActionName(action)) {
-                    return createStockControlBarActionButton(((ViewGroup) parentArg).getContext(), action);
+                    View button = createStockControlBarActionButton(((ViewGroup) parentArg).getContext(), action);
+                    if (ImeToolbarSpec.isCaptchaButton(action)) {
+                        forceStockControlBarCaptchaWidth(button);
+                    }
+                    return button;
                 }
                 if (ImeToolbarSpec.isPlaceholderName(action)) {
                     return createStockControlBarPlaceholderView(((ViewGroup) parentArg).getContext());
@@ -1122,6 +1127,20 @@ public final class ImeHooks {
         return sizeIndex >= 0 ? buttonSpec.substring(0, sizeIndex) : buttonSpec;
     }
 
+    private static void forceStockControlBarCaptchaWidth(View button) {
+        if (button == null) {
+            return;
+        }
+        int width = FlymeStatusBarSizer.dp(button.getContext(), STOCK_CONTROL_BAR_CAPTCHA_WIDTH_DP);
+        ViewGroup.LayoutParams params = button.getLayoutParams();
+        if (params == null) {
+            params = new ViewGroup.LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT);
+        }
+        params.width = width;
+        params.height = ViewGroup.LayoutParams.MATCH_PARENT;
+        button.setLayoutParams(params);
+    }
+
     private static View createStockControlBarActionButton(Context context, String action) {
         if (context == null || !ImeToolbarSpec.isValidActionName(action)) {
             return null;
@@ -1159,7 +1178,7 @@ public final class ImeHooks {
         button.setEllipsize(TextUtils.TruncateAt.END);
         button.setGravity(Gravity.CENTER);
         button.setTextSize(14);
-        int horizontalPadding = FlymeStatusBarSizer.dp(context, 6);
+        int horizontalPadding = FlymeStatusBarSizer.dp(context, 2);
         button.setPadding(horizontalPadding, 0, horizontalPadding, 0);
         button.setContentDescription(ImeToolbarSpec.getButtonLabel("captcha"));
         button.setBackground(resolveBorderlessSelectableBackground(context));
