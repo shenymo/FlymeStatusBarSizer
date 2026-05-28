@@ -768,6 +768,13 @@ final class LauncherRecentsLayoutEngine {
         }
         LauncherRecentsState.trackRecentsView(recentsView);
         prepareRecentsView(recentsView);
+        if (LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                && !LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                recentsView)
+                && !LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
+                recentsView)) {
+            return;
+        }
         if (pendingState.dynamicOnly && !shouldApplyDynamicStackLayoutOnSystemFrame(recentsView)) {
             return;
         }
@@ -1530,7 +1537,11 @@ final class LauncherRecentsLayoutEngine {
             View recentsView) {
         return "updatePageOffsetsForFlyme".equals(methodName)
                 && shouldUseStackLayout(recentsView)
-                && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                recentsView)
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
+                recentsView))
                 && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
                 recentsView)
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
@@ -1557,7 +1568,6 @@ final class LauncherRecentsLayoutEngine {
                 recentsView))
                 && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                 || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
-                || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(

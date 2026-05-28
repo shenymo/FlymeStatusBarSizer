@@ -326,6 +326,7 @@ final class LauncherRecentsTransitionController {
             runningAnimator.cancel();
         }
         setPageAnimOffScreenStart(recentsView, false);
+        clearEntryStateForBlankTapHomeExit(recentsView, true);
         if (!isBlankTapHomeExitActive(recentsView)
                 || LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.isEmpty()) {
             LauncherRecentsLayoutEngine.captureBlankTapHomeExitTaskStates(recentsView);
@@ -475,6 +476,7 @@ final class LauncherRecentsTransitionController {
         markBlankTapHomeExitActive(recentsView, false);
         LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.clear();
         setPageAnimOffScreenStart(recentsView, false);
+        clearEntryStateForBlankTapHomeExit(recentsView, false);
         if (reapplyLayout) {
             LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
         }
@@ -698,6 +700,27 @@ final class LauncherRecentsTransitionController {
         } else {
             animator.start();
         }
+    }
+
+    private static void clearEntryStateForBlankTapHomeExit(
+            View recentsView,
+            boolean cancelGestureRelease) {
+        if (recentsView == null) {
+            return;
+        }
+        if (cancelGestureRelease) {
+            cancelGestureRecentsStackReleaseAnimation(recentsView, true);
+        }
+        LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
+        LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
+        LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
+        LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
+        LauncherRecentsState.setPendingGestureRecentsStackRelease(recentsView, false);
+        LauncherRecentsState.setPendingGestureRecentsStackReleaseHandoff(recentsView, false);
+        clearForcedRecentsTranslationX(recentsView);
+        clearForcedRecentsTranslationY(recentsView);
+        LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
+        LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
     }
 
     private static void beginGestureRecentsStackReleaseHandoff(
