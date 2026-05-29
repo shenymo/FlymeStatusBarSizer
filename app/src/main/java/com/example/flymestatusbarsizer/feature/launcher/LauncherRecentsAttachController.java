@@ -144,8 +144,11 @@ final class LauncherRecentsAttachController {
                 boolean attached = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
                 View recentsView = resolveRecentsView(thisObject);
                 if (!attached) {
+                    // 【方案一 1-B】加入 isAppToRecentsEntrySessionActive 保护：
+                    // 当 entry session 仍活跃时，不允许提前清除，否则会触发一帧平铺恢复布局
                     boolean shouldKeepDeferred =
                             LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                                    || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                                     || LauncherRecentsTransitionController
                                     .isGestureRecentsStackReleaseAnimationActive(recentsView);
                     if (shouldKeepDeferred) {

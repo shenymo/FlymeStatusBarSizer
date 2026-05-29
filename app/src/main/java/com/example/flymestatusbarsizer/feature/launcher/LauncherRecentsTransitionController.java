@@ -234,9 +234,14 @@ final class LauncherRecentsTransitionController {
                             LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                         }
                     } else {
-                        LauncherRecentsAttachController.clearAppToRecentsEntrySession(
-                                recentsView,
-                                false);
+                        // 【方案一 1-C】仅在没有待处理的手势释放时才清除 entry session，
+                        // 否则下一帧 gestureReleased 到位后走 shouldPrepareGestureRelease 分支，
+                        // 提前清除会触发一帧平铺恢复布局
+                        if (!isPendingGestureRecentsStackRelease(recentsView)) {
+                            LauncherRecentsAttachController.clearAppToRecentsEntrySession(
+                                    recentsView,
+                                    false);
+                        }
                     }
                     if (!shouldPrepareGestureRelease
                             || gestureReleased
