@@ -144,13 +144,18 @@ final class LauncherRecentsAttachController {
                 boolean attached = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
                 View recentsView = resolveRecentsView(thisObject);
                 if (!attached) {
-                    // 【方案一 1-B】加入 isAppToRecentsEntrySessionActive 保护：
-                    // 当 entry session 仍活跃时，不允许提前清除，否则会触发一帧平铺恢复布局
+                    // 【方案一 1-B】守卫：入场流程任意阶段均不允许清除状态触发恢复布局。
+                    // 补充 isGestureStackReleasedStable：release 动画结束后系统仍会回调
+                    // setRecentsAttachedToAppWindowForFlyme(false)，此时前三个条件全为 false，
+                    // 但若不阻止，clearAppToRecentsEntrySession 会把 gestureReleasedStable 重置
+                    // 为 false，导致下一帧 resolveStockStackEntryProgress 读到未收敛的
+                    // mAdjacentPageHorizontalOffset，瞬间拉低名称/图标透明度。
                     boolean shouldKeepDeferred =
                             LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                                     || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                                     || LauncherRecentsTransitionController
-                                    .isGestureRecentsStackReleaseAnimationActive(recentsView);
+                                    .isGestureRecentsStackReleaseAnimationActive(recentsView)
+                                    || LauncherRecentsState.isGestureStackReleasedStable(recentsView);
                     if (shouldKeepDeferred) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
@@ -159,6 +164,7 @@ final class LauncherRecentsAttachController {
                     clearAppToRecentsEntrySession(recentsView, false);
                     return chain.proceed();
                 }
+
                 if (!shouldAugmentAppToRecentsAttach(
                         thisObject,
                         recentsView,

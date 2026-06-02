@@ -1302,9 +1302,17 @@ final class LauncherRecentsLayoutEngine {
                 input.layoutProgress,
                 input.taskWidth,
                 input.taskCenteredLeftPx);
-        if (!blankTapExitTaskActive) {
+        // 在 app→recents 入场流程（含 release 动画）期间，scroll/layoutProgress 尚未收敛，
+        // stackLeftClampAlpha 可能 < 1f，若此时用它压低 desiredStableAlpha，
+        // 会导致 activityTitleAlpha 随手势持握时长变化（越短越透明）。
+        // gestureReleasedStable=true 时 scroll 已由模块归位，可安全使用 clamp。
+        boolean skipClampForEntry = (context.gestureStackReleaseActive
+                || isAppToRecentsEntryInProgress(context.recentsView))
+                && !LauncherRecentsState.isGestureStackReleasedStable(context.recentsView);
+        if (!blankTapExitTaskActive && !skipClampForEntry) {
             desiredStableAlpha *= stackLeftClampAlpha;
         }
+
         float targetBlurProgress = resolveStackContentBlurProgress(
                 stackLeftClampAlpha,
                 taskEntryProgress);
@@ -1410,9 +1418,22 @@ final class LauncherRecentsLayoutEngine {
                     appliedBlurProgress,
                     context.overviewStateStackHandoffProgress);
         }
-        float appliedActivityTitleAlpha = context.blankTapExitActive
-                ? activityTitleAlpha
-                : resolveStackTitleAlpha(appliedStableAlpha);
+        // 系统原本对 icon/名称没有单独的透明度处理——stableAlpha 就等于 mContentAlpha，
+        // icon 和名称随整个 taskView 一起显示，从未被单独压低过。
+        // 在入场流程期间（release 动画 + entryInProgress），scroll/layoutProgress 尚未收敛，
+        // resolveStackTitleAlpha(appliedStableAlpha) 会因偏低的 stableAlpha 而得到低值，
+        // 与系统行为不一致，且随手势时长变化。对齐系统原始行为，直接用 1f。
+        boolean entryInProgress = (context.gestureStackReleaseActive
+                || isAppToRecentsEntryInProgress(context.recentsView))
+                && !LauncherRecentsState.isGestureStackReleasedStable(context.recentsView);
+        float appliedActivityTitleAlpha;
+        if (context.blankTapExitActive) {
+            appliedActivityTitleAlpha = activityTitleAlpha;
+        } else if (entryInProgress) {
+            appliedActivityTitleAlpha = 1f;
+        } else {
+            appliedActivityTitleAlpha = resolveStackTitleAlpha(appliedStableAlpha);
+        }
         return new LauncherRecentsTaskVisuals.StackTaskVisualState(
                 input.taskWidth * 0.5f,
                 input.taskHeight * 0.5f,
@@ -1567,6 +1588,9 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
+                recentsView)
+                // handoff 开始后 deferred 已清零但 progress 尚未建立，此帧也需压制
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
                 recentsView))
                 && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
                 recentsView)
@@ -1593,7 +1617,10 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
                 recentsView))
                 && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+                // handoff 开始后 deferred 已清零但 progress/stable 尚未建立，此帧也需压制，
+                // isAppToRecentsEntrySessionActive 永远为 false 所以换为 release 动画判断
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
+                recentsView)
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
@@ -1782,6 +1809,12 @@ final class LauncherRecentsLayoutEngine {
         if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
             return 1f;
         }
+        // app→recents 入场流程的任何阶段（defer 中 / 手势已释放但 release 动画未稳定）
+        // mAdjacentPageHorizontalOffset 尚未收敛，若此时读取系统实时值会导致
+        // stackEntryProgress 偏低，进而拉低卡片名称/图标透明度（与触控时长成正比）
+        if (isAppToRecentsEntryInProgress(recentsView)) {
+            return 1f;
+        }
         return resolveStockStackEntryProgress(recentsView);
     }
 
@@ -1789,8 +1822,26 @@ final class LauncherRecentsLayoutEngine {
         if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
             return 1f;
         }
+        if (isAppToRecentsEntryInProgress(recentsView)) {
+            return 1f;
+        }
         return resolveStockStackVerticalProgress(recentsView);
     }
+
+    /**
+     * 判断当前是否处于 app→recents 入场流程的任意阶段：
+     * - 手势上滑进行中（layoutDeferred=true），mAdjacentPageHorizontalOffset 尚未从 1 收敛到 0
+     * - 手势已松手但 release 动画仍在运行（gestureReleased=true 但未 stable）
+     * 上述阶段读取系统 mAdjacentPageHorizontalOffset/mContentAlpha 会得到未收敛值，
+     * 导致 stackEntryProgress 偏低，进而拉低名称/图标透明度。
+     */
+    private static boolean isAppToRecentsEntryInProgress(View recentsView) {
+        return LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
+                recentsView);
+    }
+
 
     static float resolveStockStackEntryProgress(View recentsView) {
         float adjacentOffset = clamp(
