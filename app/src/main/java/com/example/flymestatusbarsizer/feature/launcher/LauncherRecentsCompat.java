@@ -9,6 +9,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.HashSet;
 
 import io.github.libxposed.api.XposedInterface;
 
@@ -30,6 +31,7 @@ final class LauncherRecentsCompat {
     static final String TASK_VIEW_UTILS_CLASS = "com.android.quickstep.TaskViewUtils";
 
     private static final HashMap<String, Method> METHOD_CACHE = new HashMap<>();
+    private static final HashSet<String> METHOD_MISS_CACHE = new HashSet<>();
     @SuppressWarnings("rawtypes")
     private static final HashMap<Method, XposedInterface.Invoker> METHOD_INVOKER_CACHE =
             new HashMap<>();
@@ -153,19 +155,7 @@ final class LauncherRecentsCompat {
         if (target == null || name == null) {
             return;
         }
-        Class<?> clazz = target.getClass();
-        while (clazz != null) {
-            try {
-                Field field = clazz.getDeclaredField(name);
-                field.setAccessible(true);
-                field.set(target, value);
-                return;
-            } catch (NoSuchFieldException e) {
-                clazz = clazz.getSuperclass();
-            } catch (Throwable ignored) {
-                return;
-            }
-        }
+        FlymeStatusBarSizer.setFieldCompat(target, name, value);
     }
 
     static boolean invokeMethodReflectively(
@@ -254,6 +244,9 @@ final class LauncherRecentsCompat {
         Class<?>[] resolvedParameterTypes = parameterTypes == null ? NO_ARGS : parameterTypes;
         String key = methodCacheKey(targetClass, methodName, resolvedParameterTypes);
         synchronized (METHOD_CACHE) {
+            if (METHOD_MISS_CACHE.contains(key)) {
+                return null;
+            }
             Method cached = METHOD_CACHE.get(key);
             if (cached != null) {
                 return cached;
@@ -273,6 +266,9 @@ final class LauncherRecentsCompat {
             } catch (Throwable ignored) {
                 return null;
             }
+        }
+        synchronized (METHOD_CACHE) {
+            METHOD_MISS_CACHE.add(key);
         }
         return null;
     }

@@ -6,11 +6,15 @@ import android.view.View;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.HashSet;
 
 final class ReflectUtils {
     private static final HashMap<String, Field> FIELD_CACHE = new HashMap<>();
+    private static final HashSet<String> FIELD_MISS_CACHE = new HashSet<>();
     private static final HashMap<String, Method> NO_ARG_METHOD_CACHE = new HashMap<>();
+    private static final HashSet<String> NO_ARG_METHOD_MISS_CACHE = new HashSet<>();
     private static final HashMap<String, Method> METHOD_CACHE = new HashMap<>();
+    private static final HashSet<String> METHOD_MISS_CACHE = new HashSet<>();
     private static volatile Method SET_MEASURED_DIMENSION_METHOD;
 
     private ReflectUtils() {
@@ -33,6 +37,9 @@ final class ReflectUtils {
     private static Field findCachedField(Class<?> targetClass, String name) {
         String key = memberCacheKey(targetClass, name);
         synchronized (FIELD_CACHE) {
+            if (FIELD_MISS_CACHE.contains(key)) {
+                return null;
+            }
             Field cached = FIELD_CACHE.get(key);
             if (cached != null) {
                 return cached;
@@ -53,12 +60,18 @@ final class ReflectUtils {
                 return null;
             }
         }
+        synchronized (FIELD_CACHE) {
+            FIELD_MISS_CACHE.add(key);
+        }
         return null;
     }
 
     private static Method findCachedNoArgMethod(Class<?> targetClass, String name) {
         String key = memberCacheKey(targetClass, name);
         synchronized (NO_ARG_METHOD_CACHE) {
+            if (NO_ARG_METHOD_MISS_CACHE.contains(key)) {
+                return null;
+            }
             Method cached = NO_ARG_METHOD_CACHE.get(key);
             if (cached != null) {
                 return cached;
@@ -79,12 +92,18 @@ final class ReflectUtils {
                 return null;
             }
         }
+        synchronized (NO_ARG_METHOD_CACHE) {
+            NO_ARG_METHOD_MISS_CACHE.add(key);
+        }
         return null;
     }
 
     private static Method findCachedMethod(Class<?> targetClass, String name, Class<?>... parameterTypes) {
         String key = methodCacheKey(targetClass, name, parameterTypes);
         synchronized (METHOD_CACHE) {
+            if (METHOD_MISS_CACHE.contains(key)) {
+                return null;
+            }
             Method cached = METHOD_CACHE.get(key);
             if (cached != null) {
                 return cached;
@@ -104,6 +123,9 @@ final class ReflectUtils {
             } catch (Throwable ignored) {
                 return null;
             }
+        }
+        synchronized (METHOD_CACHE) {
+            METHOD_MISS_CACHE.add(key);
         }
         return null;
     }

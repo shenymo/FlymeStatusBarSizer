@@ -6607,6 +6607,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         return ReflectUtils.getField(target, name);
     }
 
+    public static void setFieldCompat(Object target, String name, Object value) {
+        ReflectUtils.setField(target, name, value);
+    }
+
     public static Object invokeNoArgCompat(Object target, String name) {
         return ReflectUtils.invokeNoArg(target, name);
     }
