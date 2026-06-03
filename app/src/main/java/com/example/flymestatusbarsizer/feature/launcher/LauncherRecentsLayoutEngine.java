@@ -17,10 +17,9 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_ENTRY_INITIAL_SPREAD_RATIO = 0.8f;
     private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.05f;
     private static final float STACK_RIGHT_VISIBLE_RATIO = 0.80f;
-    private static final float STACK_SPREAD_POWER = 1.0f;
-    private static final float STACK_LEFT_DAMPING_START_DEPTH = 0.75f;
-    private static final float STACK_LEFT_DAMPING_POWER = 1.55f;
-    private static final float STACK_LEFT_DAMPING_MIN_WEIGHT = 0.18f;
+    private static final float STACK_LEFT_MOVE_RATIO = 0.72f;
+    private static final float STACK_RIGHT_BASE_SPEEDUP_RATIO = 0.10f;
+    private static final float STACK_RIGHT_SPEEDUP_RATIO = 0.32f;
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
     private static final float STACK_RELEASE_SETTLED_PROGRESS_SHIFT = 0.70f;
     private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
@@ -1902,14 +1901,7 @@ final class LauncherRecentsLayoutEngine {
                 progress,
                 taskWidth,
                 taskCenteredLeftPx);
-        if (progress >= 0f) {
-            return visibleOffset;
-        }
-        return -resolveLeftDampedVisibleOffset(
-                visibleOffset,
-                taskWidth,
-                taskCenteredLeftPx,
-                Math.abs(progress));
+        return progress >= 0f ? visibleOffset : -(visibleOffset * STACK_LEFT_MOVE_RATIO);
     }
 
     private static float resolveStackVirtualVisibleOffset(
@@ -1926,39 +1918,12 @@ final class LauncherRecentsLayoutEngine {
         if (stackDepth <= 0.001f) {
             return 0f;
         }
-        float stackSpreadProgress = (float) Math.pow(
-                remapProgress(stackDepth, 0f, 1f),
-                STACK_SPREAD_POWER);
-        float visibleOffset = stackRightOffsetPx * stackSpreadProgress;
-        if (stackDepth > 1f) {
-            visibleOffset += (stackDepth - 1f) * taskWidth * STACK_RIGHT_VISIBLE_RATIO;
+        float stackSpreadProgress = stackDepth;
+        if (progress > 0f) {
+            stackSpreadProgress += (STACK_RIGHT_BASE_SPEEDUP_RATIO * stackDepth)
+                    + (STACK_RIGHT_SPEEDUP_RATIO * stackDepth * stackDepth);
         }
-        return visibleOffset;
-    }
-
-    private static float resolveLeftDampedVisibleOffset(
-            float virtualOffset,
-            float taskWidth,
-            float taskCenteredLeftPx,
-            float stackDepth) {
-        float dampingStartPx = Math.max(
-                1f,
-                Math.max(taskCenteredLeftPx, taskWidth * STACK_LEFT_DAMPING_START_DEPTH));
-        if (stackDepth <= STACK_LEFT_DAMPING_START_DEPTH) {
-            return virtualOffset;
-        }
-        if (virtualOffset <= dampingStartPx) {
-            return virtualOffset;
-        }
-        float stackRangePx = Math.max(1f, taskWidth * STACK_RIGHT_VISIBLE_RATIO);
-        float overflowPx = virtualOffset - dampingStartPx;
-        float dampingProgress = overflowPx / stackRangePx;
-        float dampedOverflowPx = stackRangePx
-                * STACK_LEFT_DAMPING_MIN_WEIGHT
-                * (1.0f - (float) Math.pow(
-                STACK_LEFT_DAMPING_MIN_WEIGHT / (dampingProgress + STACK_LEFT_DAMPING_MIN_WEIGHT),
-                STACK_LEFT_DAMPING_POWER));
-        return dampingStartPx + dampedOverflowPx;
+        return stackRightOffsetPx * stackSpreadProgress;
     }
 
     private static float resolveStackLeftBoundOffset(
