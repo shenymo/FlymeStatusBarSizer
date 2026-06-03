@@ -75,6 +75,7 @@ final class MBackStarOverlayController {
     private static final long SMALL_WINDOW_ANIMATION_DURATION_MS = 260L;
     private static final long SMALL_WINDOW_HOVER_TIMEOUT_MS = 1000L;
     private static final long SMALL_WINDOW_OVERLAY_DISMISS_DELAY_MS = 60L;
+    private static final long CANCEL_DISMISS_DELAY_MS = 700L;
     private static final long LAUNCH_ANIMATION_DURATION_MS = 260L;
     private static final long LAUNCH_OVERLAY_DISMISS_DELAY_MS = 360L;
     private static final DecelerateInterpolator LAUNCH_ANIMATION_INTERPOLATOR =
@@ -138,6 +139,11 @@ final class MBackStarOverlayController {
     private boolean smallWindowReadyHapticFired;
     private GradientDrawable previewBackground;
     private float previewCornerRadius;
+    private final Runnable cancelDismissRunnable = () -> {
+        if (showing && !launchAnimationRunning) {
+            dismiss();
+        }
+    };
 
     MBackStarOverlayController(Context context) {
         Context appContext = context != null && context.getApplicationContext() != null
@@ -169,6 +175,7 @@ final class MBackStarOverlayController {
         mBackRawY = Float.NaN;
         resetLaunchAnimationState();
         resetParallax();
+        cancelPendingCancelDismiss();
         rememberMotion(startEvent);
         rememberMBackOrigin(anchor, startEvent);
         if (!attachOverlay(anchor.getContext())) {
@@ -210,10 +217,12 @@ final class MBackStarOverlayController {
         rememberMotion(event);
         int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_DOWN) {
+            cancelPendingCancelDismiss();
             updateHover(event.getRawX(), event.getRawY());
             return true;
         }
         if (action == MotionEvent.ACTION_UP) {
+            cancelPendingCancelDismiss();
             updateHover(event.getRawX(), event.getRawY());
             IconHolder target = hoveredHolder;
             if (target != null && target.app != null) {
@@ -224,7 +233,8 @@ final class MBackStarOverlayController {
             return true;
         }
         if (action == MotionEvent.ACTION_CANCEL) {
-            dismiss();
+            cancelHoverTimer();
+            scheduleCancelDismiss();
             return true;
         }
         return true;
@@ -301,6 +311,7 @@ final class MBackStarOverlayController {
         }
         showing = false;
         launchAnimationRunning = false;
+        cancelPendingCancelDismiss();
         stopGyro();
         cancelHoverTimer();
         hoveredHolder = null;
@@ -309,6 +320,7 @@ final class MBackStarOverlayController {
         lastRawY = Float.NaN;
         mBackRawX = Float.NaN;
         mBackRawY = Float.NaN;
+        MBackStarOverlayBridge.clearLatestMotionEvent();
         resetParallax();
         apps = MBackStarApp.EMPTY_ARRAY;
         previewCache.clear();
@@ -326,6 +338,15 @@ final class MBackStarOverlayController {
             }
         }
         removeOverlayFromParent();
+    }
+
+    private void scheduleCancelDismiss() {
+        cancelPendingCancelDismiss();
+        handler.postDelayed(cancelDismissRunnable, CANCEL_DISMISS_DELAY_MS);
+    }
+
+    private void cancelPendingCancelDismiss() {
+        handler.removeCallbacks(cancelDismissRunnable);
     }
 
     private void removeOverlayFromParent() {

@@ -18,11 +18,13 @@ public final class MBackStarOverlayBridge {
         MBackStarOverlayController target;
         MotionEvent startEvent;
         synchronized (LOCK) {
-            if (controller == null) {
+            if (controller == null || !controller.isActive()) {
                 controller = new MBackStarOverlayController(anchor.getContext());
             }
             target = controller;
-            startEvent = latestMotionEvent == null ? null : MotionEvent.obtain(latestMotionEvent);
+            startEvent = latestMotionEvent == null || isTerminalEvent(latestMotionEvent)
+                    ? null
+                    : MotionEvent.obtain(latestMotionEvent);
         }
         try {
             target.show(anchor, startEvent);
@@ -34,7 +36,11 @@ public final class MBackStarOverlayBridge {
     }
 
     public static boolean dispatchMBackMotionEvent(MotionEvent event) {
-        rememberLatestMotionEvent(event);
+        if (isTerminalEvent(event)) {
+            clearLatestMotionEvent();
+        } else {
+            rememberLatestMotionEvent(event);
+        }
         MBackStarOverlayController target;
         synchronized (LOCK) {
             target = controller;
@@ -50,6 +56,15 @@ public final class MBackStarOverlayBridge {
         return target != null && target.isActive();
     }
 
+    static void clearLatestMotionEvent() {
+        synchronized (LOCK) {
+            if (latestMotionEvent != null) {
+                latestMotionEvent.recycle();
+                latestMotionEvent = null;
+            }
+        }
+    }
+
     private static void rememberLatestMotionEvent(MotionEvent event) {
         if (event == null) {
             return;
@@ -60,5 +75,13 @@ public final class MBackStarOverlayBridge {
             }
             latestMotionEvent = MotionEvent.obtain(event);
         }
+    }
+
+    private static boolean isTerminalEvent(MotionEvent event) {
+        if (event == null) {
+            return false;
+        }
+        int action = event.getActionMasked();
+        return action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL;
     }
 }
