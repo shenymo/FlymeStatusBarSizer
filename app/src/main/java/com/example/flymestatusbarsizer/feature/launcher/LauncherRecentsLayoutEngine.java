@@ -26,7 +26,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO = 0.30f;
     private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
     private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
-    private static final float STACK_MIN_SCALE = 0.85f;
+    private static final float STACK_MIN_SCALE = 0.92f;
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.04f;
     private static final float BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO = 0.18f;
