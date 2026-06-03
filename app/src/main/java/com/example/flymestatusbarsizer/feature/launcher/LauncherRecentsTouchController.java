@@ -539,7 +539,7 @@ final class LauncherRecentsTouchController {
 
     private static boolean isSilentNativeDismissActive(View recentsView) {
         return Boolean.TRUE.equals(SILENT_NATIVE_DISMISS_RECENTS.get(recentsView))
-                && LauncherRecentsLayoutEngine.shouldDeferStackLayoutForAppToRecents(recentsView);
+                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView);
     }
 
     static boolean shouldSuppressNativeDismissTranslation(View recentsView) {

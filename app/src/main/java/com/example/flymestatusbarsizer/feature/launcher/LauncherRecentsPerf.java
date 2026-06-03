@@ -2,12 +2,10 @@ package com.example.flymestatusbarsizer.feature.launcher;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
-import android.content.Context;
 import android.util.Log;
 import android.view.View;
 
 import java.util.HashMap;
-import java.util.Map;
 
 final class LauncherRecentsPerf {
     private static final String TAG = "FSBS-RecentsPerf";
@@ -22,10 +20,6 @@ final class LauncherRecentsPerf {
     static boolean enabled(View view) {
         return FlymeStatusBarSizer.isLauncherRecentsPerfLoggingEnabled(
                 view != null ? view.getContext() : null);
-    }
-
-    private static boolean enabled(Context context) {
-        return FlymeStatusBarSizer.isLauncherRecentsPerfLoggingEnabled(context);
     }
 
     static long start(View view) {
@@ -74,23 +68,6 @@ final class LauncherRecentsPerf {
             return;
         }
         hit(name);
-    }
-
-    static void reportPending() {
-        if (STATS.isEmpty()) {
-            return;
-        }
-        for (Map.Entry<String, Stats> entry : STATS.entrySet()) {
-            Stats stats = entry.getValue();
-            if (stats.count == 0) {
-                continue;
-            }
-            Log.i(TAG, entry.getKey()
-                    + " count=" + stats.count
-                    + " avgMs=" + (stats.totalNs / stats.count / 1_000_000f)
-                    + " maxMs=" + (stats.maxNs / 1_000_000f)
-                    + " slow4ms=" + stats.slowCount);
-        }
     }
 
     private static final class Stats {

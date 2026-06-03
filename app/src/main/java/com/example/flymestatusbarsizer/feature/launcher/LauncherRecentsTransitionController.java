@@ -268,8 +268,7 @@ final class LauncherRecentsTransitionController {
                 Object thisObject = chain.getThisObject();
                 View recentsView = resolveHandlerRecentsView(thisObject);
                 if (recentsView != null
-                        && LauncherRecentsLayoutEngine.shouldDeferStackLayoutForAppToRecents(
-                        recentsView)) {
+                        && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
                     LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, true);
                 }
                 return chain.proceed();
@@ -928,7 +927,7 @@ final class LauncherRecentsTransitionController {
             View recentsView,
             Object endTarget) {
         return recentsView != null
-                && LauncherRecentsLayoutEngine.shouldDeferStackLayoutForAppToRecents(recentsView)
+                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
                 && isRecentsGestureEndTarget(endTarget);
     }
 
@@ -938,7 +937,7 @@ final class LauncherRecentsTransitionController {
 
     private static boolean shouldSuppressLiveTileForStack(View recentsView) {
         return recentsView != null
-                && LauncherRecentsLayoutEngine.shouldDeferStackLayoutForAppToRecents(recentsView)
+                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
                 && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                 && !LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
     }

@@ -43,8 +43,7 @@ final class LauncherRecentsAttachController {
                         ? (View) chain.getThisObject()
                         : null;
                 if (recentsView == null
-                        || !LauncherRecentsLayoutEngine.shouldDeferStackLayoutForAppToRecents(
-                        recentsView)) {
+                        || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
                     return chain.proceed();
                 }
                 LauncherRecentsLaunchController.clearTaskLaunchFrozenForNewGesture(recentsView);

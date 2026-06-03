@@ -285,7 +285,7 @@ final class LauncherRecentsLayoutEngine {
                     View recentsView = (View) thisObject;
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    if (shouldApplyDynamicStackLayoutOnSystemFrame(recentsView)) {
+                    if (shouldApplyDynamicStackLayout(recentsView)) {
                         scheduleStackLayout(
                                 recentsView,
                                 true,
@@ -719,10 +719,6 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
-    static void applyStackLayout(View recentsView, boolean captureStockState) {
-        applyStackLayout(recentsView, captureStockState, "external");
-    }
-
     static void applyStackLayout(View recentsView, boolean captureStockState, String source) {
         applyStackLayout(recentsView, captureStockState, source, true);
     }
@@ -794,7 +790,7 @@ final class LauncherRecentsLayoutEngine {
                 recentsView)) {
             return;
         }
-        if (pendingState.dynamicOnly && !shouldApplyDynamicStackLayoutOnSystemFrame(recentsView)) {
+        if (pendingState.dynamicOnly && !shouldApplyDynamicStackLayout(recentsView)) {
             return;
         }
         if (pendingState.captureStockState
@@ -809,13 +805,6 @@ final class LauncherRecentsLayoutEngine {
                 pendingState.source != null ? pendingState.source : "scheduled",
                 pendingState.syncVisibleTaskData);
         recentsView.invalidate();
-    }
-
-    private static void applyStackLayout(
-            View recentsView,
-            boolean captureStockState,
-            int stackLayoutRadius) {
-        applyStackLayout(recentsView, captureStockState, stackLayoutRadius, "internal", true);
     }
 
     private static void applyStackLayout(
@@ -1711,16 +1700,6 @@ final class LauncherRecentsLayoutEngine {
         return shouldUseStackLayout(config, recentsView, taskViewCount);
     }
 
-    static boolean shouldDeferStackLayoutForAppToRecents(View recentsView) {
-        if (recentsView == null) {
-            return false;
-        }
-        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
-                FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        return shouldUseStackLayout(config, recentsView, taskViewCount);
-    }
-
     static boolean shouldUseStackLayout(
             FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config,
             View recentsView,
@@ -1760,17 +1739,6 @@ final class LauncherRecentsLayoutEngine {
                 recentsView));
     }
 
-    private static boolean shouldApplyDynamicStackLayoutOnSystemFrame(View recentsView) {
-        if (!shouldApplyDynamicStackLayout(recentsView)) {
-            return false;
-        }
-        if (!LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
-                recentsView)) {
-            return true;
-        }
-        return true;
-    }
-
     static boolean applyDynamicStackLayoutIfNeeded(View recentsView) {
         if (recentsView == null) {
             return false;
@@ -1778,7 +1746,7 @@ final class LauncherRecentsLayoutEngine {
         LauncherRecentsPerf.hit("animationFrame:applyDynamic", recentsView);
         LauncherRecentsState.trackRecentsView(recentsView);
         prepareRecentsView(recentsView);
-        if (!shouldApplyDynamicStackLayoutOnSystemFrame(recentsView)) {
+        if (!shouldApplyDynamicStackLayout(recentsView)) {
             return false;
         }
         if (LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
