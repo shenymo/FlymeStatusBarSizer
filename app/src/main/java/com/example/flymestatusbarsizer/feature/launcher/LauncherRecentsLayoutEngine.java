@@ -1124,10 +1124,11 @@ final class LauncherRecentsLayoutEngine {
             if (appEntrySessionActive && taskView == runningTaskView) {
                 LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 1f);
                 LauncherRecentsTaskVisuals.setStableAlpha(taskView, 1f);
-                LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 1f);
-                LauncherRecentsTaskVisuals.setStackContentBlurProgress(taskView, 0f);
                 LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
                 continue;
+            }
+            if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+                LauncherRecentsTaskVisuals.forceTaskHeadVisible(taskView);
             }
             if (captureStockState) {
                 LauncherRecentsTaskVisuals.captureStockTaskState(taskView);
@@ -1137,6 +1138,9 @@ final class LauncherRecentsLayoutEngine {
                     buildStackTaskVisualState(
                             layoutContext,
                             buildStackTaskInput(layoutContext, taskView, i)));
+            if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+                LauncherRecentsTaskVisuals.forceTaskHeadVisible(taskView);
+            }
         }
         if (launchState != null && launchState.handoffEnabled) {
             LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);
@@ -1418,11 +1422,9 @@ final class LauncherRecentsLayoutEngine {
                     appliedBlurProgress,
                     context.overviewStateStackHandoffProgress);
         }
-        // 系统原本对 icon/名称没有单独的透明度处理——stableAlpha 就等于 mContentAlpha，
-        // icon 和名称随整个 taskView 一起显示，从未被单独压低过。
-        // 在入场流程期间（release 动画 + entryInProgress），scroll/layoutProgress 尚未收敛，
-        // resolveStackTitleAlpha(appliedStableAlpha) 会因偏低的 stableAlpha 而得到低值，
-        // 与系统行为不一致，且随手势时长变化。对齐系统原始行为，直接用 1f。
+        // app→recents 入场阶段交给系统自身的图标/标题动画处理；模块只在堆叠接管后
+        // 计算标题透明度。若此时根据未收敛的 scroll/layoutProgress 重算标题 alpha，
+        // 会让名称透明度随手势时长变化。
         boolean entryInProgress = (context.gestureStackReleaseActive
                 || isAppToRecentsEntryInProgress(context.recentsView))
                 && !LauncherRecentsState.isGestureStackReleasedStable(context.recentsView);
@@ -1430,7 +1432,8 @@ final class LauncherRecentsLayoutEngine {
         if (context.blankTapExitActive) {
             appliedActivityTitleAlpha = activityTitleAlpha;
         } else if (entryInProgress) {
-            appliedActivityTitleAlpha = 1f;
+            appliedActivityTitleAlpha =
+                    LauncherRecentsTaskVisuals.readActivityTitleAlpha(taskView);
         } else {
             appliedActivityTitleAlpha = resolveStackTitleAlpha(appliedStableAlpha);
         }

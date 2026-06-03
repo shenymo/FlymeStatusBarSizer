@@ -1468,13 +1468,14 @@ final class LauncherRecentsTouchController {
             return;
         }
         int bucket = recentsView.getScrollX() / Math.max(1, width / 4);
-        StackVisibleTaskDataSyncState state =
-                STACK_VISIBLE_TASK_DATA_SYNC_STATES.get(recentsView);
-        if (state != null
-                && state.taskViewCount == taskViewCount
-                && state.currentPage == currentPage
-                && state.scrollBucket == bucket
-                && !isLastStackVisibleTaskIdsEmpty(recentsView)) {
+        StackVisibleTaskDataSyncState state = findStackVisibleTaskDataSyncState(recentsView);
+        if (shouldSkipStackVisibleTaskDataSync(
+                recentsView,
+                state,
+                taskViewCount,
+                currentPage,
+                bucket,
+                false)) {
             return;
         }
         forceEnsureStackVisibleTaskData(recentsView, changes);
@@ -1488,25 +1489,62 @@ final class LauncherRecentsTouchController {
         if (recentsView == null) {
             return;
         }
-        if (isTransitionAnimationActive(recentsView)) {
+        if (isTransitionAnimationActive(recentsView) && !forceRelease) {
             return;
         }
         long perfStartNs = LauncherRecentsPerf.start(recentsView);
         try {
-            StackVisibleTaskDataSyncState state =
-                    STACK_VISIBLE_TASK_DATA_SYNC_STATES.get(recentsView);
-            if (state == null) {
-                state = new StackVisibleTaskDataSyncState();
-                STACK_VISIBLE_TASK_DATA_SYNC_STATES.put(recentsView, state);
+            StackVisibleTaskDataSyncState state = ensureStackVisibleTaskDataSyncState(recentsView);
+            int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+            int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
+            int scrollBucket = resolveStackVisibleTaskDataBucket(recentsView);
+            if (shouldSkipStackVisibleTaskDataSync(
+                    recentsView,
+                    state,
+                    taskViewCount,
+                    currentPage,
+                    scrollBucket,
+                    forceRelease)) {
+                return;
             }
-            state.taskViewCount =
-                    LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-            state.currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
-            state.scrollBucket = resolveStackVisibleTaskDataBucket(recentsView);
+            state.taskViewCount = taskViewCount;
+            state.currentPage = currentPage;
+            state.scrollBucket = scrollBucket;
             ensureStackVisibleTaskData(recentsView, changes, forceRelease);
         } finally {
             LauncherRecentsPerf.end("visibleTaskDataSync:force", perfStartNs);
         }
+    }
+
+    private static StackVisibleTaskDataSyncState findStackVisibleTaskDataSyncState(
+            View recentsView) {
+        return STACK_VISIBLE_TASK_DATA_SYNC_STATES.get(recentsView);
+    }
+
+    private static StackVisibleTaskDataSyncState ensureStackVisibleTaskDataSyncState(
+            View recentsView) {
+        StackVisibleTaskDataSyncState state = STACK_VISIBLE_TASK_DATA_SYNC_STATES.get(recentsView);
+        if (state == null) {
+            state = new StackVisibleTaskDataSyncState();
+            STACK_VISIBLE_TASK_DATA_SYNC_STATES.put(recentsView, state);
+        }
+        return state;
+    }
+
+    private static boolean shouldSkipStackVisibleTaskDataSync(
+            View recentsView,
+            StackVisibleTaskDataSyncState state,
+            int taskViewCount,
+            int currentPage,
+            int scrollBucket,
+            boolean forceRelease) {
+        if (state == null || forceRelease || isLastStackVisibleTaskIdsEmpty(recentsView)) {
+            return false;
+        }
+        return state.taskViewCount == taskViewCount
+                && state.currentPage == currentPage
+                && state.scrollBucket == scrollBucket
+                && state.pendingCleanupRunnable == null;
     }
 
     private static int resolveStackVisibleTaskDataBucket(View recentsView) {
@@ -1610,6 +1648,11 @@ final class LauncherRecentsTouchController {
         state.pendingCleanupRunnable = new Runnable() {
             @Override
             public void run() {
+                state.pendingCleanupRunnable = null;
+                if (isTransitionAnimationActive(recentsView)) {
+                    scheduleDeferredCleanup(recentsView, state, changes);
+                    return;
+                }
                 long startNs = LauncherRecentsPerf.start(recentsView);
                 try {
                     ensureStackVisibleTaskData(recentsView, changes, true);

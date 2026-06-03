@@ -16,6 +16,7 @@ public final class LauncherRecentsHooks {
         LauncherRecentsLaunchController.installHooks(module, loader);
         LauncherRecentsTouchController.installHooks(module, loader);
         LauncherRecentsTransitionController.installHooks(module, loader);
+        LauncherRecentsSurfaceController.installHooks(module, loader);
     }
 
     public static void refreshTrackedViews() {
