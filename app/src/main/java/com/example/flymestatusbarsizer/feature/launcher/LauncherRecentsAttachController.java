@@ -53,11 +53,12 @@ final class LauncherRecentsAttachController {
                         true);
                 LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
                 LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
-                LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
+                LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, true);
                 LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, true);
                 LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                 LauncherRecentsState.trackRecentsView(recentsView);
                 LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+                LauncherRecentsTaskVisuals.clearRecentsStackContentBlur(recentsView);
                 return chain.proceed();
             });
         } catch (Throwable t) {

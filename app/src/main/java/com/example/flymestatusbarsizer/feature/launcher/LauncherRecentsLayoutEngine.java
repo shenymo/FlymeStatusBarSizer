@@ -714,7 +714,8 @@ final class LauncherRecentsLayoutEngine {
                     taskView,
                     new LauncherRecentsState.GestureReleaseTaskState(
                             startVisibleOffset,
-                            targetVisibleOffset));
+                            targetVisibleOffset,
+                            LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView)));
         }
     }
 
@@ -1127,9 +1128,6 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
                 continue;
             }
-            if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
-                LauncherRecentsTaskVisuals.forceTaskHeadVisible(taskView);
-            }
             if (captureStockState) {
                 LauncherRecentsTaskVisuals.captureStockTaskState(taskView);
             }
@@ -1138,9 +1136,6 @@ final class LauncherRecentsLayoutEngine {
                     buildStackTaskVisualState(
                             layoutContext,
                             buildStackTaskInput(layoutContext, taskView, i)));
-            if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
-                LauncherRecentsTaskVisuals.forceTaskHeadVisible(taskView);
-            }
         }
         if (launchState != null && launchState.handoffEnabled) {
             LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);
@@ -1339,7 +1334,11 @@ final class LauncherRecentsLayoutEngine {
         float appliedTranslationZ = desiredTranslationZ;
         if (context.gestureStackReleaseActive) {
             if (input.gestureReleaseTaskState != null) {
-                appliedHorizontalOffsetX = 0f;
+                appliedHorizontalOffsetX = lerp(
+                        input.gestureReleaseTaskState.startHorizontalOffsetX,
+                        0f,
+                        context.stackReleaseProgress);
+                appliedTaskOffsetX = translationCompensationX - appliedHorizontalOffsetX;
             } else {
                 appliedHorizontalOffsetX = lerp(
                         LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView),
@@ -1620,8 +1619,7 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
                 recentsView))
                 && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                // handoff 开始后 deferred 已清零但 progress/stable 尚未建立，此帧也需压制，
-                // isAppToRecentsEntrySessionActive 永远为 false 所以换为 release 动画判断
+                // handoff 开始后 deferred 已清零但 progress/stable 尚未建立，此帧也需压制。
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
                 recentsView)
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
@@ -1840,6 +1838,7 @@ final class LauncherRecentsLayoutEngine {
      */
     private static boolean isAppToRecentsEntryInProgress(View recentsView) {
         return LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                 || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
                 recentsView);

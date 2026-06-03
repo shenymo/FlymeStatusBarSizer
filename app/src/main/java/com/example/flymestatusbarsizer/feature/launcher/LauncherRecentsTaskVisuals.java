@@ -486,6 +486,16 @@ final class LauncherRecentsTaskVisuals {
         setStackContentBlurProgress(taskView, 0f);
     }
 
+    static void clearRecentsStackContentBlur(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            clearStackContentBlur(LauncherRecentsCompat.getTaskViewAt(recentsView, i));
+        }
+    }
+
     static boolean hasAppliedTaskScaleMismatch(View recentsView) {
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         for (int i = 0; i < taskViewCount; i++) {

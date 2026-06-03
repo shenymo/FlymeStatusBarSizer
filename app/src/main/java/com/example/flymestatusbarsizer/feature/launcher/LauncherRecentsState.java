@@ -134,10 +134,15 @@ final class LauncherRecentsState {
     static final class GestureReleaseTaskState {
         final float startVisibleOffset;
         final float targetVisibleOffset;
+        final float startHorizontalOffsetX;
 
-        GestureReleaseTaskState(float startVisibleOffset, float targetVisibleOffset) {
+        GestureReleaseTaskState(
+                float startVisibleOffset,
+                float targetVisibleOffset,
+                float startHorizontalOffsetX) {
             this.startVisibleOffset = startVisibleOffset;
             this.targetVisibleOffset = targetVisibleOffset;
+            this.startHorizontalOffsetX = startHorizontalOffsetX;
         }
     }
 

@@ -23,6 +23,7 @@ final class LauncherRecentsTransitionController {
             "com.android.quickstep.AbsSwipeUpHandler";
     private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 460L;
     private static final long GESTURE_STACK_RELEASE_DURATION_MS = 320L;
+    private static final long SYSTEM_TASK_HEAD_FADE_IN_WAIT_MS = 220L;
     private static final int APP_TO_RECENTS_STACK_ANCHOR_PAGE = 0;
     private static final float GESTURE_STACK_RELEASE_HANDOFF_START_PROGRESS = 0.42f;
     private static final float BLANK_TAP_HOME_EXIT_VIEW_FADE_START_PROGRESS = 0.78f;
@@ -104,9 +105,6 @@ final class LauncherRecentsTransitionController {
                 View recentsView = chain.getThisObject() instanceof View
                         ? (View) chain.getThisObject()
                         : null;
-                AnimatorSet animatorSet = chain.getArg(0) instanceof AnimatorSet
-                        ? (AnimatorSet) chain.getArg(0)
-                        : null;
                 Object endTarget = chain.getArg(1);
                 boolean shouldPrepareGestureRelease =
                         shouldUsePendingGestureRecentsStackRelease(recentsView, endTarget);
@@ -119,11 +117,6 @@ final class LauncherRecentsTransitionController {
                 if (recentsView != null) {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-                    if (shouldPrepareGestureRelease
-                            && LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
-                            && !isGestureRecentsStackReleaseAnimationActive(recentsView)) {
-                        startGestureRecentsStackReleaseAnimation(recentsView, animatorSet, true);
-                    }
                 }
                 return result;
             });
@@ -225,7 +218,8 @@ final class LauncherRecentsTransitionController {
                         if (gestureReleased
                                 && !releaseAnimationActive
                                 && !releaseAnimationFinished) {
-                            applyGestureRecentsStackRelease(recentsView, true);
+                            scheduleGestureRecentsStackReleaseAfterSystemEntry(recentsView, true);
+                            return result;
                         }
                         if (gestureReleased || releaseAnimationActive || releaseAnimationFinished) {
                             LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
@@ -582,6 +576,24 @@ final class LauncherRecentsTransitionController {
         applyGestureRecentsStackRelease(recentsView, true);
     }
 
+    private static void scheduleGestureRecentsStackReleaseAfterSystemEntry(
+            View recentsView,
+            boolean ensureRunningTaskScreenshot) {
+        if (recentsView == null) {
+            return;
+        }
+        recentsView.postDelayed(() -> {
+            if (!isPendingGestureRecentsStackRelease(recentsView)
+                    || isGestureRecentsStackReleaseAnimationActive(recentsView)) {
+                return;
+            }
+            startGestureRecentsStackReleaseAnimation(
+                    recentsView,
+                    null,
+                    ensureRunningTaskScreenshot);
+        }, SYSTEM_TASK_HEAD_FADE_IN_WAIT_MS);
+    }
+
     private static void applyGestureRecentsStackRelease(
             View recentsView,
             boolean ensureRunningTaskScreenshot) {
@@ -697,7 +709,6 @@ final class LauncherRecentsTransitionController {
                 clearGestureRecentsStackReleaseProgress(recentsView);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
-                LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
                 LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
                 recentsView.invalidate();
             }
