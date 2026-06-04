@@ -12,6 +12,24 @@ android {
         buildConfig true
     }
 
+    // 1. 定义签名配置（从 Linux 环境变量中读取）
+signingConfigs {
+        release {
+            def mKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+            def mKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            def mKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+            def mKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+
+            if (mKeystorePath && mKeystorePassword && mKeyAlias && mKeyPassword) {
+                // 使用等号明确赋值，消除 Groovy 的语法歧义
+                storeFile = file(mKeystorePath)
+                storePassword = mKeystorePassword
+                keyAlias = mKeyAlias
+                keyPassword = mKeyPassword
+            }
+        }
+    }
+
     defaultConfig {
         applicationId "com.fiyme.statusbarsizer"
         minSdk 26
@@ -19,6 +37,21 @@ android {
         versionCode 2026052602
         versionName "2026.05.26.02"
         buildConfigField "String", "BUILD_DATE", "\"${buildDate}\""
+    }
+
+    // 2. 配置构建类型，将签名应用到 release
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            
+            // 引用上方定义的 signingConfigs.release
+            signingConfig signingConfigs.release
+        }
+        
+        debug {
+            // debug 默认使用 Android 自动生成的 debug.keystore 签名，无需额外配置
+        }
     }
 
     lint {
