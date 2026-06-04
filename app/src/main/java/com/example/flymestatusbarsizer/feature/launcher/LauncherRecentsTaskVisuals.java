@@ -103,6 +103,9 @@ final class LauncherRecentsTaskVisuals {
         if (taskView == null || state == null) {
             return;
         }
+        if (state.activityTitleAlpha > MODULE_APPLIED_EPSILON) {
+            forceTaskHeadVisible(taskView);
+        }
         StackTaskVisualState lastState =
                 LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.get(taskView);
         if (lastState != null

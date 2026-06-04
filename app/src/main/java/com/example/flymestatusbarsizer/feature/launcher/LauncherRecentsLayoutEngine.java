@@ -30,7 +30,6 @@ final class LauncherRecentsLayoutEngine {
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.04f;
     private static final float BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO = 0.18f;
-    private static final float STACK_TITLE_FADE_END_CARD_ALPHA = 0.42f;
     private static final float STACK_CONTENT_BLUR_START_ALPHA = 0.85f;
     private static final int STACK_ENTRY_LIGHT_RADIUS = 3;
     private static final int STACK_STABLE_VISIBLE_RADIUS = 2;
@@ -1315,7 +1314,7 @@ final class LauncherRecentsLayoutEngine {
         float desiredAttachAlpha = blankTapExitState != null
                 ? blankTapExitState.startAttachAlpha
                 : 1f;
-        float activityTitleAlpha = resolveStackTitleAlpha(desiredStableAlpha);
+        float activityTitleAlpha = desiredStableAlpha > 0.001f ? 1f : 0f;
         boolean blankTapExitTaskActive = context.blankTapExitActive
                 && blankTapExitState != null;
         if (context.blankTapExitActive) {
@@ -1338,8 +1337,7 @@ final class LauncherRecentsLayoutEngine {
                         pathProgress);
                 desiredScale *= 1.0f - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * pathProgress);
                 desiredStableAlpha *= resolveBlankTapExitAlpha(pathProgress);
-                activityTitleAlpha = blankTapExitState.startActivityTitleAlpha
-                        * resolveBlankTapExitAlpha(pathProgress);
+                activityTitleAlpha = 1f;
             } else {
                 desiredStableAlpha = 0f;
                 activityTitleAlpha = 0f;
@@ -1473,9 +1471,7 @@ final class LauncherRecentsLayoutEngine {
                     appliedBlurProgress,
                     context.overviewStateStackHandoffProgress);
         }
-        // app→recents 入场阶段交给系统自身的图标/标题动画处理；模块只在堆叠接管后
-        // 计算标题透明度。若此时根据未收敛的 scroll/layoutProgress 重算标题 alpha，
-        // 会让名称透明度随手势时长变化。
+        // 头部内容不再二次衰减；实际透明度由 TaskView 自身 alpha 决定。
         boolean entryInProgress = (context.gestureStackReleaseActive
                 || isAppToRecentsEntryInProgress(context.recentsView))
                 && !LauncherRecentsState.isGestureStackReleasedStable(context.recentsView);
@@ -1488,7 +1484,7 @@ final class LauncherRecentsLayoutEngine {
             appliedActivityTitleAlpha =
                     LauncherRecentsTaskVisuals.readActivityTitleAlpha(taskView);
         } else {
-            appliedActivityTitleAlpha = resolveStackTitleAlpha(appliedStableAlpha);
+            appliedActivityTitleAlpha = appliedStableAlpha > 0.001f ? 1f : 0f;
         }
         return new LauncherRecentsTaskVisuals.StackTaskVisualState(
                 input.taskWidth * 0.5f,
@@ -1732,10 +1728,6 @@ final class LauncherRecentsLayoutEngine {
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView));
         LauncherRecentsTaskVisuals.clearAppliedTaskState(taskView);
-    }
-
-    private static float resolveStackTitleAlpha(float taskAlpha) {
-        return remapProgress(taskAlpha, STACK_TITLE_FADE_END_CARD_ALPHA, 1f);
     }
 
     private static float resolveStackContentBlurProgress(
