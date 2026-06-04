@@ -103,9 +103,6 @@ final class LauncherRecentsTaskVisuals {
         if (taskView == null || state == null) {
             return;
         }
-        if (state.activityTitleAlpha > MODULE_APPLIED_EPSILON) {
-            forceTaskHeadVisible(taskView);
-        }
         StackTaskVisualState lastState =
                 LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.get(taskView);
         if (lastState != null
@@ -126,7 +123,7 @@ final class LauncherRecentsTaskVisuals {
         setNonGridScale(taskView, state.scale);
         setAttachAlpha(taskView, state.attachAlpha);
         setStableAlpha(taskView, state.stableAlpha);
-        setActivityTitleAlpha(taskView, state.activityTitleAlpha);
+        setTaskHeadContentAlpha(taskView, state.activityTitleAlpha);
         if (state.stackContentBlurEnabled) {
             setStackContentBlurProgress(taskView, state.blurProgress);
         } else {
@@ -169,7 +166,7 @@ final class LauncherRecentsTaskVisuals {
                 && isTaskViewScaleApplied(taskView, state.scale)
                 && approximatelyEqual(readAttachAlpha(taskView), state.attachAlpha)
                 && approximatelyEqual(readStableAlpha(taskView), state.stableAlpha)
-                && approximatelyEqual(readActivityTitleAlpha(taskView), state.activityTitleAlpha)
+                && isTaskHeadContentAlphaApplied(taskView, state.activityTitleAlpha)
                 && approximatelyEqual(
                 LauncherRecentsCompat.readFloatField(taskView, "fullscreenProgress", 0f),
                 state.fullscreenProgress)
@@ -426,45 +423,60 @@ final class LauncherRecentsTaskVisuals {
     }
 
     static void forceTaskHeadVisible(View taskView) {
+        setTaskHeadContentAlpha(taskView, 1f);
+    }
+
+    static void setTaskHeadContentAlpha(View taskView, float value) {
         if (taskView == null) {
+            return;
+        }
+        markStackTaskVisualStateDirty(taskView);
+        float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
+        Float lastAppliedValue =
+                LauncherRecentsState.LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.get(taskView);
+        if (shouldSkipAppliedFloat(lastAppliedValue, clampedValue)
+                && isTaskHeadContentAlphaApplied(taskView, clampedValue)) {
             return;
         }
         LauncherRecentsCompat.invokeCompat(
                 taskView,
                 "setIconVisibleForGesture",
                 LauncherRecentsCompat.BOOLEAN_ARG,
-                true);
+                clampedValue > MODULE_APPLIED_EPSILON);
         View taskHead = resolveTaskHeadView(taskView);
         if (taskHead != null) {
-            taskHead.setAlpha(1f);
+            taskHead.setAlpha(clampedValue);
         }
-        setActivityTitleAlpha(taskView, 1f);
+        View titleView = resolveActivityTitleView(taskView);
+        if (titleView != null) {
+            titleView.setAlpha(clampedValue);
+        }
         LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
-        if (targets == null) {
-            return;
-        }
-        for (int i = 0; i < targets.iconViews.length; i++) {
-            Object iconView = targets.iconViews[i];
-            LauncherRecentsCompat.invokeCompat(
-                    iconView,
-                    "setContentAlpha",
-                    LauncherRecentsCompat.FLOAT_ARG,
-                    1f);
-            LauncherRecentsCompat.invokeCompat(
-                    iconView,
-                    "setModalAlpha",
-                    LauncherRecentsCompat.FLOAT_ARG,
-                    1f);
-            LauncherRecentsCompat.invokeCompat(
-                    iconView,
-                    "setFlexSplitAlpha",
-                    LauncherRecentsCompat.FLOAT_ARG,
-                    1f);
-            View iconAsView = targets.iconAsViews[i];
-            if (iconAsView != null) {
-                iconAsView.setAlpha(1f);
+        if (targets != null) {
+            for (int i = 0; i < targets.iconViews.length; i++) {
+                Object iconView = targets.iconViews[i];
+                LauncherRecentsCompat.invokeCompat(
+                        iconView,
+                        "setContentAlpha",
+                        LauncherRecentsCompat.FLOAT_ARG,
+                        clampedValue);
+                LauncherRecentsCompat.invokeCompat(
+                        iconView,
+                        "setModalAlpha",
+                        LauncherRecentsCompat.FLOAT_ARG,
+                        clampedValue);
+                LauncherRecentsCompat.invokeCompat(
+                        iconView,
+                        "setFlexSplitAlpha",
+                        LauncherRecentsCompat.FLOAT_ARG,
+                        clampedValue);
+                View iconAsView = targets.iconAsViews[i];
+                if (iconAsView != null) {
+                    iconAsView.setAlpha(clampedValue);
+                }
             }
         }
+        LauncherRecentsState.LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.put(taskView, clampedValue);
     }
 
     static void forceRecentsTaskHeadsVisible(View recentsView) {
@@ -738,6 +750,30 @@ final class LauncherRecentsTaskVisuals {
     private static View resolveTaskHeadView(View taskView) {
         Object value = LauncherRecentsCompat.getFieldCompat(taskView, TASK_HEAD_FIELD);
         return value instanceof View ? (View) value : null;
+    }
+
+    private static boolean isTaskHeadContentAlphaApplied(View taskView, float value) {
+        float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
+        if (!approximatelyEqual(readActivityTitleAlpha(taskView), clampedValue)
+                || !approximatelyEqual(readTaskHeadAlpha(taskView), clampedValue)) {
+            return false;
+        }
+        LauncherRecentsState.StackContentTargets targets =
+                LauncherRecentsState.STACK_CONTENT_TARGETS.get(taskView);
+        if (targets == null) {
+            return true;
+        }
+        for (View iconAsView : targets.iconAsViews) {
+            if (iconAsView != null && !approximatelyEqual(iconAsView.getAlpha(), clampedValue)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static float readTaskHeadAlpha(View taskView) {
+        View taskHead = resolveTaskHeadView(taskView);
+        return taskHead != null ? taskHead.getAlpha() : 1f;
     }
 
     static float readActivityTitleAlpha(View taskView) {

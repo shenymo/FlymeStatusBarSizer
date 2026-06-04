@@ -257,7 +257,7 @@ final class LauncherRecentsLayoutEngine {
                                 false);
                         return null;
                     }
-                    if (shouldSuppressGestureReleaseStockVisualMethod(methodName, recentsView)) {
+                    if (shouldSuppressStackAlphaVisualMethod(methodName, recentsView)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
                         LauncherRecentsTaskVisuals.forceRecentsTaskAlphaVisible(recentsView);
@@ -422,11 +422,12 @@ final class LauncherRecentsLayoutEngine {
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
                     Object arg0 = chain.getArg(0);
-                    if (LauncherRecentsTransitionController
-                            .shouldSuppressGestureReleaseStockTaskVisuals(recentsView)) {
+                    if (shouldOwnStackTaskAlpha(recentsView)
+                            && arg0 instanceof Float
+                            && (Float) arg0 < 1f) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
-                        Object result = chain.proceed();
+                        LauncherRecentsCompat.writeField(recentsView, "mContentAlpha", 1f);
                         LauncherRecentsTaskVisuals.forceRecentsTaskAlphaVisible(recentsView);
                         if (shouldApplyDynamicStackLayout(recentsView)) {
                             scheduleStackLayout(
@@ -437,7 +438,7 @@ final class LauncherRecentsLayoutEngine {
                                     true);
                         }
                         recentsView.invalidate();
-                        return result;
+                        return null;
                     }
                     if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
                             && arg0 instanceof Float
@@ -964,6 +965,9 @@ final class LauncherRecentsLayoutEngine {
         if (recentsView == null || !shouldCoalesceStackLayoutSource(source)) {
             return false;
         }
+        if (shouldOwnStackTaskAlpha(recentsView)) {
+            return false;
+        }
         long key = resolveStackLayoutApplyKey(recentsView, stackLayoutRadius);
         long nowNs = System.nanoTime();
         LauncherRecentsState.StackLayoutApplyState lastState =
@@ -1407,15 +1411,9 @@ final class LauncherRecentsLayoutEngine {
                 input.layoutProgress,
                 input.taskWidth,
                 input.taskCenteredLeftPx);
-        // 在 app→recents 入场流程（含 release 动画）期间，scroll/layoutProgress 尚未收敛，
-        // stackLeftClampAlpha 可能 < 1f，若此时用它压低 desiredStableAlpha，
-        // 会导致 activityTitleAlpha 随手势持握时长变化（越短越透明）。
-        // gestureReleasedStable=true 时 scroll 已由模块归位，可安全使用 clamp。
-        boolean skipClampForEntry = (context.gestureStackReleaseActive
-                || isAppToRecentsEntryInProgress(context.recentsView))
-                && !LauncherRecentsState.isGestureStackReleasedStable(context.recentsView);
-        if (!blankTapExitTaskActive && !skipClampForEntry) {
+        if (!blankTapExitTaskActive) {
             desiredStableAlpha *= stackLeftClampAlpha;
+            activityTitleAlpha = desiredStableAlpha > 0.001f ? stackLeftClampAlpha : 0f;
         }
 
         float targetBlurProgress = 0f;
@@ -1538,12 +1536,11 @@ final class LauncherRecentsLayoutEngine {
         if (context.blankTapExitActive) {
             appliedActivityTitleAlpha = activityTitleAlpha;
         } else if (context.gestureStackReleaseActive) {
-            appliedActivityTitleAlpha = 1f;
+            appliedActivityTitleAlpha = lerp(1f, activityTitleAlpha, context.stackReleaseProgress);
         } else if (entryInProgress) {
-            appliedActivityTitleAlpha =
-                    LauncherRecentsTaskVisuals.readActivityTitleAlpha(taskView);
+            appliedActivityTitleAlpha = activityTitleAlpha;
         } else {
-            appliedActivityTitleAlpha = appliedStableAlpha > 0.001f ? 1f : 0f;
+            appliedActivityTitleAlpha = appliedStableAlpha > 0.001f ? activityTitleAlpha : 0f;
         }
         return new LauncherRecentsTaskVisuals.StackTaskVisualState(
                 input.taskWidth * 0.5f,
@@ -1752,13 +1749,25 @@ final class LauncherRecentsLayoutEngine {
                 && LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView);
     }
 
-    private static boolean shouldSuppressGestureReleaseStockVisualMethod(
+    private static boolean shouldSuppressStackAlphaVisualMethod(
             String methodName,
             View recentsView) {
         return ("resetTaskVisuals".equals(methodName)
                 || "applyAttachAlpha".equals(methodName))
-                && LauncherRecentsTransitionController
-                .shouldSuppressGestureReleaseStockTaskVisuals(recentsView);
+                && shouldOwnStackTaskAlpha(recentsView);
+    }
+
+    private static boolean shouldOwnStackTaskAlpha(View recentsView) {
+        return recentsView != null
+                && shouldUseStackLayout(recentsView)
+                && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
+                && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
+                && (LauncherRecentsTransitionController
+                .shouldSuppressGestureReleaseStockTaskVisuals(recentsView)
+                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView)
+                || isStackLayoutRecoveryActive(recentsView));
     }
 
     static void restoreTaskTransforms(View recentsView, int taskViewCount) {
