@@ -202,7 +202,7 @@ final class LauncherRecentsStateAnimationController {
                             recentsView,
                             progress);
                     LauncherRecentsPerf.hit("animationFrame:blankTapSystem", recentsView);
-                    LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                    LauncherRecentsLayoutEngine.applyBlankTapHomeExitFrame(recentsView, progress);
                     recentsView.invalidate();
                 });
         LauncherRecentsCompat.invokeMethodReflectively(
@@ -224,7 +224,7 @@ final class LauncherRecentsStateAnimationController {
 
     private static void finishBlankTapHomeExitSystemAnimation(View recentsView) {
         LauncherRecentsTransitionController.setBlankTapHomeExitProgress(recentsView, 1f);
-        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        LauncherRecentsLayoutEngine.applyBlankTapHomeExitFrame(recentsView, 1f);
         LauncherRecentsTransitionController.clearBlankTapHomeExitProgressWithoutLayout(recentsView);
         LauncherRecentsCompat.invokeCompat(
                 recentsView,

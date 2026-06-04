@@ -1582,6 +1582,7 @@ final class LauncherRecentsLayoutEngine {
     private static boolean shouldAllowStackLayoutRecovery(View recentsView) {
         return shouldUseStackLayout(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
+                && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
                 && (!LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(
                 recentsView)
                 || LauncherRecentsTouchController.shouldBypassStackDismissLayoutFreeze())
