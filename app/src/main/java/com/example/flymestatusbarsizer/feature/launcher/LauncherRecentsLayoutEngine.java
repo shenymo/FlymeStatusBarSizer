@@ -35,6 +35,7 @@ final class LauncherRecentsLayoutEngine {
     private static final int STACK_ENTRY_LIGHT_RADIUS = 3;
     private static final int STACK_STABLE_VISIBLE_RADIUS = -1;
     private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
+    private static final int STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR = 2;
     private static final long STACK_LAYOUT_DUPLICATE_WINDOW_NS = 16_000_000L; // 【方案三 3-A】扩大到 16ms，覆盖 120Hz 设备一帧内的多次重复触发
 
     private LauncherRecentsLayoutEngine() {
@@ -829,7 +830,8 @@ final class LauncherRecentsLayoutEngine {
                     captureStockState,
                     stackLayoutRadius);
         } finally {
-            LauncherRecentsPerf.end("layoutCompute:" + source, layoutStartNs);
+            long layoutCostNs = LauncherRecentsPerf.end("layoutCompute:" + source, layoutStartNs);
+            reportSlowApplyDynamicLayout(recentsView, source, layoutCostNs);
         }
         if (syncVisibleTaskData && layoutApplied) {
             long visibleDataStartNs = LauncherRecentsPerf.start(recentsView);
@@ -840,6 +842,45 @@ final class LauncherRecentsLayoutEngine {
             }
         }
         LauncherRecentsPerf.end("applyStackLayoutTotal:" + source, totalStartNs);
+    }
+
+    private static void reportSlowApplyDynamicLayout(
+            View recentsView,
+            String source,
+            long layoutCostNs) {
+        if (!"applyDynamic".equals(source) || !LauncherRecentsPerf.isSlowCall(layoutCostNs)) {
+            return;
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        int scrollBucket = resolveSlowLogScrollBucket(recentsView);
+        boolean blankTapExitActive =
+                LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView);
+        boolean gestureReleaseActive =
+                LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                        recentsView)
+                        || LauncherRecentsTransitionController
+                        .isGestureRecentsStackReleaseAnimationActive(recentsView);
+        boolean overviewStateActive =
+                LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                        recentsView);
+        LauncherRecentsPerf.logSlowCall(
+                "slowApplyDynamicLayout",
+                recentsView,
+                layoutCostNs,
+                "taskCount=" + taskViewCount
+                        + " scrollBucket=" + scrollBucket
+                        + " blankTapExit=" + blankTapExitActive
+                        + " gestureRelease=" + gestureReleaseActive
+                        + " overviewState=" + overviewStateActive);
+    }
+
+    private static int resolveSlowLogScrollBucket(View recentsView) {
+        int width = recentsView != null ? recentsView.getWidth() : 0;
+        if (width <= 0) {
+            return Integer.MIN_VALUE;
+        }
+        return recentsView.getScrollX()
+                / Math.max(1, width / STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR);
     }
 
     private static boolean shouldSkipDuplicateStackLayout(

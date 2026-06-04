@@ -26,9 +26,9 @@ final class LauncherRecentsPerf {
         return enabled(view) ? System.nanoTime() : 0L;
     }
 
-    static void end(String name, long startNs) {
+    static long end(String name, long startNs) {
         if (startNs == 0L) {
-            return;
+            return 0L;
         }
         long nowNs = System.nanoTime();
         long costNs = nowNs - startNs;
@@ -44,7 +44,7 @@ final class LauncherRecentsPerf {
             stats.slowCount++;
         }
         if (nowNs - stats.windowStartNs < REPORT_WINDOW_NS || stats.count == 0) {
-            return;
+            return costNs;
         }
         Log.i(TAG, name
                 + " count=" + stats.count
@@ -56,6 +56,20 @@ final class LauncherRecentsPerf {
         stats.maxNs = 0L;
         stats.count = 0;
         stats.slowCount = 0;
+        return costNs;
+    }
+
+    static boolean isSlowCall(long costNs) {
+        return costNs > SLOW_CALL_NS;
+    }
+
+    static void logSlowCall(String name, View view, long costNs, String details) {
+        if (!enabled(view) || !isSlowCall(costNs)) {
+            return;
+        }
+        Log.i(TAG, name
+                + " costMs=" + (costNs / 1_000_000f)
+                + (details != null && !details.isEmpty() ? " " + details : ""));
     }
 
     static void hit(String name) {
