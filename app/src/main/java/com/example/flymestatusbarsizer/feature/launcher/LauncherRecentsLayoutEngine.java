@@ -156,6 +156,7 @@ final class LauncherRecentsLayoutEngine {
         hookRecentsViewMethod(module, loader, "updatePageScales");
         hookRecentsViewMethod(module, loader, "updatePageOffsetsForFlyme");
         hookRecentsViewMethod(module, loader, "applyAttachAlpha");
+        hookRecentsViewMethod(module, loader, "resetTaskVisuals");
         hookRecentsViewOnScrollChanged(module, loader);
         hookRecentsViewDispatchScrollChanged(module, loader);
         hookRecentsViewContentAlpha(module, loader);
@@ -253,6 +254,20 @@ final class LauncherRecentsLayoutEngine {
                                 methodName + "_blankExitSuppress",
                                 true,
                                 false);
+                        return null;
+                    }
+                    if (shouldSuppressGestureReleaseStockVisualMethod(methodName, recentsView)) {
+                        LauncherRecentsState.trackRecentsView(recentsView);
+                        prepareRecentsView(recentsView);
+                        LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
+                        if (shouldApplyDynamicStackLayout(recentsView)) {
+                            scheduleStackLayout(
+                                    recentsView,
+                                    false,
+                                    methodName + "_gestureReleaseSuppress",
+                                    true,
+                                    true);
+                        }
                         return null;
                     }
                     if (shouldSuppressStockPageScaleUpdate(methodName, recentsView)) {
@@ -377,6 +392,22 @@ final class LauncherRecentsLayoutEngine {
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
                     Object arg0 = chain.getArg(0);
+                    if (LauncherRecentsTransitionController
+                            .shouldSuppressGestureReleaseStockTaskVisuals(recentsView)) {
+                        LauncherRecentsState.trackRecentsView(recentsView);
+                        prepareRecentsView(recentsView);
+                        LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
+                        if (shouldApplyDynamicStackLayout(recentsView)) {
+                            scheduleStackLayout(
+                                    recentsView,
+                                    false,
+                                    "contentAlpha_gestureReleaseSuppress",
+                                    true,
+                                    true);
+                        }
+                        recentsView.invalidate();
+                        return null;
+                    }
                     if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
                             && arg0 instanceof Float
                             && (Float) arg0 < 1f) {
@@ -1196,7 +1227,8 @@ final class LauncherRecentsLayoutEngine {
             View taskView,
             int index) {
         LauncherRecentsState.GestureReleaseTaskState gestureReleaseTaskState =
-                context.gestureStackReleaseActive
+                (context.gestureStackReleaseActive
+                        || LauncherRecentsState.isGestureStackReleasedStable(context.recentsView))
                         ? LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView)
                         : null;
         float rawOffset = context.rawOffsets[index];
@@ -1691,6 +1723,15 @@ final class LauncherRecentsLayoutEngine {
                 || "updatePageScales".equals(methodName))
                 && shouldUseStackLayout(recentsView)
                 && LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView);
+    }
+
+    private static boolean shouldSuppressGestureReleaseStockVisualMethod(
+            String methodName,
+            View recentsView) {
+        return ("resetTaskVisuals".equals(methodName)
+                || "applyAttachAlpha".equals(methodName))
+                && LauncherRecentsTransitionController
+                .shouldSuppressGestureReleaseStockTaskVisuals(recentsView);
     }
 
     static void restoreTaskTransforms(View recentsView, int taskViewCount) {

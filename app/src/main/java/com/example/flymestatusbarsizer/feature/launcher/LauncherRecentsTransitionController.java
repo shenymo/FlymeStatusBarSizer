@@ -536,6 +536,14 @@ final class LauncherRecentsTransitionController {
                 || hasGestureRecentsStackReleaseProgress(recentsView));
     }
 
+    static boolean shouldSuppressGestureReleaseStockTaskVisuals(View recentsView) {
+        return recentsView != null
+                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                && (LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
+                || isGestureRecentsStackReleaseHandoffPending(recentsView)
+                || isGestureRecentsStackReleaseAnimationActive(recentsView));
+    }
+
     static float readGestureRecentsStackReleaseProgress(View recentsView) {
         Float value = LauncherRecentsState.GESTURE_STACK_RELEASE_PROGRESS.get(recentsView);
         return value != null ? value : 1f;
