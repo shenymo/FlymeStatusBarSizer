@@ -33,7 +33,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_TITLE_FADE_END_CARD_ALPHA = 0.42f;
     private static final float STACK_CONTENT_BLUR_START_ALPHA = 0.85f;
     private static final int STACK_ENTRY_LIGHT_RADIUS = 3;
-    private static final int STACK_STABLE_VISIBLE_RADIUS = -1;
+    private static final int STACK_STABLE_VISIBLE_RADIUS = 2;
     private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
     private static final int STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR = 2;
     private static final long STACK_LAYOUT_DUPLICATE_WINDOW_NS = 16_000_000L; // 【方案三 3-A】扩大到 16ms，覆盖 120Hz 设备一帧内的多次重复触发
@@ -475,11 +475,19 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        int blankTapAnchorIndex = resolveStackLayoutAnchorIndex(
+                recentsView,
+                -1,
+                taskViewCount,
+                STACK_STABLE_VISIBLE_RADIUS);
         float anchorVisibleOffset = 0f;
         boolean hasVisibleAnchor = false;
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
+                continue;
+            }
+            if (shouldHideStackLayoutTask(i, blankTapAnchorIndex, STACK_STABLE_VISIBLE_RADIUS)) {
                 continue;
             }
             int rawOffset = LauncherRecentsCompat.invokeInt(
@@ -831,7 +839,7 @@ final class LauncherRecentsLayoutEngine {
                     stackLayoutRadius);
         } finally {
             long layoutCostNs = LauncherRecentsPerf.end("layoutCompute:" + source, layoutStartNs);
-            reportSlowApplyDynamicLayout(recentsView, source, layoutCostNs);
+            reportSlowApplyDynamicLayout(recentsView, source, stackLayoutRadius, layoutCostNs);
         }
         if (syncVisibleTaskData && layoutApplied) {
             long visibleDataStartNs = LauncherRecentsPerf.start(recentsView);
@@ -847,6 +855,7 @@ final class LauncherRecentsLayoutEngine {
     private static void reportSlowApplyDynamicLayout(
             View recentsView,
             String source,
+            int stackLayoutRadius,
             long layoutCostNs) {
         if (!"applyDynamic".equals(source) || !LauncherRecentsPerf.isSlowCall(layoutCostNs)) {
             return;
@@ -868,6 +877,7 @@ final class LauncherRecentsLayoutEngine {
                 recentsView,
                 layoutCostNs,
                 "taskCount=" + taskViewCount
+                        + " layoutRadius=" + stackLayoutRadius
                         + " scrollBucket=" + scrollBucket
                         + " blankTapExit=" + blankTapExitActive
                         + " gestureRelease=" + gestureReleaseActive
@@ -1525,7 +1535,7 @@ final class LauncherRecentsLayoutEngine {
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         if (radius >= taskViewCount) {
             LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.remove(recentsView);
-            applyStackLayout(recentsView, false, -1, "recoveryFinal", true);
+            applyStackLayout(recentsView, false, STACK_STABLE_VISIBLE_RADIUS, "recoveryFinal", true);
             return;
         }
         applyStackLayout(recentsView, false, radius, "recoveryFrame", true);
@@ -1554,8 +1564,7 @@ final class LauncherRecentsLayoutEngine {
             int taskViewCount,
             int stackLayoutRadius) {
         if (stackLayoutRadius == STACK_STABLE_VISIBLE_RADIUS) {
-            int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
-            return Math.max(0, Math.min(currentPage, Math.max(0, taskViewCount - 1)));
+            return resolveNearestStackLayoutPage(recentsView, taskViewCount);
         }
         if (runningTaskChildIndex >= 0) {
             return runningTaskChildIndex;
