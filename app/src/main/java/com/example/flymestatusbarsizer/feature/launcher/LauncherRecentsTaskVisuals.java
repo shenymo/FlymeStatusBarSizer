@@ -43,6 +43,7 @@ final class LauncherRecentsTaskVisuals {
         final float blurProgress;
         final float fullscreenProgress;
         final float translationZ;
+        final boolean stackContentBlurEnabled;
         final boolean clearShadow;
 
         StackTaskVisualState(
@@ -59,6 +60,7 @@ final class LauncherRecentsTaskVisuals {
                 float blurProgress,
                 float fullscreenProgress,
                 float translationZ,
+                boolean stackContentBlurEnabled,
                 boolean clearShadow) {
             this.pivotX = pivotX;
             this.pivotY = pivotY;
@@ -73,6 +75,7 @@ final class LauncherRecentsTaskVisuals {
             this.blurProgress = blurProgress;
             this.fullscreenProgress = fullscreenProgress;
             this.translationZ = translationZ;
+            this.stackContentBlurEnabled = stackContentBlurEnabled;
             this.clearShadow = clearShadow;
         }
 
@@ -91,6 +94,7 @@ final class LauncherRecentsTaskVisuals {
                     && approximatelyEqual(blurProgress, other.blurProgress)
                     && approximatelyEqual(fullscreenProgress, other.fullscreenProgress)
                     && approximatelyEqual(translationZ, other.translationZ)
+                    && stackContentBlurEnabled == other.stackContentBlurEnabled
                     && clearShadow == other.clearShadow;
         }
     }
@@ -120,7 +124,11 @@ final class LauncherRecentsTaskVisuals {
         setAttachAlpha(taskView, state.attachAlpha);
         setStableAlpha(taskView, state.stableAlpha);
         setActivityTitleAlpha(taskView, state.activityTitleAlpha);
-        setStackContentBlurProgress(taskView, state.blurProgress);
+        if (state.stackContentBlurEnabled) {
+            setStackContentBlurProgress(taskView, state.blurProgress);
+        } else {
+            clearStackContentBlurIfApplied(taskView);
+        }
         setFullscreenProgress(taskView, state.fullscreenProgress);
         if (state.clearShadow) {
             clearStackShadow(taskView);
@@ -162,6 +170,8 @@ final class LauncherRecentsTaskVisuals {
                 && approximatelyEqual(
                 LauncherRecentsCompat.readFloatField(taskView, "fullscreenProgress", 0f),
                 state.fullscreenProgress)
+                && (!state.stackContentBlurEnabled
+                || approximatelyEqual(readStackContentBlurProgress(taskView), state.blurProgress))
                 && approximatelyEqual(taskView.getTranslationZ(), state.translationZ)
                 && (!state.clearShadow || isStackShadowCleared(taskView));
     }
@@ -513,8 +523,20 @@ final class LauncherRecentsTaskVisuals {
         return LauncherRecentsLayoutEngine.clamp(blurPx / maxBlurPx, 0f, 1f);
     }
 
-    static void clearStackContentBlur(View taskView) {
-        setStackContentBlurProgress(taskView, 0f);
+    static void clearStackContentBlurIfApplied(View taskView) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || taskView == null) {
+            return;
+        }
+        LauncherRecentsState.StackContentTargets targets =
+                LauncherRecentsState.STACK_CONTENT_TARGETS.get(taskView);
+        if (targets == null) {
+            return;
+        }
+        for (int i = 0; i < targets.snapshotViews.length; i++) {
+            clearStackContentTargetBlurIfApplied(targets.snapshotViews[i]);
+            clearStackIconBlurIfApplied(targets.iconAsViews[i]);
+        }
+        LauncherRecentsState.STACK_CONTENT_TARGETS.remove(taskView);
     }
 
     static void clearRecentsStackContentBlur(View recentsView) {
@@ -523,7 +545,7 @@ final class LauncherRecentsTaskVisuals {
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         for (int i = 0; i < taskViewCount; i++) {
-            clearStackContentBlur(LauncherRecentsCompat.getTaskViewAt(recentsView, i));
+            clearStackContentBlurIfApplied(LauncherRecentsCompat.getTaskViewAt(recentsView, i));
         }
     }
 
@@ -805,6 +827,21 @@ final class LauncherRecentsTaskVisuals {
         }
         Float value = LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.get(view);
         return value != null ? value : 0f;
+    }
+
+    private static void clearStackContentTargetBlurIfApplied(View view) {
+        if (view == null || readAppliedStackContentBlurPx(view) <= MODULE_APPLIED_EPSILON) {
+            return;
+        }
+        applyStackContentBlur(view, 0f);
+    }
+
+    private static void clearStackIconBlurIfApplied(View view) {
+        if (view == null || readAppliedStackContentBlurPx(view) <= MODULE_APPLIED_EPSILON) {
+            return;
+        }
+        restoreStackIconClip(view);
+        applyStackContentBlur(view, 0f);
     }
 
     private static void applyStackIconBlur(Object iconView, View view, float blurPx) {

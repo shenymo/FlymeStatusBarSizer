@@ -63,6 +63,7 @@ final class LauncherRecentsLayoutEngine {
         final float maxTranslationZ;
         final float zStepPx;
         final boolean blankTapExitActive;
+        final boolean stackContentBlurEnabled;
 
         StackLayoutContext(
                 View recentsView,
@@ -85,7 +86,8 @@ final class LauncherRecentsLayoutEngine {
                 boolean appEntrySessionActive,
                 float maxTranslationZ,
                 float zStepPx,
-                boolean blankTapExitActive) {
+                boolean blankTapExitActive,
+                boolean stackContentBlurEnabled) {
             this.recentsView = recentsView;
             this.taskViewCount = taskViewCount;
             this.runningTaskView = runningTaskView;
@@ -107,6 +109,7 @@ final class LauncherRecentsLayoutEngine {
             this.maxTranslationZ = maxTranslationZ;
             this.zStepPx = zStepPx;
             this.blankTapExitActive = blankTapExitActive;
+            this.stackContentBlurEnabled = stackContentBlurEnabled;
         }
     }
 
@@ -631,6 +634,7 @@ final class LauncherRecentsLayoutEngine {
                                     "fullscreenProgress",
                                     0f),
                             taskView.getTranslationZ(),
+                            true,
                             false));
         }
     }
@@ -975,6 +979,11 @@ final class LauncherRecentsLayoutEngine {
         key = mixStackLayoutApplyKey(
                 key,
                 LauncherRecentsState.isGestureStackReleasedStable(recentsView) ? 1 : 0);
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
+        key = mixStackLayoutApplyKey(
+                key,
+                config != null && config.launcherIosStackRecentsBlurEnabled ? 1 : 0);
         return key;
     }
 
@@ -1137,7 +1146,8 @@ final class LauncherRecentsLayoutEngine {
                 appEntrySessionActive,
                 maxTranslationZ,
                 zStepPx,
-                blankTapExitActive);
+                blankTapExitActive,
+                config.launcherIosStackRecentsBlurEnabled);
 
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
@@ -1153,7 +1163,7 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.setStackContentBlurProgress(taskView, 0f);
+                LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
                 LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
                 continue;
             }
@@ -1351,11 +1361,14 @@ final class LauncherRecentsLayoutEngine {
             desiredStableAlpha *= stackLeftClampAlpha;
         }
 
-        float targetBlurProgress = resolveStackContentBlurProgress(
-                stackLeftClampAlpha,
-                taskEntryProgress);
-        if (blankTapExitTaskActive) {
-            targetBlurProgress = blankTapExitState.startStackContentBlurProgress;
+        float targetBlurProgress = 0f;
+        if (context.stackContentBlurEnabled) {
+            targetBlurProgress = resolveStackContentBlurProgress(
+                    stackLeftClampAlpha,
+                    taskEntryProgress);
+            if (blankTapExitTaskActive) {
+                targetBlurProgress = blankTapExitState.startStackContentBlurProgress;
+            }
         }
         float translationCompensationX =
                 desiredVisibleOffset - input.rawOffset - input.nativeDismissTranslationX;
@@ -1491,6 +1504,7 @@ final class LauncherRecentsLayoutEngine {
                 appliedBlurProgress,
                 appliedFullscreenProgress,
                 appliedTranslationZ,
+                context.stackContentBlurEnabled,
                 true);
     }
 
@@ -1709,7 +1723,7 @@ final class LauncherRecentsLayoutEngine {
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView));
         LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 1f);
-        LauncherRecentsTaskVisuals.clearStackContentBlur(taskView);
+        LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
         LauncherRecentsTaskVisuals.setFullscreenProgress(
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView));

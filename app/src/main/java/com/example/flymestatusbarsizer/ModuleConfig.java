@@ -68,6 +68,8 @@ final class ModuleConfig {
     int notificationAppIconPaddingDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP;
     boolean launcherIosStackRecentsEnabled =
             SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED;
+    boolean launcherIosStackRecentsBlurEnabled =
+            SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED;
     String launcherFolderBgColor = SettingsStore.DEFAULT_LAUNCHER_FOLDER_BG_COLOR;
     String notificationBackgroundColor = SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_COLOR;
     boolean notificationSystemBlurOnlyEnabled =
@@ -362,6 +364,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
                     SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED);
+            config.launcherIosStackRecentsBlurEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED,
+                    SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED);
             config.launcherFolderBgColor = SettingsStore.normalizeColorString(
                     SettingsStore.readString(
                             prefs,

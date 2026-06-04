@@ -182,6 +182,11 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED);
         activity.addDivider(content);
+        activity.addSwitchRow(content, "堆叠后台 blur 效果",
+                "关闭后保留 IOS 式堆叠后台布局，但不再模糊边缘堆叠卡片的截图和图标。",
+                SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED,
+                SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED);
+        activity.addDivider(content);
         activity.addActionButtonRow(content, "重启系统桌面",
                 "后台布局需要重启系统桌面后再看完整效果。",
                 "重启", activity::restartLauncher);
