@@ -57,8 +57,16 @@ final class LauncherRecentsAttachController {
                 LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                 LauncherRecentsState.trackRecentsView(recentsView);
                 LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+                LauncherRecentsLayoutEngine.restoreTaskTransforms(
+                        recentsView,
+                        LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0));
                 LauncherRecentsTaskVisuals.clearRecentsStackContentBlur(recentsView);
-                return chain.proceed();
+                Object result = chain.proceed();
+                LauncherRecentsLayoutEngine.restoreTaskTransforms(
+                        recentsView,
+                        LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0));
+                LauncherRecentsTaskVisuals.clearRecentsStackContentBlur(recentsView);
+                return result;
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
