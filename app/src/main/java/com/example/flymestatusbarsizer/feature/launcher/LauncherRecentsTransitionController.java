@@ -23,7 +23,6 @@ final class LauncherRecentsTransitionController {
             "com.android.quickstep.AbsSwipeUpHandler";
     private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 460L;
     private static final long GESTURE_STACK_RELEASE_DURATION_MS = 320L;
-    private static final long SYSTEM_TASK_HEAD_FADE_IN_WAIT_MS = 220L;
     private static final int APP_TO_RECENTS_STACK_ANCHOR_PAGE = 0;
     private static final float GESTURE_STACK_RELEASE_HANDOFF_START_PROGRESS = 0.42f;
     private static final float BLANK_TAP_HOME_EXIT_VIEW_FADE_START_PROGRESS = 0.78f;
@@ -117,6 +116,13 @@ final class LauncherRecentsTransitionController {
                 if (recentsView != null) {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+                    if (shouldPrepareGestureRelease
+                            && chain.getArg(0) instanceof AnimatorSet) {
+                        startGestureRecentsStackReleaseAnimation(
+                                recentsView,
+                                (AnimatorSet) chain.getArg(0),
+                                true);
+                    }
                 }
                 return result;
             });
@@ -215,12 +221,6 @@ final class LauncherRecentsTransitionController {
                             && !releaseAnimationFinished) {
                         return result;
                     } else if (shouldPrepareGestureRelease) {
-                        if (gestureReleased
-                                && !releaseAnimationActive
-                                && !releaseAnimationFinished) {
-                            scheduleGestureRecentsStackReleaseAfterSystemEntry(recentsView, true);
-                            return result;
-                        }
                         if (gestureReleased || releaseAnimationActive || releaseAnimationFinished) {
                             LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
                             LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
@@ -551,55 +551,6 @@ final class LauncherRecentsTransitionController {
 
     static boolean isRecentsGestureEndTarget(Object value) {
         return value instanceof Enum && "RECENTS".equals(((Enum<?>) value).name());
-    }
-
-    static void switchRunningTaskToScreenshot(View recentsView) {
-        if (recentsView == null) {
-            return;
-        }
-        Runnable applyRunnable = () -> {
-            if (!isGestureRecentsStackReleaseAnimationActive(recentsView)) {
-                finishRunningTaskReleaseToStack(recentsView);
-            }
-        };
-        if (!LauncherRecentsCompat.invokeMethodReflectively(
-                recentsView,
-                "switchToScreenshot",
-                new Class<?>[]{Runnable.class},
-                applyRunnable)) {
-            applyRunnable.run();
-        }
-    }
-
-    static void finishRunningTaskReleaseToStack(View recentsView) {
-        applyGestureRecentsStackRelease(recentsView, true);
-    }
-
-    private static void scheduleGestureRecentsStackReleaseAfterSystemEntry(
-            View recentsView,
-            boolean ensureRunningTaskScreenshot) {
-        if (recentsView == null) {
-            return;
-        }
-        recentsView.postDelayed(() -> {
-            if (!isPendingGestureRecentsStackRelease(recentsView)
-                    || isGestureRecentsStackReleaseAnimationActive(recentsView)) {
-                return;
-            }
-            startGestureRecentsStackReleaseAnimation(
-                    recentsView,
-                    null,
-                    ensureRunningTaskScreenshot);
-        }, SYSTEM_TASK_HEAD_FADE_IN_WAIT_MS);
-    }
-
-    private static void applyGestureRecentsStackRelease(
-            View recentsView,
-            boolean ensureRunningTaskScreenshot) {
-        if (recentsView == null) {
-            return;
-        }
-        startGestureRecentsStackReleaseAnimation(recentsView, null, ensureRunningTaskScreenshot);
     }
 
     private static void startGestureRecentsStackReleaseAnimation(
