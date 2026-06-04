@@ -2014,27 +2014,21 @@ final class LauncherRecentsLayoutEngine {
         if (progress >= 0f) {
             return 1f;
         }
-        float leftBoundOffsetPx = resolveStackLeftBoundOffset(
-                taskWidth,
-                taskCenteredLeftPx,
-                resolveLeftEdgeRevealProgress(recentsView));
-        float visibleOffset = -resolveStackVirtualVisibleOffset(
+        float currentOffset = resolveStackVisibleOffset(
                 recentsView,
                 progress,
                 taskWidth,
                 taskCenteredLeftPx);
-        float overflowPx = leftBoundOffsetPx - visibleOffset;
-        if (overflowPx <= 0f) {
-            return 1f;
-        }
-        float fadeStartOverflowPx = 0f;
-        float fadeEndOverflowPx = Math.max(
+        float frontOffset = resolveStackVisibleOffset(
+                recentsView,
+                progress + 1f,
+                taskWidth,
+                taskCenteredLeftPx);
+        float distancePx = Math.abs(frontOffset - currentOffset);
+        float opaqueDistancePx = Math.max(
                 1f,
-                (Math.abs(STACK_LEFT_RELEASE_END_PROGRESS)
-                        - Math.abs(STACK_LEFT_RELEASE_START_PROGRESS))
-                        * taskWidth
-                        * STACK_RIGHT_VISIBLE_RATIO);
-        return 1f - remapProgress(overflowPx, fadeStartOverflowPx, fadeEndOverflowPx);
+                taskWidth * Math.abs(STACK_LEFT_REST_INSET_RATIO - STACK_LEFT_EDGE_INSET_RATIO));
+        return smoothStep(remapProgress(distancePx, 0f, opaqueDistancePx));
     }
 
     private static float resolveStackLayerProgress(
