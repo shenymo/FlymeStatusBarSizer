@@ -13,6 +13,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.LinearInterpolator;
 
@@ -23,7 +24,6 @@ final class LauncherRecentsTransitionController {
             "com.android.quickstep.AbsSwipeUpHandler";
     private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 460L;
     private static final long GESTURE_STACK_RELEASE_DURATION_MS = 320L;
-    private static final int APP_TO_RECENTS_STACK_ANCHOR_PAGE = 0;
     private static final float GESTURE_STACK_RELEASE_HANDOFF_START_PROGRESS = 0f;
     private static final float BLANK_TAP_HOME_EXIT_VIEW_FADE_START_PROGRESS = 0.78f;
     private static final long BLANK_TAP_HOME_EXIT_HOME_REVEAL_MS = 180L;
@@ -204,6 +204,10 @@ final class LauncherRecentsTransitionController {
                 if (shouldPrepareGestureRelease) {
                     markPendingGestureRecentsStackRelease(recentsView, true);
                 }
+                if (shouldTakeOverAppToRecentsGestureEnd(recentsView, shouldPrepareGestureRelease)) {
+                    finishAppToRecentsGestureEnd(recentsView);
+                    return null;
+                }
                 Object result = chain.proceed();
                 if (thisObject instanceof View) {
                     LauncherRecentsState.trackRecentsView(recentsView);
@@ -253,6 +257,69 @@ final class LauncherRecentsTransitionController {
                     "Failed to hook RecentsView.onGestureAnimationEnd",
                     t);
         }
+    }
+
+    private static boolean shouldTakeOverAppToRecentsGestureEnd(
+            View recentsView,
+            boolean shouldPrepareGestureRelease) {
+        return recentsView != null
+                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                && (shouldPrepareGestureRelease
+                || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
+                || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
+                || isGestureRecentsStackReleaseHandoffPending(recentsView)
+                || isGestureRecentsStackReleaseAnimationActive(recentsView)
+                || LauncherRecentsState.isGestureStackReleasedStable(recentsView));
+    }
+
+    private static void finishAppToRecentsGestureEnd(View recentsView) {
+        LauncherRecentsState.trackRecentsView(recentsView);
+        LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+        LauncherRecentsCompat.writeField(recentsView, "mActiveGestureGroupedTaskInfo", null);
+        Object orientationState = LauncherRecentsCompat.getFieldCompat(
+                recentsView,
+                "mOrientationState");
+        Object gestureChanged = LauncherRecentsCompat.invokeCompat(
+                orientationState,
+                "setGestureActive",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                false);
+        if (gestureChanged instanceof Boolean && (Boolean) gestureChanged) {
+            LauncherRecentsCompat.invokeCompat(
+                    recentsView,
+                    "updateOrientationHandler",
+                    LauncherRecentsCompat.BOOLEAN_ARG,
+                    false);
+        }
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setEnableFreeScroll",
+                new Class[]{boolean.class, boolean.class},
+                true,
+                true);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setEnableDrawingLiveTile",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                false);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setRunningTaskViewShowScreenshot",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                true);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setRunningTaskHidden",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                false);
+        LauncherRecentsCompat.writeField(recentsView, "mCurrentGestureEndTarget", null);
+        LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
+        LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
+        markPendingGestureRecentsStackRelease(recentsView, false);
+        LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
+        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
+        recentsView.invalidate();
     }
 
     private static void hookAbsSwipeUpHandlerGestureEnded(
@@ -539,7 +606,10 @@ final class LauncherRecentsTransitionController {
     static boolean shouldSuppressGestureReleaseStockTaskVisuals(View recentsView) {
         return recentsView != null
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                && (LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
+                && (LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+                || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
+                || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
                 || isGestureRecentsStackReleaseHandoffPending(recentsView)
                 || isGestureRecentsStackReleaseAnimationActive(recentsView));
     }
@@ -676,7 +746,6 @@ final class LauncherRecentsTransitionController {
                 LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
-                LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
                 recentsView.invalidate();
             }
         });
@@ -790,7 +859,20 @@ final class LauncherRecentsTransitionController {
         if (pageCount <= 0) {
             return -1;
         }
-        return Math.min(APP_TO_RECENTS_STACK_ANCHOR_PAGE, pageCount - 1);
+        Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "getRunningTaskView");
+        if (runningTaskObject instanceof View && recentsView instanceof ViewGroup) {
+            int runningTaskPage = ((ViewGroup) recentsView).indexOfChild((View) runningTaskObject);
+            if (runningTaskPage > 0) {
+                return runningTaskPage - 1;
+            }
+            if (runningTaskPage == 0) {
+                return 0;
+            }
+        }
+        int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
+        return Math.max(0, Math.min(currentPage, pageCount - 1));
     }
 
     private static void normalizeAppToRecentsStackAnchor(View recentsView, int anchorPage) {

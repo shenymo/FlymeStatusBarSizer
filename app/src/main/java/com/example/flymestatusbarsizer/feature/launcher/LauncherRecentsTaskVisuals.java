@@ -482,6 +482,22 @@ final class LauncherRecentsTaskVisuals {
         }
     }
 
+    static void forceRecentsTaskAlphaVisible(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
+                continue;
+            }
+            setAttachAlpha(taskView, 1f);
+            setStableAlpha(taskView, 1f);
+            forceTaskHeadVisible(taskView);
+        }
+    }
+
     static void setStackContentBlurProgress(View taskView, float blurProgress) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || taskView == null) {
             return;

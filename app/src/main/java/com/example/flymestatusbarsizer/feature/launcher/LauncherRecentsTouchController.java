@@ -142,6 +142,7 @@ final class LauncherRecentsTouchController {
                         && thisObject instanceof View
                         && motionEvent != null) {
                     View recentsView = (View) thisObject;
+                    clearGestureReleaseTaskStatesOnUserMove(recentsView, motionEvent);
                     if (isStackDismissPostRemoveAnimationActive(recentsView)) {
                         if (shouldConsumeStackDismissPostRemoveTouch(recentsView, motionEvent)) {
                             return true;
@@ -315,6 +316,19 @@ final class LauncherRecentsTouchController {
                     "Failed to hook " + className + " task dismiss touch",
                     t);
         }
+    }
+
+    private static void clearGestureReleaseTaskStatesOnUserMove(
+            View recentsView,
+            MotionEvent motionEvent) {
+        if (recentsView == null
+                || motionEvent == null
+                || motionEvent.getActionMasked() != MotionEvent.ACTION_MOVE
+                || !LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.isEmpty()) {
+            return;
+        }
+        LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
     }
 
     private static void hookRecentsViewTaskVisibilityForDismiss(

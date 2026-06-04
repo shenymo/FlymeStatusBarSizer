@@ -157,6 +157,12 @@ final class LauncherRecentsLayoutEngine {
         hookRecentsViewMethod(module, loader, "updatePageOffsetsForFlyme");
         hookRecentsViewMethod(module, loader, "applyAttachAlpha");
         hookRecentsViewMethod(module, loader, "resetTaskVisuals");
+        hookRecentsViewSetTaskIconVisible(module, loader);
+        hookRecentsViewShowCurrentTaskPageReset(module, loader);
+        hookRecentsViewApplyLoadPlanPageReset(module, loader);
+        hookRecentsViewMoveRunningTaskToExpectedPosition(module, loader);
+        hookRecentsViewSnapToPage(module, loader);
+        hookPagedViewSetCurrentPage(module, loader);
         hookRecentsViewOnScrollChanged(module, loader);
         hookRecentsViewDispatchScrollChanged(module, loader);
         hookRecentsViewContentAlpha(module, loader);
@@ -259,7 +265,7 @@ final class LauncherRecentsLayoutEngine {
                     if (shouldSuppressGestureReleaseStockVisualMethod(methodName, recentsView)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
-                        LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
+                        LauncherRecentsTaskVisuals.forceRecentsTaskAlphaVisible(recentsView);
                         if (shouldApplyDynamicStackLayout(recentsView)) {
                             scheduleStackLayout(
                                     recentsView,
@@ -349,6 +355,216 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
+    private static void hookRecentsViewSetTaskIconVisible(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("setTaskIconVisible", boolean.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View
+                        && LauncherRecentsTransitionController
+                        .shouldSuppressGestureReleaseStockTaskVisuals((View) thisObject)) {
+                    View recentsView = (View) thisObject;
+                    LauncherRecentsState.trackRecentsView(recentsView);
+                    prepareRecentsView(recentsView);
+                    LauncherRecentsCompat.setBooleanField(recentsView, "mTaskIconVisible", true);
+                    LauncherRecentsTaskVisuals.forceRecentsTaskAlphaVisible(recentsView);
+                    recentsView.invalidate();
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.setTaskIconVisible",
+                    t);
+        }
+    }
+
+    private static void hookPagedViewSetCurrentPage(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.PAGED_VIEW_CLASS, false, loader);
+            Method oneArgMethod = clazz.getDeclaredMethod("setCurrentPage", int.class);
+            Method twoArgMethod = clazz.getDeclaredMethod("setCurrentPage", int.class, int.class);
+            oneArgMethod.setAccessible(true);
+            twoArgMethod.setAccessible(true);
+            module.intercept(oneArgMethod, chain -> {
+                View recentsView = chain.getThisObject() instanceof View
+                        ? (View) chain.getThisObject()
+                        : null;
+                int requestedPage = chain.getArg(0) instanceof Integer
+                        ? (Integer) chain.getArg(0)
+                        : -1;
+                Integer overridePage = resolveAppToRecentsCurrentPageOverride(
+                        recentsView,
+                        requestedPage);
+                if (overridePage != null) {
+                    LauncherRecentsCompat.invokeCompat(
+                            recentsView,
+                            "setCurrentPage",
+                            LauncherRecentsCompat.INT_ARG,
+                            overridePage);
+                    applyDynamicStackLayoutIfNeeded(recentsView);
+                    return null;
+                }
+                return chain.proceed();
+            });
+            module.intercept(twoArgMethod, chain -> {
+                View recentsView = chain.getThisObject() instanceof View
+                        ? (View) chain.getThisObject()
+                        : null;
+                int requestedPage = chain.getArg(0) instanceof Integer
+                        ? (Integer) chain.getArg(0)
+                        : -1;
+                Integer overridePage = resolveAppToRecentsCurrentPageOverride(
+                        recentsView,
+                        requestedPage);
+                if (overridePage != null) {
+                    int oldPage = chain.getArg(1) instanceof Integer
+                            ? (Integer) chain.getArg(1)
+                            : -1;
+                    LauncherRecentsCompat.invokeCompat(
+                            recentsView,
+                            "setCurrentPage",
+                            new Class[]{int.class, int.class},
+                            overridePage,
+                            oldPage);
+                    applyDynamicStackLayoutIfNeeded(recentsView);
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook PagedView.setCurrentPage",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewShowCurrentTaskPageReset(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("lambda$showCurrentTask$22");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                View recentsView = chain.getThisObject() instanceof View
+                        ? (View) chain.getThisObject()
+                        : null;
+                Integer anchorPage = resolveAppToRecentsStableAnchorPage(recentsView);
+                if (anchorPage != null) {
+                    LauncherRecentsCompat.invokeCompat(
+                            recentsView,
+                            "setCurrentPage",
+                            LauncherRecentsCompat.INT_ARG,
+                            anchorPage);
+                    applyDynamicStackLayoutIfNeeded(recentsView);
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.showCurrentTask page reset",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewApplyLoadPlanPageReset(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("lambda$applyLoadPlan$10", int.class, int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                View recentsView = chain.getThisObject() instanceof View
+                        ? (View) chain.getThisObject()
+                        : null;
+                if (forceAppToRecentsStableAnchorPage(recentsView)) {
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.applyLoadPlan page reset",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewMoveRunningTaskToExpectedPosition(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("moveRunningTaskToExpectedPosition");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                View recentsView = chain.getThisObject() instanceof View
+                        ? (View) chain.getThisObject()
+                        : null;
+                Object result = chain.proceed();
+                forceAppToRecentsStableAnchorPage(recentsView);
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.moveRunningTaskToExpectedPosition",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewSnapToPage(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod(
+                    "snapToPage",
+                    int.class,
+                    int.class,
+                    boolean.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                View recentsView = chain.getThisObject() instanceof View
+                        ? (View) chain.getThisObject()
+                        : null;
+                int requestedPage = chain.getArg(0) instanceof Integer
+                        ? (Integer) chain.getArg(0)
+                        : -1;
+                Integer overridePage = resolveAppToRecentsCurrentPageOverride(
+                        recentsView,
+                        requestedPage);
+                if (overridePage != null) {
+                    int duration = chain.getArg(1) instanceof Integer
+                            ? (Integer) chain.getArg(1)
+                            : 0;
+                    boolean immediate = chain.getArg(2) instanceof Boolean
+                            && (Boolean) chain.getArg(2);
+                    return LauncherRecentsCompat.invokeCompat(
+                            recentsView,
+                            "snapToPage",
+                            new Class[]{int.class, int.class, boolean.class},
+                            overridePage,
+                            duration,
+                            immediate);
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.snapToPage",
+                    t);
+        }
+    }
+
     private static void hookRecentsViewDispatchScrollChanged(
             FlymeStatusBarSizer module,
             ClassLoader loader) {
@@ -396,7 +612,8 @@ final class LauncherRecentsLayoutEngine {
                             .shouldSuppressGestureReleaseStockTaskVisuals(recentsView)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
-                        LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
+                        Object result = chain.proceed();
+                        LauncherRecentsTaskVisuals.forceRecentsTaskAlphaVisible(recentsView);
                         if (shouldApplyDynamicStackLayout(recentsView)) {
                             scheduleStackLayout(
                                     recentsView,
@@ -406,7 +623,7 @@ final class LauncherRecentsLayoutEngine {
                                     true);
                         }
                         recentsView.invalidate();
-                        return null;
+                        return result;
                     }
                     if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
                             && arg0 instanceof Float
@@ -681,13 +898,13 @@ final class LauncherRecentsLayoutEngine {
         if (taskViewCount <= 0) {
             return;
         }
-        float pageSpacing = LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0);
         Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
                 recentsView,
                 "getRunningTaskView");
         View runningTaskView = runningTaskObject instanceof View
                 ? (View) runningTaskObject
                 : null;
+        float pageSpacing = LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0);
         float referenceWidth = 0f;
         float pageSpan = 0f;
         float[] rawOffsets = new float[taskViewCount];
@@ -744,20 +961,16 @@ final class LauncherRecentsLayoutEngine {
                     taskWidth,
                     taskCenteredLeftPx,
                     targetLeftEdgeRevealProgress);
-            float startVisibleOffset = targetVisibleOffset;
-            float startHorizontalOffsetX = 0f;
-            if (taskView == runningTaskView) {
-                startVisibleOffset =
-                        startRawOffset
-                                + LauncherRecentsCompat.readFloatField(
-                                taskView,
-                                "dismissTranslationX",
-                                0f)
-                                + LauncherRecentsTaskVisuals.readLastStockTaskOffsetX(taskView)
-                                + LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView);
-                startHorizontalOffsetX =
-                        LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView);
-            }
+            float startVisibleOffset =
+                    startRawOffset
+                            + LauncherRecentsCompat.readFloatField(
+                            taskView,
+                            "dismissTranslationX",
+                            0f)
+                            + LauncherRecentsTaskVisuals.readLastStockTaskOffsetX(taskView)
+                            + LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView);
+            float startHorizontalOffsetX =
+                    LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView);
             LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.put(
                     taskView,
                     new LauncherRecentsState.GestureReleaseTaskState(
@@ -1732,6 +1945,55 @@ final class LauncherRecentsLayoutEngine {
                 || "applyAttachAlpha".equals(methodName))
                 && LauncherRecentsTransitionController
                 .shouldSuppressGestureReleaseStockTaskVisuals(recentsView);
+    }
+
+    private static Integer resolveAppToRecentsCurrentPageOverride(
+            View recentsView,
+            int requestedPage) {
+        Integer anchorPage = resolveAppToRecentsStableAnchorPage(recentsView);
+        if (anchorPage == null || requestedPage < 0) {
+            return null;
+        }
+        int runningTaskIndex = LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getRunningTaskIndex",
+                -1);
+        if (runningTaskIndex <= 0 || requestedPage != runningTaskIndex) {
+            return null;
+        }
+        return anchorPage;
+    }
+
+    private static boolean forceAppToRecentsStableAnchorPage(View recentsView) {
+        Integer anchorPage = resolveAppToRecentsStableAnchorPage(recentsView);
+        if (anchorPage == null) {
+            return false;
+        }
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setCurrentPage",
+                LauncherRecentsCompat.INT_ARG,
+                anchorPage);
+        applyDynamicStackLayoutIfNeeded(recentsView);
+        return true;
+    }
+
+    private static Integer resolveAppToRecentsStableAnchorPage(View recentsView) {
+        if (recentsView == null
+                || !shouldUseStackLayout(recentsView)
+                || (!LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                && !LauncherRecentsTransitionController
+                .shouldSuppressGestureReleaseStockTaskVisuals(recentsView))) {
+            return null;
+        }
+        int runningTaskIndex = LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getRunningTaskIndex",
+                -1);
+        if (runningTaskIndex <= 0) {
+            return null;
+        }
+        return runningTaskIndex - 1;
     }
 
     static void restoreTaskTransforms(View recentsView, int taskViewCount) {
