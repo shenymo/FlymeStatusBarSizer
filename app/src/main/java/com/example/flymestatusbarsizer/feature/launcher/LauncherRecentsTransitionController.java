@@ -657,6 +657,7 @@ final class LauncherRecentsTransitionController {
                 normalizeAppToRecentsStackAnchor(recentsView, stackAnchorPage);
                 LauncherRecentsState.setGestureStackReleasedStable(recentsView, true);
                 clearGestureRecentsStackReleaseProgress(recentsView);
+                LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
                 LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
@@ -714,6 +715,7 @@ final class LauncherRecentsTransitionController {
                 "setRunningTaskHidden",
                 LauncherRecentsCompat.BOOLEAN_ARG,
                 false);
+        LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
         LauncherRecentsCompat.invokeCompat(
                 recentsView,
                 "forceFinishScroller",

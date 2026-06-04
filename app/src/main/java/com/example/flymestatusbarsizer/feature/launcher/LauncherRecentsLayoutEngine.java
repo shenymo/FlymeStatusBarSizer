@@ -1469,6 +1469,8 @@ final class LauncherRecentsLayoutEngine {
         float appliedActivityTitleAlpha;
         if (context.blankTapExitActive) {
             appliedActivityTitleAlpha = activityTitleAlpha;
+        } else if (context.gestureStackReleaseActive) {
+            appliedActivityTitleAlpha = 1f;
         } else if (entryInProgress) {
             appliedActivityTitleAlpha =
                     LauncherRecentsTaskVisuals.readActivityTitleAlpha(taskView);

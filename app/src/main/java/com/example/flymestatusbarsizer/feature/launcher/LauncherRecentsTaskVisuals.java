@@ -17,6 +17,7 @@ final class LauncherRecentsTaskVisuals {
     private static final int STACK_CONTENT_MAX_BLUR_DP = 18;
     private static final float STACK_CONTENT_BLUR_STEP_PX = 0.5f;
     private static final String ACTIVITY_TITLE_FIELD = "mActivityTitle";
+    private static final String TASK_HEAD_FIELD = "mTaskHead";
     private static final ViewOutlineProvider STACK_TASK_NO_SHADOW_OUTLINE_PROVIDER =
             new ViewOutlineProvider() {
                 @Override
@@ -420,7 +421,37 @@ final class LauncherRecentsTaskVisuals {
                 "setIconVisibleForGesture",
                 LauncherRecentsCompat.BOOLEAN_ARG,
                 true);
+        View taskHead = resolveTaskHeadView(taskView);
+        if (taskHead != null) {
+            taskHead.setAlpha(1f);
+        }
         setActivityTitleAlpha(taskView, 1f);
+        LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
+        if (targets == null) {
+            return;
+        }
+        for (int i = 0; i < targets.iconViews.length; i++) {
+            Object iconView = targets.iconViews[i];
+            LauncherRecentsCompat.invokeCompat(
+                    iconView,
+                    "setContentAlpha",
+                    LauncherRecentsCompat.FLOAT_ARG,
+                    1f);
+            LauncherRecentsCompat.invokeCompat(
+                    iconView,
+                    "setModalAlpha",
+                    LauncherRecentsCompat.FLOAT_ARG,
+                    1f);
+            LauncherRecentsCompat.invokeCompat(
+                    iconView,
+                    "setFlexSplitAlpha",
+                    LauncherRecentsCompat.FLOAT_ARG,
+                    1f);
+            View iconAsView = targets.iconAsViews[i];
+            if (iconAsView != null) {
+                iconAsView.setAlpha(1f);
+            }
+        }
     }
 
     static void forceRecentsTaskHeadsVisible(View recentsView) {
@@ -660,6 +691,11 @@ final class LauncherRecentsTaskVisuals {
 
     private static View resolveActivityTitleView(View taskView) {
         Object value = LauncherRecentsCompat.getFieldCompat(taskView, ACTIVITY_TITLE_FIELD);
+        return value instanceof View ? (View) value : null;
+    }
+
+    private static View resolveTaskHeadView(View taskView) {
+        Object value = LauncherRecentsCompat.getFieldCompat(taskView, TASK_HEAD_FIELD);
         return value instanceof View ? (View) value : null;
     }
 
