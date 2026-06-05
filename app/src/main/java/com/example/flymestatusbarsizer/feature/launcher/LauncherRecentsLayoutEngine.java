@@ -57,7 +57,7 @@ final class LauncherRecentsLayoutEngine {
         final float overviewStateStackHandoffProgress;
         final float stackReleaseProgress;
         final float stackSettledShiftProgress;
-        final int overScrollShift;
+        final int edgeScrollCorrection;
         final boolean appEntrySessionActive;
         final float maxTranslationZ;
         final float zStepPx;
@@ -81,7 +81,7 @@ final class LauncherRecentsLayoutEngine {
                 float overviewStateStackHandoffProgress,
                 float stackReleaseProgress,
                 float stackSettledShiftProgress,
-                int overScrollShift,
+                int edgeScrollCorrection,
                 boolean appEntrySessionActive,
                 float maxTranslationZ,
                 float zStepPx,
@@ -103,7 +103,7 @@ final class LauncherRecentsLayoutEngine {
             this.overviewStateStackHandoffProgress = overviewStateStackHandoffProgress;
             this.stackReleaseProgress = stackReleaseProgress;
             this.stackSettledShiftProgress = stackSettledShiftProgress;
-            this.overScrollShift = overScrollShift;
+            this.edgeScrollCorrection = edgeScrollCorrection;
             this.appEntrySessionActive = appEntrySessionActive;
             this.maxTranslationZ = maxTranslationZ;
             this.zStepPx = zStepPx;
@@ -1185,10 +1185,7 @@ final class LauncherRecentsLayoutEngine {
             stackVerticalProgress = 1f;
             stackSettledShiftProgress = smoothStep(stackReleaseProgress);
         }
-        int overScrollShift = LauncherRecentsCompat.invokeInt(
-                recentsView,
-                "getOverScrollShift",
-                0);
+        int edgeScrollCorrection = resolveEdgeScrollCorrection(recentsView);
         boolean appEntrySessionActive =
                 LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
         float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
@@ -1212,7 +1209,7 @@ final class LauncherRecentsLayoutEngine {
                 overviewStateStackHandoffProgress,
                 stackReleaseProgress,
                 stackSettledShiftProgress,
-                overScrollShift,
+                edgeScrollCorrection,
                 appEntrySessionActive,
                 maxTranslationZ,
                 zStepPx,
@@ -1283,7 +1280,7 @@ final class LauncherRecentsLayoutEngine {
         // adding a second full-page horizontal shift on top of it.
         float stackDismissLayoutOffset =
                 LauncherRecentsTouchController.readStackDismissLayoutOffset(taskView);
-        float layoutRawOffset = rawOffset - context.overScrollShift;
+        float layoutRawOffset = rawOffset + context.edgeScrollCorrection;
         float physicalRawOffset = layoutRawOffset + dismissTranslationX;
         float effectiveRawOffset = physicalRawOffset + stackDismissLayoutOffset;
         float progress = effectiveRawOffset / context.pageSpan;
@@ -2154,6 +2151,14 @@ final class LauncherRecentsLayoutEngine {
                 1f,
                 recentsView.getWidth() * STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO);
         return 1.0f - remapProgress(primaryScroll - minScroll, 0f, revealRange);
+    }
+
+    private static int resolveEdgeScrollCorrection(View recentsView) {
+        int scrollX = recentsView.getScrollX();
+        int minScroll = LauncherRecentsCompat.readIntField(recentsView, "mMinScroll", scrollX);
+        int maxScroll = LauncherRecentsCompat.readIntField(recentsView, "mMaxScroll", scrollX);
+        int clampedScroll = Math.max(minScroll, Math.min(scrollX, maxScroll));
+        return scrollX - clampedScroll;
     }
 
     private static float resolveAppEntryCollapsedProgress(
