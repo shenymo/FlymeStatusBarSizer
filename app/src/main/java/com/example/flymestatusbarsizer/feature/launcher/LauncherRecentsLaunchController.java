@@ -12,6 +12,8 @@ import android.view.View;
 import java.lang.reflect.Method;
 
 final class LauncherRecentsLaunchController {
+    private static final float TASK_LAUNCH_SIBLING_EXIT_EXTRA_WIDTH_RATIO = 0.25f;
+
     private LauncherRecentsLaunchController() {
     }
 
@@ -455,6 +457,7 @@ final class LauncherRecentsLaunchController {
                 try {
                     applyFrozenTaskLaunchLayout(recentsView);
                     Object result = chain.proceed();
+                    updateTaskLaunchSiblingExitProgress(recentsView, chain.getArg(0));
                     applyFrozenTaskLaunchLayout(recentsView);
                     return result;
                 } finally {
@@ -1034,6 +1037,10 @@ final class LauncherRecentsLaunchController {
             if (LauncherRecentsCompat.resolveOwningRecentsView(taskView) != recentsView) {
                 continue;
             }
+            float exitProgress = resolveTaskLaunchSiblingExitProgress(
+                    recentsView,
+                    state,
+                    taskState);
             if (taskState.stackVisualState != null) {
                 LauncherRecentsTaskVisuals.applyStackTaskVisualState(
                         taskView,
@@ -1046,10 +1053,86 @@ final class LauncherRecentsLaunchController {
             taskView.setScaleY(taskState.scaleY);
             taskView.setAlpha(taskState.alpha);
             taskView.setTranslationZ(taskState.translationZ);
-            taskView.setX(taskState.x);
+            taskView.setX(taskState.x + resolveTaskLaunchSiblingExitOffset(
+                    recentsView,
+                    state,
+                    taskState,
+                    exitProgress));
             taskView.setY(taskState.y);
         }
         recentsView.invalidate();
+    }
+
+    private static float resolveTaskLaunchSiblingExitProgress(
+            View recentsView,
+            LauncherRecentsState.LaunchTransitionGeometryState state,
+            LauncherRecentsState.TaskLaunchFrozenTaskState taskState) {
+        if (recentsView == null
+                || state == null
+                || taskState == null
+                || taskState.taskView == state.targetTaskView) {
+            return 0f;
+        }
+        float progress = LauncherRecentsLayoutEngine.clamp(state.siblingExitProgress, 0f, 1f);
+        return progress * progress;
+    }
+
+    private static float resolveTaskLaunchSiblingExitOffset(
+            View recentsView,
+            LauncherRecentsState.LaunchTransitionGeometryState state,
+            LauncherRecentsState.TaskLaunchFrozenTaskState taskState,
+            float progress) {
+        if (progress <= 0f || recentsView == null || state == null || taskState == null) {
+            return 0f;
+        }
+        LauncherRecentsState.TaskLaunchFrozenTaskState targetState =
+                findFrozenTaskLaunchState(state, state.targetTaskView);
+        if (targetState == null || taskState.taskView == targetState.taskView) {
+            return 0f;
+        }
+        float distance = recentsView.getWidth()
+                + (taskState.taskView.getWidth() * TASK_LAUNCH_SIBLING_EXIT_EXTRA_WIDTH_RATIO);
+        float taskCenterX = taskState.x + (taskState.taskView.getWidth() * taskState.scaleX * 0.5f);
+        float targetCenterX =
+                targetState.x + (targetState.taskView.getWidth() * targetState.scaleX * 0.5f);
+        float direction = taskCenterX < targetCenterX ? -1f : 1f;
+        return direction * distance * progress;
+    }
+
+    private static LauncherRecentsState.TaskLaunchFrozenTaskState findFrozenTaskLaunchState(
+            LauncherRecentsState.LaunchTransitionGeometryState state,
+            View taskView) {
+        if (state == null || taskView == null) {
+            return null;
+        }
+        for (int i = 0; i < state.frozenTaskStates.size(); i++) {
+            LauncherRecentsState.TaskLaunchFrozenTaskState taskState =
+                    state.frozenTaskStates.get(i);
+            if (taskState != null && taskState.taskView == taskView) {
+                return taskState;
+            }
+        }
+        return null;
+    }
+
+    private static void updateTaskLaunchSiblingExitProgress(
+            View recentsView,
+            Object remoteTargetHandlesObject) {
+        LauncherRecentsState.LaunchTransitionGeometryState state =
+                LauncherRecentsState.getActiveTaskLaunchTransitionGeometry(recentsView);
+        if (state == null || !state.frozen || !(remoteTargetHandlesObject instanceof Object[])) {
+            return;
+        }
+        Object[] remoteTargetHandles = (Object[]) remoteTargetHandlesObject;
+        if (remoteTargetHandles.length == 0) {
+            return;
+        }
+        Object simulator = LauncherRecentsCompat.invokeCompat(
+                remoteTargetHandles[0],
+                "getTaskViewSimulator");
+        Object progressObject = LauncherRecentsCompat.getFieldCompat(simulator, "fullScreenProgress");
+        float progress = LauncherRecentsCompat.readFloatField(progressObject, "value", 0f);
+        state.siblingExitProgress = LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f);
     }
 
     private static void captureFrozenTaskLaunchLayout(

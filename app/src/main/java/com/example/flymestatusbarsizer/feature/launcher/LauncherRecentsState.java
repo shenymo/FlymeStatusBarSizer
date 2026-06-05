@@ -118,6 +118,7 @@ final class LauncherRecentsState {
         final int targetIndex;
         final Rect startBounds = new Rect();
         final ArrayList<TaskLaunchFrozenTaskState> frozenTaskStates = new ArrayList<>();
+        float siblingExitProgress;
         boolean frozen;
 
         LaunchTransitionGeometryState(
