@@ -47,8 +47,10 @@ final class LauncherRecentsLayoutEngine {
         final int runningTaskChildIndex;
         final float referenceWidth;
         final float referenceHeight;
+        final float referencePrimarySize;
         final float pageSpan;
         final float[] rawOffsets;
+        final boolean primaryScrollHorizontal;
         final float blankTapExitProgress;
         final float stackEntryProgress;
         final float stackVerticalProgress;
@@ -71,8 +73,10 @@ final class LauncherRecentsLayoutEngine {
                 int runningTaskChildIndex,
                 float referenceWidth,
                 float referenceHeight,
+                float referencePrimarySize,
                 float pageSpan,
                 float[] rawOffsets,
+                boolean primaryScrollHorizontal,
                 float blankTapExitProgress,
                 float stackEntryProgress,
                 float stackVerticalProgress,
@@ -93,8 +97,10 @@ final class LauncherRecentsLayoutEngine {
             this.runningTaskChildIndex = runningTaskChildIndex;
             this.referenceWidth = referenceWidth;
             this.referenceHeight = referenceHeight;
+            this.referencePrimarySize = referencePrimarySize;
             this.pageSpan = pageSpan;
             this.rawOffsets = rawOffsets;
+            this.primaryScrollHorizontal = primaryScrollHorizontal;
             this.blankTapExitProgress = blankTapExitProgress;
             this.stackEntryProgress = stackEntryProgress;
             this.stackVerticalProgress = stackVerticalProgress;
@@ -119,8 +125,9 @@ final class LauncherRecentsLayoutEngine {
         final float collapsedReferenceProgress;
         final float taskWidth;
         final float taskHeight;
-        final float taskCenteredLeftPx;
-        final float nativeDismissTranslationX;
+        final float taskPrimarySize;
+        final float taskCenteredPrimaryStartPx;
+        final float nativeDismissTranslationPrimary;
         final LauncherRecentsState.GestureReleaseTaskState gestureReleaseTaskState;
         final LauncherRecentsState.BlankTapHomeExitTaskState blankTapExitState;
 
@@ -131,8 +138,9 @@ final class LauncherRecentsLayoutEngine {
                 float collapsedReferenceProgress,
                 float taskWidth,
                 float taskHeight,
-                float taskCenteredLeftPx,
-                float nativeDismissTranslationX,
+                float taskPrimarySize,
+                float taskCenteredPrimaryStartPx,
+                float nativeDismissTranslationPrimary,
                 LauncherRecentsState.GestureReleaseTaskState gestureReleaseTaskState,
                 LauncherRecentsState.BlankTapHomeExitTaskState blankTapExitState) {
             this.taskView = taskView;
@@ -141,8 +149,9 @@ final class LauncherRecentsLayoutEngine {
             this.collapsedReferenceProgress = collapsedReferenceProgress;
             this.taskWidth = taskWidth;
             this.taskHeight = taskHeight;
-            this.taskCenteredLeftPx = taskCenteredLeftPx;
-            this.nativeDismissTranslationX = nativeDismissTranslationX;
+            this.taskPrimarySize = taskPrimarySize;
+            this.taskCenteredPrimaryStartPx = taskCenteredPrimaryStartPx;
+            this.nativeDismissTranslationPrimary = nativeDismissTranslationPrimary;
             this.gestureReleaseTaskState = gestureReleaseTaskState;
             this.blankTapExitState = blankTapExitState;
         }
@@ -519,6 +528,97 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
+    private static boolean isPrimaryScrollHorizontal(View recentsView) {
+        Object orientationHandler =
+                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
+        Object value = LauncherRecentsCompat.invokeCompat(
+                orientationHandler,
+                "getPrimaryValue",
+                new Class<?>[]{int.class, int.class},
+                1,
+                0);
+        return !(value instanceof Integer) || (Integer) value == 1;
+    }
+
+    private static int resolvePrimaryScroll(View recentsView) {
+        Object orientationHandler =
+                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
+        Object value = LauncherRecentsCompat.invokeCompat(
+                orientationHandler,
+                "getPrimaryScroll",
+                new Class<?>[]{View.class},
+                recentsView);
+        if (value instanceof Integer) {
+            return (Integer) value;
+        }
+        return isPrimaryScrollHorizontal(recentsView)
+                ? recentsView.getScrollX()
+                : recentsView.getScrollY();
+    }
+
+    private static float resolvePrimarySize(View view, boolean primaryScrollHorizontal) {
+        return primaryScrollHorizontal ? view.getWidth() : view.getHeight();
+    }
+
+    private static float resolveTaskPrimarySize(
+            View taskView,
+            float fallback,
+            boolean primaryScrollHorizontal) {
+        float size = resolvePrimarySize(taskView, primaryScrollHorizontal);
+        return size > 0f ? size : fallback;
+    }
+
+    private static float resolveTaskCenteredPrimaryStartPx(
+            View recentsView,
+            float taskPrimarySize,
+            boolean primaryScrollHorizontal) {
+        return Math.max(
+                0f,
+                (resolvePrimarySize(recentsView, primaryScrollHorizontal) - taskPrimarySize)
+                        * 0.5f);
+    }
+
+    private static float readTaskPrimaryOffset(View taskView, boolean primaryScrollHorizontal) {
+        return primaryScrollHorizontal
+                ? LauncherRecentsTaskVisuals.readLastStockTaskOffsetX(taskView)
+                : LauncherRecentsTaskVisuals.readLastStockTaskOffsetY(taskView);
+    }
+
+    private static float readTaskPrimaryOffsetField(View taskView, boolean primaryScrollHorizontal) {
+        return LauncherRecentsCompat.readFloatField(
+                taskView,
+                primaryScrollHorizontal ? "taskOffsetTranslationX" : "taskOffsetTranslationY",
+                0f);
+    }
+
+    private static float readTaskPrimaryDismissTranslation(
+            View taskView,
+            boolean primaryScrollHorizontal) {
+        return LauncherRecentsCompat.readFloatField(
+                taskView,
+                primaryScrollHorizontal ? "dismissTranslationX" : "dismissTranslationY",
+                0f);
+    }
+
+    private static float readTaskPrimaryHorizontalOffset(
+            View taskView,
+            boolean primaryScrollHorizontal) {
+        return primaryScrollHorizontal
+                ? LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView)
+                : 0f;
+    }
+
+    private static float readTaskPrimaryHorizontalOffsetField(
+            View taskView,
+            boolean primaryScrollHorizontal) {
+        return primaryScrollHorizontal
+                ? LauncherRecentsCompat.readFloatField(
+                taskView,
+                "horizontalOffsetTranslationX",
+                0f)
+                : 0f;
+    }
+
     private static void captureStockTaskStatesForStackApply(View recentsView) {
         long perfStartNs = LauncherRecentsPerf.start(recentsView);
         try {
@@ -548,6 +648,7 @@ final class LauncherRecentsLayoutEngine {
                 -1,
                 taskViewCount,
                 STACK_STABLE_VISIBLE_RADIUS);
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         float anchorVisibleOffset = 0f;
         boolean hasVisibleAnchor = false;
         for (int i = 0; i < taskViewCount; i++) {
@@ -569,42 +670,42 @@ final class LauncherRecentsLayoutEngine {
                             0,
                             i),
                     i);
-            float dismissTranslationX = LauncherRecentsCompat.readFloatField(
+            float dismissTranslationPrimary = readTaskPrimaryDismissTranslation(
                     taskView,
-                    "dismissTranslationX",
-                    0f);
+                    primaryScrollHorizontal);
             float visibleOffset =
                     rawOffset
-                            + dismissTranslationX
-                            + LauncherRecentsCompat.readFloatField(
+                            + dismissTranslationPrimary
+                            + readTaskPrimaryOffsetField(taskView, primaryScrollHorizontal)
+                            + readTaskPrimaryHorizontalOffsetField(
                             taskView,
-                            "taskOffsetTranslationX",
-                            0f)
-                            + LauncherRecentsCompat.readFloatField(
-                            taskView,
-                            "horizontalOffsetTranslationX",
-                            0f);
-            float taskWidth = taskView.getWidth() > 0
-                    ? taskView.getWidth()
-                    : Math.max(1f, recentsView.getWidth());
-            float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
+                            primaryScrollHorizontal);
+            float taskPrimarySize = resolveTaskPrimarySize(
+                    taskView,
+                    Math.max(1f, resolvePrimarySize(recentsView, primaryScrollHorizontal)),
+                    primaryScrollHorizontal);
+            float taskCenteredPrimaryStartPx = resolveTaskCenteredPrimaryStartPx(
+                    recentsView,
+                    taskPrimarySize,
+                    primaryScrollHorizontal);
             float taskScale = LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f);
             if (taskView.getVisibility() != View.VISIBLE
                     || taskView.getWidth() <= 0
                     || taskView.getHeight() <= 0
                     || !isTaskVisibleInViewport(
                     recentsView,
-                    taskCenteredLeftPx,
-                    taskWidth,
+                    taskCenteredPrimaryStartPx,
+                    taskPrimarySize,
                     visibleOffset,
-                    taskScale)) {
+                    taskScale,
+                    primaryScrollHorizontal)) {
                 continue;
             }
             LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.put(
                     taskView,
                     new LauncherRecentsState.BlankTapHomeExitTaskState(
                             rawOffset,
-                            dismissTranslationX,
+                            dismissTranslationPrimary,
                             visibleOffset,
                             taskScale,
                             LauncherRecentsCompat.readFloatField(
@@ -640,6 +741,7 @@ final class LauncherRecentsLayoutEngine {
         }
         float clampedProgress = clamp(progress, 0f, 1f);
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             LauncherRecentsState.BlankTapHomeExitTaskState state =
@@ -653,19 +755,23 @@ final class LauncherRecentsLayoutEngine {
             float taskHeight = taskView.getHeight() > 0
                     ? taskView.getHeight()
                     : Math.max(1f, recentsView.getHeight());
-            float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
+            float taskPrimarySize = primaryScrollHorizontal ? taskWidth : taskHeight;
+            float taskCenteredPrimaryStartPx = resolveTaskCenteredPrimaryStartPx(
+                    recentsView,
+                    taskPrimarySize,
+                    primaryScrollHorizontal);
             float desiredVisibleOffset = state.startVisibleOffset;
             float desiredScale = state.startScale;
             float desiredStableAlpha = state.startStableAlpha;
             if (state.startStableAlpha > 0f) {
                 float pathProgress = smoothStep(clampedProgress);
                 float controlVisibleOffset = state.centerVisibleOffset;
-                float taskLeftPx = taskCenteredLeftPx + controlVisibleOffset;
+                float taskStartPx = taskCenteredPrimaryStartPx + controlVisibleOffset;
                 float exitTravelPx = Math.max(
-                        taskLeftPx + taskWidth + FlymeStatusBarSizer.dp(
+                        taskStartPx + taskPrimarySize + FlymeStatusBarSizer.dp(
                                 recentsView.getContext(),
                                 64),
-                        taskWidth * (1f + BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO));
+                        taskPrimarySize * (1f + BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO));
                 float exitVisibleOffset = controlVisibleOffset - exitTravelPx;
                 desiredVisibleOffset = quadraticBezier(
                         state.startVisibleOffset,
@@ -677,8 +783,10 @@ final class LauncherRecentsLayoutEngine {
             } else {
                 desiredStableAlpha = 0f;
             }
-            float taskOffsetX =
+            float taskOffsetPrimary =
                     desiredVisibleOffset - state.startRawOffset - state.startDismissTranslationX;
+            float taskOffsetX = primaryScrollHorizontal ? taskOffsetPrimary : 0f;
+            float taskOffsetY = primaryScrollHorizontal ? state.startTaskOffsetY : taskOffsetPrimary;
             LauncherRecentsTaskVisuals.applyStackTaskVisualState(
                     taskView,
                     new LauncherRecentsTaskVisuals.StackTaskVisualState(
@@ -686,7 +794,7 @@ final class LauncherRecentsLayoutEngine {
                             taskHeight * 0.5f,
                             0f,
                             taskOffsetX,
-                            state.startTaskOffsetY,
+                            taskOffsetY,
                             state.startBoxTranslationY,
                             desiredScale,
                             state.startAttachAlpha,
@@ -722,8 +830,9 @@ final class LauncherRecentsLayoutEngine {
         View runningTaskView = runningTaskObject instanceof View
                 ? (View) runningTaskObject
                 : null;
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         float pageSpacing = LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0);
-        float referenceWidth = 0f;
+        float referencePrimarySize = 0f;
         float pageSpan = 0f;
         float[] rawOffsets = new float[taskViewCount];
         for (int i = 0; i < taskViewCount; i++) {
@@ -742,19 +851,22 @@ final class LauncherRecentsLayoutEngine {
                             0,
                             i),
                     i);
-            if (taskView.getWidth() > 0) {
-                referenceWidth = Math.max(referenceWidth, taskView.getWidth());
-                pageSpan = Math.max(pageSpan, taskView.getWidth() + pageSpacing);
+            float taskPrimarySize = resolvePrimarySize(taskView, primaryScrollHorizontal);
+            if (taskPrimarySize > 0) {
+                referencePrimarySize = Math.max(referencePrimarySize, taskPrimarySize);
+                pageSpan = Math.max(pageSpan, taskPrimarySize + pageSpacing);
             }
         }
-        if (referenceWidth <= 0f) {
-            referenceWidth = Math.max(1, recentsView.getWidth());
+        if (referencePrimarySize <= 0f) {
+            referencePrimarySize = Math.max(
+                    1f,
+                    resolvePrimarySize(recentsView, primaryScrollHorizontal));
         }
         if (pageSpan <= 1f) {
-            pageSpan = referenceWidth + pageSpacing;
+            pageSpan = referencePrimarySize + pageSpacing;
         }
         if (pageSpan <= 1f) {
-            pageSpan = Math.max(1f, referenceWidth);
+            pageSpan = Math.max(1f, referencePrimarySize);
         }
         float scrollDelta = startScroll - targetScroll;
         float targetLeftEdgeRevealProgress = resolveLeftEdgeRevealProgress(
@@ -768,27 +880,34 @@ final class LauncherRecentsLayoutEngine {
                     && sharesRunningTaskIds(taskView, runningTaskView))) {
                 continue;
             }
-            float taskWidth = taskView.getWidth() > 0 ? taskView.getWidth() : referenceWidth;
-            float taskCenteredLeftPx = Math.max(0f, (recentsView.getWidth() - taskWidth) * 0.5f);
+            float taskPrimarySize = resolveTaskPrimarySize(
+                    taskView,
+                    referencePrimarySize,
+                    primaryScrollHorizontal);
+            float taskCenteredPrimaryStartPx = resolveTaskCenteredPrimaryStartPx(
+                    recentsView,
+                    taskPrimarySize,
+                    primaryScrollHorizontal);
             float startRawOffset = rawOffsets[i];
             float targetRawOffset = startRawOffset + scrollDelta;
             float targetProgress = targetRawOffset / pageSpan;
             float targetVisibleOffset = resolveStackVisibleOffset(
                     recentsView,
                     resolveStackReleaseSettledProgress(targetProgress, 1f),
-                    taskWidth,
-                    taskCenteredLeftPx,
-                    targetLeftEdgeRevealProgress);
+                    taskPrimarySize,
+                    taskCenteredPrimaryStartPx,
+                    targetLeftEdgeRevealProgress,
+                    primaryScrollHorizontal);
             float startVisibleOffset =
                     startRawOffset
-                            + LauncherRecentsCompat.readFloatField(
+                            + readTaskPrimaryDismissTranslation(
                             taskView,
-                            "dismissTranslationX",
-                            0f)
-                            + LauncherRecentsTaskVisuals.readLastStockTaskOffsetX(taskView)
-                            + LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView);
-            float startHorizontalOffsetX =
-                    LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView);
+                            primaryScrollHorizontal)
+                            + readTaskPrimaryOffset(taskView, primaryScrollHorizontal)
+                            + readTaskPrimaryHorizontalOffset(taskView, primaryScrollHorizontal);
+            float startHorizontalOffsetX = readTaskPrimaryHorizontalOffset(
+                    taskView,
+                    primaryScrollHorizontal);
             LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.put(
                     taskView,
                     new LauncherRecentsState.GestureReleaseTaskState(
@@ -958,12 +1077,16 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static int resolveSlowLogScrollBucket(View recentsView) {
-        int width = recentsView != null ? recentsView.getWidth() : 0;
-        if (width <= 0) {
+        if (recentsView == null) {
             return Integer.MIN_VALUE;
         }
-        return recentsView.getScrollX()
-                / Math.max(1, width / STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR);
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        int primarySize = Math.round(resolvePrimarySize(recentsView, primaryScrollHorizontal));
+        if (primarySize <= 0) {
+            return Integer.MIN_VALUE;
+        }
+        return resolvePrimaryScroll(recentsView)
+                / Math.max(1, primarySize / STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR);
     }
 
     private static boolean shouldSkipDuplicateStackLayout(
@@ -1110,8 +1233,10 @@ final class LauncherRecentsLayoutEngine {
                 runningTaskChildIndex,
                 taskViewCount,
                 stackLayoutRadius);
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         float referenceWidth = 0f;
         float referenceHeight = 0f;
+        float referencePrimarySize = 0f;
         float pageSpan = 0f;
         float[] rawOffsets = new float[taskViewCount];
 
@@ -1137,10 +1262,14 @@ final class LauncherRecentsLayoutEngine {
                     i);
             if (taskView.getWidth() > 0) {
                 referenceWidth = Math.max(referenceWidth, taskView.getWidth());
-                pageSpan = Math.max(pageSpan, taskView.getWidth() + pageSpacing);
             }
             if (taskView.getHeight() > 0) {
                 referenceHeight = Math.max(referenceHeight, taskView.getHeight());
+            }
+            float taskPrimarySize = resolvePrimarySize(taskView, primaryScrollHorizontal);
+            if (taskPrimarySize > 0f) {
+                referencePrimarySize = Math.max(referencePrimarySize, taskPrimarySize);
+                pageSpan = Math.max(pageSpan, taskPrimarySize + pageSpacing);
             }
         }
 
@@ -1150,11 +1279,16 @@ final class LauncherRecentsLayoutEngine {
         if (referenceHeight <= 0f) {
             referenceHeight = Math.max(1, recentsView.getHeight());
         }
-        if (pageSpan <= 1f) {
-            pageSpan = referenceWidth + pageSpacing;
+        if (referencePrimarySize <= 0f) {
+            referencePrimarySize = Math.max(
+                    1f,
+                    resolvePrimarySize(recentsView, primaryScrollHorizontal));
         }
         if (pageSpan <= 1f) {
-            pageSpan = Math.max(1f, referenceWidth);
+            pageSpan = referencePrimarySize + pageSpacing;
+        }
+        if (pageSpan <= 1f) {
+            pageSpan = Math.max(1f, referencePrimarySize);
         }
 
         float blankTapExitProgress =
@@ -1199,8 +1333,10 @@ final class LauncherRecentsLayoutEngine {
                 runningTaskChildIndex,
                 referenceWidth,
                 referenceHeight,
+                referencePrimarySize,
                 pageSpan,
                 rawOffsets,
+                primaryScrollHorizontal,
                 blankTapExitProgress,
                 stackEntryProgress,
                 stackVerticalProgress,
@@ -1269,12 +1405,13 @@ final class LauncherRecentsLayoutEngine {
                         ? LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView)
                         : null;
         float rawOffset = context.rawOffsets[index];
-        float nativeDismissTranslationX =
-                LauncherRecentsCompat.readFloatField(taskView, "dismissTranslationX", 0f);
+        float nativeDismissTranslationPrimary = readTaskPrimaryDismissTranslation(
+                taskView,
+                context.primaryScrollHorizontal);
         float dismissTranslationX = LauncherRecentsTouchController
                 .shouldSuppressNativeDismissTranslation(context.recentsView)
                 ? 0f
-                : nativeDismissTranslationX;
+                : nativeDismissTranslationPrimary;
         // Keep the stock gap-closing animation, but remap its logical page position into
         // the compressed stack so sibling cards move into the dismissed slot instead of
         // adding a second full-page horizontal shift on top of it.
@@ -1289,8 +1426,14 @@ final class LauncherRecentsLayoutEngine {
                 context.stackSettledShiftProgress);
         float taskWidth = taskView.getWidth() > 0 ? taskView.getWidth() : context.referenceWidth;
         float taskHeight = taskView.getHeight() > 0 ? taskView.getHeight() : context.referenceHeight;
-        float taskCenteredLeftPx =
-                Math.max(0f, (context.recentsView.getWidth() - taskWidth) * 0.5f);
+        float taskPrimarySize = resolveTaskPrimarySize(
+                taskView,
+                context.referencePrimarySize,
+                context.primaryScrollHorizontal);
+        float taskCenteredPrimaryStartPx = resolveTaskCenteredPrimaryStartPx(
+                context.recentsView,
+                taskPrimarySize,
+                context.primaryScrollHorizontal);
         float collapsedReferenceProgress = progress;
         if (context.appEntrySessionActive && context.runningTaskView != null) {
             collapsedReferenceProgress = resolveAppEntryCollapsedProgress(
@@ -1307,8 +1450,9 @@ final class LauncherRecentsLayoutEngine {
                 collapsedReferenceProgress,
                 taskWidth,
                 taskHeight,
-                taskCenteredLeftPx,
-                nativeDismissTranslationX,
+                taskPrimarySize,
+                taskCenteredPrimaryStartPx,
+                nativeDismissTranslationPrimary,
                 gestureReleaseTaskState,
                 LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.get(taskView));
     }
@@ -1323,8 +1467,9 @@ final class LauncherRecentsLayoutEngine {
         float finalVisibleOffset = resolveStackVisibleOffset(
                 context.recentsView,
                 input.layoutProgress,
-                input.taskWidth,
-                input.taskCenteredLeftPx);
+                input.taskPrimarySize,
+                input.taskCenteredPrimaryStartPx,
+                context.primaryScrollHorizontal);
         float finalTaskOffsetY = stackEntryLiftPx * (1.0f - context.stackVerticalProgress);
         float taskEntryProgress = resolveTaskStackEntryProgress(
                 context.stackEntryProgress,
@@ -1332,8 +1477,9 @@ final class LauncherRecentsLayoutEngine {
         float collapsedVisibleOffset = resolveStackVisibleOffset(
                 context.recentsView,
                 input.collapsedReferenceProgress,
-                input.taskWidth,
-                input.taskCenteredLeftPx) * STACK_ENTRY_INITIAL_SPREAD_RATIO;
+                input.taskPrimarySize,
+                input.taskCenteredPrimaryStartPx,
+                context.primaryScrollHorizontal) * STACK_ENTRY_INITIAL_SPREAD_RATIO;
         float desiredVisibleOffset = lerp(
                 collapsedVisibleOffset,
                 finalVisibleOffset,
@@ -1352,9 +1498,10 @@ final class LauncherRecentsLayoutEngine {
         }
         float desiredLayerProgress = resolveStackLayerProgress(
                 context.recentsView,
-                input.taskCenteredLeftPx,
-                input.taskWidth,
-                desiredVisibleOffset);
+                input.taskCenteredPrimaryStartPx,
+                input.taskPrimarySize,
+                desiredVisibleOffset,
+                context.primaryScrollHorizontal);
         float desiredScale = lerp(STACK_MIN_SCALE, 1.0f, desiredLayerProgress);
         float desiredTaskOffsetY = lerp(
                 0f,
@@ -1375,7 +1522,9 @@ final class LauncherRecentsLayoutEngine {
         if (blankTapExitState != null) {
             desiredVisibleOffset = blankTapExitState.startVisibleOffset;
             desiredScale = blankTapExitState.startScale;
-            desiredTaskOffsetY = blankTapExitState.startTaskOffsetY;
+            desiredTaskOffsetY = context.primaryScrollHorizontal
+                    ? blankTapExitState.startTaskOffsetY
+                    : 0f;
             desiredBoxTranslationY = blankTapExitState.startBoxTranslationY;
             desiredStableAlpha = blankTapExitState.startStableAlpha;
             desiredTranslationZ = blankTapExitState.startTranslationZ;
@@ -1392,12 +1541,12 @@ final class LauncherRecentsLayoutEngine {
                 float centerVisibleOffset = blankTapExitState.centerVisibleOffset;
                 float pathProgress = smoothStep(context.blankTapExitProgress);
                 float controlVisibleOffset = centerVisibleOffset;
-                float taskLeftPx = input.taskCenteredLeftPx + controlVisibleOffset;
+                float taskStartPx = input.taskCenteredPrimaryStartPx + controlVisibleOffset;
                 float exitTravelPx = Math.max(
-                        taskLeftPx + input.taskWidth + FlymeStatusBarSizer.dp(
+                        taskStartPx + input.taskPrimarySize + FlymeStatusBarSizer.dp(
                                 context.recentsView.getContext(),
                                 64),
-                        input.taskWidth * (1f + BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO));
+                        input.taskPrimarySize * (1f + BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO));
                 float exitVisibleOffset = controlVisibleOffset - exitTravelPx;
                 desiredVisibleOffset = quadraticBezier(
                         startVisibleOffset,
@@ -1415,8 +1564,9 @@ final class LauncherRecentsLayoutEngine {
         float stackLeftClampAlpha = resolveStackLeftClampAlpha(
                 context.recentsView,
                 input.layoutProgress,
-                input.taskWidth,
-                input.taskCenteredLeftPx);
+                input.taskPrimarySize,
+                input.taskCenteredPrimaryStartPx,
+                context.primaryScrollHorizontal);
         if (!blankTapExitTaskActive) {
             desiredStableAlpha *= stackLeftClampAlpha;
             activityTitleAlpha = desiredStableAlpha > 0.001f ? stackLeftClampAlpha : 0f;
@@ -1431,12 +1581,16 @@ final class LauncherRecentsLayoutEngine {
                 targetBlurProgress = blankTapExitState.startStackContentBlurProgress;
             }
         }
-        float translationCompensationX =
-                desiredVisibleOffset - input.rawOffset - input.nativeDismissTranslationX;
+        float translationCompensationPrimary =
+                desiredVisibleOffset - input.rawOffset - input.nativeDismissTranslationPrimary;
 
         float appliedHorizontalOffsetX = 0f;
-        float appliedTaskOffsetX = translationCompensationX;
-        float appliedTaskOffsetY = desiredTaskOffsetY;
+        float appliedTaskOffsetX = context.primaryScrollHorizontal
+                ? translationCompensationPrimary
+                : 0f;
+        float appliedTaskOffsetY = context.primaryScrollHorizontal
+                ? desiredTaskOffsetY
+                : translationCompensationPrimary + desiredTaskOffsetY;
         float appliedBoxTranslationY = desiredBoxTranslationY;
         float appliedScale = desiredScale;
         float appliedAttachAlpha = desiredAttachAlpha;
@@ -1447,25 +1601,47 @@ final class LauncherRecentsLayoutEngine {
         float appliedTranslationZ = desiredTranslationZ;
         if (context.gestureStackReleaseActive) {
             if (input.gestureReleaseTaskState != null) {
-                appliedHorizontalOffsetX = lerp(
+                float appliedPrimaryHorizontalOffset = lerp(
                         input.gestureReleaseTaskState.startHorizontalOffsetX,
                         0f,
                         context.stackReleaseProgress);
-                appliedTaskOffsetX = translationCompensationX - appliedHorizontalOffsetX;
+                appliedHorizontalOffsetX = context.primaryScrollHorizontal
+                        ? appliedPrimaryHorizontalOffset
+                        : 0f;
+                float appliedPrimaryTaskOffset =
+                        translationCompensationPrimary - appliedPrimaryHorizontalOffset;
+                appliedTaskOffsetX = context.primaryScrollHorizontal ? appliedPrimaryTaskOffset : 0f;
+                appliedTaskOffsetY = context.primaryScrollHorizontal
+                        ? appliedTaskOffsetY
+                        : appliedPrimaryTaskOffset + desiredTaskOffsetY;
             } else {
                 appliedHorizontalOffsetX = lerp(
                         LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView),
                         appliedHorizontalOffsetX,
                         context.stackReleaseProgress);
+                if (context.primaryScrollHorizontal) {
+                    appliedTaskOffsetX = lerp(
+                            LauncherRecentsTaskVisuals.readLastStockTaskOffsetX(taskView),
+                            appliedTaskOffsetX,
+                            context.stackReleaseProgress);
+                } else {
+                    appliedTaskOffsetY = lerp(
+                            LauncherRecentsTaskVisuals.readLastStockTaskOffsetY(taskView),
+                            appliedTaskOffsetY,
+                            context.stackReleaseProgress);
+                }
+            }
+            if (context.primaryScrollHorizontal) {
+                appliedTaskOffsetY = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockTaskOffsetY(taskView),
+                        appliedTaskOffsetY,
+                        context.stackReleaseProgress);
+            } else {
                 appliedTaskOffsetX = lerp(
                         LauncherRecentsTaskVisuals.readLastStockTaskOffsetX(taskView),
                         appliedTaskOffsetX,
                         context.stackReleaseProgress);
             }
-            appliedTaskOffsetY = lerp(
-                    LauncherRecentsTaskVisuals.readLastStockTaskOffsetY(taskView),
-                    appliedTaskOffsetY,
-                    context.stackReleaseProgress);
             appliedBoxTranslationY = lerp(
                     LauncherRecentsTaskVisuals.readLastStockBoxTranslationY(taskView),
                     appliedBoxTranslationY,
@@ -1648,7 +1824,7 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static int resolveNearestStackLayoutPage(View recentsView, int taskViewCount) {
-        int scrollX = recentsView.getScrollX();
+        int primaryScroll = resolvePrimaryScroll(recentsView);
         int nearestPage = 0;
         int nearestDistance = Integer.MAX_VALUE;
         for (int i = 0; i < taskViewCount; i++) {
@@ -1656,9 +1832,9 @@ final class LauncherRecentsLayoutEngine {
                     recentsView,
                     "getScrollForPage",
                     LauncherRecentsCompat.INT_ARG,
-                    scrollX,
+                    primaryScroll,
                     i);
-            int distance = Math.abs(pageScroll - scrollX);
+            int distance = Math.abs(pageScroll - primaryScroll);
             if (distance < nearestDistance) {
                 nearestDistance = distance;
                 nearestPage = i;
@@ -2018,57 +2194,64 @@ final class LauncherRecentsLayoutEngine {
     private static float resolveStackVisibleOffset(
             View recentsView,
             float progress,
-            float taskWidth,
-            float taskCenteredLeftPx) {
+            float taskPrimarySize,
+            float taskCenteredPrimaryStartPx,
+            boolean primaryScrollHorizontal) {
         return resolveStackVisibleOffset(
                 recentsView,
                 progress,
-                taskWidth,
-                taskCenteredLeftPx,
-                resolveLeftEdgeRevealProgress(recentsView));
+                taskPrimarySize,
+                taskCenteredPrimaryStartPx,
+                resolveLeftEdgeRevealProgress(recentsView),
+                primaryScrollHorizontal);
     }
 
     private static float resolveStackVisibleOffset(
             View recentsView,
             float progress,
-            float taskWidth,
-            float taskCenteredLeftPx,
-            float leftEdgeRevealProgress) {
+            float taskPrimarySize,
+            float taskCenteredPrimaryStartPx,
+            float leftEdgeRevealProgress,
+            boolean primaryScrollHorizontal) {
         float leftBoundOffsetPx = resolveStackLeftBoundOffset(
-                taskWidth,
-                taskCenteredLeftPx,
+                taskPrimarySize,
+                taskCenteredPrimaryStartPx,
                 progress < 0f ? 1f : leftEdgeRevealProgress);
         float visibleOffset = resolveStackUnclampedVisibleOffset(
                 recentsView,
                 progress,
-                taskWidth,
-                taskCenteredLeftPx);
+                taskPrimarySize,
+                taskCenteredPrimaryStartPx,
+                primaryScrollHorizontal);
         return Math.max(leftBoundOffsetPx, visibleOffset);
     }
 
     private static float resolveStackUnclampedVisibleOffset(
             View recentsView,
             float progress,
-            float taskWidth,
-            float taskCenteredLeftPx) {
+            float taskPrimarySize,
+            float taskCenteredPrimaryStartPx,
+            boolean primaryScrollHorizontal) {
         float visibleOffset = resolveStackVirtualVisibleOffset(
                 recentsView,
                 progress,
-                taskWidth,
-                taskCenteredLeftPx);
+                taskPrimarySize,
+                taskCenteredPrimaryStartPx,
+                primaryScrollHorizontal);
         return progress >= 0f ? visibleOffset : -(visibleOffset * STACK_LEFT_MOVE_RATIO);
     }
 
     private static float resolveStackVirtualVisibleOffset(
             View recentsView,
             float progress,
-            float taskWidth,
-            float taskCenteredLeftPx) {
+            float taskPrimarySize,
+            float taskCenteredPrimaryStartPx,
+            boolean primaryScrollHorizontal) {
         float stackRightOffsetPx = Math.max(
                 0f,
-                recentsView.getWidth()
-                        - (taskWidth * STACK_RIGHT_VISIBLE_RATIO)
-                        - taskCenteredLeftPx);
+                resolvePrimarySize(recentsView, primaryScrollHorizontal)
+                        - (taskPrimarySize * STACK_RIGHT_VISIBLE_RATIO)
+                        - taskCenteredPrimaryStartPx);
         float stackDepth = Math.abs(progress);
         if (stackDepth <= 0.001f) {
             return 0f;
@@ -2082,13 +2265,13 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static float resolveStackLeftBoundOffset(
-            float taskWidth,
-            float taskCenteredLeftPx,
+            float taskPrimarySize,
+            float taskCenteredPrimaryStartPx,
             float leftEdgeRevealProgress) {
         float stackLeftOffsetPx =
-                -taskCenteredLeftPx + (taskWidth * STACK_LEFT_EDGE_INSET_RATIO);
+                -taskCenteredPrimaryStartPx + (taskPrimarySize * STACK_LEFT_EDGE_INSET_RATIO);
         float stackLeftRestOffsetPx =
-                -taskCenteredLeftPx + (taskWidth * STACK_LEFT_REST_INSET_RATIO);
+                -taskCenteredPrimaryStartPx + (taskPrimarySize * STACK_LEFT_REST_INSET_RATIO);
         return lerp(
                 stackLeftRestOffsetPx,
                 stackLeftOffsetPx,
@@ -2098,35 +2281,43 @@ final class LauncherRecentsLayoutEngine {
     private static float resolveStackLeftClampAlpha(
             View recentsView,
             float progress,
-            float taskWidth,
-            float taskCenteredLeftPx) {
+            float taskPrimarySize,
+            float taskCenteredPrimaryStartPx,
+            boolean primaryScrollHorizontal) {
         if (progress >= 0f) {
             return 1f;
         }
         float currentOffset = resolveStackVisibleOffset(
                 recentsView,
                 progress,
-                taskWidth,
-                taskCenteredLeftPx);
+                taskPrimarySize,
+                taskCenteredPrimaryStartPx,
+                primaryScrollHorizontal);
         float frontOffset = resolveStackVisibleOffset(
                 recentsView,
                 progress + 1f,
-                taskWidth,
-                taskCenteredLeftPx);
+                taskPrimarySize,
+                taskCenteredPrimaryStartPx,
+                primaryScrollHorizontal);
         float distancePx = Math.abs(frontOffset - currentOffset);
         float opaqueDistancePx = Math.max(
                 1f,
-                taskWidth * 0.35f);
+                taskPrimarySize * 0.35f);
         return smoothStep(remapProgress(distancePx, 0f, opaqueDistancePx));
     }
 
     private static float resolveStackLayerProgress(
             View recentsView,
-            float taskCenteredLeftPx,
-            float taskWidth,
-            float visibleOffset) {
-        float taskCenterX = taskCenteredLeftPx + visibleOffset + (taskWidth * 0.5f);
-        return remapProgress(taskCenterX, 0f, recentsView.getWidth());
+            float taskCenteredPrimaryStartPx,
+            float taskPrimarySize,
+            float visibleOffset,
+            boolean primaryScrollHorizontal) {
+        float taskCenterPrimary =
+                taskCenteredPrimaryStartPx + visibleOffset + (taskPrimarySize * 0.5f);
+        return remapProgress(
+                taskCenterPrimary,
+                0f,
+                resolvePrimarySize(recentsView, primaryScrollHorizontal));
     }
 
     private static float resolveStackReleaseSettledProgress(
@@ -2139,26 +2330,28 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static float resolveLeftEdgeRevealProgress(View recentsView) {
-        return resolveLeftEdgeRevealProgress(recentsView, recentsView.getScrollX());
+        return resolveLeftEdgeRevealProgress(recentsView, resolvePrimaryScroll(recentsView));
     }
 
     private static float resolveLeftEdgeRevealProgress(View recentsView, int primaryScroll) {
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         int minScroll = LauncherRecentsCompat.readIntField(
                 recentsView,
                 "mMinScroll",
-                recentsView.getScrollX());
+                resolvePrimaryScroll(recentsView));
         float revealRange = Math.max(
                 1f,
-                recentsView.getWidth() * STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO);
+                resolvePrimarySize(recentsView, primaryScrollHorizontal)
+                        * STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO);
         return 1.0f - remapProgress(primaryScroll - minScroll, 0f, revealRange);
     }
 
     private static int resolveEdgeScrollCorrection(View recentsView) {
-        int scrollX = recentsView.getScrollX();
-        int minScroll = LauncherRecentsCompat.readIntField(recentsView, "mMinScroll", scrollX);
-        int maxScroll = LauncherRecentsCompat.readIntField(recentsView, "mMaxScroll", scrollX);
-        int clampedScroll = Math.max(minScroll, Math.min(scrollX, maxScroll));
-        return scrollX - clampedScroll;
+        int primaryScroll = resolvePrimaryScroll(recentsView);
+        int minScroll = LauncherRecentsCompat.readIntField(recentsView, "mMinScroll", primaryScroll);
+        int maxScroll = LauncherRecentsCompat.readIntField(recentsView, "mMaxScroll", primaryScroll);
+        int clampedScroll = Math.max(minScroll, Math.min(primaryScroll, maxScroll));
+        return primaryScroll - clampedScroll;
     }
 
     private static float resolveAppEntryCollapsedProgress(
@@ -2227,15 +2420,18 @@ final class LauncherRecentsLayoutEngine {
 
     static boolean isTaskVisibleInViewport(
             View recentsView,
-            float centeredLeftPx,
-            float taskWidth,
+            float centeredPrimaryStartPx,
+            float taskPrimarySize,
             float desiredVisibleOffset,
-            float desiredScale) {
+            float desiredScale,
+            boolean primaryScrollHorizontal) {
         float clampedScale = Math.max(0.5f, desiredScale);
-        float translatedLeftPx = centeredLeftPx + desiredVisibleOffset;
-        float actualLeftPx = translatedLeftPx + ((1.0f - clampedScale) * taskWidth * 0.5f);
-        float actualRightPx = actualLeftPx + (taskWidth * clampedScale);
-        return actualRightPx > 0f && actualLeftPx < recentsView.getWidth();
+        float translatedStartPx = centeredPrimaryStartPx + desiredVisibleOffset;
+        float actualStartPx =
+                translatedStartPx + ((1.0f - clampedScale) * taskPrimarySize * 0.5f);
+        float actualEndPx = actualStartPx + (taskPrimarySize * clampedScale);
+        return actualEndPx > 0f
+                && actualStartPx < resolvePrimarySize(recentsView, primaryScrollHorizontal);
     }
 
     static float lerp(float start, float end, float progress) {

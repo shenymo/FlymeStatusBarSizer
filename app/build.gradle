@@ -34,8 +34,8 @@ signingConfigs {
         applicationId "com.fiyme.statusbarsizer"
         minSdk 26
         targetSdk 36
-        versionCode 2026052602
-        versionName "2026.05.26.02"
+        versionCode 2026060501
+        versionName "2026.06.05.01"
         buildConfigField "String", "BUILD_DATE", "\"${buildDate}\""
     }
 
