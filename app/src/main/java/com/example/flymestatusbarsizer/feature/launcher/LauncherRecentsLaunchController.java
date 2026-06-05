@@ -1070,7 +1070,7 @@ final class LauncherRecentsLaunchController {
         if (recentsView == null
                 || state == null
                 || taskState == null
-                || taskState.taskView == state.targetTaskView) {
+                || taskState.target) {
             return 0f;
         }
         float progress = LauncherRecentsLayoutEngine.clamp(state.siblingExitProgress, 0f, 1f);
@@ -1086,8 +1086,8 @@ final class LauncherRecentsLaunchController {
             return 0f;
         }
         LauncherRecentsState.TaskLaunchFrozenTaskState targetState =
-                findFrozenTaskLaunchState(state, state.targetTaskView);
-        if (targetState == null || taskState.taskView == targetState.taskView) {
+                findTargetFrozenTaskLaunchState(state);
+        if (targetState == null || taskState.target) {
             return 0f;
         }
         float distance = recentsView.getWidth()
@@ -1097,6 +1097,21 @@ final class LauncherRecentsLaunchController {
                 targetState.x + (targetState.taskView.getWidth() * targetState.scaleX * 0.5f);
         float direction = taskCenterX < targetCenterX ? -1f : 1f;
         return direction * distance * progress;
+    }
+
+    private static LauncherRecentsState.TaskLaunchFrozenTaskState findTargetFrozenTaskLaunchState(
+            LauncherRecentsState.LaunchTransitionGeometryState state) {
+        if (state == null) {
+            return null;
+        }
+        for (int i = 0; i < state.frozenTaskStates.size(); i++) {
+            LauncherRecentsState.TaskLaunchFrozenTaskState taskState =
+                    state.frozenTaskStates.get(i);
+            if (taskState != null && taskState.target) {
+                return taskState;
+            }
+        }
+        return findFrozenTaskLaunchState(state, state.targetTaskView);
     }
 
     private static LauncherRecentsState.TaskLaunchFrozenTaskState findFrozenTaskLaunchState(
@@ -1150,6 +1165,7 @@ final class LauncherRecentsLaunchController {
             }
             state.frozenTaskStates.add(new LauncherRecentsState.TaskLaunchFrozenTaskState(
                     taskView,
+                    i == state.targetIndex || taskView == state.targetTaskView,
                     taskView.getVisibility(),
                     taskView.getX(),
                     taskView.getY(),

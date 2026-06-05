@@ -131,6 +131,7 @@ final class LauncherRecentsState {
 
     static final class TaskLaunchFrozenTaskState {
         final View taskView;
+        final boolean target;
         final int visibility;
         final float x;
         final float y;
@@ -144,6 +145,7 @@ final class LauncherRecentsState {
 
         TaskLaunchFrozenTaskState(
                 View taskView,
+                boolean target,
                 int visibility,
                 float x,
                 float y,
@@ -155,6 +157,7 @@ final class LauncherRecentsState {
                 float translationZ,
                 LauncherRecentsTaskVisuals.StackTaskVisualState stackVisualState) {
             this.taskView = taskView;
+            this.target = target;
             this.visibility = visibility;
             this.x = x;
             this.y = y;
