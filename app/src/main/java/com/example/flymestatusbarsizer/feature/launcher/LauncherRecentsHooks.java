@@ -11,6 +11,7 @@ public final class LauncherRecentsHooks {
             return;
         }
         LauncherRecentsLayoutEngine.installHooks(module, loader);
+        LauncherRecentsSurfaceController.installHooks(module, loader);
         LauncherRecentsAttachController.installHooks(module, loader);
         LauncherRecentsStateAnimationController.installHooks(module, loader);
         LauncherRecentsLaunchController.installHooks(module, loader);

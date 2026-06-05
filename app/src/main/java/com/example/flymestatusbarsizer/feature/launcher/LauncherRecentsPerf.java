@@ -13,6 +13,7 @@ final class LauncherRecentsPerf {
     private static final long SLOW_CALL_NS = 4_000_000L;
 
     private static final HashMap<String, Stats> STATS = new HashMap<>();
+    private static final ThreadLocal<View> CURRENT_VIEW = new ThreadLocal<>();
 
     private LauncherRecentsPerf() {
     }
@@ -23,7 +24,11 @@ final class LauncherRecentsPerf {
     }
 
     static long start(View view) {
-        return enabled(view) ? System.nanoTime() : 0L;
+        if (!enabled(view)) {
+            return 0L;
+        }
+        CURRENT_VIEW.set(view);
+        return System.nanoTime();
     }
 
     static long end(String name, long startNs) {
@@ -46,7 +51,9 @@ final class LauncherRecentsPerf {
         if (nowNs - stats.windowStartNs < REPORT_WINDOW_NS || stats.count == 0) {
             return costNs;
         }
+        View view = CURRENT_VIEW.get();
         Log.i(TAG, name
+                + stateSuffix(view)
                 + " count=" + stats.count
                 + " avgMs=" + (stats.totalNs / stats.count / 1_000_000f)
                 + " maxMs=" + (stats.maxNs / 1_000_000f)
@@ -68,6 +75,7 @@ final class LauncherRecentsPerf {
             return;
         }
         Log.i(TAG, name
+                + stateSuffix(view)
                 + " costMs=" + (costNs / 1_000_000f)
                 + (details != null && !details.isEmpty() ? " " + details : ""));
     }
@@ -81,7 +89,53 @@ final class LauncherRecentsPerf {
         if (!enabled(view)) {
             return;
         }
-        hit(name);
+        long startNs = start(view);
+        end(name, startNs);
+    }
+
+    private static String stateSuffix(View view) {
+        return " phase=" + phase(view) + " launcherState=" + launcherState(view);
+    }
+
+    private static String phase(View view) {
+        if (view == null) {
+            return "unknown";
+        }
+        if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(view)) {
+            return "returnHomeAnim";
+        }
+        if (LauncherRecentsState.hasActiveTaskLaunchHandoff(view)
+                || LauncherRecentsState.isTaskLaunchLayoutFrozen(view)) {
+            return "launchTaskAnim";
+        }
+        if (LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(view)
+                || LauncherRecentsTransitionController
+                .isGestureRecentsStackReleaseAnimationActive(view)
+                || LauncherRecentsState.isPendingGestureRecentsStackRelease(view)
+                || LauncherRecentsState.isPendingGestureRecentsStackReleaseHandoff(view)
+                || LauncherRecentsState.isGestureStackReleasedStable(view)) {
+            return "enterRecentsAnim";
+        }
+        if (LauncherRecentsState.isSwipeUpGestureActive(view)
+                || LauncherRecentsState.isAppToRecentsEntrySessionActive(view)
+                || LauncherRecentsState.isAppToRecentsStackLayoutDeferred(view)
+                || LauncherRecentsState.isAppToRecentsGestureReleased(view)) {
+            return "enterRecents";
+        }
+        if (LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(view)
+                || LauncherRecentsStateAnimationController.isOverviewPeekStockAnimationActive(view)) {
+            return "stackStateAnim";
+        }
+        if (view.isShown()) {
+            return "stackIdle";
+        }
+        return "normal";
+    }
+
+    private static String launcherState(View view) {
+        Object stateManager = LauncherRecentsCompat.invokeCompat(view, "getStateManager");
+        Object state = LauncherRecentsCompat.invokeCompat(stateManager, "getState");
+        return state != null ? String.valueOf(state) : "unknown";
     }
 
     private static final class Stats {
