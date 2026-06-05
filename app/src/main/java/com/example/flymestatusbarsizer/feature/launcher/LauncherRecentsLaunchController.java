@@ -1029,11 +1029,7 @@ final class LauncherRecentsLaunchController {
                         shouldPromoteRearTaskDuringLaunch(recentsView, taskView),
                         true);
         LauncherRecentsState.setActiveTaskLaunchHandoff(recentsView, state);
-        LauncherRecentsLayoutEngine.applyStackLayout(
-                recentsView,
-                false,
-                "launchHandoffStart",
-                true);
+        captureLaunchHandoffTaskStates(recentsView, state);
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(state.promoteRearCard
                 ? TASK_LAUNCH_HANDOFF_DURATION_MS
@@ -1043,7 +1039,7 @@ final class LauncherRecentsLaunchController {
             Object value = animation.getAnimatedValue();
             state.progress = value instanceof Float ? (Float) value : 0f;
             LauncherRecentsPerf.hit("animationFrame:launchHandoff", recentsView);
-            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+            applyLaunchHandoffLayout(recentsView, state);
             recentsView.invalidate();
         });
         animator.addListener(new android.animation.AnimatorListenerAdapter() {
@@ -1085,11 +1081,10 @@ final class LauncherRecentsLaunchController {
             return;
         }
         state.progress = 1f;
-        LauncherRecentsLayoutEngine.applyStackLayout(
-                recentsView,
-                false,
-                "launchHandoffComplete",
-                true);
+        if (state.taskStates.isEmpty()) {
+            captureLaunchHandoffTaskStates(recentsView, state);
+        }
+        applyLaunchHandoffLayout(recentsView, state);
         state.frozen = true;
         recentsView.invalidate();
     }
@@ -1113,11 +1108,10 @@ final class LauncherRecentsLaunchController {
         }
         state.progress = 1f;
         if (state.handoffEnabled) {
-            LauncherRecentsLayoutEngine.applyStackLayout(
-                    recentsView,
-                    false,
-                    "launchFreeze",
-                    true);
+            if (state.taskStates.isEmpty()) {
+                captureLaunchHandoffTaskStates(recentsView, state);
+            }
+            applyLaunchHandoffLayout(recentsView, state);
         }
         state.frozen = true;
         recentsView.invalidate();
@@ -1218,6 +1212,72 @@ final class LauncherRecentsLaunchController {
         return frontTaskView;
     }
 
+    private static void captureLaunchHandoffTaskStates(
+            View recentsView,
+            LauncherRecentsState.LaunchHandoffState state) {
+        if (recentsView == null || state == null || state.targetTaskView == null) {
+            return;
+        }
+        state.taskStates.clear();
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
+                continue;
+            }
+            boolean target = taskView == state.targetTaskView;
+            if (!target && !isTaskVisibleForLaunchHandoff(recentsView, taskView)) {
+                continue;
+            }
+            state.taskStates.add(captureLaunchHandoffTaskState(taskView, target));
+        }
+    }
+
+    private static LauncherRecentsState.LaunchHandoffTaskState captureLaunchHandoffTaskState(
+            View taskView,
+            boolean target) {
+        return new LauncherRecentsState.LaunchHandoffTaskState(
+                taskView,
+                target,
+                taskView.getX(),
+                taskView.getY(),
+                taskView.getPivotX(),
+                taskView.getPivotY(),
+                Math.max(0.0001f, taskView.getScaleX()),
+                Math.max(0.0001f, taskView.getScaleY()),
+                resolveLaunchTaskCenterX(taskView, taskView.getWidth() * 0.5f),
+                resolveLaunchTaskCenterY(taskView, taskView.getHeight() * 0.5f),
+                LauncherRecentsCompat.readFloatField(
+                        taskView,
+                        "horizontalOffsetTranslationX",
+                        0f),
+                LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationX", 0f),
+                LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationY", 0f),
+                LauncherRecentsCompat.readFloatField(
+                        taskView,
+                        "boxTranslationY",
+                        LauncherRecentsTaskVisuals.readOriginalBoxTranslationY(taskView)),
+                LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f),
+                LauncherRecentsTaskVisuals.readStableAlpha(taskView),
+                taskView.getTranslationZ(),
+                LauncherRecentsCompat.readFloatField(taskView, "fullscreenProgress", 0f));
+    }
+
+    private static LauncherRecentsState.LaunchHandoffTaskState findLaunchHandoffTaskState(
+            LauncherRecentsState.LaunchHandoffState state,
+            View taskView) {
+        if (state == null || taskView == null) {
+            return null;
+        }
+        for (int i = 0; i < state.taskStates.size(); i++) {
+            LauncherRecentsState.LaunchHandoffTaskState taskState = state.taskStates.get(i);
+            if (taskState != null && taskState.taskView == taskView) {
+                return taskState;
+            }
+        }
+        return null;
+    }
+
     static void applyLaunchHandoffLayout(
             View recentsView,
             LauncherRecentsState.LaunchHandoffState state) {
@@ -1232,7 +1292,17 @@ final class LauncherRecentsLaunchController {
         if (LauncherRecentsCompat.resolveOwningRecentsView(targetTaskView) != recentsView) {
             return;
         }
+        if (state.taskStates.isEmpty()) {
+            captureLaunchHandoffTaskStates(recentsView, state);
+        }
+        LauncherRecentsState.LaunchHandoffTaskState targetTaskState =
+                findLaunchHandoffTaskState(state, targetTaskView);
+        if (targetTaskState == null) {
+            return;
+        }
         View frontTaskView = resolveFrontMostTaskView(recentsView);
+        LauncherRecentsState.LaunchHandoffTaskState frontTaskState =
+                findLaunchHandoffTaskState(state, frontTaskView);
         float progress = state.progress;
         float targetFullscreenProgress = LauncherRecentsLayoutEngine.smoothStep(
                 LauncherRecentsLayoutEngine.remapProgress(
@@ -1245,12 +1315,10 @@ final class LauncherRecentsLaunchController {
                 LauncherRecentsLayoutEngine.remapProgress(progress, 0.04f, 0.82f));
         float visibleSiblingFadeProgress = LauncherRecentsLayoutEngine.smoothStep(
                 LauncherRecentsLayoutEngine.remapProgress(progress, 0.20f, 0.94f));
-        float hiddenSiblingFadeProgress = LauncherRecentsLayoutEngine.smoothStep(
-                LauncherRecentsLayoutEngine.remapProgress(progress, 0.12f, 0.56f));
         float targetExtraZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 28);
-        float anchorZ = frontTaskView != null
-                ? frontTaskView.getTranslationZ()
-                : targetTaskView.getTranslationZ();
+        float anchorZ = frontTaskState != null
+                ? frontTaskState.translationZ
+                : targetTaskState.translationZ;
         float targetWidth = Math.max(1f, targetTaskView.getWidth());
         float targetHeight = Math.max(1f, targetTaskView.getHeight());
         Rect targetThumbnailBounds = resolveTaskLaunchThumbnailBounds(targetTaskView);
@@ -1264,20 +1332,16 @@ final class LauncherRecentsLaunchController {
             targetFocusWidth = Math.max(1f, targetThumbnailBounds.width());
             targetFocusHeight = Math.max(1f, targetThumbnailBounds.height());
         }
-        float startTargetPivotX = targetTaskView.getPivotX();
-        float startTargetPivotY = targetTaskView.getPivotY();
-        float startTargetScaleX = Math.max(0.0001f, targetTaskView.getScaleX());
-        float startTargetScaleY = Math.max(0.0001f, targetTaskView.getScaleY());
-        float currentTargetCenterX = targetTaskView.getX()
-                + startTargetPivotX
-                + ((targetFocusCenterX - startTargetPivotX) * startTargetScaleX);
-        float currentTargetCenterY = targetTaskView.getY()
-                + startTargetPivotY
-                + ((targetFocusCenterY - startTargetPivotY) * startTargetScaleY);
+        float currentTargetCenterX = targetTaskState.x
+                + targetTaskState.pivotX
+                + ((targetFocusCenterX - targetTaskState.pivotX) * targetTaskState.scaleX);
+        float currentTargetCenterY = targetTaskState.y
+                + targetTaskState.pivotY
+                + ((targetFocusCenterY - targetTaskState.pivotY) * targetTaskState.scaleY);
         float targetPivotCompensationX =
-                currentTargetCenterX - (targetTaskView.getX() + targetFocusCenterX);
+                currentTargetCenterX - (targetTaskState.x + targetFocusCenterX);
         float targetPivotCompensationY =
-                currentTargetCenterY - (targetTaskView.getY() + targetFocusCenterY);
+                currentTargetCenterY - (targetTaskState.y + targetFocusCenterY);
         float[] handoffTargetCenter = resolveTaskLaunchTargetCenter(recentsView);
         float viewportCenterX = handoffTargetCenter != null
                 ? handoffTargetCenter[0]
@@ -1294,10 +1358,8 @@ final class LauncherRecentsLaunchController {
         float targetViewportHeight = rootView != null && rootView.getHeight() > 0
                 ? rootView.getHeight()
                 : recentsView.getHeight();
-        float targetStartNonGridScale =
-                LauncherRecentsCompat.readFloatField(targetTaskView, "nonGridScale", 1f);
-        float scaleNormalizer = Math.abs(targetStartNonGridScale) > 0.0001f
-                ? Math.max(0.0001f, targetTaskView.getScaleX() / targetStartNonGridScale)
+        float scaleNormalizer = Math.abs(targetTaskState.nonGridScale) > 0.0001f
+                ? Math.max(0.0001f, targetTaskState.scaleX / targetTaskState.nonGridScale)
                 : 1f;
         float targetEndScale = Math.max(
                 Math.max(1f, targetViewportWidth / targetFocusWidth),
@@ -1305,51 +1367,33 @@ final class LauncherRecentsLaunchController {
                 / scaleNormalizer
                 * TASK_LAUNCH_TARGET_END_SCALE_BLEED;
 
-        float startTargetHorizontalOffsetX =
-                LauncherRecentsCompat.readFloatField(
-                        targetTaskView,
-                        "horizontalOffsetTranslationX",
-                        0f);
-        float startTargetTaskOffsetX =
-                LauncherRecentsCompat.readFloatField(targetTaskView, "taskOffsetTranslationX", 0f);
-        float startTargetTaskOffsetY =
-                LauncherRecentsCompat.readFloatField(targetTaskView, "taskOffsetTranslationY", 0f);
-        float startTargetBoxTranslationY = LauncherRecentsCompat.readFloatField(
-                targetTaskView,
-                "boxTranslationY",
-                LauncherRecentsTaskVisuals.readOriginalBoxTranslationY(targetTaskView));
-        float startTargetScale =
-                LauncherRecentsCompat.readFloatField(targetTaskView, "nonGridScale", 1f);
-        float startTargetTranslationZ = targetTaskView.getTranslationZ();
-        float startTargetFullscreenProgress =
-                LauncherRecentsCompat.readFloatField(targetTaskView, "fullscreenProgress", 0f);
         targetTaskView.setPivotX(targetFocusCenterX);
         targetTaskView.setPivotY(targetFocusCenterY);
         LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(
                 targetTaskView,
-                startTargetHorizontalOffsetX);
+                targetTaskState.horizontalOffsetX);
         LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(
                 targetTaskView,
                 LauncherRecentsLayoutEngine.lerp(
-                        startTargetTaskOffsetX + targetPivotCompensationX,
-                        startTargetTaskOffsetX + targetPivotCompensationX + targetDeltaX,
+                        targetTaskState.taskOffsetX + targetPivotCompensationX,
+                        targetTaskState.taskOffsetX + targetPivotCompensationX + targetDeltaX,
                         targetFullscreenProgress));
         LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(
                 targetTaskView,
                 LauncherRecentsLayoutEngine.lerp(
-                        startTargetTaskOffsetY + targetPivotCompensationY,
-                        startTargetTaskOffsetY + targetPivotCompensationY + targetDeltaY,
+                        targetTaskState.taskOffsetY + targetPivotCompensationY,
+                        targetTaskState.taskOffsetY + targetPivotCompensationY + targetDeltaY,
                         targetFullscreenProgress));
         LauncherRecentsTaskVisuals.setBoxTranslationY(
                 targetTaskView,
                 LauncherRecentsLayoutEngine.lerp(
-                        startTargetBoxTranslationY,
+                        targetTaskState.boxTranslationY,
                         LauncherRecentsTaskVisuals.readOriginalBoxTranslationY(targetTaskView),
                         targetFullscreenProgress));
         LauncherRecentsTaskVisuals.setNonGridScale(
                 targetTaskView,
                 LauncherRecentsLayoutEngine.lerp(
-                        startTargetScale,
+                        targetTaskState.nonGridScale,
                         targetEndScale,
                         targetFullscreenProgress));
         LauncherRecentsTaskVisuals.setStableAlpha(targetTaskView, 1f);
@@ -1358,14 +1402,14 @@ final class LauncherRecentsLaunchController {
         LauncherRecentsTaskVisuals.setFullscreenProgress(
                 targetTaskView,
                 LauncherRecentsLayoutEngine.lerp(
-                        startTargetFullscreenProgress,
+                        targetTaskState.fullscreenProgress,
                         TASK_LAUNCH_TARGET_END_FULLSCREEN_PROGRESS,
                         targetFullscreenProgress));
         LauncherRecentsTaskVisuals.setTranslationZ(
                 targetTaskView,
                 LauncherRecentsLayoutEngine.lerp(
-                        startTargetTranslationZ,
-                        Math.max(anchorZ, startTargetTranslationZ) + targetExtraZ,
+                        targetTaskState.translationZ,
+                        Math.max(anchorZ, targetTaskState.translationZ) + targetExtraZ,
                         targetFullscreenProgress));
 
         float targetLaunchCenterX = resolveLaunchTaskCenterX(targetTaskView, targetFocusCenterX);
@@ -1374,76 +1418,38 @@ final class LauncherRecentsLaunchController {
                 0f,
                 targetTaskView.getTranslationZ() - FlymeStatusBarSizer.dp(recentsView.getContext(), 2));
 
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView == null
-                    || taskView == targetTaskView
-                    || LauncherRecentsCompat.isDesktopTask(taskView)) {
+        for (int i = 0; i < state.taskStates.size(); i++) {
+            LauncherRecentsState.LaunchHandoffTaskState taskState = state.taskStates.get(i);
+            if (taskState == null || taskState.target || taskState.taskView == null) {
                 continue;
             }
-            float startHorizontalOffsetX =
-                    LauncherRecentsCompat.readFloatField(taskView, "horizontalOffsetTranslationX", 0f);
-            float startTaskOffsetX =
-                    LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationX", 0f);
-            float startTaskOffsetY =
-                    LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationY", 0f);
-            float startBoxTranslationY = LauncherRecentsCompat.readFloatField(
+            View taskView = taskState.taskView;
+            LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(
                     taskView,
-                    "boxTranslationY",
-                    LauncherRecentsTaskVisuals.readOriginalBoxTranslationY(taskView));
-            float startScale = LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f);
-            float startAlpha = LauncherRecentsTaskVisuals.readStableAlpha(taskView);
-            float startTranslationZ = taskView.getTranslationZ();
-            float startFullscreenProgress =
-                    LauncherRecentsCompat.readFloatField(taskView, "fullscreenProgress", 0f);
-            if (isTaskVisibleForLaunchHandoff(recentsView, taskView)) {
-                float taskCenterX = resolveLaunchTaskCenterX(taskView, taskView.getWidth() * 0.5f);
-                float taskCenterY = resolveLaunchTaskCenterY(taskView, taskView.getHeight() * 0.5f);
-                LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(taskView, startHorizontalOffsetX);
-                LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(
-                        taskView,
-                        startTaskOffsetX
-                                + ((targetLaunchCenterX - taskCenterX) * siblingMoveProgress));
-                LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(
-                        taskView,
-                        startTaskOffsetY
-                                + ((targetLaunchCenterY - taskCenterY) * siblingMoveProgress));
-                LauncherRecentsTaskVisuals.setBoxTranslationY(taskView, startBoxTranslationY);
-                LauncherRecentsTaskVisuals.setNonGridScale(taskView, startScale);
-                LauncherRecentsTaskVisuals.setStableAlpha(
-                        taskView,
-                        LauncherRecentsLayoutEngine.lerp(
-                                startAlpha,
-                                startAlpha * TASK_LAUNCH_SIBLING_END_ALPHA,
-                                visibleSiblingFadeProgress));
-                LauncherRecentsTaskVisuals.setFullscreenProgress(taskView, startFullscreenProgress);
-                LauncherRecentsTaskVisuals.setTranslationZ(
-                        taskView,
-                        LauncherRecentsLayoutEngine.lerp(
-                                startTranslationZ,
-                                targetBackZ,
-                                visibleSiblingFadeProgress));
-                continue;
-            }
-            LauncherRecentsTaskVisuals.setHorizontalOffsetTranslationX(taskView, startHorizontalOffsetX);
-            LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(taskView, startTaskOffsetX);
-            LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(taskView, startTaskOffsetY);
-            LauncherRecentsTaskVisuals.setBoxTranslationY(taskView, startBoxTranslationY);
-            LauncherRecentsTaskVisuals.setNonGridScale(taskView, startScale);
+                    taskState.horizontalOffsetX);
+            LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(
+                    taskView,
+                    taskState.taskOffsetX
+                            + ((targetLaunchCenterX - taskState.centerX) * siblingMoveProgress));
+            LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(
+                    taskView,
+                    taskState.taskOffsetY
+                            + ((targetLaunchCenterY - taskState.centerY) * siblingMoveProgress));
+            LauncherRecentsTaskVisuals.setBoxTranslationY(taskView, taskState.boxTranslationY);
+            LauncherRecentsTaskVisuals.setNonGridScale(taskView, taskState.nonGridScale);
             LauncherRecentsTaskVisuals.setStableAlpha(
                     taskView,
                     LauncherRecentsLayoutEngine.lerp(
-                            startAlpha,
-                            startAlpha * TASK_LAUNCH_SIBLING_END_ALPHA,
-                            hiddenSiblingFadeProgress));
-            LauncherRecentsTaskVisuals.setFullscreenProgress(taskView, startFullscreenProgress);
+                            taskState.stableAlpha,
+                            taskState.stableAlpha * TASK_LAUNCH_SIBLING_END_ALPHA,
+                            visibleSiblingFadeProgress));
+            LauncherRecentsTaskVisuals.setFullscreenProgress(taskView, taskState.fullscreenProgress);
             LauncherRecentsTaskVisuals.setTranslationZ(
                     taskView,
                     LauncherRecentsLayoutEngine.lerp(
-                            startTranslationZ,
-                            Math.max(0f, startTranslationZ - targetExtraZ),
-                            hiddenSiblingFadeProgress));
+                            taskState.translationZ,
+                            targetBackZ,
+                            visibleSiblingFadeProgress));
         }
     }
 

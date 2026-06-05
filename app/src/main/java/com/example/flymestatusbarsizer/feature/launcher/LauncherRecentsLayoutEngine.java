@@ -50,7 +50,6 @@ final class LauncherRecentsLayoutEngine {
         final float referenceHeight;
         final float referencePrimarySize;
         final float pageSpan;
-        final float[] rawOffsets;
         final boolean primaryScrollHorizontal;
         final float blankTapExitProgress;
         final float stackEntryProgress;
@@ -76,7 +75,6 @@ final class LauncherRecentsLayoutEngine {
                 float referenceHeight,
                 float referencePrimarySize,
                 float pageSpan,
-                float[] rawOffsets,
                 boolean primaryScrollHorizontal,
                 float blankTapExitProgress,
                 float stackEntryProgress,
@@ -100,7 +98,6 @@ final class LauncherRecentsLayoutEngine {
             this.referenceHeight = referenceHeight;
             this.referencePrimarySize = referencePrimarySize;
             this.pageSpan = pageSpan;
-            this.rawOffsets = rawOffsets;
             this.primaryScrollHorizontal = primaryScrollHorizontal;
             this.blankTapExitProgress = blankTapExitProgress;
             this.stackEntryProgress = stackEntryProgress;
@@ -983,6 +980,9 @@ final class LauncherRecentsLayoutEngine {
         if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
             return;
         }
+        if (LauncherRecentsState.hasActiveTaskLaunchHandoff(recentsView)) {
+            return;
+        }
         LauncherRecentsState.trackRecentsView(recentsView);
         prepareRecentsView(recentsView);
         if (shouldBlockAppToRecentsStackApply(recentsView)) {
@@ -1253,7 +1253,6 @@ final class LauncherRecentsLayoutEngine {
         float referenceHeight = 0f;
         float referencePrimarySize = 0f;
         float pageSpan = 0f;
-        float[] rawOffsets = new float[taskViewCount];
 
         for (int index = 0; index < activeIndices.size(); index++) {
             int i = activeIndices.get(index);
@@ -1262,17 +1261,6 @@ final class LauncherRecentsLayoutEngine {
                 continue;
             }
             LauncherRecentsTaskVisuals.rememberOriginalTaskState(taskView);
-            rawOffsets[i] = LauncherRecentsCompat.invokeInt(
-                    recentsView,
-                    "getUnclampedScrollOffset",
-                    LauncherRecentsCompat.INT_ARG,
-                    LauncherRecentsCompat.invokeInt(
-                            recentsView,
-                            "getScrollOffset",
-                            LauncherRecentsCompat.INT_ARG,
-                            0,
-                            i),
-                    i);
             if (taskView.getWidth() > 0) {
                 referenceWidth = Math.max(referenceWidth, taskView.getWidth());
             }
@@ -1348,7 +1336,6 @@ final class LauncherRecentsLayoutEngine {
                 referenceHeight,
                 referencePrimarySize,
                 pageSpan,
-                rawOffsets,
                 primaryScrollHorizontal,
                 blankTapExitProgress,
                 stackEntryProgress,
@@ -1469,6 +1456,20 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
+    private static int resolveTaskRawOffset(View recentsView, int index) {
+        return LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getUnclampedScrollOffset",
+                LauncherRecentsCompat.INT_ARG,
+                LauncherRecentsCompat.invokeInt(
+                        recentsView,
+                        "getScrollOffset",
+                        LauncherRecentsCompat.INT_ARG,
+                        0,
+                        index),
+                index);
+    }
+
     private static StackTaskInput buildStackTaskInput(
             StackLayoutContext context,
             View taskView,
@@ -1478,7 +1479,7 @@ final class LauncherRecentsLayoutEngine {
                         || LauncherRecentsState.isGestureStackReleasedStable(context.recentsView))
                         ? LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView)
                         : null;
-        float rawOffset = context.rawOffsets[index];
+        float rawOffset = resolveTaskRawOffset(context.recentsView, index);
         float nativeDismissTranslationPrimary = readTaskPrimaryDismissTranslation(
                 taskView,
                 context.primaryScrollHorizontal);
@@ -2121,6 +2122,7 @@ final class LauncherRecentsLayoutEngine {
     static boolean shouldApplyDynamicStackLayout(View recentsView) {
         return shouldUseStackLayout(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
+                && !LauncherRecentsState.hasActiveTaskLaunchHandoff(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
                 recentsView)

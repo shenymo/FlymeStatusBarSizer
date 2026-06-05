@@ -119,6 +119,7 @@ final class LauncherRecentsState {
         final int targetIndex;
         final boolean promoteRearCard;
         final boolean handoffEnabled;
+        final ArrayList<LaunchHandoffTaskState> taskStates = new ArrayList<>();
         float progress;
         boolean frozen;
 
@@ -131,6 +132,66 @@ final class LauncherRecentsState {
             this.targetIndex = targetIndex;
             this.promoteRearCard = promoteRearCard;
             this.handoffEnabled = handoffEnabled;
+        }
+    }
+
+    static final class LaunchHandoffTaskState {
+        final View taskView;
+        final boolean target;
+        final float x;
+        final float y;
+        final float pivotX;
+        final float pivotY;
+        final float scaleX;
+        final float scaleY;
+        final float centerX;
+        final float centerY;
+        final float horizontalOffsetX;
+        final float taskOffsetX;
+        final float taskOffsetY;
+        final float boxTranslationY;
+        final float nonGridScale;
+        final float stableAlpha;
+        final float translationZ;
+        final float fullscreenProgress;
+
+        LaunchHandoffTaskState(
+                View taskView,
+                boolean target,
+                float x,
+                float y,
+                float pivotX,
+                float pivotY,
+                float scaleX,
+                float scaleY,
+                float centerX,
+                float centerY,
+                float horizontalOffsetX,
+                float taskOffsetX,
+                float taskOffsetY,
+                float boxTranslationY,
+                float nonGridScale,
+                float stableAlpha,
+                float translationZ,
+                float fullscreenProgress) {
+            this.taskView = taskView;
+            this.target = target;
+            this.x = x;
+            this.y = y;
+            this.pivotX = pivotX;
+            this.pivotY = pivotY;
+            this.scaleX = scaleX;
+            this.scaleY = scaleY;
+            this.centerX = centerX;
+            this.centerY = centerY;
+            this.horizontalOffsetX = horizontalOffsetX;
+            this.taskOffsetX = taskOffsetX;
+            this.taskOffsetY = taskOffsetY;
+            this.boxTranslationY = boxTranslationY;
+            this.nonGridScale = nonGridScale;
+            this.stableAlpha = stableAlpha;
+            this.translationZ = translationZ;
+            this.fullscreenProgress = fullscreenProgress;
         }
     }
 
