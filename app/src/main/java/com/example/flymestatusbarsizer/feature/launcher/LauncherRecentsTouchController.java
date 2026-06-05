@@ -2031,8 +2031,7 @@ final class LauncherRecentsTouchController {
         if (recentsView == null || motionEvent == null) {
             return false;
         }
-        if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)
-                || LauncherRecentsLayoutEngine.shouldBypassStackLayoutForQuickSwitch(recentsView)) {
+        if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
             return false;
         }
         int action = motionEvent.getActionMasked();
