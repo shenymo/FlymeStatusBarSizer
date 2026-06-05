@@ -61,6 +61,7 @@ final class LauncherRecentsStateAnimationController {
                 } else {
                     updateOverviewPeekStockAnimation(recentsView, toState, loader);
                 }
+                prepareHomeExitFromRecentsIfNeeded(recentsView, toState, pendingAnimation, loader);
                 Object result = chain.proceed();
                 if (shouldAttachBlankTapHomeExitToSystemAnimation(recentsView, toState, loader)) {
                     attachBlankTapHomeExitSystemCallbacks(recentsView, pendingAnimation, loader);
@@ -105,7 +106,11 @@ final class LauncherRecentsStateAnimationController {
                 } else {
                     updateOverviewPeekStockAnimation(recentsView, toState, loader);
                 }
+                prepareHomeExitFromRecentsIfNeeded(recentsView, toState, pendingAnimation, loader);
                 Object result = chain.proceed();
+                if (shouldAttachBlankTapHomeExitToSystemAnimation(recentsView, toState, loader)) {
+                    attachBlankTapHomeExitSystemCallbacks(recentsView, pendingAnimation, loader);
+                }
                 if (shouldTakeOver) {
                     LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 }
@@ -312,6 +317,26 @@ final class LauncherRecentsStateAnimationController {
         Object normalState =
                 LauncherRecentsCompat.readStaticFieldCompat(LAUNCHER_STATE_CLASS, "NORMAL", loader);
         return toState == normalState;
+    }
+
+    private static void prepareHomeExitFromRecentsIfNeeded(
+            View recentsView,
+            Object toState,
+            Object pendingAnimation,
+            ClassLoader loader) {
+        if (pendingAnimation == null
+                || recentsView == null
+                || toState == null
+                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)) {
+            return;
+        }
+        Object normalState =
+                LauncherRecentsCompat.readStaticFieldCompat(LAUNCHER_STATE_CLASS, "NORMAL", loader);
+        if (toState == normalState
+                && LauncherRecentsTransitionController.shouldPrepareHomeExitFromRecents(
+                recentsView)) {
+            LauncherRecentsTransitionController.prepareBlankTapHomeExitAnimation(recentsView);
+        }
     }
 
     private static View resolveControllerRecentsView(Object controller) {

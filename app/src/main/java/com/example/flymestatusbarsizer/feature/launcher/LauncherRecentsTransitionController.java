@@ -495,10 +495,32 @@ final class LauncherRecentsTransitionController {
     static boolean shouldAnimateBlankTapHomeExit(View recentsView) {
         return recentsView != null
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                && LauncherRecentsCompat.readBooleanField(
+                && (LauncherRecentsCompat.readBooleanField(
                         recentsView,
                         "mTouchDownToStartHome",
-                        false);
+                        false)
+                || isRecentsVisibleState(recentsView));
+    }
+
+    static boolean shouldPrepareHomeExitFromRecents(View recentsView) {
+        return recentsView != null
+                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                && isRecentsVisibleState(recentsView);
+    }
+
+    private static boolean isRecentsVisibleState(View recentsView) {
+        Object container = LauncherRecentsCompat.getFieldCompat(recentsView, "mContainer");
+        Object stateManager = LauncherRecentsCompat.invokeCompat(container, "getStateManager");
+        return isRecentsVisibleStateObject(
+                LauncherRecentsCompat.invokeCompat(stateManager, "getState"))
+                || isRecentsVisibleStateObject(
+                        LauncherRecentsCompat.invokeCompat(
+                                stateManager,
+                                "getCurrentStableState"));
+    }
+
+    private static boolean isRecentsVisibleStateObject(Object state) {
+        return LauncherRecentsCompat.readBooleanField(state, "isRecentsViewVisible", false);
     }
 
     static void startBlankTapHomeExitAnimation(View recentsView) {
