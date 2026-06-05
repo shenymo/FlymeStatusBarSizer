@@ -27,16 +27,20 @@ final class LauncherRecentsSurfaceController {
             module.intercept(method, chain -> {
                 Object manager = chain.getThisObject();
                 boolean shown = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
-                boolean currentShown =
-                        LauncherRecentsCompat.readBooleanField(manager, "mShown", false);
-                Object baseSurface = LauncherRecentsCompat.getFieldCompat(manager, "mBaseSurface");
-                Object overviewSurface =
-                        LauncherRecentsCompat.getFieldCompat(manager, "mOverviewSurface");
-                if (shown && currentShown && baseSurface != null && overviewSurface != null) {
-                    Object windowView = LauncherRecentsCompat.getFieldCompat(manager, "mWindowView");
-                    LauncherRecentsCompat.invokeCompat(windowView, "invalidate");
-                    setTouchable(manager, true);
-                    return null;
+                if (shown) {
+                    boolean currentShown =
+                            LauncherRecentsCompat.readBooleanField(manager, "mShown", false);
+                    Object baseSurface =
+                            LauncherRecentsCompat.getFieldCompat(manager, "mBaseSurface");
+                    Object overviewSurface =
+                            LauncherRecentsCompat.getFieldCompat(manager, "mOverviewSurface");
+                    if (currentShown && baseSurface != null && overviewSurface != null) {
+                        Object windowView =
+                                LauncherRecentsCompat.getFieldCompat(manager, "mWindowView");
+                        LauncherRecentsCompat.invokeCompat(windowView, "invalidate");
+                        setTouchable(manager, true);
+                        return null;
+                    }
                 }
                 Object result = chain.proceed();
                 if (shown) {
