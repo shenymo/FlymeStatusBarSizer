@@ -137,6 +137,26 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.put(taskView, state);
     }
 
+    static void applyStackTaskCoreVisualState(View taskView, StackTaskVisualState state) {
+        if (taskView == null || state == null) {
+            return;
+        }
+        if (!approximatelyEqual(taskView.getPivotX(), state.pivotX)) {
+            taskView.setPivotX(state.pivotX);
+        }
+        if (!approximatelyEqual(taskView.getPivotY(), state.pivotY)) {
+            taskView.setPivotY(state.pivotY);
+        }
+        setHorizontalOffsetTranslationX(taskView, state.horizontalOffsetX);
+        setTaskOffsetTranslationX(taskView, state.taskOffsetX);
+        setTaskOffsetTranslationY(taskView, state.taskOffsetY);
+        setBoxTranslationY(taskView, state.boxTranslationY);
+        setNonGridScale(taskView, state.scale);
+        setAttachAlpha(taskView, state.attachAlpha);
+        setStableAlpha(taskView, state.stableAlpha);
+        LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.put(taskView, state);
+    }
+
     private static boolean isCurrentStackTaskVisualStateApplied(
             View taskView,
             StackTaskVisualState state) {

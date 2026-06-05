@@ -33,6 +33,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_CONTENT_BLUR_START_ALPHA = 0.85f;
     private static final int STACK_ENTRY_LIGHT_RADIUS = 3;
     private static final int STACK_STABLE_VISIBLE_RADIUS = 2;
+    private static final int STACK_GESTURE_RELEASE_CORE_RADIUS = 2;
     private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
     private static final int STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR = 2;
     private static final long STACK_LAYOUT_DUPLICATE_WINDOW_NS = 16_000_000L; // 【方案三 3-A】扩大到 16ms，覆盖 120Hz 设备一帧内的多次重复触发
@@ -1397,16 +1398,33 @@ final class LauncherRecentsLayoutEngine {
             if (captureStockState) {
                 LauncherRecentsTaskVisuals.captureStockTaskState(taskView);
             }
-            LauncherRecentsTaskVisuals.applyStackTaskVisualState(
-                    taskView,
+            boolean coreOnly = shouldApplyCoreOnlyDuringGestureRelease(
+                    gestureStackReleaseActive,
+                    i,
+                    lightAnchorIndex);
+            LauncherRecentsTaskVisuals.StackTaskVisualState visualState =
                     buildStackTaskVisualState(
                             layoutContext,
-                            buildStackTaskInput(layoutContext, taskView, i)));
+                            buildStackTaskInput(layoutContext, taskView, i),
+                            coreOnly);
+            if (coreOnly) {
+                LauncherRecentsTaskVisuals.applyStackTaskCoreVisualState(taskView, visualState);
+            } else {
+                LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, visualState);
+            }
         }
         if (launchState != null && launchState.handoffEnabled) {
             LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);
         }
         return true;
+    }
+
+    private static boolean shouldApplyCoreOnlyDuringGestureRelease(
+            boolean gestureStackReleaseActive,
+            int index,
+            int anchorIndex) {
+        return gestureStackReleaseActive
+                && Math.abs(index - anchorIndex) > STACK_GESTURE_RELEASE_CORE_RADIUS;
     }
 
     private static ArrayList<Integer> resolveStackLayoutActiveIndices(
@@ -1515,7 +1533,8 @@ final class LauncherRecentsLayoutEngine {
 
     private static LauncherRecentsTaskVisuals.StackTaskVisualState buildStackTaskVisualState(
             StackLayoutContext context,
-            StackTaskInput input) {
+            StackTaskInput input,
+            boolean coreOnly) {
         View taskView = input.taskView;
         float stackEntryLiftPx = Math.min(
                 input.taskHeight * STACK_ENTRY_LIFT_RATIO,
@@ -1570,8 +1589,9 @@ final class LauncherRecentsLayoutEngine {
         if (context.gestureStackReleaseActive) {
             desiredBoxTranslationY = 0f;
         }
-        float desiredTranslationZ = (context.maxTranslationZ + context.zStepPx)
-                * desiredLayerProgress;
+        float desiredTranslationZ = coreOnly
+                ? 0f
+                : (context.maxTranslationZ + context.zStepPx) * desiredLayerProgress;
         float desiredStableAlpha = 1f;
         LauncherRecentsState.BlankTapHomeExitTaskState blankTapExitState =
                 input.blankTapExitState;
@@ -1629,7 +1649,7 @@ final class LauncherRecentsLayoutEngine {
         }
 
         float targetBlurProgress = 0f;
-        if (context.stackContentBlurEnabled) {
+        if (!coreOnly && context.stackContentBlurEnabled) {
             targetBlurProgress = resolveStackContentBlurProgress(
                     stackLeftClampAlpha,
                     taskEntryProgress);
@@ -1652,8 +1672,9 @@ final class LauncherRecentsLayoutEngine {
         float appliedAttachAlpha = desiredAttachAlpha;
         float appliedStableAlpha = desiredStableAlpha;
         float appliedBlurProgress = targetBlurProgress;
-        float appliedFullscreenProgress =
-                LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView);
+        float appliedFullscreenProgress = coreOnly
+                ? 0f
+                : LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView);
         float appliedTranslationZ = desiredTranslationZ;
         if (context.gestureStackReleaseActive) {
             if (input.gestureReleaseTaskState != null) {
@@ -1706,14 +1727,16 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsTaskVisuals.readLastStockNonGridScale(taskView),
                     appliedScale,
                     context.stackReleaseProgress);
-            appliedFullscreenProgress = lerp(
-                    LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView),
-                    appliedFullscreenProgress,
-                    context.stackReleaseProgress);
-            appliedTranslationZ = lerp(
-                    LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView),
-                    appliedTranslationZ,
-                    context.stackReleaseProgress);
+            if (!coreOnly) {
+                appliedFullscreenProgress = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView),
+                        appliedFullscreenProgress,
+                        context.stackReleaseProgress);
+                appliedTranslationZ = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView),
+                        appliedTranslationZ,
+                        context.stackReleaseProgress);
+            }
             appliedAttachAlpha = lerp(
                     1f,
                     appliedAttachAlpha,
@@ -1722,7 +1745,9 @@ final class LauncherRecentsLayoutEngine {
                     1f,
                     appliedStableAlpha,
                     context.stackReleaseProgress);
-            appliedBlurProgress = lerp(0f, appliedBlurProgress, context.stackReleaseProgress);
+            if (!coreOnly) {
+                appliedBlurProgress = lerp(0f, appliedBlurProgress, context.stackReleaseProgress);
+            }
         }
         if (context.overviewStateStackAnimationActive) {
             appliedHorizontalOffsetX = lerp(
