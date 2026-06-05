@@ -2,8 +2,6 @@ package com.example.flymestatusbarsizer.feature.launcher;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
-import android.view.SurfaceControl;
-
 import java.lang.reflect.Method;
 
 final class LauncherRecentsSurfaceController {
@@ -19,8 +17,6 @@ final class LauncherRecentsSurfaceController {
         }
         hookSetShown(module, loader);
         hookSetActivityStarted(module, loader);
-        hookOnAttachedToWindow(module, loader);
-        hookOnOverlaySurfaceChanged(module, loader);
     }
 
     private static void hookSetShown(FlymeStatusBarSizer module, ClassLoader loader) {
@@ -31,8 +27,21 @@ final class LauncherRecentsSurfaceController {
             module.intercept(method, chain -> {
                 Object manager = chain.getThisObject();
                 boolean shown = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
+                boolean currentShown =
+                        LauncherRecentsCompat.readBooleanField(manager, "mShown", false);
+                Object baseSurface = LauncherRecentsCompat.getFieldCompat(manager, "mBaseSurface");
+                Object overviewSurface =
+                        LauncherRecentsCompat.getFieldCompat(manager, "mOverviewSurface");
+                if (shown && currentShown && baseSurface != null && overviewSurface != null) {
+                    Object windowView = LauncherRecentsCompat.getFieldCompat(manager, "mWindowView");
+                    LauncherRecentsCompat.invokeCompat(windowView, "invalidate");
+                    setTouchable(manager, true);
+                    return null;
+                }
                 Object result = chain.proceed();
-                if (!shown || !hasValidBaseSurface(manager)) {
+                if (shown) {
+                    setTouchable(manager, true);
+                } else {
                     releaseSurface(manager);
                 }
                 return result;
@@ -64,50 +73,15 @@ final class LauncherRecentsSurfaceController {
         }
     }
 
-    private static void hookOnAttachedToWindow(FlymeStatusBarSizer module, ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(RECENTS_SURFACE_MANAGER_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod("onAttachedToWindow");
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object result = chain.proceed();
-                if (!hasValidBaseSurface(chain.getThisObject())) {
-                    releaseSurface(chain.getThisObject());
-                }
-                return result;
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook RecentsSurfaceManager.onAttachedToWindow",
-                    t);
-        }
-    }
-
-    private static void hookOnOverlaySurfaceChanged(FlymeStatusBarSizer module, ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(RECENTS_SURFACE_MANAGER_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod("onOverlaySurfaceChanged", SurfaceControl.class);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object result = chain.proceed();
-                if (!hasValidBaseSurface(chain.getThisObject())) {
-                    releaseSurface(chain.getThisObject());
-                }
-                return result;
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook RecentsSurfaceManager.onOverlaySurfaceChanged",
-                    t);
-        }
-    }
-
-    private static boolean hasValidBaseSurface(Object manager) {
-        Object surface = LauncherRecentsCompat.getFieldCompat(manager, "mBaseSurface");
-        return surface instanceof SurfaceControl && ((SurfaceControl) surface).isValid();
-    }
-
     private static void releaseSurface(Object manager) {
         LauncherRecentsCompat.invokeCompat(manager, "releaseSurface");
+    }
+
+    private static void setTouchable(Object manager, boolean touchable) {
+        LauncherRecentsCompat.invokeCompat(
+                manager,
+                "setTouchable",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                touchable);
     }
 }
