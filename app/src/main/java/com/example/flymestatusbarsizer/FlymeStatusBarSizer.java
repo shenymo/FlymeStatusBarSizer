@@ -1799,7 +1799,31 @@ public class FlymeStatusBarSizer extends XposedModule {
         return controllerValue instanceof Boolean && (Boolean) controllerValue;
     }
 
+    public static Integer resolveStatusBarIconTintColorCompat(View anchor) {
+        Integer color = readBatteryTintColor(findBestBatteryTintSource(anchor));
+        if (color != null) {
+            return color;
+        }
+        ArrayList<View> batteryViews = new ArrayList<>(TRACKED_BATTERY_VIEWS.keySet());
+        for (View batteryView : batteryViews) {
+            color = readBatteryTintColor(batteryView);
+            if (color != null) {
+                return color;
+            }
+            BatteryViewState state = BATTERY_VIEW_STATES.get(batteryView);
+            if (state != null && state.hasRuntimeSnapshot) {
+                return normalizeIconColor(state.tintColor);
+            }
+        }
+        return null;
+    }
+
     private static int resolveBatteryTintColor(Object target, int fallback) {
+        Integer color = readBatteryTintColor(target);
+        return color != null ? color : normalizeIconColor(fallback);
+    }
+
+    private static Integer readBatteryTintColor(Object target) {
         int color = ReflectUtils.getIntField(target, "mFilterColor", 0);
         if (Color.alpha(color) != 0) {
             return color;
@@ -1816,7 +1840,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (Color.alpha(color) != 0) {
             return color;
         }
-        return normalizeIconColor(fallback);
+        return null;
     }
 
     static int resolveSignalLinkedTintColor(View signalView, ColorStateList tintList, int[] state, int fallbackColor) {
@@ -6794,6 +6818,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean notificationBackgroundColorEnabled;
         public final int notificationBackgroundColor;
         public final boolean notificationSystemBlurOnlyEnabled;
+        public final boolean notificationTextFollowStatusBarEnabled;
 
         private NotificationConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
@@ -6808,6 +6833,8 @@ public class FlymeStatusBarSizer extends XposedModule {
             notificationSystemBlurOnlyEnabled = enabled
                     && config != null
                     && config.notificationSystemBlurOnlyEnabled;
+            notificationTextFollowStatusBarEnabled = notificationSystemBlurOnlyEnabled
+                    && config.notificationTextFollowStatusBarEnabled;
         }
     }
 

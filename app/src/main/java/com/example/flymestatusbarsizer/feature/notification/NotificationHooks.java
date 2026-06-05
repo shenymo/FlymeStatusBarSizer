@@ -20,7 +20,9 @@ import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.widget.ImageView;
+import android.widget.TextView;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -64,6 +66,8 @@ public final class NotificationHooks {
     private static final WeakHashMap<View, NotificationAppIconViewSignature>
             NOTIFICATION_APP_ICON_LAST_SIGNATURES = new WeakHashMap<>();
     private static final WeakHashMap<View, Drawable> NOTIFICATION_APP_ICON_LAST_DRAWABLES =
+            new WeakHashMap<>();
+    private static final WeakHashMap<TextView, ColorStateList> NOTIFICATION_TEXT_COLOR_STATES =
             new WeakHashMap<>();
     private static final HashMap<String, Boolean> NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE =
             new HashMap<>();
@@ -234,6 +238,7 @@ public final class NotificationHooks {
                 if (!config.enabled
                         || (!config.notificationSystemBlurOnlyEnabled
                         && !config.notificationBackgroundColorEnabled)) {
+                    applyNotificationTextFollowStatusBar(target, false);
                     return chain.proceed();
                 }
                 boolean isStatic = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
@@ -241,7 +246,11 @@ public final class NotificationHooks {
                 try {
                     if (config.notificationSystemBlurOnlyEnabled) {
                         applyNotificationSystemBlurOnly(target, radius);
+                        applyNotificationTextFollowStatusBar(
+                                target,
+                                config.notificationTextFollowStatusBarEnabled);
                     } else {
+                        applyNotificationTextFollowStatusBar(target, false);
                         applyNotificationBlurColor(
                                 target,
                                 isStatic,
@@ -354,6 +363,91 @@ public final class NotificationHooks {
                     "Failed to create module notification blur",
                     t);
             return null;
+        }
+    }
+
+    private static void applyNotificationTextFollowStatusBar(Object target, boolean enabled) {
+        View root = findNotificationTextRoot(target);
+        if (root == null) {
+            return;
+        }
+        Integer textColor = enabled
+                ? FlymeStatusBarSizer.resolveStatusBarIconTintColorCompat(root)
+                : null;
+        if (textColor == null) {
+            updateNotificationTextColors(root, false, 0);
+            return;
+        }
+        updateNotificationTextColors(root, true, textColor);
+    }
+
+    private static View findNotificationTextRoot(Object target) {
+        if (!(target instanceof View)) {
+            return null;
+        }
+        View view = (View) target;
+        View fallback = null;
+        ViewParent parent = view.getParent();
+        int depth = 0;
+        while (parent instanceof View && depth < 8) {
+            View parentView = (View) parent;
+            if (fallback == null) {
+                fallback = parentView;
+            }
+            String className = parentView.getClass().getName();
+            if (className.contains("ExpandableNotificationRow")
+                    || className.contains("NotificationContentView")) {
+                return parentView;
+            }
+            if (className.contains("NotificationStackScrollLayout")) {
+                break;
+            }
+            parent = parentView.getParent();
+            depth++;
+        }
+        return fallback;
+    }
+
+    private static void updateNotificationTextColors(View view, boolean enabled, int textColor) {
+        if (view instanceof TextView) {
+            if (enabled) {
+                applyNotificationTextColor((TextView) view, textColor);
+            } else {
+                restoreNotificationTextColor((TextView) view);
+            }
+        }
+        if (!(view instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            updateNotificationTextColors(group.getChildAt(i), enabled, textColor);
+        }
+    }
+
+    private static void applyNotificationTextColor(TextView view, int textColor) {
+        ColorStateList originalColors = NOTIFICATION_TEXT_COLOR_STATES.get(view);
+        if (originalColors == null) {
+            originalColors = view.getTextColors();
+            NOTIFICATION_TEXT_COLOR_STATES.put(view, originalColors);
+        }
+        int originalColor = originalColors.getColorForState(
+                view.getDrawableState(),
+                originalColors.getDefaultColor());
+        int targetColor = Color.argb(
+                Color.alpha(originalColor),
+                Color.red(textColor),
+                Color.green(textColor),
+                Color.blue(textColor));
+        if (view.getCurrentTextColor() != targetColor) {
+            view.setTextColor(targetColor);
+        }
+    }
+
+    private static void restoreNotificationTextColor(TextView view) {
+        ColorStateList originalColors = NOTIFICATION_TEXT_COLOR_STATES.remove(view);
+        if (originalColors != null) {
+            view.setTextColor(originalColors);
         }
     }
 

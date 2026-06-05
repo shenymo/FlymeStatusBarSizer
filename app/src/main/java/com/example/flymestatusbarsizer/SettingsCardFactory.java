@@ -4,6 +4,7 @@ import android.graphics.Color;
 import android.text.TextUtils;
 import android.view.View;
 import android.widget.LinearLayout;
+import android.widget.Switch;
 import android.widget.TextView;
 
 final class SettingsCardFactory {
@@ -201,10 +202,29 @@ final class SettingsCardFactory {
         content.setOrientation(LinearLayout.VERTICAL);
         activity.addProfileSectionHeader(content, "系统通知",
                 "修改 SystemUI 通知卡片的模糊背景前景色。");
-        activity.addSwitchRow(content, "仅保留系统模糊",
+        LinearLayout blurOnlyOptions = new LinearLayout(activity);
+        Switch[] textColorSwitchHolder = new Switch[1];
+        Switch blurOnlySwitch = activity.addSwitchRow(content, "仅保留系统模糊",
                 "开启后忽略下面的通知背景颜色，移除通知背景，只保留系统动态模糊层。",
                 SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
-                SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED);
+                SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
+                (buttonView, isChecked) -> {
+                    if (textColorSwitchHolder[0] != null) {
+                        textColorSwitchHolder[0].setEnabled(isChecked);
+                    }
+                    blurOnlyOptions.setAlpha(isChecked ? 1f : 0.45f);
+                });
+        blurOnlyOptions.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams blurOnlyOptionsLp = PageViewUtils.matchWrap();
+        blurOnlyOptionsLp.leftMargin = activity.dp(12);
+        Switch textColorSwitch = activity.addSwitchRow(blurOnlyOptions, "通知字体跟随状态栏",
+                "通知文字跟随当前状态栏图标颜色，只在仅保留系统模糊时生效。",
+                SettingsStore.KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,
+                SettingsStore.DEFAULT_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED);
+        textColorSwitchHolder[0] = textColorSwitch;
+        textColorSwitch.setEnabled(blurOnlySwitch.isChecked());
+        blurOnlyOptions.setAlpha(blurOnlySwitch.isChecked() ? 1f : 0.45f);
+        content.addView(blurOnlyOptions, blurOnlyOptionsLp);
         activity.addDivider(content);
         activity.addTextSettingRow(content, "通知背景颜色",
                 "填写 #AARRGGBB。留空跟随系统；可填 #1A000000；上方开关开启时此项不生效。",

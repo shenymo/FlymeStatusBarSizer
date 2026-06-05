@@ -67,6 +67,8 @@ final class SettingsStore {
     static final String KEY_NOTIFICATION_BACKGROUND_COLOR = "notification_background_color";
     static final String KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED =
             "notification_system_blur_only_enabled";
+    static final String KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED =
+            "notification_text_follow_status_bar_enabled";
     static final String KEY_MBACK_INSET_SIZE = "mback_inset_size";
     static final String KEY_MBACK_NAV_BAR_HEIGHT = "mback_nav_bar_height";
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
@@ -150,6 +152,7 @@ final class SettingsStore {
     static final String DEFAULT_LAUNCHER_FOLDER_BG_COLOR = "";
     static final String DEFAULT_NOTIFICATION_BACKGROUND_COLOR = "";
     static final boolean DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED = false;
+    static final boolean DEFAULT_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED = false;
     static final int DEFAULT_MBACK_INSET_SIZE = -1;
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
@@ -235,6 +238,7 @@ final class SettingsStore {
             KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED,
             KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
+            KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,
             KEY_MBACK_HIDE_PILL,
             KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
             KEY_TELEPHONY_DEBUG_ENABLED,
@@ -482,6 +486,8 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED;
             case KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED:
                 return DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED;
+            case KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED:
+                return DEFAULT_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED;
             case KEY_MBACK_HIDE_PILL:
                 return DEFAULT_MBACK_HIDE_PILL;
             case KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR:
