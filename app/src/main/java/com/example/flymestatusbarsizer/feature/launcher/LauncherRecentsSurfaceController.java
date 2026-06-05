@@ -16,7 +16,6 @@ final class LauncherRecentsSurfaceController {
             return;
         }
         hookSetShown(module, loader);
-        hookSetActivityStarted(module, loader);
     }
 
     private static void hookSetShown(FlymeStatusBarSizer module, ClassLoader loader) {
@@ -45,8 +44,6 @@ final class LauncherRecentsSurfaceController {
                 Object result = chain.proceed();
                 if (shown) {
                     setTouchable(manager, true);
-                } else {
-                    releaseSurface(manager);
                 }
                 return result;
             });
@@ -55,30 +52,6 @@ final class LauncherRecentsSurfaceController {
                     "Failed to hook RecentsSurfaceManager.setShown",
                     t);
         }
-    }
-
-    private static void hookSetActivityStarted(FlymeStatusBarSizer module, ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(RECENTS_SURFACE_MANAGER_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod("setActivityStarted", boolean.class);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                boolean started = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
-                Object result = chain.proceed();
-                if (!started) {
-                    releaseSurface(chain.getThisObject());
-                }
-                return result;
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook RecentsSurfaceManager.setActivityStarted",
-                    t);
-        }
-    }
-
-    private static void releaseSurface(Object manager) {
-        LauncherRecentsCompat.invokeCompat(manager, "releaseSurface");
     }
 
     private static void setTouchable(Object manager, boolean touchable) {
