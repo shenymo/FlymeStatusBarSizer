@@ -104,7 +104,7 @@ final class LauncherRecentsPerf {
         if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(view)) {
             return "returnHomeAnim";
         }
-        if (LauncherRecentsState.hasActiveTaskLaunchHandoff(view)
+        if (LauncherRecentsState.hasActiveTaskLaunchTransitionGeometry(view)
                 || LauncherRecentsState.isTaskLaunchLayoutFrozen(view)) {
             return "launchTaskAnim";
         }

@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.launcher;
 
 import android.animation.ValueAnimator;
+import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
@@ -13,8 +14,6 @@ final class LauncherRecentsState {
     private static final WeakHashMap<View, RecentsViewState> RECENTS_VIEW_STATES =
             new WeakHashMap<>();
     static final WeakHashMap<View, ValueAnimator> ACTIVE_HOME_EXIT_ANIMATORS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, ValueAnimator> ACTIVE_TASK_LAUNCH_HANDOFF_ANIMATORS =
             new WeakHashMap<>();
     static final WeakHashMap<View, ValueAnimator> ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS =
             new WeakHashMap<>();
@@ -91,8 +90,8 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES =
             new WeakHashMap<>();
-    static final ThreadLocal<TaskLaunchSimulatorTranslationContext>
-            ACTIVE_TASK_LAUNCH_SIMULATOR_TRANSLATION = new ThreadLocal<>();
+    static final ThreadLocal<TaskLaunchTransitionGeometryContext>
+            ACTIVE_TASK_LAUNCH_TRANSITION_GEOMETRY = new ThreadLocal<>();
     static final ThreadLocal<View> ACTIVE_TASK_LAUNCH_SCROLL_COMPENSATION_BYPASS =
             new ThreadLocal<>();
 
@@ -111,87 +110,60 @@ final class LauncherRecentsState {
         boolean taskLaunchRequestStarted;
         boolean swipeUpGestureActive;
         Float overviewStateStackStartAdjacentOffset;
-        LaunchHandoffState activeTaskLaunchHandoff;
+        LaunchTransitionGeometryState activeTaskLaunchTransitionGeometry;
     }
 
-    static final class LaunchHandoffState {
+    static final class LaunchTransitionGeometryState {
         final View targetTaskView;
         final int targetIndex;
-        final boolean promoteRearCard;
-        final boolean handoffEnabled;
-        final ArrayList<LaunchHandoffTaskState> taskStates = new ArrayList<>();
-        float progress;
+        final Rect startBounds = new Rect();
+        final ArrayList<TaskLaunchFrozenTaskState> frozenTaskStates = new ArrayList<>();
         boolean frozen;
 
-        LaunchHandoffState(
+        LaunchTransitionGeometryState(
                 View targetTaskView,
-                int targetIndex,
-                boolean promoteRearCard,
-                boolean handoffEnabled) {
+                int targetIndex) {
             this.targetTaskView = targetTaskView;
             this.targetIndex = targetIndex;
-            this.promoteRearCard = promoteRearCard;
-            this.handoffEnabled = handoffEnabled;
         }
     }
 
-    static final class LaunchHandoffTaskState {
+    static final class TaskLaunchFrozenTaskState {
         final View taskView;
-        final boolean target;
+        final int visibility;
         final float x;
         final float y;
         final float pivotX;
         final float pivotY;
         final float scaleX;
         final float scaleY;
-        final float centerX;
-        final float centerY;
-        final float horizontalOffsetX;
-        final float taskOffsetX;
-        final float taskOffsetY;
-        final float boxTranslationY;
-        final float nonGridScale;
-        final float stableAlpha;
+        final float alpha;
         final float translationZ;
-        final float fullscreenProgress;
+        final LauncherRecentsTaskVisuals.StackTaskVisualState stackVisualState;
 
-        LaunchHandoffTaskState(
+        TaskLaunchFrozenTaskState(
                 View taskView,
-                boolean target,
+                int visibility,
                 float x,
                 float y,
                 float pivotX,
                 float pivotY,
                 float scaleX,
                 float scaleY,
-                float centerX,
-                float centerY,
-                float horizontalOffsetX,
-                float taskOffsetX,
-                float taskOffsetY,
-                float boxTranslationY,
-                float nonGridScale,
-                float stableAlpha,
+                float alpha,
                 float translationZ,
-                float fullscreenProgress) {
+                LauncherRecentsTaskVisuals.StackTaskVisualState stackVisualState) {
             this.taskView = taskView;
-            this.target = target;
+            this.visibility = visibility;
             this.x = x;
             this.y = y;
             this.pivotX = pivotX;
             this.pivotY = pivotY;
             this.scaleX = scaleX;
             this.scaleY = scaleY;
-            this.centerX = centerX;
-            this.centerY = centerY;
-            this.horizontalOffsetX = horizontalOffsetX;
-            this.taskOffsetX = taskOffsetX;
-            this.taskOffsetY = taskOffsetY;
-            this.boxTranslationY = boxTranslationY;
-            this.nonGridScale = nonGridScale;
-            this.stableAlpha = stableAlpha;
+            this.alpha = alpha;
             this.translationZ = translationZ;
-            this.fullscreenProgress = fullscreenProgress;
+            this.stackVisualState = stackVisualState;
         }
     }
 
@@ -281,11 +253,11 @@ final class LauncherRecentsState {
         }
     }
 
-    static final class TaskLaunchSimulatorTranslationContext {
+    static final class TaskLaunchTransitionGeometryContext {
         final View recentsView;
         final View taskView;
 
-        TaskLaunchSimulatorTranslationContext(View recentsView, View taskView) {
+        TaskLaunchTransitionGeometryContext(View recentsView, View taskView) {
             this.recentsView = recentsView;
             this.taskView = taskView;
         }
@@ -553,33 +525,36 @@ final class LauncherRecentsState {
         return state != null && state.overviewStateStackBaselineCaptured;
     }
 
-    static LaunchHandoffState getActiveTaskLaunchHandoff(View recentsView) {
+    static LaunchTransitionGeometryState getActiveTaskLaunchTransitionGeometry(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
-        return state != null ? state.activeTaskLaunchHandoff : null;
+        return state != null ? state.activeTaskLaunchTransitionGeometry : null;
     }
 
-    static void setActiveTaskLaunchHandoff(View recentsView, LaunchHandoffState state) {
+    static void setActiveTaskLaunchTransitionGeometry(
+            View recentsView,
+            LaunchTransitionGeometryState state) {
         RecentsViewState recentsState = state != null
                 ? ensureRecentsViewState(recentsView)
                 : findRecentsViewState(recentsView);
         if (recentsState != null) {
-            recentsState.activeTaskLaunchHandoff = state;
+            recentsState.activeTaskLaunchTransitionGeometry = state;
         }
     }
 
-    static void clearActiveTaskLaunchHandoff(View recentsView) {
+    static void clearActiveTaskLaunchTransitionGeometry(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
         if (state != null) {
-            state.activeTaskLaunchHandoff = null;
+            state.activeTaskLaunchTransitionGeometry = null;
         }
     }
 
-    static boolean hasActiveTaskLaunchHandoff(View recentsView) {
-        return getActiveTaskLaunchHandoff(recentsView) != null;
+    static boolean hasActiveTaskLaunchTransitionGeometry(View recentsView) {
+        return getActiveTaskLaunchTransitionGeometry(recentsView) != null;
     }
 
     static boolean isTaskLaunchLayoutFrozen(View recentsView) {
-        LaunchHandoffState state = getActiveTaskLaunchHandoff(recentsView);
+        LaunchTransitionGeometryState state =
+                getActiveTaskLaunchTransitionGeometry(recentsView);
         return state != null && state.frozen;
     }
 

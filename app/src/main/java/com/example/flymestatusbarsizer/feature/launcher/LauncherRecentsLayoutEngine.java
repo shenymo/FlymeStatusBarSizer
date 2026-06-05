@@ -162,6 +162,8 @@ final class LauncherRecentsLayoutEngine {
         hookRecentsViewConstructors(module, loader);
         hookRecentsViewMethod(module, loader, "updatePageScales");
         hookRecentsViewMethod(module, loader, "updatePageOffsetsForFlyme");
+        hookRecentsViewMethod(module, loader, "updateHorizontalOffset");
+        hookRecentsViewMethod(module, loader, "updateTaskViewsSnapshotRadius");
         hookRecentsViewMethod(module, loader, "applyAttachAlpha");
         hookRecentsViewMethod(module, loader, "resetTaskVisuals");
         hookRecentsViewSetTaskIconVisible(module, loader);
@@ -980,7 +982,7 @@ final class LauncherRecentsLayoutEngine {
         if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
             return;
         }
-        if (LauncherRecentsState.hasActiveTaskLaunchHandoff(recentsView)) {
+        if (LauncherRecentsState.hasActiveTaskLaunchTransitionGeometry(recentsView)) {
             return;
         }
         LauncherRecentsState.trackRecentsView(recentsView);
@@ -1198,9 +1200,10 @@ final class LauncherRecentsLayoutEngine {
         if (recentsView == null) {
             return false;
         }
-        LauncherRecentsState.LaunchHandoffState launchState =
-                LauncherRecentsState.getActiveTaskLaunchHandoff(recentsView);
+        LauncherRecentsState.LaunchTransitionGeometryState launchState =
+                LauncherRecentsState.getActiveTaskLaunchTransitionGeometry(recentsView);
         if (launchState != null && launchState.frozen) {
+            LauncherRecentsLaunchController.applyFrozenTaskLaunchLayout(recentsView);
             return false;
         }
         if (LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(recentsView)
@@ -1399,9 +1402,6 @@ final class LauncherRecentsLayoutEngine {
             } else {
                 LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, visualState);
             }
-        }
-        if (launchState != null && launchState.handoffEnabled) {
-            LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);
         }
         return true;
     }
@@ -2122,7 +2122,7 @@ final class LauncherRecentsLayoutEngine {
     static boolean shouldApplyDynamicStackLayout(View recentsView) {
         return shouldUseStackLayout(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
-                && !LauncherRecentsState.hasActiveTaskLaunchHandoff(recentsView)
+                && !LauncherRecentsState.hasActiveTaskLaunchTransitionGeometry(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
                 recentsView)
