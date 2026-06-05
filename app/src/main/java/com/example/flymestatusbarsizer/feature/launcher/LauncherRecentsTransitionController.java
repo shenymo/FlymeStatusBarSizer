@@ -60,6 +60,9 @@ final class LauncherRecentsTransitionController {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
+                        return chain.proceed();
+                    }
                     LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
                     LauncherRecentsStateAnimationController.clearOverviewEntryState(recentsView);
                     LauncherRecentsAttachController.clearAppToRecentsEntrySession(
@@ -108,6 +111,7 @@ final class LauncherRecentsTransitionController {
                 boolean shouldPrepareGestureRelease =
                         shouldUsePendingGestureRecentsStackRelease(recentsView, endTarget);
                 if (shouldPrepareGestureRelease) {
+                    LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
                     markPendingGestureRecentsStackRelease(recentsView, true);
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
@@ -122,7 +126,8 @@ final class LauncherRecentsTransitionController {
                     markPendingGestureRecentsStackRelease(recentsView, false);
                 }
                 Object result = chain.proceed();
-                if (recentsView != null) {
+                if (recentsView != null
+                        && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                 }
@@ -202,14 +207,23 @@ final class LauncherRecentsTransitionController {
                 boolean shouldPrepareGestureRelease =
                         shouldUsePendingGestureRecentsStackRelease(recentsView, endTarget);
                 if (shouldPrepareGestureRelease) {
+                    LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
                     markPendingGestureRecentsStackRelease(recentsView, true);
                 }
-                if (shouldTakeOverAppToRecentsGestureEnd(recentsView, shouldPrepareGestureRelease)) {
+                if ((!LauncherRecentsState.isSwipeUpGestureActive(recentsView)
+                        || isRecentsGestureEndTarget(endTarget))
+                        && shouldTakeOverAppToRecentsGestureEnd(
+                        recentsView,
+                        shouldPrepareGestureRelease)) {
                     finishAppToRecentsGestureEnd(recentsView);
                     return null;
                 }
                 Object result = chain.proceed();
                 if (thisObject instanceof View) {
+                    if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
+                        clearNonRecentsGestureEndState(recentsView);
+                        return result;
+                    }
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                     boolean gestureReleased =
@@ -238,9 +252,7 @@ final class LauncherRecentsTransitionController {
                         // 否则下一帧 gestureReleased 到位后走 shouldPrepareGestureRelease 分支，
                         // 提前清除会触发一帧平铺恢复布局
                         if (!isPendingGestureRecentsStackRelease(recentsView)) {
-                            LauncherRecentsAttachController.clearAppToRecentsEntrySession(
-                                    recentsView,
-                                    false);
+                            clearNonRecentsGestureEndState(recentsView);
                         }
                     }
                     if (!shouldPrepareGestureRelease
@@ -266,10 +278,24 @@ final class LauncherRecentsTransitionController {
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
                 && (shouldPrepareGestureRelease
                 || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
-                || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
                 || isGestureRecentsStackReleaseHandoffPending(recentsView)
                 || isGestureRecentsStackReleaseAnimationActive(recentsView)
                 || LauncherRecentsState.isGestureStackReleasedStable(recentsView));
+    }
+
+    private static void clearNonRecentsGestureEndState(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        cancelGestureRecentsStackReleaseAnimation(recentsView, true);
+        LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
+        LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
+        LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
+        LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
+        LauncherRecentsState.setPendingGestureRecentsStackRelease(recentsView, false);
+        LauncherRecentsState.setPendingGestureRecentsStackReleaseHandoff(recentsView, false);
+        LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
+        LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
     }
 
     private static void finishAppToRecentsGestureEnd(View recentsView) {
@@ -315,6 +341,7 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsCompat.writeField(recentsView, "mCurrentGestureEndTarget", null);
         LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
         LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
+        LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
         markPendingGestureRecentsStackRelease(recentsView, false);
         LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
         LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
@@ -336,11 +363,16 @@ final class LauncherRecentsTransitionController {
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
                 View recentsView = resolveHandlerRecentsView(thisObject);
+                Object result = chain.proceed();
+                Object gestureState = LauncherRecentsCompat.getFieldCompat(thisObject, "mGestureState");
+                Object endTarget = LauncherRecentsCompat.invokeCompat(gestureState, "getEndTarget");
                 if (recentsView != null
-                        && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+                        && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                        && isRecentsGestureEndTarget(endTarget)) {
+                    LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
                     LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, true);
                 }
-                return chain.proceed();
+                return result;
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
@@ -606,9 +638,7 @@ final class LauncherRecentsTransitionController {
     static boolean shouldSuppressGestureReleaseStockTaskVisuals(View recentsView) {
         return recentsView != null
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                && (LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
-                || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
+                && (LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
                 || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
                 || isGestureRecentsStackReleaseHandoffPending(recentsView)
                 || isGestureRecentsStackReleaseAnimationActive(recentsView));

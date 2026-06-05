@@ -50,23 +50,16 @@ final class LauncherRecentsAttachController {
                 LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
                         recentsView,
                         true);
+                LauncherRecentsState.setSwipeUpGestureActive(recentsView, true);
                 LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
                 LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
-                LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, true);
-                LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, true);
+                LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
+                LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
+                LauncherRecentsState.setPendingGestureRecentsStackRelease(recentsView, false);
+                LauncherRecentsState.setPendingGestureRecentsStackReleaseHandoff(recentsView, false);
                 LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                 LauncherRecentsState.trackRecentsView(recentsView);
-                LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-                LauncherRecentsLayoutEngine.restoreTaskTransforms(
-                        recentsView,
-                        LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0));
-                LauncherRecentsTaskVisuals.clearRecentsStackContentBlur(recentsView);
-                Object result = chain.proceed();
-                LauncherRecentsLayoutEngine.restoreTaskTransforms(
-                        recentsView,
-                        LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0));
-                LauncherRecentsTaskVisuals.clearRecentsStackContentBlur(recentsView);
-                return result;
+                return chain.proceed();
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
@@ -152,6 +145,9 @@ final class LauncherRecentsAttachController {
                 boolean attached = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
                 View recentsView = resolveRecentsView(thisObject);
                 if (!attached) {
+                    if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
+                        return chain.proceed();
+                    }
                     // 【方案一 1-B】守卫：入场流程任意阶段均不允许清除状态触发恢复布局。
                     // 补充 isGestureStackReleasedStable：release 动画结束后系统仍会回调
                     // setRecentsAttachedToAppWindowForFlyme(false)，此时前三个条件全为 false，

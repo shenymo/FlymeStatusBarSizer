@@ -107,6 +107,7 @@ final class LauncherRecentsState {
         boolean overviewPeekStockAnimationActive;
         boolean overviewStateStackBaselineCaptured;
         boolean taskLaunchRequestStarted;
+        boolean swipeUpGestureActive;
         Float overviewStateStackStartAdjacentOffset;
         LaunchHandoffState activeTaskLaunchHandoff;
     }
@@ -412,6 +413,20 @@ final class LauncherRecentsState {
     static boolean isPendingGestureRecentsStackReleaseHandoff(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
         return state != null && state.pendingGestureRecentsStackReleaseHandoff;
+    }
+
+    static void setSwipeUpGestureActive(View recentsView, boolean active) {
+        RecentsViewState state = active
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.swipeUpGestureActive = active;
+        }
+    }
+
+    static boolean isSwipeUpGestureActive(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.swipeUpGestureActive;
     }
 
     static void setOverviewStateStackAnimationActive(View recentsView, boolean active) {

@@ -479,6 +479,9 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static void prepareRecentsView(View recentsView) {
+        if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
+            return;
+        }
         long perfStartNs = LauncherRecentsPerf.start(recentsView);
         if (!(recentsView instanceof ViewGroup)) {
             LauncherRecentsPerf.end("prepareRecentsView", perfStartNs);
@@ -818,7 +821,7 @@ final class LauncherRecentsLayoutEngine {
             String source,
             boolean syncVisibleTaskData,
             boolean dynamicOnly) {
-        if (recentsView == null) {
+        if (recentsView == null || LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
             return false;
         }
         LauncherRecentsState.PendingStackLayoutApplyState pendingState =
@@ -857,6 +860,9 @@ final class LauncherRecentsLayoutEngine {
         if (recentsView == null || pendingState == null) {
             return;
         }
+        if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
+            return;
+        }
         LauncherRecentsState.trackRecentsView(recentsView);
         prepareRecentsView(recentsView);
         if (shouldBlockAppToRecentsStackApply(recentsView)) {
@@ -885,6 +891,9 @@ final class LauncherRecentsLayoutEngine {
             int stackLayoutRadius,
             String source,
             boolean syncVisibleTaskData) {
+        if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
+            return;
+        }
         if (shouldSkipDuplicateStackLayout(
                 recentsView,
                 stackLayoutRadius,
@@ -1581,6 +1590,7 @@ final class LauncherRecentsLayoutEngine {
 
     private static boolean shouldAllowStackLayoutRecovery(View recentsView) {
         return shouldUseStackLayout(recentsView)
+                && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
                 && (!LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(
@@ -1691,6 +1701,7 @@ final class LauncherRecentsLayoutEngine {
             View recentsView) {
         return "updatePageOffsetsForFlyme".equals(methodName)
                 && shouldUseStackLayout(recentsView)
+                && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                 || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
@@ -1712,6 +1723,7 @@ final class LauncherRecentsLayoutEngine {
             View recentsView) {
         return "updatePageScales".equals(methodName)
                 && shouldUseStackLayout(recentsView)
+                && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
                 recentsView)
@@ -1761,6 +1773,7 @@ final class LauncherRecentsLayoutEngine {
     private static boolean shouldOwnStackTaskAlpha(View recentsView) {
         return recentsView != null
                 && shouldUseStackLayout(recentsView)
+                && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
                 && (LauncherRecentsTransitionController
@@ -1853,6 +1866,7 @@ final class LauncherRecentsLayoutEngine {
 
     static boolean shouldApplyDynamicStackLayout(View recentsView) {
         return shouldUseStackLayout(recentsView)
+                && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
                 recentsView)
