@@ -1428,9 +1428,7 @@ final class LauncherRecentsLayoutEngine {
             ArrayList<Integer> lastActiveIndices) {
         ArrayList<Integer> indices = new ArrayList<>();
         if (lastActiveIndices == null) {
-            for (int i = 0; i < taskViewCount; i++) {
-                indices.add(i);
-            }
+            appendStackLayoutIndices(indices, activeIndices, taskViewCount);
             return indices;
         }
         appendStackLayoutIndices(indices, activeIndices, taskViewCount);
