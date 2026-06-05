@@ -11,8 +11,14 @@ import android.view.ViewParent;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.WeakHashMap;
 
 final class LauncherRecentsLayoutEngine {
+    private static final String LAUNCHER_STATE_CLASS = "com.android.launcher3.LauncherState";
+    private static final String QUICK_SWITCH_TOUCH_CONTROLLER_CLASS =
+            "com.android.launcher3.uioverrides.touchcontrollers.QuickSwitchTouchController";
+    private static final String NO_BUTTON_QUICK_SWITCH_TOUCH_CONTROLLER_CLASS =
+            "com.android.launcher3.uioverrides.touchcontrollers.NoButtonQuickSwitchTouchController";
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
     private static final float STACK_ENTRY_INITIAL_SPREAD_RATIO = 0.8f;
     private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.05f;
@@ -36,6 +42,8 @@ final class LauncherRecentsLayoutEngine {
     private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
     private static final int STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR = 2;
     private static final long STACK_LAYOUT_DUPLICATE_WINDOW_NS = 16_000_000L; // 【方案三 3-A】扩大到 16ms，覆盖 120Hz 设备一帧内的多次重复触发
+    private static final WeakHashMap<View, Boolean> QUICK_SWITCH_STACK_LAYOUT_BYPASSES =
+            new WeakHashMap<>();
 
     private LauncherRecentsLayoutEngine() {
     }
@@ -170,6 +178,55 @@ final class LauncherRecentsLayoutEngine {
         hookRecentsViewOnScrollChanged(module, loader);
         hookRecentsViewDispatchScrollChanged(module, loader);
         hookRecentsViewContentAlpha(module, loader);
+        hookQuickSwitchInit(module, loader);
+        hookNoButtonQuickSwitchSetup(module, loader);
+    }
+
+    private static void hookQuickSwitchInit(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(QUICK_SWITCH_TOUCH_CONTROLLER_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("initCurrentAnimation");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                View recentsView = resolveQuickSwitchRecentsView(chain.getThisObject());
+                setQuickSwitchStackLayoutBypass(recentsView, true);
+                try {
+                    return chain.proceed();
+                } finally {
+                    setQuickSwitchStackLayoutBypass(recentsView, false);
+                }
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook QuickSwitchTouchController.initCurrentAnimation",
+                    t);
+        }
+    }
+
+    private static void hookNoButtonQuickSwitchSetup(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    NO_BUTTON_QUICK_SWITCH_TOUCH_CONTROLLER_CLASS,
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("setupAnimators");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                View recentsView = resolveQuickSwitchRecentsView(chain.getThisObject());
+                setQuickSwitchStackLayoutBypass(recentsView, true);
+                try {
+                    return chain.proceed();
+                } finally {
+                    setQuickSwitchStackLayoutBypass(recentsView, false);
+                }
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook NoButtonQuickSwitchTouchController.setupAnimators",
+                    t);
+        }
     }
 
     static void refreshTrackedViews() {
@@ -1874,6 +1931,7 @@ final class LauncherRecentsLayoutEngine {
             View recentsView) {
         return "updatePageOffsetsForFlyme".equals(methodName)
                 && shouldUseStackLayout(recentsView)
+                && !shouldBypassStackLayoutForQuickSwitch(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                 || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
@@ -1896,6 +1954,7 @@ final class LauncherRecentsLayoutEngine {
             View recentsView) {
         return "updatePageScales".equals(methodName)
                 && shouldUseStackLayout(recentsView)
+                && !shouldBypassStackLayoutForQuickSwitch(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
@@ -1946,6 +2005,7 @@ final class LauncherRecentsLayoutEngine {
     private static boolean shouldOwnStackTaskAlpha(View recentsView) {
         return recentsView != null
                 && shouldUseStackLayout(recentsView)
+                && !shouldBypassStackLayoutForQuickSwitch(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
@@ -2039,6 +2099,7 @@ final class LauncherRecentsLayoutEngine {
 
     static boolean shouldApplyDynamicStackLayout(View recentsView) {
         return shouldUseStackLayout(recentsView)
+                && !shouldBypassStackLayoutForQuickSwitch(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
@@ -2077,6 +2138,62 @@ final class LauncherRecentsLayoutEngine {
         }
         applyStackLayout(recentsView, false, "applyDynamic", false);
         return true;
+    }
+
+    static boolean shouldBypassStackLayoutForQuickSwitch(View recentsView) {
+        return recentsView != null
+                && (Boolean.TRUE.equals(QUICK_SWITCH_STACK_LAYOUT_BYPASSES.get(recentsView))
+                || isQuickSwitchGestureEndTarget(LauncherRecentsCompat.getFieldCompat(
+                recentsView,
+                "mCurrentGestureEndTarget"))
+                || isQuickSwitchLauncherState(recentsView));
+    }
+
+    private static View resolveQuickSwitchRecentsView(Object controller) {
+        Object value = LauncherRecentsCompat.getFieldCompat(controller, "mOverviewPanel");
+        if (value instanceof View) {
+            return (View) value;
+        }
+        value = LauncherRecentsCompat.getFieldCompat(controller, "mRecentsView");
+        return value instanceof View ? (View) value : null;
+    }
+
+    private static void setQuickSwitchStackLayoutBypass(View recentsView, boolean active) {
+        if (recentsView == null) {
+            return;
+        }
+        if (active) {
+            QUICK_SWITCH_STACK_LAYOUT_BYPASSES.put(recentsView, Boolean.TRUE);
+        } else {
+            QUICK_SWITCH_STACK_LAYOUT_BYPASSES.remove(recentsView);
+        }
+    }
+
+    private static boolean isQuickSwitchGestureEndTarget(Object value) {
+        if (!(value instanceof Enum)) {
+            return false;
+        }
+        String name = ((Enum<?>) value).name();
+        return "NEW_TASK".equals(name) || "LAST_TASK".equals(name);
+    }
+
+    private static boolean isQuickSwitchLauncherState(View recentsView) {
+        Object quickSwitchState = LauncherRecentsCompat.readStaticFieldCompat(
+                LAUNCHER_STATE_CLASS,
+                "QUICK_SWITCH_FROM_HOME",
+                recentsView.getClass().getClassLoader());
+        Object stateManager = LauncherRecentsCompat.invokeCompat(recentsView, "getStateManager");
+        return isStateManagerState(stateManager, "getState", quickSwitchState)
+                || isStateManagerState(stateManager, "getTargetState", quickSwitchState)
+                || isStateManagerState(stateManager, "getCurrentStableState", quickSwitchState);
+    }
+
+    private static boolean isStateManagerState(
+            Object stateManager,
+            String methodName,
+            Object expectedState) {
+        return expectedState != null
+                && LauncherRecentsCompat.invokeCompat(stateManager, methodName) == expectedState;
     }
 
     static void reapplyOriginalTransforms(View recentsView) {

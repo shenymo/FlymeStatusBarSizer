@@ -46,6 +46,7 @@ final class LauncherRecentsTransitionController {
         hookRecentsViewEnableDrawingLiveTile(module, loader);
         hookRecentsViewGestureAnimationEnd(module, loader);
         hookAbsSwipeUpHandlerGestureEnded(module, loader);
+        hookAbsSwipeUpHandlerCalculateEndTarget(module, loader);
         hookAbsSwipeUpHandlerLauncherTransitionProgress(module, loader);
     }
 
@@ -379,6 +380,91 @@ final class LauncherRecentsTransitionController {
                     "Failed to hook AbsSwipeUpHandler.onGestureEnded",
                     t);
         }
+    }
+
+    private static void hookAbsSwipeUpHandlerCalculateEndTarget(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(ABS_SWIPE_UP_HANDLER_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod(
+                    "calculateEndTarget",
+                    PointF.class,
+                    float.class,
+                    boolean.class,
+                    boolean.class,
+                    boolean.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                View recentsView = resolveHandlerRecentsView(chain.getThisObject());
+                int targetPage = resolveStackQuickSwitchTargetPage(recentsView);
+                if (targetPage >= 0 && isLastTaskGestureEndTarget(result)) {
+                    LauncherRecentsCompat.setIntField(recentsView, "mNextPage", targetPage);
+                    Object newTaskTarget = LauncherRecentsCompat.readStaticFieldCompat(
+                            "com.android.quickstep.GestureState$GestureEndTarget",
+                            "NEW_TASK",
+                            loader);
+                    if (newTaskTarget != null) {
+                        return newTaskTarget;
+                    }
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook AbsSwipeUpHandler.calculateEndTarget",
+                    t);
+        }
+    }
+
+    private static int resolveStackQuickSwitchTargetPage(View recentsView) {
+        if (recentsView == null || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+            return -1;
+        }
+        int runningTaskIndex = LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getRunningTaskIndex",
+                -1);
+        if (runningTaskIndex < 0) {
+            return -1;
+        }
+        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
+        int targetPage = LauncherRecentsCompat.invokeInt(recentsView, "getDestinationPage", -1);
+        if (targetPage < 0) {
+            targetPage = resolveNearestQuickSwitchPageForScroll(recentsView, pageCount);
+        }
+        if (targetPage < 0 || targetPage >= pageCount || targetPage == runningTaskIndex) {
+            return -1;
+        }
+        Object taskView = LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "getTaskViewAt",
+                LauncherRecentsCompat.INT_ARG,
+                targetPage);
+        return taskView instanceof View ? targetPage : -1;
+    }
+
+    private static int resolveNearestQuickSwitchPageForScroll(View recentsView, int pageCount) {
+        if (recentsView == null || pageCount <= 0) {
+            return -1;
+        }
+        int primaryScroll = resolvePrimaryScroll(recentsView);
+        int nearestPage = -1;
+        int nearestDistance = Integer.MAX_VALUE;
+        for (int i = 0; i < pageCount; i++) {
+            int pageScroll = resolveScrollForPage(recentsView, i, primaryScroll);
+            int distance = Math.abs(pageScroll - primaryScroll);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestPage = i;
+            }
+        }
+        return nearestPage;
+    }
+
+    private static boolean isLastTaskGestureEndTarget(Object value) {
+        return value instanceof Enum && "LAST_TASK".equals(((Enum<?>) value).name());
     }
 
     private static void hookAbsSwipeUpHandlerLauncherTransitionProgress(
