@@ -38,6 +38,8 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, PendingStackLayoutApplyState> PENDING_STACK_LAYOUT_APPLIES =
             new WeakHashMap<>();
+    static final WeakHashMap<View, ArrayList<Integer>> LAST_STACK_LAYOUT_ACTIVE_INDICES =
+            new WeakHashMap<>();
     static final WeakHashMap<View, String> LAST_STACK_APP_FLOW_PACKAGES =
             new WeakHashMap<>();
     static final WeakHashMap<View, Integer> LAST_STACK_TASK_LIST_VISIBILITY_CHANGES =

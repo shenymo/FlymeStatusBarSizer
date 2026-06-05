@@ -1213,6 +1213,7 @@ final class LauncherRecentsLayoutEngine {
                 FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         if (!shouldUseStackLayout(config, recentsView, taskViewCount)) {
+            LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.remove(recentsView);
             restoreTaskTransforms(recentsView, taskViewCount);
             return false;
         }
@@ -1233,6 +1234,19 @@ final class LauncherRecentsLayoutEngine {
                 runningTaskChildIndex,
                 taskViewCount,
                 stackLayoutRadius);
+        ArrayList<Integer> activeIndices = resolveStackLayoutActiveIndices(
+                taskViewCount,
+                lightAnchorIndex,
+                stackLayoutRadius);
+        ArrayList<Integer> lastActiveIndices =
+                LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.get(recentsView);
+        ArrayList<Integer> processIndices = resolveStackLayoutProcessIndices(
+                taskViewCount,
+                activeIndices,
+                lastActiveIndices);
+        LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.put(
+                recentsView,
+                new ArrayList<>(activeIndices));
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         float referenceWidth = 0f;
         float referenceHeight = 0f;
@@ -1240,12 +1254,10 @@ final class LauncherRecentsLayoutEngine {
         float pageSpan = 0f;
         float[] rawOffsets = new float[taskViewCount];
 
-        for (int i = 0; i < taskViewCount; i++) {
+        for (int index = 0; index < activeIndices.size(); index++) {
+            int i = activeIndices.get(index);
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             if (taskView == null) {
-                continue;
-            }
-            if (shouldHideStackLayoutTask(i, lightAnchorIndex, stackLayoutRadius)) {
                 continue;
             }
             LauncherRecentsTaskVisuals.rememberOriginalTaskState(taskView);
@@ -1352,7 +1364,9 @@ final class LauncherRecentsLayoutEngine {
                 blankTapExitActive,
                 config.launcherIosStackRecentsBlurEnabled);
 
-        for (int i = 0; i < taskViewCount; i++) {
+        int[] runningTaskIds = resolveTaskIds(runningTaskView);
+        for (int index = 0; index < processIndices.size(); index++) {
+            int i = processIndices.get(index);
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             if (taskView == null) {
                 continue;
@@ -1361,7 +1375,7 @@ final class LauncherRecentsLayoutEngine {
                 restoreTaskTransform(taskView);
                 continue;
             }
-            if (taskView != runningTaskView && sharesRunningTaskIds(taskView, runningTaskView)) {
+            if (taskView != runningTaskView && sharesTaskIds(taskView, runningTaskIds)) {
                 restoreTaskTransform(taskView);
                 LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
@@ -1393,6 +1407,50 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsLaunchController.applyLaunchHandoffLayout(recentsView, launchState);
         }
         return true;
+    }
+
+    private static ArrayList<Integer> resolveStackLayoutActiveIndices(
+            int taskViewCount,
+            int anchorIndex,
+            int radius) {
+        ArrayList<Integer> indices = new ArrayList<>();
+        int start = Math.max(0, anchorIndex - radius);
+        int end = Math.min(taskViewCount - 1, anchorIndex + radius);
+        for (int i = start; i <= end; i++) {
+            indices.add(i);
+        }
+        return indices;
+    }
+
+    private static ArrayList<Integer> resolveStackLayoutProcessIndices(
+            int taskViewCount,
+            ArrayList<Integer> activeIndices,
+            ArrayList<Integer> lastActiveIndices) {
+        ArrayList<Integer> indices = new ArrayList<>();
+        if (lastActiveIndices == null) {
+            for (int i = 0; i < taskViewCount; i++) {
+                indices.add(i);
+            }
+            return indices;
+        }
+        appendStackLayoutIndices(indices, activeIndices, taskViewCount);
+        appendStackLayoutIndices(indices, lastActiveIndices, taskViewCount);
+        return indices;
+    }
+
+    private static void appendStackLayoutIndices(
+            ArrayList<Integer> target,
+            ArrayList<Integer> source,
+            int taskViewCount) {
+        if (source == null) {
+            return;
+        }
+        for (int i = 0; i < source.size(); i++) {
+            int index = source.get(i);
+            if (index >= 0 && index < taskViewCount && !target.contains(index)) {
+                target.add(index);
+            }
+        }
     }
 
     private static StackTaskInput buildStackTaskInput(
@@ -2385,15 +2443,25 @@ final class LauncherRecentsLayoutEngine {
         if (taskView == null || runningTaskView == null) {
             return false;
         }
+        return sharesTaskIds(taskView, resolveTaskIds(runningTaskView));
+    }
+
+    private static int[] resolveTaskIds(View taskView) {
         Object taskIdsObject = LauncherRecentsCompat.invokeCompat(
-                runningTaskView,
+                taskView,
                 "getTaskIds",
                 LauncherRecentsCompat.NO_ARGS);
         if (!(taskIdsObject instanceof int[])) {
+            return null;
+        }
+        return (int[]) taskIdsObject;
+    }
+
+    private static boolean sharesTaskIds(View taskView, int[] taskIds) {
+        if (taskView == null || taskIds == null) {
             return false;
         }
-        int[] runningTaskIds = (int[]) taskIdsObject;
-        for (int taskId : runningTaskIds) {
+        for (int taskId : taskIds) {
             Object contains = LauncherRecentsCompat.invokeCompat(
                     taskView,
                     "containsTaskId",
