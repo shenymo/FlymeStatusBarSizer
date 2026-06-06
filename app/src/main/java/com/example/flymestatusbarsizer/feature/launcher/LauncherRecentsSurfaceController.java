@@ -2,6 +2,9 @@ package com.example.flymestatusbarsizer.feature.launcher;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
+import android.view.SurfaceControl;
+import android.view.View;
+
 import java.lang.reflect.Method;
 
 final class LauncherRecentsSurfaceController {
@@ -26,11 +29,16 @@ final class LauncherRecentsSurfaceController {
             module.intercept(method, chain -> {
                 Object manager = chain.getThisObject();
                 boolean shown = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
-                Object result = chain.proceed();
-                if (!shown) {
-                    releaseSurface(manager);
+                boolean wasShown = LauncherRecentsCompat.readBooleanField(manager, "mShown", false);
+                checkSurface(manager);
+                if (shown != wasShown) {
+                    LauncherRecentsCompat.setBooleanField(manager, "mShown", shown);
                 }
-                return result;
+                if (shown) {
+                    ensureWindowViewVisible(manager);
+                }
+                setSurfaceVisible(manager, shown);
+                return null;
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
@@ -39,7 +47,32 @@ final class LauncherRecentsSurfaceController {
         }
     }
 
-    private static void releaseSurface(Object manager) {
-        LauncherRecentsCompat.invokeCompat(manager, "releaseSurface");
+    private static void checkSurface(Object manager) {
+        LauncherRecentsCompat.invokeCompat(manager, "checkSurface");
+    }
+
+    private static void ensureWindowViewVisible(Object manager) {
+        Object value = LauncherRecentsCompat.getFieldCompat(manager, "mWindowView");
+        if (value instanceof View) {
+            View view = (View) value;
+            if (view.getVisibility() != View.VISIBLE) {
+                view.setVisibility(View.VISIBLE);
+            }
+        }
+    }
+
+    private static void setSurfaceVisible(Object manager, boolean visible) {
+        Object value = LauncherRecentsCompat.getFieldCompat(manager, "mOverviewSurface");
+        if (!(value instanceof SurfaceControl)) {
+            return;
+        }
+        SurfaceControl surface = (SurfaceControl) value;
+        if (!surface.isValid()) {
+            return;
+        }
+        SurfaceControl.Transaction transaction = new SurfaceControl.Transaction();
+        transaction.setVisibility(surface, visible);
+        transaction.apply();
+        transaction.close();
     }
 }
