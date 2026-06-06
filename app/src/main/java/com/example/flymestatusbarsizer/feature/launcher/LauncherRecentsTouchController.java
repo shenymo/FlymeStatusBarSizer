@@ -1493,6 +1493,35 @@ final class LauncherRecentsTouchController {
                 && isStackTaskWithinVisibleDataBounds(recentsView, taskView);
     }
 
+    private static boolean isStackTaskDataVisible(
+            View recentsView,
+            View taskView,
+            boolean knownChild) {
+        if (recentsView == null
+                || taskView == null
+                || LauncherRecentsCompat.isDesktopTask(taskView)
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || taskView.getVisibility() != View.VISIBLE
+                || taskView.getWidth() <= 0
+                || taskView.getHeight() <= 0
+                || !(recentsView instanceof ViewGroup)) {
+            return false;
+        }
+        ViewGroup parent = (ViewGroup) recentsView;
+        int taskIndex = parent.indexOfChild(taskView);
+        if (!knownChild && taskIndex < 0) {
+            return false;
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        if (taskIndex < 0 || taskIndex >= taskViewCount) {
+            return false;
+        }
+        int anchorIndex = resolveStackVisibleTaskDataAnchorIndex(recentsView, taskViewCount);
+        int radius = resolveStackVisibleTaskDataRadius(recentsView);
+        return Math.abs(taskIndex - anchorIndex) <= radius
+                && isStackTaskWithinVisibleDataBounds(recentsView, taskView);
+    }
+
     private static float readStackTaskDataAlpha(View taskView) {
         return Math.min(taskView.getAlpha(), LauncherRecentsTaskVisuals.readStableAlpha(taskView));
     }
@@ -1501,9 +1530,11 @@ final class LauncherRecentsTouchController {
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         float taskStart = (primaryScrollHorizontal ? taskView.getX() : taskView.getY())
                 - resolvePrimaryScroll(recentsView);
+        float taskSize = resolvePrimarySize(taskView, primaryScrollHorizontal);
+        float viewportStart = -taskSize;
         float viewportEnd = resolvePrimarySize(recentsView, primaryScrollHorizontal)
                 * (1f + STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO);
-        return taskStart < viewportEnd;
+        return taskStart + taskSize > viewportStart && taskStart < viewportEnd;
     }
 
     private static boolean shouldSuppressStackTaskDataUnload(View taskView) {
@@ -1514,7 +1545,7 @@ final class LauncherRecentsTouchController {
         if (!Boolean.TRUE.equals(STACK_LOAD_VISIBLE_TASK_DATA_ACTIVE.get())) {
             return false;
         }
-        return shouldExposeStackTaskForDismissVisibility(recentsView, taskView);
+        return isStackTaskDataVisible(recentsView, taskView, false);
     }
 
     private static boolean isTransitionAnimationActive(View recentsView) {
@@ -1687,7 +1718,7 @@ final class LauncherRecentsTouchController {
             int end = Math.min(taskViewCount - 1, anchorIndex + radius);
             for (int i = start; i <= end; i++) {
                 View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-                if (!shouldExposeStackTaskForDismissVisibility(recentsView, taskView, true)) {
+                if (!isStackTaskDataVisible(recentsView, taskView, true)) {
                     continue;
                 }
                 boolean needsUpdate = visibleIds == null;
@@ -1860,6 +1891,9 @@ final class LauncherRecentsTouchController {
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             if (taskView == null) {
+                continue;
+            }
+            if (isStackTaskDataVisible(recentsView, taskView, true)) {
                 continue;
             }
             boolean hadVisibleData = false;
