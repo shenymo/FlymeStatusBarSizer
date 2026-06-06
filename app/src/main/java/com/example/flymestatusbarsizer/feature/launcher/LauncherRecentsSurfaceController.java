@@ -27,8 +27,8 @@ final class LauncherRecentsSurfaceController {
                 Object manager = chain.getThisObject();
                 boolean shown = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
                 Object result = chain.proceed();
-                if (shown) {
-                    setTouchable(manager, true);
+                if (!shown) {
+                    releaseSurface(manager);
                 }
                 return result;
             });
@@ -39,11 +39,7 @@ final class LauncherRecentsSurfaceController {
         }
     }
 
-    private static void setTouchable(Object manager, boolean touchable) {
-        LauncherRecentsCompat.invokeCompat(
-                manager,
-                "setTouchable",
-                LauncherRecentsCompat.BOOLEAN_ARG,
-                touchable);
+    private static void releaseSurface(Object manager) {
+        LauncherRecentsCompat.invokeCompat(manager, "releaseSurface");
     }
 }
