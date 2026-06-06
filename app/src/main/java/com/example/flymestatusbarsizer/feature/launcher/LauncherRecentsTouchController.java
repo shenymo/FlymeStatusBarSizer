@@ -331,6 +331,15 @@ final class LauncherRecentsTouchController {
         LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
     }
 
+    private static void clearGestureReleaseTaskStatesForStackDismiss(View recentsView) {
+        if (recentsView == null
+                || !LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.isEmpty()) {
+            return;
+        }
+        LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
+    }
+
     private static void hookRecentsViewTaskVisibilityForDismiss(
             FlymeStatusBarSizer module,
             ClassLoader loader) {
@@ -751,6 +760,7 @@ final class LauncherRecentsTouchController {
         state.taskView.animate().cancel();
         LauncherRecentsState.trackRecentsView(state.recentsView);
         LauncherRecentsLayoutEngine.prepareRecentsView(state.recentsView);
+        clearGestureReleaseTaskStatesForStackDismiss(state.recentsView);
         settleStackDismissLayoutState(state.recentsView);
         clearRecentsDeferredSnap(state.recentsView);
         LauncherRecentsCompat.invokeCompat(
