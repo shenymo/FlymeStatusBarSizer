@@ -74,6 +74,8 @@ final class LauncherRecentsStateAnimationController {
     private static boolean shouldFreezePreReleaseAdjacentOffset(View recentsView, float value) {
         if (recentsView == null
                 || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || isQuickSwitchOffsetWrite()
+                || LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 || LauncherRecentsState.isOverviewStateStackReleaseRequested(recentsView)
                 || LauncherRecentsState.isOverviewStateStackAnimationActive(recentsView)
                 || LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
@@ -90,6 +92,18 @@ final class LauncherRecentsStateAnimationController {
                 "mAdjacentPageHorizontalOffset",
                 value);
         return current > 0.45f && value < 0.45f;
+    }
+
+    private static boolean isQuickSwitchOffsetWrite() {
+        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+        for (StackTraceElement element : stackTrace) {
+            if (element != null
+                    && element.getClassName() != null
+                    && element.getClassName().contains("QuickSwitchTouchController")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void hookNoButtonNavbarOverviewMotionPause(
