@@ -1271,7 +1271,7 @@ final class LauncherRecentsTransitionController {
         return value instanceof View ? (View) value : null;
     }
 
-    private static void setGestureRecentsStackReleaseProgress(View recentsView, float progress) {
+    static void setGestureRecentsStackReleaseProgress(View recentsView, float progress) {
         if (recentsView == null) {
             return;
         }
@@ -1282,7 +1282,7 @@ final class LauncherRecentsTransitionController {
                 LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f));
     }
 
-    private static void clearGestureRecentsStackReleaseProgress(View recentsView) {
+    static void clearGestureRecentsStackReleaseProgress(View recentsView) {
         if (recentsView == null) {
             return;
         }
@@ -1318,6 +1318,16 @@ final class LauncherRecentsTransitionController {
             return;
         }
         LauncherRecentsState.FORCED_RECENTS_TRANSLATION_XS.remove(recentsView);
+    }
+
+    static void forceRecentsTranslationZero(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        LauncherRecentsState.FORCED_RECENTS_TRANSLATION_XS.put(recentsView, 0f);
+        LauncherRecentsState.FORCED_RECENTS_TRANSLATION_YS.put(recentsView, 0f);
+        recentsView.setTranslationX(0f);
+        recentsView.setTranslationY(0f);
     }
 
     private static void applyForcedRecentsTranslation(View recentsView) {
