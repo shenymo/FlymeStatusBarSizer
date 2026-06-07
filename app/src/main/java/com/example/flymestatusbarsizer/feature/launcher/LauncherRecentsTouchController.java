@@ -168,14 +168,14 @@ final class LauncherRecentsTouchController {
                     if (shouldSkipBlankTapPagedRelease(recentsView, motionEvent)) {
                         logStackFlow("touch:event:blankTapRelease",
                                 recentsView, motionEvent, null);
-                        LauncherRecentsTransitionController.prepareBlankTapHomeExitAnimation(
+                        LauncherRecentsTransitionController.startBlankTapHomeExitAnimation(
                                 recentsView);
                         releasePagedEdgeEffects(recentsView, motionEvent);
                         LauncherRecentsCompat.invokeCompat(
                                 recentsView,
                                 "resetTouchState",
                                 LauncherRecentsCompat.NO_ARGS);
-                        return false;
+                        return true;
                     }
                     if (LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
                             && shouldSuppressPagedRelease(recentsView, motionEvent)) {

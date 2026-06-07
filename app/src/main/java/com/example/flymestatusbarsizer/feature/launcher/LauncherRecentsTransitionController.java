@@ -572,8 +572,20 @@ final class LauncherRecentsTransitionController {
     }
 
     static void startBlankTapHomeExitAnimation(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        if (isBlankTapHomeExitActive(recentsView)
+                || LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.containsKey(recentsView)) {
+            LauncherRecentsPerf.flow("leave:blankTap:startDirect:alreadyActive", recentsView);
+            return;
+        }
         LauncherRecentsPerf.flow("leave:blankTap:startDirect", recentsView);
         prepareBlankTapHomeExitAnimation(recentsView);
+        for (LauncherRecentsState.BlankTapHomeExitTaskState state
+                : LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.values()) {
+            state.centerVisibleOffset = state.startVisibleOffset;
+        }
         startPreparedBlankTapHomeExitAnimation(recentsView);
     }
 
@@ -582,6 +594,11 @@ final class LauncherRecentsTransitionController {
             return;
         }
         LauncherRecentsPerf.flow("leave:blankTap:prepare", recentsView);
+        if (isBlankTapHomeExitActive(recentsView)
+                && !LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.isEmpty()) {
+            LauncherRecentsPerf.flow("leave:blankTap:prepare:alreadyActive", recentsView);
+            return;
+        }
         ValueAnimator runningAnimator =
                 LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.get(recentsView);
         if (runningAnimator != null) {
@@ -652,15 +669,7 @@ final class LauncherRecentsTransitionController {
                 LauncherRecentsPerf.flow("leave:blankTap:end", recentsView);
                 setBlankTapHomeExitProgress(recentsView, 1f);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
-                LauncherRecentsPerf.flow("leave:blankTap:scheduleDelayedClear",
-                        recentsView, "delayMs=80");
-                recentsView.postDelayed(
-                        () -> {
-                            LauncherRecentsPerf.flow("leave:blankTap:runDelayedClear",
-                                    recentsView);
-                            clearBlankTapHomeExitProgress(recentsView, false);
-                        },
-                        80L);
+                finishBlankTapHomeExit(recentsView);
             }
         });
         LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.put(recentsView, animator);
