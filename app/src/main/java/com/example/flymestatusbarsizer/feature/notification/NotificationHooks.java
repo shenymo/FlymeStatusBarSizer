@@ -310,24 +310,6 @@ public final class NotificationHooks {
                 }
                 Object[] args = chain.getArgs().toArray();
                 args[4] = NOTIFICATION_SYSTEM_BLUR_ONLY_COLOR;
-                args[6] = 255;
-                return chain.proceed(args);
-            });
-
-            Method alphaMethod = clazz.getDeclaredMethod(
-                    "setBackgroundBlurDrawableAlpha",
-                    View.class,
-                    int.class,
-                    boolean.class,
-                    function0,
-                    java.util.function.Consumer.class);
-            alphaMethod.setAccessible(true);
-            module.intercept(alphaMethod, chain -> {
-                if (!shouldApplyNotificationSystemBlurOnly(chain.getArg(0))) {
-                    return chain.proceed();
-                }
-                Object[] args = chain.getArgs().toArray();
-                args[1] = 255;
                 return chain.proceed(args);
             });
         } catch (Throwable t) {
