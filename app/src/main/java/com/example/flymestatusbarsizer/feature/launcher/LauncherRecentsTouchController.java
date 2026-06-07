@@ -2364,12 +2364,44 @@ final class LauncherRecentsTouchController {
             return false;
         }
         int action = motionEvent.getActionMasked();
-        return (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)
-                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                && LauncherRecentsCompat.readBooleanField(
+        if ((action != MotionEvent.ACTION_UP && action != MotionEvent.ACTION_CANCEL)
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+            return false;
+        }
+        if (LauncherRecentsCompat.readBooleanField(
                 recentsView,
                 "mTouchDownToStartHome",
-                false);
+                false)) {
+            return true;
+        }
+        return isAppToRecentsReleaseInterruptible(recentsView)
+                && isBlankTapOnStack(recentsView, motionEvent);
+    }
+
+    private static boolean isAppToRecentsReleaseInterruptible(View recentsView) {
+        return recentsView != null
+                && !LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                && (LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
+                || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
+                || LauncherRecentsState.isPendingGestureRecentsStackReleaseHandoff(recentsView)
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
+                recentsView));
+    }
+
+    private static boolean isBlankTapOnStack(View recentsView, MotionEvent motionEvent) {
+        float downX = LauncherRecentsCompat.readFloatField(
+                recentsView,
+                "mDownMotionX",
+                motionEvent.getX());
+        float downY = LauncherRecentsCompat.readFloatField(
+                recentsView,
+                "mDownMotionY",
+                motionEvent.getY());
+        return findStackTaskUnderPoint(recentsView, downX, downY) == null
+                && findStackTaskUnderPoint(
+                recentsView,
+                motionEvent.getX(),
+                motionEvent.getY()) == null;
     }
 
     private static void suppressPagedRelease(View recentsView, MotionEvent motionEvent) {
