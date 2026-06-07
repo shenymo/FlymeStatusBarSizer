@@ -13,17 +13,9 @@ import java.util.WeakHashMap;
 final class LauncherRecentsState {
     private static final WeakHashMap<View, RecentsViewState> RECENTS_VIEW_STATES =
             new WeakHashMap<>();
-    static final WeakHashMap<View, ValueAnimator> ACTIVE_HOME_EXIT_ANIMATORS =
-            new WeakHashMap<>();
+
+    // App-to-recents entry animation.
     static final WeakHashMap<View, ValueAnimator> ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Float> BLANK_TAP_HOME_EXIT_PROGRESS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> ACTIVE_BLANK_TAP_HOME_EXITS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, BlankTapHomeExitTaskState> BLANK_TAP_HOME_EXIT_TASK_STATES =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, BlankTapHomeExitRecentsState> BLANK_TAP_HOME_EXIT_RECENTS_STATES =
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> GESTURE_STACK_RELEASE_PROGRESS =
             new WeakHashMap<>();
@@ -33,6 +25,20 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, GestureReleaseTaskState> GESTURE_STACK_RELEASE_TASK_STATES =
             new WeakHashMap<>();
+
+    // Home exit animation.
+    static final WeakHashMap<View, ValueAnimator> ACTIVE_HOME_EXIT_ANIMATORS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Float> BLANK_TAP_HOME_EXIT_PROGRESS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> ACTIVE_BLANK_TAP_HOME_EXITS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, BlankTapHomeExitTaskState> BLANK_TAP_HOME_EXIT_TASK_STATES =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, BlankTapHomeExitRecentsState> BLANK_TAP_HOME_EXIT_RECENTS_STATES =
+            new WeakHashMap<>();
+
+    // Stack layout cache.
     static final WeakHashMap<View, Integer> STACK_LAYOUT_RECOVERY_RADII =
             new WeakHashMap<>();
     static final WeakHashMap<View, StackLayoutApplyState> LAST_STACK_LAYOUT_APPLIES =
@@ -41,12 +47,16 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, ArrayList<Integer>> LAST_STACK_LAYOUT_ACTIVE_INDICES =
             new WeakHashMap<>();
+
+    // Visible task data and click guards.
     static final WeakHashMap<View, String> LAST_STACK_APP_FLOW_PACKAGES =
             new WeakHashMap<>();
     static final WeakHashMap<View, Integer> LAST_STACK_TASK_LIST_VISIBILITY_CHANGES =
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> BYPASS_TASK_CLICK_INTERCEPTION =
             new WeakHashMap<>();
+
+    // Task visual state.
     static final WeakHashMap<View, Float> ORIGINAL_NON_GRID_SCALES = new WeakHashMap<>();
     static final WeakHashMap<View, Float> ORIGINAL_BOX_TRANSLATION_YS = new WeakHashMap<>();
     static final WeakHashMap<View, Float> ORIGINAL_TASK_ELEVATIONS = new WeakHashMap<>();
@@ -92,6 +102,8 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES =
             new WeakHashMap<>();
+
+    // Task launch transition.
     static final ThreadLocal<TaskLaunchTransitionGeometryContext>
             ACTIVE_TASK_LAUNCH_TRANSITION_GEOMETRY = new ThreadLocal<>();
     static final ThreadLocal<View> ACTIVE_TASK_LAUNCH_SCROLL_COMPENSATION_BYPASS =

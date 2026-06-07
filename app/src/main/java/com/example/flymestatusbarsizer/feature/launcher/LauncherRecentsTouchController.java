@@ -107,7 +107,6 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsCompat.isRecentsViewObject(thisObject)
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
-                    logStackFlow("touch:intercept", recentsView, motionEvent, null);
                     if (isStackDismissPostRemoveAnimationActive(recentsView)) {
                         if (shouldConsumeStackDismissPostRemoveTouch(recentsView, motionEvent)) {
                             logStackFlow("touch:intercept:consumePostRemove",
@@ -123,10 +122,7 @@ final class LauncherRecentsTouchController {
                         releasePagedTouchForStackDismiss(recentsView);
                         return false;
                     }
-                    Object result = chain.proceed();
-                    logStackFlow("touch:intercept:stock",
-                            recentsView, motionEvent, "result=" + result);
-                    return result;
+                    return chain.proceed();
                 }
                 return chain.proceed();
             });
@@ -151,7 +147,6 @@ final class LauncherRecentsTouchController {
                         && thisObject instanceof View
                         && motionEvent != null) {
                     View recentsView = (View) thisObject;
-                    logStackFlow("touch:event", recentsView, motionEvent, null);
                     boolean entryTakeover =
                             takeOverAppToRecentsEntryOnHorizontalMove(recentsView, motionEvent);
                     clearGestureReleaseTaskStatesOnUserMove(recentsView, motionEvent);
@@ -195,8 +190,6 @@ final class LauncherRecentsTouchController {
                     if (entryTakeover) {
                         keepAppToRecentsEntryTakeoverDataReady(recentsView);
                     }
-                    logStackFlow("touch:event:stock",
-                            recentsView, motionEvent, "result=" + result);
                     return result;
                 }
                 return chain.proceed();
@@ -250,13 +243,11 @@ final class LauncherRecentsTouchController {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
-                    logStackFlow("freeScroll:settle", recentsView, null, null);
                     if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
                         logStackFlow("freeScroll:settle:applied", recentsView, null, null);
                         recentsView.invalidate();
                         return null;
                     }
-                    logStackFlow("freeScroll:settle:stock", recentsView, null, null);
                 }
                 return chain.proceed();
             });
@@ -279,13 +270,11 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsCompat.isRecentsViewObject(thisObject)
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
-                    logStackFlow("snapToDestination", recentsView, null, null);
                     if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
                         logStackFlow("snapToDestination:applied", recentsView, null, null);
                         recentsView.invalidate();
                         return null;
                     }
-                    logStackFlow("snapToDestination:stock", recentsView, null, null);
                 }
                 return chain.proceed();
             });
@@ -846,14 +835,11 @@ final class LauncherRecentsTouchController {
             StackDismissGestureState state =
                     new StackDismissGestureState(recentsView, taskView, motionEvent);
             STACK_DISMISS_GESTURES.put(recentsView, state);
-            logStackFlow("dismiss:down:track",
-                    recentsView, motionEvent, taskDetails(recentsView, taskView));
             return false;
         }
 
         StackDismissGestureState state = STACK_DISMISS_GESTURES.get(recentsView);
         if (state == null) {
-            logStackFlow("dismiss:noState", recentsView, motionEvent, null);
             return null;
         }
         if (!isStackDismissTaskCandidate(recentsView, state.taskView)) {
@@ -879,10 +865,6 @@ final class LauncherRecentsTouchController {
                     clearStackDismissGesture(recentsView, true);
                     return null;
                 } else {
-                    logStackFlow("dismiss:move:waitSlop",
-                            recentsView,
-                            motionEvent,
-                            "dx=" + Math.round(dx) + " dy=" + Math.round(dy));
                     return false;
                 }
             }
@@ -931,6 +913,130 @@ final class LauncherRecentsTouchController {
                 || ((ViewGroup) recentsView).indexOfChild(taskView) >= 0;
     }
 
+    private static View findStackTaskUnderRawPoint(View recentsView, float rawX, float rawY) {
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        View bestTaskView = null;
+        float bestZ = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (!isStackDismissTaskCandidate(recentsView, taskView)
+                    || !isRawPointInTransformedView(taskView, rawX, rawY)) {
+                continue;
+            }
+            float z = taskView.getTranslationZ();
+            if (bestTaskView == null || z >= bestZ) {
+                bestTaskView = taskView;
+                bestZ = z;
+            }
+        }
+        return bestTaskView;
+    }
+
+    private static boolean isRawPointInTransformedView(View view, float rawX, float rawY) {
+        if (view == null) {
+            return false;
+        }
+        int[] location = new int[2];
+        view.getLocationOnScreen(location);
+        float scaleX = Math.max(0.01f, Math.abs(view.getScaleX()));
+        float scaleY = Math.max(0.01f, Math.abs(view.getScaleY()));
+        float pivotX = view.getPivotX();
+        float pivotY = view.getPivotY();
+        float left = location[0] + pivotX - (pivotX * scaleX);
+        float top = location[1] + pivotY - (pivotY * scaleY);
+        float right = left + (view.getWidth() * scaleX);
+        float bottom = top + (view.getHeight() * scaleY);
+        return rawX >= left && rawX <= right && rawY >= top && rawY <= bottom;
+    }
+
+    private static boolean shouldKeepStackDismissGestureAwayFromPagedView(
+            View recentsView,
+            MotionEvent motionEvent) {
+        if (recentsView == null
+                || motionEvent == null
+                || motionEvent.getActionMasked() != MotionEvent.ACTION_MOVE
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || findStackTaskUnderPoint(
+                recentsView,
+                motionEvent.getX(),
+                motionEvent.getY()) == null) {
+            return false;
+        }
+        float downX = LauncherRecentsCompat.readFloatField(
+                recentsView,
+                "mDownMotionX",
+                motionEvent.getX());
+        float downY = LauncherRecentsCompat.readFloatField(
+                recentsView,
+                "mDownMotionY",
+                motionEvent.getY());
+        float dx = motionEvent.getX() - downX;
+        float dy = motionEvent.getY() - downY;
+        int touchSlop = LauncherRecentsCompat.readIntField(
+                recentsView,
+                "mTouchSlop",
+                ViewConfiguration.get(recentsView.getContext()).getScaledTouchSlop());
+        float primaryDelta = resolveGesturePrimaryDelta(recentsView, dx, dy);
+        float secondaryDelta = resolveGestureSecondaryDelta(recentsView, dx, dy);
+        float absPrimary = Math.abs(primaryDelta);
+        float absSecondary = Math.abs(secondaryDelta);
+        return resolveStackDismissDirectionSign(recentsView) * secondaryDelta > 0f
+                && absSecondary > touchSlop
+                && absSecondary >= absPrimary * 0.8f;
+    }
+
+    private static void releasePagedTouchForStackDismiss(View recentsView) {
+        clearRecentsDeferredSnap(recentsView);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "resetTouchState",
+                LauncherRecentsCompat.NO_ARGS);
+        ViewParent parent = recentsView.getParent();
+        if (parent != null) {
+            parent.requestDisallowInterceptTouchEvent(false);
+        }
+    }
+
+    private static View findStackTaskUnderPoint(View recentsView, float x, float y) {
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        View bestTaskView = null;
+        float bestZ = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null
+                    || LauncherRecentsCompat.isDesktopTask(taskView)
+                    || taskView.getVisibility() != View.VISIBLE
+                    || taskView.getAlpha() <= 0.01f
+                    || taskView.getWidth() <= 0
+                    || taskView.getHeight() <= 0
+                    || !isPointInTransformedView(recentsView, taskView, x, y)) {
+                continue;
+            }
+            float z = taskView.getTranslationZ();
+            if (bestTaskView == null || z >= bestZ) {
+                bestTaskView = taskView;
+                bestZ = z;
+            }
+        }
+        return bestTaskView;
+    }
+
+    private static boolean isPointInTransformedView(
+            View parent,
+            View view,
+            float x,
+            float y) {
+        float scaleX = Math.max(0.01f, Math.abs(view.getScaleX()));
+        float scaleY = Math.max(0.01f, Math.abs(view.getScaleY()));
+        float pivotX = view.getPivotX();
+        float pivotY = view.getPivotY();
+        float left = view.getX() - parent.getScrollX() + pivotX - (pivotX * scaleX);
+        float top = view.getY() - parent.getScrollY() + pivotY - (pivotY * scaleY);
+        float right = left + (view.getWidth() * scaleX);
+        float bottom = top + (view.getHeight() * scaleY);
+        return x >= left && x <= right && y >= top && y <= bottom;
+    }
+
     private static boolean isStackDismissDragStart(
             StackDismissGestureState state,
             float dx,
@@ -953,6 +1059,32 @@ final class LauncherRecentsTouchController {
         float absPrimary = Math.abs(resolveGesturePrimaryDelta(state.recentsView, dx, dy));
         float absSecondary = Math.abs(resolveGestureSecondaryDelta(state.recentsView, dx, dy));
         return absPrimary > touchSlop && absPrimary > absSecondary;
+    }
+
+    private static boolean isStackDismissGoingUp(View recentsView, float secondaryDelta) {
+        Object orientationHandler =
+                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
+        Object value = LauncherRecentsCompat.invokeCompat(
+                orientationHandler,
+                "isGoingUp",
+                new Class<?>[]{float.class, boolean.class},
+                secondaryDelta,
+                recentsView.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL);
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        return secondaryDelta < 0f;
+    }
+
+    private static float resolveStackDismissDirectionSign(View recentsView) {
+        float nativeSign = isStackDismissGoingUp(recentsView, 1f) ? 1f : -1f;
+        return isPrimaryScrollHorizontal(recentsView) ? nativeSign : -nativeSign;
+    }
+
+    private static boolean isStackDismissGestureTowardDismiss(
+            StackDismissGestureState state,
+            float secondaryDelta) {
+        return state.dismissDirectionSign * secondaryDelta > 0f;
     }
 
     private static void beginStackDismissDrag(
@@ -1000,12 +1132,6 @@ final class LauncherRecentsTouchController {
                         >= state.dismissDirectionSign * state.startDismissTranslation
                         ? translation
                         : state.startDismissTranslation;
-        logStackFlow("dismiss:updateDrag",
-                state.recentsView,
-                motionEvent,
-                "translation=" + Math.round(state.currentDismissTranslation)
-                        + " dx=" + Math.round(dx)
-                        + " dy=" + Math.round(dy));
         applyStackDismissProgress(state, state.currentDismissTranslation);
     }
 
@@ -1457,16 +1583,13 @@ final class LauncherRecentsTouchController {
         }
         logStackFlow("dismiss:native:scheduleFinish", recentsView, null, null);
         recentsView.postOnAnimation(() -> {
-            logStackFlow("dismiss:native:runFinishFrame1", recentsView, null, null);
             if (isSilentNativeDismissActive(recentsView)) {
                 clearNativeDismissTransforms(recentsView);
                 clearStackDismissLayoutOffsets();
                 applyStackDismissFinalLayout(recentsView);
                 recentsView.invalidate();
             }
-            logStackFlow("dismiss:native:scheduleFinishFrame2", recentsView, null, null);
             recentsView.postOnAnimation(() -> {
-                logStackFlow("dismiss:native:runFinishFrame2", recentsView, null, null);
                 finishSilentNativeDismiss(recentsView);
             });
         });
@@ -1684,40 +1807,87 @@ final class LauncherRecentsTouchController {
         }
     }
 
-    private static View findStackTaskUnderRawPoint(View recentsView, float rawX, float rawY) {
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        View bestTaskView = null;
-        float bestZ = Float.NEGATIVE_INFINITY;
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (!isStackDismissTaskCandidate(recentsView, taskView)
-                    || !isRawPointInTransformedView(taskView, rawX, rawY)) {
-                continue;
-            }
-            float z = taskView.getTranslationZ();
-            if (bestTaskView == null || z >= bestZ) {
-                bestTaskView = taskView;
-                bestZ = z;
+    private static final class StackDismissGestureState {
+        final View recentsView;
+        final View taskView;
+        final ArrayList<StackDismissSiblingMove> siblingMoves = new ArrayList<>();
+        final float downRawX;
+        final float downRawY;
+        final boolean secondaryDismissHorizontal;
+        final float dismissDirectionSign;
+        final float startDismissTranslation;
+        final float originalStableAlpha;
+        final float originalTranslationZ;
+        VelocityTracker velocityTracker;
+        ValueAnimator animator;
+        boolean dragging;
+        float currentDismissTranslation;
+
+        StackDismissGestureState(View recentsView, View taskView, MotionEvent motionEvent) {
+            this.recentsView = recentsView;
+            this.taskView = taskView;
+            this.downRawX = motionEvent.getRawX();
+            this.downRawY = motionEvent.getRawY();
+            this.secondaryDismissHorizontal = !isPrimaryScrollHorizontal(recentsView);
+            this.dismissDirectionSign = resolveStackDismissDirectionSign(recentsView);
+            this.startDismissTranslation = LauncherRecentsCompat.readFloatField(
+                    taskView,
+                    this.secondaryDismissHorizontal ? "dismissTranslationX" : "dismissTranslationY",
+                    0f);
+            this.currentDismissTranslation = this.startDismissTranslation;
+            this.originalStableAlpha = LauncherRecentsTaskVisuals.readStableAlpha(taskView);
+            this.originalTranslationZ = taskView.getTranslationZ();
+            this.velocityTracker = VelocityTracker.obtain();
+            this.velocityTracker.addMovement(motionEvent);
+        }
+
+        void addMovement(MotionEvent motionEvent) {
+            if (velocityTracker != null && motionEvent != null) {
+                velocityTracker.addMovement(motionEvent);
             }
         }
-        return bestTaskView;
+
+        float computeSecondaryVelocity() {
+            if (velocityTracker == null) {
+                return 0f;
+            }
+            velocityTracker.computeCurrentVelocity(1000);
+            return secondaryDismissHorizontal
+                    ? velocityTracker.getXVelocity()
+                    : velocityTracker.getYVelocity();
+        }
+
+        void recycleVelocityTracker() {
+            if (velocityTracker != null) {
+                velocityTracker.recycle();
+                velocityTracker = null;
+            }
+        }
+
+        void cancelAnimator() {
+            if (animator != null) {
+                animator.cancel();
+                animator = null;
+            }
+        }
     }
 
-    private static boolean isRawPointInTransformedView(View view, float rawX, float rawY) {
-        if (view == null) {
-            return false;
+    private static final class StackDismissSiblingMove {
+        final View taskView;
+        final float targetOffsetPx;
+
+        StackDismissSiblingMove(View taskView, float targetOffsetPx) {
+            this.taskView = taskView;
+            this.targetOffsetPx = targetOffsetPx;
         }
-        int[] location = new int[2];
-        view.getLocationOnScreen(location);
-        float scaleX = Math.max(0.01f, Math.abs(view.getScaleX()));
-        float scaleY = Math.max(0.01f, Math.abs(view.getScaleY()));
-        float pivotX = view.getPivotX();
-        float pivotY = view.getPivotY();
-        float left = location[0] + pivotX - (pivotX * scaleX);
-        float top = location[1] + pivotY - (pivotY * scaleY);
-        float right = left + (view.getWidth() * scaleX);
-        float bottom = top + (view.getHeight() * scaleY);
-        return rawX >= left && rawX <= right && rawY >= top && rawY <= bottom;
+    }
+
+    private static final class SilentNativeDismissAnchor {
+        final int targetPage;
+
+        SilentNativeDismissAnchor(int targetPage) {
+            this.targetPage = targetPage;
+        }
     }
 
     private static boolean shouldExposeStackTaskForDismissVisibility(
@@ -2378,94 +2548,6 @@ final class LauncherRecentsTouchController {
         taskIds.add(taskId);
     }
 
-    private static boolean shouldKeepStackDismissGestureAwayFromPagedView(
-            View recentsView,
-            MotionEvent motionEvent) {
-        if (recentsView == null
-                || motionEvent == null
-                || motionEvent.getActionMasked() != MotionEvent.ACTION_MOVE
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                || findStackTaskUnderPoint(
-                recentsView,
-                motionEvent.getX(),
-                motionEvent.getY()) == null) {
-            return false;
-        }
-        float downX = LauncherRecentsCompat.readFloatField(
-                recentsView,
-                "mDownMotionX",
-                motionEvent.getX());
-        float downY = LauncherRecentsCompat.readFloatField(
-                recentsView,
-                "mDownMotionY",
-                motionEvent.getY());
-        float dx = motionEvent.getX() - downX;
-        float dy = motionEvent.getY() - downY;
-        int touchSlop = LauncherRecentsCompat.readIntField(
-                recentsView,
-                "mTouchSlop",
-                ViewConfiguration.get(recentsView.getContext()).getScaledTouchSlop());
-        float primaryDelta = resolveGesturePrimaryDelta(recentsView, dx, dy);
-        float secondaryDelta = resolveGestureSecondaryDelta(recentsView, dx, dy);
-        float absPrimary = Math.abs(primaryDelta);
-        float absSecondary = Math.abs(secondaryDelta);
-        return resolveStackDismissDirectionSign(recentsView) * secondaryDelta > 0f
-                && absSecondary > touchSlop
-                && absSecondary >= absPrimary * 0.8f;
-    }
-
-    private static void releasePagedTouchForStackDismiss(View recentsView) {
-        clearRecentsDeferredSnap(recentsView);
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "resetTouchState",
-                LauncherRecentsCompat.NO_ARGS);
-        ViewParent parent = recentsView.getParent();
-        if (parent != null) {
-            parent.requestDisallowInterceptTouchEvent(false);
-        }
-    }
-
-    private static View findStackTaskUnderPoint(View recentsView, float x, float y) {
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        View bestTaskView = null;
-        float bestZ = Float.NEGATIVE_INFINITY;
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView == null
-                    || LauncherRecentsCompat.isDesktopTask(taskView)
-                    || taskView.getVisibility() != View.VISIBLE
-                    || taskView.getAlpha() <= 0.01f
-                    || taskView.getWidth() <= 0
-                    || taskView.getHeight() <= 0
-                    || !isPointInTransformedView(recentsView, taskView, x, y)) {
-                continue;
-            }
-            float z = taskView.getTranslationZ();
-            if (bestTaskView == null || z >= bestZ) {
-                bestTaskView = taskView;
-                bestZ = z;
-            }
-        }
-        return bestTaskView;
-    }
-
-    private static boolean isPointInTransformedView(
-            View parent,
-            View view,
-            float x,
-            float y) {
-        float scaleX = Math.max(0.01f, Math.abs(view.getScaleX()));
-        float scaleY = Math.max(0.01f, Math.abs(view.getScaleY()));
-        float pivotX = view.getPivotX();
-        float pivotY = view.getPivotY();
-        float left = view.getX() - parent.getScrollX() + pivotX - (pivotX * scaleX);
-        float top = view.getY() - parent.getScrollY() + pivotY - (pivotY * scaleY);
-        float right = left + (view.getWidth() * scaleX);
-        float bottom = top + (view.getHeight() * scaleY);
-        return x >= left && x <= right && y >= top && y <= bottom;
-    }
-
     private static boolean shouldSuppressPagedRelease(
             View recentsView,
             MotionEvent motionEvent) {
@@ -2544,7 +2626,6 @@ final class LauncherRecentsTouchController {
         releasePagedEdgeEffects(recentsView, motionEvent);
         LauncherRecentsCompat.invokeCompat(recentsView, "resetTouchState", LauncherRecentsCompat.NO_ARGS);
         if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
-            logStackFlow("pagedRelease:suppress:layoutApplied", recentsView, motionEvent, null);
             recentsView.invalidate();
         }
     }
@@ -2692,32 +2773,6 @@ final class LauncherRecentsTouchController {
 
     private static float resolveGestureSecondaryDelta(View recentsView, float dx, float dy) {
         return isPrimaryScrollHorizontal(recentsView) ? dy : dx;
-    }
-
-    private static boolean isStackDismissGoingUp(View recentsView, float secondaryDelta) {
-        Object orientationHandler =
-                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
-        Object value = LauncherRecentsCompat.invokeCompat(
-                orientationHandler,
-                "isGoingUp",
-                new Class<?>[]{float.class, boolean.class},
-                secondaryDelta,
-                recentsView.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL);
-        if (value instanceof Boolean) {
-            return (Boolean) value;
-        }
-        return secondaryDelta < 0f;
-    }
-
-    private static float resolveStackDismissDirectionSign(View recentsView) {
-        float nativeSign = isStackDismissGoingUp(recentsView, 1f) ? 1f : -1f;
-        return isPrimaryScrollHorizontal(recentsView) ? nativeSign : -nativeSign;
-    }
-
-    private static boolean isStackDismissGestureTowardDismiss(
-            StackDismissGestureState state,
-            float secondaryDelta) {
-        return state.dismissDirectionSign * secondaryDelta > 0f;
     }
 
     private static void startPagedSpringBack(
@@ -2899,89 +2954,6 @@ final class LauncherRecentsTouchController {
                     motionEvent);
         }
         LauncherRecentsCompat.invokeCompat(edgeEffect, "onRelease", LauncherRecentsCompat.NO_ARGS);
-    }
-
-    private static final class StackDismissGestureState {
-        final View recentsView;
-        final View taskView;
-        final ArrayList<StackDismissSiblingMove> siblingMoves = new ArrayList<>();
-        final float downRawX;
-        final float downRawY;
-        final boolean secondaryDismissHorizontal;
-        final float dismissDirectionSign;
-        final float startDismissTranslation;
-        final float originalStableAlpha;
-        final float originalTranslationZ;
-        VelocityTracker velocityTracker;
-        ValueAnimator animator;
-        boolean dragging;
-        float currentDismissTranslation;
-
-        StackDismissGestureState(View recentsView, View taskView, MotionEvent motionEvent) {
-            this.recentsView = recentsView;
-            this.taskView = taskView;
-            this.downRawX = motionEvent.getRawX();
-            this.downRawY = motionEvent.getRawY();
-            this.secondaryDismissHorizontal = !isPrimaryScrollHorizontal(recentsView);
-            this.dismissDirectionSign = resolveStackDismissDirectionSign(recentsView);
-            this.startDismissTranslation = LauncherRecentsCompat.readFloatField(
-                    taskView,
-                    this.secondaryDismissHorizontal ? "dismissTranslationX" : "dismissTranslationY",
-                    0f);
-            this.currentDismissTranslation = this.startDismissTranslation;
-            this.originalStableAlpha = LauncherRecentsTaskVisuals.readStableAlpha(taskView);
-            this.originalTranslationZ = taskView.getTranslationZ();
-            this.velocityTracker = VelocityTracker.obtain();
-            this.velocityTracker.addMovement(motionEvent);
-        }
-
-        void addMovement(MotionEvent motionEvent) {
-            if (velocityTracker != null && motionEvent != null) {
-                velocityTracker.addMovement(motionEvent);
-            }
-        }
-
-        float computeSecondaryVelocity() {
-            if (velocityTracker == null) {
-                return 0f;
-            }
-            velocityTracker.computeCurrentVelocity(1000);
-            return secondaryDismissHorizontal
-                    ? velocityTracker.getXVelocity()
-                    : velocityTracker.getYVelocity();
-        }
-
-        void recycleVelocityTracker() {
-            if (velocityTracker != null) {
-                velocityTracker.recycle();
-                velocityTracker = null;
-            }
-        }
-
-        void cancelAnimator() {
-            if (animator != null) {
-                animator.cancel();
-                animator = null;
-            }
-        }
-    }
-
-    private static final class StackDismissSiblingMove {
-        final View taskView;
-        final float targetOffsetPx;
-
-        StackDismissSiblingMove(View taskView, float targetOffsetPx) {
-            this.taskView = taskView;
-            this.targetOffsetPx = targetOffsetPx;
-        }
-    }
-
-    private static final class SilentNativeDismissAnchor {
-        final int targetPage;
-
-        SilentNativeDismissAnchor(int targetPage) {
-            this.targetPage = targetPage;
-        }
     }
 
     private static void hookTaskViewAppFlowVisibilityForStack(
