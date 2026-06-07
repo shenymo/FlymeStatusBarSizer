@@ -10,7 +10,6 @@ import com.example.flymestatusbarsizer.feature.onemind.OneMindPerfHooks;
 
 import android.content.ComponentCallbacks;
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
@@ -214,7 +213,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             hookFlymeLauncher(loader);
         }
         if (MEIZU_PPS.equals(packageName)) {
-            logOneMindStatus("package loaded, firstPackage=" + param.isFirstPackage());
+            logOneMindConfigSnapshot("package loaded, firstPackage=" + param.isFirstPackage()
+                    + ", pid=" + android.os.Process.myPid()
+                    + ", loader=" + loader.getClass().getName());
             OneMindPerfHooks.install(this, loader);
         }
         ImeHooks.install(this, loader, packageName);
@@ -396,32 +397,26 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    public static void recordOneMindHooksInstalled() {
-        SharedPreferences prefs = getRemotePrefsForRuntimeStatus();
-        if (prefs == null) {
-            logOneMindStatus("hook loaded, but remote prefs unavailable");
+    public static void logOneMindConfigSnapshot(String prefix) {
+        ModuleConfig config = ModuleConfig.load(null);
+        if (config == null || !config.oneMindLogcatEnabled) {
             return;
         }
+        android.util.Log.i(ONEMIND_LOG_TAG, (prefix == null ? "" : prefix)
+                + ", moduleEnabled=" + config.enabled
+                + ", disablePerf=" + config.oneMindPerfDisableEnabled
+                + ", logcat=true");
+    }
+
+    public static void recordOneMindHooksInstalled() {
         synchronized (ONEMIND_HOOK_STATUS_LOCK) {
             ONEMIND_HOOK_INTERCEPT_COUNT = 0;
             ONEMIND_HOOK_LAST_WRITE_UPTIME_MS = 0L;
         }
-        prefs.edit()
-                .putLong(SettingsStore.KEY_ONEMIND_HOOK_INSTALLED_UPTIME_MS,
-                        SystemClock.elapsedRealtime())
-                .putInt(SettingsStore.KEY_ONEMIND_HOOK_INTERCEPT_COUNT, 0)
-                .putLong(SettingsStore.KEY_ONEMIND_HOOK_LAST_INTERCEPT_UPTIME_MS, 0L)
-                .putString(SettingsStore.KEY_ONEMIND_HOOK_LAST_INTERCEPT_POINT, "")
-                .apply();
-        logOneMindStatus("hook loaded, status reported");
+        logOneMindStatus("hook loaded, status kept in PPS process/logcat");
     }
 
     public static void recordOneMindPerfIntercept(String hookPoint) {
-        SharedPreferences prefs = getRemotePrefsForRuntimeStatus();
-        if (prefs == null) {
-            logOneMindStatus("intercepted " + hookPoint + ", but remote prefs unavailable");
-            return;
-        }
         long now = SystemClock.elapsedRealtime();
         synchronized (ONEMIND_HOOK_STATUS_LOCK) {
             ONEMIND_HOOK_INTERCEPT_COUNT += 1;
@@ -430,27 +425,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                 return;
             }
             ONEMIND_HOOK_LAST_WRITE_UPTIME_MS = now;
-            prefs.edit()
-                    .putInt(SettingsStore.KEY_ONEMIND_HOOK_INTERCEPT_COUNT,
-                            ONEMIND_HOOK_INTERCEPT_COUNT)
-                    .putLong(SettingsStore.KEY_ONEMIND_HOOK_LAST_INTERCEPT_UPTIME_MS, now)
-                    .putString(SettingsStore.KEY_ONEMIND_HOOK_LAST_INTERCEPT_POINT,
-                            hookPoint == null ? "" : hookPoint)
-                    .apply();
             logOneMindStatus("intercepted " + hookPoint
                     + ", count=" + ONEMIND_HOOK_INTERCEPT_COUNT);
-        }
-    }
-
-    private static SharedPreferences getRemotePrefsForRuntimeStatus() {
-        FlymeStatusBarSizer module = MODULE;
-        if (module == null) {
-            return null;
-        }
-        try {
-            return module.getRemotePreferences(SettingsStore.PREFS);
-        } catch (Throwable ignored) {
-            return null;
         }
     }
 

@@ -325,7 +325,7 @@ final class SettingsCardFactory {
                 SettingsStore.DEFAULT_ONEMIND_PERF_DISABLE_ENABLED);
         activity.addDivider(content);
         activity.addSwitchRow(content, "OneMind 日志输出",
-                "开启后把 PPS Hook 加载、状态上报和拦截记录写入 logcat。",
+                "开启后把 PPS Hook 加载、调用入参和覆盖返回写入 logcat。",
                 SettingsStore.KEY_ONEMIND_LOGCAT_ENABLED,
                 SettingsStore.DEFAULT_ONEMIND_LOGCAT_ENABLED);
         activity.addDivider(content);
@@ -338,10 +338,6 @@ final class SettingsCardFactory {
         activity.addActionButtonRow(content, "Hook 点检测",
                 "检查当前系统 com.meizu.pps 里目标类和方法是否仍存在。",
                 "检测", () -> activity.detectOneMindHookPoints(status));
-        activity.addDivider(content);
-        activity.addActionButtonRow(content, "运行状态",
-                "查看 PPS 进程是否加载 Hook，以及是否已经拦截到性能锁调用。",
-                "刷新", () -> activity.refreshOneMindRuntimeStatus(status));
         activity.addDivider(content);
         activity.addActionButtonRow(content, "重启 OneMind/PPS",
                 "开关变更后重启 PPS 让进程重新加载模块。",

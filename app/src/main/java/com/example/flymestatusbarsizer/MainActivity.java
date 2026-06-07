@@ -14,7 +14,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -1608,45 +1607,6 @@ public class MainActivity extends Activity {
                 showToast(result);
             });
         }).start();
-    }
-
-    void refreshOneMindRuntimeStatus(TextView statusView) {
-        String status = buildOneMindRuntimeStatus();
-        if (statusView != null) {
-            statusView.setText(status);
-        }
-        logOneMindStatusToLogcat(status);
-        showToast(status);
-    }
-
-    private void logOneMindStatusToLogcat(String status) {
-        if (SettingsStore.readBoolean(SettingsStore.prefs(this),
-                SettingsStore.KEY_ONEMIND_LOGCAT_ENABLED,
-                SettingsStore.DEFAULT_ONEMIND_LOGCAT_ENABLED)) {
-            android.util.Log.i(FlymeStatusBarSizer.ONEMIND_LOG_TAG,
-                    "runtime status: " + (status == null ? "" : status));
-        }
-    }
-
-    private String buildOneMindRuntimeStatus() {
-        SharedPreferences remote = RemoteSettingsSync.remotePrefs();
-        if (remote == null) {
-            return "运行状态未知：Xposed 服务未连接";
-        }
-        long installedUptime = remote.getLong(
-                SettingsStore.KEY_ONEMIND_HOOK_INSTALLED_UPTIME_MS, 0L);
-        if (installedUptime <= 0L) {
-            return "PPS 进程未上报 Hook 加载；重启 PPS 后再刷新";
-        }
-        int count = remote.getInt(SettingsStore.KEY_ONEMIND_HOOK_INTERCEPT_COUNT, 0);
-        if (count <= 0) {
-            return "PPS Hook 已加载，尚未拦截到性能锁";
-        }
-        long lastUptime = remote.getLong(
-                SettingsStore.KEY_ONEMIND_HOOK_LAST_INTERCEPT_UPTIME_MS, 0L);
-        String point = remote.getString(SettingsStore.KEY_ONEMIND_HOOK_LAST_INTERCEPT_POINT, "");
-        long secondsAgo = Math.max(0L, (SystemClock.elapsedRealtime() - lastUptime) / 1000L);
-        return "已拦截 " + count + " 次，最近 " + secondsAgo + " 秒前：" + point;
     }
 
     private void restartPackageProcess(String packageName, String label) {

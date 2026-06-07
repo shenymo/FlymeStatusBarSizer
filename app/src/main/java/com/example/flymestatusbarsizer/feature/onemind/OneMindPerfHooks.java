@@ -3,6 +3,7 @@ package com.example.flymestatusbarsizer.feature.onemind;
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
 
 public final class OneMindPerfHooks {
     private OneMindPerfHooks() {
@@ -92,12 +93,40 @@ public final class OneMindPerfHooks {
         method.setAccessible(true);
         String hookPoint = method.getDeclaringClass().getSimpleName() + "." + method.getName();
         module.intercept(method, chain -> {
-            if (!FlymeStatusBarSizer.isOneMindPerfDisableEnabled()) {
-                return chain.proceed();
+            Object[] args = chain.getArgs().toArray();
+            boolean disableEnabled = FlymeStatusBarSizer.isOneMindPerfDisableEnabled();
+            FlymeStatusBarSizer.logOneMindStatus("before " + hookPoint
+                    + ", disableEnabled=" + disableEnabled
+                    + ", args=" + argsToString(args));
+            if (!disableEnabled) {
+                Object originalResult = chain.proceed();
+                FlymeStatusBarSizer.logOneMindStatus("after " + hookPoint
+                        + ", originalResult=" + valueToString(originalResult));
+                return originalResult;
             }
             FlymeStatusBarSizer.recordOneMindPerfIntercept(hookPoint);
+            FlymeStatusBarSizer.logOneMindStatus("after " + hookPoint
+                    + ", originalSkipped=true, returnOverride=" + result);
             return result;
         });
+        FlymeStatusBarSizer.logOneMindStatus("hook installed " + hookPoint
+                + ", params=" + method.getParameterTypes().length
+                + ", result=" + result);
         return 1;
+    }
+
+    private static String argsToString(Object[] args) {
+        try {
+            return Arrays.deepToString(args == null ? new Object[0] : args);
+        } catch (Throwable t) {
+            return "[args-format-error]";
+        }
+    }
+
+    private static String valueToString(Object value) {
+        if (value == null) {
+            return "null";
+        }
+        return String.valueOf(value);
     }
 }
