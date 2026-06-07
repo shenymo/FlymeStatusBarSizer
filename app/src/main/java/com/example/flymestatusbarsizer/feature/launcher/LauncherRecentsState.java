@@ -107,6 +107,7 @@ final class LauncherRecentsState {
         boolean overviewStateStackAnimationActive;
         boolean overviewPeekStockAnimationActive;
         boolean overviewStateStackBaselineCaptured;
+        boolean overviewStateStackSettled;
         boolean taskLaunchRequestStarted;
         boolean swipeUpGestureActive;
         Float overviewStateStackStartAdjacentOffset;
@@ -476,6 +477,7 @@ final class LauncherRecentsState {
             return;
         }
         state.overviewStateStackAnimationActive = active;
+        state.overviewStateStackSettled = false;
         if (!active) {
             state.overviewStateStackStartAdjacentOffset = null;
             state.overviewStateStackBaselineCaptured = false;
@@ -527,6 +529,20 @@ final class LauncherRecentsState {
     static boolean isOverviewStateStackBaselineCaptured(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
         return state != null && state.overviewStateStackBaselineCaptured;
+    }
+
+    static void setOverviewStateStackSettled(View recentsView, boolean settled) {
+        RecentsViewState state = settled
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.overviewStateStackSettled = settled;
+        }
+    }
+
+    static boolean isOverviewStateStackSettled(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.overviewStateStackSettled;
     }
 
     static LaunchTransitionGeometryState getActiveTaskLaunchTransitionGeometry(View recentsView) {

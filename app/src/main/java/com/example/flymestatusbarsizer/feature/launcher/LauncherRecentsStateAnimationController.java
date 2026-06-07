@@ -395,6 +395,7 @@ final class LauncherRecentsStateAnimationController {
     private static void clearOverviewStateStackAnimation(View recentsView) {
         markOverviewPeekStockAnimation(recentsView, false);
         markOverviewStateStackAnimation(recentsView, false);
+        LauncherRecentsState.setOverviewStateStackSettled(recentsView, true);
         LauncherRecentsLayoutEngine.startStackLayoutRecovery(recentsView);
         LauncherRecentsLayoutEngine.applyStackLayout(
                 recentsView,
@@ -407,5 +408,6 @@ final class LauncherRecentsStateAnimationController {
     static void clearOverviewEntryState(View recentsView) {
         markOverviewPeekStockAnimation(recentsView, false);
         markOverviewStateStackAnimation(recentsView, false);
+        LauncherRecentsState.setOverviewStateStackSettled(recentsView, false);
     }
 }

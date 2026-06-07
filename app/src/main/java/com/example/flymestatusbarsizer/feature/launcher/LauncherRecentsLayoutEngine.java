@@ -1177,6 +1177,9 @@ final class LauncherRecentsLayoutEngine {
         key = mixStackLayoutApplyKey(
                 key,
                 LauncherRecentsState.isGestureStackReleasedStable(recentsView) ? 1 : 0);
+        key = mixStackLayoutApplyKey(
+                key,
+                LauncherRecentsState.isOverviewStateStackSettled(recentsView) ? 1 : 0);
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
                 FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
         key = mixStackLayoutApplyKey(
@@ -2034,6 +2037,7 @@ final class LauncherRecentsLayoutEngine {
                 && (LauncherRecentsTransitionController
                 .shouldSuppressGestureReleaseStockTaskVisuals(recentsView)
                 || LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsState.isOverviewStateStackSettled(recentsView)
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                 recentsView)
                 || isStackLayoutRecoveryActive(recentsView));
@@ -2179,7 +2183,8 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static float resolveStackEntryProgress(View recentsView) {
-        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsState.isOverviewStateStackSettled(recentsView)) {
             return 1f;
         }
         // app→recents 入场流程的任何阶段（defer 中 / 手势已释放但 release 动画未稳定）
@@ -2192,7 +2197,8 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static float resolveStackVerticalProgress(View recentsView) {
-        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsState.isOverviewStateStackSettled(recentsView)) {
             return 1f;
         }
         if (isAppToRecentsEntryInProgress(recentsView)) {
