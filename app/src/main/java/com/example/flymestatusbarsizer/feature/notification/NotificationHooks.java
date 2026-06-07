@@ -67,6 +67,8 @@ public final class NotificationHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<TextView, ColorStateList> NOTIFICATION_TEXT_COLOR_STATES =
             new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> NOTIFICATION_TEXT_FOLLOW_ROOTS =
+            new WeakHashMap<>();
     private static final HashMap<String, Boolean> NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE =
             new HashMap<>();
     private static final LinkedHashMap<NotificationAppIconViewSignature, Bitmap>
@@ -81,6 +83,7 @@ public final class NotificationHooks {
                     return size() > MAX_RENDERED_NOTIFICATION_APP_ICON_CACHE_SIZE;
                 }
             };
+    private static boolean notificationTextFollowRefreshScheduled;
 
     private NotificationHooks() {
     }
@@ -193,6 +196,10 @@ public final class NotificationHooks {
             }
             applyNotificationStatusBarIconDrawable(view);
         }
+    }
+
+    public static void refreshNotificationTextFollowStatusBarForTintChange(Object anchor) {
+        scheduleNotificationTextFollowStatusBarRefresh(anchor);
     }
 
     public static void clearRenderedNotificationAppIconCache() {
@@ -448,6 +455,7 @@ public final class NotificationHooks {
         if (root == null) {
             return;
         }
+        rememberNotificationTextFollowRoot(root, enabled);
         Integer textColor = enabled
                 ? FlymeStatusBarSizer.resolveStatusBarIconTintColorCompat(root)
                 : null;
@@ -456,6 +464,67 @@ public final class NotificationHooks {
             return;
         }
         updateNotificationTextColors(root, true, textColor);
+    }
+
+    private static void rememberNotificationTextFollowRoot(View root, boolean enabled) {
+        synchronized (NOTIFICATION_TEXT_FOLLOW_ROOTS) {
+            if (enabled) {
+                NOTIFICATION_TEXT_FOLLOW_ROOTS.put(root, Boolean.TRUE);
+            } else {
+                NOTIFICATION_TEXT_FOLLOW_ROOTS.remove(root);
+            }
+        }
+    }
+
+    private static void scheduleNotificationTextFollowStatusBarRefresh(Object anchor) {
+        View view = anchor instanceof View ? (View) anchor : null;
+        synchronized (NOTIFICATION_TEXT_FOLLOW_ROOTS) {
+            if (notificationTextFollowRefreshScheduled) {
+                return;
+            }
+            notificationTextFollowRefreshScheduled = true;
+        }
+        Runnable runnable = () -> {
+            synchronized (NOTIFICATION_TEXT_FOLLOW_ROOTS) {
+                notificationTextFollowRefreshScheduled = false;
+            }
+            refreshNotificationTextFollowStatusBar();
+        };
+        if (view != null) {
+            try {
+                if (view.post(runnable)) {
+                    return;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        runnable.run();
+    }
+
+    private static void refreshNotificationTextFollowStatusBar() {
+        ArrayList<View> roots;
+        synchronized (NOTIFICATION_TEXT_FOLLOW_ROOTS) {
+            roots = new ArrayList<>(NOTIFICATION_TEXT_FOLLOW_ROOTS.keySet());
+        }
+        for (View root : roots) {
+            if (root == null || !root.isAttachedToWindow()) {
+                rememberNotificationTextFollowRoot(root, false);
+                continue;
+            }
+            FlymeStatusBarSizer.NotificationConfigSnapshot config =
+                    FlymeStatusBarSizer.loadNotificationConfig(root.getContext());
+            if (!config.enabled || !config.notificationTextFollowStatusBarEnabled) {
+                updateNotificationTextColors(root, false, 0);
+                rememberNotificationTextFollowRoot(root, false);
+                continue;
+            }
+            Integer textColor = FlymeStatusBarSizer.resolveStatusBarIconTintColorCompat(root);
+            if (textColor == null) {
+                updateNotificationTextColors(root, false, 0);
+                continue;
+            }
+            updateNotificationTextColors(root, true, textColor);
+        }
     }
 
     private static View findNotificationTextRoot(Object target) {
@@ -539,6 +608,7 @@ public final class NotificationHooks {
             module.intercept(updateIconColor, chain -> {
                 Object result = chain.proceed();
                 clearNotificationAppIconTintIfNeeded(chain.getThisObject());
+                scheduleNotificationTextFollowStatusBarRefresh(chain.getThisObject());
                 return result;
             });
 
@@ -551,6 +621,7 @@ public final class NotificationHooks {
             module.intercept(onDarkChanged, chain -> {
                 Object result = chain.proceed();
                 clearNotificationAppIconTintIfNeeded(chain.getThisObject());
+                scheduleNotificationTextFollowStatusBarRefresh(chain.getThisObject());
                 return result;
             });
         } catch (Throwable t) {

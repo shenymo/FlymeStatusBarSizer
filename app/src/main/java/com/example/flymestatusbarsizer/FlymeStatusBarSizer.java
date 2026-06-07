@@ -1749,6 +1749,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                         batteryView.invalidate();
                     }
                     invalidateLinkedSignalViews(batteryView);
+                    NotificationHooks.refreshNotificationTextFollowStatusBarForTintChange(
+                            batteryView);
                 }
                 return result;
             });
