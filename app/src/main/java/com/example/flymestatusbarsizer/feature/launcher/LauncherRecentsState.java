@@ -23,6 +23,8 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, BlankTapHomeExitTaskState> BLANK_TAP_HOME_EXIT_TASK_STATES =
             new WeakHashMap<>();
+    static final WeakHashMap<View, BlankTapHomeExitRecentsState> BLANK_TAP_HOME_EXIT_RECENTS_STATES =
+            new WeakHashMap<>();
     static final WeakHashMap<View, Float> GESTURE_STACK_RELEASE_PROGRESS =
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> FORCED_RECENTS_TRANSLATION_XS =
@@ -225,6 +227,16 @@ final class LauncherRecentsState {
             this.startStackContentBlurProgress = startStackContentBlurProgress;
             this.startTranslationZ = startTranslationZ;
             this.centerVisibleOffset = startVisibleOffset;
+        }
+    }
+
+    static final class BlankTapHomeExitRecentsState {
+        final float startTranslationX;
+        final float startTranslationY;
+
+        BlankTapHomeExitRecentsState(float startTranslationX, float startTranslationY) {
+            this.startTranslationX = startTranslationX;
+            this.startTranslationY = startTranslationY;
         }
     }
 

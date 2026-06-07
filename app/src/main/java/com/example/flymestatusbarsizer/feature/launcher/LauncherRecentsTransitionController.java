@@ -519,6 +519,11 @@ final class LauncherRecentsTransitionController {
                 Object result = chain.proceed();
                 View recentsView = resolveHandlerRecentsView(chain.getThisObject());
                 applyForcedRecentsTranslation(recentsView);
+                if (isBlankTapHomeExitActive(recentsView)) {
+                    LauncherRecentsLayoutEngine.applyBlankTapHomeExitRecentsFrame(
+                            recentsView,
+                            readBlankTapHomeExitProgress(recentsView));
+                }
                 if (hasGestureRecentsStackReleaseProgress(recentsView)
                         || LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
                     LauncherRecentsPerf.flow("enter:launcherTransitionProgress",
@@ -585,11 +590,13 @@ final class LauncherRecentsTransitionController {
             runningAnimator.cancel();
         }
         setPageAnimOffScreenStart(recentsView, false);
-        clearEntryStateForBlankTapHomeExit(recentsView, true);
-        if (!isBlankTapHomeExitActive(recentsView)
-                || LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.isEmpty()) {
+        boolean shouldCaptureBlankTapState = !isBlankTapHomeExitActive(recentsView)
+                || LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.isEmpty();
+        if (shouldCaptureBlankTapState) {
             LauncherRecentsLayoutEngine.captureBlankTapHomeExitTaskStates(recentsView);
+            LauncherRecentsLayoutEngine.captureBlankTapHomeExitRecentsState(recentsView);
         }
+        clearEntryStateForBlankTapHomeExit(recentsView, true);
         markBlankTapHomeExitActive(recentsView, true);
         setBlankTapHomeExitProgress(recentsView, 0f);
         LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
@@ -757,6 +764,7 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsState.BLANK_TAP_HOME_EXIT_PROGRESS.remove(recentsView);
         markBlankTapHomeExitActive(recentsView, false);
         LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.clear();
+        LauncherRecentsState.BLANK_TAP_HOME_EXIT_RECENTS_STATES.clear();
         setPageAnimOffScreenStart(recentsView, false);
         clearEntryStateForBlankTapHomeExit(recentsView, false);
         if (reapplyLayout) {

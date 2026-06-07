@@ -735,11 +735,38 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
+    static void captureBlankTapHomeExitRecentsState(View recentsView) {
+        LauncherRecentsState.BLANK_TAP_HOME_EXIT_RECENTS_STATES.clear();
+        if (recentsView == null) {
+            return;
+        }
+        LauncherRecentsState.BLANK_TAP_HOME_EXIT_RECENTS_STATES.put(
+                recentsView,
+                new LauncherRecentsState.BlankTapHomeExitRecentsState(
+                        recentsView.getTranslationX(),
+                        recentsView.getTranslationY()));
+    }
+
+    static void applyBlankTapHomeExitRecentsFrame(View recentsView, float progress) {
+        if (recentsView == null) {
+            return;
+        }
+        LauncherRecentsState.BlankTapHomeExitRecentsState state =
+                LauncherRecentsState.BLANK_TAP_HOME_EXIT_RECENTS_STATES.get(recentsView);
+        if (state == null) {
+            return;
+        }
+        float pathProgress = smoothStep(clamp(progress, 0f, 1f));
+        recentsView.setTranslationX(lerp(state.startTranslationX, 0f, pathProgress));
+        recentsView.setTranslationY(lerp(state.startTranslationY, 0f, pathProgress));
+    }
+
     static void applyBlankTapHomeExitFrame(View recentsView, float progress) {
         if (recentsView == null) {
             return;
         }
         float clampedProgress = clamp(progress, 0f, 1f);
+        applyBlankTapHomeExitRecentsFrame(recentsView, clampedProgress);
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         for (int i = 0; i < taskViewCount; i++) {
@@ -1377,6 +1404,9 @@ final class LauncherRecentsLayoutEngine {
         float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
         boolean blankTapExitActive =
                 LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView);
+        if (blankTapExitActive) {
+            applyBlankTapHomeExitRecentsFrame(recentsView, blankTapExitProgress);
+        }
         StackLayoutContext layoutContext = new StackLayoutContext(
                 recentsView,
                 taskViewCount,
