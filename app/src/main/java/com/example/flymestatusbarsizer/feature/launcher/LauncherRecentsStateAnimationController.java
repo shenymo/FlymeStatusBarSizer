@@ -438,7 +438,20 @@ final class LauncherRecentsStateAnimationController {
         LauncherRecentsState.setOverviewPeekStockAnimationActive(recentsView, active);
     }
 
+    static void finishOverviewStateStackAnimationForTouchTakeover(View recentsView) {
+        if (recentsView == null || !isOverviewStateStackAnimationActive(recentsView)) {
+            return;
+        }
+        LauncherRecentsPerf.flow("state:overview:touchTakeover", recentsView);
+        markOverviewPeekStockAnimation(recentsView, false);
+        markOverviewStateStackAnimation(recentsView, false);
+        LauncherRecentsState.setOverviewStateStackSettled(recentsView, true);
+    }
+
     private static void clearOverviewStateStackAnimation(View recentsView) {
+        if (recentsView == null || !isOverviewStateStackAnimationActive(recentsView)) {
+            return;
+        }
         LauncherRecentsPerf.flow("state:overview:clear", recentsView);
         markOverviewPeekStockAnimation(recentsView, false);
         markOverviewStateStackAnimation(recentsView, false);
