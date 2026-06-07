@@ -116,6 +116,14 @@ final class LauncherRecentsPerf {
                 + (details != null && !details.isEmpty() ? " " + details : ""));
     }
 
+    static void install(String name, String details) {
+        if (!FlymeStatusBarSizer.isLauncherRecentsFlowLoggingEnabled(null)) {
+            return;
+        }
+        Log.i(FLOW_TAG, name
+                + (details != null && !details.isEmpty() ? " " + details : ""));
+    }
+
     private static String stateSuffix(View view) {
         return " phase=" + phase(view) + " launcherState=" + launcherState(view);
     }

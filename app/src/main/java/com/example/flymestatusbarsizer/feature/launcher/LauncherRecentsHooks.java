@@ -17,6 +17,8 @@ public final class LauncherRecentsHooks {
         LauncherRecentsLaunchController.installHooks(module, loader);
         LauncherRecentsTouchController.installHooks(module, loader);
         LauncherRecentsTransitionController.installHooks(module, loader);
+        LauncherRecentsPerf.install("hook:install",
+                "layout surface attach state launch touch transition");
     }
 
     public static void refreshTrackedViews() {

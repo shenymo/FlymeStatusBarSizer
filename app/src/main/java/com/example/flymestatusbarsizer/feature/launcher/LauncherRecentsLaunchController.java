@@ -263,17 +263,24 @@ final class LauncherRecentsLaunchController {
                 if (thisObject instanceof View) {
                     View taskView = (View) thisObject;
                     if (LauncherRecentsState.consumeTaskClickBypass(taskView)) {
+                        LauncherRecentsPerf.flow("launch:click:bypass",
+                                LauncherRecentsCompat.resolveOwningRecentsView(taskView),
+                                taskLaunchDetails(null, taskView, false));
                         return chain.proceed();
                     }
                     View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
                     boolean preparedTransitionGeometry =
                             shouldPrepareTaskLaunchTransitionGeometry(taskView, recentsView);
+                    LauncherRecentsPerf.flow("launch:click",
+                            recentsView,
+                            taskLaunchDetails(recentsView, taskView, preparedTransitionGeometry));
                     if (preparedTransitionGeometry) {
                         prepareTaskLaunchTransitionGeometry(recentsView, taskView);
                     }
                     Object result = chain.proceed();
                     if (preparedTransitionGeometry
                             && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
+                        LauncherRecentsPerf.flow("launch:click:clearUnfrozen", recentsView);
                         clearTaskLaunchTransitionGeometry(recentsView, false);
                     }
                     return result;
@@ -300,6 +307,12 @@ final class LauncherRecentsLaunchController {
                 if (thisObject instanceof View) {
                     View taskView = (View) thisObject;
                     recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
+                    LauncherRecentsPerf.flow("launch:withAnimation:start",
+                            recentsView,
+                            taskLaunchDetails(
+                                    recentsView,
+                                    taskView,
+                                    LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)));
                     if (LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
                             && !LauncherRecentsCompat.isDesktopTask(taskView)) {
                         LauncherRecentsState.setTaskLaunchRequestStarted(recentsView, true);
@@ -310,6 +323,7 @@ final class LauncherRecentsLaunchController {
                 Object result = chain.proceed();
                 if (recentsView != null
                         && LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
+                    LauncherRecentsPerf.flow("launch:withAnimation:attachCleanup", recentsView);
                     attachTaskLaunchCleanup(recentsView, result);
                 }
                 return result;
@@ -864,6 +878,9 @@ final class LauncherRecentsLaunchController {
         if (recentsView == null || taskView == null) {
             return;
         }
+        LauncherRecentsPerf.flow("launch:prepareGeometry",
+                recentsView,
+                taskLaunchDetails(recentsView, taskView, true));
         LauncherRecentsState.trackRecentsView(recentsView);
         LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
         LauncherRecentsState.LaunchTransitionGeometryState state =
@@ -1204,6 +1221,10 @@ final class LauncherRecentsLaunchController {
         if (recentsView == null) {
             return;
         }
+        LauncherRecentsPerf.flow("launch:clearGeometry",
+                recentsView,
+                "restoreStack=" + restoreStack
+                        + " frozen=" + LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView));
         LauncherRecentsState.setTaskLaunchRequestStarted(recentsView, false);
         LauncherRecentsState.clearActiveTaskLaunchTransitionGeometry(recentsView);
         if (!restoreStack || !recentsView.isAttachedToWindow() || !recentsView.isShown()) {
@@ -1220,6 +1241,15 @@ final class LauncherRecentsLaunchController {
             LauncherRecentsLayoutEngine.reapplyOriginalTransforms(recentsView);
         }
         recentsView.invalidate();
+    }
+
+    private static String taskLaunchDetails(
+            View recentsView,
+            View taskView,
+            boolean preparedTransitionGeometry) {
+        return "taskIndex=" + resolveTaskViewIndex(recentsView, taskView)
+                + " desktop=" + LauncherRecentsCompat.isDesktopTask(taskView)
+                + " prepared=" + preparedTransitionGeometry;
     }
 
     private static int resolveTaskViewIndex(View recentsView, View taskView) {

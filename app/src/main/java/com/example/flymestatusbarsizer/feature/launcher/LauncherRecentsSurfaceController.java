@@ -30,6 +30,14 @@ final class LauncherRecentsSurfaceController {
                 Object manager = chain.getThisObject();
                 boolean shown = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
                 boolean wasShown = LauncherRecentsCompat.readBooleanField(manager, "mShown", false);
+                Object surfaceValue = LauncherRecentsCompat.getFieldCompat(manager, "mOverviewSurface");
+                boolean surfaceValid = surfaceValue instanceof SurfaceControl
+                        && ((SurfaceControl) surfaceValue).isValid();
+                LauncherRecentsPerf.flow("surface:setShown",
+                        resolveWindowView(manager),
+                        "shown=" + shown
+                                + " wasShown=" + wasShown
+                                + " surfaceValid=" + surfaceValid);
                 checkSurface(manager);
                 if (shown != wasShown) {
                     LauncherRecentsCompat.setBooleanField(manager, "mShown", shown);
@@ -59,6 +67,11 @@ final class LauncherRecentsSurfaceController {
                 view.setVisibility(View.VISIBLE);
             }
         }
+    }
+
+    private static View resolveWindowView(Object manager) {
+        Object value = LauncherRecentsCompat.getFieldCompat(manager, "mWindowView");
+        return value instanceof View ? (View) value : null;
     }
 
     private static void setSurfaceVisible(Object manager, boolean visible) {
