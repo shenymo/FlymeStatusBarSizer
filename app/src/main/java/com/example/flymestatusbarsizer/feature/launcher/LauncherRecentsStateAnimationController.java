@@ -56,6 +56,11 @@ final class LauncherRecentsStateAnimationController {
                 View recentsView = resolveControllerRecentsView(thisObject);
                 boolean shouldTakeOver =
                         shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
+                LauncherRecentsPerf.flow("state:setWithAnimation",
+                        recentsView,
+                        "toState=" + toState
+                                + " takeOver=" + shouldTakeOver
+                                + " pendingAnimation=" + (pendingAnimation != null));
                 if (shouldTakeOver) {
                     beginOverviewStateStackAnimation(recentsView, pendingAnimation);
                 } else {
@@ -64,9 +69,13 @@ final class LauncherRecentsStateAnimationController {
                 prepareHomeExitFromRecentsIfNeeded(recentsView, toState, pendingAnimation, loader);
                 Object result = chain.proceed();
                 if (shouldAttachBlankTapHomeExitToSystemAnimation(recentsView, toState, loader)) {
+                    LauncherRecentsPerf.flow("state:setWithAnimation:attachBlankTapSystem",
+                            recentsView, "toState=" + toState);
                     attachBlankTapHomeExitSystemCallbacks(recentsView, pendingAnimation, loader);
                 }
                 if (shouldTakeOver) {
+                    LauncherRecentsPerf.flow("state:setWithAnimation:applyDynamic",
+                            recentsView);
                     LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 }
                 return result;
@@ -101,6 +110,11 @@ final class LauncherRecentsStateAnimationController {
                 View recentsView = resolveControllerRecentsView(thisObject);
                 boolean shouldTakeOver =
                         shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
+                LauncherRecentsPerf.flow("state:setWithAnimationInternal",
+                        recentsView,
+                        "toState=" + toState
+                                + " takeOver=" + shouldTakeOver
+                                + " pendingAnimation=" + (pendingAnimation != null));
                 if (shouldTakeOver) {
                     beginOverviewStateStackAnimation(recentsView, pendingAnimation);
                 } else {
@@ -109,9 +123,13 @@ final class LauncherRecentsStateAnimationController {
                 prepareHomeExitFromRecentsIfNeeded(recentsView, toState, pendingAnimation, loader);
                 Object result = chain.proceed();
                 if (shouldAttachBlankTapHomeExitToSystemAnimation(recentsView, toState, loader)) {
+                    LauncherRecentsPerf.flow("state:setWithAnimationInternal:attachBlankTapSystem",
+                            recentsView, "toState=" + toState);
                     attachBlankTapHomeExitSystemCallbacks(recentsView, pendingAnimation, loader);
                 }
                 if (shouldTakeOver) {
+                    LauncherRecentsPerf.flow("state:setWithAnimationInternal:applyDynamic",
+                            recentsView);
                     LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 }
                 return result;
@@ -137,6 +155,9 @@ final class LauncherRecentsStateAnimationController {
                 View recentsView = resolveControllerRecentsView(thisObject);
                 boolean shouldTakeOver =
                         shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
+                LauncherRecentsPerf.flow("state:setImmediate",
+                        recentsView,
+                        "toState=" + toState + " takeOver=" + shouldTakeOver);
                 if (shouldTakeOver) {
                     beginOverviewStateStackAnimation(recentsView, null);
                 } else {
@@ -144,6 +165,8 @@ final class LauncherRecentsStateAnimationController {
                 }
                 Object result = chain.proceed();
                 if (shouldTakeOver) {
+                    LauncherRecentsPerf.flow("state:setImmediate:applyAndClear",
+                            recentsView);
                     LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                     clearOverviewStateStackAnimation(recentsView);
                 }
@@ -166,6 +189,7 @@ final class LauncherRecentsStateAnimationController {
                 new Class<?>[]{Runnable.class},
                 (Runnable) () -> {
                     if (isOverviewStateStackAnimationActive(recentsView)) {
+                        LauncherRecentsPerf.flow("state:overview:frame", recentsView);
                         LauncherRecentsPerf.hit("animationFrame:overviewState", recentsView);
                         LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                     }
@@ -177,11 +201,13 @@ final class LauncherRecentsStateAnimationController {
                 new AnimatorListenerAdapter() {
                     @Override
                     public void onAnimationCancel(Animator animation) {
+                        LauncherRecentsPerf.flow("state:overview:cancel", recentsView);
                         clearOverviewStateStackAnimation(recentsView);
                     }
 
                     @Override
                     public void onAnimationEnd(Animator animation) {
+                        LauncherRecentsPerf.flow("state:overview:end", recentsView);
                         clearOverviewStateStackAnimation(recentsView);
                     }
                 });
@@ -206,6 +232,8 @@ final class LauncherRecentsStateAnimationController {
                     LauncherRecentsTransitionController.setBlankTapHomeExitProgress(
                             recentsView,
                             progress);
+                    LauncherRecentsPerf.flow("leave:blankTapSystem:frame",
+                            recentsView, "progress=" + progress);
                     LauncherRecentsPerf.hit("animationFrame:blankTapSystem", recentsView);
                     LauncherRecentsLayoutEngine.applyBlankTapHomeExitFrame(recentsView, progress);
                     recentsView.invalidate();
@@ -217,17 +245,22 @@ final class LauncherRecentsStateAnimationController {
                 new AnimatorListenerAdapter() {
                     @Override
                     public void onAnimationCancel(Animator animation) {
+                        LauncherRecentsPerf.flow("leave:blankTapSystem:cancel",
+                                recentsView);
                         finishBlankTapHomeExitSystemAnimation(recentsView);
                     }
 
                     @Override
                     public void onAnimationEnd(Animator animation) {
+                        LauncherRecentsPerf.flow("leave:blankTapSystem:end",
+                                recentsView);
                         finishBlankTapHomeExitSystemAnimation(recentsView);
                     }
                 });
     }
 
     private static void finishBlankTapHomeExitSystemAnimation(View recentsView) {
+        LauncherRecentsPerf.flow("leave:blankTapSystem:finish", recentsView);
         LauncherRecentsTransitionController.setBlankTapHomeExitProgress(recentsView, 1f);
         LauncherRecentsLayoutEngine.applyBlankTapHomeExitFrame(recentsView, 1f);
         LauncherRecentsTransitionController.clearBlankTapHomeExitProgressWithoutLayout(recentsView);
@@ -244,6 +277,8 @@ final class LauncherRecentsStateAnimationController {
         if (recentsView == null) {
             return;
         }
+        LauncherRecentsPerf.flow("state:overview:begin",
+                recentsView, "pendingAnimation=" + (pendingAnimation != null));
         LauncherRecentsLayoutEngine.cancelStackLayoutRecovery(recentsView);
         markOverviewPeekStockAnimation(recentsView, false);
         LauncherRecentsState.setOverviewStateStackStartAdjacentOffset(
@@ -262,8 +297,13 @@ final class LauncherRecentsStateAnimationController {
         markOverviewStateStackAnimation(recentsView, true);
         attachOverviewStateAnimationCallbacks(recentsView, pendingAnimation);
         if (pendingAnimation == null) {
+            LauncherRecentsPerf.flow("state:overview:scheduleFallbackClear",
+                    recentsView,
+                    "delayMs=" + OVERVIEW_STATE_STACK_ANIMATION_FALLBACK_CLEAR_DELAY_MS);
             recentsView.postDelayed(() -> {
                 if (isOverviewStateStackAnimationActive(recentsView)) {
+                    LauncherRecentsPerf.flow("state:overview:runFallbackClear",
+                            recentsView);
                     clearOverviewStateStackAnimation(recentsView);
                 }
             }, OVERVIEW_STATE_STACK_ANIMATION_FALLBACK_CLEAR_DELAY_MS);
@@ -335,6 +375,8 @@ final class LauncherRecentsStateAnimationController {
         if (toState == normalState
                 && LauncherRecentsTransitionController.shouldPrepareHomeExitFromRecents(
                 recentsView)) {
+            LauncherRecentsPerf.flow("leave:prepareHomeExitFromState",
+                    recentsView, "toState=" + toState);
             LauncherRecentsTransitionController.prepareBlankTapHomeExitAnimation(recentsView);
         }
     }
@@ -370,10 +412,14 @@ final class LauncherRecentsStateAnimationController {
         Object overviewState =
                 LauncherRecentsCompat.readStaticFieldCompat(LAUNCHER_STATE_CLASS, "OVERVIEW", loader);
         if (toState == overviewPeekState) {
+            LauncherRecentsPerf.flow("state:overviewPeek:markStock", recentsView);
             markOverviewPeekStockAnimation(recentsView, true);
         } else if (toState == overviewState) {
+            LauncherRecentsPerf.flow("state:overviewPeek:clearStock", recentsView);
             markOverviewPeekStockAnimation(recentsView, false);
         } else {
+            LauncherRecentsPerf.flow("state:overviewPeek:clearEntry",
+                    recentsView, "toState=" + toState);
             clearOverviewEntryState(recentsView);
         }
     }
@@ -393,6 +439,7 @@ final class LauncherRecentsStateAnimationController {
     }
 
     private static void clearOverviewStateStackAnimation(View recentsView) {
+        LauncherRecentsPerf.flow("state:overview:clear", recentsView);
         markOverviewPeekStockAnimation(recentsView, false);
         markOverviewStateStackAnimation(recentsView, false);
         LauncherRecentsState.setOverviewStateStackSettled(recentsView, true);
@@ -406,6 +453,7 @@ final class LauncherRecentsStateAnimationController {
     }
 
     static void clearOverviewEntryState(View recentsView) {
+        LauncherRecentsPerf.flow("state:overview:clearEntry", recentsView);
         markOverviewPeekStockAnimation(recentsView, false);
         markOverviewStateStackAnimation(recentsView, false);
         LauncherRecentsState.setOverviewStateStackSettled(recentsView, false);

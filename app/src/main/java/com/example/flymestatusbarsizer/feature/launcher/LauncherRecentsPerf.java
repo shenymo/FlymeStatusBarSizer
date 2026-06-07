@@ -9,6 +9,7 @@ import java.util.HashMap;
 
 final class LauncherRecentsPerf {
     private static final String TAG = "FSBS-RecentsPerf";
+    private static final String FLOW_TAG = "FSBS-RecentsFlow";
     private static final long REPORT_WINDOW_NS = 1_000_000_000L;
     private static final long SLOW_CALL_NS = 4_000_000L;
 
@@ -20,6 +21,11 @@ final class LauncherRecentsPerf {
 
     static boolean enabled(View view) {
         return FlymeStatusBarSizer.isLauncherRecentsPerfLoggingEnabled(
+                view != null ? view.getContext() : null);
+    }
+
+    static boolean flowEnabled(View view) {
+        return FlymeStatusBarSizer.isLauncherRecentsFlowLoggingEnabled(
                 view != null ? view.getContext() : null);
     }
 
@@ -93,8 +99,54 @@ final class LauncherRecentsPerf {
         end(name, startNs);
     }
 
+    static void flow(String name, View view) {
+        flow(name, view, null);
+    }
+
+    static void flow(String name, View view, String details) {
+        if (!flowEnabled(view)) {
+            return;
+        }
+        Log.i(FLOW_TAG, name
+                + stateSuffix(view)
+                + " page=" + page(view)
+                + " nextPage=" + nextPage(view)
+                + " scroll=" + primaryScroll(view)
+                + " taskCount=" + taskCount(view)
+                + (details != null && !details.isEmpty() ? " " + details : ""));
+    }
+
     private static String stateSuffix(View view) {
         return " phase=" + phase(view) + " launcherState=" + launcherState(view);
+    }
+
+    private static int page(View view) {
+        return LauncherRecentsCompat.invokeInt(view, "getCurrentPage", -1);
+    }
+
+    private static int nextPage(View view) {
+        return LauncherRecentsCompat.readIntField(view, "mNextPage", -1);
+    }
+
+    private static int taskCount(View view) {
+        return LauncherRecentsCompat.invokeInt(view, "getTaskViewCount", 0);
+    }
+
+    private static int primaryScroll(View view) {
+        if (view == null) {
+            return 0;
+        }
+        Object orientationHandler =
+                LauncherRecentsCompat.getFieldCompat(view, "mOrientationHandler");
+        Object value = LauncherRecentsCompat.invokeCompat(
+                orientationHandler,
+                "getPrimaryScroll",
+                new Class<?>[]{View.class},
+                view);
+        if (value instanceof Integer) {
+            return (Integer) value;
+        }
+        return view.getScrollX();
     }
 
     private static String phase(View view) {

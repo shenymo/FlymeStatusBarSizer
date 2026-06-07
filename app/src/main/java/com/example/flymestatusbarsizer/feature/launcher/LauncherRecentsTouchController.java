@@ -107,17 +107,26 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsCompat.isRecentsViewObject(thisObject)
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    logStackFlow("touch:intercept", recentsView, motionEvent, null);
                     if (isStackDismissPostRemoveAnimationActive(recentsView)) {
                         if (shouldConsumeStackDismissPostRemoveTouch(recentsView, motionEvent)) {
+                            logStackFlow("touch:intercept:consumePostRemove",
+                                    recentsView, motionEvent, null);
                             return true;
                         }
                     }
                     if (shouldKeepStackDismissGestureAwayFromPagedView(
                             recentsView,
                             motionEvent)) {
+                        logStackFlow("touch:intercept:releaseToDismiss",
+                                recentsView, motionEvent, null);
                         releasePagedTouchForStackDismiss(recentsView);
                         return false;
                     }
+                    Object result = chain.proceed();
+                    logStackFlow("touch:intercept:stock",
+                            recentsView, motionEvent, "result=" + result);
+                    return result;
                 }
                 return chain.proceed();
             });
@@ -142,19 +151,26 @@ final class LauncherRecentsTouchController {
                         && thisObject instanceof View
                         && motionEvent != null) {
                     View recentsView = (View) thisObject;
+                    logStackFlow("touch:event", recentsView, motionEvent, null);
                     clearGestureReleaseTaskStatesOnUserMove(recentsView, motionEvent);
                     if (isStackDismissPostRemoveAnimationActive(recentsView)) {
                         if (shouldConsumeStackDismissPostRemoveTouch(recentsView, motionEvent)) {
+                            logStackFlow("touch:event:consumePostRemove",
+                                    recentsView, motionEvent, null);
                             return true;
                         }
                     }
                     if (shouldKeepStackDismissGestureAwayFromPagedView(
                             recentsView,
                             motionEvent)) {
+                        logStackFlow("touch:event:releaseToDismiss",
+                                recentsView, motionEvent, null);
                         releasePagedTouchForStackDismiss(recentsView);
                         return false;
                     }
                     if (shouldSkipBlankTapPagedRelease(recentsView, motionEvent)) {
+                        logStackFlow("touch:event:blankTapRelease",
+                                recentsView, motionEvent, null);
                         LauncherRecentsTransitionController.prepareBlankTapHomeExitAnimation(
                                 recentsView);
                         releasePagedEdgeEffects(recentsView, motionEvent);
@@ -166,11 +182,17 @@ final class LauncherRecentsTouchController {
                     }
                     if (LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
                             && shouldSuppressPagedRelease(recentsView, motionEvent)) {
+                        logStackFlow("touch:event:suppressPagedRelease",
+                                recentsView, motionEvent, null);
                         LauncherRecentsState.trackRecentsView(recentsView);
                         LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                         suppressPagedRelease(recentsView, motionEvent);
                         return true;
                     }
+                    Object result = chain.proceed();
+                    logStackFlow("touch:event:stock",
+                            recentsView, motionEvent, "result=" + result);
+                    return result;
                 }
                 return chain.proceed();
             });
@@ -223,10 +245,13 @@ final class LauncherRecentsTouchController {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    logStackFlow("freeScroll:settle", recentsView, null, null);
                     if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
+                        logStackFlow("freeScroll:settle:applied", recentsView, null, null);
                         recentsView.invalidate();
                         return null;
                     }
+                    logStackFlow("freeScroll:settle:stock", recentsView, null, null);
                 }
                 return chain.proceed();
             });
@@ -249,10 +274,13 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsCompat.isRecentsViewObject(thisObject)
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    logStackFlow("snapToDestination", recentsView, null, null);
                     if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
+                        logStackFlow("snapToDestination:applied", recentsView, null, null);
                         recentsView.invalidate();
                         return null;
                     }
+                    logStackFlow("snapToDestination:stock", recentsView, null, null);
                 }
                 return chain.proceed();
             });
@@ -279,7 +307,8 @@ final class LauncherRecentsTouchController {
                         : null;
                 Boolean handled = handleStackDismissControllerTouch(
                         chain.getThisObject(),
-                        motionEvent);
+                        motionEvent,
+                        "intercept");
                 if (handled != null) {
                     return handled;
                 }
@@ -305,7 +334,8 @@ final class LauncherRecentsTouchController {
                         : null;
                 Boolean handled = handleStackDismissControllerTouch(
                         chain.getThisObject(),
-                        motionEvent);
+                        motionEvent,
+                        "touch");
                 if (handled != null) {
                     return handled;
                 }
@@ -623,12 +653,17 @@ final class LauncherRecentsTouchController {
 
     private static Boolean handleStackDismissControllerTouch(
             Object controller,
-            MotionEvent motionEvent) {
+            MotionEvent motionEvent,
+            String source) {
         View recentsView = resolveControllerRecentsView(controller);
         if (recentsView == null || motionEvent == null) {
             return null;
         }
+        logStackFlow("dismissController:" + source, recentsView, motionEvent,
+                controller != null ? controller.getClass().getSimpleName() : null);
         if (!LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+            logStackFlow("dismissController:" + source + ":notStack",
+                    recentsView, motionEvent, null);
             clearStackDismissGesture(recentsView, true);
             return null;
         }
@@ -644,6 +679,32 @@ final class LauncherRecentsTouchController {
         return value instanceof View ? (View) value : null;
     }
 
+    private static void logStackFlow(
+            String name,
+            View recentsView,
+            MotionEvent motionEvent,
+            String details) {
+        String message = "";
+        if (motionEvent != null) {
+            message = "action=" + MotionEvent.actionToString(motionEvent.getActionMasked())
+                    + " x=" + Math.round(motionEvent.getX())
+                    + " y=" + Math.round(motionEvent.getY());
+        }
+        if (details != null && !details.isEmpty()) {
+            message = message.isEmpty() ? details : message + " " + details;
+        }
+        LauncherRecentsPerf.flow(name, recentsView, message);
+    }
+
+    private static String taskDetails(View recentsView, View taskView) {
+        if (taskView == null) {
+            return "task=null";
+        }
+        return "taskIndex=" + findTaskViewIndex(recentsView, taskView)
+                + " taskAlpha=" + taskView.getAlpha()
+                + " taskShown=" + taskView.isShown();
+    }
+
     private static Boolean handleStackDismissTouch(View recentsView, MotionEvent motionEvent) {
         int action = motionEvent.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
@@ -652,20 +713,29 @@ final class LauncherRecentsTouchController {
                     recentsView,
                     motionEvent.getRawX(),
                     motionEvent.getRawY());
+            logStackFlow("dismiss:down", recentsView, motionEvent,
+                    taskDetails(recentsView, taskView));
             if (!isStackDismissTaskCandidate(recentsView, taskView)) {
+                logStackFlow("dismiss:down:noCandidate",
+                        recentsView, motionEvent, taskDetails(recentsView, taskView));
                 return null;
             }
             StackDismissGestureState state =
                     new StackDismissGestureState(recentsView, taskView, motionEvent);
             STACK_DISMISS_GESTURES.put(recentsView, state);
+            logStackFlow("dismiss:down:track",
+                    recentsView, motionEvent, taskDetails(recentsView, taskView));
             return false;
         }
 
         StackDismissGestureState state = STACK_DISMISS_GESTURES.get(recentsView);
         if (state == null) {
+            logStackFlow("dismiss:noState", recentsView, motionEvent, null);
             return null;
         }
         if (!isStackDismissTaskCandidate(recentsView, state.taskView)) {
+            logStackFlow("dismiss:clearInvalidTask",
+                    recentsView, motionEvent, taskDetails(recentsView, state.taskView));
             clearStackDismissGesture(recentsView, true);
             return null;
         }
@@ -679,9 +749,17 @@ final class LauncherRecentsTouchController {
                 if (isStackDismissDragStart(state, dx, dy, touchSlop)) {
                     beginStackDismissDrag(state, motionEvent);
                 } else if (isStackDismissPrimaryGesture(state, dx, dy, touchSlop)) {
+                    logStackFlow("dismiss:primaryGesture",
+                            recentsView,
+                            motionEvent,
+                            "dx=" + Math.round(dx) + " dy=" + Math.round(dy));
                     clearStackDismissGesture(recentsView, true);
                     return null;
                 } else {
+                    logStackFlow("dismiss:move:waitSlop",
+                            recentsView,
+                            motionEvent,
+                            "dx=" + Math.round(dx) + " dy=" + Math.round(dy));
                     return false;
                 }
             }
@@ -694,6 +772,8 @@ final class LauncherRecentsTouchController {
                 finishStackDismissGesture(state, action == MotionEvent.ACTION_CANCEL);
                 return true;
             }
+            logStackFlow("dismiss:end:notDragging",
+                    recentsView, motionEvent, taskDetails(recentsView, state.taskView));
             clearStackDismissGesture(recentsView, false);
             return false;
         }
@@ -755,6 +835,10 @@ final class LauncherRecentsTouchController {
     private static void beginStackDismissDrag(
             StackDismissGestureState state,
             MotionEvent motionEvent) {
+        logStackFlow("dismiss:beginDrag",
+                state.recentsView,
+                motionEvent,
+                taskDetails(state.recentsView, state.taskView));
         state.dragging = true;
         state.cancelAnimator();
         state.taskView.animate().cancel();
@@ -793,6 +877,12 @@ final class LauncherRecentsTouchController {
                         >= state.dismissDirectionSign * state.startDismissTranslation
                         ? translation
                         : state.startDismissTranslation;
+        logStackFlow("dismiss:updateDrag",
+                state.recentsView,
+                motionEvent,
+                "translation=" + Math.round(state.currentDismissTranslation)
+                        + " dx=" + Math.round(dx)
+                        + " dy=" + Math.round(dy));
         applyStackDismissProgress(state, state.currentDismissTranslation);
     }
 
@@ -802,6 +892,8 @@ final class LauncherRecentsTouchController {
         STACK_DISMISS_GESTURES.remove(state.recentsView);
         requestParentDisallowIntercept(state.recentsView, false);
         if (canceled) {
+            logStackFlow("dismiss:finish:canceled",
+                    state.recentsView, null, taskDetails(state.recentsView, state.taskView));
             animateStackDismissCancel(state);
             state.recycleVelocityTracker();
             return;
@@ -812,6 +904,13 @@ final class LauncherRecentsTouchController {
                         >= resolveStackDismissThreshold(state)
                         || state.dismissDirectionSign * velocity
                         >= -STACK_DISMISS_MIN_FLING_VELOCITY;
+        logStackFlow("dismiss:finish",
+                state.recentsView,
+                null,
+                "dismiss=" + dismiss
+                        + " translation=" + Math.round(state.currentDismissTranslation)
+                        + " velocity=" + Math.round(velocity)
+                        + " " + taskDetails(state.recentsView, state.taskView));
         if (dismiss) {
             animateStackDismissSuccess(state);
         } else {
@@ -821,6 +920,8 @@ final class LauncherRecentsTouchController {
     }
 
     private static void animateStackDismissSuccess(StackDismissGestureState state) {
+        logStackFlow("dismiss:animateSuccess:start",
+                state.recentsView, null, taskDetails(state.recentsView, state.taskView));
         float start = state.currentDismissTranslation;
         float end = state.dismissDirectionSign * resolveStackDismissDistance(state);
         ValueAnimator animator = ValueAnimator.ofFloat(start, end);
@@ -838,6 +939,8 @@ final class LauncherRecentsTouchController {
             @Override
             public void onAnimationEnd(Animator animation) {
                 state.animator = null;
+                logStackFlow("dismiss:animateSuccess:end",
+                        state.recentsView, null, taskDetails(state.recentsView, state.taskView));
                 applyStackDismissSuccessProgress(state, end, 1f);
                 finishStackDismissAfterReflow(state);
             }
@@ -847,12 +950,18 @@ final class LauncherRecentsTouchController {
 
     private static void finishStackDismissAfterReflow(StackDismissGestureState state) {
         boolean dismissed = invokeNativeDismissTaskView(state.recentsView, state.taskView);
+        logStackFlow("dismiss:afterReflow",
+                state.recentsView,
+                null,
+                "dismissed=" + dismissed + " " + taskDetails(state.recentsView, state.taskView));
         if (!dismissed) {
             resetStackDismissVisuals(state);
         }
     }
 
     private static void animateStackDismissCancel(StackDismissGestureState state) {
+        logStackFlow("dismiss:animateCancel:start",
+                state.recentsView, null, taskDetails(state.recentsView, state.taskView));
         float start = state.currentDismissTranslation;
         ValueAnimator animator = ValueAnimator.ofFloat(start, state.startDismissTranslation);
         state.animator = animator;
@@ -868,6 +977,8 @@ final class LauncherRecentsTouchController {
             @Override
             public void onAnimationEnd(Animator animation) {
                 state.animator = null;
+                logStackFlow("dismiss:animateCancel:end",
+                        state.recentsView, null, taskDetails(state.recentsView, state.taskView));
                 resetStackDismissVisuals(state);
             }
         });
@@ -1100,8 +1211,12 @@ final class LauncherRecentsTouchController {
     private static boolean invokeNativeDismissTaskView(
             View recentsView,
             View taskView) {
+        logStackFlow("dismiss:native:start",
+                recentsView, null, taskDetails(recentsView, taskView));
         Class<?> taskViewClass = resolveTaskViewBaseClass(taskView);
         if (!(recentsView instanceof ViewGroup) || taskViewClass == null) {
+            logStackFlow("dismiss:native:missingClass",
+                    recentsView, null, taskDetails(recentsView, taskView));
             return false;
         }
         int targetPage = resolveSilentNativeDismissAnchorPage(recentsView, taskView);
@@ -1132,6 +1247,10 @@ final class LauncherRecentsTouchController {
             View taskView,
             Class<?> taskViewClass,
             int targetPage) {
+        logStackFlow("dismiss:native:commit",
+                recentsView,
+                null,
+                "targetPage=" + targetPage + " " + taskDetails(recentsView, taskView));
         setStackDismissPostRemoveAnimationActive(recentsView, true);
         boolean removedTask = LauncherRecentsCompat.invokeMethodReflectively(
                 recentsView,
@@ -1139,6 +1258,8 @@ final class LauncherRecentsTouchController {
                 new Class<?>[]{taskViewClass},
                 taskView);
         if (!removedTask) {
+            logStackFlow("dismiss:native:removeFailed",
+                    recentsView, null, taskDetails(recentsView, taskView));
             finishSilentNativeDismiss(recentsView);
             return false;
         }
@@ -1211,19 +1332,26 @@ final class LauncherRecentsTouchController {
         if (recentsView == null) {
             return;
         }
+        logStackFlow("dismiss:native:scheduleFinish", recentsView, null, null);
         recentsView.postOnAnimation(() -> {
+            logStackFlow("dismiss:native:runFinishFrame1", recentsView, null, null);
             if (isSilentNativeDismissActive(recentsView)) {
                 clearNativeDismissTransforms(recentsView);
                 clearStackDismissLayoutOffsets();
                 applyStackDismissFinalLayout(recentsView);
                 recentsView.invalidate();
             }
-            recentsView.postOnAnimation(() -> finishSilentNativeDismiss(recentsView));
+            logStackFlow("dismiss:native:scheduleFinishFrame2", recentsView, null, null);
+            recentsView.postOnAnimation(() -> {
+                logStackFlow("dismiss:native:runFinishFrame2", recentsView, null, null);
+                finishSilentNativeDismiss(recentsView);
+            });
         });
     }
 
     private static void finishSilentNativeDismiss(View recentsView) {
         if (!isSilentNativeDismissActive(recentsView)) {
+            logStackFlow("dismiss:native:finishInactive", recentsView, null, null);
             SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
             SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
             setStackDismissPostRemoveAnimationActive(recentsView, false);
@@ -1233,6 +1361,7 @@ final class LauncherRecentsTouchController {
             }
             return;
         }
+        logStackFlow("dismiss:native:finish", recentsView, null, null);
         clearNativeDismissTransforms(recentsView);
         clearStackDismissLayoutOffsets();
         applyStackDismissFinalLayout(recentsView);
@@ -1248,6 +1377,7 @@ final class LauncherRecentsTouchController {
             MotionEvent motionEvent) {
         if (motionEvent != null
                 && motionEvent.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            logStackFlow("dismiss:postRemove:newDown", recentsView, motionEvent, null);
             releasePagedTouchForStackDismiss(recentsView);
             finishSilentNativeDismiss(recentsView);
             return false;
@@ -1256,6 +1386,7 @@ final class LauncherRecentsTouchController {
         if (motionEvent != null
                 && (motionEvent.getActionMasked() == MotionEvent.ACTION_UP
                 || motionEvent.getActionMasked() == MotionEvent.ACTION_CANCEL)) {
+            logStackFlow("dismiss:postRemove:end", recentsView, motionEvent, null);
             finishSilentNativeDismiss(recentsView);
         }
         return true;
@@ -1576,11 +1707,15 @@ final class LauncherRecentsTouchController {
             return;
         }
         if (isTransitionAnimationActive(recentsView)) {
+            logStackFlow("visibleData:ensureIfNeeded:skipTransition",
+                    recentsView, null, "changes=" + changes);
             return;
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
         if (recentsView.getWidth() <= 0 || recentsView.getHeight() <= 0) {
+            logStackFlow("visibleData:ensureIfNeeded:forceNoSize",
+                    recentsView, null, "changes=" + changes);
             forceEnsureStackVisibleTaskData(recentsView, changes);
             return;
         }
@@ -1593,9 +1728,23 @@ final class LauncherRecentsTouchController {
                 currentPage,
                 bucket,
                 false)) {
+            logStackFlow("visibleData:ensureIfNeeded:skipDuplicate",
+                    recentsView,
+                    null,
+                    "changes=" + changes
+                            + " bucket=" + bucket
+                            + " taskCount=" + taskViewCount
+                            + " currentPage=" + currentPage);
             markStackVisibleTaskDataTouched(state, false);
             return;
         }
+        logStackFlow("visibleData:ensureIfNeeded:force",
+                recentsView,
+                null,
+                "changes=" + changes
+                        + " bucket=" + bucket
+                        + " taskCount=" + taskViewCount
+                        + " currentPage=" + currentPage);
         forceEnsureStackVisibleTaskData(recentsView, changes);
     }
 
@@ -1608,8 +1757,12 @@ final class LauncherRecentsTouchController {
             return;
         }
         if (isTransitionAnimationActive(recentsView) && !forceRelease) {
+            logStackFlow("visibleData:force:skipTransition",
+                    recentsView, null, "changes=" + changes);
             return;
         }
+        logStackFlow("visibleData:force:start",
+                recentsView, null, "changes=" + changes + " forceRelease=" + forceRelease);
         long perfStartNs = LauncherRecentsPerf.start(recentsView);
         try {
             StackVisibleTaskDataSyncState state = ensureStackVisibleTaskDataSyncState(recentsView);
@@ -1623,12 +1776,28 @@ final class LauncherRecentsTouchController {
                     currentPage,
                     scrollBucket,
                     forceRelease)) {
+                logStackFlow("visibleData:force:skipDuplicate",
+                        recentsView,
+                        null,
+                        "changes=" + changes
+                                + " bucket=" + scrollBucket
+                                + " taskCount=" + taskViewCount
+                                + " currentPage=" + currentPage
+                                + " forceRelease=" + forceRelease);
                 markStackVisibleTaskDataTouched(state, forceRelease);
                 return;
             }
             state.taskViewCount = taskViewCount;
             state.currentPage = currentPage;
             state.scrollBucket = scrollBucket;
+            logStackFlow("visibleData:force:run",
+                    recentsView,
+                    null,
+                    "changes=" + changes
+                            + " bucket=" + scrollBucket
+                            + " taskCount=" + taskViewCount
+                            + " currentPage=" + currentPage
+                            + " forceRelease=" + forceRelease);
             ensureStackVisibleTaskData(recentsView, changes, forceRelease);
         } finally {
             LauncherRecentsPerf.end("visibleTaskDataSync:force", perfStartNs);
@@ -1763,6 +1932,13 @@ final class LauncherRecentsTouchController {
         ArrayList<Integer> removedTaskIds = resolveRemovedStackTaskIds(
                 lastVisibleTaskIds,
                 visibleTaskIds);
+        logStackFlow("visibleData:sync",
+                recentsView,
+                null,
+                "changes=" + changes
+                        + " forceRelease=" + forceRelease
+                        + " visibleIds=" + visibleTaskIds
+                        + " removedIds=" + removedTaskIds);
         if (visibleTaskIds.isEmpty()) {
             STACK_VISIBLE_TASK_IDS.remove(recentsView);
         } else if (visibleTaskIdsChanged) {
@@ -1806,6 +1982,11 @@ final class LauncherRecentsTouchController {
         appendUniqueTaskIds(state.pendingReleaseTaskIds, taskIds);
         if (state.pendingCleanupRunnable != null) {
             state.pendingCleanupChanges |= changes;
+            logStackFlow("visibleData:cleanup:alreadyPending",
+                    recentsView,
+                    null,
+                    "changes=" + state.pendingCleanupChanges
+                            + " pendingIds=" + state.pendingReleaseTaskIds);
             LauncherRecentsPerf.hit("visibleTaskDataSync:cleanupAlreadyPending", recentsView);
             return;
         }
@@ -1818,13 +1999,21 @@ final class LauncherRecentsTouchController {
                 ArrayList<Integer> cleanupTaskIds = new ArrayList<>(state.pendingReleaseTaskIds);
                 state.pendingReleaseTaskIds.clear();
                 if (isTransitionAnimationActive(recentsView)) {
+                    logStackFlow("visibleData:cleanup:retryTransition",
+                            recentsView, null, "pendingIds=" + cleanupTaskIds);
                     scheduleDeferredCleanup(recentsView, state, cleanupChanges, cleanupTaskIds);
                     return;
                 }
                 if (!isStackVisibleTaskDataCleanupIdle(state)) {
+                    logStackFlow("visibleData:cleanup:retryBusy",
+                            recentsView, null, "pendingIds=" + cleanupTaskIds);
                     scheduleDeferredCleanup(recentsView, state, cleanupChanges, cleanupTaskIds);
                     return;
                 }
+                logStackFlow("visibleData:cleanup:run",
+                        recentsView,
+                        null,
+                        "changes=" + cleanupChanges + " pendingIds=" + cleanupTaskIds);
                 long startNs = LauncherRecentsPerf.start(recentsView);
                 try {
                     Object visibleTaskData = LauncherRecentsCompat.getFieldCompat(
@@ -1848,6 +2037,10 @@ final class LauncherRecentsTouchController {
                 isTransitionAnimationActive(recentsView)
                         ? STACK_VISIBLE_DATA_CLEANUP_RETRY_DELAY_MS
                         : STACK_VISIBLE_DATA_CLEANUP_IDLE_DELAY_MS);
+        logStackFlow("visibleData:cleanup:schedule",
+                recentsView,
+                null,
+                "changes=" + changes + " pendingIds=" + state.pendingReleaseTaskIds);
     }
 
     private static boolean isStackVisibleTaskDataCleanupIdle(
@@ -1916,6 +2109,10 @@ final class LauncherRecentsTouchController {
                 }
             }
             if (hadVisibleData) {
+                logStackFlow("visibleData:releaseTask",
+                        recentsView,
+                        null,
+                        "changes=" + changes + " " + taskDetails(recentsView, taskView));
                 long releaseStartNs = LauncherRecentsPerf.start(recentsView);
                 try {
                     LauncherRecentsCompat.invokeCompat(
@@ -2179,6 +2376,7 @@ final class LauncherRecentsTouchController {
         if (recentsView == null) {
             return;
         }
+        logStackFlow("pagedRelease:suppress", recentsView, motionEvent, null);
         clearRecentsDeferredSnap(recentsView);
         if (motionEvent != null && motionEvent.getActionMasked() == MotionEvent.ACTION_UP) {
             startUnsnappedFlingIfNeeded(recentsView, motionEvent);
@@ -2191,6 +2389,7 @@ final class LauncherRecentsTouchController {
         releasePagedEdgeEffects(recentsView, motionEvent);
         LauncherRecentsCompat.invokeCompat(recentsView, "resetTouchState", LauncherRecentsCompat.NO_ARGS);
         if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
+            logStackFlow("pagedRelease:suppress:layoutApplied", recentsView, motionEvent, null);
             recentsView.invalidate();
         }
     }
@@ -2202,6 +2401,8 @@ final class LauncherRecentsTouchController {
         Object velocityTrackerValue =
                 LauncherRecentsCompat.getFieldCompat(recentsView, "mVelocityTracker");
         if (!(velocityTrackerValue instanceof VelocityTracker)) {
+            logStackFlow("pagedRelease:fling:noVelocityTracker",
+                    recentsView, motionEvent, null);
             return;
         }
         VelocityTracker velocityTracker = (VelocityTracker) velocityTrackerValue;
@@ -2220,14 +2421,25 @@ final class LauncherRecentsTouchController {
                 LauncherRecentsCompat.readIntField(recentsView, "mMaxScroll", primaryScroll);
 
         if (primaryScroll < minScroll || primaryScroll > maxScroll) {
+            logStackFlow("pagedRelease:fling:springBack",
+                    recentsView,
+                    motionEvent,
+                    "velocity=" + primaryVelocity
+                            + " primaryScroll=" + primaryScroll
+                            + " min=" + minScroll
+                            + " max=" + maxScroll);
             startPagedSpringBack(recentsView, primaryScroll, minScroll, maxScroll);
             return;
         }
         if (!shouldKeepFreeScrollFling(recentsView, primaryVelocity)) {
+            logStackFlow("pagedRelease:fling:skipVelocity",
+                    recentsView, motionEvent, "velocity=" + primaryVelocity);
             return;
         }
         Object scroller = LauncherRecentsCompat.getFieldCompat(recentsView, "mScroller");
         if (scroller == null) {
+            logStackFlow("pagedRelease:fling:noScroller",
+                    recentsView, motionEvent, "velocity=" + primaryVelocity);
             return;
         }
         setScrollerFriction(scroller, 0.01f);
@@ -2238,8 +2450,17 @@ final class LauncherRecentsTouchController {
                 primaryVelocity,
                 minScroll,
                 maxScroll)) {
+            logStackFlow("pagedRelease:fling:startFailed",
+                    recentsView, motionEvent, "velocity=" + primaryVelocity);
             return;
         }
+        logStackFlow("pagedRelease:fling:start",
+                recentsView,
+                motionEvent,
+                "velocity=" + primaryVelocity
+                        + " primaryScroll=" + primaryScroll
+                        + " min=" + minScroll
+                        + " max=" + maxScroll);
         LauncherRecentsCompat.setIntField(
                 recentsView,
                 "mNextPage",
@@ -2737,6 +2958,7 @@ final class LauncherRecentsTouchController {
     }
 
     static void clearRecentsDeferredSnap(View recentsView) {
+        logStackFlow("deferredSnap:clear", recentsView, null, null);
         Object handlerValue = LauncherRecentsCompat.getFieldCompat(
                 recentsView,
                 "mMainHandlerForAbortScrollAndCheckSnap");

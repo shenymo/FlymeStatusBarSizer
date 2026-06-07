@@ -358,6 +358,11 @@ public class FlymeStatusBarSizer extends XposedModule {
         return config != null && config.launcherRecentsPerfLoggingEnabled;
     }
 
+    public static boolean isLauncherRecentsFlowLoggingEnabled(Context context) {
+        ModuleConfig config = ModuleConfig.load(context);
+        return config != null && config.launcherRecentsFlowLoggingEnabled;
+    }
+
     private static boolean isWifiPerfLoggingEnabled() {
         ModuleConfig config = ModuleConfig.load(ModuleConfig.getSystemUiContext());
         return config != null && config.wifiPerfLoggingEnabled;
@@ -6843,6 +6848,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean launcherIosStackRecentsEnabled;
         public final boolean launcherIosStackRecentsBlurEnabled;
         public final boolean launcherRecentsPerfLoggingEnabled;
+        public final boolean launcherRecentsFlowLoggingEnabled;
 
         private LauncherRecentsConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
@@ -6854,6 +6860,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             launcherRecentsPerfLoggingEnabled = enabled
                     && config != null
                     && config.launcherRecentsPerfLoggingEnabled;
+            launcherRecentsFlowLoggingEnabled = enabled
+                    && config != null
+                    && config.launcherRecentsFlowLoggingEnabled;
         }
     }
 
