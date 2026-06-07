@@ -2286,7 +2286,7 @@ final class LauncherRecentsLayoutEngine {
                 && !LauncherRecentsState.isOverviewStateStackBaselineCaptured(recentsView)) {
             captureStockTaskStatesForStackApply(recentsView);
         }
-        applyStackLayout(recentsView, false, "applyDynamic", false);
+        applyStackLayout(recentsView, false, "applyDynamic", true);
         LauncherRecentsPerf.flow("layout:dynamic:applied", recentsView);
         return true;
     }

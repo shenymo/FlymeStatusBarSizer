@@ -2032,11 +2032,16 @@ final class LauncherRecentsTouchController {
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(recentsView);
     }
 
+    static boolean isStackUserDragging(View recentsView) {
+        return recentsView != null
+                && LauncherRecentsCompat.readBooleanField(recentsView, "mIsBeingDragged", false);
+    }
+
     static void ensureStackVisibleTaskDataIfNeeded(View recentsView, int changes) {
         if (recentsView == null || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
             return;
         }
-        if (isTransitionAnimationActive(recentsView)) {
+        if (isTransitionAnimationActive(recentsView) && !isStackUserDragging(recentsView)) {
             logStackFlow("visibleData:ensureIfNeeded:skipTransition",
                     recentsView, null, "changes=" + changes);
             return;
@@ -2086,7 +2091,9 @@ final class LauncherRecentsTouchController {
         if (recentsView == null) {
             return;
         }
-        if (isTransitionAnimationActive(recentsView) && !forceRelease) {
+        if (isTransitionAnimationActive(recentsView)
+                && !forceRelease
+                && !isStackUserDragging(recentsView)) {
             logStackFlow("visibleData:force:skipTransition",
                     recentsView, null, "changes=" + changes);
             return;
@@ -2462,6 +2469,14 @@ final class LauncherRecentsTouchController {
         if (taskViewCount <= 0) {
             return 0;
         }
+        int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
+        if (isStackUserDragging(recentsView)) {
+            int nearestPage = LauncherRecentsCompat.invokeInt(
+                    recentsView,
+                    "getPageNearestToCenterOfScreen",
+                    currentPage);
+            return Math.max(0, Math.min(nearestPage, taskViewCount - 1));
+        }
         Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
                 recentsView,
                 "getRunningTaskView");
@@ -2471,7 +2486,6 @@ final class LauncherRecentsTouchController {
                 return runningIndex;
             }
         }
-        int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
         return Math.max(0, Math.min(currentPage, taskViewCount - 1));
     }
 
