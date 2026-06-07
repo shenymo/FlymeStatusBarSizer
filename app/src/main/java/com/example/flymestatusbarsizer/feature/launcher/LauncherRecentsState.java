@@ -120,6 +120,8 @@ final class LauncherRecentsState {
         boolean overviewPeekStockAnimationActive;
         boolean overviewStateStackBaselineCaptured;
         boolean overviewStateStackSettled;
+        boolean overviewPreReleaseStockMode;
+        boolean overviewStateStackReleaseRequested;
         boolean taskLaunchRequestStarted;
         boolean swipeUpGestureActive;
         Float overviewStateStackStartAdjacentOffset;
@@ -532,6 +534,34 @@ final class LauncherRecentsState {
     static boolean isOverviewPeekStockAnimationActive(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
         return state != null && state.overviewPeekStockAnimationActive;
+    }
+
+    static void setOverviewPreReleaseStockMode(View recentsView, boolean active) {
+        RecentsViewState state = active
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.overviewPreReleaseStockMode = active;
+        }
+    }
+
+    static boolean isOverviewPreReleaseStockMode(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.overviewPreReleaseStockMode;
+    }
+
+    static void setOverviewStateStackReleaseRequested(View recentsView, boolean requested) {
+        RecentsViewState state = requested
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.overviewStateStackReleaseRequested = requested;
+        }
+    }
+
+    static boolean isOverviewStateStackReleaseRequested(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.overviewStateStackReleaseRequested;
     }
 
     static void setOverviewStateStackStartAdjacentOffset(View recentsView, float value) {

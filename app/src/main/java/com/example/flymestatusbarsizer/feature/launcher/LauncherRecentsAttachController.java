@@ -199,6 +199,13 @@ final class LauncherRecentsAttachController {
                             recentsView);
                     return chain.proceed();
                 }
+                if (LauncherRecentsState.isOverviewPreReleaseStockMode(recentsView)) {
+                    LauncherRecentsPerf.flow("attach:setRecentsAttached:skipOverviewPeek",
+                            recentsView);
+                    LauncherRecentsCompat.writeField(thisObject, "mIsAttachedToWindow", true);
+                    LauncherRecentsCompat.writeField(thisObject, "mHasEverAttachedToWindow", true);
+                    return null;
+                }
                 if (LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)) {
                     LauncherRecentsPerf.flow("attach:setRecentsAttached:prepareDeferred",
                             recentsView);

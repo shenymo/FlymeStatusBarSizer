@@ -2248,6 +2248,7 @@ final class LauncherRecentsLayoutEngine {
     static boolean shouldApplyDynamicStackLayout(View recentsView) {
         return shouldUseStackLayout(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
+                && !LauncherRecentsState.isOverviewPreReleaseStockMode(recentsView)
                 && !LauncherRecentsState.hasActiveTaskLaunchTransitionGeometry(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
