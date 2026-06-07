@@ -115,6 +115,11 @@ final class LauncherRecentsTouchController {
                             return true;
                         }
                     }
+                    if (handleMovingStackBlankTapHomeExit(recentsView, motionEvent)) {
+                        logStackFlow("touch:intercept:movingBlankTapHome",
+                                recentsView, motionEvent, null);
+                        return true;
+                    }
                     if (shouldKeepStackDismissGestureAwayFromPagedView(
                             recentsView,
                             motionEvent)) {
@@ -158,6 +163,11 @@ final class LauncherRecentsTouchController {
                                     recentsView, motionEvent, null);
                             return true;
                         }
+                    }
+                    if (handleMovingStackBlankTapHomeExit(recentsView, motionEvent)) {
+                        logStackFlow("touch:event:movingBlankTapHome",
+                                recentsView, motionEvent, null);
+                        return true;
                     }
                     if (shouldKeepStackDismissGestureAwayFromPagedView(
                             recentsView,
@@ -2608,6 +2618,51 @@ final class LauncherRecentsTouchController {
         }
         return isAppToRecentsReleaseInterruptible(recentsView)
                 && isBlankTapOnStack(recentsView, motionEvent);
+    }
+
+    private static boolean handleMovingStackBlankTapHomeExit(
+            View recentsView,
+            MotionEvent motionEvent) {
+        if (recentsView == null
+                || motionEvent == null
+                || motionEvent.getActionMasked() != MotionEvent.ACTION_DOWN) {
+            return false;
+        }
+        if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)) {
+            finishMovingStackBlankTapTouch(recentsView, motionEvent);
+            return true;
+        }
+        if (!LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || LauncherRecentsState.isSwipeUpGestureActive(recentsView)
+                || LauncherRecentsCompat.invokeBoolean(recentsView, "isScrollerFinished", true)
+                || findStackTaskUnderPoint(recentsView, motionEvent.getX(), motionEvent.getY())
+                != null) {
+            return false;
+        }
+        LauncherRecentsState.trackRecentsView(recentsView);
+        LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+        LauncherRecentsTransitionController.prepareBlankTapHomeExitAnimation(recentsView);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "startHome",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                true);
+        finishMovingStackBlankTapTouch(recentsView, motionEvent);
+        return true;
+    }
+
+    private static void finishMovingStackBlankTapTouch(
+            View recentsView,
+            MotionEvent motionEvent) {
+        LauncherRecentsCompat.setBooleanField(
+                recentsView,
+                "mTouchDownToStartHome",
+                false);
+        releasePagedEdgeEffects(recentsView, motionEvent);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "resetTouchState",
+                LauncherRecentsCompat.NO_ARGS);
     }
 
     private static boolean isAppToRecentsReleaseInterruptible(View recentsView) {
