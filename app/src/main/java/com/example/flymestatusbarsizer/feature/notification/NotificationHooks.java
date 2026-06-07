@@ -36,6 +36,8 @@ public final class NotificationHooks {
     private static final String PACKAGE_ANDROID = "android";
     private static final String FLYME_STATUS_BAR_ICON_UTILS =
             "com.flyme.systemui.statusbar.policy.FlymeStatusBarIconUtils";
+    private static final String MEDIA_CAROUSE_TRANSITION_LAYOUT =
+            "com.flyme.systemui.media.controls.ui.view.MediaCarouseTransitionLayout";
     private static final String EXTRA_NOTIFICATION_APP_ICON_REPLACED =
             "flyme_status_bar_sizer_notification_app_icon_replaced";
     private static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
@@ -280,6 +282,7 @@ public final class NotificationHooks {
         hookMzBackgroundBlur(module, loader);
         hookWallpaperBackgroundBlur(module, loader);
         hookMediaSystemBlurOnly(module, loader);
+        hookMediaPlayerTextColor(module, loader);
     }
 
     private static void hookMzBackgroundBlur(FlymeStatusBarSizer module, ClassLoader loader) {
@@ -300,7 +303,9 @@ public final class NotificationHooks {
                     java.util.function.Consumer.class);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                if (!shouldApplyNotificationSystemBlurOnly(chain.getArg(0))) {
+                Object target = chain.getArg(0);
+                applyMediaNotificationTextFollowStatusBar(target);
+                if (!shouldApplyNotificationSystemBlurOnly(target)) {
                     return chain.proceed();
                 }
                 Object[] args = chain.getArgs().toArray();
@@ -376,7 +381,9 @@ public final class NotificationHooks {
             FlymeStatusBarSizer module, Method method, int colorArgIndex) {
         method.setAccessible(true);
         module.intercept(method, chain -> {
-            if (!shouldApplyNotificationSystemBlurOnly(chain.getArg(0))) {
+            Object target = chain.getArg(0);
+            applyMediaNotificationTextFollowStatusBar(target);
+            if (!shouldApplyNotificationSystemBlurOnly(target)) {
                 return chain.proceed();
             }
             Object[] args = chain.getArgs().toArray();
@@ -387,25 +394,71 @@ public final class NotificationHooks {
 
     private static void hookMediaSystemBlurOnly(FlymeStatusBarSizer module, ClassLoader loader) {
         try {
-            Class<?> clazz = Class.forName(
-                    "com.flyme.systemui.media.controls.ui.view.MediaCarouseTransitionLayout",
-                    false,
-                    loader);
+            Class<?> clazz = Class.forName(MEDIA_CAROUSE_TRANSITION_LAYOUT, false, loader);
             Method method = clazz.getDeclaredMethod("setMediaBackground", BitmapDrawable.class);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                if (!shouldApplyNotificationSystemBlurOnly(chain.getThisObject())) {
+                Object target = chain.getThisObject();
+                if (!shouldApplyNotificationSystemBlurOnly(target)) {
+                    applyMediaNotificationTextFollowStatusBar(target);
                     return chain.proceed();
                 }
                 Object[] args = chain.getArgs().toArray();
                 args[0] = null;
-                return chain.proceed(args);
+                Object result = chain.proceed(args);
+                applyMediaNotificationTextFollowStatusBar(target);
+                return result;
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logNotificationWarning(
                     "Failed to hook notification media blur",
                     t);
         }
+    }
+
+    private static void hookMediaPlayerTextColor(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.media.controls.ui.controller.MediaControlPanel",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("setPlayerTextColor");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                View player = resolveMediaPlayerView(chain.getThisObject());
+                if (player != null) {
+                    updateNotificationTextColors(player, false, 0);
+                }
+                Object result = chain.proceed();
+                applyMediaNotificationTextFollowStatusBar(player);
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook notification media text color",
+                    t);
+        }
+    }
+
+    private static View resolveMediaPlayerView(Object target) {
+        Object holder = FlymeStatusBarSizer.getFieldCompat(target, "mMediaViewHolder");
+        Object player = FlymeStatusBarSizer.invokeNoArgCompat(holder, "getPlayer");
+        return player instanceof View ? (View) player : null;
+    }
+
+    private static void applyMediaNotificationTextFollowStatusBar(Object target) {
+        if (!(target instanceof View)) {
+            return;
+        }
+        View view = (View) target;
+        if (!isMediaNotificationRoot(view)) {
+            return;
+        }
+        FlymeStatusBarSizer.NotificationConfigSnapshot config =
+                FlymeStatusBarSizer.loadNotificationConfig(view.getContext());
+        applyNotificationTextFollowStatusBar(
+                view,
+                config.enabled && config.notificationTextFollowStatusBarEnabled);
     }
 
     private static boolean shouldApplyNotificationSystemBlurOnly(Object target) {
@@ -429,8 +482,7 @@ public final class NotificationHooks {
                     .equals(name)
                     || "com.android.systemui.statusbar.notification.shelf.NotificationShelfBackgroundView"
                     .equals(name)
-                    || "com.flyme.systemui.media.controls.ui.view.MediaCarouseTransitionLayout"
-                    .equals(name)) {
+                    || MEDIA_CAROUSE_TRANSITION_LAYOUT.equals(name)) {
                 return true;
             }
             current = current.getSuperclass();
@@ -532,6 +584,9 @@ public final class NotificationHooks {
             return null;
         }
         View view = (View) target;
+        if (isMediaNotificationRoot(view)) {
+            return view;
+        }
         View fallback = null;
         ViewParent parent = view.getParent();
         int depth = 0;
@@ -552,6 +607,10 @@ public final class NotificationHooks {
             depth++;
         }
         return fallback;
+    }
+
+    private static boolean isMediaNotificationRoot(View view) {
+        return view != null && MEDIA_CAROUSE_TRANSITION_LAYOUT.equals(view.getClass().getName());
     }
 
     private static void updateNotificationTextColors(View view, boolean enabled, int textColor) {
