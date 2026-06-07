@@ -50,6 +50,7 @@ public final class NotificationHooks {
     private static volatile Method flymeGetApplicationIconMethod;
     private static volatile Method flymeClearApplicationIconCacheMethod;
     private static volatile int LAST_NOTIFICATION_APP_ICON_VIEW_REFRESH_NIGHT = -1;
+    private static volatile int LAST_STATUS_BAR_ICON_TINT = 0;
 
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_RESTORE_GUARDS =
             new WeakHashMap<>();
@@ -68,6 +69,10 @@ public final class NotificationHooks {
     private static final WeakHashMap<View, Drawable> NOTIFICATION_APP_ICON_LAST_DRAWABLES =
             new WeakHashMap<>();
     private static final WeakHashMap<TextView, ColorStateList> NOTIFICATION_TEXT_COLOR_STATES =
+            new WeakHashMap<>();
+    private static final WeakHashMap<TextView, Boolean> NOTIFICATION_TEXT_APPLY_GUARDS =
+            new WeakHashMap<>();
+    private static final WeakHashMap<TextView, Boolean> NOTIFICATION_TEXT_FOLLOW_VIEWS =
             new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> NOTIFICATION_TEXT_FOLLOW_ROOTS =
             new WeakHashMap<>();
@@ -94,6 +99,10 @@ public final class NotificationHooks {
         if (module == null || loader == null) {
             return;
         }
+        hookNotificationTextTintDispatcher(module, loader);
+        hookNotificationTextViewTint(module);
+        hookLiveNotificationTextTint(module, loader);
+        hookLandscapeHeadsUpNotificationTextTint(module, loader);
         hookNotificationBlurMask(module, loader);
         hookNotificationSystemBlurOnly(module, loader);
         hookNotificationAppIcons(module, loader);
@@ -217,6 +226,145 @@ public final class NotificationHooks {
     private static void hookNotificationAppIcons(FlymeStatusBarSizer module, ClassLoader loader) {
         hookNotificationIconTint(module, loader);
         hookNotificationStatusBarIconUpdate(module, loader);
+    }
+
+    private static void hookNotificationTextTintDispatcher(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.statusbar.phone.DarkIconDispatcherImpl",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("applyIconTint");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                rememberStatusBarIconTint(chain.getThisObject());
+                refreshNotificationTextFollowStatusBarForTintChange(chain.getThisObject());
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook notification text tint dispatcher",
+                    t);
+        }
+    }
+
+    private static void hookNotificationTextViewTint(FlymeStatusBarSizer module) {
+        hookNotificationTextViewSetTextColor(module, int.class);
+        hookNotificationTextViewSetTextColor(module, ColorStateList.class);
+    }
+
+    private static void hookNotificationTextViewSetTextColor(
+            FlymeStatusBarSizer module, Class<?> parameterType) {
+        try {
+            Method method = TextView.class.getDeclaredMethod("setTextColor", parameterType);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof TextView) {
+                    applyNotificationTextViewTintIfNeeded((TextView) target);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook notification TextView tint",
+                    t);
+        }
+    }
+
+    private static void hookLiveNotificationTextTint(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        hookLiveNotificationControllerTextTint(module, loader);
+        hookLiveNotificationViewTextTint(module, loader);
+    }
+
+    private static void hookLiveNotificationControllerTextTint(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.statusbar.livenotification.LiveNotificationController",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod(
+                    "onDarkChanged",
+                    ArrayList.class,
+                    float.class,
+                    int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                applyLiveNotificationControllerTextTint(chain.getThisObject());
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook live notification text tint controller",
+                    t);
+        }
+    }
+
+    private static void hookLiveNotificationViewTextTint(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> viewClass = Class.forName(
+                    "com.flyme.statusbar.livenotification.LiveNotificationView",
+                    false,
+                    loader);
+            Class<?> infoClass = Class.forName(
+                    "com.android.systemui.shared.livenotification.LiveNotificationInfo",
+                    false,
+                    loader);
+            Method method = viewClass.getDeclaredMethod(
+                    "setLiveNotificationInfo",
+                    infoClass,
+                    boolean.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object view = chain.getThisObject();
+                if (view instanceof View && shouldLiveNotificationTextFollowStatusBar((View) view)) {
+                    Integer textColor = resolveNotificationTextTintColor((View) view);
+                    if (textColor != null) {
+                        applyLiveNotificationInfoTextTint(chain.getArg(0), textColor);
+                    }
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook live notification text tint view",
+                    t);
+        }
+    }
+
+    private static void hookLandscapeHeadsUpNotificationTextTint(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> viewClass = Class.forName(
+                    "com.flyme.notification.view.LandscapeHeadsUpNotificationView",
+                    false,
+                    loader);
+            Class<?> entryClass = Class.forName(
+                    "com.android.systemui.statusbar.notification.collection.NotificationEntry",
+                    false,
+                    loader);
+            Method method = viewClass.getDeclaredMethod("applyInfo", entryClass);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof View) {
+                    applyLandscapeHeadsUpNotificationTextTint((View) target);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook landscape heads-up notification text tint",
+                    t);
+        }
     }
 
     private static void hookNotificationBlurMask(FlymeStatusBarSizer module, ClassLoader loader) {
@@ -490,9 +638,7 @@ public final class NotificationHooks {
             return;
         }
         rememberNotificationTextFollowRoot(root, enabled);
-        Integer textColor = enabled
-                ? FlymeStatusBarSizer.resolveStatusBarIconTintColorCompat(root)
-                : null;
+        Integer textColor = enabled ? resolveNotificationTextTintColor(root) : null;
         if (textColor == null) {
             updateNotificationTextColors(root, false, 0);
             return;
@@ -552,12 +698,191 @@ public final class NotificationHooks {
                 rememberNotificationTextFollowRoot(root, false);
                 continue;
             }
-            Integer textColor = FlymeStatusBarSizer.resolveStatusBarIconTintColorCompat(root);
+            Integer textColor = resolveNotificationTextTintColor(root);
             if (textColor == null) {
                 updateNotificationTextColors(root, false, 0);
                 continue;
             }
             updateNotificationTextColors(root, true, textColor);
+        }
+        refreshNotificationTextFollowViews();
+    }
+
+    private static void refreshNotificationTextFollowViews() {
+        ArrayList<TextView> views;
+        synchronized (NOTIFICATION_TEXT_FOLLOW_VIEWS) {
+            views = new ArrayList<>(NOTIFICATION_TEXT_FOLLOW_VIEWS.keySet());
+        }
+        for (TextView view : views) {
+            if (view == null || !view.isAttachedToWindow()) {
+                rememberNotificationTextFollowView(view, false);
+                continue;
+            }
+            applyNotificationTextViewTintIfNeeded(view);
+        }
+    }
+
+    private static Integer resolveNotificationTextTintColor(View root) {
+        if (Color.alpha(LAST_STATUS_BAR_ICON_TINT) != 0) {
+            return LAST_STATUS_BAR_ICON_TINT;
+        }
+        Integer textColor = FlymeStatusBarSizer.resolveStatusBarIconTintColorCompat(root);
+        return textColor;
+    }
+
+    private static void rememberStatusBarIconTint(Object dispatcher) {
+        Object value = FlymeStatusBarSizer.getFieldCompat(dispatcher, "mIconTint");
+        if (value instanceof Integer && Color.alpha((Integer) value) != 0) {
+            LAST_STATUS_BAR_ICON_TINT = (Integer) value;
+        }
+    }
+
+    private static void applyLiveNotificationControllerTextTint(Object controller) {
+        Object display = FlymeStatusBarSizer.getFieldCompat(controller, "mLiveNotificationDisplay");
+        if (!(display instanceof View)
+                || !shouldLiveNotificationTextFollowStatusBar((View) display)) {
+            return;
+        }
+        Integer textColor = null;
+        Object systemColor = FlymeStatusBarSizer.getFieldCompat(controller, "mSystemColor");
+        if (systemColor instanceof Integer && Color.alpha((Integer) systemColor) != 0) {
+            textColor = (Integer) systemColor;
+        }
+        if (textColor == null) {
+            textColor = resolveNotificationTextTintColor((View) display);
+        }
+        if (textColor == null) {
+            return;
+        }
+        Object displayInfo = FlymeStatusBarSizer.getFieldCompat(controller, "mDisplayNotificationInfo");
+        Object shadeInfo = FlymeStatusBarSizer.getFieldCompat(controller, "mShadeNotificationInfo");
+        applyLiveNotificationInfoTextTint(displayInfo, textColor);
+        applyLiveNotificationInfoTextTint(shadeInfo, textColor);
+        refreshLiveNotificationView(display, displayInfo);
+        refreshLiveNotificationView(
+                FlymeStatusBarSizer.getFieldCompat(controller, "mLiveNotificationShade"),
+                shadeInfo);
+    }
+
+    private static boolean shouldLiveNotificationTextFollowStatusBar(View view) {
+        FlymeStatusBarSizer.NotificationConfigSnapshot config =
+                FlymeStatusBarSizer.loadNotificationConfig(view.getContext());
+        return config.enabled && config.notificationTextFollowStatusBarEnabled;
+    }
+
+    private static void applyLiveNotificationInfoTextTint(Object info, int textColor) {
+        if (info == null) {
+            return;
+        }
+        FlymeStatusBarSizer.invokeMethodCompat(
+                info,
+                "setProgressContentColor",
+                new Class<?>[]{int.class},
+                textColor);
+    }
+
+    private static void refreshLiveNotificationView(Object view, Object info) {
+        if (view == null || info == null) {
+            return;
+        }
+        FlymeStatusBarSizer.invokeMethodCompat(
+                view,
+                "setLiveNotificationInfo",
+                new Class<?>[]{info.getClass(), boolean.class},
+                info,
+                false);
+    }
+
+    private static void applyLandscapeHeadsUpNotificationTextTint(View view) {
+        FlymeStatusBarSizer.NotificationConfigSnapshot config =
+                FlymeStatusBarSizer.loadNotificationConfig(view.getContext());
+        boolean enabled = config.enabled && config.notificationTextFollowStatusBarEnabled;
+        rememberNotificationTextFollowRoot(view, enabled);
+        if (!enabled) {
+            updateNotificationTextColors(view, false, 0);
+            return;
+        }
+        Integer textColor = resolveNotificationTextTintColor(view);
+        if (textColor != null) {
+            updateNotificationTextColors(view, true, textColor);
+        }
+    }
+
+    private static void applyNotificationTextViewTintIfNeeded(TextView view) {
+        if (view == null || isNotificationTextApplyGuardActive(view)) {
+            return;
+        }
+        boolean enabled = shouldFollowStatusBarTintTextView(view);
+        rememberNotificationTextFollowView(view, enabled);
+        if (!enabled) {
+            return;
+        }
+        Integer textColor = resolveNotificationTextTintColor(view);
+        if (textColor != null) {
+            applyNotificationTextColor(view, textColor);
+        }
+    }
+
+    private static void rememberNotificationTextFollowView(TextView view, boolean enabled) {
+        synchronized (NOTIFICATION_TEXT_FOLLOW_VIEWS) {
+            if (enabled) {
+                NOTIFICATION_TEXT_FOLLOW_VIEWS.put(view, Boolean.TRUE);
+            } else {
+                NOTIFICATION_TEXT_FOLLOW_VIEWS.remove(view);
+            }
+        }
+    }
+
+    private static boolean shouldFollowStatusBarTintTextView(TextView view) {
+        FlymeStatusBarSizer.NotificationConfigSnapshot config =
+                FlymeStatusBarSizer.loadNotificationConfig(view.getContext());
+        if (!config.enabled || !config.notificationTextFollowStatusBarEnabled) {
+            return false;
+        }
+        return isNotificationPopupTextView(view);
+    }
+
+    private static boolean isNotificationPopupTextView(TextView view) {
+        String idName = getViewIdName(view);
+        if (idName.contains("headsup")
+                || idName.contains("heads_up")
+                || idName.contains("live_notification")
+                || idName.contains("notification_title")
+                || idName.contains("notification_content")) {
+            return true;
+        }
+        ViewParent parent = view.getParent();
+        int depth = 0;
+        while (parent instanceof View && depth < 10) {
+            View parentView = (View) parent;
+            String className = parentView.getClass().getName();
+            if (className.contains("HeadsUp")
+                    || className.contains("LandscapeHeadsUpNotificationView")
+                    || className.contains("LiveNotificationView")
+                    || className.contains("ExpandableNotificationRow")
+                    || className.contains("NotificationContentView")) {
+                return true;
+            }
+            parent = parentView.getParent();
+            depth++;
+        }
+        return false;
+    }
+
+    private static String getViewIdName(View view) {
+        if (view == null || view.getId() == View.NO_ID) {
+            return "";
+        }
+        try {
+            return view.getResources().getResourceEntryName(view.getId());
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    private static boolean isNotificationTextApplyGuardActive(TextView view) {
+        synchronized (NOTIFICATION_TEXT_APPLY_GUARDS) {
+            return Boolean.TRUE.equals(NOTIFICATION_TEXT_APPLY_GUARDS.get(view));
         }
     }
 
@@ -627,14 +952,40 @@ public final class NotificationHooks {
                 Color.green(textColor),
                 Color.blue(textColor));
         if (view.getCurrentTextColor() != targetColor) {
-            view.setTextColor(targetColor);
+            setNotificationTextColorGuarded(view, targetColor);
         }
     }
 
     private static void restoreNotificationTextColor(TextView view) {
         ColorStateList originalColors = NOTIFICATION_TEXT_COLOR_STATES.remove(view);
         if (originalColors != null) {
-            view.setTextColor(originalColors);
+            setNotificationTextColorGuarded(view, originalColors);
+        }
+    }
+
+    private static void setNotificationTextColorGuarded(TextView view, int color) {
+        synchronized (NOTIFICATION_TEXT_APPLY_GUARDS) {
+            NOTIFICATION_TEXT_APPLY_GUARDS.put(view, Boolean.TRUE);
+        }
+        try {
+            view.setTextColor(color);
+        } finally {
+            synchronized (NOTIFICATION_TEXT_APPLY_GUARDS) {
+                NOTIFICATION_TEXT_APPLY_GUARDS.remove(view);
+            }
+        }
+    }
+
+    private static void setNotificationTextColorGuarded(TextView view, ColorStateList colors) {
+        synchronized (NOTIFICATION_TEXT_APPLY_GUARDS) {
+            NOTIFICATION_TEXT_APPLY_GUARDS.put(view, Boolean.TRUE);
+        }
+        try {
+            view.setTextColor(colors);
+        } finally {
+            synchronized (NOTIFICATION_TEXT_APPLY_GUARDS) {
+                NOTIFICATION_TEXT_APPLY_GUARDS.remove(view);
+            }
         }
     }
 
