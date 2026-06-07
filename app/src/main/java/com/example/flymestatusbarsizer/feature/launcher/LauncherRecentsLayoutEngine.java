@@ -707,11 +707,19 @@ final class LauncherRecentsLayoutEngine {
                             rawOffset,
                             dismissTranslationPrimary,
                             visibleOffset,
-                            taskScale,
+                            LauncherRecentsCompat.readFloatField(
+                                    taskView,
+                                    "horizontalOffsetTranslationX",
+                                    0f),
+                            LauncherRecentsCompat.readFloatField(
+                                    taskView,
+                                    "taskOffsetTranslationX",
+                                    0f),
                             LauncherRecentsCompat.readFloatField(
                                     taskView,
                                     "taskOffsetTranslationY",
                                     0f),
+                            taskScale,
                             LauncherRecentsCompat.readFloatField(
                                     taskView,
                                     "boxTranslationY",
@@ -721,6 +729,10 @@ final class LauncherRecentsLayoutEngine {
                             LauncherRecentsTaskVisuals.readStableAlpha(taskView),
                             LauncherRecentsTaskVisuals.readActivityTitleAlpha(taskView),
                             LauncherRecentsTaskVisuals.readStackContentBlurProgress(taskView),
+                            LauncherRecentsCompat.readFloatField(
+                                    taskView,
+                                    "fullscreenProgress",
+                                    0f),
                             taskView.getTranslationZ()));
             if (!hasVisibleAnchor || visibleOffset > anchorVisibleOffset) {
                 anchorVisibleOffset = visibleOffset;
@@ -812,14 +824,18 @@ final class LauncherRecentsLayoutEngine {
             }
             float taskOffsetPrimary =
                     desiredVisibleOffset - state.startRawOffset - state.startDismissTranslationX;
-            float taskOffsetX = primaryScrollHorizontal ? taskOffsetPrimary : 0f;
+            float pathProgress = smoothStep(clampedProgress);
+            float horizontalOffsetX = lerp(state.startHorizontalOffsetX, 0f, pathProgress);
+            float taskOffsetX = primaryScrollHorizontal
+                    ? taskOffsetPrimary - horizontalOffsetX
+                    : lerp(state.startTaskOffsetX, 0f, pathProgress);
             float taskOffsetY = primaryScrollHorizontal ? state.startTaskOffsetY : taskOffsetPrimary;
             LauncherRecentsTaskVisuals.applyStackTaskVisualState(
                     taskView,
                     new LauncherRecentsTaskVisuals.StackTaskVisualState(
                             taskWidth * 0.5f,
                             taskHeight * 0.5f,
-                            0f,
+                            horizontalOffsetX,
                             taskOffsetX,
                             taskOffsetY,
                             state.startBoxTranslationY,
@@ -829,11 +845,8 @@ final class LauncherRecentsLayoutEngine {
                             state.startActivityTitleAlpha * resolveBlankTapExitAlpha(
                                     clampedProgress),
                             state.startStackContentBlurProgress,
-                            LauncherRecentsCompat.readFloatField(
-                                    taskView,
-                                    "fullscreenProgress",
-                                    0f),
-                            taskView.getTranslationZ(),
+                            state.startFullscreenProgress,
+                            state.startTranslationZ,
                             true,
                             false));
         }
@@ -1754,6 +1767,25 @@ final class LauncherRecentsLayoutEngine {
                 ? 0f
                 : LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView);
         float appliedTranslationZ = desiredTranslationZ;
+        if (blankTapExitTaskActive) {
+            float pathProgress = smoothStep(context.blankTapExitProgress);
+            appliedHorizontalOffsetX = lerp(
+                    blankTapExitState.startHorizontalOffsetX,
+                    0f,
+                    pathProgress);
+            if (context.primaryScrollHorizontal) {
+                appliedTaskOffsetX = translationCompensationPrimary - appliedHorizontalOffsetX;
+                appliedTaskOffsetY = blankTapExitState.startTaskOffsetY;
+            } else {
+                appliedTaskOffsetX = lerp(
+                        blankTapExitState.startTaskOffsetX,
+                        0f,
+                        pathProgress);
+                appliedTaskOffsetY = translationCompensationPrimary;
+            }
+            appliedFullscreenProgress = blankTapExitState.startFullscreenProgress;
+            appliedTranslationZ = blankTapExitState.startTranslationZ;
+        }
         if (context.gestureStackReleaseActive) {
             if (input.gestureReleaseTaskState != null) {
                 float appliedPrimaryHorizontalOffset = lerp(

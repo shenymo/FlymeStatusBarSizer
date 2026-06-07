@@ -14,6 +14,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -59,6 +60,7 @@ public class MainActivity extends Activity {
     static final int IME_CONTROL_BAR_POOL_ROW_ITEM_COUNT = 3;
     private static final String PACKAGE_SYSTEM_UI = "com.android.systemui";
     private static final String PACKAGE_FLYME_LAUNCHER = "com.meizu.flyme.launcher";
+    private static final String PACKAGE_MEIZU_PPS = "com.meizu.pps";
     private static final long SYSTEM_UI_RESTART_DELAY_MS = 600L;
     private static final String GITHUB_URL = "https://github.com/shenymo/FlymeStatusBarSizer";
     private static final String QQ_GROUP_URL = "https://qun.qq.com/universal-share/share?ac=1&authKey=WuaHYIEHdI6Y%2Fvn7SvcFMtyuUX%2Bwp%2FMedY0eMgPLq9Bbrz%2FPMRsiIgDttNOMbPWW&busi_data=eyJncm91cENvZGUiOiIxMTAyMTM4MzgxIiwidG9rZW4iOiJIb1hmV2xvaVUxWFk2YjAyOXl5MmIwelljU3A5bFRYejQrb3JtUlJwOXRMK1BLU3pnWWRaSG9VdHZ4M3Fld2xqIiwidWluIjoiMjI4OTU3MTk5MCJ9&data=O3ClX619ry0x93elARpxRoHiwSavPU_N00zhT1jj5d_rR0feICi-g7gudqIpU6sbrKtr1_CCPBpNQ-APojGliw&svctype=4&tempid=h5_group_info";
@@ -1585,6 +1587,68 @@ public class MainActivity extends Activity {
         restartPackageProcess(PACKAGE_FLYME_LAUNCHER, "系统桌面");
     }
 
+    void restartOneMindPps() {
+        restartRootCommands("OneMind/PPS", new String[]{
+                "cmd package set-stopped-state " + PACKAGE_MEIZU_PPS + " false",
+                "pkill -f " + PACKAGE_MEIZU_PPS,
+                "killall " + PACKAGE_MEIZU_PPS
+        }, false);
+    }
+
+    void detectOneMindHookPoints(TextView statusView) {
+        if (statusView != null) {
+            statusView.setText("检测中...");
+        }
+        new Thread(() -> {
+            String result = OneMindHookPointDetector.detect(this);
+            new Handler(Looper.getMainLooper()).post(() -> {
+                if (statusView != null) {
+                    statusView.setText(result);
+                }
+                showToast(result);
+            });
+        }).start();
+    }
+
+    void refreshOneMindRuntimeStatus(TextView statusView) {
+        String status = buildOneMindRuntimeStatus();
+        if (statusView != null) {
+            statusView.setText(status);
+        }
+        logOneMindStatusToLogcat(status);
+        showToast(status);
+    }
+
+    private void logOneMindStatusToLogcat(String status) {
+        if (SettingsStore.readBoolean(SettingsStore.prefs(this),
+                SettingsStore.KEY_ONEMIND_LOGCAT_ENABLED,
+                SettingsStore.DEFAULT_ONEMIND_LOGCAT_ENABLED)) {
+            android.util.Log.i(FlymeStatusBarSizer.ONEMIND_LOG_TAG,
+                    "runtime status: " + (status == null ? "" : status));
+        }
+    }
+
+    private String buildOneMindRuntimeStatus() {
+        SharedPreferences remote = RemoteSettingsSync.remotePrefs();
+        if (remote == null) {
+            return "运行状态未知：Xposed 服务未连接";
+        }
+        long installedUptime = remote.getLong(
+                SettingsStore.KEY_ONEMIND_HOOK_INSTALLED_UPTIME_MS, 0L);
+        if (installedUptime <= 0L) {
+            return "PPS 进程未上报 Hook 加载；重启 PPS 后再刷新";
+        }
+        int count = remote.getInt(SettingsStore.KEY_ONEMIND_HOOK_INTERCEPT_COUNT, 0);
+        if (count <= 0) {
+            return "PPS Hook 已加载，尚未拦截到性能锁";
+        }
+        long lastUptime = remote.getLong(
+                SettingsStore.KEY_ONEMIND_HOOK_LAST_INTERCEPT_UPTIME_MS, 0L);
+        String point = remote.getString(SettingsStore.KEY_ONEMIND_HOOK_LAST_INTERCEPT_POINT, "");
+        long secondsAgo = Math.max(0L, (SystemClock.elapsedRealtime() - lastUptime) / 1000L);
+        return "已拦截 " + count + " 次，最近 " + secondsAgo + " 秒前：" + point;
+    }
+
     private void restartPackageProcess(String packageName, String label) {
         restartRootCommands(label, new String[]{
                 "am force-stop " + packageName,
@@ -1594,6 +1658,10 @@ public class MainActivity extends Activity {
     }
 
     private void restartRootCommands(String label, String[] commands) {
+        restartRootCommands(label, commands, true);
+    }
+
+    private void restartRootCommands(String label, String[] commands, boolean stopOnFirstSuccess) {
         showToast("\u6b63\u5728\u91cd\u542f" + label + "...");
         new Thread(() -> {
             boolean success = false;
@@ -1611,7 +1679,9 @@ public class MainActivity extends Activity {
                         int exitCode = process.waitFor();
                         if (exitCode == 0) {
                             success = true;
-                            break;
+                            if (stopOnFirstSuccess) {
+                                break;
+                            }
                         }
                         if (output.length() > 0) {
                             error = output;
@@ -1832,6 +1902,10 @@ public class MainActivity extends Activity {
 
     View createPerformanceDebugCard() {
         return settingsCardFactory.createPerformanceDebugCard();
+    }
+
+    View createOneMindPerfControlCard() {
+        return settingsCardFactory.createOneMindPerfControlCard();
     }
 
     View createPositionTuningSettingsCard() {

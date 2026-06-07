@@ -107,6 +107,7 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsCompat.isRecentsViewObject(thisObject)
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    keepAppToRecentsEntryHeadsVisibleOnTouchDown(recentsView, motionEvent);
                     if (isStackDismissPostRemoveAnimationActive(recentsView)) {
                         if (shouldConsumeStackDismissPostRemoveTouch(recentsView, motionEvent)) {
                             logStackFlow("touch:intercept:consumePostRemove",
@@ -147,6 +148,7 @@ final class LauncherRecentsTouchController {
                         && thisObject instanceof View
                         && motionEvent != null) {
                     View recentsView = (View) thisObject;
+                    keepAppToRecentsEntryHeadsVisibleOnTouchDown(recentsView, motionEvent);
                     boolean entryTakeover =
                             takeOverAppToRecentsEntryOnHorizontalMove(recentsView, motionEvent);
                     clearGestureReleaseTaskStatesOnUserMove(recentsView, motionEvent);
@@ -168,8 +170,18 @@ final class LauncherRecentsTouchController {
                     if (shouldSkipBlankTapPagedRelease(recentsView, motionEvent)) {
                         logStackFlow("touch:event:blankTapRelease",
                                 recentsView, motionEvent, null);
-                        LauncherRecentsTransitionController.startBlankTapHomeExitAnimation(
-                                recentsView);
+                        if (!LauncherRecentsTransitionController.isBlankTapHomeExitActive(
+                                recentsView)) {
+                            LauncherRecentsCompat.invokeCompat(
+                                    recentsView,
+                                    "startHome",
+                                    LauncherRecentsCompat.BOOLEAN_ARG,
+                                    true);
+                        }
+                        LauncherRecentsCompat.setBooleanField(
+                                recentsView,
+                                "mTouchDownToStartHome",
+                                false);
                         releasePagedEdgeEffects(recentsView, motionEvent);
                         LauncherRecentsCompat.invokeCompat(
                                 recentsView,
@@ -340,6 +352,21 @@ final class LauncherRecentsTouchController {
                     "Failed to hook " + className + " task dismiss touch",
                     t);
         }
+    }
+
+    private static void keepAppToRecentsEntryHeadsVisibleOnTouchDown(
+            View recentsView,
+            MotionEvent motionEvent) {
+        if (recentsView == null
+                || motionEvent == null
+                || motionEvent.getActionMasked() != MotionEvent.ACTION_DOWN
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || !isAppToRecentsEntryTouchTakeoverNeeded(recentsView)) {
+            return;
+        }
+        logStackFlow("touch:entryDownHeads", recentsView, motionEvent, null);
+        LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
+        recentsView.invalidate();
     }
 
     private static void clearGestureReleaseTaskStatesOnUserMove(

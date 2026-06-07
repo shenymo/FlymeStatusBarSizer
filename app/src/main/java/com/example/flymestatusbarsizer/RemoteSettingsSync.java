@@ -87,6 +87,10 @@ final class RemoteSettingsSync {
         }
     }
 
+    static SharedPreferences remotePrefs() {
+        return remotePrefs;
+    }
+
     private static void syncIfNeeded(Context context) {
         Context normalized = normalizeContext(context);
         if (normalized == null) {

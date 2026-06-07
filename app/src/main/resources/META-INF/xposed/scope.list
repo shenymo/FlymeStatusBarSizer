@@ -1,8 +1,8 @@
 android
 com.android.systemui
+com.meizu.pps
 com.meizu.flyme.launcher
 com.android.inputmethod.latin
 com.google.android.inputmethod.latin
 com.tencent.wetype
 flyme.inputmethod
-

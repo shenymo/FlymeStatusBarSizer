@@ -27,8 +27,6 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
 
     // Home exit animation.
-    static final WeakHashMap<View, ValueAnimator> ACTIVE_HOME_EXIT_ANIMATORS =
-            new WeakHashMap<>();
     static final WeakHashMap<View, Float> BLANK_TAP_HOME_EXIT_PROGRESS =
             new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> ACTIVE_BLANK_TAP_HOME_EXITS =
@@ -205,13 +203,16 @@ final class LauncherRecentsState {
         final float startRawOffset;
         final float startDismissTranslationX;
         final float startVisibleOffset;
-        final float startScale;
+        final float startHorizontalOffsetX;
+        final float startTaskOffsetX;
         final float startTaskOffsetY;
+        final float startScale;
         final float startBoxTranslationY;
         final float startAttachAlpha;
         float startStableAlpha;
         final float startActivityTitleAlpha;
         final float startStackContentBlurProgress;
+        final float startFullscreenProgress;
         final float startTranslationZ;
         float centerVisibleOffset;
 
@@ -219,24 +220,30 @@ final class LauncherRecentsState {
                 float startRawOffset,
                 float startDismissTranslationX,
                 float startVisibleOffset,
-                float startScale,
+                float startHorizontalOffsetX,
+                float startTaskOffsetX,
                 float startTaskOffsetY,
+                float startScale,
                 float startBoxTranslationY,
                 float startAttachAlpha,
                 float startStableAlpha,
                 float startActivityTitleAlpha,
                 float startStackContentBlurProgress,
+                float startFullscreenProgress,
                 float startTranslationZ) {
             this.startRawOffset = startRawOffset;
             this.startDismissTranslationX = startDismissTranslationX;
             this.startVisibleOffset = startVisibleOffset;
-            this.startScale = startScale;
+            this.startHorizontalOffsetX = startHorizontalOffsetX;
+            this.startTaskOffsetX = startTaskOffsetX;
             this.startTaskOffsetY = startTaskOffsetY;
+            this.startScale = startScale;
             this.startBoxTranslationY = startBoxTranslationY;
             this.startAttachAlpha = startAttachAlpha;
             this.startStableAlpha = startStableAlpha;
             this.startActivityTitleAlpha = startActivityTitleAlpha;
             this.startStackContentBlurProgress = startStackContentBlurProgress;
+            this.startFullscreenProgress = startFullscreenProgress;
             this.startTranslationZ = startTranslationZ;
             this.centerVisibleOffset = startVisibleOffset;
         }

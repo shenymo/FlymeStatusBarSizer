@@ -6,30 +6,18 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ValueAnimator;
-import android.graphics.Color;
 import android.graphics.PointF;
-import android.graphics.drawable.ColorDrawable;
-import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
-import android.view.animation.LinearInterpolator;
 
 import java.lang.reflect.Method;
 
 final class LauncherRecentsTransitionController {
     private static final String ABS_SWIPE_UP_HANDLER_CLASS =
             "com.android.quickstep.AbsSwipeUpHandler";
-    private static final long BLANK_TAP_HOME_EXIT_DURATION_MS = 460L;
     private static final long GESTURE_STACK_RELEASE_DURATION_MS = 320L;
     private static final float GESTURE_STACK_RELEASE_HANDOFF_START_PROGRESS = 0f;
-    private static final float BLANK_TAP_HOME_EXIT_VIEW_FADE_START_PROGRESS = 0.78f;
-    private static final long BLANK_TAP_HOME_EXIT_HOME_REVEAL_MS = 180L;
-    private static final int BLANK_TAP_HOME_EXIT_REVEAL_SCRIM_ALPHA = 150;
-    private static final LinearInterpolator BLANK_TAP_HOME_EXIT_INTERPOLATOR =
-            new LinearInterpolator();
     private static final DecelerateInterpolator GESTURE_STACK_RELEASE_INTERPOLATOR =
             new DecelerateInterpolator(1.35f);
 
@@ -67,11 +55,6 @@ final class LauncherRecentsTransitionController {
                         LauncherRecentsPerf.flow("leave:startHome:skipSwipeUp", recentsView);
                         return chain.proceed();
                     }
-                    LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
-                    LauncherRecentsStateAnimationController.clearOverviewEntryState(recentsView);
-                    LauncherRecentsAttachController.clearAppToRecentsEntrySession(
-                            recentsView,
-                            false);
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                     if (shouldAnimateBlankTapHomeExit(recentsView)) {
@@ -81,6 +64,11 @@ final class LauncherRecentsTransitionController {
                         Object result = chain.proceed();
                         return result;
                     }
+                    LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
+                    LauncherRecentsStateAnimationController.clearOverviewEntryState(recentsView);
+                    LauncherRecentsAttachController.clearAppToRecentsEntrySession(
+                            recentsView,
+                            false);
                 }
                 return chain.proceed();
             });
@@ -571,24 +559,6 @@ final class LauncherRecentsTransitionController {
         return LauncherRecentsCompat.readBooleanField(state, "isRecentsViewVisible", false);
     }
 
-    static void startBlankTapHomeExitAnimation(View recentsView) {
-        if (recentsView == null) {
-            return;
-        }
-        if (isBlankTapHomeExitActive(recentsView)
-                || LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.containsKey(recentsView)) {
-            LauncherRecentsPerf.flow("leave:blankTap:startDirect:alreadyActive", recentsView);
-            return;
-        }
-        LauncherRecentsPerf.flow("leave:blankTap:startDirect", recentsView);
-        prepareBlankTapHomeExitAnimation(recentsView);
-        for (LauncherRecentsState.BlankTapHomeExitTaskState state
-                : LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.values()) {
-            state.centerVisibleOffset = state.startVisibleOffset;
-        }
-        startPreparedBlankTapHomeExitAnimation(recentsView);
-    }
-
     static void prepareBlankTapHomeExitAnimation(View recentsView) {
         if (recentsView == null) {
             return;
@@ -598,13 +568,6 @@ final class LauncherRecentsTransitionController {
                 && !LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.isEmpty()) {
             LauncherRecentsPerf.flow("leave:blankTap:prepare:alreadyActive", recentsView);
             return;
-        }
-        ValueAnimator runningAnimator =
-                LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.get(recentsView);
-        if (runningAnimator != null) {
-            LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.remove(recentsView);
-            LauncherRecentsPerf.flow("leave:blankTap:cancelPrevious", recentsView);
-            runningAnimator.cancel();
         }
         setPageAnimOffScreenStart(recentsView, false);
         boolean shouldCaptureBlankTapState = !isBlankTapHomeExitActive(recentsView)
@@ -621,140 +584,7 @@ final class LauncherRecentsTransitionController {
         recentsView.invalidate();
     }
 
-    private static void startPreparedBlankTapHomeExitAnimation(View recentsView) {
-        if (recentsView == null) {
-            return;
-        }
-        ValueAnimator runningAnimator =
-                LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.get(recentsView);
-        if (runningAnimator != null) {
-            LauncherRecentsPerf.flow("leave:blankTap:start:alreadyRunning", recentsView);
-            return;
-        }
-        LauncherRecentsPerf.flow("leave:blankTap:start", recentsView);
-        setBlankTapHomeExitProgress(recentsView, 0f);
-        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
-        recentsView.invalidate();
-        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
-        animator.setDuration(BLANK_TAP_HOME_EXIT_DURATION_MS);
-        animator.setInterpolator(BLANK_TAP_HOME_EXIT_INTERPOLATOR);
-        animator.addUpdateListener(animation -> {
-            Object value = animation.getAnimatedValue();
-            float progress = value instanceof Float ? (Float) value : 0f;
-            setBlankTapHomeExitProgress(recentsView, progress);
-            LauncherRecentsPerf.flow("leave:blankTap:frame",
-                    recentsView, "progress=" + progress);
-            LauncherRecentsPerf.hit("animationFrame:blankTapHomeExit", recentsView);
-            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
-            recentsView.invalidate();
-        });
-        animator.addListener(new AnimatorListenerAdapter() {
-            private boolean cancelled;
-
-            @Override
-            public void onAnimationCancel(Animator animation) {
-                LauncherRecentsPerf.flow("leave:blankTap:cancel", recentsView);
-                cancelled = true;
-            }
-
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.remove(recentsView);
-                if (cancelled) {
-                    LauncherRecentsPerf.flow("leave:blankTap:endCancelled", recentsView);
-                    clearBlankTapHomeExitViewBlur(recentsView);
-                    clearBlankTapHomeExitProgress(recentsView);
-                    return;
-                }
-                LauncherRecentsPerf.flow("leave:blankTap:end", recentsView);
-                setBlankTapHomeExitProgress(recentsView, 1f);
-                LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
-                finishBlankTapHomeExit(recentsView);
-            }
-        });
-        LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.put(recentsView, animator);
-        animator.start();
-    }
-
-    private static void finishBlankTapHomeExit(View recentsView) {
-        if (recentsView == null) {
-            return;
-        }
-        LauncherRecentsPerf.flow("leave:blankTap:finishHome", recentsView);
-        recentsView.setAlpha(0f);
-        startBlankTapHomeExitHome(recentsView);
-        Runnable resetRunnable = () -> {
-            LauncherRecentsPerf.flow("leave:blankTap:resetAlpha", recentsView);
-            recentsView.setAlpha(1f);
-            clearBlankTapHomeExitViewBlur(recentsView);
-            clearBlankTapHomeExitProgress(recentsView, false);
-        };
-        Handler handler = LauncherRecentsState.ensureMainHandler();
-        LauncherRecentsPerf.flow("leave:blankTap:scheduleResetAlpha",
-                recentsView, "delayMs=80");
-        if (handler != null && Looper.myLooper() != handler.getLooper()) {
-            handler.postDelayed(resetRunnable, 80L);
-        } else {
-            recentsView.postDelayed(resetRunnable, 80L);
-        }
-    }
-
-    private static void startBlankTapHomeExitHome(View recentsView) {
-        LauncherRecentsPerf.flow("leave:blankTap:startHomeCall", recentsView);
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "handleStartHome",
-                new Class[]{boolean.class},
-                false);
-    }
-
-    private static void applyBlankTapHomeExitViewBlur(View recentsView, float progress) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && recentsView != null) {
-            recentsView.setRenderEffect(null);
-        }
-    }
-
-    private static void clearBlankTapHomeExitViewBlur(View recentsView) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && recentsView != null) {
-            recentsView.setRenderEffect(null);
-        }
-    }
-
-    private static void startBlankTapHomeExitHomeReveal(View recentsView) {
-        View rootView = recentsView != null ? recentsView.getRootView() : null;
-        if (rootView == null || rootView.getWidth() <= 0 || rootView.getHeight() <= 0) {
-            return;
-        }
-        ColorDrawable scrim = new ColorDrawable(Color.BLACK);
-        scrim.setBounds(0, 0, rootView.getWidth(), rootView.getHeight());
-        scrim.setAlpha(BLANK_TAP_HOME_EXIT_REVEAL_SCRIM_ALPHA);
-        rootView.getOverlay().add(scrim);
-        ValueAnimator animator = ValueAnimator.ofInt(
-                BLANK_TAP_HOME_EXIT_REVEAL_SCRIM_ALPHA,
-                0);
-        animator.setDuration(BLANK_TAP_HOME_EXIT_HOME_REVEAL_MS);
-        animator.setInterpolator(new DecelerateInterpolator(1.2f));
-        animator.addUpdateListener(animation -> {
-            Object value = animation.getAnimatedValue();
-            scrim.setAlpha(value instanceof Integer ? (Integer) value : 0);
-            rootView.invalidate();
-        });
-        animator.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                rootView.getOverlay().remove(scrim);
-            }
-        });
-        animator.start();
-    }
-
     static void cancelBlankTapHomeExitAnimation(View recentsView, boolean resetTransform) {
-        ValueAnimator animator = LauncherRecentsState.ACTIVE_HOME_EXIT_ANIMATORS.remove(recentsView);
-        if (animator != null) {
-            LauncherRecentsPerf.flow("leave:blankTap:cancelRequest",
-                    recentsView, "resetTransform=" + resetTransform);
-            animator.cancel();
-        }
         if (resetTransform) {
             clearBlankTapHomeExitProgress(recentsView);
         }

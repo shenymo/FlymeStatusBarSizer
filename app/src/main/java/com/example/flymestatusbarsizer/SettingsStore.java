@@ -86,6 +86,18 @@ final class SettingsStore {
             "launcher_recents_perf_logging_enabled";
     static final String KEY_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED =
             "launcher_recents_flow_logging_enabled";
+    static final String KEY_ONEMIND_PERF_DISABLE_ENABLED =
+            "onemind_perf_disable_enabled";
+    static final String KEY_ONEMIND_LOGCAT_ENABLED =
+            "onemind_logcat_enabled";
+    static final String KEY_ONEMIND_HOOK_INSTALLED_UPTIME_MS =
+            "__onemind_hook_installed_uptime_ms";
+    static final String KEY_ONEMIND_HOOK_INTERCEPT_COUNT =
+            "__onemind_hook_intercept_count";
+    static final String KEY_ONEMIND_HOOK_LAST_INTERCEPT_UPTIME_MS =
+            "__onemind_hook_last_intercept_uptime_ms";
+    static final String KEY_ONEMIND_HOOK_LAST_INTERCEPT_POINT =
+            "__onemind_hook_last_intercept_point";
     static final String KEY_TELEPHONY_DEBUG_SIM_COUNT = "telephony_debug_sim_count";
     static final String KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT = "telephony_debug_default_data_slot";
     static final String KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE = "telephony_debug_slot1_network_profile";
@@ -168,6 +180,8 @@ final class SettingsStore {
     static final boolean DEFAULT_WIFI_PERF_LOGGING_ENABLED = false;
     static final boolean DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED = false;
     static final boolean DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED = false;
+    static final boolean DEFAULT_ONEMIND_PERF_DISABLE_ENABLED = false;
+    static final boolean DEFAULT_ONEMIND_LOGCAT_ENABLED = false;
     static final int DEFAULT_TELEPHONY_DEBUG_SIM_COUNT = 2;
     static final int TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_NONE = -1;
     static final int TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_CARD1 = 0;
@@ -247,7 +261,9 @@ final class SettingsStore {
             KEY_TELEPHONY_DEBUG_ENABLED,
             KEY_WIFI_PERF_LOGGING_ENABLED,
             KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED,
-            KEY_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED
+            KEY_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED,
+            KEY_ONEMIND_PERF_DISABLE_ENABLED,
+            KEY_ONEMIND_LOGCAT_ENABLED
     };
 
     static final String[] STRING_KEYS = {
@@ -504,6 +520,8 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED;
             case KEY_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED:
                 return DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED;
+            case KEY_ONEMIND_PERF_DISABLE_ENABLED:
+                return DEFAULT_ONEMIND_PERF_DISABLE_ENABLED;
             default:
                 return false;
         }

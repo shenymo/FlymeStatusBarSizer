@@ -90,6 +90,8 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED;
     boolean launcherRecentsFlowLoggingEnabled =
             SettingsStore.DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED;
+    boolean oneMindPerfDisableEnabled = SettingsStore.DEFAULT_ONEMIND_PERF_DISABLE_ENABLED;
+    boolean oneMindLogcatEnabled = SettingsStore.DEFAULT_ONEMIND_LOGCAT_ENABLED;
     int telephonyDebugSimCount = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
     int telephonyDebugDefaultDataSlot = SettingsStore.DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT;
     int telephonyDebugSlot1NetworkProfile = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE;
@@ -440,6 +442,14 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED,
                     SettingsStore.DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED);
+            config.oneMindPerfDisableEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_ONEMIND_PERF_DISABLE_ENABLED,
+                    SettingsStore.DEFAULT_ONEMIND_PERF_DISABLE_ENABLED);
+            config.oneMindLogcatEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_ONEMIND_LOGCAT_ENABLED,
+                    SettingsStore.DEFAULT_ONEMIND_LOGCAT_ENABLED);
             config.telephonyDebugSimCount = SettingsStore.normalizeTelephonyDebugSimCount(
                     SettingsStore.readInt(
                             prefs,
