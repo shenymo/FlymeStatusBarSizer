@@ -13,12 +13,6 @@ final class LauncherRecentsStateAnimationController {
     private static final String RECENTS_VIEW_STATE_CONTROLLER_CLASS =
             "com.android.launcher3.uioverrides.RecentsViewStateController";
     private static final String LAUNCHER_STATE_CLASS = "com.android.launcher3.LauncherState";
-    private static final String BASE_STATE_CLASS =
-            "com.android.launcher3.statemanager.BaseState";
-    private static final String STATE_MANAGER_CLASS =
-            "com.android.launcher3.statemanager.StateManager";
-    private static final String STATE_MANAGER_CUSTOM_CONFIG_LISTENER_CLASS =
-            "com.android.launcher3.statemanager.StateManager$CustomConfigListener";
     private static final String STATE_ANIMATION_CONFIG_CLASS =
             "com.android.launcher3.states.StateAnimationConfig";
     private static final String PENDING_ANIMATION_CLASS =
@@ -41,13 +35,9 @@ final class LauncherRecentsStateAnimationController {
         hookRecentsViewStateWithAnimation(module, loader);
         hookRecentsViewStateAnimationInternal(module, loader);
         hookRecentsViewStateImmediate(module, loader);
-        hookHomeToOverviewMotionPause(module, loader);
-        hookHomeToOverviewExit(module, loader, "goHome");
-        hookHomeToOverviewExit(module, loader, "goApplication");
         hookHomeToOverviewGoOverview(module, loader);
         hookNoButtonNavbarOverviewMotionPause(module, loader);
         hookNoButtonNavbarOverviewDragEnd(module, loader);
-        hookStateManagerOverviewTransition(module, loader);
         hookAdjacentPageHorizontalOffsetProperty(module, loader, "com.android.quickstep.views.RecentsView$4");
         hookAdjacentPageHorizontalOffsetProperty(module, loader, "com.android.quickstep.views.RecentsView$5");
     }
@@ -100,98 +90,6 @@ final class LauncherRecentsStateAnimationController {
                 "mAdjacentPageHorizontalOffset",
                 value);
         return current > 0.45f && value < 0.45f;
-    }
-
-    private static void hookStateManagerOverviewTransition(
-            FlymeStatusBarSizer module,
-            ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(STATE_MANAGER_CLASS, false, loader);
-            Class<?> baseStateClass = Class.forName(BASE_STATE_CLASS, false, loader);
-            Class<?> customConfigListenerClass = Class.forName(
-                    STATE_MANAGER_CUSTOM_CONFIG_LISTENER_CLASS,
-                    false,
-                    loader);
-            Method method = clazz.getDeclaredMethod(
-                    "goToState",
-                    baseStateClass,
-                    boolean.class,
-                    long.class,
-                    Animator.AnimatorListener.class,
-                    customConfigListenerClass);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object toState = chain.getArg(0);
-                Object overviewState = LauncherRecentsCompat.readStaticFieldCompat(
-                        LAUNCHER_STATE_CLASS,
-                        "OVERVIEW",
-                        loader);
-                if (toState != overviewState) {
-                    return chain.proceed();
-                }
-                Object container =
-                        LauncherRecentsCompat.getFieldCompat(chain.getThisObject(), "mContainer");
-                Object overviewPanel =
-                        LauncherRecentsCompat.invokeCompat(container, "getOverviewPanel");
-                if (!(overviewPanel instanceof View)
-                        || !LauncherRecentsLayoutEngine.shouldUseStackLayout((View) overviewPanel)) {
-                    return chain.proceed();
-                }
-                View recentsView = (View) overviewPanel;
-                if (LauncherRecentsState.isOverviewStateStackReleaseRequested(recentsView)) {
-                    return chain.proceed();
-                }
-                if (isOverviewDragReleaseStack()) {
-                    LauncherRecentsPerf.flow("state:overview:releaseFromStateManager",
-                            recentsView);
-                    LauncherRecentsState.setOverviewPreReleaseStockMode(recentsView, false);
-                    LauncherRecentsState.setOverviewStateStackReleaseRequested(recentsView, true);
-                    return chain.proceed();
-                }
-                if (isOverviewMotionPauseStack()) {
-                    LauncherRecentsPerf.flow("state:overview:blockMotionPauseGoToOverview",
-                            recentsView);
-                    LauncherRecentsLayoutEngine.cancelStackLayoutRecovery(recentsView);
-                    LauncherRecentsState.setOverviewPreReleaseStockMode(recentsView, true);
-                    LauncherRecentsState.setOverviewStateStackReleaseRequested(recentsView, false);
-                    markOverviewStateStackAnimation(recentsView, false);
-                    markOverviewPeekStockAnimation(recentsView, true);
-                    return null;
-                }
-                return chain.proceed();
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook StateManager.goToState overview transition",
-                    t);
-        }
-    }
-
-    private static boolean isOverviewMotionPauseStack() {
-        return stackTraceContains("onMotionPauseDetected")
-                || stackTraceContains("MotionPauseDetector");
-    }
-
-    private static boolean isOverviewDragReleaseStack() {
-        return stackTraceContains("onDragEnd")
-                || stackTraceContains("goOverview")
-                || stackTraceContains("onSwipeInteractionCompleted");
-    }
-
-    private static boolean stackTraceContains(String needle) {
-        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
-        for (StackTraceElement element : stackTrace) {
-            if (element != null
-                    && (contains(element.getClassName(), needle)
-                    || contains(element.getMethodName(), needle))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean contains(String value, String needle) {
-        return value != null && value.contains(needle);
     }
 
     private static void hookNoButtonNavbarOverviewMotionPause(
@@ -287,58 +185,6 @@ final class LauncherRecentsStateAnimationController {
         return recentsView instanceof View ? (View) recentsView : null;
     }
 
-    private static void hookHomeToOverviewMotionPause(
-            FlymeStatusBarSizer module,
-            ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(HOME_TO_OVERVIEW_TOUCH_CONTROLLER_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod("onMotionPauseDetected");
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                View recentsView = resolveHomeToOverviewRecentsView(chain.getThisObject());
-                if (recentsView != null) {
-                    LauncherRecentsPerf.flow("state:overview:preReleaseStock", recentsView);
-                    LauncherRecentsLayoutEngine.cancelStackLayoutRecovery(recentsView);
-                    LauncherRecentsState.setOverviewPreReleaseStockMode(recentsView, true);
-                    LauncherRecentsState.setOverviewStateStackReleaseRequested(recentsView, false);
-                    markOverviewStateStackAnimation(recentsView, false);
-                    markOverviewPeekStockAnimation(recentsView, true);
-                }
-                return chain.proceed();
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook HomeToOverviewTouchController.onMotionPauseDetected",
-                    t);
-        }
-    }
-
-    private static void hookHomeToOverviewExit(
-            FlymeStatusBarSizer module,
-            ClassLoader loader,
-            String methodName) {
-        try {
-            Class<?> clazz = Class.forName(HOME_TO_OVERVIEW_TOUCH_CONTROLLER_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod(methodName);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                View recentsView = resolveHomeToOverviewRecentsView(chain.getThisObject());
-                if (recentsView != null) {
-                    LauncherRecentsPerf.flow("state:overview:preReleaseClear",
-                            recentsView, "method=" + methodName);
-                    LauncherRecentsState.setOverviewPreReleaseStockMode(recentsView, false);
-                    LauncherRecentsState.setOverviewStateStackReleaseRequested(recentsView, false);
-                    markOverviewPeekStockAnimation(recentsView, false);
-                }
-                return chain.proceed();
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook HomeToOverviewTouchController." + methodName,
-                    t);
-        }
-    }
-
     private static void hookHomeToOverviewGoOverview(
             FlymeStatusBarSizer module,
             ClassLoader loader) {
@@ -348,8 +194,9 @@ final class LauncherRecentsStateAnimationController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 View recentsView = resolveHomeToOverviewRecentsView(chain.getThisObject());
-                if (recentsView != null) {
-                    LauncherRecentsPerf.flow("state:overview:releaseRequested",
+                if (recentsView != null
+                        && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+                    LauncherRecentsPerf.flow("state:homeOverview:releaseRequested",
                             recentsView);
                     LauncherRecentsState.setOverviewPreReleaseStockMode(recentsView, false);
                     LauncherRecentsState.setOverviewStateStackReleaseRequested(recentsView, true);
@@ -391,7 +238,7 @@ final class LauncherRecentsStateAnimationController {
                 Object pendingAnimation = chain.getArg(2);
                 View recentsView = resolveControllerRecentsView(thisObject);
                 boolean shouldTakeOver =
-                        shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
+                        shouldTakeOverOverviewPeekToOverview(recentsView, toState, loader);
                 LauncherRecentsPerf.flow("state:setWithAnimation",
                         recentsView,
                         "toState=" + toState
@@ -440,7 +287,7 @@ final class LauncherRecentsStateAnimationController {
                 Object pendingAnimation = chain.getArg(2);
                 View recentsView = resolveControllerRecentsView(thisObject);
                 boolean shouldTakeOver =
-                        shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
+                        shouldTakeOverOverviewPeekToOverview(recentsView, toState, loader);
                 LauncherRecentsPerf.flow("state:setWithAnimationInternal",
                         recentsView,
                         "toState=" + toState
@@ -480,7 +327,7 @@ final class LauncherRecentsStateAnimationController {
                 Object toState = chain.getArg(0);
                 View recentsView = resolveControllerRecentsView(thisObject);
                 boolean shouldTakeOver =
-                        shouldTakeOverOverviewPeekToOverview(thisObject, recentsView, toState, loader);
+                        shouldTakeOverOverviewPeekToOverview(recentsView, toState, loader);
                 LauncherRecentsPerf.flow("state:setImmediate",
                         recentsView,
                         "toState=" + toState + " takeOver=" + shouldTakeOver);
@@ -639,12 +486,10 @@ final class LauncherRecentsStateAnimationController {
     }
 
     private static boolean shouldTakeOverOverviewPeekToOverview(
-            Object controller,
             View recentsView,
             Object toState,
             ClassLoader loader) {
-        if (controller == null
-                || recentsView == null
+        if (recentsView == null
                 || toState == null
                 || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
                 || LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)) {
