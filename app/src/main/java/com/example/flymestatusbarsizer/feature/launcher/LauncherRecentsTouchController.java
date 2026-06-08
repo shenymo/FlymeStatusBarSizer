@@ -1292,9 +1292,11 @@ final class LauncherRecentsTouchController {
         animator.addUpdateListener(animation -> {
             float value = (Float) animation.getAnimatedValue();
             state.currentDismissTranslation = value;
-            float progress = end != start ? (value - start) / (end - start) : 1f;
             LauncherRecentsPerf.hit("animationFrame:dismissSuccess", state.recentsView);
-            applyStackDismissSuccessProgress(state, value, progress);
+            applyStackDismissSuccessProgress(
+                    state,
+                    value,
+                    resolveStackDismissReflowProgress(state, value));
         });
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
@@ -1350,13 +1352,9 @@ final class LauncherRecentsTouchController {
             StackDismissGestureState state,
             float dismissTranslation) {
         setStackDismissTranslation(state, dismissTranslation);
-        LauncherRecentsLayoutEngine.requestStackLayout(
-                state.recentsView,
-                "dismissProgress",
-                false,
-                false);
-        LauncherRecentsTaskVisuals.setStableAlpha(state.taskView, state.originalStableAlpha);
-        state.recentsView.invalidate();
+        applyStackDismissReflowProgress(
+                state,
+                resolveStackDismissReflowProgress(state, dismissTranslation));
     }
 
     private static void applyStackDismissSuccessProgress(
@@ -1387,6 +1385,17 @@ final class LauncherRecentsTouchController {
         forceEnsureStackVisibleTaskData(state.recentsView, 15);
         LauncherRecentsTaskVisuals.setStableAlpha(state.taskView, state.originalStableAlpha);
         state.recentsView.invalidate();
+    }
+
+    private static float resolveStackDismissReflowProgress(
+            StackDismissGestureState state,
+            float dismissTranslation) {
+        float moved = state.dismissDirectionSign
+                * (dismissTranslation - state.startDismissTranslation);
+        return LauncherRecentsLayoutEngine.clamp(
+                moved / Math.max(1f, resolveStackDismissThreshold(state)),
+                0f,
+                1f);
     }
 
     private static void prepareStackDismissSiblingMoves(StackDismissGestureState state) {
@@ -1638,11 +1647,6 @@ final class LauncherRecentsTouchController {
         }
         removeDismissedTaskFromGridState(recentsView, taskView);
         ((ViewGroup) recentsView).removeViewInLayout(taskView);
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "requestPendingLayout",
-                LauncherRecentsCompat.NO_ARGS);
-        recentsView.requestLayout();
         clearStackDismissLayoutOffsets();
         LauncherRecentsCompat.writeField(recentsView, "mPendingAnimation", null);
         clearTaskViewsDismissPrimaryTranslations(recentsView);
@@ -1742,10 +1746,11 @@ final class LauncherRecentsTouchController {
         SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
         SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
         setStackDismissPostRemoveAnimationActive(recentsView, false);
-        LauncherRecentsLayoutEngine.requestStackLayout(
+        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
+        LauncherRecentsLayoutEngine.applyStackLayout(
                 recentsView,
-                "entryTouchTakeoverClear",
                 false,
+                "entryTouchTakeoverClear",
                 false);
         recentsView.invalidate();
     }
@@ -1791,10 +1796,11 @@ final class LauncherRecentsTouchController {
         try {
             runStackDismissPendingLayout(recentsView);
             syncStackDismissSnappedPage(recentsView);
-            LauncherRecentsLayoutEngine.requestStackLayout(
+            LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
+            LauncherRecentsLayoutEngine.applyStackLayout(
                     recentsView,
-                    "dismissFinalLayout",
                     false,
+                    "dismissFinalLayout",
                     false);
             forceEnsureStackVisibleTaskData(recentsView, 15);
         } finally {
@@ -1817,6 +1823,7 @@ final class LauncherRecentsTouchController {
                 || recentsView.getHeight() <= 0) {
             return;
         }
+        LauncherRecentsCompat.setBooleanField(recentsView, "mPendingLayoutRequested", true);
         LauncherRecentsCompat.invokeMethodReflectively(
                 recentsView,
                 "onLayout",
