@@ -2531,7 +2531,7 @@ final class LauncherRecentsTouchController {
     }
 
     private static int resolveStackVisibleTaskDataRadius(View recentsView) {
-        return LauncherRecentsState.isGestureStackReleasedStable(recentsView) ? 3 : 4;
+        return 3;
     }
 
     private static final int KEY_TASK_IDS_CACHE = 0x7f999999;
