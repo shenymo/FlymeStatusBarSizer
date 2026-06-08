@@ -2403,6 +2403,7 @@ final class LauncherRecentsLayoutEngine {
      * 判断当前是否处于 app→recents 入场流程的任意阶段：
      * - 手势上滑进行中（layoutDeferred=true），mAdjacentPageHorizontalOffset 尚未从 1 收敛到 0
      * - 手势已松手但 release 动画仍在运行（gestureReleased=true 但未 stable）
+     * - release 结束后系统仍在收敛 updatePageScales，此时继续调度完整布局会刷帧
      * 上述阶段读取系统 mAdjacentPageHorizontalOffset/mContentAlpha 会得到未收敛值，
      * 导致 stackEntryProgress 偏低，进而拉低名称/图标透明度。
      */
@@ -2410,6 +2411,7 @@ final class LauncherRecentsLayoutEngine {
         return LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                 || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                 || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
+                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
                 recentsView);
     }
