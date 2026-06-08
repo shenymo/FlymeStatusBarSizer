@@ -96,7 +96,11 @@ final class LauncherRecentsAttachController {
                     if (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)) {
                         LauncherRecentsPerf.flow("attach:applyLoadPlan:applyDynamic",
                                 recentsView);
-                        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                        LauncherRecentsLayoutEngine.requestStackLayout(
+                                recentsView,
+                                "applyLoadPlan",
+                                true,
+                                false);
                     }
                 }
                 return result;

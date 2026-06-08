@@ -265,7 +265,11 @@ final class LauncherRecentsTransitionController {
                             LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
                             LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
                             markPendingGestureRecentsStackRelease(recentsView, false);
-                            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                            LauncherRecentsLayoutEngine.requestStackLayout(
+                                    recentsView,
+                                    "gestureAnimationEndRelease",
+                                    false,
+                                    false);
                         }
                     } else {
                         // 【方案一 1-C】仅在没有待处理的手势释放时才清除 entry session，
@@ -517,7 +521,11 @@ final class LauncherRecentsTransitionController {
                 } else if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
                     LauncherRecentsPerf.flow("enter:launcherTransitionProgress",
                             recentsView);
-                    LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                    LauncherRecentsLayoutEngine.requestStackLayout(
+                            recentsView,
+                            "launcherTransitionProgress",
+                            false,
+                            false);
                     recentsView.invalidate();
                 }
                 return result;
@@ -581,7 +589,11 @@ final class LauncherRecentsTransitionController {
         markBlankTapHomeExitActive(recentsView, true);
         setBlankTapHomeExitProgress(recentsView, 0f);
         LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
-        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        LauncherRecentsLayoutEngine.requestStackLayout(
+                recentsView,
+                "blankTapPrepare",
+                false,
+                false);
         recentsView.invalidate();
     }
 
@@ -608,7 +620,11 @@ final class LauncherRecentsTransitionController {
         setPageAnimOffScreenStart(recentsView, false);
         clearEntryStateForBlankTapHomeExit(recentsView, false);
         if (reapplyLayout) {
-            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+            LauncherRecentsLayoutEngine.requestStackLayout(
+                    recentsView,
+                    "blankTapClear",
+                    false,
+                    false);
         }
         recentsView.invalidate();
     }
@@ -772,7 +788,11 @@ final class LauncherRecentsTransitionController {
                     stackAnchorTargetScroll,
                     handoffProgress);
             LauncherRecentsPerf.hit("animationFrame:gestureRelease", recentsView);
-            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+            LauncherRecentsLayoutEngine.requestStackLayout(
+                    recentsView,
+                    "gestureReleaseFrame",
+                    false,
+                    false);
             recentsView.invalidate();
         });
         animator.addListener(new AnimatorListenerAdapter() {

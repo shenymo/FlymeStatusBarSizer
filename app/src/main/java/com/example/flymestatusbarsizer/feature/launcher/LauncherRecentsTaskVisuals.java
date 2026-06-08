@@ -217,6 +217,11 @@ final class LauncherRecentsTaskVisuals {
             }
             captureStockTaskState(taskView);
         }
+        if (recentsView != null) {
+            LauncherRecentsState.LAST_STACK_STOCK_CAPTURE_TASK_COUNTS.put(
+                    recentsView,
+                    taskViewCount);
+        }
     }
 
     static void captureCurrentTaskStatesAsBaseline(View recentsView) {
@@ -227,6 +232,11 @@ final class LauncherRecentsTaskVisuals {
                 continue;
             }
             captureCurrentTaskStateAsBaseline(taskView);
+        }
+        if (recentsView != null) {
+            LauncherRecentsState.LAST_STACK_STOCK_CAPTURE_TASK_COUNTS.put(
+                    recentsView,
+                    taskViewCount);
         }
     }
 

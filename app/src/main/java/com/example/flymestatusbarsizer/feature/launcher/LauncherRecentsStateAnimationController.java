@@ -354,7 +354,11 @@ final class LauncherRecentsStateAnimationController {
                 if (shouldTakeOver) {
                     LauncherRecentsPerf.flow("state:setImmediate:applyAndClear",
                             recentsView);
-                    LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                    LauncherRecentsLayoutEngine.requestStackLayout(
+                            recentsView,
+                            "stateImmediate",
+                            false,
+                            false);
                     clearOverviewStateStackAnimation(recentsView);
                 }
                 return result;
@@ -378,7 +382,11 @@ final class LauncherRecentsStateAnimationController {
                     if (isOverviewStateStackAnimationActive(recentsView)) {
                         LauncherRecentsPerf.flow("state:overview:frame", recentsView);
                         LauncherRecentsPerf.hit("animationFrame:overviewState", recentsView);
-                        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                        LauncherRecentsLayoutEngine.requestStackLayout(
+                                recentsView,
+                                "overviewStateFrame",
+                                false,
+                                false);
                     }
                 });
         LauncherRecentsCompat.invokeMethodReflectively(
