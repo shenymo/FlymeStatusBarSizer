@@ -31,8 +31,8 @@ final class LauncherRecentsLayoutEngine {
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.04f;
     private static final float BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO = 0.18f;
     private static final float STACK_CONTENT_BLUR_START_ALPHA = 0.85f;
-    private static final int STACK_ENTRY_LIGHT_RADIUS = 3;
-    private static final int STACK_STABLE_VISIBLE_RADIUS = 2;
+    private static final int STACK_ENTRY_LIGHT_RADIUS = 1;
+    private static final int STACK_STABLE_VISIBLE_RADIUS = 1;
     private static final int STACK_GESTURE_RELEASE_CORE_RADIUS = 2;
     private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
     private static final int STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR = 2;
@@ -395,6 +395,15 @@ final class LauncherRecentsLayoutEngine {
                     // 此处跳过冗余触发，避免每帧重复计算 3~5 次堆叠布局
                     if (LauncherRecentsTransitionController
                             .isGestureRecentsStackReleaseAnimationActive(recentsView)) {
+                        return result;
+                    }
+                    if (!LauncherRecentsCompat.invokeBoolean(
+                            recentsView,
+                            "isScrollerFinished",
+                            true)) {
+                        if (applyDynamicStackLayoutIfNeeded(recentsView)) {
+                            recentsView.invalidate();
+                        }
                         return result;
                     }
                     if (requestStackLayout(recentsView, "dispatchScrollChanged", false, false)) {
@@ -1387,6 +1396,18 @@ final class LauncherRecentsLayoutEngine {
         if (runningTaskView != null && recentsView instanceof ViewGroup) {
             runningTaskChildIndex = ((ViewGroup) recentsView).indexOfChild(runningTaskView);
         }
+        boolean gestureStackReleaseActive =
+                LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                        recentsView);
+        boolean overviewStateStackAnimationActive =
+                LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                        recentsView);
+        boolean appEntrySessionActive =
+                LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
+        boolean entryLightWindow = stackLayoutRadius == STACK_ENTRY_LIGHT_RADIUS
+                && (gestureStackReleaseActive
+                || overviewStateStackAnimationActive
+                || appEntrySessionActive);
         int lightAnchorIndex = resolveStackLayoutAnchorIndex(
                 recentsView,
                 runningTaskChildIndex,
@@ -1395,7 +1416,8 @@ final class LauncherRecentsLayoutEngine {
         ArrayList<Integer> activeIndices = resolveStackLayoutActiveIndices(
                 taskViewCount,
                 lightAnchorIndex,
-                stackLayoutRadius);
+                stackLayoutRadius,
+                entryLightWindow);
         ArrayList<Integer> lastActiveIndices =
                 LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.get(recentsView);
         ArrayList<Integer> processIndices = resolveStackLayoutProcessIndices(
@@ -1453,12 +1475,6 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTransitionController.readBlankTapHomeExitProgress(recentsView);
         float stackEntryProgress = resolveStackEntryProgress(recentsView);
         float stackVerticalProgress = resolveStackVerticalProgress(recentsView);
-        boolean gestureStackReleaseActive =
-                LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
-                        recentsView);
-        boolean overviewStateStackAnimationActive =
-                LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
-                        recentsView);
         float gestureStackReleaseProgress =
                 LauncherRecentsTransitionController.readGestureRecentsStackReleaseProgress(
                         recentsView);
@@ -1478,8 +1494,6 @@ final class LauncherRecentsLayoutEngine {
             stackSettledShiftProgress = smoothStep(stackReleaseProgress);
         }
         int edgeScrollCorrection = resolveEdgeScrollCorrection(recentsView);
-        boolean appEntrySessionActive =
-                LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
         float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
         float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
         boolean blankTapExitActive =
@@ -1527,12 +1541,12 @@ final class LauncherRecentsLayoutEngine {
                 restoreTaskTransform(taskView);
                 LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(taskView, 0f);
                 LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
                 LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
                 continue;
             }
-            if (shouldHideStackLayoutTask(i, lightAnchorIndex, stackLayoutRadius)) {
+            if (!activeIndices.contains(i)) {
                 hideLightStackTask(taskView);
                 continue;
             }
@@ -1574,14 +1588,38 @@ final class LauncherRecentsLayoutEngine {
     private static ArrayList<Integer> resolveStackLayoutActiveIndices(
             int taskViewCount,
             int anchorIndex,
-            int radius) {
+            int radius,
+            boolean forwardOnly) {
         ArrayList<Integer> indices = new ArrayList<>();
+        if (taskViewCount <= 0 || radius < 0) {
+            return indices;
+        }
+        anchorIndex = Math.max(0, Math.min(anchorIndex, taskViewCount - 1));
+        if (forwardOnly) {
+            indices.add(anchorIndex);
+            for (int i = 1; i <= radius; i++) {
+                appendStackLayoutIndex(indices, anchorIndex + i, taskViewCount);
+            }
+            for (int i = 1; indices.size() <= radius && i <= radius; i++) {
+                appendStackLayoutIndex(indices, anchorIndex - i, taskViewCount);
+            }
+            return indices;
+        }
         int start = Math.max(0, anchorIndex - radius);
         int end = Math.min(taskViewCount - 1, anchorIndex + radius);
         for (int i = start; i <= end; i++) {
             indices.add(i);
         }
         return indices;
+    }
+
+    private static void appendStackLayoutIndex(
+            ArrayList<Integer> target,
+            int index,
+            int taskViewCount) {
+        if (index >= 0 && index < taskViewCount && !target.contains(index)) {
+            target.add(index);
+        }
     }
 
     private static ArrayList<Integer> resolveStackLayoutProcessIndices(
@@ -1982,6 +2020,7 @@ final class LauncherRecentsLayoutEngine {
         } else {
             appliedActivityTitleAlpha = appliedStableAlpha > 0.001f ? activityTitleAlpha : 0f;
         }
+        appliedActivityTitleAlpha = Math.min(appliedActivityTitleAlpha, appliedStableAlpha);
         return new LauncherRecentsTaskVisuals.StackTaskVisualState(
                 input.taskWidth * 0.5f,
                 input.taskHeight * 0.5f,
@@ -2172,7 +2211,7 @@ final class LauncherRecentsLayoutEngine {
         }
         LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
         LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
-        LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 0f);
+        LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(taskView, 0f);
         LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
     }
 
@@ -2303,7 +2342,7 @@ final class LauncherRecentsLayoutEngine {
         LauncherRecentsTaskVisuals.setStableAlpha(
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView));
-        LauncherRecentsTaskVisuals.setActivityTitleAlpha(taskView, 1f);
+        LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(taskView, 1f);
         LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
         LauncherRecentsTaskVisuals.setFullscreenProgress(
                 taskView,

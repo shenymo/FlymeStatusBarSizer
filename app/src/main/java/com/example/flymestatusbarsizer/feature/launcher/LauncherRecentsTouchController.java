@@ -268,15 +268,15 @@ final class LauncherRecentsTouchController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
+                Object result = chain.proceed();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
                     if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
                         logStackFlow("freeScroll:settle:applied", recentsView, null, null);
                         recentsView.invalidate();
-                        return null;
                     }
                 }
-                return chain.proceed();
+                return result;
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
@@ -294,16 +294,16 @@ final class LauncherRecentsTouchController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
+                Object result = chain.proceed();
                 if (LauncherRecentsCompat.isRecentsViewObject(thisObject)
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
                     if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
                         logStackFlow("snapToDestination:applied", recentsView, null, null);
                         recentsView.invalidate();
-                        return null;
                     }
                 }
-                return chain.proceed();
+                return result;
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
@@ -2088,7 +2088,12 @@ final class LauncherRecentsTouchController {
         }
         int anchorIndex = resolveStackVisibleTaskDataAnchorIndex(recentsView, taskViewCount);
         int radius = resolveStackVisibleTaskDataRadius(recentsView);
-        return Math.abs(taskIndex - anchorIndex) <= radius
+        return isStackVisibleTaskDataIndexVisible(
+                recentsView,
+                taskIndex,
+                taskViewCount,
+                anchorIndex,
+                radius)
                 && isStackTaskWithinVisibleDataBounds(recentsView, taskView);
     }
 
@@ -2322,9 +2327,13 @@ final class LauncherRecentsTouchController {
         try {
             int anchorIndex = resolveStackVisibleTaskDataAnchorIndex(recentsView, taskViewCount);
             int radius = resolveStackVisibleTaskDataRadius(recentsView);
-            int start = Math.max(0, anchorIndex - radius);
-            int end = Math.min(taskViewCount - 1, anchorIndex + radius);
-            for (int i = start; i <= end; i++) {
+            ArrayList<Integer> visibleTaskIndices = resolveStackVisibleTaskDataIndices(
+                    recentsView,
+                    taskViewCount,
+                    anchorIndex,
+                    radius);
+            for (int index = 0; index < visibleTaskIndices.size(); index++) {
+                int i = visibleTaskIndices.get(index);
                 View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
                 if (!isStackTaskDataVisible(recentsView, taskView, true)) {
                     continue;
@@ -2575,7 +2584,64 @@ final class LauncherRecentsTouchController {
     }
 
     private static int resolveStackVisibleTaskDataRadius(View recentsView) {
-        return 3;
+        return 1;
+    }
+
+    private static ArrayList<Integer> resolveStackVisibleTaskDataIndices(
+            View recentsView,
+            int taskViewCount,
+            int anchorIndex,
+            int radius) {
+        ArrayList<Integer> indices = new ArrayList<>();
+        if (taskViewCount <= 0 || radius < 0) {
+            return indices;
+        }
+        anchorIndex = Math.max(0, Math.min(anchorIndex, taskViewCount - 1));
+        if (shouldUseStackEntryVisibleTaskDataWindow(recentsView)) {
+            appendStackVisibleTaskDataIndex(indices, anchorIndex, taskViewCount);
+            for (int i = 1; i <= radius; i++) {
+                appendStackVisibleTaskDataIndex(indices, anchorIndex + i, taskViewCount);
+            }
+            for (int i = 1; indices.size() <= radius && i <= radius; i++) {
+                appendStackVisibleTaskDataIndex(indices, anchorIndex - i, taskViewCount);
+            }
+            return indices;
+        }
+        int start = Math.max(0, anchorIndex - radius);
+        int end = Math.min(taskViewCount - 1, anchorIndex + radius);
+        for (int i = start; i <= end; i++) {
+            indices.add(i);
+        }
+        return indices;
+    }
+
+    private static boolean isStackVisibleTaskDataIndexVisible(
+            View recentsView,
+            int taskIndex,
+            int taskViewCount,
+            int anchorIndex,
+            int radius) {
+        return resolveStackVisibleTaskDataIndices(
+                recentsView,
+                taskViewCount,
+                anchorIndex,
+                radius).contains(taskIndex);
+    }
+
+    private static void appendStackVisibleTaskDataIndex(
+            ArrayList<Integer> target,
+            int index,
+            int taskViewCount) {
+        if (index >= 0 && index < taskViewCount && !target.contains(index)) {
+            target.add(index);
+        }
+    }
+
+    private static boolean shouldUseStackEntryVisibleTaskDataWindow(View recentsView) {
+        return LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(recentsView)
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
+                recentsView)
+                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
     }
 
     private static final int KEY_TASK_IDS_CACHE = 0x7f999999;
@@ -2694,7 +2760,7 @@ final class LauncherRecentsTouchController {
             return false;
         }
         int action = motionEvent.getActionMasked();
-        return (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)
+        return action == MotionEvent.ACTION_CANCEL
                 && LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false);
     }
 
@@ -2796,124 +2862,15 @@ final class LauncherRecentsTouchController {
         }
         logStackFlow("pagedRelease:suppress", recentsView, motionEvent, null);
         clearRecentsDeferredSnap(recentsView);
-        if (motionEvent != null && motionEvent.getActionMasked() == MotionEvent.ACTION_UP) {
-            startUnsnappedFlingIfNeeded(recentsView, motionEvent);
-        } else {
-            LauncherRecentsCompat.invokeCompat(
-                    recentsView,
-                    "abortScrollerAnimation",
-                    LauncherRecentsCompat.NO_ARGS);
-        }
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "abortScrollerAnimation",
+                LauncherRecentsCompat.NO_ARGS);
         releasePagedEdgeEffects(recentsView, motionEvent);
         LauncherRecentsCompat.invokeCompat(recentsView, "resetTouchState", LauncherRecentsCompat.NO_ARGS);
         if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
             recentsView.invalidate();
         }
-    }
-
-    private static void startUnsnappedFlingIfNeeded(View recentsView, MotionEvent motionEvent) {
-        if (recentsView == null || motionEvent == null) {
-            return;
-        }
-        Object velocityTrackerValue =
-                LauncherRecentsCompat.getFieldCompat(recentsView, "mVelocityTracker");
-        if (!(velocityTrackerValue instanceof VelocityTracker)) {
-            logStackFlow("pagedRelease:fling:noVelocityTracker",
-                    recentsView, motionEvent, null);
-            return;
-        }
-        VelocityTracker velocityTracker = (VelocityTracker) velocityTrackerValue;
-        velocityTracker.addMovement(motionEvent);
-        int maximumVelocity =
-                LauncherRecentsCompat.invokeInt(recentsView, "getMaximumVelocity", Integer.MAX_VALUE);
-        velocityTracker.computeCurrentVelocity(1000, maximumVelocity);
-        int activePointerId =
-                LauncherRecentsCompat.readIntField(recentsView, "mActivePointerId", -1);
-        int primaryVelocity = Math.round(
-                resolvePrimaryVelocity(recentsView, velocityTracker, activePointerId));
-        int primaryScroll = resolvePrimaryScroll(recentsView);
-        int minScroll =
-                LauncherRecentsCompat.readIntField(recentsView, "mMinScroll", primaryScroll);
-        int maxScroll =
-                LauncherRecentsCompat.readIntField(recentsView, "mMaxScroll", primaryScroll);
-
-        if (primaryScroll < minScroll || primaryScroll > maxScroll) {
-            logStackFlow("pagedRelease:fling:springBack",
-                    recentsView,
-                    motionEvent,
-                    "velocity=" + primaryVelocity
-                            + " primaryScroll=" + primaryScroll
-                            + " min=" + minScroll
-                            + " max=" + maxScroll);
-            startPagedSpringBack(recentsView, primaryScroll, minScroll, maxScroll);
-            return;
-        }
-        if (!shouldKeepFreeScrollFling(recentsView, primaryVelocity)) {
-            logStackFlow("pagedRelease:fling:skipVelocity",
-                    recentsView, motionEvent, "velocity=" + primaryVelocity);
-            return;
-        }
-        Object scroller = LauncherRecentsCompat.getFieldCompat(recentsView, "mScroller");
-        if (scroller == null) {
-            logStackFlow("pagedRelease:fling:noScroller",
-                    recentsView, motionEvent, "velocity=" + primaryVelocity);
-            return;
-        }
-        setScrollerFriction(scroller, 0.01f);
-        if (!startScrollerFling(
-                recentsView,
-                scroller,
-                primaryScroll,
-                primaryVelocity,
-                minScroll,
-                maxScroll)) {
-            logStackFlow("pagedRelease:fling:startFailed",
-                    recentsView, motionEvent, "velocity=" + primaryVelocity);
-            return;
-        }
-        logStackFlow("pagedRelease:fling:start",
-                recentsView,
-                motionEvent,
-                "velocity=" + primaryVelocity
-                        + " primaryScroll=" + primaryScroll
-                        + " min=" + minScroll
-                        + " max=" + maxScroll);
-        LauncherRecentsCompat.setIntField(
-                recentsView,
-                "mNextPage",
-                LauncherRecentsCompat.readIntField(recentsView, "mCurrentPage", -1));
-    }
-
-    private static boolean shouldKeepFreeScrollFling(View recentsView, int primaryVelocity) {
-        Object value = LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "shouldFlingForVelocity",
-                LauncherRecentsCompat.INT_ARG,
-                primaryVelocity);
-        return value instanceof Boolean && (Boolean) value;
-    }
-
-    private static float resolvePrimaryVelocity(
-            View recentsView,
-            VelocityTracker velocityTracker,
-            int activePointerId) {
-        Object orientationHandler =
-                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
-        Object value = LauncherRecentsCompat.invokeCompat(
-                orientationHandler,
-                "getPrimaryVelocity",
-                new Class<?>[]{VelocityTracker.class, int.class},
-                velocityTracker,
-                activePointerId);
-        if (value instanceof Float) {
-            return (Float) value;
-        }
-        if (value instanceof Double) {
-            return ((Double) value).floatValue();
-        }
-        return activePointerId >= 0
-                ? velocityTracker.getXVelocity(activePointerId)
-                : velocityTracker.getXVelocity();
     }
 
     private static int resolvePrimaryScroll(View recentsView) {
@@ -2954,161 +2911,6 @@ final class LauncherRecentsTouchController {
 
     private static float resolveGestureSecondaryDelta(View recentsView, float dx, float dy) {
         return isPrimaryScrollHorizontal(recentsView) ? dy : dx;
-    }
-
-    private static void startPagedSpringBack(
-            View recentsView,
-            int primaryScroll,
-            int minScroll,
-            int maxScroll) {
-        Object scroller = LauncherRecentsCompat.getFieldCompat(recentsView, "mScroller");
-        if (scroller == null) {
-            return;
-        }
-        invokeScrollerSpringBack(scroller, primaryScroll, minScroll, maxScroll);
-        LauncherRecentsCompat.setIntField(
-                recentsView,
-                "mNextPage",
-                LauncherRecentsCompat.readIntField(recentsView, "mCurrentPage", -1));
-    }
-
-    private static boolean startScrollerFling(
-            View recentsView,
-            Object scroller,
-            int primaryScroll,
-            int primaryVelocity,
-            int minScroll,
-            int maxScroll) {
-        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
-        int overX = Math.round(
-                resolvePrimarySize(recentsView, primaryScrollHorizontal) * 0.5f * 0.07f);
-        invokeScrollerFling10(scroller, primaryScroll, primaryVelocity, minScroll, maxScroll, overX);
-        int afterFinalX = readScrollerFinalX(scroller, primaryScroll);
-        if (afterFinalX != primaryScroll) {
-            return true;
-        }
-        invokeScrollerFling8(scroller, primaryScroll, primaryVelocity, minScroll, maxScroll);
-        return readScrollerFinalX(scroller, primaryScroll) != primaryScroll;
-    }
-
-    private static void setScrollerFriction(Object scroller, float friction) {
-        invokeScrollerMethod(scroller, "setFriction", LauncherRecentsCompat.FLOAT_ARG, friction);
-    }
-
-    private static void invokeScrollerSpringBack(
-            Object scroller,
-            int primaryScroll,
-            int minScroll,
-            int maxScroll) {
-        invokeScrollerMethod(
-                scroller,
-                "springBack",
-                new Class<?>[]{
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class
-                },
-                primaryScroll,
-                0,
-                minScroll,
-                maxScroll,
-                0,
-                0);
-    }
-
-    private static void invokeScrollerFling10(
-            Object scroller,
-            int primaryScroll,
-            int primaryVelocity,
-            int minScroll,
-            int maxScroll,
-            int overX) {
-        invokeScrollerMethod(
-                scroller,
-                "fling",
-                new Class<?>[]{
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class
-                },
-                primaryScroll,
-                0,
-                -primaryVelocity,
-                0,
-                minScroll,
-                maxScroll,
-                0,
-                0,
-                overX,
-                0);
-    }
-
-    private static void invokeScrollerFling8(
-            Object scroller,
-            int primaryScroll,
-            int primaryVelocity,
-            int minScroll,
-            int maxScroll) {
-        invokeScrollerMethod(
-                scroller,
-                "fling",
-                new Class<?>[]{
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class
-                },
-                primaryScroll,
-                0,
-                -primaryVelocity,
-                0,
-                minScroll,
-                maxScroll,
-                0,
-                0);
-    }
-
-    private static void invokeScrollerMethod(
-            Object scroller,
-            String methodName,
-            Class<?>[] parameterTypes,
-            Object... args) {
-        if (scroller == null) {
-            return;
-        }
-        LauncherRecentsCompat.invokeCompat(scroller, methodName, parameterTypes, args);
-        Object activeScroller = LauncherRecentsCompat.getFieldCompat(scroller, "usingScroller");
-        if (activeScroller != null && activeScroller != scroller) {
-            LauncherRecentsCompat.invokeCompat(activeScroller, methodName, parameterTypes, args);
-        }
-    }
-
-    private static int readScrollerFinalX(Object scroller, int fallback) {
-        if (scroller == null) {
-            return fallback;
-        }
-        Object value = LauncherRecentsCompat.invokeCompat(scroller, "getFinalX", LauncherRecentsCompat.NO_ARGS);
-        if (value instanceof Integer) {
-            return (Integer) value;
-        }
-        Object activeScroller = LauncherRecentsCompat.getFieldCompat(scroller, "usingScroller");
-        Object activeValue =
-                LauncherRecentsCompat.invokeCompat(activeScroller, "getFinalX", LauncherRecentsCompat.NO_ARGS);
-        return activeValue instanceof Integer ? (Integer) activeValue : fallback;
     }
 
     private static void releasePagedEdgeEffects(View recentsView, MotionEvent motionEvent) {
