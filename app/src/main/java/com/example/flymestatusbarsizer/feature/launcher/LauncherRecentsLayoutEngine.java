@@ -1080,16 +1080,24 @@ final class LauncherRecentsLayoutEngine {
             int stackLayoutRadius,
             String source,
             boolean syncVisibleTaskData) {
+        if (recentsView == null) {
+            return;
+        }
         if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
             LauncherRecentsPerf.flow("layout:apply:skipSwipeUp",
                     recentsView, "source=" + source);
             return;
         }
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         if (shouldSkipDuplicateStackLayout(
                 recentsView,
+                taskViewCount,
                 stackLayoutRadius,
                 source,
-                syncVisibleTaskData)) {
+                syncVisibleTaskData,
+                config)) {
             LauncherRecentsPerf.hit("skipDuplicate:" + source, recentsView);
             LauncherRecentsPerf.flow("layout:apply:skipDuplicate",
                     recentsView,
@@ -1110,7 +1118,9 @@ final class LauncherRecentsLayoutEngine {
             layoutApplied = applyStackLayoutMeasured(
                     recentsView,
                     captureStockState,
-                    stackLayoutRadius);
+                    taskViewCount,
+                    stackLayoutRadius,
+                    config);
         } finally {
             long layoutCostNs = LauncherRecentsPerf.end("layoutCompute:" + source, layoutStartNs);
             reportSlowApplyDynamicLayout(recentsView, source, stackLayoutRadius, layoutCostNs);
@@ -1178,16 +1188,18 @@ final class LauncherRecentsLayoutEngine {
 
     private static boolean shouldSkipDuplicateStackLayout(
             View recentsView,
+            int taskViewCount,
             int stackLayoutRadius,
             String source,
-            boolean syncVisibleTaskData) {
+            boolean syncVisibleTaskData,
+            FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config) {
         if (recentsView == null || !shouldCoalesceStackLayoutSource(source)) {
             return false;
         }
         if (shouldOwnStackTaskAlpha(recentsView)) {
             return false;
         }
-        long key = resolveStackLayoutApplyKey(recentsView, stackLayoutRadius);
+        long key = resolveStackLayoutApplyKey(recentsView, taskViewCount, stackLayoutRadius, config);
         long nowNs = System.nanoTime();
         LauncherRecentsState.StackLayoutApplyState lastState =
                 LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.get(recentsView);
@@ -1222,7 +1234,11 @@ final class LauncherRecentsLayoutEngine {
                 || "updatePageScales_scaleSuppress".equals(source);
     }
 
-    private static long resolveStackLayoutApplyKey(View recentsView, int stackLayoutRadius) {
+    private static long resolveStackLayoutApplyKey(
+            View recentsView,
+            int taskViewCount,
+            int stackLayoutRadius,
+            FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config) {
         long key = 17L;
         key = mixStackLayoutApplyKey(key, stackLayoutRadius);
         key = mixStackLayoutApplyKey(key, recentsView.getScrollX());
@@ -1234,7 +1250,7 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0));
         key = mixStackLayoutApplyKey(
                 key,
-                LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0));
+                taskViewCount);
         key = mixStackLayoutApplyKey(
                 key,
                 quantizeStackLayoutFloat(LauncherRecentsCompat.readFloatField(
@@ -1264,8 +1280,6 @@ final class LauncherRecentsLayoutEngine {
         key = mixStackLayoutApplyKey(
                 key,
                 LauncherRecentsState.isOverviewStateStackSettled(recentsView) ? 1 : 0);
-        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
-                FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
         key = mixStackLayoutApplyKey(
                 key,
                 config != null && config.launcherIosStackRecentsBlurEnabled ? 1 : 0);
@@ -1283,7 +1297,9 @@ final class LauncherRecentsLayoutEngine {
     private static boolean applyStackLayoutMeasured(
             View recentsView,
             boolean captureStockState,
-            int stackLayoutRadius) {
+            int taskViewCount,
+            int stackLayoutRadius,
+            FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config) {
         if (recentsView == null) {
             return false;
         }
@@ -1300,9 +1316,6 @@ final class LauncherRecentsLayoutEngine {
         if (shouldBlockAppToRecentsStackApply(recentsView)) {
             return false;
         }
-        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
-                FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         if (!shouldUseStackLayout(config, recentsView, taskViewCount)) {
             LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.remove(recentsView);
             restoreTaskTransforms(recentsView, taskViewCount);
@@ -2032,15 +2045,48 @@ final class LauncherRecentsLayoutEngine {
 
     private static int resolveNearestStackLayoutPage(View recentsView, int taskViewCount) {
         int primaryScroll = resolvePrimaryScroll(recentsView);
-        int nearestPage = 0;
+        int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
+        int scrollOverPage = LauncherRecentsCompat.readIntField(
+                recentsView,
+                "mCurrentScrollOverPage",
+                currentPage);
+        int centerPage = scrollOverPage >= 0 && scrollOverPage < taskViewCount
+                ? scrollOverPage
+                : currentPage;
+        centerPage = Math.max(0, Math.min(centerPage, Math.max(0, taskViewCount - 1)));
+        int searchRadius = STACK_STABLE_VISIBLE_RADIUS + 2;
+        int nearestPage = resolveNearestStackLayoutPageInRange(
+                recentsView,
+                primaryScroll,
+                Math.max(0, centerPage - searchRadius),
+                Math.min(taskViewCount - 1, centerPage + searchRadius));
+        int nearestDistance = Math.abs(resolveStackLayoutScrollForPage(
+                recentsView,
+                primaryScroll,
+                nearestPage) - primaryScroll);
+        float pageSpan = Math.max(
+                1f,
+                resolvePrimarySize(recentsView, isPrimaryScrollHorizontal(recentsView))
+                        + LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0));
+        if (nearestDistance <= pageSpan) {
+            return nearestPage;
+        }
+        return resolveNearestStackLayoutPageInRange(
+                recentsView,
+                primaryScroll,
+                0,
+                taskViewCount - 1);
+    }
+
+    private static int resolveNearestStackLayoutPageInRange(
+            View recentsView,
+            int primaryScroll,
+            int startPage,
+            int endPage) {
+        int nearestPage = startPage;
         int nearestDistance = Integer.MAX_VALUE;
-        for (int i = 0; i < taskViewCount; i++) {
-            int pageScroll = LauncherRecentsCompat.invokeInt(
-                    recentsView,
-                    "getScrollForPage",
-                    LauncherRecentsCompat.INT_ARG,
-                    primaryScroll,
-                    i);
+        for (int i = startPage; i <= endPage; i++) {
+            int pageScroll = resolveStackLayoutScrollForPage(recentsView, primaryScroll, i);
             int distance = Math.abs(pageScroll - primaryScroll);
             if (distance < nearestDistance) {
                 nearestDistance = distance;
@@ -2048,6 +2094,18 @@ final class LauncherRecentsLayoutEngine {
             }
         }
         return nearestPage;
+    }
+
+    private static int resolveStackLayoutScrollForPage(
+            View recentsView,
+            int fallbackScroll,
+            int page) {
+        return LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getScrollForPage",
+                LauncherRecentsCompat.INT_ARG,
+                fallbackScroll,
+                page);
     }
 
     private static boolean shouldHideStackLayoutTask(int index, int anchorIndex, int radius) {
