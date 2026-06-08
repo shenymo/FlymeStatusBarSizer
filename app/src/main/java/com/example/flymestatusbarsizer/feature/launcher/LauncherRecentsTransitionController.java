@@ -512,8 +512,9 @@ final class LauncherRecentsTransitionController {
                             recentsView,
                             readBlankTapHomeExitProgress(recentsView));
                 }
-                if (hasGestureRecentsStackReleaseProgress(recentsView)
-                        || LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+                if (hasGestureRecentsStackReleaseProgress(recentsView)) {
+                    recentsView.invalidate();
+                } else if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
                     LauncherRecentsPerf.flow("enter:launcherTransitionProgress",
                             recentsView);
                     LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
