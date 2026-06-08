@@ -2580,7 +2580,33 @@ final class LauncherRecentsTouchController {
             }
         }
         int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
+        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+            return resolveNearestStackVisibleTaskDataPage(recentsView, taskViewCount, currentPage);
+        }
         return Math.max(0, Math.min(currentPage, taskViewCount - 1));
+    }
+
+    private static int resolveNearestStackVisibleTaskDataPage(
+            View recentsView,
+            int taskViewCount,
+            int currentPage) {
+        int primaryScroll = resolvePrimaryScroll(recentsView);
+        int nearestPage = Math.max(0, Math.min(currentPage, taskViewCount - 1));
+        int nearestDistance = Integer.MAX_VALUE;
+        for (int i = 0; i < taskViewCount; i++) {
+            int pageScroll = LauncherRecentsCompat.invokeInt(
+                    recentsView,
+                    "getScrollForPage",
+                    LauncherRecentsCompat.INT_ARG,
+                    primaryScroll,
+                    i);
+            int distance = Math.abs(pageScroll - primaryScroll);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestPage = i;
+            }
+        }
+        return nearestPage;
     }
 
     private static int resolveStackVisibleTaskDataRadius(View recentsView) {
@@ -2598,7 +2624,29 @@ final class LauncherRecentsTouchController {
         }
         anchorIndex = Math.max(0, Math.min(anchorIndex, taskViewCount - 1));
         if (shouldUseStackEntryVisibleTaskDataWindow(recentsView)) {
+            int targetCount = resolveStackVisibleTaskDataFillBoundaryTargetCount(
+                    recentsView,
+                    taskViewCount,
+                    radius);
             appendStackVisibleTaskDataIndex(indices, anchorIndex, taskViewCount);
+            if (targetCount > 0) {
+                if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+                    appendStableStackVisibleTaskDataIndices(
+                            indices,
+                            anchorIndex,
+                            taskViewCount,
+                            targetCount);
+                    return indices;
+                }
+                for (int i = 1; indices.size() < targetCount; i++) {
+                    appendStackVisibleTaskDataIndex(indices, anchorIndex - i, taskViewCount);
+                    if (indices.size() >= targetCount) {
+                        break;
+                    }
+                    appendStackVisibleTaskDataIndex(indices, anchorIndex + i, taskViewCount);
+                }
+                return indices;
+            }
             for (int i = 1; i <= radius; i++) {
                 appendStackVisibleTaskDataIndex(indices, anchorIndex - i, taskViewCount);
             }
@@ -2613,6 +2661,23 @@ final class LauncherRecentsTouchController {
             indices.add(i);
         }
         return indices;
+    }
+
+    private static void appendStableStackVisibleTaskDataIndices(
+            ArrayList<Integer> target,
+            int anchorIndex,
+            int taskViewCount,
+            int targetCount) {
+        appendStackVisibleTaskDataIndex(target, anchorIndex - 1, taskViewCount);
+        for (int i = 1; target.size() < targetCount; i++) {
+            appendStackVisibleTaskDataIndex(target, anchorIndex + i, taskViewCount);
+            if (target.size() >= targetCount) {
+                break;
+            }
+            if (i > 1) {
+                appendStackVisibleTaskDataIndex(target, anchorIndex - i, taskViewCount);
+            }
+        }
     }
 
     private static boolean isStackVisibleTaskDataIndexVisible(
@@ -2641,7 +2706,26 @@ final class LauncherRecentsTouchController {
         return LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
                 recentsView)
-                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
+                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+                || LauncherRecentsState.isGestureStackReleasedStable(recentsView);
+    }
+
+    private static int resolveStackVisibleTaskDataFillBoundaryTargetCount(
+            View recentsView,
+            int taskViewCount,
+            int radius) {
+        if (taskViewCount <= 0) {
+            return 0;
+        }
+        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+            return Math.min(taskViewCount, (radius * 2) + 2);
+        }
+        if (LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
+                recentsView)
+                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)) {
+            return Math.min(taskViewCount, (radius * 2) + 1);
+        }
+        return 0;
     }
 
     private static final int KEY_TASK_IDS_CACHE = 0x7f999999;

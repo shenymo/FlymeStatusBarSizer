@@ -1017,6 +1017,9 @@ final class LauncherRecentsLayoutEngine {
             captureStockTaskStatesForStackApply(recentsView);
         }
         applyStackLayout(recentsView, false, "applyDynamic", false);
+        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+            LauncherRecentsTouchController.ensureStackVisibleTaskDataIfNeeded(recentsView, 15);
+        }
         LauncherRecentsPerf.flow("layout:dynamic:applied", recentsView);
         return true;
     }
@@ -1409,6 +1412,14 @@ final class LauncherRecentsLayoutEngine {
                 && (gestureStackReleaseActive
                 || overviewStateStackAnimationActive
                 || appEntrySessionActive);
+        boolean appEntryLightWindow = stackLayoutRadius == STACK_ENTRY_LIGHT_RADIUS
+                && (gestureStackReleaseActive || appEntrySessionActive);
+        boolean stableFillWindow = LauncherRecentsState.isGestureStackReleasedStable(recentsView);
+        int fillBoundaryTargetCount = resolveStackLayoutFillBoundaryTargetCount(
+                recentsView,
+                taskViewCount,
+                stackLayoutRadius,
+                appEntryLightWindow);
         int lightAnchorIndex = resolveStackLayoutAnchorIndex(
                 recentsView,
                 runningTaskChildIndex,
@@ -1419,7 +1430,8 @@ final class LauncherRecentsLayoutEngine {
                 taskViewCount,
                 lightAnchorIndex,
                 stackLayoutRadius,
-                entryLightWindow);
+                fillBoundaryTargetCount,
+                stableFillWindow);
         ArrayList<Integer> lastActiveIndices =
                 LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.get(recentsView);
         ArrayList<Integer> processIndices = resolveStackLayoutProcessIndices(
@@ -1591,18 +1603,25 @@ final class LauncherRecentsLayoutEngine {
             int taskViewCount,
             int anchorIndex,
             int radius,
-            boolean entryWindow) {
+            int fillBoundaryTargetCount,
+            boolean stableFillWindow) {
         ArrayList<Integer> indices = new ArrayList<>();
         if (taskViewCount <= 0 || radius < 0) {
             return indices;
         }
         anchorIndex = Math.max(0, Math.min(anchorIndex, taskViewCount - 1));
-        if (entryWindow) {
-            indices.add(anchorIndex);
-            for (int i = 1; i <= radius; i++) {
-                appendStackLayoutIndex(indices, anchorIndex - i, taskViewCount);
+        if (fillBoundaryTargetCount > 0) {
+            int targetCount = Math.min(taskViewCount, fillBoundaryTargetCount);
+            if (stableFillWindow) {
+                appendStableStackLayoutIndices(indices, anchorIndex, taskViewCount, targetCount);
+                return indices;
             }
-            for (int i = 1; i <= radius; i++) {
+            indices.add(anchorIndex);
+            for (int i = 1; indices.size() < targetCount; i++) {
+                appendStackLayoutIndex(indices, anchorIndex - i, taskViewCount);
+                if (indices.size() >= targetCount) {
+                    break;
+                }
                 appendStackLayoutIndex(indices, anchorIndex + i, taskViewCount);
             }
             return indices;
@@ -1613,6 +1632,41 @@ final class LauncherRecentsLayoutEngine {
             indices.add(i);
         }
         return indices;
+    }
+
+    private static void appendStableStackLayoutIndices(
+            ArrayList<Integer> target,
+            int anchorIndex,
+            int taskViewCount,
+            int targetCount) {
+        appendStackLayoutIndex(target, anchorIndex, taskViewCount);
+        appendStackLayoutIndex(target, anchorIndex - 1, taskViewCount);
+        for (int i = 1; target.size() < targetCount; i++) {
+            appendStackLayoutIndex(target, anchorIndex + i, taskViewCount);
+            if (target.size() >= targetCount) {
+                break;
+            }
+            if (i > 1) {
+                appendStackLayoutIndex(target, anchorIndex - i, taskViewCount);
+            }
+        }
+    }
+
+    private static int resolveStackLayoutFillBoundaryTargetCount(
+            View recentsView,
+            int taskViewCount,
+            int radius,
+            boolean appEntryLightWindow) {
+        if (taskViewCount <= 0) {
+            return 0;
+        }
+        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+            return Math.min(taskViewCount, (radius * 2) + 2);
+        }
+        if (appEntryLightWindow) {
+            return Math.min(taskViewCount, (radius * 2) + 1);
+        }
+        return 0;
     }
 
     private static void appendStackLayoutIndex(
