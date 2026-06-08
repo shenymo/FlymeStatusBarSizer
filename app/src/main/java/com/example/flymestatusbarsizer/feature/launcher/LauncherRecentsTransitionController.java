@@ -373,7 +373,7 @@ final class LauncherRecentsTransitionController {
         markPendingGestureRecentsStackRelease(recentsView, false);
         LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
         LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
-        LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
+        LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15, true);
         recentsView.invalidate();
         LauncherRecentsPerf.flow("enter:finishGestureEnd:end", recentsView);
     }
@@ -837,7 +837,7 @@ final class LauncherRecentsTransitionController {
                 clearGestureRecentsStackReleaseProgress(recentsView);
                 LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
-                LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
+                LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15, true);
                 recentsView.invalidate();
                 LauncherRecentsPerf.flow("enter:gestureRelease:end", recentsView);
             }

@@ -657,7 +657,8 @@ final class LauncherRecentsLayoutEngine {
                 recentsView,
                 -1,
                 taskViewCount,
-                STACK_STABLE_VISIBLE_RADIUS);
+                STACK_STABLE_VISIBLE_RADIUS,
+                false);
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         float anchorVisibleOffset = 0f;
         boolean hasVisibleAnchor = false;
@@ -1412,7 +1413,8 @@ final class LauncherRecentsLayoutEngine {
                 recentsView,
                 runningTaskChildIndex,
                 taskViewCount,
-                stackLayoutRadius);
+                stackLayoutRadius,
+                entryLightWindow);
         ArrayList<Integer> activeIndices = resolveStackLayoutActiveIndices(
                 taskViewCount,
                 lightAnchorIndex,
@@ -1589,19 +1591,19 @@ final class LauncherRecentsLayoutEngine {
             int taskViewCount,
             int anchorIndex,
             int radius,
-            boolean forwardOnly) {
+            boolean entryWindow) {
         ArrayList<Integer> indices = new ArrayList<>();
         if (taskViewCount <= 0 || radius < 0) {
             return indices;
         }
         anchorIndex = Math.max(0, Math.min(anchorIndex, taskViewCount - 1));
-        if (forwardOnly) {
+        if (entryWindow) {
             indices.add(anchorIndex);
             for (int i = 1; i <= radius; i++) {
-                appendStackLayoutIndex(indices, anchorIndex + i, taskViewCount);
-            }
-            for (int i = 1; indices.size() <= radius && i <= radius; i++) {
                 appendStackLayoutIndex(indices, anchorIndex - i, taskViewCount);
+            }
+            for (int i = 1; i <= radius; i++) {
+                appendStackLayoutIndex(indices, anchorIndex + i, taskViewCount);
             }
             return indices;
         }
@@ -2125,8 +2127,12 @@ final class LauncherRecentsLayoutEngine {
             View recentsView,
             int runningTaskChildIndex,
             int taskViewCount,
-            int stackLayoutRadius) {
-        if (stackLayoutRadius == STACK_STABLE_VISIBLE_RADIUS) {
+            int stackLayoutRadius,
+            boolean entryWindow) {
+        if (entryWindow && runningTaskChildIndex >= 0) {
+            return runningTaskChildIndex;
+        }
+        if (!entryWindow && stackLayoutRadius == STACK_STABLE_VISIBLE_RADIUS) {
             return resolveNearestStackLayoutPage(recentsView, taskViewCount);
         }
         if (runningTaskChildIndex >= 0) {
