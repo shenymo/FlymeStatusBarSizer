@@ -270,40 +270,34 @@ final class LauncherRecentsLayoutEngine {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
                         LauncherRecentsTaskVisuals.forceRecentsTaskAlphaVisible(recentsView);
-                        if (shouldApplyDynamicStackLayout(recentsView)) {
-                            scheduleStackLayout(
-                                    recentsView,
-                                    false,
-                                    methodName + "_gestureReleaseSuppress",
-                                    true,
-                                    true);
-                        }
+                        scheduleStackLayoutFromHook(
+                                recentsView,
+                                false,
+                                methodName + "_gestureReleaseSuppress",
+                                true,
+                                true);
                         return null;
                     }
                     if (shouldSuppressStockPageScaleUpdate(methodName, recentsView)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
-                        if (shouldApplyDynamicStackLayout(recentsView)) {
-                            scheduleStackLayout(
-                                    recentsView,
-                                    true,
-                                    methodName + "_scaleSuppress",
-                                    false,
-                                    true);
-                        }
+                        scheduleStackLayoutFromHook(
+                                recentsView,
+                                true,
+                                methodName + "_scaleSuppress",
+                                false,
+                                true);
                         return null;
                     }
                     if (shouldSuppressStockPageOffsetUpdate(methodName, recentsView)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
-                        if (shouldApplyDynamicStackLayout(recentsView)) {
-                            scheduleStackLayout(
-                                    recentsView,
-                                    true,
-                                    methodName + "_offsetSuppress",
-                                    true,
-                                    true);
-                        }
+                        scheduleStackLayoutFromHook(
+                                recentsView,
+                                true,
+                                methodName + "_offsetSuppress",
+                                true,
+                                true);
                         return null;
                     }
                 }
@@ -312,14 +306,12 @@ final class LauncherRecentsLayoutEngine {
                     View recentsView = (View) thisObject;
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    if (shouldApplyDynamicStackLayout(recentsView)) {
-                        scheduleStackLayout(
-                                recentsView,
-                                true,
-                                methodName + "_after",
-                                !"updatePageScales".equals(methodName),
-                                true);
-                    }
+                    scheduleStackLayoutFromHook(
+                            recentsView,
+                            true,
+                            methodName + "_after",
+                            !"updatePageScales".equals(methodName),
+                            true);
                 }
                 return result;
             });
@@ -438,14 +430,12 @@ final class LauncherRecentsLayoutEngine {
                         prepareRecentsView(recentsView);
                         LauncherRecentsCompat.writeField(recentsView, "mContentAlpha", 1f);
                         LauncherRecentsTaskVisuals.forceRecentsTaskAlphaVisible(recentsView);
-                        if (shouldApplyDynamicStackLayout(recentsView)) {
-                            scheduleStackLayout(
-                                    recentsView,
-                                    false,
-                                    "contentAlpha_gestureReleaseSuppress",
-                                    true,
-                                    true);
-                        }
+                        scheduleStackLayoutFromHook(
+                                recentsView,
+                                false,
+                                "contentAlpha_gestureReleaseSuppress",
+                                true,
+                                true);
                         recentsView.invalidate();
                         return null;
                     }
@@ -469,14 +459,12 @@ final class LauncherRecentsLayoutEngine {
                     View recentsView = (View) thisObject;
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    if (shouldApplyDynamicStackLayout(recentsView)) {
-                        scheduleStackLayout(
-                                recentsView,
-                                true,
-                                "contentAlpha_after",
-                                true,
-                                true);
-                    }
+                    scheduleStackLayoutFromHook(
+                            recentsView,
+                            true,
+                            "contentAlpha_after",
+                            true,
+                            true);
                 }
                 return result;
             });
@@ -1018,6 +1006,26 @@ final class LauncherRecentsLayoutEngine {
                         + " dynamicOnly=" + dynamicOnly);
         recentsView.postOnAnimation(() -> runScheduledStackLayout(recentsView));
         return true;
+    }
+
+    private static void scheduleStackLayoutFromHook(
+            View recentsView,
+            boolean captureStockState,
+            String source,
+            boolean syncVisibleTaskData,
+            boolean dynamicOnly) {
+        if (!shouldApplyDynamicStackLayout(recentsView)) {
+            return;
+        }
+        if (isAppToRecentsEntryInProgress(recentsView)) {
+            return;
+        }
+        scheduleStackLayout(
+                recentsView,
+                captureStockState,
+                source,
+                syncVisibleTaskData,
+                dynamicOnly);
     }
 
     private static String mergeScheduledStackLayoutSource(String currentSource, String nextSource) {
