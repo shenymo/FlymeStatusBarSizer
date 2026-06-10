@@ -20,7 +20,7 @@ final class SettingsUiFactory {
         view.setTextColor(textColor);
         view.setTextSize(12);
         view.setGravity(Gravity.CENTER);
-        view.setPadding(dp(12), dp(6), dp(12), dp(6));
+        view.setPadding(dp(12), dp(4), dp(12), dp(4));
         view.setBackground(roundRect(backgroundColor, 99));
         return view;
     }
@@ -31,8 +31,8 @@ final class SettingsUiFactory {
         view.setTextColor(textColor);
         view.setTextSize(14);
         view.setGravity(Gravity.CENTER);
-        view.setMinHeight(dp(40));
-        view.setPadding(dp(16), dp(8), dp(16), dp(8));
+        view.setMinHeight(dp(36));
+        view.setPadding(dp(16), dp(6), dp(16), dp(6));
         view.setBackground(roundRect(backgroundColor, 8));
         return view;
     }
@@ -43,8 +43,8 @@ final class SettingsUiFactory {
         view.setTextColor(activity.primaryColor());
         view.setTextSize(14);
         view.setGravity(Gravity.CENTER);
-        view.setMinWidth(dp(32));
-        view.setMinHeight(dp(32));
+        view.setMinWidth(dp(28));
+        view.setMinHeight(dp(28));
         view.setContentDescription(titleText + "说明");
         view.setBackground(roundRect(activity.surfaceSoftColor(), 999));
         activity.setTapClickListener(view, v -> activity.showHelpDialog(titleText, message));
@@ -83,8 +83,8 @@ final class SettingsUiFactory {
     void addDivider(LinearLayout root) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
-        lp.topMargin = dp(10);
-        lp.bottomMargin = dp(10);
+        lp.topMargin = dp(6);
+        lp.bottomMargin = dp(6);
         root.addView(buildDividerView(), lp);
     }
 
@@ -108,7 +108,7 @@ final class SettingsUiFactory {
         LinearLayout row = new LinearLayout(activity);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(56));
+        row.setMinimumHeight(dp(44));
 
         LinearLayout textColumn = new LinearLayout(activity);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -135,8 +135,8 @@ final class SettingsUiFactory {
         if (message == null || message.length() == 0) {
             return;
         }
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(32), dp(32));
-        lp.rightMargin = dp(10);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(28), dp(28));
+        lp.rightMargin = dp(8);
         row.addView(helpButton(titleText, message), lp);
     }
 

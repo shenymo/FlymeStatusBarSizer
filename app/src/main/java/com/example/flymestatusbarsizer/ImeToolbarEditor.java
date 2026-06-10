@@ -56,7 +56,7 @@ final class ImeToolbarEditor {
 
         buttonContainer = new LinearLayout(activity);
         buttonContainer.setOrientation(LinearLayout.VERTICAL);
-        buttonContainer.setPadding(0, activity.dp(12), 0, 0);
+        buttonContainer.setPadding(0, activity.dp(8), 0, 0);
         details.addView(buttonContainer, activity.matchWrap());
         loadConfig();
         renderEditor();
@@ -81,23 +81,23 @@ final class ImeToolbarEditor {
 
         buttonPoolContainer = new LinearLayout(activity);
         buttonPoolContainer.setOrientation(LinearLayout.VERTICAL);
-        buttonPoolContainer.setPadding(activity.dp(12), activity.dp(12), activity.dp(12), activity.dp(12));
+        buttonPoolContainer.setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8));
         buttonPoolContainer.setBackground(buildPoolBackground(false));
         buttonPoolContainer.setOnDragListener(this::handlePoolDrag);
-        buttonContainer.addView(buttonPoolContainer, activity.matchWrapWithTop(10));
+        buttonContainer.addView(buttonPoolContainer, activity.matchWrapWithTop(8));
 
         activity.addProfileSectionHeader(buttonContainer, "底部 7 个固定槽位",
                 "从左到右对应输入法控制栏的实际位置；空槽位会保留占位，验证码占 2 格。");
 
         buttonSlotContainer = new LinearLayout(activity);
         buttonSlotContainer.setOrientation(LinearLayout.HORIZONTAL);
-        buttonSlotContainer.setPadding(0, activity.dp(10), 0, 0);
+        buttonSlotContainer.setPadding(0, activity.dp(8), 0, 0);
         buttonContainer.addView(buttonSlotContainer, activity.matchWrap());
 
         LinearLayout actionRow = new LinearLayout(activity);
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
         actionRow.setGravity(Gravity.CENTER_VERTICAL);
-        actionRow.setPadding(0, activity.dp(14), 0, 0);
+        actionRow.setPadding(0, activity.dp(8), 0, 0);
 
         applyStateView = new TextView(activity);
         applyStateView.setTextColor(activity.subtextColor());
@@ -137,7 +137,7 @@ final class ImeToolbarEditor {
             empty.setTextColor(activity.subtextColor());
             empty.setTextSize(13);
             empty.setGravity(Gravity.CENTER);
-            empty.setPadding(0, activity.dp(12), 0, activity.dp(12));
+            empty.setPadding(0, activity.dp(8), 0, activity.dp(8));
             buttonPoolContainer.addView(empty, activity.matchWrap());
             return;
         }
@@ -145,7 +145,7 @@ final class ImeToolbarEditor {
             LinearLayout row = new LinearLayout(activity);
             row.setOrientation(LinearLayout.HORIZONTAL);
             if (i > 0) {
-                row.setPadding(0, activity.dp(8), 0, 0);
+                row.setPadding(0, activity.dp(6), 0, 0);
             }
             for (int j = 0; j < MainActivity.IME_CONTROL_BAR_POOL_ROW_ITEM_COUNT; j++) {
                 int index = i + j;
@@ -172,8 +172,8 @@ final class ImeToolbarEditor {
         item.setTextColor(activity.textColor());
         item.setTextSize(14);
         item.setGravity(Gravity.CENTER);
-        item.setMinHeight(activity.dp(48));
-        item.setPadding(activity.dp(8), activity.dp(12), activity.dp(8), activity.dp(12));
+        item.setMinHeight(activity.dp(40));
+        item.setPadding(activity.dp(8), activity.dp(8), activity.dp(8), activity.dp(8));
         item.setBackground(activity.outlinedRect(activity.surfaceColor(), activity.strokeColor(), 1, 18));
         item.setOnLongClickListener(v -> startDrag(v, button, -1));
         return item;
@@ -205,8 +205,8 @@ final class ImeToolbarEditor {
         LinearLayout slot = new LinearLayout(activity);
         slot.setOrientation(LinearLayout.VERTICAL);
         slot.setGravity(Gravity.CENTER);
-        slot.setPadding(activity.dp(4), activity.dp(10), activity.dp(4), activity.dp(10));
-        slot.setMinimumHeight(activity.dp(72));
+        slot.setPadding(activity.dp(4), activity.dp(8), activity.dp(4), activity.dp(8));
+        slot.setMinimumHeight(activity.dp(60));
         slot.setTag(Integer.valueOf(slotIndex));
         slot.setBackground(buildSlotBackground(!TextUtils.isEmpty(button) || covered, false));
         slot.setOnDragListener(this::handleSlotDrag);

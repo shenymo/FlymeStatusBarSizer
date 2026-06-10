@@ -45,19 +45,19 @@ final class ClockExpressionEditor {
         orderTitle.setText("表达式列表");
         orderTitle.setTextColor(activity.primaryColor());
         orderTitle.setTextSize(15);
-        orderTitle.setPadding(0, activity.dp(14), 0, 0);
+        orderTitle.setPadding(0, activity.dp(8), 0, 0);
         page.addView(orderTitle, activity.matchWrap());
 
         previewView = new TextView(activity);
         previewView.setTextColor(activity.primaryColor());
         previewView.setTextSize(13);
-        previewView.setPadding(activity.dp(12), activity.dp(10), activity.dp(12), activity.dp(10));
+        previewView.setPadding(activity.dp(12), activity.dp(6), activity.dp(12), activity.dp(6));
         previewView.setBackground(activity.roundRect(activity.surfaceSoftColor(), 18));
-        page.addView(previewView, activity.matchWrapWithTop(10));
+        page.addView(previewView, activity.matchWrapWithTop(8));
 
         orderContainer = new LinearLayout(activity);
         orderContainer.setOrientation(LinearLayout.VERTICAL);
-        orderContainer.setPadding(0, activity.dp(12), 0, 0);
+        orderContainer.setPadding(0, activity.dp(8), 0, 0);
         page.addView(orderContainer, activity.matchWrap());
         loadDraft();
         renderEditor();
@@ -142,8 +142,8 @@ final class ClockExpressionEditor {
         chip.setTextColor(enabled ? activity.textColor() : activity.subtextColor());
         chip.setTextSize(12);
         chip.setGravity(Gravity.CENTER);
-        chip.setPadding(activity.dp(8), activity.dp(8), activity.dp(8), activity.dp(8));
-        chip.setMinHeight(activity.dp(40));
+        chip.setPadding(activity.dp(8), activity.dp(6), activity.dp(8), activity.dp(6));
+        chip.setMinHeight(activity.dp(36));
         chip.setBackground(buildChipBackground(enabled, false));
         chip.setTag(token);
 

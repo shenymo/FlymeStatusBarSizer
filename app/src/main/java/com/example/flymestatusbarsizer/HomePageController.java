@@ -23,37 +23,37 @@ final class HomePageController {
                 "图标缩放、电池样式、通知图标和信号接管",
                 activity.primaryColor(),
                 v -> activity.openPage(MainActivity.Page.ICONS_BATTERY)),
-                PageViewUtils.matchWrapWithTop(activity, 12));
+                PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(buildEntryCard(activity,
                 "时间与网络",
                 "实时网速阈值、时间表达式、时间交互和时间字体",
                 activity.secondaryColor(),
                 v -> activity.openPage(MainActivity.Page.TIME_NETWORK)),
-                PageViewUtils.matchWrapWithTop(activity, 12));
+                PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(buildEntryCard(activity,
                 "系统外观",
                 "Flyme 桌面文件夹和系统外观细节",
                 activity.tertiaryColor(),
                 v -> activity.openPage(MainActivity.Page.SYSTEM_APPEARANCE)),
-                PageViewUtils.matchWrapWithTop(activity, 12));
+                PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(buildEntryCard(activity,
                 "系统交互",
                 "MBack 长触、导航栏沉浸和输入法控制栏",
                 activity.primaryDeepColor(),
                 v -> activity.openPage(MainActivity.Page.SYSTEM_INTERACTION)),
-                PageViewUtils.matchWrapWithTop(activity, 12));
+                PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(buildEntryCard(activity,
                 "高级与调试",
                 "配置管理、SystemUI 操作、布局微调和 Telephony 调试",
                 activity.errorColor(),
                 v -> activity.openPage(MainActivity.Page.ADVANCED_DEBUG)),
-                PageViewUtils.matchWrapWithTop(activity, 12));
+                PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(buildEntryCard(activity,
                 "关于与支持",
                 "项目地址、交流群、版本构建信息和目标作用域说明",
                 activity.primaryDeepColor(),
                 v -> activity.openPage(MainActivity.Page.ABOUT)),
-                PageViewUtils.matchWrapWithTop(activity, 12));
+                PageViewUtils.matchWrapWithTop(activity, 8));
     }
 
     private static View buildHeroCard(MainActivity activity) {
@@ -118,11 +118,11 @@ final class HomePageController {
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setPadding(
-                PageViewUtils.dp(activity, 16),
-                PageViewUtils.dp(activity, 16),
-                PageViewUtils.dp(activity, 16),
-                PageViewUtils.dp(activity, 16));
-        card.setMinimumHeight(PageViewUtils.dp(activity, 92));
+                PageViewUtils.dp(activity, 12),
+                PageViewUtils.dp(activity, 12),
+                PageViewUtils.dp(activity, 10),
+                PageViewUtils.dp(activity, 12));
+        card.setMinimumHeight(PageViewUtils.dp(activity, 64));
 
         card.setBackground(activity.outlinedRect(activity.surfaceColor(), activity.strokeColor(), 1, 16));
         activity.setTapClickListener(card, listener);
@@ -137,7 +137,8 @@ final class HomePageController {
         TextView title = new TextView(activity);
         title.setText(titleText);
         title.setTextColor(activity.textColor());
-        title.setTextSize(17);
+        title.setTextSize(15);
+        title.setMaxLines(2);
         textGroup.addView(title, PageViewUtils.matchWrap());
         card.addView(textGroup, textLp);
 

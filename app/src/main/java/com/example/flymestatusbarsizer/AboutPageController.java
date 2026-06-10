@@ -12,7 +12,7 @@ final class AboutPageController {
 
     static void bind(MainActivity activity, LinearLayout root) {
         root.addView(buildProjectCard(activity), PageViewUtils.matchWrap());
-        root.addView(buildBuildCard(activity), PageViewUtils.matchWrapWithTop(activity, 12));
+        root.addView(buildBuildCard(activity), PageViewUtils.matchWrapWithTop(activity, 8));
     }
 
     private static View buildProjectCard(MainActivity activity) {
@@ -24,13 +24,13 @@ final class AboutPageController {
                 activity.githubUrl(),
                 activity.githubUrl()),
                 PageViewUtils.matchWrap());
-        content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 14));
+        content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
         content.addView(buildLinkRow(activity,
                 "交流群",
                 "QQ群 " + activity.qqGroupNumber(),
                 "加入群聊",
                 activity.qqGroupUrl()),
-                PageViewUtils.matchWrapWithTop(activity, 14));
+                PageViewUtils.matchWrapWithTop(activity, 8));
         return activity.buildSectionCard(
                 "项目与社区",
                 "保留仓库地址和交流群入口，不再额外占用一级导航。",
@@ -41,10 +41,10 @@ final class AboutPageController {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         content.addView(buildInfoRow(activity, "当前版本", BuildConfig.VERSION_NAME), PageViewUtils.matchWrap());
-        content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 14));
-        content.addView(buildInfoRow(activity, "构建日期", BuildConfig.BUILD_DATE), PageViewUtils.matchWrapWithTop(activity, 14));
-        content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 14));
-        content.addView(buildInfoRow(activity, "目标作用域", activity.supportedScopesSummary()), PageViewUtils.matchWrapWithTop(activity, 14));
+        content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
+        content.addView(buildInfoRow(activity, "构建日期", BuildConfig.BUILD_DATE), PageViewUtils.matchWrapWithTop(activity, 8));
+        content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
+        content.addView(buildInfoRow(activity, "目标作用域", activity.supportedScopesSummary()), PageViewUtils.matchWrapWithTop(activity, 8));
         return activity.buildSectionCard(
                 "版本与作用域",
                 "这里展示静态构建信息，以及模块在仓库里声明的目标作用域。",
@@ -80,12 +80,12 @@ final class AboutPageController {
         button.setGravity(Gravity.CENTER);
         button.setPadding(
                 PageViewUtils.dp(activity, 14),
-                PageViewUtils.dp(activity, 10),
+                PageViewUtils.dp(activity, 6),
                 PageViewUtils.dp(activity, 14),
-                PageViewUtils.dp(activity, 10));
+                PageViewUtils.dp(activity, 6));
         button.setBackground(buildOutlinedButtonBackground(activity));
         button.setOnClickListener(v -> activity.openExternalLink(url));
-        row.addView(button, PageViewUtils.matchWrapWithTop(activity, 12));
+        row.addView(button, PageViewUtils.matchWrapWithTop(activity, 8));
         return row;
     }
 

@@ -77,7 +77,7 @@ final class ClockDetailActionGridEditor {
                         selectedCellViews,
                         selectedSummaryView,
                         candidateRows),
-                activity.matchWrapWithTop(12));
+                activity.matchWrapWithTop(8));
 
         refreshViews(workingSpecs, selectedCellViews, selectedSummaryView, candidateRows);
 
@@ -113,16 +113,16 @@ final class ClockDetailActionGridEditor {
             activity.performTapHaptic(v);
             saveWorkingSpecs(workingSpecs);
         }), chipButtonLayoutParams(true));
-        card.addView(actions, activity.matchWrapWithTop(12));
+        card.addView(actions, activity.matchWrapWithTop(8));
 
         card.addView(
                 buildSelectedGrid(workingSpecs, selectedCellViews, selectedSummaryView, candidateRows),
-                activity.matchWrapWithTop(12));
+                activity.matchWrapWithTop(8));
 
         selectedSummaryView.setTextColor(activity.subtextColor());
         selectedSummaryView.setTextSize(12);
         selectedSummaryView.setLineSpacing(0f, 1.08f);
-        selectedSummaryView.setPadding(0, activity.dp(12), 0, 0);
+        selectedSummaryView.setPadding(0, activity.dp(8), 0, 0);
         card.addView(selectedSummaryView, activity.matchWrap());
         return card;
     }
@@ -174,8 +174,8 @@ final class ClockDetailActionGridEditor {
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
-        root.setMinimumHeight(activity.dp(76));
-        root.setPadding(activity.dp(6), activity.dp(8), activity.dp(6), activity.dp(8));
+        root.setMinimumHeight(activity.dp(64));
+        root.setPadding(activity.dp(6), activity.dp(6), activity.dp(6), activity.dp(6));
 
         ImageView iconView = new ImageView(activity);
         int iconSize = activity.dp(30);
@@ -190,7 +190,7 @@ final class ClockDetailActionGridEditor {
         titleView.setGravity(Gravity.CENTER);
         titleView.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         titleView.setTextSize(11);
-        titleView.setPadding(0, activity.dp(6), 0, 0);
+        titleView.setPadding(0, activity.dp(4), 0, 0);
         root.addView(titleView, activity.matchWrap());
         return new SelectedCellViews(root, iconView, titleView);
     }
@@ -220,7 +220,7 @@ final class ClockDetailActionGridEditor {
                     candidateRows,
                     list);
         }), chipButtonLayoutParams(false));
-        card.addView(actions, activity.matchWrapWithTop(12));
+        card.addView(actions, activity.matchWrapWithTop(8));
         populateCandidateList(
                 list,
                 availableActions,
@@ -228,7 +228,7 @@ final class ClockDetailActionGridEditor {
                 selectedCellViews,
                 selectedSummaryView,
                 candidateRows);
-        card.addView(list, activity.matchWrapWithTop(12));
+        card.addView(list, activity.matchWrapWithTop(8));
         return card;
     }
 
@@ -333,7 +333,7 @@ final class ClockDetailActionGridEditor {
         LinearLayout row = new LinearLayout(activity);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(activity.dp(12), activity.dp(12), activity.dp(12), activity.dp(12));
+        row.setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8));
 
         ImageView iconView = new ImageView(activity);
         int iconSize = activity.dp(28);

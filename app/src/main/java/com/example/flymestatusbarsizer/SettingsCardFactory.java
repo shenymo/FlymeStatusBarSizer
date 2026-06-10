@@ -162,7 +162,7 @@ final class SettingsCardFactory {
         content.setOrientation(LinearLayout.VERTICAL);
         content.addView(buildMBackImmersivePage(), activity.matchWrap());
         activity.addDivider(content);
-        content.addView(buildMBackHeightPage(), activity.matchWrapWithTop(16));
+        content.addView(buildMBackHeightPage(), activity.matchWrapWithTop(8));
         return activity.buildSectionCard(
                 "导航栏沉浸与高度",
                 "透明背景、隐藏小白条、Inset 抬高和导航栏高度在同一页平铺展示。",

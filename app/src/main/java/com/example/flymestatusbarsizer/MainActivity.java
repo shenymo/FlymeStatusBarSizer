@@ -445,7 +445,7 @@ public class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(56));
+        row.setMinimumHeight(dp(44));
 
         LinearLayout textColumn = new LinearLayout(this);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -518,7 +518,7 @@ public class MainActivity extends Activity {
         int current = readIntSetting(key, defaultValue);
         int clamped = Math.max(min, Math.min(max, current));
         valueView.setText(formatValue(clamped, suffix));
-        valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
+        valueView.setPadding(dp(12), dp(6), dp(12), dp(6));
         valueView.setBackground(roundRect(colorSurfaceSoft, 999));
         header.addView(valueView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -561,7 +561,7 @@ public class MainActivity extends Activity {
                 }));
 
         row.addView(header, matchWrap());
-        row.addView(seekBar, matchWrapWithTop(8));
+        row.addView(seekBar, matchWrapWithTop(4));
         root.addView(row, matchWrap());
     }
 
@@ -597,7 +597,7 @@ public class MainActivity extends Activity {
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
         valueView.setTextSize(14);
-        valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
+        valueView.setPadding(dp(12), dp(6), dp(12), dp(6));
         valueView.setBackground(roundRect(colorSurfaceSoft, 999));
         LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -651,7 +651,7 @@ public class MainActivity extends Activity {
 
         positionTuningSliderBindings.add(binding);
         row.addView(header, matchWrap());
-        row.addView(seekBar, matchWrapWithTop(8));
+        row.addView(seekBar, matchWrapWithTop(4));
         root.addView(row, matchWrap());
     }
 
@@ -690,7 +690,7 @@ public class MainActivity extends Activity {
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
         valueView.setTextSize(14);
-        valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
+        valueView.setPadding(dp(12), dp(6), dp(12), dp(6));
         valueView.setBackground(roundRect(colorSurfaceSoft, 999));
         header.addView(valueView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -756,7 +756,7 @@ public class MainActivity extends Activity {
         header.addView(applyButton, applyLp);
 
         row.addView(header, matchWrap());
-        row.addView(seekBar, matchWrapWithTop(8));
+        row.addView(seekBar, matchWrapWithTop(4));
         root.addView(row, matchWrap());
     }
 
@@ -790,7 +790,7 @@ public class MainActivity extends Activity {
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
         valueView.setTextSize(14);
-        valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
+        valueView.setPadding(dp(12), dp(6), dp(12), dp(6));
         valueView.setBackground(roundRect(colorSurfaceSoft, 999));
         int clamped = getPendingIntSliderValue(key, defaultValue, min, max);
         valueView.setText(formatSliderDisplayValue(clamped, suffix, insetValue));
@@ -845,7 +845,7 @@ public class MainActivity extends Activity {
         header.addView(applyButton, applyLp);
 
         row.addView(header, matchWrap());
-        row.addView(seekBar, matchWrapWithTop(8));
+        row.addView(seekBar, matchWrapWithTop(4));
         root.addView(row, matchWrap());
     }
 
@@ -865,7 +865,7 @@ public class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(56));
+        row.setMinimumHeight(dp(44));
 
         LinearLayout textColumn = new LinearLayout(this);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -879,7 +879,7 @@ public class MainActivity extends Activity {
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
         valueView.setTextSize(13);
-        valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
+        valueView.setPadding(dp(12), dp(6), dp(12), dp(6));
         valueView.setBackground(roundRect(colorSurfaceSoft, 999));
         valueView.setMaxWidth(dp(180));
         valueView.setSingleLine(false);
@@ -909,7 +909,7 @@ public class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(56));
+        row.setMinimumHeight(dp(44));
 
         LinearLayout textColumn = new LinearLayout(this);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -923,7 +923,7 @@ public class MainActivity extends Activity {
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
         valueView.setTextSize(13);
-        valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
+        valueView.setPadding(dp(12), dp(6), dp(12), dp(6));
         valueView.setBackground(roundRect(colorSurfaceSoft, 999));
         int currentValue = readIntSetting(key, defaultValue);
         valueView.setText(resolveChoiceLabel(currentValue, values, labels));
@@ -1676,7 +1676,7 @@ public class MainActivity extends Activity {
     LinearLayout card(int color, int radiusDp) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(16), dp(16), dp(16), dp(16));
+        card.setPadding(dp(16), dp(12), dp(16), dp(12));
         card.setBackground(roundRect(color, Math.min(radiusDp, 16)));
         return card;
     }
@@ -1684,7 +1684,7 @@ public class MainActivity extends Activity {
     LinearLayout card(int color, int strokeColor, int radiusDp) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(16), dp(16), dp(16), dp(16));
+        card.setPadding(dp(16), dp(12), dp(16), dp(12));
         card.setBackground(outlinedRect(color, strokeColor, 1, Math.min(radiusDp, 16)));
         return card;
     }
@@ -1893,7 +1893,7 @@ public class MainActivity extends Activity {
         card.addView(header, matchWrap());
 
         if (content != null) {
-            card.addView(content, matchWrapWithTop(16));
+            card.addView(content, matchWrapWithTop(10));
         }
         return card;
     }
