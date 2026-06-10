@@ -818,6 +818,19 @@ final class LauncherRecentsTouchController {
         return STACK_DISMISS_LAYOUT_OFFSETS.containsKey(taskView);
     }
 
+    private static boolean hasActiveStackDismissLayoutOffset(View taskView) {
+        return Math.abs(readStackDismissLayoutOffset(taskView)) > 0.5f;
+    }
+
+    private static boolean hasActiveStackDismissLayoutOffsets() {
+        for (Float value : STACK_DISMISS_LAYOUT_OFFSETS.values()) {
+            if (value != null && Math.abs(value) > 0.5f) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean isSilentNativeDismissActive(View recentsView) {
         return Boolean.TRUE.equals(SILENT_NATIVE_DISMISS_RECENTS.get(recentsView))
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView);
@@ -2279,6 +2292,9 @@ final class LauncherRecentsTouchController {
         if (state == null || forceRelease || isLastStackVisibleTaskIdsEmpty(recentsView)) {
             return false;
         }
+        if (hasActiveStackDismissLayoutOffsets()) {
+            return false;
+        }
         return state.taskViewCount == taskViewCount
                 && state.currentPage == currentPage
                 && state.scrollBucket == scrollBucket;
@@ -2652,7 +2668,10 @@ final class LauncherRecentsTouchController {
                             anchorIndex,
                             taskViewCount,
                             targetCount);
-                    return indices;
+                    return appendStackDismissVisibleTaskDataIndices(
+                            recentsView,
+                            indices,
+                            taskViewCount);
                 }
                 for (int i = 1; indices.size() < targetCount; i++) {
                     appendStackVisibleTaskDataIndex(indices, anchorIndex - i, taskViewCount);
@@ -2661,7 +2680,10 @@ final class LauncherRecentsTouchController {
                     }
                     appendStackVisibleTaskDataIndex(indices, anchorIndex + i, taskViewCount);
                 }
-                return indices;
+                return appendStackDismissVisibleTaskDataIndices(
+                        recentsView,
+                        indices,
+                        taskViewCount);
             }
             for (int i = 1; i <= radius; i++) {
                 appendStackVisibleTaskDataIndex(indices, anchorIndex - i, taskViewCount);
@@ -2669,14 +2691,17 @@ final class LauncherRecentsTouchController {
             for (int i = 1; i <= radius; i++) {
                 appendStackVisibleTaskDataIndex(indices, anchorIndex + i, taskViewCount);
             }
-            return indices;
+            return appendStackDismissVisibleTaskDataIndices(
+                    recentsView,
+                    indices,
+                    taskViewCount);
         }
         int start = Math.max(0, anchorIndex - radius);
         int end = Math.min(taskViewCount - 1, anchorIndex + radius);
         for (int i = start; i <= end; i++) {
             indices.add(i);
         }
-        return indices;
+        return appendStackDismissVisibleTaskDataIndices(recentsView, indices, taskViewCount);
     }
 
     private static void appendStableStackVisibleTaskDataIndices(
@@ -2716,6 +2741,19 @@ final class LauncherRecentsTouchController {
         if (index >= 0 && index < taskViewCount && !target.contains(index)) {
             target.add(index);
         }
+    }
+
+    private static ArrayList<Integer> appendStackDismissVisibleTaskDataIndices(
+            View recentsView,
+            ArrayList<Integer> target,
+            int taskViewCount) {
+        for (int i = 0; i < taskViewCount; i++) {
+            if (hasActiveStackDismissLayoutOffset(
+                    LauncherRecentsCompat.getTaskViewAt(recentsView, i))) {
+                appendStackVisibleTaskDataIndex(target, i, taskViewCount);
+            }
+        }
+        return target;
     }
 
     private static boolean shouldUseStackEntryVisibleTaskDataWindow(View recentsView) {

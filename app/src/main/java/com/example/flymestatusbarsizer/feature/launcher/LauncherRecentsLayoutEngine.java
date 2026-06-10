@@ -1432,6 +1432,7 @@ final class LauncherRecentsLayoutEngine {
                 stackLayoutRadius,
                 fillBoundaryTargetCount,
                 stableFillWindow);
+        appendStackDismissLayoutIndices(recentsView, activeIndices, taskViewCount);
         ArrayList<Integer> lastActiveIndices =
                 LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.get(recentsView);
         ArrayList<Integer> processIndices = resolveStackLayoutProcessIndices(
@@ -1675,6 +1676,19 @@ final class LauncherRecentsLayoutEngine {
             int taskViewCount) {
         if (index >= 0 && index < taskViewCount && !target.contains(index)) {
             target.add(index);
+        }
+    }
+
+    private static void appendStackDismissLayoutIndices(
+            View recentsView,
+            ArrayList<Integer> target,
+            int taskViewCount) {
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (Math.abs(LauncherRecentsTouchController.readStackDismissLayoutOffset(taskView))
+                    > 0.5f) {
+                appendStackLayoutIndex(target, i, taskViewCount);
+            }
         }
     }
 
