@@ -1799,6 +1799,32 @@ final class LauncherRecentsLayoutEngine {
                 primaryScrollHorizontal);
     }
 
+    static float resolveStackScaleForVisibleOffset(
+            View recentsView,
+            View taskView,
+            float visibleOffset) {
+        if (recentsView == null || taskView == null) {
+            return 1f;
+        }
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        float taskPrimarySize = resolvePrimarySize(taskView, primaryScrollHorizontal);
+        if (taskPrimarySize <= 0f) {
+            taskPrimarySize = Math.max(
+                    1f,
+                    resolvePrimarySize(recentsView, primaryScrollHorizontal));
+        }
+        float layerProgress = resolveStackLayerProgress(
+                recentsView,
+                resolveTaskCenteredPrimaryStartPx(
+                        recentsView,
+                        taskPrimarySize,
+                        primaryScrollHorizontal),
+                taskPrimarySize,
+                visibleOffset,
+                primaryScrollHorizontal);
+        return lerp(STACK_MIN_SCALE, 1f, layerProgress);
+    }
+
     private static StackTaskInput buildStackTaskInput(
             StackLayoutContext context,
             View taskView,

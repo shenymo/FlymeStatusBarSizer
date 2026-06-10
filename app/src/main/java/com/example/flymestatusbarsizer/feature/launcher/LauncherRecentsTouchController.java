@@ -38,6 +38,7 @@ final class LauncherRecentsTouchController {
     private static final long STACK_VISIBLE_DATA_CLEANUP_IDLE_DELAY_MS = 450L;
     private static final long STACK_VISIBLE_DATA_CLEANUP_RETRY_DELAY_MS = 250L;
     private static final float STACK_LEFT_RELEASE_ALPHA_THRESHOLD = 0.05f;
+    private static final int STACK_DISMISS_REVEAL_RADIUS = 2;
     private static final int STACK_APP_FLOW_LIGHT_RADIUS = 3;
     private static final String STACK_APP_FLOW_HIDDEN = "<stack-hidden>";
     private static final ThreadLocal<Boolean> TASK_DISMISS_VISIBILITY_BYPASS =
@@ -1400,6 +1401,7 @@ final class LauncherRecentsTouchController {
             StackDismissGestureState state,
             float progress) {
         float clampedProgress = LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f);
+        float visualProgress = LauncherRecentsLayoutEngine.smoothStep(clampedProgress);
         for (int i = 0; i < state.siblingMoves.size(); i++) {
             StackDismissSiblingMove move = state.siblingMoves.get(i);
             STACK_DISMISS_LAYOUT_OFFSETS.put(
@@ -1409,8 +1411,8 @@ final class LauncherRecentsTouchController {
                     move.startVisibleOffsetPx,
                     move.targetVisibleOffsetPx,
                     clampedProgress);
-            STACK_DISMISS_VISIBLE_OFFSETS.put(move.taskView, visibleOffset);
             applyStackDismissSiblingVisibleOffset(state, move, visibleOffset);
+            applyStackDismissSiblingStaticVisuals(state, move, visibleOffset, visualProgress);
         }
         LauncherRecentsTaskVisuals.setStableAlpha(state.taskView, state.originalStableAlpha);
         state.recentsView.invalidate();
@@ -1438,6 +1440,37 @@ final class LauncherRecentsTouchController {
                     move.taskView,
                     taskOffsetPrimary);
         }
+    }
+
+    private static void applyStackDismissSiblingStaticVisuals(
+            StackDismissGestureState state,
+            StackDismissSiblingMove move,
+            float visibleOffset,
+            float progress) {
+        if (state == null || move == null || move.taskView == null) {
+            return;
+        }
+        LauncherRecentsTaskVisuals.setNonGridScale(
+                move.taskView,
+                LauncherRecentsLayoutEngine.resolveStackScaleForVisibleOffset(
+                        state.recentsView,
+                        move.taskView,
+                        visibleOffset));
+        float attachAlpha = LauncherRecentsLayoutEngine.lerp(
+                move.startAttachAlpha,
+                move.targetAttachAlpha,
+                progress);
+        float stableAlpha = LauncherRecentsLayoutEngine.lerp(
+                move.startStableAlpha,
+                move.targetStableAlpha,
+                progress);
+        float headAlpha = LauncherRecentsLayoutEngine.lerp(
+                move.startHeadAlpha,
+                move.targetHeadAlpha,
+                progress);
+        LauncherRecentsTaskVisuals.setAttachAlpha(move.taskView, attachAlpha);
+        LauncherRecentsTaskVisuals.setStableAlpha(move.taskView, stableAlpha);
+        LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(move.taskView, headAlpha);
     }
 
     private static void preheatStackDismissVisibleTaskData(View recentsView) {
@@ -1492,7 +1525,7 @@ final class LauncherRecentsTouchController {
             }
             float targetOffsetPx = targetRawOffset - currentRawOffset;
             if (Math.abs(targetOffsetPx) <= 0.5f) {
-                targetOffsetPx = resolveStackDismissBoundarySiblingOffset(
+                float boundaryOffsetPx = resolveStackDismissBoundarySiblingOffset(
                         state,
                         i,
                         dismissedIndex,
@@ -1500,11 +1533,15 @@ final class LauncherRecentsTouchController {
                         currentRawOffset,
                         dismissedRawOffset,
                         taskView);
+                if (Math.abs(boundaryOffsetPx) > 0.5f) {
+                    targetOffsetPx = boundaryOffsetPx;
+                    targetRawOffset = currentRawOffset + targetOffsetPx;
+                }
             }
             if (Math.abs(targetOffsetPx) > 0.5f) {
-                int targetVisibleIndex = resolveStackDismissBoundaryTargetVisibleIndex(
-                        i,
-                        dismissedIndex,
+                boolean revealAfterDismiss = shouldRevealStackDismissSibling(
+                        projectedIndex,
+                        targetPage,
                         taskViewCount);
                 state.siblingMoves.add(new StackDismissSiblingMove(
                         taskView,
@@ -1520,15 +1557,30 @@ final class LauncherRecentsTouchController {
                                 taskView,
                                 "horizontalOffsetTranslationX",
                                 0f),
+                        LauncherRecentsTaskVisuals.readAttachAlpha(taskView),
+                        LauncherRecentsTaskVisuals.readStableAlpha(taskView),
+                        LauncherRecentsTaskVisuals.readActivityTitleAlpha(taskView),
+                        revealAfterDismiss,
                         visibleOffsets[i],
-                        targetVisibleIndex >= 0
-                                ? visibleOffsets[targetVisibleIndex]
-                                : LauncherRecentsLayoutEngine.resolveStackDismissTargetVisibleOffset(
-                                        state.recentsView,
-                                        taskView,
-                                        targetRawOffset)));
+                        LauncherRecentsLayoutEngine.resolveStackDismissTargetVisibleOffset(
+                                state.recentsView,
+                                taskView,
+                                targetRawOffset)));
             }
         }
+    }
+
+    private static boolean shouldRevealStackDismissSibling(
+            int projectedIndex,
+            int targetPage,
+            int taskViewCount) {
+        if (taskViewCount <= 0) {
+            return false;
+        }
+        int safeTargetPage = Math.max(0, Math.min(targetPage, taskViewCount - 1));
+        return projectedIndex >= 0
+                && projectedIndex < taskViewCount
+                && Math.abs(projectedIndex - safeTargetPage) <= STACK_DISMISS_REVEAL_RADIUS;
     }
 
     private static float[] resolveStackDismissCurrentVisibleOffsets(
@@ -1543,19 +1595,6 @@ final class LauncherRecentsTouchController {
                     i);
         }
         return offsets;
-    }
-
-    private static int resolveStackDismissBoundaryTargetVisibleIndex(
-            int taskIndex,
-            int dismissedIndex,
-            int taskViewCount) {
-        if (dismissedIndex == 0 && taskIndex > dismissedIndex) {
-            return taskIndex - 1;
-        }
-        if (dismissedIndex == taskViewCount - 1 && taskIndex < dismissedIndex) {
-            return taskIndex + 1;
-        }
-        return -1;
     }
 
     private static float resolveStackDismissRawOffset(View recentsView, int taskIndex) {
@@ -2188,6 +2227,12 @@ final class LauncherRecentsTouchController {
         final float startRawOffsetPx;
         final float startDismissTranslationPrimaryPx;
         final float startHorizontalOffsetX;
+        final float startAttachAlpha;
+        final float startStableAlpha;
+        final float startHeadAlpha;
+        final float targetAttachAlpha;
+        final float targetStableAlpha;
+        final float targetHeadAlpha;
         final float startVisibleOffsetPx;
         final float targetVisibleOffsetPx;
 
@@ -2197,6 +2242,10 @@ final class LauncherRecentsTouchController {
                 float startRawOffsetPx,
                 float startDismissTranslationPrimaryPx,
                 float startHorizontalOffsetX,
+                float startAttachAlpha,
+                float startStableAlpha,
+                float startHeadAlpha,
+                boolean revealAfterDismiss,
                 float startVisibleOffsetPx,
                 float targetVisibleOffsetPx) {
             this.taskView = taskView;
@@ -2204,6 +2253,12 @@ final class LauncherRecentsTouchController {
             this.startRawOffsetPx = startRawOffsetPx;
             this.startDismissTranslationPrimaryPx = startDismissTranslationPrimaryPx;
             this.startHorizontalOffsetX = startHorizontalOffsetX;
+            this.startAttachAlpha = startAttachAlpha;
+            this.startStableAlpha = startStableAlpha;
+            this.startHeadAlpha = startHeadAlpha;
+            this.targetAttachAlpha = revealAfterDismiss ? 1f : startAttachAlpha;
+            this.targetStableAlpha = revealAfterDismiss ? 1f : startStableAlpha;
+            this.targetHeadAlpha = revealAfterDismiss ? 1f : startHeadAlpha;
             this.startVisibleOffsetPx = startVisibleOffsetPx;
             this.targetVisibleOffsetPx = targetVisibleOffsetPx;
         }
