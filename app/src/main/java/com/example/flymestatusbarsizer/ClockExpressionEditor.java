@@ -38,14 +38,8 @@ final class ClockExpressionEditor {
         page.setOrientation(LinearLayout.VERTICAL);
 
         activity.addProfileSectionHeader(page, "表达式编辑",
-                "长按表达式拖动排序，点击切换启用；24 小时、12 小时和星期支持快速左右滑动切换不同写法。");
+                "当前支持：小时、分钟、秒、星期、AM/PM、时段词、十二时辰地支和传统别称。单击切换启用；快速左右滑动切换 24 小时、12 小时、星期写法；长按可拖动排序。");
         ensureDragTouchSlop();
-        TextView hint = new TextView(activity);
-        hint.setText("当前支持：小时、分钟、秒、星期、AM/PM、时段词、十二时辰地支和传统别称。");
-        hint.setTextColor(activity.subtextColor());
-        hint.setTextSize(13);
-        hint.setPadding(0, activity.dp(10), 0, 0);
-        page.addView(hint, activity.matchWrap());
 
         TextView orderTitle = new TextView(activity);
         orderTitle.setText("表达式列表");
@@ -53,13 +47,6 @@ final class ClockExpressionEditor {
         orderTitle.setTextSize(15);
         orderTitle.setPadding(0, activity.dp(14), 0, 0);
         page.addView(orderTitle, activity.matchWrap());
-
-        TextView orderHint = new TextView(activity);
-        orderHint.setText("单击切换启用；快速左右滑动切换 24 小时、12 小时、星期写法；长按可拖动排序。");
-        orderHint.setTextColor(activity.subtextColor());
-        orderHint.setTextSize(12);
-        orderHint.setPadding(0, activity.dp(4), 0, 0);
-        page.addView(orderHint, activity.matchWrap());
 
         previewView = new TextView(activity);
         previewView.setTextColor(activity.primaryColor());

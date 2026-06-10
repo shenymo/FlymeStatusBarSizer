@@ -89,18 +89,18 @@ final class SettingsUiFactory {
     }
 
     void addProfileSectionHeader(LinearLayout root, String titleText, String subtitleText) {
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
         TextView title = new TextView(activity);
         title.setText(titleText);
         title.setTextColor(activity.primaryColor());
         title.setTextSize(14);
-        root.addView(title, matchWrap());
-
-        TextView subtitle = new TextView(activity);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(activity.subtextColor());
-        subtitle.setTextSize(12);
-        subtitle.setPadding(0, dp(4), 0, 0);
-        root.addView(subtitle, matchWrapWithTop(2));
+        row.addView(title, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addHelpButton(row, titleText, subtitleText);
+        root.addView(row, matchWrap());
     }
 
     void addActionButtonRow(LinearLayout root, String titleText, String subtitleText,

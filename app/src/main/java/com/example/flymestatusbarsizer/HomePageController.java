@@ -139,15 +139,9 @@ final class HomePageController {
         title.setTextColor(activity.textColor());
         title.setTextSize(17);
         textGroup.addView(title, PageViewUtils.matchWrap());
-
-        TextView summary = new TextView(activity);
-        summary.setText(summaryText);
-        summary.setTextColor(activity.subtextColor());
-        summary.setTextSize(13);
-        summary.setPadding(0, PageViewUtils.dp(activity, 4), 0, 0);
-        textGroup.addView(summary, PageViewUtils.matchWrap());
         card.addView(textGroup, textLp);
 
+        activity.addHelpButton(card, titleText, summaryText);
 
         TextView arrow = new TextView(activity);
         arrow.setText("›");

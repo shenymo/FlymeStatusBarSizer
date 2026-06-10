@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer;
 
 import android.graphics.Color;
 import android.text.TextUtils;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.Switch;
@@ -502,18 +503,19 @@ final class SettingsCardFactory {
     private View buildStatusBarIconScaleCard() {
         LinearLayout card = activity.card(activity.surfaceColor(), 24);
 
+        LinearLayout header = new LinearLayout(activity);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
         TextView title = new TextView(activity);
         title.setText("状态栏图标大小");
         title.setTextColor(activity.textColor());
         title.setTextSize(18);
-        card.addView(title, activity.matchWrap());
-
-        TextView summary = new TextView(activity);
-        summary.setText("统一控制右上角系统状态图标，以及代码绘制开启后的电池图标和信号图标。通知图标、隐私权限标识和隐私圆点不在这里面。");
-        summary.setTextColor(activity.subtextColor());
-        summary.setTextSize(14);
-        summary.setPadding(0, activity.dp(6), 0, 0);
-        card.addView(summary, activity.matchWrap());
+        header.addView(title, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        activity.addHelpButton(header, "状态栏图标大小",
+                "统一控制右上角系统状态图标，以及代码绘制开启后的电池图标和信号图标。通知图标、隐私权限标识和隐私圆点不在这里面。");
+        card.addView(header, activity.matchWrap());
 
         activity.addDivider(card);
         activity.addApplySliderRow(card, "全部状态栏图标大小",

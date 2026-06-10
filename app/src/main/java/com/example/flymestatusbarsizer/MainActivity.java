@@ -238,6 +238,9 @@ public class MainActivity extends Activity {
         if (moreButtonView != null) {
             moreButtonView.setBackground(roundRect(colorSurfaceSoft, 999));
         }
+        if (topBarSubtitleView != null) {
+            topBarSubtitleView.setBackground(roundRect(colorSurfaceSoft, 999));
+        }
         setTapClickListener(backButtonView, v -> onBackPressed());
         setTapClickListener(moreButtonView, this::showMoreMenu);
     }
@@ -323,8 +326,15 @@ public class MainActivity extends Activity {
             topBarTitleView.setTextSize(22f);
         }
         if (topBarSubtitleView != null) {
-            topBarSubtitleView.setText(page.subtitle);
-            topBarSubtitleView.setVisibility(TextUtils.isEmpty(page.subtitle) ? View.GONE : View.VISIBLE);
+            if (TextUtils.isEmpty(page.subtitle)) {
+                topBarSubtitleView.setVisibility(View.GONE);
+            } else {
+                topBarSubtitleView.setText("?");
+                topBarSubtitleView.setContentDescription(page.title + "说明");
+                topBarSubtitleView.setVisibility(View.VISIBLE);
+                setTapClickListener(topBarSubtitleView,
+                        v -> showHelpDialog(page.title, page.subtitle));
+            }
         }
     }
 
@@ -589,9 +599,10 @@ public class MainActivity extends Activity {
         valueView.setTextSize(14);
         valueView.setPadding(dp(12), dp(8), dp(12), dp(8));
         valueView.setBackground(roundRect(colorSurfaceSoft, 999));
-        header.addView(valueView, new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        header.addView(valueView, valueLp);
 
         SeekBar seekBar = new SeekBar(this);
         styleSeekBar(seekBar);
@@ -730,10 +741,6 @@ public class MainActivity extends Activity {
                     updatePendingPositionOffsetValue(key, value, minTenthDp, maxTenthDp);
                 }));
 
-        LinearLayout actionRow = new LinearLayout(this);
-        actionRow.setOrientation(LinearLayout.HORIZONTAL);
-        actionRow.setGravity(Gravity.END);
-
         TextView applyButton = filledButton("应用", colorPrimary, Color.WHITE);
         setTapClickListener(applyButton,
                 v -> applyPendingPositionOffsetValue(
@@ -742,13 +749,14 @@ public class MainActivity extends Activity {
                         minTenthDp,
                         maxTenthDp,
                         titleText));
-        actionRow.addView(applyButton, new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams applyLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        applyLp.leftMargin = dp(8);
+        header.addView(applyButton, applyLp);
 
         row.addView(header, matchWrap());
         row.addView(seekBar, matchWrapWithTop(8));
-        row.addView(actionRow, matchWrapWithTop(10));
         root.addView(row, matchWrap());
     }
 
@@ -786,9 +794,10 @@ public class MainActivity extends Activity {
         valueView.setBackground(roundRect(colorSurfaceSoft, 999));
         int clamped = getPendingIntSliderValue(key, defaultValue, min, max);
         valueView.setText(formatSliderDisplayValue(clamped, suffix, insetValue));
-        header.addView(valueView, new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        header.addView(valueView, valueLp);
 
         SeekBar seekBar = new SeekBar(this);
         styleSeekBar(seekBar);
@@ -826,20 +835,17 @@ public class MainActivity extends Activity {
                     seekBar.setProgress(value - min);
                 }));
 
-        LinearLayout actionRow = new LinearLayout(this);
-        actionRow.setOrientation(LinearLayout.HORIZONTAL);
-        actionRow.setGravity(Gravity.END);
-
         TextView applyButton = filledButton("应用", colorPrimary, Color.WHITE);
         setTapClickListener(applyButton,
                 v -> applyPendingIntSliderValue(key, defaultValue, min, max, titleText));
-        actionRow.addView(applyButton, new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams applyLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        applyLp.leftMargin = dp(8);
+        header.addView(applyButton, applyLp);
 
         row.addView(header, matchWrap());
         row.addView(seekBar, matchWrapWithTop(8));
-        row.addView(actionRow, matchWrapWithTop(10));
         root.addView(row, matchWrap());
     }
 
@@ -1873,18 +1879,18 @@ public class MainActivity extends Activity {
     View buildSectionCard(String titleText, String subtitleText, View content) {
         LinearLayout card = card(colorSurface, colorStroke, 16);
 
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
         TextView title = new TextView(this);
         title.setText(titleText);
         title.setTextColor(colorText);
         title.setTextSize(18);
-        card.addView(title, matchWrap());
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(13);
-        subtitle.setPadding(0, dp(6), 0, 0);
-        card.addView(subtitle, matchWrap());
+        header.addView(title, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addHelpButton(header, titleText, subtitleText);
+        card.addView(header, matchWrap());
 
         if (content != null) {
             card.addView(content, matchWrapWithTop(16));

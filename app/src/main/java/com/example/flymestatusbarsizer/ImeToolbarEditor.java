@@ -52,14 +52,7 @@ final class ImeToolbarEditor {
                 10, 100, "%");
         activity.addDivider(details);
         activity.addProfileSectionHeader(details, "按钮位置与显隐",
-                "长按按钮拖到下面固定槽位里就会显示；拖回按钮池就会隐藏。");
-
-        TextView hint = new TextView(activity);
-        hint.setText("从左到右就是输入法控制栏里的实际位置；拖拽后先保存在页面草稿里，点击应用才会写入配置并刷新当前输入法界面。");
-        hint.setTextColor(activity.subtextColor());
-        hint.setTextSize(13);
-        hint.setPadding(0, activity.dp(10), 0, 0);
-        details.addView(hint, activity.matchWrap());
+                "长按按钮拖到下面固定槽位里就会显示；拖回按钮池就会隐藏。从左到右就是输入法控制栏里的实际位置；拖拽后先保存在页面草稿里，点击应用才会写入配置并刷新当前输入法界面。");
 
         buttonContainer = new LinearLayout(activity);
         buttonContainer.setOrientation(LinearLayout.VERTICAL);
@@ -83,18 +76,8 @@ final class ImeToolbarEditor {
             return;
         }
         buttonContainer.removeAllViews();
-        TextView poolTitle = new TextView(activity);
-        poolTitle.setText("按钮池");
-        poolTitle.setTextColor(activity.primaryColor());
-        poolTitle.setTextSize(14);
-        buttonContainer.addView(poolTitle, activity.matchWrap());
-
-        TextView poolHint = new TextView(activity);
-        poolHint.setText("长按这里的按钮拖到下方槽位就会显示；把下方按钮拖回这里就会隐藏。");
-        poolHint.setTextColor(activity.subtextColor());
-        poolHint.setTextSize(12);
-        poolHint.setPadding(0, activity.dp(6), 0, 0);
-        buttonContainer.addView(poolHint, activity.matchWrap());
+        activity.addProfileSectionHeader(buttonContainer, "按钮池",
+                "长按这里的按钮拖到下方槽位就会显示；把下方按钮拖回这里就会隐藏。");
 
         buttonPoolContainer = new LinearLayout(activity);
         buttonPoolContainer.setOrientation(LinearLayout.VERTICAL);
@@ -103,19 +86,8 @@ final class ImeToolbarEditor {
         buttonPoolContainer.setOnDragListener(this::handlePoolDrag);
         buttonContainer.addView(buttonPoolContainer, activity.matchWrapWithTop(10));
 
-        TextView slotTitle = new TextView(activity);
-        slotTitle.setText("底部 7 个固定槽位");
-        slotTitle.setTextColor(activity.primaryColor());
-        slotTitle.setTextSize(14);
-        slotTitle.setPadding(0, activity.dp(16), 0, 0);
-        buttonContainer.addView(slotTitle, activity.matchWrap());
-
-        TextView slotHint = new TextView(activity);
-        slotHint.setText("从左到右对应输入法控制栏的实际位置；空槽位会保留占位，验证码占 2 格。");
-        slotHint.setTextColor(activity.subtextColor());
-        slotHint.setTextSize(12);
-        slotHint.setPadding(0, activity.dp(6), 0, 0);
-        buttonContainer.addView(slotHint, activity.matchWrap());
+        activity.addProfileSectionHeader(buttonContainer, "底部 7 个固定槽位",
+                "从左到右对应输入法控制栏的实际位置；空槽位会保留占位，验证码占 2 格。");
 
         buttonSlotContainer = new LinearLayout(activity);
         buttonSlotContainer.setOrientation(LinearLayout.HORIZONTAL);
