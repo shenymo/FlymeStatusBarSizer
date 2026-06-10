@@ -692,7 +692,8 @@ final class LauncherRecentsTouchController {
                 }
                 if (thisObject instanceof View
                         && Boolean.FALSE.equals(arg0)
-                        && shouldSuppressStackTaskDataUnload((View) thisObject)) {
+                        && arg1 instanceof Integer
+                        && shouldSuppressStackTaskDataUnload((View) thisObject, (Integer) arg1)) {
                     return null;
                 }
                 return chain.proceed();
@@ -2254,15 +2255,15 @@ final class LauncherRecentsTouchController {
                 || (taskStart + taskSize > viewportStart && taskStart < viewportEnd);
     }
 
-    private static boolean shouldSuppressStackTaskDataUnload(View taskView) {
+    private static boolean shouldSuppressStackTaskDataUnload(View taskView, int changes) {
         View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
         if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)) {
             return shouldExposeStackTaskForDismissVisibility(recentsView, taskView);
         }
-        if (!Boolean.TRUE.equals(STACK_LOAD_VISIBLE_TASK_DATA_ACTIVE.get())) {
+        if ((changes & 2) != 2) {
             return false;
         }
-        return isStackTaskDataVisible(recentsView, taskView, false);
+        return shouldExposeStackTaskForDismissVisibility(recentsView, taskView);
     }
 
     private static boolean isTransitionAnimationActive(View recentsView) {
@@ -3501,7 +3502,7 @@ final class LauncherRecentsTouchController {
             return false;
         }
         if (!visible) {
-            boolean suppressUnload = shouldSuppressStackTaskDataUnload(taskView);
+            boolean suppressUnload = shouldSuppressStackTaskDataUnload(taskView, changes);
             if (!suppressUnload) {
                 LauncherRecentsState.LAST_STACK_TASK_LIST_VISIBILITY_CHANGES.remove(taskView);
             }
