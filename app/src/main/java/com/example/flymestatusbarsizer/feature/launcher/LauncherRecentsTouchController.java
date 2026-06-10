@@ -2726,7 +2726,8 @@ final class LauncherRecentsTouchController {
             }
         }
         int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
-        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsState.isOverviewStateStackSettled(recentsView)) {
             return resolveNearestStackVisibleTaskDataPage(recentsView, taskViewCount, currentPage);
         }
         return Math.max(0, Math.min(currentPage, taskViewCount - 1));
@@ -2756,7 +2757,7 @@ final class LauncherRecentsTouchController {
     }
 
     private static int resolveStackVisibleTaskDataRadius(View recentsView) {
-        return 1;
+        return 3;
     }
 
     private static ArrayList<Integer> resolveStackVisibleTaskDataIndices(
