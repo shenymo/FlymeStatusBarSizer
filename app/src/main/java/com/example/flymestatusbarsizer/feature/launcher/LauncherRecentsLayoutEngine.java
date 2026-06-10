@@ -126,6 +126,7 @@ final class LauncherRecentsLayoutEngine {
         final float taskPrimarySize;
         final float taskCenteredPrimaryStartPx;
         final float nativeDismissTranslationPrimary;
+        final Float stackDismissVisibleOffset;
         final LauncherRecentsState.GestureReleaseTaskState gestureReleaseTaskState;
         final LauncherRecentsState.BlankTapHomeExitTaskState blankTapExitState;
 
@@ -139,6 +140,7 @@ final class LauncherRecentsLayoutEngine {
                 float taskPrimarySize,
                 float taskCenteredPrimaryStartPx,
                 float nativeDismissTranslationPrimary,
+                Float stackDismissVisibleOffset,
                 LauncherRecentsState.GestureReleaseTaskState gestureReleaseTaskState,
                 LauncherRecentsState.BlankTapHomeExitTaskState blankTapExitState) {
             this.taskView = taskView;
@@ -150,6 +152,7 @@ final class LauncherRecentsLayoutEngine {
             this.taskPrimarySize = taskPrimarySize;
             this.taskCenteredPrimaryStartPx = taskCenteredPrimaryStartPx;
             this.nativeDismissTranslationPrimary = nativeDismissTranslationPrimary;
+            this.stackDismissVisibleOffset = stackDismissVisibleOffset;
             this.gestureReleaseTaskState = gestureReleaseTaskState;
             this.blankTapExitState = blankTapExitState;
         }
@@ -1735,6 +1738,20 @@ final class LauncherRecentsLayoutEngine {
                 index);
     }
 
+    static float resolveStackTaskCurrentVisibleOffset(
+            View recentsView,
+            View taskView,
+            int index) {
+        if (recentsView == null || taskView == null) {
+            return 0f;
+        }
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        return resolveTaskRawOffset(recentsView, index)
+                + readTaskPrimaryDismissTranslation(taskView, primaryScrollHorizontal)
+                + readTaskPrimaryOffsetField(taskView, primaryScrollHorizontal)
+                + readTaskPrimaryHorizontalOffsetField(taskView, primaryScrollHorizontal);
+    }
+
     private static StackTaskInput buildStackTaskInput(
             StackLayoutContext context,
             View taskView,
@@ -1793,6 +1810,7 @@ final class LauncherRecentsLayoutEngine {
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx,
                 nativeDismissTranslationPrimary,
+                LauncherRecentsTouchController.readStackDismissVisibleOffset(taskView),
                 gestureReleaseTaskState,
                 LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.get(taskView));
     }
@@ -1830,6 +1848,9 @@ final class LauncherRecentsLayoutEngine {
                     STACK_RELEASE_INITIAL_SPREAD_RATIO,
                     1.0f,
                     smoothStep(context.stackReleaseProgress));
+        }
+        if (input.stackDismissVisibleOffset != null) {
+            desiredVisibleOffset = input.stackDismissVisibleOffset;
         }
         if (input.gestureReleaseTaskState != null) {
             desiredVisibleOffset = lerp(

@@ -47,6 +47,8 @@ final class LauncherRecentsTouchController {
             new WeakHashMap<>();
     private static final WeakHashMap<View, Float> STACK_DISMISS_LAYOUT_OFFSETS =
             new WeakHashMap<>();
+    private static final WeakHashMap<View, Float> STACK_DISMISS_VISIBLE_OFFSETS =
+            new WeakHashMap<>();
     private static final WeakHashMap<View, ArrayList<Integer>> STACK_VISIBLE_TASK_IDS =
             new WeakHashMap<>();
     private static final WeakHashMap<View, StackVisibleTaskDataSyncState>
@@ -814,7 +816,11 @@ final class LauncherRecentsTouchController {
         return value != null ? value : 0f;
     }
 
-    private static boolean hasStackDismissLayoutOffset(View taskView) {
+    static Float readStackDismissVisibleOffset(View taskView) {
+        return STACK_DISMISS_VISIBLE_OFFSETS.get(taskView);
+    }
+
+    static boolean hasStackDismissLayoutOffset(View taskView) {
         return STACK_DISMISS_LAYOUT_OFFSETS.containsKey(taskView);
     }
 
@@ -1389,6 +1395,16 @@ final class LauncherRecentsTouchController {
             STACK_DISMISS_LAYOUT_OFFSETS.put(
                     move.taskView,
                     move.targetOffsetPx * progress);
+            if (!Float.isNaN(move.targetVisibleOffsetPx)) {
+                STACK_DISMISS_VISIBLE_OFFSETS.put(
+                        move.taskView,
+                        LauncherRecentsLayoutEngine.lerp(
+                                move.startVisibleOffsetPx,
+                                move.targetVisibleOffsetPx,
+                                progress));
+            } else {
+                STACK_DISMISS_VISIBLE_OFFSETS.remove(move.taskView);
+            }
         }
         LauncherRecentsLayoutEngine.requestStackLayout(
                 state.recentsView,
@@ -1425,6 +1441,9 @@ final class LauncherRecentsTouchController {
         int targetScrollX = resolveStackDismissScrollForPage(state.recentsView, targetPage);
         int taskViewCount =
                 LauncherRecentsCompat.invokeInt(state.recentsView, "getTaskViewCount", 0);
+        float[] visibleOffsets = resolveStackDismissCurrentVisibleOffsets(
+                state.recentsView,
+                taskViewCount);
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(state.recentsView, i);
             if (!isStackDismissReflowTaskCandidate(state.recentsView, taskView)
@@ -1444,12 +1463,57 @@ final class LauncherRecentsTouchController {
                 targetRawOffset = dismissedRawOffset + 1f;
             }
             float targetOffsetPx = targetRawOffset - currentRawOffset;
+            if (Math.abs(targetOffsetPx) <= 0.5f) {
+                targetOffsetPx = resolveStackDismissBoundarySiblingOffset(
+                        state,
+                        i,
+                        dismissedIndex,
+                        taskViewCount,
+                        currentRawOffset,
+                        dismissedRawOffset,
+                        taskView);
+            }
             if (Math.abs(targetOffsetPx) > 0.5f) {
+                int targetVisibleIndex = resolveStackDismissBoundaryTargetVisibleIndex(
+                        i,
+                        dismissedIndex,
+                        taskViewCount);
                 state.siblingMoves.add(new StackDismissSiblingMove(
                         taskView,
-                        targetOffsetPx));
+                        targetOffsetPx,
+                        visibleOffsets[i],
+                        targetVisibleIndex >= 0
+                                ? visibleOffsets[targetVisibleIndex]
+                                : Float.NaN));
             }
         }
+    }
+
+    private static float[] resolveStackDismissCurrentVisibleOffsets(
+            View recentsView,
+            int taskViewCount) {
+        float[] offsets = new float[taskViewCount];
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            offsets[i] = LauncherRecentsLayoutEngine.resolveStackTaskCurrentVisibleOffset(
+                    recentsView,
+                    taskView,
+                    i);
+        }
+        return offsets;
+    }
+
+    private static int resolveStackDismissBoundaryTargetVisibleIndex(
+            int taskIndex,
+            int dismissedIndex,
+            int taskViewCount) {
+        if (dismissedIndex == 0 && taskIndex > dismissedIndex) {
+            return taskIndex - 1;
+        }
+        if (dismissedIndex == taskViewCount - 1 && taskIndex < dismissedIndex) {
+            return taskIndex + 1;
+        }
+        return -1;
     }
 
     private static float resolveStackDismissRawOffset(View recentsView, int taskIndex) {
@@ -1473,6 +1537,44 @@ final class LauncherRecentsTouchController {
         return resolveStackDismissRawOffset(recentsView, taskIndex)
                 + resolvePrimaryScroll(recentsView)
                 - primaryScroll;
+    }
+
+    private static float resolveStackDismissBoundarySiblingOffset(
+            StackDismissGestureState state,
+            int taskIndex,
+            int dismissedIndex,
+            int taskViewCount,
+            float currentRawOffset,
+            float dismissedRawOffset,
+            View taskView) {
+        boolean rightSideOfFirst = dismissedIndex == 0 && taskIndex > dismissedIndex;
+        boolean leftSideOfLast =
+                dismissedIndex == taskViewCount - 1 && taskIndex < dismissedIndex;
+        if (!rightSideOfFirst && !leftSideOfLast) {
+            return 0f;
+        }
+        boolean adjacent = Math.abs(taskIndex - dismissedIndex) == 1;
+        if (adjacent) {
+            float offsetToDismissed = dismissedRawOffset - currentRawOffset;
+            if (Math.abs(offsetToDismissed) > 0.5f) {
+                return offsetToDismissed;
+            }
+        }
+        float pageSpan = resolveStackDismissPageSpan(state.recentsView, taskView);
+        return rightSideOfFirst ? -pageSpan : pageSpan;
+    }
+
+    private static float resolveStackDismissPageSpan(View recentsView, View taskView) {
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        float taskSize = taskView != null
+                ? resolvePrimarySize(taskView, primaryScrollHorizontal)
+                : 0f;
+        if (taskSize <= 0f) {
+            taskSize = resolvePrimarySize(recentsView, primaryScrollHorizontal);
+        }
+        return Math.max(
+                1f,
+                taskSize + LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0));
     }
 
     private static int findTaskViewIndex(View recentsView, View targetTaskView) {
@@ -1500,6 +1602,7 @@ final class LauncherRecentsTouchController {
 
     private static void clearStackDismissLayoutOffsets() {
         STACK_DISMISS_LAYOUT_OFFSETS.clear();
+        STACK_DISMISS_VISIBLE_OFFSETS.clear();
     }
 
     private static void clearStackDismissGesture(View recentsView, boolean resetVisuals) {
@@ -2040,10 +2143,18 @@ final class LauncherRecentsTouchController {
     private static final class StackDismissSiblingMove {
         final View taskView;
         final float targetOffsetPx;
+        final float startVisibleOffsetPx;
+        final float targetVisibleOffsetPx;
 
-        StackDismissSiblingMove(View taskView, float targetOffsetPx) {
+        StackDismissSiblingMove(
+                View taskView,
+                float targetOffsetPx,
+                float startVisibleOffsetPx,
+                float targetVisibleOffsetPx) {
             this.taskView = taskView;
             this.targetOffsetPx = targetOffsetPx;
+            this.startVisibleOffsetPx = startVisibleOffsetPx;
+            this.targetVisibleOffsetPx = targetVisibleOffsetPx;
         }
     }
 
@@ -2133,12 +2244,14 @@ final class LauncherRecentsTouchController {
     private static boolean isStackTaskWithinVisibleDataBounds(View recentsView, View taskView) {
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         float taskStart = (primaryScrollHorizontal ? taskView.getX() : taskView.getY())
+                + readStackDismissLayoutOffset(taskView)
                 - resolvePrimaryScroll(recentsView);
         float taskSize = resolvePrimarySize(taskView, primaryScrollHorizontal);
         float viewportStart = -taskSize;
         float viewportEnd = resolvePrimarySize(recentsView, primaryScrollHorizontal)
                 * (1f + STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO);
-        return taskStart + taskSize > viewportStart && taskStart < viewportEnd;
+        return hasStackDismissLayoutOffset(taskView)
+                || (taskStart + taskSize > viewportStart && taskStart < viewportEnd);
     }
 
     private static boolean shouldSuppressStackTaskDataUnload(View taskView) {
@@ -2748,7 +2861,7 @@ final class LauncherRecentsTouchController {
             ArrayList<Integer> target,
             int taskViewCount) {
         for (int i = 0; i < taskViewCount; i++) {
-            if (hasActiveStackDismissLayoutOffset(
+            if (hasStackDismissLayoutOffset(
                     LauncherRecentsCompat.getTaskViewAt(recentsView, i))) {
                 appendStackVisibleTaskDataIndex(target, i, taskViewCount);
             }
