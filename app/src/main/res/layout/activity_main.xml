@@ -11,21 +11,21 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
-        android:minHeight="72dp"
+        android:minHeight="64dp"
         android:orientation="horizontal"
-        android:paddingStart="20dp"
-        android:paddingTop="12dp"
-        android:paddingEnd="20dp"
-        android:paddingBottom="12dp">
+        android:paddingStart="16dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="8dp">
 
         <TextView
             android:id="@+id/back_button"
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:gravity="center"
-            android:text="←"
+            android:text="‹"
             android:textColor="@color/flyme_primary"
-            android:textSize="24sp"
+            android:textSize="28sp"
             android:visibility="gone" />
 
         <LinearLayout
@@ -39,7 +39,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/flyme_primary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:visibility="gone" />
 
             <TextView
@@ -47,7 +47,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/flyme_text"
-                android:textSize="26sp" />
+                android:textSize="22sp" />
 
             <TextView
                 android:id="@+id/top_bar_subtitle"
@@ -55,7 +55,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:textColor="@color/flyme_subtext"
-                android:textSize="13sp"
+                android:textSize="14sp"
                 android:visibility="gone" />
         </LinearLayout>
 

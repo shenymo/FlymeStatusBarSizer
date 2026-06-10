@@ -87,18 +87,18 @@ public class MainActivity extends Activity {
             SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP
     };
 
-    private static final int FALLBACK_BACKGROUND = Color.rgb(248, 249, 251);
+    private static final int FALLBACK_BACKGROUND = Color.rgb(253, 247, 255);
     private static final int FALLBACK_SURFACE = Color.WHITE;
-    private static final int FALLBACK_SURFACE_SOFT = Color.rgb(242, 244, 246);
-    private static final int FALLBACK_SURFACE_STRONG = Color.rgb(231, 232, 234);
-    private static final int FALLBACK_FEATURE_SURFACE = Color.rgb(245, 249, 255);
-    private static final int FALLBACK_FEATURE_STROKE = Color.rgb(192, 198, 214);
-    private static final int FALLBACK_TEXT = Color.rgb(25, 28, 30);
-    private static final int FALLBACK_SUBTEXT = Color.rgb(64, 71, 84);
-    private static final int FALLBACK_PRIMARY = Color.rgb(0, 92, 174);
-    private static final int FALLBACK_PRIMARY_CONTAINER = Color.rgb(0, 116, 217);
-    private static final int FALLBACK_PRIMARY_DEEP = Color.rgb(0, 71, 136);
-    private static final int FALLBACK_STROKE = Color.rgb(192, 198, 214);
+    private static final int FALLBACK_SURFACE_SOFT = Color.rgb(248, 242, 250);
+    private static final int FALLBACK_SURFACE_STRONG = Color.rgb(230, 224, 233);
+    private static final int FALLBACK_FEATURE_SURFACE = Color.rgb(234, 221, 255);
+    private static final int FALLBACK_FEATURE_STROKE = Color.rgb(103, 80, 164);
+    private static final int FALLBACK_TEXT = Color.rgb(29, 27, 32);
+    private static final int FALLBACK_SUBTEXT = Color.rgb(73, 69, 79);
+    private static final int FALLBACK_PRIMARY = Color.rgb(103, 80, 164);
+    private static final int FALLBACK_PRIMARY_CONTAINER = Color.rgb(234, 221, 255);
+    private static final int FALLBACK_PRIMARY_DEEP = Color.rgb(79, 55, 138);
+    private static final int FALLBACK_STROKE = Color.rgb(203, 196, 208);
 
     private SharedPreferences prefs;
     private int colorBackground;
@@ -225,7 +225,7 @@ public class MainActivity extends Activity {
             int topInset = getStatusBarInset();
             topBar.setPadding(
                     topBar.getPaddingLeft(),
-                    dp(12) + topInset,
+                    dp(8) + topInset,
                     topBar.getPaddingRight(),
                     topBar.getPaddingBottom());
         }
@@ -320,7 +320,7 @@ public class MainActivity extends Activity {
         }
         if (topBarTitleView != null) {
             topBarTitleView.setText(page.title);
-            topBarTitleView.setTextSize(onHome ? 28f : 22f);
+            topBarTitleView.setTextSize(22f);
         }
         if (topBarSubtitleView != null) {
             topBarSubtitleView.setText(page.subtitle);
@@ -435,6 +435,7 @@ public class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(56));
 
         LinearLayout textColumn = new LinearLayout(this);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -444,13 +445,6 @@ public class MainActivity extends Activity {
         title.setTextColor(colorText);
         title.setTextSize(16);
         textColumn.addView(title, matchWrap());
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(13);
-        subtitle.setPadding(0, dp(4), dp(10), 0);
-        textColumn.addView(subtitle, matchWrap());
 
         Switch toggle = new Switch(this);
         styleSwitch(toggle);
@@ -467,6 +461,7 @@ public class MainActivity extends Activity {
 
         row.addView(textColumn, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addHelpButton(row, titleText, subtitleText);
         row.addView(toggle, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -504,6 +499,7 @@ public class MainActivity extends Activity {
         title.setTextSize(16);
         header.addView(title, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addHelpButton(header, titleText, subtitleText);
 
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
@@ -517,12 +513,6 @@ public class MainActivity extends Activity {
         header.addView(valueView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(13);
-        subtitle.setPadding(0, dp(4), 0, 0);
 
         SeekBar seekBar = new SeekBar(this);
         styleSeekBar(seekBar);
@@ -561,7 +551,6 @@ public class MainActivity extends Activity {
                 }));
 
         row.addView(header, matchWrap());
-        row.addView(subtitle, matchWrap());
         row.addView(seekBar, matchWrapWithTop(8));
         root.addView(row, matchWrap());
     }
@@ -593,6 +582,7 @@ public class MainActivity extends Activity {
         title.setTextSize(16);
         header.addView(title, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addHelpButton(header, titleText, subtitleText);
 
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
@@ -602,12 +592,6 @@ public class MainActivity extends Activity {
         header.addView(valueView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(13);
-        subtitle.setPadding(0, dp(4), 0, 0);
 
         SeekBar seekBar = new SeekBar(this);
         styleSeekBar(seekBar);
@@ -656,7 +640,6 @@ public class MainActivity extends Activity {
 
         positionTuningSliderBindings.add(binding);
         row.addView(header, matchWrap());
-        row.addView(subtitle, matchWrap());
         row.addView(seekBar, matchWrapWithTop(8));
         root.addView(row, matchWrap());
     }
@@ -691,6 +674,7 @@ public class MainActivity extends Activity {
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 1f));
+        addHelpButton(header, titleText, subtitleText);
 
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
@@ -700,12 +684,6 @@ public class MainActivity extends Activity {
         header.addView(valueView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(13);
-        subtitle.setPadding(0, dp(4), 0, 0);
 
         SeekBar seekBar = new SeekBar(this);
         styleSeekBar(seekBar);
@@ -769,7 +747,6 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
         row.addView(header, matchWrap());
-        row.addView(subtitle, matchWrap());
         row.addView(seekBar, matchWrapWithTop(8));
         row.addView(actionRow, matchWrapWithTop(10));
         root.addView(row, matchWrap());
@@ -800,6 +777,7 @@ public class MainActivity extends Activity {
         title.setTextSize(16);
         header.addView(title, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addHelpButton(header, titleText, subtitleText);
 
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
@@ -811,12 +789,6 @@ public class MainActivity extends Activity {
         header.addView(valueView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(13);
-        subtitle.setPadding(0, dp(4), 0, 0);
 
         SeekBar seekBar = new SeekBar(this);
         styleSeekBar(seekBar);
@@ -866,7 +838,6 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
         row.addView(header, matchWrap());
-        row.addView(subtitle, matchWrap());
         row.addView(seekBar, matchWrapWithTop(8));
         row.addView(actionRow, matchWrapWithTop(10));
         root.addView(row, matchWrap());
@@ -888,6 +859,7 @@ public class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(56));
 
         LinearLayout textColumn = new LinearLayout(this);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -897,13 +869,6 @@ public class MainActivity extends Activity {
         title.setTextColor(colorText);
         title.setTextSize(16);
         textColumn.addView(title, matchWrap());
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(13);
-        subtitle.setPadding(0, dp(4), dp(10), 0);
-        textColumn.addView(subtitle, matchWrap());
 
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
@@ -926,6 +891,7 @@ public class MainActivity extends Activity {
 
         row.addView(textColumn, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addHelpButton(row, titleText, subtitleText);
         row.addView(valueView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -937,6 +903,7 @@ public class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(56));
 
         LinearLayout textColumn = new LinearLayout(this);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -946,13 +913,6 @@ public class MainActivity extends Activity {
         title.setTextColor(colorText);
         title.setTextSize(16);
         textColumn.addView(title, matchWrap());
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(13);
-        subtitle.setPadding(0, dp(4), dp(10), 0);
-        textColumn.addView(subtitle, matchWrap());
 
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
@@ -965,6 +925,7 @@ public class MainActivity extends Activity {
 
         row.addView(textColumn, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addHelpButton(row, titleText, subtitleText);
         row.addView(valueView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -1013,6 +974,23 @@ public class MainActivity extends Activity {
 
     void addProfileSectionHeader(LinearLayout root, String titleText, String subtitleText) {
         settingsUiFactory.addProfileSectionHeader(root, titleText, subtitleText);
+    }
+
+    void addHelpButton(LinearLayout row, String titleText, String message) {
+        settingsUiFactory.addHelpButton(row, titleText, message);
+    }
+
+    void showHelpDialog(String titleText, String message) {
+        if (TextUtils.isEmpty(message)) {
+            return;
+        }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(titleText)
+                .setMessage(message)
+                .setPositiveButton("知道了", null)
+                .show();
+        styleDialog(dialog);
+        attachDialogButtonHaptics(dialog);
     }
 
     void showChoiceMenu(View anchor, String key, int defaultValue,
@@ -1298,6 +1276,7 @@ public class MainActivity extends Activity {
                     }
                 })
                 .show();
+        styleDialog(dialog);
         attachDialogButtonHaptics(dialog);
     }
 
@@ -1338,6 +1317,7 @@ public class MainActivity extends Activity {
                     }
                 })
                 .show();
+        styleDialog(dialog);
         attachDialogButtonHaptics(dialog);
     }
 
@@ -1369,6 +1349,7 @@ public class MainActivity extends Activity {
                 .setPositiveButton("\u786e\u5b9a", (dialogInterface, which) ->
                         consumer.accept(input.getText() == null ? "" : input.getText().toString().trim()))
                 .show();
+        styleDialog(dialog);
         attachDialogButtonHaptics(dialog);
     }
 
@@ -1491,6 +1472,27 @@ public class MainActivity extends Activity {
         seekBar.setProgressTintList(activeTint);
         seekBar.setSecondaryProgressTintList(inactiveTint);
         seekBar.setProgressBackgroundTintList(inactiveTint);
+    }
+
+    void styleDialog(AlertDialog dialog) {
+        if (dialog == null) {
+            return;
+        }
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(roundRect(colorSurface, 24));
+        }
+        TextView positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        TextView negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+        TextView neutral = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+        if (positive != null) {
+            positive.setTextColor(colorPrimary);
+        }
+        if (negative != null) {
+            negative.setTextColor(colorPrimary);
+        }
+        if (neutral != null) {
+            neutral.setTextColor(colorPrimary);
+        }
     }
 
     private StateListDrawable buildSwitchTrackDrawable() {
@@ -1668,16 +1670,16 @@ public class MainActivity extends Activity {
     LinearLayout card(int color, int radiusDp) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(18), dp(18), dp(18), dp(18));
-        card.setBackground(roundRect(color, radiusDp));
+        card.setPadding(dp(16), dp(16), dp(16), dp(16));
+        card.setBackground(roundRect(color, Math.min(radiusDp, 16)));
         return card;
     }
 
     LinearLayout card(int color, int strokeColor, int radiusDp) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(18), dp(18), dp(18), dp(18));
-        card.setBackground(outlinedRect(color, strokeColor, 1, radiusDp));
+        card.setPadding(dp(16), dp(16), dp(16), dp(16));
+        card.setBackground(outlinedRect(color, strokeColor, 1, Math.min(radiusDp, 16)));
         return card;
     }
 
@@ -1687,14 +1689,6 @@ public class MainActivity extends Activity {
 
     TextView filledButton(String text, int backgroundColor, int textColor) {
         return settingsUiFactory.filledButton(text, backgroundColor, textColor);
-    }
-
-    GradientDrawable gradientCard() {
-        GradientDrawable drawable = new GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                new int[]{colorPrimaryContainer, colorPrimary, colorPrimaryDeep});
-        drawable.setCornerRadius(dp(32));
-        return drawable;
     }
 
     int backgroundColor() {
@@ -1742,15 +1736,15 @@ public class MainActivity extends Activity {
     }
 
     int secondaryColor() {
-        return 0xFF006688;
+        return 0xFF625B71;
     }
 
     int tertiaryColor() {
-        return 0xFF964500;
+        return 0xFF7D5260;
     }
 
     int errorColor() {
-        return 0xFFBA1A1A;
+        return 0xFFB3261E;
     }
 
     int strokeColor() {
@@ -1877,18 +1871,18 @@ public class MainActivity extends Activity {
     }
 
     View buildSectionCard(String titleText, String subtitleText, View content) {
-        LinearLayout card = card(colorSurface, colorStroke, 28);
+        LinearLayout card = card(colorSurface, colorStroke, 16);
 
         TextView title = new TextView(this);
         title.setText(titleText);
         title.setTextColor(colorText);
-        title.setTextSize(20);
+        title.setTextSize(18);
         card.addView(title, matchWrap());
 
         TextView subtitle = new TextView(this);
         subtitle.setText(subtitleText);
         subtitle.setTextColor(colorSubtext);
-        subtitle.setTextSize(14);
+        subtitle.setTextSize(13);
         subtitle.setPadding(0, dp(6), 0, 0);
         card.addView(subtitle, matchWrap());
 
@@ -1933,54 +1927,21 @@ public class MainActivity extends Activity {
     }
 
     private void initPalette() {
-        boolean isDark = (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
-                == android.content.res.Configuration.UI_MODE_NIGHT_YES;
-
-        if (isDark) {
-            int darkBackground = Color.rgb(18, 20, 24);
-            int darkSurface = Color.rgb(28, 31, 38);
-            int darkSurfaceSoft = Color.rgb(38, 42, 51);
-            int darkSurfaceStrong = Color.rgb(48, 54, 66);
-            int darkFeatureSurface = Color.rgb(26, 38, 57);
-            int darkFeatureStroke = Color.rgb(44, 62, 92);
-            int darkText = Color.rgb(235, 240, 245);
-            int darkSubtext = Color.rgb(160, 172, 189);
-            int darkPrimary = Color.rgb(82, 166, 255);
-            int darkPrimaryContainer = Color.rgb(0, 92, 174);
-            int darkPrimaryDeep = Color.rgb(0, 48, 100);
-            int darkStroke = Color.rgb(44, 49, 58);
-
-            colorBackground = resolveMonetColor("system_neutral1_900", darkBackground);
-            colorSurface = resolveMonetColor("system_neutral1_800", darkSurface);
-            colorSurfaceSoft = resolveMonetColor("system_neutral1_700", darkSurfaceSoft);
-            colorSurfaceStrong = resolveMonetColor("system_neutral1_600", darkSurfaceStrong);
-            colorFeatureSurface = resolveMonetColor("system_accent1_800", darkFeatureSurface);
-            colorFeatureStroke = resolveMonetColor("system_accent1_600", darkFeatureStroke);
-            colorText = resolveMonetColor("system_neutral1_100", darkText);
-            colorSubtext = resolveMonetColor("system_neutral2_200", darkSubtext);
-            colorPrimary = resolveMonetColor("system_accent1_200", darkPrimary);
-            colorPrimaryContainer = resolveMonetColor("system_accent1_700", darkPrimaryContainer);
-            colorPrimaryDeep = resolveMonetColor("system_accent1_800", darkPrimaryDeep);
-            colorStroke = resolveMonetColor("system_neutral1_700", darkStroke);
-        } else {
-            colorBackground = resolveMonetColor("system_neutral1_10", FALLBACK_BACKGROUND);
-            colorSurface = resolveMonetColor("system_neutral1_0", FALLBACK_SURFACE);
-            colorSurfaceSoft = resolveMonetColor("system_neutral1_50", FALLBACK_SURFACE_SOFT);
-            colorSurfaceStrong = resolveMonetColor("system_neutral1_100", FALLBACK_SURFACE_STRONG);
-            colorFeatureSurface = resolveMonetColor("system_accent1_50", FALLBACK_FEATURE_SURFACE);
-            colorFeatureStroke = resolveMonetColor("system_accent1_200", FALLBACK_FEATURE_STROKE);
-            colorText = resolveMonetColor("system_neutral1_900", FALLBACK_TEXT);
-            colorSubtext = resolveMonetColor("system_neutral2_700", FALLBACK_SUBTEXT);
-            colorPrimary = resolveMonetColor("system_accent1_600", FALLBACK_PRIMARY);
-            colorPrimaryContainer = resolveMonetColor("system_accent1_100", FALLBACK_PRIMARY_CONTAINER);
-            colorPrimaryDeep = resolveMonetColor("system_accent1_800", FALLBACK_PRIMARY_DEEP);
-            colorStroke = resolveMonetColor("system_neutral1_100", FALLBACK_STROKE);
-        }
+        colorBackground = FALLBACK_BACKGROUND;
+        colorSurface = FALLBACK_SURFACE;
+        colorSurfaceSoft = FALLBACK_SURFACE_SOFT;
+        colorSurfaceStrong = FALLBACK_SURFACE_STRONG;
+        colorFeatureSurface = FALLBACK_FEATURE_SURFACE;
+        colorFeatureStroke = FALLBACK_FEATURE_STROKE;
+        colorText = FALLBACK_TEXT;
+        colorSubtext = FALLBACK_SUBTEXT;
+        colorPrimary = FALLBACK_PRIMARY;
+        colorPrimaryContainer = FALLBACK_PRIMARY_CONTAINER;
+        colorPrimaryDeep = FALLBACK_PRIMARY_DEEP;
+        colorStroke = FALLBACK_STROKE;
     }
 
     private void configureSystemBars() {
-        boolean isDark = (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
-                == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
@@ -1989,34 +1950,12 @@ public class MainActivity extends Activity {
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             int flags = getWindow().getDecorView().getSystemUiVisibility();
-            if (isDark) {
-                flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    flags &= ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
-                }
-            } else {
-                flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
-                }
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
             }
             getWindow().getDecorView().setSystemUiVisibility(flags);
         }
-    }
-
-    private int resolveMonetColor(String androidColorName, int fallback) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            return fallback;
-        }
-        try {
-            Resources resources = Resources.getSystem();
-            int resId = resources.getIdentifier(androidColorName, "color", "android");
-            if (resId != 0) {
-                return resources.getColor(resId, getTheme());
-            }
-        } catch (Throwable ignored) {
-        }
-        return fallback;
     }
 
     GradientDrawable roundRect(int color, int radiusDp) {

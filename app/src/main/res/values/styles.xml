@@ -2,9 +2,10 @@
 <resources>
     <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans-serif</item>
+        <item name="android:windowNoTitle">true</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:statusBarColor">@color/flyme_background</item>
-        <item name="android:navigationBarColor">@color/flyme_surface</item>
+        <item name="android:navigationBarColor">@color/flyme_background</item>
         <item name="android:colorAccent">@color/flyme_primary</item>
         <item name="android:windowBackground">@color/flyme_background</item>
     </style>

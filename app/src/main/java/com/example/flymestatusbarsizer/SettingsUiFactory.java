@@ -31,8 +31,23 @@ final class SettingsUiFactory {
         view.setTextColor(textColor);
         view.setTextSize(14);
         view.setGravity(Gravity.CENTER);
-        view.setPadding(dp(14), dp(10), dp(14), dp(10));
-        view.setBackground(roundRect(backgroundColor, 999));
+        view.setMinHeight(dp(40));
+        view.setPadding(dp(16), dp(8), dp(16), dp(8));
+        view.setBackground(roundRect(backgroundColor, 8));
+        return view;
+    }
+
+    TextView helpButton(String titleText, String message) {
+        TextView view = new TextView(activity);
+        view.setText("?");
+        view.setTextColor(activity.primaryColor());
+        view.setTextSize(14);
+        view.setGravity(Gravity.CENTER);
+        view.setMinWidth(dp(32));
+        view.setMinHeight(dp(32));
+        view.setContentDescription(titleText + "说明");
+        view.setBackground(roundRect(activity.surfaceSoftColor(), 999));
+        activity.setTapClickListener(view, v -> activity.showHelpDialog(titleText, message));
         return view;
     }
 
@@ -68,8 +83,8 @@ final class SettingsUiFactory {
     void addDivider(LinearLayout root) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
-        lp.topMargin = dp(14);
-        lp.bottomMargin = dp(14);
+        lp.topMargin = dp(10);
+        lp.bottomMargin = dp(10);
         root.addView(buildDividerView(), lp);
     }
 
@@ -77,7 +92,7 @@ final class SettingsUiFactory {
         TextView title = new TextView(activity);
         title.setText(titleText);
         title.setTextColor(activity.primaryColor());
-        title.setTextSize(15);
+        title.setTextSize(14);
         root.addView(title, matchWrap());
 
         TextView subtitle = new TextView(activity);
@@ -93,6 +108,7 @@ final class SettingsUiFactory {
         LinearLayout row = new LinearLayout(activity);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(56));
 
         LinearLayout textColumn = new LinearLayout(activity);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -103,22 +119,25 @@ final class SettingsUiFactory {
         title.setTextSize(16);
         textColumn.addView(title, matchWrap());
 
-        TextView subtitle = new TextView(activity);
-        subtitle.setText(subtitleText);
-        subtitle.setTextColor(activity.subtextColor());
-        subtitle.setTextSize(13);
-        subtitle.setPadding(0, dp(4), dp(10), 0);
-        textColumn.addView(subtitle, matchWrap());
-
         TextView button = filledButton(buttonText, activity.primaryColor(), android.graphics.Color.WHITE);
         activity.setTapClickListener(button, v -> action.run());
 
         row.addView(textColumn, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addHelpButton(row, titleText, subtitleText);
         row.addView(button, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         root.addView(row, matchWrap());
+    }
+
+    void addHelpButton(LinearLayout row, String titleText, String message) {
+        if (message == null || message.length() == 0) {
+            return;
+        }
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(32), dp(32));
+        lp.rightMargin = dp(10);
+        row.addView(helpButton(titleText, message), lp);
     }
 
     private View buildDividerView() {

@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="flyme_background">#F8F9FB</color>
+    <color name="flyme_background">#FDF7FF</color>
     <color name="flyme_surface">#FFFFFF</color>
-    <color name="flyme_surface_low">#F2F4F6</color>
-    <color name="flyme_surface_container">#EDEEF0</color>
-    <color name="flyme_surface_container_high">#E7E8EA</color>
-    <color name="flyme_surface_container_highest">#E1E2E4</color>
-    <color name="flyme_outline">#717785</color>
-    <color name="flyme_outline_variant">#C0C6D6</color>
-    <color name="flyme_text">#191C1E</color>
-    <color name="flyme_subtext">#404754</color>
-    <color name="flyme_primary">#005CAE</color>
-    <color name="flyme_primary_container">#0074D9</color>
-    <color name="flyme_primary_soft">#D5E3FF</color>
-    <color name="flyme_secondary">#006688</color>
-    <color name="flyme_secondary_soft">#C2E8FF</color>
-    <color name="flyme_tertiary">#964500</color>
-    <color name="flyme_tertiary_soft">#FFDBC8</color>
-    <color name="flyme_error">#BA1A1A</color>
-    <color name="flyme_error_soft">#FFDAD6</color>
+    <color name="flyme_surface_low">#F8F2FA</color>
+    <color name="flyme_surface_container">#F2ECF4</color>
+    <color name="flyme_surface_container_high">#ECE6EE</color>
+    <color name="flyme_surface_container_highest">#E6E0E9</color>
+    <color name="flyme_outline">#79747E</color>
+    <color name="flyme_outline_variant">#CBC4D2</color>
+    <color name="flyme_text">#1D1B20</color>
+    <color name="flyme_subtext">#49454F</color>
+    <color name="flyme_primary">#6750A4</color>
+    <color name="flyme_primary_container">#EADDFF</color>
+    <color name="flyme_primary_soft">#EADDFF</color>
+    <color name="flyme_secondary">#625B71</color>
+    <color name="flyme_secondary_soft">#E8DEF8</color>
+    <color name="flyme_tertiary">#7D5260</color>
+    <color name="flyme_tertiary_soft">#FFD8E4</color>
+    <color name="flyme_error">#B3261E</color>
+    <color name="flyme_error_soft">#F9DEDC</color>
     <color name="flyme_on_primary">#FFFFFF</color>
 </resources>
