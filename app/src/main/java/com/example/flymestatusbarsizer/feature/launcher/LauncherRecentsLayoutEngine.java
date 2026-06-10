@@ -1768,6 +1768,37 @@ final class LauncherRecentsLayoutEngine {
                 + readTaskPrimaryHorizontalOffsetField(taskView, primaryScrollHorizontal);
     }
 
+    static float resolveStackDismissTargetVisibleOffset(
+            View recentsView,
+            View taskView,
+            float rawOffset) {
+        if (recentsView == null || taskView == null) {
+            return rawOffset;
+        }
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        float taskPrimarySize = resolvePrimarySize(taskView, primaryScrollHorizontal);
+        if (taskPrimarySize <= 0f) {
+            taskPrimarySize = Math.max(
+                    1f,
+                    resolvePrimarySize(recentsView, primaryScrollHorizontal));
+        }
+        float pageSpan = Math.max(
+                1f,
+                taskPrimarySize + LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0));
+        float layoutProgress = resolveStackReleaseSettledProgress(
+                (rawOffset + resolveEdgeScrollCorrection(recentsView)) / pageSpan,
+                LauncherRecentsState.isGestureStackReleasedStable(recentsView) ? 1f : 0f);
+        return resolveStackVisibleOffset(
+                recentsView,
+                layoutProgress,
+                taskPrimarySize,
+                resolveTaskCenteredPrimaryStartPx(
+                        recentsView,
+                        taskPrimarySize,
+                        primaryScrollHorizontal),
+                primaryScrollHorizontal);
+    }
+
     private static StackTaskInput buildStackTaskInput(
             StackLayoutContext context,
             View taskView,
