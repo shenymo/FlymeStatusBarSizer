@@ -1393,7 +1393,7 @@ final class LauncherRecentsTouchController {
         float moved = state.dismissDirectionSign
                 * (dismissTranslation - state.startDismissTranslation);
         return LauncherRecentsLayoutEngine.clamp(
-                moved / Math.max(1f, resolveStackDismissThreshold(state)),
+                moved / Math.max(1f, resolveStackDismissDistance(state)),
                 0f,
                 1f);
     }
@@ -1405,6 +1405,9 @@ final class LauncherRecentsTouchController {
         if (dismissedIndex < 0) {
             return;
         }
+        float dismissedRawOffset = resolveStackDismissRawOffset(
+                state.recentsView,
+                dismissedIndex);
         int targetPage = resolveSilentNativeDismissAnchorPage(state.recentsView, state.taskView);
         int targetScrollX = resolveStackDismissScrollForPage(state.recentsView, targetPage);
         int taskViewCount =
@@ -1421,6 +1424,12 @@ final class LauncherRecentsTouchController {
                     state.recentsView,
                     projectedIndex,
                     targetScrollX);
+            if (currentRawOffset < dismissedRawOffset && targetRawOffset > dismissedRawOffset) {
+                targetRawOffset = dismissedRawOffset - 1f;
+            } else if (currentRawOffset > dismissedRawOffset
+                    && targetRawOffset < dismissedRawOffset) {
+                targetRawOffset = dismissedRawOffset + 1f;
+            }
             float targetOffsetPx = targetRawOffset - currentRawOffset;
             if (Math.abs(targetOffsetPx) > 0.5f) {
                 state.siblingMoves.add(new StackDismissSiblingMove(
