@@ -654,7 +654,8 @@ final class LauncherRecentsTouchController {
                         STACK_LOAD_VISIBLE_TASK_DATA_ACTIVE.set(previous);
                     }
                 }
-                if (thisObject instanceof View) {
+                if (thisObject instanceof View
+                        && !isStackDismissReflowActive((View) thisObject)) {
                     Object arg0 = chain.getArg(0);
                     int changes = arg0 instanceof Integer ? (Integer) arg0 : 15;
                     forceEnsureStackVisibleTaskData((View) thisObject, changes);
@@ -743,7 +744,6 @@ final class LauncherRecentsTouchController {
                     if (isSilentNativeDismissActive(recentsView)) {
                         clearNativeDismissTransforms(recentsView);
                         clearStackDismissLayoutOffsets();
-                        applyStackDismissFinalLayout(recentsView);
                         recentsView.invalidate();
                         scheduleSilentNativeDismissFinish(recentsView);
                     }
@@ -837,6 +837,12 @@ final class LauncherRecentsTouchController {
             }
         }
         return false;
+    }
+
+    private static boolean isStackDismissReflowActive(View recentsView) {
+        return recentsView != null
+                && (STACK_DISMISS_GESTURES.containsKey(recentsView)
+                || hasActiveStackDismissLayoutOffsets());
     }
 
     private static boolean isSilentNativeDismissActive(View recentsView) {
@@ -1250,6 +1256,7 @@ final class LauncherRecentsTouchController {
                 state.originalTranslationZ);
         prepareStackDismissSiblingMoves(state);
         applyStackDismissProgress(state, state.currentDismissTranslation);
+        preheatStackDismissVisibleTaskData(state.recentsView);
     }
 
     private static void updateStackDismissDrag(
@@ -1413,9 +1420,12 @@ final class LauncherRecentsTouchController {
                 "dismissReflow",
                 false,
                 false);
-        forceEnsureStackVisibleTaskData(state.recentsView, 15);
         LauncherRecentsTaskVisuals.setStableAlpha(state.taskView, state.originalStableAlpha);
         state.recentsView.invalidate();
+    }
+
+    private static void preheatStackDismissVisibleTaskData(View recentsView) {
+        forceEnsureStackVisibleTaskData(recentsView, 15);
     }
 
     private static float resolveStackDismissReflowProgress(
@@ -1780,28 +1790,36 @@ final class LauncherRecentsTouchController {
         clearNativeDismissTransforms(recentsView);
         applyStackDismissFinalLayout(recentsView);
         recentsView.invalidate();
-        LauncherRecentsCompat.invokeMethodReflectively(
-                recentsView,
-                "dispatchScrollChanged",
-                LauncherRecentsCompat.NO_ARGS);
-        LauncherRecentsCompat.invokeMethodReflectively(
-                recentsView,
-                "updateActionsViewFocusedScroll",
-                LauncherRecentsCompat.NO_ARGS);
-        LauncherRecentsCompat.invokeMethodReflectively(
-                recentsView,
-                "updateCurrentTaskActionsVisibility",
-                LauncherRecentsCompat.NO_ARGS);
-        boolean dispatchedDismissEnd = LauncherRecentsCompat.invokeMethodReflectively(
-                recentsView,
-                "onDismissAnimationEnds",
-                LauncherRecentsCompat.NO_ARGS);
-        if (!dispatchedDismissEnd) {
-            scheduleSilentNativeDismissFinish(recentsView);
-        }
-        applyStackDismissFinalLayout(recentsView);
-        recentsView.invalidate();
+        scheduleStackDismissPostRemoveCallbacks(recentsView);
         return true;
+    }
+
+    private static void scheduleStackDismissPostRemoveCallbacks(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        recentsView.postOnAnimation(() -> {
+            LauncherRecentsCompat.invokeMethodReflectively(
+                    recentsView,
+                    "dispatchScrollChanged",
+                    LauncherRecentsCompat.NO_ARGS);
+            LauncherRecentsCompat.invokeMethodReflectively(
+                    recentsView,
+                    "updateActionsViewFocusedScroll",
+                    LauncherRecentsCompat.NO_ARGS);
+            LauncherRecentsCompat.invokeMethodReflectively(
+                    recentsView,
+                    "updateCurrentTaskActionsVisibility",
+                    LauncherRecentsCompat.NO_ARGS);
+            boolean dispatchedDismissEnd = LauncherRecentsCompat.invokeMethodReflectively(
+                    recentsView,
+                    "onDismissAnimationEnds",
+                    LauncherRecentsCompat.NO_ARGS);
+            if (!dispatchedDismissEnd) {
+                scheduleSilentNativeDismissFinish(recentsView);
+            }
+            recentsView.invalidate();
+        });
     }
 
     private static void rememberSilentNativeDismissAnchor(
@@ -1841,7 +1859,6 @@ final class LauncherRecentsTouchController {
             if (isSilentNativeDismissActive(recentsView)) {
                 clearNativeDismissTransforms(recentsView);
                 clearStackDismissLayoutOffsets();
-                applyStackDismissFinalLayout(recentsView);
                 recentsView.invalidate();
             }
             recentsView.postOnAnimation(() -> {
@@ -1869,16 +1886,9 @@ final class LauncherRecentsTouchController {
         logStackFlow("dismiss:native:finish", recentsView, null, null);
         clearNativeDismissTransforms(recentsView);
         clearStackDismissLayoutOffsets();
-        applyStackDismissFinalLayout(recentsView);
         SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
         SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
         setStackDismissPostRemoveAnimationActive(recentsView, false);
-        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
-        LauncherRecentsLayoutEngine.applyStackLayout(
-                recentsView,
-                false,
-                "entryTouchTakeoverClear",
-                false);
         recentsView.invalidate();
     }
 
