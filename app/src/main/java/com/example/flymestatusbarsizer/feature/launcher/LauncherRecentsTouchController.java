@@ -34,6 +34,7 @@ final class LauncherRecentsTouchController {
     private static final float STACK_DISMISS_MIN_FLING_VELOCITY = -1200f;
     private static final float STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO = 1.40f;
     private static final int STACK_VISIBLE_DATA_SCROLL_BUCKET_DIVISOR = 2;
+    private static final long STACK_VISIBLE_DATA_SYNC_RETRY_DELAY_MS = 64L;
     private static final long STACK_VISIBLE_DATA_CLEANUP_IDLE_DELAY_MS = 450L;
     private static final long STACK_VISIBLE_DATA_CLEANUP_RETRY_DELAY_MS = 250L;
     private static final float STACK_LEFT_RELEASE_ALPHA_THRESHOLD = 0.05f;
@@ -2330,6 +2331,14 @@ final class LauncherRecentsTouchController {
     }
 
     static void forceEnsureStackVisibleTaskData(View recentsView, int changes, boolean forceRelease) {
+        forceEnsureStackVisibleTaskData(recentsView, changes, forceRelease, true);
+    }
+
+    private static void forceEnsureStackVisibleTaskData(
+            View recentsView,
+            int changes,
+            boolean forceRelease,
+            boolean allowDelay) {
         if (recentsView == null) {
             return;
         }
@@ -2364,6 +2373,17 @@ final class LauncherRecentsTouchController {
                 markStackVisibleTaskDataTouched(state, forceRelease);
                 return;
             }
+            if (shouldDelayStackVisibleTaskDataSync(recentsView, forceRelease, allowDelay)) {
+                logStackFlow("visibleData:force:delayGestureBackground",
+                        recentsView,
+                        null,
+                        "changes=" + changes
+                                + " bucket=" + scrollBucket
+                                + " taskCount=" + taskViewCount
+                                + " currentPage=" + currentPage);
+                scheduleDeferredStackVisibleTaskDataSync(recentsView, state, changes);
+                return;
+            }
             state.taskViewCount = taskViewCount;
             state.currentPage = currentPage;
             state.scrollBucket = scrollBucket;
@@ -2379,6 +2399,51 @@ final class LauncherRecentsTouchController {
         } finally {
             LauncherRecentsPerf.end("visibleTaskDataSync:force", perfStartNs);
         }
+    }
+
+    private static boolean shouldDelayStackVisibleTaskDataSync(
+            View recentsView,
+            boolean forceRelease,
+            boolean allowDelay) {
+        return allowDelay
+                && !forceRelease
+                && !isLastStackVisibleTaskIdsEmpty(recentsView)
+                && isGestureRecentsBackground(recentsView);
+    }
+
+    private static void scheduleDeferredStackVisibleTaskDataSync(
+            final View recentsView,
+            final StackVisibleTaskDataSyncState state,
+            int changes) {
+        state.pendingSyncChanges |= changes;
+        if (state.pendingSyncRunnable != null) {
+            logStackFlow("visibleData:force:delayAlreadyPending",
+                    recentsView,
+                    null,
+                    "changes=" + state.pendingSyncChanges);
+            return;
+        }
+        state.pendingSyncRunnable = new Runnable() {
+            @Override
+            public void run() {
+                state.pendingSyncRunnable = null;
+                int syncChanges = state.pendingSyncChanges;
+                state.pendingSyncChanges = 0;
+                forceEnsureStackVisibleTaskData(recentsView, syncChanges, false, false);
+            }
+        };
+        recentsView.postDelayed(state.pendingSyncRunnable, STACK_VISIBLE_DATA_SYNC_RETRY_DELAY_MS);
+    }
+
+    private static boolean isGestureRecentsBackground(View recentsView) {
+        return LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                && isLauncherStateBackground(recentsView);
+    }
+
+    private static boolean isLauncherStateBackground(View recentsView) {
+        Object stateManager = LauncherRecentsCompat.invokeCompat(recentsView, "getStateManager");
+        Object state = LauncherRecentsCompat.invokeCompat(stateManager, "getState");
+        return state != null && "Background".equals(String.valueOf(state));
     }
 
     private static StackVisibleTaskDataSyncState findStackVisibleTaskDataSyncState(
@@ -2582,8 +2647,8 @@ final class LauncherRecentsTouchController {
                 int cleanupChanges = state.pendingCleanupChanges;
                 ArrayList<Integer> cleanupTaskIds = new ArrayList<>(state.pendingReleaseTaskIds);
                 state.pendingReleaseTaskIds.clear();
-                if (isTransitionAnimationActive(recentsView)) {
-                    logStackFlow("visibleData:cleanup:retryTransition",
+                if (shouldDelayStackVisibleTaskDataCleanup(recentsView, state)) {
+                    logStackFlow("visibleData:cleanup:retryActive",
                             recentsView, null, "pendingIds=" + cleanupTaskIds);
                     scheduleDeferredCleanup(recentsView, state, cleanupChanges, cleanupTaskIds);
                     return;
@@ -2618,13 +2683,45 @@ final class LauncherRecentsTouchController {
         };
         recentsView.postDelayed(
                 state.pendingCleanupRunnable,
-                isTransitionAnimationActive(recentsView)
+                shouldDelayStackVisibleTaskDataCleanup(recentsView, state)
                         ? STACK_VISIBLE_DATA_CLEANUP_RETRY_DELAY_MS
                         : STACK_VISIBLE_DATA_CLEANUP_IDLE_DELAY_MS);
         logStackFlow("visibleData:cleanup:schedule",
                 recentsView,
                 null,
                 "changes=" + changes + " pendingIds=" + state.pendingReleaseTaskIds);
+    }
+
+    private static boolean shouldDelayStackVisibleTaskDataCleanup(
+            View recentsView,
+            StackVisibleTaskDataSyncState state) {
+        if (isTransitionAnimationActive(recentsView) || isRecentsScrollerActive(recentsView)) {
+            return true;
+        }
+        if (state != null
+                && !state.delayedGestureBackgroundCleanup
+                && isGestureRecentsBackground(recentsView)) {
+            state.delayedGestureBackgroundCleanup = true;
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isRecentsScrollerActive(View recentsView) {
+        Object scroller = LauncherRecentsCompat.getFieldCompat(recentsView, "mScroller");
+        if (isScrollerActive(scroller)) {
+            return true;
+        }
+        Object activeScroller = LauncherRecentsCompat.getFieldCompat(scroller, "usingScroller");
+        return activeScroller != scroller && isScrollerActive(activeScroller);
+    }
+
+    private static boolean isScrollerActive(Object scroller) {
+        Object value = LauncherRecentsCompat.invokeCompat(
+                scroller,
+                "isFinished",
+                LauncherRecentsCompat.NO_ARGS);
+        return value instanceof Boolean && !((Boolean) value);
     }
 
     private static boolean isStackVisibleTaskDataCleanupIdle(
@@ -3578,8 +3675,11 @@ final class LauncherRecentsTouchController {
         int taskViewCount;
         int currentPage;
         int scrollBucket;
+        Runnable pendingSyncRunnable;
+        int pendingSyncChanges;
         Runnable pendingCleanupRunnable;
         int pendingCleanupChanges;
+        boolean delayedGestureBackgroundCleanup;
         final ArrayList<Integer> pendingReleaseTaskIds = new ArrayList<>();
         long lastLoadUptimeMs;
     }

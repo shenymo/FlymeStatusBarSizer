@@ -1103,6 +1103,14 @@ final class LauncherRecentsLayoutEngine {
         return "scheduled";
     }
 
+    private static boolean shouldDelayScheduledStackLayoutForHomeExit(
+            View recentsView,
+            String source) {
+        return LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
+                && !"blankTapPrepare".equals(source)
+                && !"contentAlpha_blankExit".equals(source);
+    }
+
     private static void runScheduledStackLayout(View recentsView) {
         LauncherRecentsState.PendingStackLayoutApplyState pendingState =
                 LauncherRecentsState.PENDING_STACK_LAYOUT_APPLIES.remove(recentsView);
@@ -1117,6 +1125,13 @@ final class LauncherRecentsLayoutEngine {
         if (LauncherRecentsState.hasActiveTaskLaunchTransitionGeometry(recentsView)) {
             LauncherRecentsPerf.flow("layout:runScheduled:skipTaskLaunch",
                     recentsView, "source=" + pendingState.source);
+            return;
+        }
+        if (shouldDelayScheduledStackLayoutForHomeExit(recentsView, pendingState.source)) {
+            LauncherRecentsState.PENDING_STACK_LAYOUT_APPLIES.put(recentsView, pendingState);
+            LauncherRecentsPerf.flow("layout:runScheduled:delayHomeExit",
+                    recentsView, "source=" + pendingState.source);
+            recentsView.postDelayed(() -> runScheduledStackLayout(recentsView), 32L);
             return;
         }
         LauncherRecentsState.trackRecentsView(recentsView);
@@ -1294,6 +1309,7 @@ final class LauncherRecentsLayoutEngine {
                 || "scheduled".equals(source)
                 || "onScrollChanged".equals(source)
                 || "refreshTrackedViews".equals(source)
+                || "overviewStateClearRestore".equals(source)
                 || "contentAlpha_blankExit".equals(source)
                 || "contentAlpha_after".equals(source)
                 || "updatePageScales_after".equals(source)
