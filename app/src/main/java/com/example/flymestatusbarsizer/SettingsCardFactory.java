@@ -29,30 +29,40 @@ final class SettingsCardFactory {
                 SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED);
         activity.addDivider(content);
         activity.addChoiceRow(content, "电池图标样式",
-                "当前保留类 IOS 和类 One UI 两套代码绘制样式。",
+                "当前保留类 IOS、类 One UI 和 IOS 旧版三套代码绘制样式。",
                 SettingsStore.KEY_BATTERY_ICON_STYLE,
                 SettingsStore.DEFAULT_BATTERY_ICON_STYLE,
-                new int[]{SettingsStore.BATTERY_STYLE_IOS, SettingsStore.BATTERY_STYLE_ONEUI},
-                new String[]{"类 IOS", "类 One UI"});
+                new int[]{SettingsStore.BATTERY_STYLE_IOS, SettingsStore.BATTERY_STYLE_ONEUI,
+                        SettingsStore.BATTERY_STYLE_FLYME_CAPSULE},
+                new String[]{"类 IOS", "类 One UI", "IOS 旧版"});
         activity.addDivider(content);
-        activity.addSwitchRow(content, "电池内显示电量数字",
-                "关闭后只保留图形电池，不在电池内部绘制剩余电量数字。",
+        LinearLayout hollowSection = new LinearLayout(activity);
+        hollowSection.setOrientation(LinearLayout.VERTICAL);
+        hollowSection.setVisibility(SettingsStore.readBoolean(
+                activity.prefs(),
                 SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
-                SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED);
-        activity.addDivider(content);
+                SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED) ? View.VISIBLE : View.GONE);
         LinearLayout hollowOptions = buildBatteryHollowOptions();
         hollowOptions.setVisibility(SettingsStore.readBoolean(
                 activity.prefs(),
                 SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED) ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(content, "镂空电池",
-                "开启后使用镂空电池样式，下面可以继续控制内部填充是否跟随电量缩短。",
+        activity.addSwitchRow(content, "电池内显示电量数字",
+                "关闭后只保留图形电池，不在电池内部绘制剩余电量数字。",
+                SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
+                SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED,
+                (buttonView, isChecked) -> hollowSection.setVisibility(isChecked ? View.VISIBLE : View.GONE));
+        activity.addSwitchRow(hollowSection, "镂空电池",
+                "开启后电池内数字使用透明挖空显示。",
                 SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED,
                 (buttonView, isChecked) -> hollowOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
         LinearLayout.LayoutParams hollowOptionsLp = activity.matchWrapWithTop(10);
         hollowOptionsLp.leftMargin = activity.dp(12);
-        content.addView(hollowOptions, hollowOptionsLp);
+        hollowSection.addView(hollowOptions, hollowOptionsLp);
+        LinearLayout.LayoutParams hollowSectionLp = activity.matchWrapWithTop(10);
+        hollowSectionLp.leftMargin = activity.dp(12);
+        content.addView(hollowSection, hollowSectionLp);
         activity.addDivider(content);
         int[] batteryTextFontOptions = BatteryTextFontHelper.getAvailableFontOptions(activity);
         activity.addChoiceRow(content, "电池数字字体",

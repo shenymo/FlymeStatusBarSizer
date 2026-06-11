@@ -112,6 +112,7 @@ final class SettingsStore {
     static final boolean DEFAULT_SIGNAL_WIFI_SWAP_ENABLED = false;
     static final int BATTERY_STYLE_IOS = 0;
     static final int BATTERY_STYLE_ONEUI = 1;
+    static final int BATTERY_STYLE_FLYME_CAPSULE = 2;
     static final int BATTERY_TEXT_FONT_SYSTEM_DEFAULT = 0;
     static final int BATTERY_TEXT_FONT_SERIF = 1;
     static final int BATTERY_TEXT_FONT_MONOSPACE = 2;
@@ -556,7 +557,13 @@ final class SettingsStore {
     }
 
     static int normalizeBatteryStyle(int value) {
-        return value == BATTERY_STYLE_ONEUI ? BATTERY_STYLE_ONEUI : BATTERY_STYLE_IOS;
+        switch (value) {
+            case BATTERY_STYLE_ONEUI:
+            case BATTERY_STYLE_FLYME_CAPSULE:
+                return value;
+            default:
+                return BATTERY_STYLE_IOS;
+        }
     }
 
     static int normalizeMBackLongTouchAction(int value) {

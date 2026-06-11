@@ -309,7 +309,16 @@ public final class RightIconGroupPreviewView extends View {
     private void drawBattery(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
             int fillColor, int textColor, boolean showLevelText) {
         Typeface typeface = BatteryTextFontHelper.resolveTypeface(getContext(), batteryTextFont);
-        if (SettingsStore.normalizeBatteryStyle(batteryStyle) == SettingsStore.BATTERY_STYLE_ONEUI) {
+        int style = SettingsStore.normalizeBatteryStyle(batteryStyle);
+        if (style == SettingsStore.BATTERY_STYLE_FLYME_CAPSULE) {
+            FlymeCapsuleBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, false,
+                    fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
+                    offsetPx(batteryIconYOffsetTenthDp), offsetPx(batteryTextYOffsetTenthDp),
+                    offsetPx(batteryBoltYOffsetTenthDp),
+                    batteryHollowEnabled, batteryHollowFillFollowsLevel);
+            return;
+        }
+        if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
             OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, false,
                     fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
                     offsetPx(batteryIconYOffsetTenthDp), offsetPx(batteryTextYOffsetTenthDp),

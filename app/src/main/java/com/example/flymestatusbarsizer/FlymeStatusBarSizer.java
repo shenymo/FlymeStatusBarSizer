@@ -1846,6 +1846,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         float boltYOffsetPx = resolveIconOffsetPx(densityContext, config == null
                 ? SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10
                 : config.batteryBoltYOffsetTenthDp);
+        if (style == SettingsStore.BATTERY_STYLE_FLYME_CAPSULE) {
+            FlymeCapsuleBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, quickCharging,
+                    fillColor, textColor, showLevelText, textScale, typeface,
+                    bodyYOffsetPx, textYOffsetPx, boltYOffsetPx, hollow,
+                    hollowFillFollowsLevel);
+            return;
+        }
         if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
             OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, quickCharging,
                     fillColor, textColor, showLevelText, textScale, typeface,
@@ -3127,10 +3134,13 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static int resolveBatteryRenderWidth(int size, ModuleConfig config, boolean showBolt) {
         int style = resolveBatteryStyle(config);
-        int width = style == SettingsStore.BATTERY_STYLE_ONEUI
-                ? OneUiBatteryPainter.getRequiredWidth(size, showBolt)
-                : IosBatteryPainter.getRequiredWidth(size, showBolt);
-        return width;
+        if (style == SettingsStore.BATTERY_STYLE_FLYME_CAPSULE) {
+            return FlymeCapsuleBatteryPainter.getRequiredWidth(size, showBolt);
+        }
+        if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
+            return OneUiBatteryPainter.getRequiredWidth(size, showBolt);
+        }
+        return IosBatteryPainter.getRequiredWidth(size, showBolt);
     }
 
     private static int resolveBatteryStyle(ModuleConfig config) {
