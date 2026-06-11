@@ -1704,8 +1704,7 @@ final class LauncherRecentsLayoutEngine {
             int taskViewCount) {
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (Math.abs(LauncherRecentsTouchController.readStackDismissLayoutOffset(taskView))
-                    > 0.5f) {
+            if (LauncherRecentsTouchController.hasStackDismissVisibleOffset(taskView)) {
                 appendStackLayoutIndex(target, i, taskViewCount);
             }
         }
@@ -1768,23 +1767,22 @@ final class LauncherRecentsLayoutEngine {
                 + readTaskPrimaryHorizontalOffsetField(taskView, primaryScrollHorizontal);
     }
 
-    static float resolveStackDismissTargetVisibleOffset(
+    static float resolveStackDismissProjectedVisibleOffset(
             View recentsView,
             View taskView,
-            float rawOffset) {
+            int projectedIndex,
+            int targetScroll) {
         if (recentsView == null || taskView == null) {
-            return rawOffset;
+            return 0f;
         }
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
-        float taskPrimarySize = resolvePrimarySize(taskView, primaryScrollHorizontal);
-        if (taskPrimarySize <= 0f) {
-            taskPrimarySize = Math.max(
-                    1f,
-                    resolvePrimarySize(recentsView, primaryScrollHorizontal));
-        }
+        float taskPrimarySize = resolveTaskPrimarySize(taskView, 1f, primaryScrollHorizontal);
         float pageSpan = Math.max(
                 1f,
                 taskPrimarySize + LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0));
+        float rawOffset = resolveTaskRawOffset(recentsView, projectedIndex)
+                + resolvePrimaryScroll(recentsView)
+                - targetScroll;
         float layoutProgress = resolveStackReleaseSettledProgress(
                 (rawOffset + resolveEdgeScrollCorrection(recentsView)) / pageSpan,
                 LauncherRecentsState.isGestureStackReleasedStable(recentsView) ? 1f : 0f);
@@ -1845,11 +1843,9 @@ final class LauncherRecentsLayoutEngine {
         // Keep the stock gap-closing animation, but remap its logical page position into
         // the compressed stack so sibling cards move into the dismissed slot instead of
         // adding a second full-page horizontal shift on top of it.
-        float stackDismissLayoutOffset =
-                LauncherRecentsTouchController.readStackDismissLayoutOffset(taskView);
         float layoutRawOffset = rawOffset + context.edgeScrollCorrection;
         float physicalRawOffset = layoutRawOffset + dismissTranslationX;
-        float effectiveRawOffset = physicalRawOffset + stackDismissLayoutOffset;
+        float effectiveRawOffset = physicalRawOffset;
         float progress = effectiveRawOffset / context.pageSpan;
         float layoutProgress = resolveStackReleaseSettledProgress(
                 progress,
@@ -2003,7 +1999,8 @@ final class LauncherRecentsLayoutEngine {
                 input.taskPrimarySize,
                 input.taskCenteredPrimaryStartPx,
                 context.primaryScrollHorizontal);
-        if (!blankTapExitTaskActive) {
+        boolean stackDismissReflowTask = input.stackDismissVisibleOffset != null;
+        if (!blankTapExitTaskActive && !stackDismissReflowTask) {
             desiredStableAlpha *= stackLeftClampAlpha;
             activityTitleAlpha = desiredStableAlpha > 0.001f ? stackLeftClampAlpha : 0f;
         }
