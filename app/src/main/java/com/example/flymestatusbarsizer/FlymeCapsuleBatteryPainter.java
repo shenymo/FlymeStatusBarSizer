@@ -16,6 +16,8 @@ final class FlymeCapsuleBatteryPainter {
     private static final int LOW_BATTERY_ORANGE = Color.rgb(255, 149, 0);
     private static final int SHELL_ALPHA = 0x73;
     private static final int FILL_ALPHA = 224;
+    private static final int TEXT_OUTLINE_ALPHA = 160;
+    private static final float TEXT_STROKE_WIDTH_RATIO = 0.10f;
     private static final float VISUAL_ASPECT_RATIO = 2.1f;
     private static final float BOLT_WIDTH_RATIO = 0.54f;
     private static final float BOLT_GAP_RATIO = 0.05f;
@@ -112,7 +114,7 @@ final class FlymeCapsuleBatteryPainter {
             int layer = saveBatteryLayer(canvas, strokeWidth);
             drawBody(canvas, shellColor, batteryFillColor, strokeWidth, radius, fillPercent);
             drawBoltIfNeeded(canvas, showBolt, useQuickBolt, pluggedIn, charging, fillColor);
-            drawLevelText(canvas, CUTOUT_TEXT_PAINT, clampedLevel, textSize, textYOffsetPx);
+            drawCutoutOutlinedLevelText(canvas, clampedLevel, textSize, textYOffsetPx, fillColor);
             canvas.restoreToCount(layer);
             return;
         }
@@ -121,8 +123,8 @@ final class FlymeCapsuleBatteryPainter {
         drawBoltIfNeeded(canvas, showBolt, useQuickBolt, pluggedIn, charging, fillColor);
 
         if (showLevelText) {
-            TEXT_PAINT.setColor(withFixedAlpha(textColor, FILL_ALPHA));
-            drawLevelText(canvas, TEXT_PAINT, clampedLevel, textSize, textYOffsetPx);
+            drawOutlinedLevelText(canvas, clampedLevel, textSize, textYOffsetPx,
+                    fillColor, TEXT_OUTLINE_ALPHA, textColor);
         }
     }
 
@@ -173,6 +175,30 @@ final class FlymeCapsuleBatteryPainter {
         float textBaseline = BODY.centerY() - (paint.descent() + paint.ascent()) / 2f
                 - textYOffsetPx;
         canvas.drawText(Integer.toString(level), BODY.centerX(), textBaseline, paint);
+    }
+
+    private static void drawOutlinedLevelText(Canvas canvas, int level, float textSize,
+            float textYOffsetPx, int outlineColor, int outlineAlpha, int textColor) {
+        TEXT_PAINT.setTextSize(textSize);
+        float textBaseline = BODY.centerY() - (TEXT_PAINT.descent() + TEXT_PAINT.ascent()) / 2f
+                - textYOffsetPx;
+        String text = Integer.toString(level);
+
+        TEXT_PAINT.setStyle(Paint.Style.STROKE);
+        TEXT_PAINT.setStrokeWidth(Math.max(1f, textSize * TEXT_STROKE_WIDTH_RATIO));
+        TEXT_PAINT.setColor(withFixedAlpha(outlineColor, outlineAlpha));
+        canvas.drawText(text, BODY.centerX(), textBaseline, TEXT_PAINT);
+
+        TEXT_PAINT.setStyle(Paint.Style.FILL);
+        TEXT_PAINT.setColor(withFixedAlpha(textColor, FILL_ALPHA));
+        canvas.drawText(text, BODY.centerX(), textBaseline, TEXT_PAINT);
+    }
+
+    private static void drawCutoutOutlinedLevelText(Canvas canvas, int level, float textSize,
+            float textYOffsetPx, int outlineColor) {
+        drawOutlinedLevelText(canvas, level, textSize, textYOffsetPx,
+                outlineColor, FILL_ALPHA, outlineColor);
+        drawLevelText(canvas, CUTOUT_TEXT_PAINT, level, textSize, textYOffsetPx);
     }
 
     private static int saveBatteryLayer(Canvas canvas, float strokeWidth) {
