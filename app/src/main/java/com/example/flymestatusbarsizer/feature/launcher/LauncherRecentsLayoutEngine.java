@@ -1999,8 +1999,7 @@ final class LauncherRecentsLayoutEngine {
                 input.taskPrimarySize,
                 input.taskCenteredPrimaryStartPx,
                 context.primaryScrollHorizontal);
-        boolean stackDismissReflowTask = input.stackDismissVisibleOffset != null;
-        if (!blankTapExitTaskActive && !stackDismissReflowTask) {
+        if (!blankTapExitTaskActive) {
             desiredStableAlpha *= stackLeftClampAlpha;
             activityTitleAlpha = desiredStableAlpha > 0.001f ? stackLeftClampAlpha : 0f;
         }

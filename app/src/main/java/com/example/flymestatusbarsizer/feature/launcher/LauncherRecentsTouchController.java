@@ -31,6 +31,7 @@ final class LauncherRecentsTouchController {
     private static final long STACK_DISMISS_SUCCESS_ANIM_MS = 180L;
     private static final long STACK_DISMISS_CANCEL_ANIM_MS = 320L;
     private static final long STACK_DISMISS_POST_REMOVE_ANIM_MS = 180L;
+    private static final int STACK_DISMISS_VISIBLE_DATA_PROGRESS_BUCKETS = 10;
     private static final float STACK_DISMISS_SECONDARY_DOMINANCE = 1.2f;
     private static final float STACK_DISMISS_MIN_FLING_VELOCITY = -1200f;
     private static final float STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO = 1.40f;
@@ -1386,53 +1387,43 @@ final class LauncherRecentsTouchController {
                     move.targetVisibleOffsetPx,
                     clampedProgress);
             STACK_DISMISS_VISIBLE_OFFSETS.put(move.taskView, visibleOffset);
-            applyStackDismissSiblingVisibleOffset(state, move, visibleOffset);
-            applyStackDismissSiblingStaticVisuals(state, move, visibleOffset);
         }
         LauncherRecentsTaskVisuals.setStableAlpha(state.taskView, state.originalStableAlpha);
+        applyStackDismissFrameLayout(state.recentsView, "dismissReflowFrame");
+        syncStackDismissVisibleTaskDataForProgress(state, clampedProgress);
         state.recentsView.invalidate();
     }
 
-    private static void applyStackDismissSiblingVisibleOffset(
-            StackDismissGestureState state,
-            StackDismissSiblingMove move,
-            float visibleOffset) {
-        if (state == null
-                || move == null
-                || !isStackDismissReflowTaskCandidate(state.recentsView, move.taskView)) {
-            return;
-        }
-        boolean primaryScrollHorizontal = !state.secondaryDismissHorizontal;
-        float taskOffsetPrimary = visibleOffset
-                - move.startRawOffsetPx
-                - move.startDismissTranslationPrimaryPx;
-        if (primaryScrollHorizontal) {
-            LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(
-                    move.taskView,
-                    taskOffsetPrimary - move.startHorizontalOffsetX);
-        } else {
-            LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(
-                    move.taskView,
-                    taskOffsetPrimary);
+    private static void applyStackDismissFrameLayout(View recentsView, String source) {
+        Boolean previousLayoutBypass = STACK_DISMISS_LAYOUT_FREEZE_BYPASS.get();
+        STACK_DISMISS_LAYOUT_FREEZE_BYPASS.set(Boolean.TRUE);
+        try {
+            LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, source, false);
+        } finally {
+            if (previousLayoutBypass == null) {
+                STACK_DISMISS_LAYOUT_FREEZE_BYPASS.remove();
+            } else {
+                STACK_DISMISS_LAYOUT_FREEZE_BYPASS.set(previousLayoutBypass);
+            }
         }
     }
 
-    private static void applyStackDismissSiblingStaticVisuals(
+    private static void syncStackDismissVisibleTaskDataForProgress(
             StackDismissGestureState state,
-            StackDismissSiblingMove move,
-            float visibleOffset) {
-        if (state == null || move == null || move.taskView == null) {
+            float progress) {
+        if (state == null
+                || state.recentsView == null
+                || state.siblingMoves.isEmpty()) {
             return;
         }
-        LauncherRecentsTaskVisuals.setNonGridScale(
-                move.taskView,
-                LauncherRecentsLayoutEngine.resolveStackScaleForVisibleOffset(
-                        state.recentsView,
-                        move.taskView,
-                        visibleOffset));
-        LauncherRecentsTaskVisuals.setAttachAlpha(move.taskView, move.startAttachAlpha);
-        LauncherRecentsTaskVisuals.setStableAlpha(move.taskView, move.startStableAlpha);
-        LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(move.taskView, move.startHeadAlpha);
+        int bucket = Math.round(
+                LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f)
+                        * STACK_DISMISS_VISIBLE_DATA_PROGRESS_BUCKETS);
+        if (bucket == state.lastVisibleDataProgressBucket) {
+            return;
+        }
+        state.lastVisibleDataProgressBucket = bucket;
+        forceEnsureStackVisibleTaskData(state.recentsView, 15, false, false);
     }
 
     private static void preheatStackDismissVisibleTaskData(View recentsView) {
@@ -1478,29 +1469,8 @@ final class LauncherRecentsTouchController {
                     continue;
                 }
             }
-            float startAttachAlpha = LauncherRecentsTaskVisuals.readAttachAlpha(taskView);
-            float startStableAlpha = LauncherRecentsTaskVisuals.readStableAlpha(taskView);
-            float startHeadAlpha = LauncherRecentsTaskVisuals.readActivityTitleAlpha(taskView);
-            if (startAttachAlpha <= 0.01f && startStableAlpha <= 0.01f) {
-                continue;
-            }
-            float currentRawOffset = resolveStackDismissRawOffset(state.recentsView, i);
             StackDismissSiblingMove move = new StackDismissSiblingMove(
                     taskView,
-                    currentRawOffset,
-                    LauncherRecentsCompat.readFloatField(
-                            taskView,
-                            isPrimaryScrollHorizontal(state.recentsView)
-                                    ? "dismissTranslationX"
-                                    : "dismissTranslationY",
-                            0f),
-                    LauncherRecentsCompat.readFloatField(
-                            taskView,
-                            "horizontalOffsetTranslationX",
-                            0f),
-                    startAttachAlpha,
-                    startStableAlpha,
-                    startHeadAlpha,
                     visibleOffsets[i],
                     visibleOffsets[i]);
             if (trailingSibling) {
@@ -1802,14 +1772,19 @@ final class LauncherRecentsTouchController {
             if (Math.abs(targetOffsets[i] - startOffsets[i]) > 0.5f) {
                 hasMove = true;
             }
+        }
+        if (!hasMove) {
+            return;
+        }
+        state.lastVisibleDataProgressBucket = Integer.MIN_VALUE;
+        for (int i = 0; i < moveCount; i++) {
+            View taskView = state.siblingMoves.get(i).taskView;
             applyStackDismissPostRemoveVisibleOffset(
                     state.recentsView,
                     taskView,
                     startOffsets[i]);
         }
-        if (!hasMove) {
-            return;
-        }
+        applyStackDismissFrameLayout(state.recentsView, "dismissPostRemoveStart");
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(STACK_DISMISS_POST_REMOVE_ANIM_MS);
         animator.setInterpolator(new DecelerateInterpolator(1.45f));
@@ -1825,7 +1800,17 @@ final class LauncherRecentsTouchController {
                                 targetOffsets[i],
                                 progress));
             }
+            applyStackDismissFrameLayout(state.recentsView, "dismissPostRemoveFrame");
+            syncStackDismissVisibleTaskDataForProgress(state, progress);
             state.recentsView.invalidate();
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                clearStackDismissVisibleOffsets();
+                applyStackDismissFrameLayout(state.recentsView, "dismissPostRemoveEnd");
+                forceEnsureStackVisibleTaskData(state.recentsView, 15);
+            }
         });
         animator.start();
     }
@@ -1841,30 +1826,7 @@ final class LauncherRecentsTouchController {
         if (index < 0) {
             return;
         }
-        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
-        float rawOffset = resolveStackDismissRawOffset(recentsView, index);
-        float dismissTranslation = LauncherRecentsCompat.readFloatField(
-                taskView,
-                primaryScrollHorizontal ? "dismissTranslationX" : "dismissTranslationY",
-                0f);
-        float taskOffsetPrimary = visibleOffset - rawOffset - dismissTranslation;
-        if (primaryScrollHorizontal) {
-            float horizontalOffsetX = LauncherRecentsCompat.readFloatField(
-                    taskView,
-                    "horizontalOffsetTranslationX",
-                    0f);
-            LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(
-                    taskView,
-                    taskOffsetPrimary - horizontalOffsetX);
-        } else {
-            LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(taskView, taskOffsetPrimary);
-        }
-        LauncherRecentsTaskVisuals.setNonGridScale(
-                taskView,
-                LauncherRecentsLayoutEngine.resolveStackScaleForVisibleOffset(
-                        recentsView,
-                        taskView,
-                        visibleOffset));
+        STACK_DISMISS_VISIBLE_OFFSETS.put(taskView, visibleOffset);
     }
 
     private static void scheduleStackDismissPostRemoveCallbacks(View recentsView) {
@@ -1950,6 +1912,7 @@ final class LauncherRecentsTouchController {
             SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
             SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
             setStackDismissPostRemoveAnimationActive(recentsView, false);
+            clearStackDismissVisibleOffsets();
             LauncherRecentsLayoutEngine.requestStackLayout(
                     recentsView,
                     "nativeDismissFinishInactive",
@@ -1965,6 +1928,7 @@ final class LauncherRecentsTouchController {
         SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
         SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
         setStackDismissPostRemoveAnimationActive(recentsView, false);
+        clearStackDismissVisibleOffsets();
         recentsView.invalidate();
     }
 
@@ -2167,6 +2131,7 @@ final class LauncherRecentsTouchController {
         ValueAnimator animator;
         boolean dragging;
         float currentDismissTranslation;
+        int lastVisibleDataProgressBucket = Integer.MIN_VALUE;
 
         StackDismissGestureState(View recentsView, View taskView, MotionEvent motionEvent) {
             this.recentsView = recentsView;
@@ -2219,32 +2184,14 @@ final class LauncherRecentsTouchController {
 
     private static final class StackDismissSiblingMove {
         final View taskView;
-        final float startRawOffsetPx;
-        final float startDismissTranslationPrimaryPx;
-        final float startHorizontalOffsetX;
-        final float startAttachAlpha;
-        final float startStableAlpha;
-        final float startHeadAlpha;
         final float startVisibleOffsetPx;
         float targetVisibleOffsetPx;
 
         StackDismissSiblingMove(
                 View taskView,
-                float startRawOffsetPx,
-                float startDismissTranslationPrimaryPx,
-                float startHorizontalOffsetX,
-                float startAttachAlpha,
-                float startStableAlpha,
-                float startHeadAlpha,
                 float startVisibleOffsetPx,
                 float targetVisibleOffsetPx) {
             this.taskView = taskView;
-            this.startRawOffsetPx = startRawOffsetPx;
-            this.startDismissTranslationPrimaryPx = startDismissTranslationPrimaryPx;
-            this.startHorizontalOffsetX = startHorizontalOffsetX;
-            this.startAttachAlpha = startAttachAlpha;
-            this.startStableAlpha = startStableAlpha;
-            this.startHeadAlpha = startHeadAlpha;
             this.startVisibleOffsetPx = startVisibleOffsetPx;
             this.targetVisibleOffsetPx = targetVisibleOffsetPx;
         }
