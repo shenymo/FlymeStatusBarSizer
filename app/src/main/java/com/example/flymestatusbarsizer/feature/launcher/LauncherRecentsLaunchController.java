@@ -158,9 +158,6 @@ final class LauncherRecentsLaunchController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
-                if (LauncherRecentsTouchController.handleStackDismissSetCurrentPage(thisObject)) {
-                    return null;
-                }
                 if (shouldSuppressTaskLaunchPageMutation(thisObject)) {
                     if (thisObject instanceof View) {
                         LauncherRecentsTouchController.clearRecentsDeferredSnap((View) thisObject);
@@ -750,9 +747,7 @@ final class LauncherRecentsLaunchController {
 
     static boolean shouldSuppressTaskLaunchSynchronousLayout(View recentsView) {
         return recentsView != null
-                && (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
-                || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(
-                recentsView));
+                && LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView);
     }
 
     private static boolean shouldSuppressTaskLaunchRecentsViewTransform(Object thisObject) {
@@ -895,9 +890,6 @@ final class LauncherRecentsLaunchController {
     }
 
     static boolean shouldSuppressRecentsLaunchScrollMutation(Object thisObject) {
-        if (LauncherRecentsTouchController.shouldBypassStackDismissScrollSuppression()) {
-            return false;
-        }
         if (!(thisObject instanceof View)) {
             return false;
         }

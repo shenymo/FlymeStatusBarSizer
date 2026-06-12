@@ -126,7 +126,6 @@ final class LauncherRecentsLayoutEngine {
         final float taskPrimarySize;
         final float taskCenteredPrimaryStartPx;
         final float nativeDismissTranslationPrimary;
-        final Float stackDismissVisibleOffset;
         final LauncherRecentsState.GestureReleaseTaskState gestureReleaseTaskState;
         final LauncherRecentsState.BlankTapHomeExitTaskState blankTapExitState;
 
@@ -140,7 +139,6 @@ final class LauncherRecentsLayoutEngine {
                 float taskPrimarySize,
                 float taskCenteredPrimaryStartPx,
                 float nativeDismissTranslationPrimary,
-                Float stackDismissVisibleOffset,
                 LauncherRecentsState.GestureReleaseTaskState gestureReleaseTaskState,
                 LauncherRecentsState.BlankTapHomeExitTaskState blankTapExitState) {
             this.taskView = taskView;
@@ -152,7 +150,6 @@ final class LauncherRecentsLayoutEngine {
             this.taskPrimarySize = taskPrimarySize;
             this.taskCenteredPrimaryStartPx = taskCenteredPrimaryStartPx;
             this.nativeDismissTranslationPrimary = nativeDismissTranslationPrimary;
-            this.stackDismissVisibleOffset = stackDismissVisibleOffset;
             this.gestureReleaseTaskState = gestureReleaseTaskState;
             this.blankTapExitState = blankTapExitState;
         }
@@ -1395,10 +1392,6 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsLaunchController.applyFrozenTaskLaunchLayout(recentsView);
             return false;
         }
-        if (LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(recentsView)
-                && !LauncherRecentsTouchController.shouldBypassStackDismissLayoutFreeze()) {
-            return false;
-        }
         if (shouldBlockAppToRecentsStackApply(recentsView)) {
             return false;
         }
@@ -1451,7 +1444,6 @@ final class LauncherRecentsLayoutEngine {
                 stackLayoutRadius,
                 fillBoundaryTargetCount,
                 stableFillWindow);
-        appendStackDismissLayoutIndices(recentsView, activeIndices, taskViewCount);
         ArrayList<Integer> lastActiveIndices =
                 LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.get(recentsView);
         ArrayList<Integer> processIndices = resolveStackLayoutProcessIndices(
@@ -1698,18 +1690,6 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
-    private static void appendStackDismissLayoutIndices(
-            View recentsView,
-            ArrayList<Integer> target,
-            int taskViewCount) {
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (LauncherRecentsTouchController.hasStackDismissVisibleOffset(taskView)) {
-                appendStackLayoutIndex(target, i, taskViewCount);
-            }
-        }
-    }
-
     private static ArrayList<Integer> resolveStackLayoutProcessIndices(
             int taskViewCount,
             ArrayList<Integer> activeIndices,
@@ -1836,15 +1816,8 @@ final class LauncherRecentsLayoutEngine {
         float nativeDismissTranslationPrimary = readTaskPrimaryDismissTranslation(
                 taskView,
                 context.primaryScrollHorizontal);
-        float dismissTranslationX = LauncherRecentsTouchController
-                .shouldSuppressNativeDismissTranslation(context.recentsView)
-                ? 0f
-                : nativeDismissTranslationPrimary;
-        // Keep the stock gap-closing animation, but remap its logical page position into
-        // the compressed stack so sibling cards move into the dismissed slot instead of
-        // adding a second full-page horizontal shift on top of it.
         float layoutRawOffset = rawOffset + context.edgeScrollCorrection;
-        float physicalRawOffset = layoutRawOffset + dismissTranslationX;
+        float physicalRawOffset = layoutRawOffset + nativeDismissTranslationPrimary;
         float effectiveRawOffset = physicalRawOffset;
         float progress = effectiveRawOffset / context.pageSpan;
         float layoutProgress = resolveStackReleaseSettledProgress(
@@ -1879,7 +1852,6 @@ final class LauncherRecentsLayoutEngine {
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx,
                 nativeDismissTranslationPrimary,
-                LauncherRecentsTouchController.readStackDismissVisibleOffset(taskView),
                 gestureReleaseTaskState,
                 LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.get(taskView));
     }
@@ -1917,9 +1889,6 @@ final class LauncherRecentsLayoutEngine {
                     STACK_RELEASE_INITIAL_SPREAD_RATIO,
                     1.0f,
                     smoothStep(context.stackReleaseProgress));
-        }
-        if (input.stackDismissVisibleOffset != null) {
-            desiredVisibleOffset = input.stackDismissVisibleOffset;
         }
         if (input.gestureReleaseTaskState != null) {
             desiredVisibleOffset = lerp(
@@ -2228,9 +2197,6 @@ final class LauncherRecentsLayoutEngine {
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
-                && (!LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(
-                recentsView)
-                || LauncherRecentsTouchController.shouldBypassStackDismissLayoutFreeze())
                 && !shouldBlockAppToRecentsStackApply(recentsView);
     }
 
@@ -2440,11 +2406,6 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
-                recentsView))
-                && (!LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(
-                recentsView)
-                || LauncherRecentsTouchController.shouldBypassStackDismissLayoutFreeze()
-                || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(
                 recentsView));
     }
 
@@ -2571,18 +2532,13 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                 recentsView)
                 || isStackLayoutRecoveryActive(recentsView))
-                && (!LauncherRecentsTouchController.isStackDismissPostRemoveAnimationActive(
-                recentsView)
-                || LauncherRecentsTouchController.shouldBypassStackDismissLayoutFreeze())
                 && !shouldBlockAppToRecentsStackApply(recentsView);
     }
 
     static boolean shouldSuppressStockLayoutMutation(View recentsView) {
         return recentsView != null
                 && (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
-                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
-                || LauncherRecentsTouchController.shouldSuppressStackDismissPageMutation(
-                recentsView));
+                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView));
     }
 
     static void reapplyOriginalTransforms(View recentsView) {

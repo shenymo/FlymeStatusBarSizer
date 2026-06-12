@@ -20,7 +20,6 @@ import android.view.animation.OvershootInterpolator;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.WeakHashMap;
 
 final class LauncherRecentsTouchController {
@@ -30,8 +29,6 @@ final class LauncherRecentsTouchController {
             "com.android.launcher3.uioverrides.touchcontrollers.TaskViewTouchControllerDeprecated";
     private static final long STACK_DISMISS_SUCCESS_ANIM_MS = 180L;
     private static final long STACK_DISMISS_CANCEL_ANIM_MS = 320L;
-    private static final long STACK_DISMISS_POST_REMOVE_ANIM_MS = 180L;
-    private static final int STACK_DISMISS_VISIBLE_DATA_PROGRESS_BUCKETS = 10;
     private static final float STACK_DISMISS_SECONDARY_DOMINANCE = 1.2f;
     private static final float STACK_DISMISS_MIN_FLING_VELOCITY = -1200f;
     private static final float STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO = 1.40f;
@@ -48,22 +45,10 @@ final class LauncherRecentsTouchController {
             new ThreadLocal<>();
     private static final WeakHashMap<View, StackDismissGestureState> STACK_DISMISS_GESTURES =
             new WeakHashMap<>();
-    private static final WeakHashMap<View, Float> STACK_DISMISS_VISIBLE_OFFSETS =
-            new WeakHashMap<>();
     private static final WeakHashMap<View, ArrayList<Integer>> STACK_VISIBLE_TASK_IDS =
             new WeakHashMap<>();
     private static final WeakHashMap<View, StackVisibleTaskDataSyncState>
             STACK_VISIBLE_TASK_DATA_SYNC_STATES = new WeakHashMap<>();
-    private static final WeakHashMap<View, Boolean> SILENT_NATIVE_DISMISS_RECENTS =
-            new WeakHashMap<>();
-    private static final WeakHashMap<View, SilentNativeDismissAnchor> SILENT_NATIVE_DISMISS_ANCHORS =
-            new WeakHashMap<>();
-    private static final WeakHashMap<View, Boolean> STACK_DISMISS_POST_REMOVE_RECENTS =
-            new WeakHashMap<>();
-    private static final ThreadLocal<Boolean> STACK_DISMISS_LAYOUT_FREEZE_BYPASS =
-            new ThreadLocal<>();
-    private static final ThreadLocal<Boolean> STACK_DISMISS_SCROLL_SUPPRESSION_BYPASS =
-            new ThreadLocal<>();
 
     private LauncherRecentsTouchController() {
     }
@@ -89,10 +74,6 @@ final class LauncherRecentsTouchController {
         hookRecentsViewLoadVisibleTaskDataForStack(module, loader);
         hookTaskViewListVisibilityForStack(module, loader);
         hookTaskViewAppFlowVisibilityForStack(module, loader);
-        hookRecentsViewResetTaskVisualsForSilentDismiss(module, loader);
-        hookRecentsViewUpdateTaskSizeForSilentDismiss(module, loader);
-        hookTaskViewNativeDismissTransformsForSilentDismiss(module, loader);
-        hookRecentsViewDismissAnimationEnds(module, loader);
     }
 
     private static void hookPagedViewOnInterceptTouchEvent(
@@ -111,13 +92,6 @@ final class LauncherRecentsTouchController {
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
                     keepAppToRecentsEntryHeadsVisibleOnTouchDown(recentsView, motionEvent);
-                    if (isStackDismissPostRemoveAnimationActive(recentsView)) {
-                        if (shouldConsumeStackDismissPostRemoveTouch(recentsView, motionEvent)) {
-                            logStackFlow("touch:intercept:consumePostRemove",
-                                    recentsView, motionEvent, null);
-                            return true;
-                        }
-                    }
                     if (handleMovingStackBlankTapHomeExit(recentsView, motionEvent)) {
                         logStackFlow("touch:intercept:movingBlankTapHome",
                                 recentsView, motionEvent, null);
@@ -162,13 +136,6 @@ final class LauncherRecentsTouchController {
                     boolean overviewTakeover = !entryTakeover
                             && takeOverOverviewStateOnHorizontalMove(recentsView, motionEvent);
                     clearGestureReleaseTaskStatesOnUserMove(recentsView, motionEvent);
-                    if (isStackDismissPostRemoveAnimationActive(recentsView)) {
-                        if (shouldConsumeStackDismissPostRemoveTouch(recentsView, motionEvent)) {
-                            logStackFlow("touch:event:consumePostRemove",
-                                    recentsView, motionEvent, null);
-                            return true;
-                        }
-                    }
                     if (handleMovingStackBlankTapHomeExit(recentsView, motionEvent)) {
                         logStackFlow("touch:event:movingBlankTapHome",
                                 recentsView, motionEvent, null);
@@ -655,7 +622,7 @@ final class LauncherRecentsTouchController {
                     }
                 }
                 if (thisObject instanceof View
-                        && !isStackDismissReflowActive((View) thisObject)) {
+                        && !isStackDismissDragActive((View) thisObject)) {
                     Object arg0 = chain.getArg(0);
                     int changes = arg0 instanceof Integer ? (Integer) arg0 : 15;
                     forceEnsureStackVisibleTaskData((View) thisObject, changes);
@@ -707,179 +674,8 @@ final class LauncherRecentsTouchController {
         }
     }
 
-    private static void hookRecentsViewResetTaskVisualsForSilentDismiss(
-            FlymeStatusBarSizer module,
-            ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod("resetTaskVisuals");
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object thisObject = chain.getThisObject();
-                if (thisObject instanceof View
-                        && isSilentNativeDismissActive((View) thisObject)) {
-                    return null;
-                }
-                return chain.proceed();
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook RecentsView.resetTaskVisuals",
-                    t);
-        }
-    }
-
-    private static void hookRecentsViewDismissAnimationEnds(
-            FlymeStatusBarSizer module,
-            ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod("onDismissAnimationEnds");
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object result = chain.proceed();
-                Object thisObject = chain.getThisObject();
-                if (thisObject instanceof View) {
-                    View recentsView = (View) thisObject;
-                    if (isSilentNativeDismissActive(recentsView)) {
-                        clearNativeDismissTransforms(recentsView);
-                        recentsView.invalidate();
-                        scheduleSilentNativeDismissFinish(recentsView);
-                    }
-                }
-                return result;
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook RecentsView.onDismissAnimationEnds",
-                    t);
-        }
-    }
-
-    private static void hookRecentsViewUpdateTaskSizeForSilentDismiss(
-            FlymeStatusBarSizer module,
-            ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod("updateTaskSize");
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object thisObject = chain.getThisObject();
-                if (thisObject instanceof View
-                        && isSilentNativeDismissActive((View) thisObject)) {
-                    return null;
-                }
-                return chain.proceed();
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook RecentsView.updateTaskSize",
-                    t);
-        }
-    }
-
-    private static void hookTaskViewNativeDismissTransformsForSilentDismiss(
-            FlymeStatusBarSizer module,
-            ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(LauncherRecentsCompat.TASK_VIEW_CLASS, false, loader);
-            Method translationMethod = clazz.getDeclaredMethod("setDismissTranslationX", float.class);
-            translationMethod.setAccessible(true);
-            module.intercept(translationMethod, chain -> {
-                Object thisObject = chain.getThisObject();
-                if (thisObject instanceof View
-                        && shouldSuppressNativeTaskDismissTransform((View) thisObject)) {
-                    resetNativeDismissTranslationX((View) thisObject);
-                    return null;
-                }
-                return chain.proceed();
-            });
-            Method scaleMethod = clazz.getDeclaredMethod("setDismissScale", float.class);
-            scaleMethod.setAccessible(true);
-            module.intercept(scaleMethod, chain -> {
-                Object thisObject = chain.getThisObject();
-                if (thisObject instanceof View
-                        && shouldSuppressNativeTaskDismissTransform((View) thisObject)) {
-                    resetNativeDismissScale((View) thisObject);
-                    return null;
-                }
-                return chain.proceed();
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook TaskView native dismiss transforms",
-                    t);
-        }
-    }
-
-    static Float readStackDismissVisibleOffset(View taskView) {
-        return STACK_DISMISS_VISIBLE_OFFSETS.get(taskView);
-    }
-
-    static boolean hasStackDismissVisibleOffset(View taskView) {
-        return STACK_DISMISS_VISIBLE_OFFSETS.containsKey(taskView);
-    }
-
-    private static boolean hasActiveStackDismissVisibleOffsets() {
-        return !STACK_DISMISS_VISIBLE_OFFSETS.isEmpty();
-    }
-
-    private static boolean isStackDismissReflowActive(View recentsView) {
-        return recentsView != null
-                && (STACK_DISMISS_GESTURES.containsKey(recentsView)
-                || hasActiveStackDismissVisibleOffsets());
-    }
-
-    private static boolean isSilentNativeDismissActive(View recentsView) {
-        return Boolean.TRUE.equals(SILENT_NATIVE_DISMISS_RECENTS.get(recentsView))
-                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView);
-    }
-
-    static boolean shouldSuppressNativeDismissTranslation(View recentsView) {
-        return isSilentNativeDismissActive(recentsView)
-                || isStackDismissPostRemoveAnimationActive(recentsView);
-    }
-
-    static boolean isStackDismissPostRemoveAnimationActive(View recentsView) {
-        return Boolean.TRUE.equals(STACK_DISMISS_POST_REMOVE_RECENTS.get(recentsView));
-    }
-
-    static boolean shouldBypassStackDismissLayoutFreeze() {
-        return Boolean.TRUE.equals(STACK_DISMISS_LAYOUT_FREEZE_BYPASS.get());
-    }
-
-    private static boolean shouldSuppressNativeTaskDismissTransform(View taskView) {
-        View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
-        return isSilentNativeDismissActive(recentsView)
-                || isStackDismissPostRemoveAnimationActive(recentsView);
-    }
-
-    static boolean shouldBypassStackDismissScrollSuppression() {
-        return Boolean.TRUE.equals(STACK_DISMISS_SCROLL_SUPPRESSION_BYPASS.get());
-    }
-
-    static boolean shouldSuppressStackDismissPageMutation(Object thisObject) {
-        return thisObject instanceof View
-                && LauncherRecentsCompat.isRecentsViewObject(thisObject)
-                && (isSilentNativeDismissActive((View) thisObject)
-                || isStackDismissPostRemoveAnimationActive((View) thisObject));
-    }
-
-    static boolean handleStackDismissSetCurrentPage(Object thisObject) {
-        if (!shouldSuppressStackDismissPageMutation(thisObject)) {
-            return false;
-        }
-        View recentsView = (View) thisObject;
-        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
-        if (pageCount > 0) {
-            SilentNativeDismissAnchor anchor = SILENT_NATIVE_DISMISS_ANCHORS.get(recentsView);
-            int page = anchor != null
-                    ? Math.min(anchor.targetPage, pageCount - 1)
-                    : resolveNearestStackDismissPageForScroll(recentsView, pageCount);
-            setStackDismissCurrentPageKeepingScroll(recentsView, page);
-        }
-        clearRecentsDeferredSnap(recentsView);
-        return true;
+    private static boolean isStackDismissDragActive(View recentsView) {
+        return recentsView != null && STACK_DISMISS_GESTURES.containsKey(recentsView);
     }
 
     private static Boolean handleStackDismissControllerTouch(
@@ -1011,19 +807,6 @@ final class LauncherRecentsTouchController {
                 || LauncherRecentsCompat.isDesktopTask(taskView)
                 || taskView.getVisibility() != View.VISIBLE
                 || taskView.getAlpha() <= 0.01f
-                || taskView.getWidth() <= 0
-                || taskView.getHeight() <= 0) {
-            return false;
-        }
-        return !(recentsView instanceof ViewGroup)
-                || ((ViewGroup) recentsView).indexOfChild(taskView) >= 0;
-    }
-
-    private static boolean isStackDismissReflowTaskCandidate(View recentsView, View taskView) {
-        if (recentsView == null
-                || taskView == null
-                || LauncherRecentsCompat.isDesktopTask(taskView)
-                || taskView.getVisibility() != View.VISIBLE
                 || taskView.getWidth() <= 0
                 || taskView.getHeight() <= 0) {
             return false;
@@ -1234,7 +1017,6 @@ final class LauncherRecentsTouchController {
         LauncherRecentsTaskVisuals.setTranslationZ(
                 state.taskView,
                 state.originalTranslationZ);
-        prepareStackDismissSiblingMoves(state);
         applyStackDismissProgress(state, state.currentDismissTranslation);
         preheatStackDismissVisibleTaskData(state.recentsView);
     }
@@ -1301,10 +1083,7 @@ final class LauncherRecentsTouchController {
             float value = (Float) animation.getAnimatedValue();
             state.currentDismissTranslation = value;
             LauncherRecentsPerf.hit("animationFrame:dismissSuccess", state.recentsView);
-            applyStackDismissSuccessProgress(
-                    state,
-                    value,
-                    resolveStackDismissReflowProgress(state, value));
+            applyStackDismissProgress(state, value);
         });
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
@@ -1312,16 +1091,16 @@ final class LauncherRecentsTouchController {
                 state.animator = null;
                 logStackFlow("dismiss:animateSuccess:end",
                         state.recentsView, null, taskDetails(state.recentsView, state.taskView));
-                applyStackDismissSuccessProgress(state, end, 1f);
-                finishStackDismissAfterReflow(state);
+                applyStackDismissProgress(state, end);
+                finishStackDismissAfterSlideOut(state);
             }
         });
         animator.start();
     }
 
-    private static void finishStackDismissAfterReflow(StackDismissGestureState state) {
-        boolean dismissed = invokeNativeDismissTaskView(state);
-        logStackFlow("dismiss:afterReflow",
+    private static void finishStackDismissAfterSlideOut(StackDismissGestureState state) {
+        boolean dismissed = commitStackDismiss(state);
+        logStackFlow("dismiss:afterSlideOut",
                 state.recentsView,
                 null,
                 "dismissed=" + dismissed + " " + taskDetails(state.recentsView, state.taskView));
@@ -1360,166 +1139,12 @@ final class LauncherRecentsTouchController {
             StackDismissGestureState state,
             float dismissTranslation) {
         setStackDismissTranslation(state, dismissTranslation);
-        applyStackDismissReflowProgress(
-                state,
-                resolveStackDismissReflowProgress(state, dismissTranslation));
-    }
-
-    private static void applyStackDismissSuccessProgress(
-            StackDismissGestureState state,
-            float dismissTranslation,
-            float reflowProgress) {
-        setStackDismissTranslation(state, dismissTranslation);
-        applyStackDismissReflowProgress(state, LauncherRecentsLayoutEngine.clamp(
-                reflowProgress,
-                0f,
-                1f));
-    }
-
-    private static void applyStackDismissReflowProgress(
-            StackDismissGestureState state,
-            float progress) {
-        float clampedProgress = LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f);
-        for (int i = 0; i < state.siblingMoves.size(); i++) {
-            StackDismissSiblingMove move = state.siblingMoves.get(i);
-            float visibleOffset = LauncherRecentsLayoutEngine.lerp(
-                    move.startVisibleOffsetPx,
-                    move.targetVisibleOffsetPx,
-                    clampedProgress);
-            STACK_DISMISS_VISIBLE_OFFSETS.put(move.taskView, visibleOffset);
-        }
         LauncherRecentsTaskVisuals.setStableAlpha(state.taskView, state.originalStableAlpha);
-        applyStackDismissFrameLayout(state.recentsView, "dismissReflowFrame");
-        syncStackDismissVisibleTaskDataForProgress(state, clampedProgress);
         state.recentsView.invalidate();
-    }
-
-    private static void applyStackDismissFrameLayout(View recentsView, String source) {
-        Boolean previousLayoutBypass = STACK_DISMISS_LAYOUT_FREEZE_BYPASS.get();
-        STACK_DISMISS_LAYOUT_FREEZE_BYPASS.set(Boolean.TRUE);
-        try {
-            LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, source, false);
-        } finally {
-            if (previousLayoutBypass == null) {
-                STACK_DISMISS_LAYOUT_FREEZE_BYPASS.remove();
-            } else {
-                STACK_DISMISS_LAYOUT_FREEZE_BYPASS.set(previousLayoutBypass);
-            }
-        }
-    }
-
-    private static void syncStackDismissVisibleTaskDataForProgress(
-            StackDismissGestureState state,
-            float progress) {
-        if (state == null
-                || state.recentsView == null
-                || state.siblingMoves.isEmpty()) {
-            return;
-        }
-        int bucket = Math.round(
-                LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f)
-                        * STACK_DISMISS_VISIBLE_DATA_PROGRESS_BUCKETS);
-        if (bucket == state.lastVisibleDataProgressBucket) {
-            return;
-        }
-        state.lastVisibleDataProgressBucket = bucket;
-        forceEnsureStackVisibleTaskData(state.recentsView, 15, false, false);
     }
 
     private static void preheatStackDismissVisibleTaskData(View recentsView) {
         forceEnsureStackVisibleTaskData(recentsView, 15);
-    }
-
-    private static float resolveStackDismissReflowProgress(
-            StackDismissGestureState state,
-            float dismissTranslation) {
-        float moved = state.dismissDirectionSign
-                * (dismissTranslation - state.startDismissTranslation);
-        return LauncherRecentsLayoutEngine.clamp(
-                moved / Math.max(1f, resolveStackDismissDistance(state)),
-                0f,
-                1f);
-    }
-
-    private static void prepareStackDismissSiblingMoves(StackDismissGestureState state) {
-        state.siblingMoves.clear();
-        clearStackDismissVisibleOffsets();
-        int dismissedIndex = findTaskViewIndex(state.recentsView, state.taskView);
-        if (dismissedIndex < 0) {
-            return;
-        }
-        int taskViewCount =
-                LauncherRecentsCompat.invokeInt(state.recentsView, "getTaskViewCount", 0);
-        float[] visibleOffsets = resolveStackDismissCurrentVisibleOffsets(
-                state.recentsView,
-                taskViewCount);
-        float dismissedVisibleOffset = visibleOffsets[dismissedIndex];
-        ArrayList<StackDismissSiblingMove> trailingMoves = new ArrayList<>();
-        ArrayList<StackDismissSiblingMove> leadingMoves = new ArrayList<>();
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(state.recentsView, i);
-            if (!isStackDismissReflowTaskCandidate(state.recentsView, taskView)
-                    || taskView == state.taskView) {
-                continue;
-            }
-            boolean trailingSibling = visibleOffsets[i] > dismissedVisibleOffset + 0.5f;
-            boolean leadingSibling = visibleOffsets[i] < dismissedVisibleOffset - 0.5f;
-            if (!trailingSibling) {
-                if (!leadingSibling) {
-                    continue;
-                }
-            }
-            StackDismissSiblingMove move = new StackDismissSiblingMove(
-                    taskView,
-                    visibleOffsets[i],
-                    visibleOffsets[i]);
-            if (trailingSibling) {
-                trailingMoves.add(move);
-            } else {
-                leadingMoves.add(move);
-            }
-        }
-        boolean useTrailingMoves = !trailingMoves.isEmpty();
-        ArrayList<StackDismissSiblingMove> moves =
-                useTrailingMoves ? trailingMoves : leadingMoves;
-        moves.sort((first, second) -> useTrailingMoves
-                ? Float.compare(first.startVisibleOffsetPx, second.startVisibleOffsetPx)
-                : Float.compare(second.startVisibleOffsetPx, first.startVisibleOffsetPx));
-        float targetVisibleOffset = dismissedVisibleOffset;
-        for (int i = 0; i < moves.size(); i++) {
-            StackDismissSiblingMove move = moves.get(i);
-            move.targetVisibleOffsetPx = targetVisibleOffset;
-            state.siblingMoves.add(move);
-            targetVisibleOffset = move.startVisibleOffsetPx;
-        }
-    }
-
-    private static float[] resolveStackDismissCurrentVisibleOffsets(
-            View recentsView,
-            int taskViewCount) {
-        float[] offsets = new float[taskViewCount];
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            offsets[i] = LauncherRecentsLayoutEngine.resolveStackTaskCurrentVisibleOffset(
-                    recentsView,
-                    taskView,
-                    i);
-        }
-        return offsets;
-    }
-
-    private static float resolveStackDismissRawOffset(View recentsView, int taskIndex) {
-        return LauncherRecentsCompat.invokeInt(
-                recentsView,
-                "getUnclampedScrollOffset",
-                LauncherRecentsCompat.INT_ARG,
-                LauncherRecentsCompat.invokeInt(
-                        recentsView,
-                        "getScrollOffset",
-                        LauncherRecentsCompat.INT_ARG,
-                        0,
-                        taskIndex),
-                taskIndex);
     }
 
     private static int findTaskViewIndex(View recentsView, View targetTaskView) {
@@ -1534,19 +1159,10 @@ final class LauncherRecentsTouchController {
 
     private static void resetStackDismissVisuals(StackDismissGestureState state) {
         state.cancelAnimator();
-        clearStackDismissVisibleOffsets();
         setStackDismissTranslation(state, state.startDismissTranslation);
         LauncherRecentsTaskVisuals.setStableAlpha(state.taskView, state.originalStableAlpha);
         LauncherRecentsTaskVisuals.setTranslationZ(state.taskView, state.originalTranslationZ);
-        LauncherRecentsLayoutEngine.requestStackLayout(
-                state.recentsView,
-                "dismissReset",
-                false,
-                false);
-    }
-
-    private static void clearStackDismissVisibleOffsets() {
-        STACK_DISMISS_VISIBLE_OFFSETS.clear();
+        state.recentsView.invalidate();
     }
 
     private static void clearStackDismissGesture(View recentsView, boolean resetVisuals) {
@@ -1626,259 +1242,30 @@ final class LauncherRecentsTouchController {
                 value);
     }
 
-    private static void clearNativeDismissTransforms(View recentsView) {
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
-                continue;
-            }
-            resetNativeDismissTranslationX(taskView);
-            LauncherRecentsCompat.invokeCompat(
-                    taskView,
-                    "setDismissTranslationY",
-                    LauncherRecentsCompat.FLOAT_ARG,
-                    0f);
-            resetNativeDismissScale(taskView);
-        }
-    }
-
-    private static void resetNativeDismissTranslationX(View taskView) {
-        LauncherRecentsCompat.writeField(taskView, "dismissTranslationX", 0f);
-        LauncherRecentsCompat.invokeCompat(
-                taskView,
-                "applyTranslationX",
-                LauncherRecentsCompat.NO_ARGS);
-    }
-
-    private static void resetNativeDismissScale(View taskView) {
-        LauncherRecentsCompat.writeField(taskView, "dismissScale", 1f);
-        LauncherRecentsCompat.invokeCompat(
-                taskView,
-                "applyScale",
-                LauncherRecentsCompat.NO_ARGS);
-    }
-
-    private static boolean invokeNativeDismissTaskView(StackDismissGestureState state) {
+    private static boolean commitStackDismiss(StackDismissGestureState state) {
         View recentsView = state != null ? state.recentsView : null;
         View taskView = state != null ? state.taskView : null;
-        logStackFlow("dismiss:native:start",
-                recentsView, null, taskDetails(recentsView, taskView));
         Class<?> taskViewClass = resolveTaskViewBaseClass(taskView);
         if (!(recentsView instanceof ViewGroup) || taskViewClass == null) {
-            logStackFlow("dismiss:native:missingClass",
+            logStackFlow("dismiss:commit:missingClass",
                     recentsView, null, taskDetails(recentsView, taskView));
             return false;
         }
-        int targetPage = resolveSilentNativeDismissAnchorPage(recentsView, taskView);
-        rememberSilentNativeDismissAnchor(recentsView, targetPage);
-        if (LauncherRecentsCompat.invokeBoolean(taskView, "isRunningTask", false)
-                && LauncherRecentsCompat.invokeMethodReflectively(
-                recentsView,
-                "finishRecentsAnimation",
-                new Class<?>[]{boolean.class, boolean.class, Runnable.class},
-                true,
-                false,
-                (Runnable) () -> commitManualNativeDismiss(
-                        state,
-                        taskViewClass,
-                        targetPage))) {
-            return true;
-        }
-        return commitManualNativeDismiss(
-                state,
-                taskViewClass,
-                targetPage);
-    }
-
-    private static boolean commitManualNativeDismiss(
-            StackDismissGestureState state,
-            Class<?> taskViewClass,
-            int targetPage) {
-        View recentsView = state != null ? state.recentsView : null;
-        View taskView = state != null ? state.taskView : null;
-        logStackFlow("dismiss:native:commit",
-                recentsView,
-                null,
-                "targetPage=" + targetPage + " " + taskDetails(recentsView, taskView));
-        float[] postRemoveStartOffsets = captureStackDismissPostRemoveStartOffsets(state);
-        setStackDismissPostRemoveAnimationActive(recentsView, true);
         boolean removedTask = LauncherRecentsCompat.invokeMethodReflectively(
                 recentsView,
                 "removeTaskInternal",
                 new Class<?>[]{taskViewClass},
                 taskView);
         if (!removedTask) {
-            logStackFlow("dismiss:native:removeFailed",
+            logStackFlow("dismiss:commit:removeFailed",
                     recentsView, null, taskDetails(recentsView, taskView));
-            finishSilentNativeDismiss(recentsView);
             return false;
         }
-        removeDismissedTaskFromGridState(recentsView, taskView);
         ((ViewGroup) recentsView).removeViewInLayout(taskView);
-        clearStackDismissVisibleOffsets();
-        LauncherRecentsCompat.writeField(recentsView, "mPendingAnimation", null);
-        clearTaskViewsDismissPrimaryTranslations(recentsView);
-        clearNativeDismissTransforms(recentsView);
-        applyStackDismissFinalLayout(recentsView);
-        animateStackDismissPostRemoveMoves(state, postRemoveStartOffsets);
+        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
+        LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, "dismiss");
         recentsView.invalidate();
-        scheduleStackDismissPostRemoveCallbacks(recentsView);
         return true;
-    }
-
-    private static float[] captureStackDismissPostRemoveStartOffsets(
-            StackDismissGestureState state) {
-        if (state == null || state.siblingMoves.isEmpty()) {
-            return new float[0];
-        }
-        float[] offsets = new float[state.siblingMoves.size()];
-        for (int i = 0; i < state.siblingMoves.size(); i++) {
-            View taskView = state.siblingMoves.get(i).taskView;
-            int index = findTaskViewIndex(state.recentsView, taskView);
-            offsets[i] = index >= 0
-                    ? LauncherRecentsLayoutEngine.resolveStackTaskCurrentVisibleOffset(
-                    state.recentsView,
-                    taskView,
-                    index)
-                    : state.siblingMoves.get(i).targetVisibleOffsetPx;
-        }
-        return offsets;
-    }
-
-    private static void animateStackDismissPostRemoveMoves(
-            StackDismissGestureState state,
-            float[] startOffsets) {
-        if (state == null
-                || startOffsets == null
-                || startOffsets.length == 0
-                || state.siblingMoves.isEmpty()) {
-            return;
-        }
-        int moveCount = Math.min(startOffsets.length, state.siblingMoves.size());
-        float[] targetOffsets = new float[moveCount];
-        boolean hasMove = false;
-        for (int i = 0; i < moveCount; i++) {
-            View taskView = state.siblingMoves.get(i).taskView;
-            int index = findTaskViewIndex(state.recentsView, taskView);
-            if (index < 0) {
-                targetOffsets[i] = startOffsets[i];
-                continue;
-            }
-            targetOffsets[i] = LauncherRecentsLayoutEngine.resolveStackTaskCurrentVisibleOffset(
-                    state.recentsView,
-                    taskView,
-                    index);
-            if (Math.abs(targetOffsets[i] - startOffsets[i]) > 0.5f) {
-                hasMove = true;
-            }
-        }
-        if (!hasMove) {
-            return;
-        }
-        state.lastVisibleDataProgressBucket = Integer.MIN_VALUE;
-        for (int i = 0; i < moveCount; i++) {
-            View taskView = state.siblingMoves.get(i).taskView;
-            applyStackDismissPostRemoveVisibleOffset(
-                    state.recentsView,
-                    taskView,
-                    startOffsets[i]);
-        }
-        applyStackDismissFrameLayout(state.recentsView, "dismissPostRemoveStart");
-        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
-        animator.setDuration(STACK_DISMISS_POST_REMOVE_ANIM_MS);
-        animator.setInterpolator(new DecelerateInterpolator(1.45f));
-        animator.addUpdateListener(animation -> {
-            float progress = (Float) animation.getAnimatedValue();
-            for (int i = 0; i < moveCount; i++) {
-                View taskView = state.siblingMoves.get(i).taskView;
-                applyStackDismissPostRemoveVisibleOffset(
-                        state.recentsView,
-                        taskView,
-                        LauncherRecentsLayoutEngine.lerp(
-                                startOffsets[i],
-                                targetOffsets[i],
-                                progress));
-            }
-            applyStackDismissFrameLayout(state.recentsView, "dismissPostRemoveFrame");
-            syncStackDismissVisibleTaskDataForProgress(state, progress);
-            state.recentsView.invalidate();
-        });
-        animator.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                clearStackDismissVisibleOffsets();
-                applyStackDismissFrameLayout(state.recentsView, "dismissPostRemoveEnd");
-                forceEnsureStackVisibleTaskData(state.recentsView, 15);
-            }
-        });
-        animator.start();
-    }
-
-    private static void applyStackDismissPostRemoveVisibleOffset(
-            View recentsView,
-            View taskView,
-            float visibleOffset) {
-        if (!isStackDismissReflowTaskCandidate(recentsView, taskView)) {
-            return;
-        }
-        int index = findTaskViewIndex(recentsView, taskView);
-        if (index < 0) {
-            return;
-        }
-        STACK_DISMISS_VISIBLE_OFFSETS.put(taskView, visibleOffset);
-    }
-
-    private static void scheduleStackDismissPostRemoveCallbacks(View recentsView) {
-        if (recentsView == null) {
-            return;
-        }
-        recentsView.postOnAnimation(() -> {
-            LauncherRecentsCompat.invokeMethodReflectively(
-                    recentsView,
-                    "dispatchScrollChanged",
-                    LauncherRecentsCompat.NO_ARGS);
-            LauncherRecentsCompat.invokeMethodReflectively(
-                    recentsView,
-                    "updateActionsViewFocusedScroll",
-                    LauncherRecentsCompat.NO_ARGS);
-            LauncherRecentsCompat.invokeMethodReflectively(
-                    recentsView,
-                    "updateCurrentTaskActionsVisibility",
-                    LauncherRecentsCompat.NO_ARGS);
-            boolean dispatchedDismissEnd = LauncherRecentsCompat.invokeMethodReflectively(
-                    recentsView,
-                    "onDismissAnimationEnds",
-                    LauncherRecentsCompat.NO_ARGS);
-            if (!dispatchedDismissEnd) {
-                scheduleSilentNativeDismissFinish(recentsView);
-            }
-            recentsView.invalidate();
-        });
-    }
-
-    private static void rememberSilentNativeDismissAnchor(
-            View recentsView,
-            int targetPage) {
-        if (recentsView == null) {
-            return;
-        }
-        settleStackDismissLayoutState(recentsView);
-        SILENT_NATIVE_DISMISS_RECENTS.put(recentsView, Boolean.TRUE);
-        SILENT_NATIVE_DISMISS_ANCHORS.put(recentsView, new SilentNativeDismissAnchor(targetPage));
-    }
-
-    private static int resolveSilentNativeDismissAnchorPage(View recentsView, View dismissedTaskView) {
-        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
-        if (pageCount <= 1) {
-            return 0;
-        }
-        int nearestPage = resolveNearestStackDismissPageForScroll(recentsView, pageCount);
-        int dismissedIndex = findTaskViewIndex(recentsView, dismissedTaskView);
-        if (dismissedIndex >= 0 && dismissedIndex < nearestPage) {
-            nearestPage--;
-        }
-        return Math.max(0, Math.min(nearestPage, pageCount - 2));
     }
 
     private static void settleStackDismissLayoutState(View recentsView) {
@@ -1888,204 +1275,6 @@ final class LauncherRecentsTouchController {
         LauncherRecentsState.setPendingGestureRecentsStackRelease(recentsView, false);
         LauncherRecentsState.setPendingGestureRecentsStackReleaseHandoff(recentsView, false);
         clearStackAppFlowVisibilityCache();
-    }
-
-    private static void scheduleSilentNativeDismissFinish(View recentsView) {
-        if (recentsView == null) {
-            return;
-        }
-        logStackFlow("dismiss:native:scheduleFinish", recentsView, null, null);
-        recentsView.postOnAnimation(() -> {
-            if (isSilentNativeDismissActive(recentsView)) {
-                clearNativeDismissTransforms(recentsView);
-                recentsView.invalidate();
-            }
-            recentsView.postOnAnimation(() -> {
-                finishSilentNativeDismiss(recentsView);
-            });
-        });
-    }
-
-    private static void finishSilentNativeDismiss(View recentsView) {
-        if (!isSilentNativeDismissActive(recentsView)) {
-            logStackFlow("dismiss:native:finishInactive", recentsView, null, null);
-            SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
-            SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
-            setStackDismissPostRemoveAnimationActive(recentsView, false);
-            clearStackDismissVisibleOffsets();
-            LauncherRecentsLayoutEngine.requestStackLayout(
-                    recentsView,
-                    "nativeDismissFinishInactive",
-                    false,
-                    false);
-            if (recentsView != null) {
-                recentsView.invalidate();
-            }
-            return;
-        }
-        logStackFlow("dismiss:native:finish", recentsView, null, null);
-        clearNativeDismissTransforms(recentsView);
-        SILENT_NATIVE_DISMISS_RECENTS.remove(recentsView);
-        SILENT_NATIVE_DISMISS_ANCHORS.remove(recentsView);
-        setStackDismissPostRemoveAnimationActive(recentsView, false);
-        clearStackDismissVisibleOffsets();
-        recentsView.invalidate();
-    }
-
-    private static boolean shouldConsumeStackDismissPostRemoveTouch(
-            View recentsView,
-            MotionEvent motionEvent) {
-        if (motionEvent != null
-                && motionEvent.getActionMasked() == MotionEvent.ACTION_DOWN) {
-            logStackFlow("dismiss:postRemove:newDown", recentsView, motionEvent, null);
-            releasePagedTouchForStackDismiss(recentsView);
-            finishSilentNativeDismiss(recentsView);
-            return false;
-        }
-        releasePagedTouchForStackDismiss(recentsView);
-        if (motionEvent != null
-                && (motionEvent.getActionMasked() == MotionEvent.ACTION_UP
-                || motionEvent.getActionMasked() == MotionEvent.ACTION_CANCEL)) {
-            logStackFlow("dismiss:postRemove:end", recentsView, motionEvent, null);
-            finishSilentNativeDismiss(recentsView);
-        }
-        return true;
-    }
-
-    private static void setStackDismissPostRemoveAnimationActive(
-            View recentsView,
-            boolean active) {
-        if (recentsView == null) {
-            return;
-        }
-        if (active) {
-            STACK_DISMISS_POST_REMOVE_RECENTS.put(recentsView, Boolean.TRUE);
-        } else {
-            STACK_DISMISS_POST_REMOVE_RECENTS.remove(recentsView);
-        }
-    }
-
-    private static void applyStackDismissFinalLayout(View recentsView) {
-        Boolean previousLayoutBypass = STACK_DISMISS_LAYOUT_FREEZE_BYPASS.get();
-        Boolean previousScrollBypass = STACK_DISMISS_SCROLL_SUPPRESSION_BYPASS.get();
-        STACK_DISMISS_LAYOUT_FREEZE_BYPASS.set(Boolean.TRUE);
-        STACK_DISMISS_SCROLL_SUPPRESSION_BYPASS.set(Boolean.TRUE);
-        try {
-            runStackDismissPendingLayout(recentsView);
-            syncStackDismissPageKeepingScroll(recentsView);
-            LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
-            LauncherRecentsLayoutEngine.applyStackLayout(
-                    recentsView,
-                    false,
-                    "dismissFinalLayout",
-                    false);
-            forceEnsureStackVisibleTaskData(recentsView, 15);
-        } finally {
-            if (previousLayoutBypass == null) {
-                STACK_DISMISS_LAYOUT_FREEZE_BYPASS.remove();
-            } else {
-                STACK_DISMISS_LAYOUT_FREEZE_BYPASS.set(previousLayoutBypass);
-            }
-            if (previousScrollBypass == null) {
-                STACK_DISMISS_SCROLL_SUPPRESSION_BYPASS.remove();
-            } else {
-                STACK_DISMISS_SCROLL_SUPPRESSION_BYPASS.set(previousScrollBypass);
-            }
-        }
-    }
-
-    private static void runStackDismissPendingLayout(View recentsView) {
-        if (recentsView == null
-                || recentsView.getWidth() <= 0
-                || recentsView.getHeight() <= 0) {
-            return;
-        }
-        LauncherRecentsCompat.setBooleanField(recentsView, "mPendingLayoutRequested", true);
-        LauncherRecentsCompat.invokeMethodReflectively(
-                recentsView,
-                "onLayout",
-                new Class<?>[]{
-                        boolean.class,
-                        int.class,
-                        int.class,
-                        int.class,
-                        int.class
-                },
-                false,
-                recentsView.getLeft(),
-                recentsView.getTop(),
-                recentsView.getRight(),
-                recentsView.getBottom());
-    }
-
-    private static void syncStackDismissPageKeepingScroll(View recentsView) {
-        if (recentsView == null) {
-            return;
-        }
-        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
-        if (pageCount <= 0) {
-            return;
-        }
-        SilentNativeDismissAnchor anchor = SILENT_NATIVE_DISMISS_ANCHORS.get(recentsView);
-        int page = anchor != null
-                ? Math.min(anchor.targetPage, pageCount - 1)
-                : resolveNearestStackDismissPageForScroll(recentsView, pageCount);
-        setStackDismissCurrentPageKeepingScroll(recentsView, page);
-    }
-
-    private static void removeDismissedTaskFromGridState(View recentsView, View taskView) {
-        int taskViewId = LauncherRecentsCompat.invokeInt(taskView, "getTaskViewId", -1);
-        if (taskViewId == -1) {
-            return;
-        }
-        Object topRowIdSet = LauncherRecentsCompat.getFieldCompat(recentsView, "mTopRowIdSet");
-        LauncherRecentsCompat.invokeCompat(
-                topRowIdSet,
-                "remove",
-                LauncherRecentsCompat.INT_ARG,
-                taskViewId);
-    }
-
-    private static void clearTaskViewsDismissPrimaryTranslations(View recentsView) {
-        Object value =
-                LauncherRecentsCompat.getFieldCompat(recentsView, "mTaskViewsDismissPrimaryTranslations");
-        if (value instanceof Map) {
-            ((Map<?, ?>) value).clear();
-        }
-    }
-
-    private static void setStackDismissCurrentPageKeepingScroll(View recentsView, int page) {
-        int pageScroll = resolveStackDismissScrollForPage(recentsView, page);
-        LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", page);
-        LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", page);
-        LauncherRecentsCompat.setIntField(recentsView, "mNextPage", page);
-        LauncherRecentsCompat.setIntField(
-                recentsView,
-                "mCurrentPageScrollDiff",
-                resolvePrimaryScroll(recentsView) - pageScroll);
-    }
-
-    private static int resolveStackDismissScrollForPage(View recentsView, int page) {
-        return LauncherRecentsCompat.invokeInt(
-                recentsView,
-                "getScrollForPage",
-                LauncherRecentsCompat.INT_ARG,
-                resolvePrimaryScroll(recentsView),
-                page);
-    }
-
-    private static int resolveNearestStackDismissPageForScroll(View recentsView, int pageCount) {
-        int primaryScroll = resolvePrimaryScroll(recentsView);
-        int nearestPage = 0;
-        int nearestDistance = Integer.MAX_VALUE;
-        for (int i = 0; i < pageCount; i++) {
-            int distance = Math.abs(resolveStackDismissScrollForPage(recentsView, i) - primaryScroll);
-            if (distance < nearestDistance) {
-                nearestDistance = distance;
-                nearestPage = i;
-            }
-        }
-        return nearestPage;
     }
 
     private static Class<?> resolveTaskViewBaseClass(View taskView) {
@@ -2119,7 +1308,6 @@ final class LauncherRecentsTouchController {
     private static final class StackDismissGestureState {
         final View recentsView;
         final View taskView;
-        final ArrayList<StackDismissSiblingMove> siblingMoves = new ArrayList<>();
         final float downRawX;
         final float downRawY;
         final boolean secondaryDismissHorizontal;
@@ -2131,7 +1319,6 @@ final class LauncherRecentsTouchController {
         ValueAnimator animator;
         boolean dragging;
         float currentDismissTranslation;
-        int lastVisibleDataProgressBucket = Integer.MIN_VALUE;
 
         StackDismissGestureState(View recentsView, View taskView, MotionEvent motionEvent) {
             this.recentsView = recentsView;
@@ -2182,29 +1369,6 @@ final class LauncherRecentsTouchController {
         }
     }
 
-    private static final class StackDismissSiblingMove {
-        final View taskView;
-        final float startVisibleOffsetPx;
-        float targetVisibleOffsetPx;
-
-        StackDismissSiblingMove(
-                View taskView,
-                float startVisibleOffsetPx,
-                float targetVisibleOffsetPx) {
-            this.taskView = taskView;
-            this.startVisibleOffsetPx = startVisibleOffsetPx;
-            this.targetVisibleOffsetPx = targetVisibleOffsetPx;
-        }
-    }
-
-    private static final class SilentNativeDismissAnchor {
-        final int targetPage;
-
-        SilentNativeDismissAnchor(int targetPage) {
-            this.targetPage = targetPage;
-        }
-    }
-
     private static boolean shouldExposeStackTaskForDismissVisibility(
             View recentsView,
             View taskView) {
@@ -2235,8 +1399,7 @@ final class LauncherRecentsTouchController {
                     && taskView.getHeight() > 0;
         }
         return taskView.getVisibility() == View.VISIBLE
-                && (readStackTaskDataAlpha(taskView) > STACK_LEFT_RELEASE_ALPHA_THRESHOLD
-                || hasStackDismissVisibleOffset(taskView))
+                && readStackTaskDataAlpha(taskView) > STACK_LEFT_RELEASE_ALPHA_THRESHOLD
                 && taskView.getWidth() > 0
                 && taskView.getHeight() > 0
                 && isStackTaskWithinVisibleDataBounds(recentsView, taskView);
@@ -2288,8 +1451,7 @@ final class LauncherRecentsTouchController {
         float viewportStart = -taskSize;
         float viewportEnd = resolvePrimarySize(recentsView, primaryScrollHorizontal)
                 * (1f + STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO);
-        return hasStackDismissVisibleOffset(taskView)
-                || (taskStart + taskSize > viewportStart && taskStart < viewportEnd);
+        return taskStart + taskSize > viewportStart && taskStart < viewportEnd;
     }
 
     private static boolean shouldSuppressStackTaskDataUnload(View taskView, int changes) {
@@ -2505,9 +1667,6 @@ final class LauncherRecentsTouchController {
             int scrollBucket,
             boolean forceRelease) {
         if (state == null || forceRelease || isLastStackVisibleTaskIdsEmpty(recentsView)) {
-            return false;
-        }
-        if (hasActiveStackDismissVisibleOffsets()) {
             return false;
         }
         return state.taskViewCount == taskViewCount
@@ -2916,10 +2075,7 @@ final class LauncherRecentsTouchController {
                             anchorIndex,
                             taskViewCount,
                             targetCount);
-                    return appendStackDismissVisibleTaskDataIndices(
-                            recentsView,
-                            indices,
-                            taskViewCount);
+                    return indices;
                 }
                 for (int i = 1; indices.size() < targetCount; i++) {
                     appendStackVisibleTaskDataIndex(indices, anchorIndex - i, taskViewCount);
@@ -2928,10 +2084,7 @@ final class LauncherRecentsTouchController {
                     }
                     appendStackVisibleTaskDataIndex(indices, anchorIndex + i, taskViewCount);
                 }
-                return appendStackDismissVisibleTaskDataIndices(
-                        recentsView,
-                        indices,
-                        taskViewCount);
+                return indices;
             }
             for (int i = 1; i <= radius; i++) {
                 appendStackVisibleTaskDataIndex(indices, anchorIndex - i, taskViewCount);
@@ -2939,17 +2092,14 @@ final class LauncherRecentsTouchController {
             for (int i = 1; i <= radius; i++) {
                 appendStackVisibleTaskDataIndex(indices, anchorIndex + i, taskViewCount);
             }
-            return appendStackDismissVisibleTaskDataIndices(
-                    recentsView,
-                    indices,
-                    taskViewCount);
+            return indices;
         }
         int start = Math.max(0, anchorIndex - radius);
         int end = Math.min(taskViewCount - 1, anchorIndex + radius);
         for (int i = start; i <= end; i++) {
             indices.add(i);
         }
-        return appendStackDismissVisibleTaskDataIndices(recentsView, indices, taskViewCount);
+        return indices;
     }
 
     private static void appendStableStackVisibleTaskDataIndices(
@@ -2989,19 +2139,6 @@ final class LauncherRecentsTouchController {
         if (index >= 0 && index < taskViewCount && !target.contains(index)) {
             target.add(index);
         }
-    }
-
-    private static ArrayList<Integer> appendStackDismissVisibleTaskDataIndices(
-            View recentsView,
-            ArrayList<Integer> target,
-            int taskViewCount) {
-        for (int i = 0; i < taskViewCount; i++) {
-            if (hasStackDismissVisibleOffset(
-                    LauncherRecentsCompat.getTaskViewAt(recentsView, i))) {
-                appendStackVisibleTaskDataIndex(target, i, taskViewCount);
-            }
-        }
-        return target;
     }
 
     private static boolean shouldUseStackEntryVisibleTaskDataWindow(View recentsView) {
