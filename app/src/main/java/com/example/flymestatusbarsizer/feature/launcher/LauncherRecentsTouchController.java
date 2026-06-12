@@ -1251,6 +1251,13 @@ final class LauncherRecentsTouchController {
                     recentsView, null, taskDetails(recentsView, taskView));
             return false;
         }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        int dismissedIndex = findTaskViewIndex(recentsView, taskView);
+        int targetPage = resolveStackVisibleTaskDataAnchorIndex(recentsView, taskViewCount);
+        if (dismissedIndex >= 0 && targetPage > dismissedIndex) {
+            targetPage--;
+        }
+        targetPage = Math.max(0, Math.min(targetPage, Math.max(0, taskViewCount - 2)));
         boolean removedTask = LauncherRecentsCompat.invokeMethodReflectively(
                 recentsView,
                 "removeTaskInternal",
@@ -1262,6 +1269,7 @@ final class LauncherRecentsTouchController {
             return false;
         }
         ((ViewGroup) recentsView).removeViewInLayout(taskView);
+        setStackDismissPage(recentsView, targetPage);
         LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
         LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, "dismiss");
         recentsView.invalidate();
@@ -2519,6 +2527,24 @@ final class LauncherRecentsTouchController {
         return isPrimaryScrollHorizontal(recentsView)
                 ? recentsView.getScrollX()
                 : recentsView.getScrollY();
+    }
+
+    private static void setStackDismissPage(View recentsView, int page) {
+        int primaryScroll = LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getScrollForPage",
+                LauncherRecentsCompat.INT_ARG,
+                resolvePrimaryScroll(recentsView),
+                page);
+        if (isPrimaryScrollHorizontal(recentsView)) {
+            recentsView.scrollTo(primaryScroll, recentsView.getScrollY());
+        } else {
+            recentsView.scrollTo(recentsView.getScrollX(), primaryScroll);
+        }
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", page);
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", page);
+        LauncherRecentsCompat.setIntField(recentsView, "mNextPage", page);
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentPageScrollDiff", 0);
     }
 
     private static boolean isPrimaryScrollHorizontal(View recentsView) {
