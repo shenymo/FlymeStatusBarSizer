@@ -97,6 +97,28 @@ final class LauncherRecentsTaskVisuals {
                     && stackContentBlurEnabled == other.stackContentBlurEnabled
                     && clearShadow == other.clearShadow;
         }
+
+        StackTaskVisualState lerpTo(StackTaskVisualState target, float progress) {
+            if (target == null) {
+                return this;
+            }
+            return new StackTaskVisualState(
+                    target.pivotX,
+                    target.pivotY,
+                    LauncherRecentsLayoutEngine.lerp(horizontalOffsetX, target.horizontalOffsetX, progress),
+                    LauncherRecentsLayoutEngine.lerp(taskOffsetX, target.taskOffsetX, progress),
+                    LauncherRecentsLayoutEngine.lerp(taskOffsetY, target.taskOffsetY, progress),
+                    LauncherRecentsLayoutEngine.lerp(boxTranslationY, target.boxTranslationY, progress),
+                    LauncherRecentsLayoutEngine.lerp(scale, target.scale, progress),
+                    LauncherRecentsLayoutEngine.lerp(attachAlpha, target.attachAlpha, progress),
+                    LauncherRecentsLayoutEngine.lerp(stableAlpha, target.stableAlpha, progress),
+                    LauncherRecentsLayoutEngine.lerp(activityTitleAlpha, target.activityTitleAlpha, progress),
+                    LauncherRecentsLayoutEngine.lerp(blurProgress, target.blurProgress, progress),
+                    LauncherRecentsLayoutEngine.lerp(fullscreenProgress, target.fullscreenProgress, progress),
+                    LauncherRecentsLayoutEngine.lerp(translationZ, target.translationZ, progress),
+                    target.stackContentBlurEnabled,
+                    target.clearShadow);
+        }
     }
 
     static void applyStackTaskVisualState(View taskView, StackTaskVisualState state) {
