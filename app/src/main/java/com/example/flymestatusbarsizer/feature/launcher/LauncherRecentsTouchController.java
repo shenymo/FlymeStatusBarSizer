@@ -1459,53 +1459,24 @@ final class LauncherRecentsTouchController {
         }
         int taskViewCount =
                 LauncherRecentsCompat.invokeInt(state.recentsView, "getTaskViewCount", 0);
-        ArrayList<Integer> activeIndices =
-                LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.get(state.recentsView);
         float[] visibleOffsets = resolveStackDismissCurrentVisibleOffsets(
                 state.recentsView,
                 taskViewCount);
         float dismissedVisibleOffset = visibleOffsets[dismissedIndex];
-        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(state.recentsView);
-        boolean hasTrailingSibling = false;
+        ArrayList<StackDismissSiblingMove> trailingMoves = new ArrayList<>();
+        ArrayList<StackDismissSiblingMove> leadingMoves = new ArrayList<>();
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(state.recentsView, i);
             if (!isStackDismissReflowTaskCandidate(state.recentsView, taskView)
                     || taskView == state.taskView) {
                 continue;
             }
-            boolean trailingSibling = primaryScrollHorizontal
-                    ? visibleOffsets[i] > dismissedVisibleOffset + 0.5f
-                    : i > dismissedIndex;
+            boolean trailingSibling = visibleOffsets[i] > dismissedVisibleOffset + 0.5f;
+            boolean leadingSibling = visibleOffsets[i] < dismissedVisibleOffset - 0.5f;
             if (!trailingSibling) {
-                continue;
-            }
-            if (activeIndices != null && !activeIndices.contains(i)) {
-                continue;
-            }
-            float startAttachAlpha = LauncherRecentsTaskVisuals.readAttachAlpha(taskView);
-            float startStableAlpha = LauncherRecentsTaskVisuals.readStableAlpha(taskView);
-            if (startAttachAlpha > 0.01f || startStableAlpha > 0.01f) {
-                hasTrailingSibling = true;
-                break;
-            }
-        }
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(state.recentsView, i);
-            if (!isStackDismissReflowTaskCandidate(state.recentsView, taskView)
-                    || taskView == state.taskView) {
-                continue;
-            }
-            boolean trailingSibling = primaryScrollHorizontal
-                    ? visibleOffsets[i] > dismissedVisibleOffset + 0.5f
-                    : i > dismissedIndex;
-            boolean leadingSibling = primaryScrollHorizontal
-                    ? visibleOffsets[i] < dismissedVisibleOffset - 0.5f
-                    : i < dismissedIndex;
-            if (hasTrailingSibling ? !trailingSibling : !leadingSibling) {
-                continue;
-            }
-            if (activeIndices != null && !activeIndices.contains(i)) {
-                continue;
+                if (!leadingSibling) {
+                    continue;
+                }
             }
             float startAttachAlpha = LauncherRecentsTaskVisuals.readAttachAlpha(taskView);
             float startStableAlpha = LauncherRecentsTaskVisuals.readStableAlpha(taskView);
@@ -1514,10 +1485,7 @@ final class LauncherRecentsTouchController {
                 continue;
             }
             float currentRawOffset = resolveStackDismissRawOffset(state.recentsView, i);
-            float targetVisibleOffset = hasTrailingSibling
-                    ? visibleOffsets[Math.max(0, i - 1)]
-                    : visibleOffsets[Math.min(visibleOffsets.length - 1, i + 1)];
-            state.siblingMoves.add(new StackDismissSiblingMove(
+            StackDismissSiblingMove move = new StackDismissSiblingMove(
                     taskView,
                     currentRawOffset,
                     LauncherRecentsCompat.readFloatField(
@@ -1534,7 +1502,25 @@ final class LauncherRecentsTouchController {
                     startStableAlpha,
                     startHeadAlpha,
                     visibleOffsets[i],
-                    targetVisibleOffset));
+                    visibleOffsets[i]);
+            if (trailingSibling) {
+                trailingMoves.add(move);
+            } else {
+                leadingMoves.add(move);
+            }
+        }
+        boolean useTrailingMoves = !trailingMoves.isEmpty();
+        ArrayList<StackDismissSiblingMove> moves =
+                useTrailingMoves ? trailingMoves : leadingMoves;
+        moves.sort((first, second) -> useTrailingMoves
+                ? Float.compare(first.startVisibleOffsetPx, second.startVisibleOffsetPx)
+                : Float.compare(second.startVisibleOffsetPx, first.startVisibleOffsetPx));
+        float targetVisibleOffset = dismissedVisibleOffset;
+        for (int i = 0; i < moves.size(); i++) {
+            StackDismissSiblingMove move = moves.get(i);
+            move.targetVisibleOffsetPx = targetVisibleOffset;
+            state.siblingMoves.add(move);
+            targetVisibleOffset = move.startVisibleOffsetPx;
         }
     }
 
@@ -2240,7 +2226,7 @@ final class LauncherRecentsTouchController {
         final float startStableAlpha;
         final float startHeadAlpha;
         final float startVisibleOffsetPx;
-        final float targetVisibleOffsetPx;
+        float targetVisibleOffsetPx;
 
         StackDismissSiblingMove(
                 View taskView,
