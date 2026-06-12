@@ -17,6 +17,8 @@ final class LauncherRecentsState {
     // App-to-recents entry animation.
     static final WeakHashMap<View, ValueAnimator> ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS =
             new WeakHashMap<>();
+    static final WeakHashMap<View, ValueAnimator> ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS =
+            new WeakHashMap<>();
     static final WeakHashMap<View, Float> GESTURE_STACK_RELEASE_PROGRESS =
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> FORCED_RECENTS_TRANSLATION_XS =

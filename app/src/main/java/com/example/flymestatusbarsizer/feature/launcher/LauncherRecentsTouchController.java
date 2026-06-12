@@ -1318,13 +1318,24 @@ final class LauncherRecentsTouchController {
         HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> adjustedStartStates =
                 new HashMap<>();
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
-        for (View taskView : startStates.keySet()) {
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null) {
+                continue;
+            }
             LauncherRecentsTaskVisuals.StackTaskVisualState targetState =
                     LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.get(taskView);
             int taskIndex = findTaskViewIndex(recentsView, taskView);
             if (targetState != null && taskIndex >= 0) {
                 targetStates.put(taskView, targetState);
                 StackDismissRelayoutStartState startState = startStates.get(taskView);
+                if (startState == null) {
+                    adjustedStartStates.put(
+                            taskView,
+                            createStackDismissHiddenStartState(targetState));
+                    continue;
+                }
                 adjustedStartStates.put(
                         taskView,
                         adjustStackDismissRelayoutStartState(
@@ -1340,6 +1351,11 @@ final class LauncherRecentsTouchController {
         }
         if (targetStates.isEmpty()) {
             return;
+        }
+        ValueAnimator runningAnimator =
+                LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.remove(recentsView);
+        if (runningAnimator != null) {
+            runningAnimator.cancel();
         }
         for (View taskView : targetStates.keySet()) {
             LauncherRecentsTaskVisuals.applyStackTaskVisualState(
@@ -1363,7 +1379,43 @@ final class LauncherRecentsTouchController {
                 }
             }
         });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.get(recentsView)
+                        == animation) {
+                    LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.remove(recentsView);
+                }
+            }
+        });
+        LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.put(recentsView, animator);
         animator.start();
+    }
+
+    static boolean isStackDismissRelayoutAnimationActive(View recentsView) {
+        return recentsView != null
+                && LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS
+                .containsKey(recentsView);
+    }
+
+    private static LauncherRecentsTaskVisuals.StackTaskVisualState createStackDismissHiddenStartState(
+            LauncherRecentsTaskVisuals.StackTaskVisualState targetState) {
+        return new LauncherRecentsTaskVisuals.StackTaskVisualState(
+                targetState.pivotX,
+                targetState.pivotY,
+                targetState.horizontalOffsetX,
+                targetState.taskOffsetX,
+                targetState.taskOffsetY,
+                targetState.boxTranslationY,
+                targetState.scale,
+                0f,
+                0f,
+                0f,
+                targetState.stackContentBlurEnabled ? 1f : 0f,
+                targetState.fullscreenProgress,
+                targetState.translationZ,
+                targetState.stackContentBlurEnabled,
+                targetState.clearShadow);
     }
 
     private static LauncherRecentsTaskVisuals.StackTaskVisualState

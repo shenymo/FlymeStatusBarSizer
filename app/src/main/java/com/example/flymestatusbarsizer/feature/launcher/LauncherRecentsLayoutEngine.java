@@ -394,7 +394,9 @@ final class LauncherRecentsLayoutEngine {
                     // 【方案三 3-B】手势释放动画运行期间，动画帧回调已经负责 apply layout，
                     // 此处跳过冗余触发，避免每帧重复计算 3~5 次堆叠布局
                     if (LauncherRecentsTransitionController
-                            .isGestureRecentsStackReleaseAnimationActive(recentsView)) {
+                            .isGestureRecentsStackReleaseAnimationActive(recentsView)
+                            || LauncherRecentsTouchController
+                            .isStackDismissRelayoutAnimationActive(recentsView)) {
                         return result;
                     }
                     if (!LauncherRecentsCompat.invokeBoolean(
@@ -1121,6 +1123,11 @@ final class LauncherRecentsLayoutEngine {
         }
         if (LauncherRecentsState.hasActiveTaskLaunchTransitionGeometry(recentsView)) {
             LauncherRecentsPerf.flow("layout:runScheduled:skipTaskLaunch",
+                    recentsView, "source=" + pendingState.source);
+            return;
+        }
+        if (LauncherRecentsTouchController.isStackDismissRelayoutAnimationActive(recentsView)) {
+            LauncherRecentsPerf.flow("layout:runScheduled:skipDismissRelayout",
                     recentsView, "source=" + pendingState.source);
             return;
         }

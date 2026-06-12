@@ -102,6 +102,7 @@ final class LauncherRecentsTaskVisuals {
             if (target == null) {
                 return this;
             }
+            float clampedProgress = LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f);
             return new StackTaskVisualState(
                     target.pivotX,
                     target.pivotY,
@@ -109,13 +110,13 @@ final class LauncherRecentsTaskVisuals {
                     LauncherRecentsLayoutEngine.lerp(taskOffsetX, target.taskOffsetX, progress),
                     LauncherRecentsLayoutEngine.lerp(taskOffsetY, target.taskOffsetY, progress),
                     LauncherRecentsLayoutEngine.lerp(boxTranslationY, target.boxTranslationY, progress),
-                    LauncherRecentsLayoutEngine.lerp(scale, target.scale, progress),
-                    LauncherRecentsLayoutEngine.lerp(attachAlpha, target.attachAlpha, progress),
-                    LauncherRecentsLayoutEngine.lerp(stableAlpha, target.stableAlpha, progress),
-                    LauncherRecentsLayoutEngine.lerp(activityTitleAlpha, target.activityTitleAlpha, progress),
-                    LauncherRecentsLayoutEngine.lerp(blurProgress, target.blurProgress, progress),
-                    LauncherRecentsLayoutEngine.lerp(fullscreenProgress, target.fullscreenProgress, progress),
-                    LauncherRecentsLayoutEngine.lerp(translationZ, target.translationZ, progress),
+                    LauncherRecentsLayoutEngine.lerp(scale, target.scale, clampedProgress),
+                    LauncherRecentsLayoutEngine.lerp(attachAlpha, target.attachAlpha, clampedProgress),
+                    LauncherRecentsLayoutEngine.lerp(stableAlpha, target.stableAlpha, clampedProgress),
+                    LauncherRecentsLayoutEngine.lerp(activityTitleAlpha, target.activityTitleAlpha, clampedProgress),
+                    LauncherRecentsLayoutEngine.lerp(blurProgress, target.blurProgress, clampedProgress),
+                    LauncherRecentsLayoutEngine.lerp(fullscreenProgress, target.fullscreenProgress, clampedProgress),
+                    LauncherRecentsLayoutEngine.lerp(translationZ, target.translationZ, clampedProgress),
                     target.stackContentBlurEnabled,
                     target.clearShadow);
         }
