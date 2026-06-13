@@ -164,6 +164,7 @@ final class LauncherRecentsLayoutEngine {
         hookRecentsViewMethod(module, loader, "updatePageOffsetsForFlyme");
         hookRecentsViewMethod(module, loader, "updateHorizontalOffset");
         hookRecentsViewMethod(module, loader, "updateTaskViewsSnapshotRadius");
+        hookRecentsViewMethod(module, loader, "updateCurveProperties");
         hookRecentsViewMethod(module, loader, "applyAttachAlpha");
         hookRecentsViewMethod(module, loader, "resetTaskVisuals");
         hookRecentsViewSetTaskIconVisible(module, loader);
@@ -502,8 +503,53 @@ final class LauncherRecentsLayoutEngine {
             if (parent instanceof ViewGroup) {
                 ((ViewGroup) parent).setClipChildren(false);
             }
+            ensureStackClearAllButtonReady(recentsView);
         } finally {
             LauncherRecentsPerf.end("prepareRecentsView", perfStartNs);
+        }
+    }
+
+    static void ensureStackClearAllButtonReady(View recentsView) {
+        if (recentsView == null
+                || !shouldUseStackLayout(recentsView)
+                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)) {
+            return;
+        }
+        Object value = LauncherRecentsCompat.invokeCompat(recentsView, "getClearAllButton");
+        if (!(value instanceof View)) {
+            return;
+        }
+        View clearAllButton = (View) value;
+        LauncherRecentsCompat.invokeCompat(
+                clearAllButton,
+                "setScrollAlpha",
+                LauncherRecentsCompat.FLOAT_ARG,
+                1f);
+        LauncherRecentsCompat.invokeCompat(
+                clearAllButton,
+                "setContentAlpha",
+                LauncherRecentsCompat.FLOAT_ARG,
+                1f);
+        LauncherRecentsCompat.invokeCompat(
+                clearAllButton,
+                "setDismissAlpha",
+                LauncherRecentsCompat.FLOAT_ARG,
+                1f);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "trySetClearAllBtnAlpha",
+                LauncherRecentsCompat.FLOAT_ARG,
+                1f);
+        LauncherRecentsCompat.invokeCompat(
+                clearAllButton,
+                "setVisibilityAlpha",
+                LauncherRecentsCompat.FLOAT_ARG,
+                1f);
+        LauncherRecentsCompat.invokeCompat(clearAllButton, "updateAlphaPublic");
+        if (clearAllButton.getAlpha() >= 0.1f) {
+            clearAllButton.setVisibility(View.VISIBLE);
+            clearAllButton.setEnabled(true);
+            clearAllButton.setClickable(true);
         }
     }
 

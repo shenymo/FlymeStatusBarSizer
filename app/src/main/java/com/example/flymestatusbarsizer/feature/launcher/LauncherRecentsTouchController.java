@@ -94,6 +94,7 @@ final class LauncherRecentsTouchController {
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
                     keepAppToRecentsEntryHeadsVisibleOnTouchDown(recentsView, motionEvent);
+                    ensureClearAllButtonReadyOnTouchDown(recentsView, motionEvent);
                     if (handleMovingStackBlankTapHomeExit(recentsView, motionEvent)) {
                         logStackFlow("touch:intercept:movingBlankTapHome",
                                 recentsView, motionEvent, null);
@@ -133,6 +134,7 @@ final class LauncherRecentsTouchController {
                         && motionEvent != null) {
                     View recentsView = (View) thisObject;
                     keepAppToRecentsEntryHeadsVisibleOnTouchDown(recentsView, motionEvent);
+                    ensureClearAllButtonReadyOnTouchDown(recentsView, motionEvent);
                     boolean entryTakeover =
                             takeOverAppToRecentsEntryOnHorizontalMove(recentsView, motionEvent);
                     boolean overviewTakeover = !entryTakeover
@@ -354,6 +356,15 @@ final class LauncherRecentsTouchController {
         logStackFlow("touch:entryDownHeads", recentsView, motionEvent, null);
         LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
         recentsView.invalidate();
+    }
+
+    private static void ensureClearAllButtonReadyOnTouchDown(
+            View recentsView,
+            MotionEvent motionEvent) {
+        if (motionEvent == null || motionEvent.getActionMasked() != MotionEvent.ACTION_DOWN) {
+            return;
+        }
+        LauncherRecentsLayoutEngine.ensureStackClearAllButtonReady(recentsView);
     }
 
     private static void clearGestureReleaseTaskStatesOnUserMove(
