@@ -759,12 +759,17 @@ public final class ClockHooks {
         if (!isPrimaryStatusBarClockView(view)) {
             return;
         }
+        FlymeStatusBarSizer.ClockConfigSnapshot config =
+                FlymeStatusBarSizer.loadClockConfig(view.getContext());
         ClockDetailPopupController controller = CLOCK_DETAIL_POPUPS.get(view);
         if (controller == null) {
+            if (config == null || !config.clockDetailPopupEnabled) {
+                return;
+            }
             controller = new ClockDetailPopupController(view);
             CLOCK_DETAIL_POPUPS.put(view, controller);
         }
-        controller.syncWithConfig(FlymeStatusBarSizer.loadClockConfig(view.getContext()));
+        controller.syncWithConfig(config);
     }
 
     private static void syncClockDetailPopup(TextView view) {

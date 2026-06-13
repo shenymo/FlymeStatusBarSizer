@@ -142,6 +142,9 @@ final class ClockDetailPopupController {
     private static Method trustedOverlayMethod;
     private static boolean trustedOverlayPrivateFlagsFieldResolved;
     private static Field trustedOverlayPrivateFlagsField;
+    private static boolean listenerInfoReflectionResolved;
+    private static Field viewListenerInfoField;
+    private static Field listenerInfoOnTouchListenerField;
 
     private final WeakReference<View> anchorRef;
     private final HostMode hostMode;
@@ -240,6 +243,9 @@ final class ClockDetailPopupController {
     private int[] originalAnchorPadding;
     private boolean originalAnchorBackgroundCaptured;
     private boolean anchorHighlighted;
+    private boolean anchorInteractionInstalled;
+    private View.OnTouchListener originalAnchorTouchListener;
+    private boolean originalAnchorClickable;
     private boolean anchorTapTracking;
     private float anchorTapDownX;
     private float anchorTapDownY;
@@ -391,12 +397,11 @@ final class ClockDetailPopupController {
         TextView anchor = (TextView) anchorView;
         boolean shouldEnable = config != null && config.clockDetailPopupEnabled;
         enabled = shouldEnable;
-        anchor.setHapticFeedbackEnabled(shouldEnable);
-        anchor.setClickable(false);
-        anchor.setOnClickListener(null);
-        anchor.setOnTouchListener(shouldEnable ? this::handleAnchorTouch : null);
-        if (!shouldEnable) {
+        if (shouldEnable) {
+            installAnchorInteraction(anchor);
+        } else {
             clearAnchorTapState();
+            restoreAnchorInteraction(anchor);
         }
         refreshActionGridConfig(config);
         if (isPopupShowing()) {
@@ -408,57 +413,130 @@ final class ClockDetailPopupController {
         }
     }
 
+    private void installAnchorInteraction(TextView anchor) {
+        if (anchor == null || anchorInteractionInstalled) {
+            return;
+        }
+        originalAnchorClickable = anchor.isClickable();
+        originalAnchorTouchListener = getCurrentOnTouchListener(anchor);
+        anchor.setClickable(true);
+        anchor.setOnTouchListener(this::handleAnchorTouch);
+        anchorInteractionInstalled = true;
+    }
+
+    private void restoreAnchorInteraction(TextView anchor) {
+        if (anchor == null || !anchorInteractionInstalled) {
+            return;
+        }
+        anchor.setOnTouchListener(originalAnchorTouchListener);
+        anchor.setClickable(originalAnchorClickable);
+        originalAnchorTouchListener = null;
+        originalAnchorClickable = false;
+        anchorInteractionInstalled = false;
+    }
+
+    private static View.OnTouchListener getCurrentOnTouchListener(View view) {
+        Object listenerInfo = getViewListenerInfo(view);
+        if (listenerInfo == null || listenerInfoOnTouchListenerField == null) {
+            return null;
+        }
+        try {
+            Object listener = listenerInfoOnTouchListenerField.get(listenerInfo);
+            return listener instanceof View.OnTouchListener
+                    ? (View.OnTouchListener) listener
+                    : null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static Object getViewListenerInfo(View view) {
+        if (view == null) {
+            return null;
+        }
+        resolveListenerInfoReflection();
+        if (viewListenerInfoField == null) {
+            return null;
+        }
+        try {
+            return viewListenerInfoField.get(view);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static void resolveListenerInfoReflection() {
+        if (listenerInfoReflectionResolved) {
+            return;
+        }
+        listenerInfoReflectionResolved = true;
+        try {
+            viewListenerInfoField = View.class.getDeclaredField("mListenerInfo");
+            viewListenerInfoField.setAccessible(true);
+            Class<?> listenerInfoClass = viewListenerInfoField.getType();
+            listenerInfoOnTouchListenerField =
+                    listenerInfoClass.getDeclaredField("mOnTouchListener");
+            listenerInfoOnTouchListenerField.setAccessible(true);
+        } catch (Throwable ignored) {
+            viewListenerInfoField = null;
+            listenerInfoOnTouchListenerField = null;
+        }
+    }
+
     void dismiss() {
         dismissInternal(true);
     }
 
     private boolean handleAnchorTouch(View view, MotionEvent event) {
         if (!(view instanceof TextView) || event == null || hostMode != HostMode.CLOCK || !enabled) {
-            return false;
+            return dispatchOriginalAnchorTouch(view, event);
         }
         TextView anchor = (TextView) view;
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 if (!isPointInsideAnchorTapTarget(anchor, event.getX(), event.getY())) {
                     clearAnchorTapState();
-                    return false;
+                    return dispatchOriginalAnchorTouch(view, event);
                 }
                 anchorTapTracking = true;
                 anchorTapDownX = event.getX();
                 anchorTapDownY = event.getY();
                 anchorTapDownTimeMs = event.getEventTime();
-                return true;
+                return dispatchOriginalAnchorTouch(view, event);
             case MotionEvent.ACTION_MOVE:
                 if (!anchorTapTracking) {
-                    return false;
+                    return dispatchOriginalAnchorTouch(view, event);
                 }
                 if (hasAnchorTapMovedEnough(event)) {
                     clearAnchorTapState();
-                    return false;
                 }
-                return true;
+                return dispatchOriginalAnchorTouch(view, event);
             case MotionEvent.ACTION_UP:
                 if (!anchorTapTracking) {
-                    return false;
+                    return dispatchOriginalAnchorTouch(view, event);
                 }
                 boolean shouldToggle = !hasAnchorTapMovedEnough(event)
                         && event.getEventTime() - anchorTapDownTimeMs <= ViewConfiguration.getTapTimeout()
                         && isPointInsideAnchorTapTarget(anchor, event.getX(), event.getY());
                 clearAnchorTapState();
                 if (!shouldToggle) {
-                    return false;
+                    return dispatchOriginalAnchorTouch(view, event);
                 }
-                anchor.performClick();
                 performClockHaptic(anchor);
                 toggleClockPopup();
                 return true;
             case MotionEvent.ACTION_CANCEL:
             case MotionEvent.ACTION_POINTER_DOWN:
                 clearAnchorTapState();
-                return false;
+                return dispatchOriginalAnchorTouch(view, event);
             default:
-                return anchorTapTracking;
+                return dispatchOriginalAnchorTouch(view, event);
         }
+    }
+
+    private boolean dispatchOriginalAnchorTouch(View view, MotionEvent event) {
+        return originalAnchorTouchListener != null
+                && originalAnchorTouchListener.onTouch(view, event);
     }
 
     private void clearAnchorTapState() {
