@@ -51,6 +51,8 @@ final class LauncherRecentsAttachController {
                 LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
                         recentsView,
                         true);
+                LauncherRecentsStateAnimationController.clearOverviewEntryState(recentsView);
+                LauncherRecentsLayoutEngine.hideStackClearAllButton(recentsView);
                 LauncherRecentsState.setSwipeUpGestureActive(recentsView, true);
                 LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
                 LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);

@@ -127,6 +127,7 @@ final class LauncherRecentsTransitionController {
                 }
                 Object result = chain.proceed();
                 if (recentsView != null
+                        && isRecentsGestureEndTarget(endTarget)
                         && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
@@ -323,7 +324,8 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsState.setPendingGestureRecentsStackReleaseHandoff(recentsView, false);
         LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
         LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
-        LauncherRecentsLayoutEngine.ensureStackClearAllButtonReady(recentsView);
+        LauncherRecentsStateAnimationController.clearOverviewEntryState(recentsView);
+        LauncherRecentsLayoutEngine.hideStackClearAllButton(recentsView);
     }
 
     private static void finishAppToRecentsGestureEnd(View recentsView) {

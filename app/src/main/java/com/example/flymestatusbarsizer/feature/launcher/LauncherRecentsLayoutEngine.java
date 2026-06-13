@@ -13,6 +13,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 
 final class LauncherRecentsLayoutEngine {
+    private static final String LAUNCHER_STATE_CLASS = "com.android.launcher3.LauncherState";
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
     private static final float STACK_ENTRY_INITIAL_SPREAD_RATIO = 0.8f;
     private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.05f;
@@ -512,7 +513,8 @@ final class LauncherRecentsLayoutEngine {
     static void ensureStackClearAllButtonReady(View recentsView) {
         if (recentsView == null
                 || !shouldUseStackLayout(recentsView)
-                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)) {
+                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
+                || !isStackClearAllButtonAllowed(recentsView)) {
             return;
         }
         Object value = LauncherRecentsCompat.invokeCompat(recentsView, "getClearAllButton");
@@ -550,6 +552,57 @@ final class LauncherRecentsLayoutEngine {
             clearAllButton.setVisibility(View.VISIBLE);
             clearAllButton.setEnabled(true);
             clearAllButton.setClickable(true);
+        }
+    }
+
+    private static boolean isStackClearAllButtonAllowed(View recentsView) {
+        if (LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
+                || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
+                || LauncherRecentsState.isPendingGestureRecentsStackReleaseHandoff(recentsView)
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
+                recentsView)
+                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsState.isOverviewStateStackSettled(recentsView)
+                || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView)) {
+            return true;
+        }
+        Object stateManager = LauncherRecentsCompat.invokeCompat(recentsView, "getStateManager");
+        return isClearAllButtonState(LauncherRecentsCompat.invokeCompat(stateManager, "getState"))
+                || isClearAllButtonState(
+                LauncherRecentsCompat.invokeCompat(stateManager, "getCurrentStableState"))
+                || isClearAllButtonState(
+                LauncherRecentsCompat.invokeCompat(stateManager, "getTargetState"));
+    }
+
+    private static boolean isClearAllButtonState(Object state) {
+        if (state == null) {
+            return false;
+        }
+        ClassLoader loader = state.getClass().getClassLoader();
+        Object overview = LauncherRecentsCompat.readStaticFieldCompat(
+                LAUNCHER_STATE_CLASS,
+                "OVERVIEW",
+                loader);
+        return state == overview;
+    }
+
+    static void hideStackClearAllButton(View recentsView) {
+        Object value = LauncherRecentsCompat.invokeCompat(recentsView, "getClearAllButton");
+        if (!(value instanceof View)) {
+            return;
+        }
+        View clearAllButton = (View) value;
+        LauncherRecentsCompat.invokeCompat(
+                clearAllButton,
+                "setVisibilityAlpha",
+                LauncherRecentsCompat.FLOAT_ARG,
+                0f);
+        LauncherRecentsCompat.invokeCompat(clearAllButton, "updateAlphaPublic");
+        clearAllButton.setEnabled(false);
+        clearAllButton.setClickable(false);
+        if (clearAllButton.getAlpha() < 0.1f) {
+            clearAllButton.setVisibility(View.INVISIBLE);
         }
     }
 
