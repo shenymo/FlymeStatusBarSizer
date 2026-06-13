@@ -247,6 +247,7 @@ final class ClockDetailPopupController {
     private View.OnTouchListener originalAnchorTouchListener;
     private boolean originalAnchorClickable;
     private boolean anchorTapTracking;
+    private boolean anchorSwipeDownTriggered;
     private float anchorTapDownX;
     private float anchorTapDownY;
     private long anchorTapDownTimeMs;
@@ -499,19 +500,34 @@ final class ClockDetailPopupController {
                     return dispatchOriginalAnchorTouch(view, event);
                 }
                 anchorTapTracking = true;
+                anchorSwipeDownTriggered = false;
                 anchorTapDownX = event.getX();
                 anchorTapDownY = event.getY();
                 anchorTapDownTimeMs = event.getEventTime();
                 return dispatchOriginalAnchorTouch(view, event);
             case MotionEvent.ACTION_MOVE:
+                if (anchorSwipeDownTriggered) {
+                    return true;
+                }
                 if (!anchorTapTracking) {
                     return dispatchOriginalAnchorTouch(view, event);
+                }
+                if (isAnchorSwipeDown(event)) {
+                    anchorSwipeDownTriggered = true;
+                    anchorTapTracking = false;
+                    dismissImmediately();
+                    expandNotificationShade(anchor.getContext());
+                    return true;
                 }
                 if (hasAnchorTapMovedEnough(event)) {
                     clearAnchorTapState();
                 }
                 return dispatchOriginalAnchorTouch(view, event);
             case MotionEvent.ACTION_UP:
+                if (anchorSwipeDownTriggered) {
+                    clearAnchorTapState();
+                    return true;
+                }
                 if (!anchorTapTracking) {
                     return dispatchOriginalAnchorTouch(view, event);
                 }
@@ -541,9 +557,36 @@ final class ClockDetailPopupController {
 
     private void clearAnchorTapState() {
         anchorTapTracking = false;
+        anchorSwipeDownTriggered = false;
         anchorTapDownX = 0f;
         anchorTapDownY = 0f;
         anchorTapDownTimeMs = 0L;
+    }
+
+    private boolean isAnchorSwipeDown(MotionEvent event) {
+        if (event == null) {
+            return false;
+        }
+        float dx = Math.abs(event.getX() - anchorTapDownX);
+        float dy = event.getY() - anchorTapDownY;
+        return dy >= dragTouchSlop && dy > dx;
+    }
+
+    private void expandNotificationShade(Context context) {
+        if (context == null) {
+            return;
+        }
+        try {
+            Object statusBarManager = context.getSystemService("statusbar");
+            if (statusBarManager == null) {
+                return;
+            }
+            Method method = statusBarManager.getClass().getMethod("expandNotificationsPanel");
+            method.setAccessible(true);
+            method.invoke(statusBarManager);
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning("Failed to expand notification shade", t);
+        }
     }
 
     private boolean hasAnchorTapMovedEnough(MotionEvent event) {
