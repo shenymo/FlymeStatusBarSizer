@@ -1286,7 +1286,7 @@ final class LauncherRecentsTouchController {
         ((ViewGroup) recentsView).removeViewInLayout(taskView);
         setStackDismissPage(recentsView, targetPage);
         LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
-        LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, "dismiss");
+        LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, "dismiss", false);
         animateStackDismissRelayout(recentsView, startStates);
         recentsView.invalidate();
         return true;
@@ -1403,6 +1403,13 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.get(recentsView)
                         == animation) {
                     LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.remove(recentsView);
+                    LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
+                    LauncherRecentsLayoutEngine.applyStackLayout(
+                            recentsView,
+                            false,
+                            "dismissRelayoutEnd",
+                            true);
+                    recentsView.invalidate();
                 }
             }
         });
@@ -1450,6 +1457,11 @@ final class LauncherRecentsTouchController {
             float startVisibleOffset,
             float targetVisibleOffset,
             boolean primaryScrollHorizontal) {
+        float startAttachAlpha = Math.max(startState.attachAlpha, targetState.attachAlpha);
+        float startStableAlpha = Math.max(startState.stableAlpha, targetState.stableAlpha);
+        float startActivityTitleAlpha = Math.min(
+                Math.max(startState.activityTitleAlpha, targetState.activityTitleAlpha),
+                startStableAlpha);
         if (primaryScrollHorizontal) {
             return new LauncherRecentsTaskVisuals.StackTaskVisualState(
                     startState.pivotX,
@@ -1462,9 +1474,9 @@ final class LauncherRecentsTouchController {
                     startState.taskOffsetY,
                     startState.boxTranslationY,
                     startState.scale,
-                    startState.attachAlpha,
-                    startState.stableAlpha,
-                    startState.activityTitleAlpha,
+                    startAttachAlpha,
+                    startStableAlpha,
+                    startActivityTitleAlpha,
                     startState.blurProgress,
                     startState.fullscreenProgress,
                     startState.translationZ,
@@ -1479,9 +1491,9 @@ final class LauncherRecentsTouchController {
                 startVisibleOffset - targetVisibleOffset + targetState.taskOffsetY,
                 startState.boxTranslationY,
                 startState.scale,
-                startState.attachAlpha,
-                startState.stableAlpha,
-                startState.activityTitleAlpha,
+                startAttachAlpha,
+                startStableAlpha,
+                startActivityTitleAlpha,
                 startState.blurProgress,
                 startState.fullscreenProgress,
                 startState.translationZ,
@@ -1707,6 +1719,7 @@ final class LauncherRecentsTouchController {
                 || LauncherRecentsState.isOverviewPeekStockAnimationActive(recentsView)
                 || LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 || LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
+                || isStackDismissRelayoutAnimationActive(recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(recentsView);
     }
