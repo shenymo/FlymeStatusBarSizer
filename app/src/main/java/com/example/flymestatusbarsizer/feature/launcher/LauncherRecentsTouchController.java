@@ -1266,6 +1266,7 @@ final class LauncherRecentsTouchController {
             return false;
         }
         int dismissedIndex = findTaskViewIndex(recentsView, taskView);
+        LauncherRecentsLayoutEngine.prepareStackDismissRelayoutCapture(recentsView);
         HashMap<View, StackDismissRelayoutStartState> startStates =
                 captureStackDismissRelayoutStartStates(recentsView);
         boolean removedTask = LauncherRecentsCompat.invokeMethodReflectively(

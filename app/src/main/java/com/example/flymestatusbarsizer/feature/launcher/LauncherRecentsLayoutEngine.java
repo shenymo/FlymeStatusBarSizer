@@ -1086,6 +1086,24 @@ final class LauncherRecentsLayoutEngine {
                 syncVisibleTaskData);
     }
 
+    static void prepareStackDismissRelayoutCapture(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        if (taskViewCount <= 0) {
+            return;
+        }
+        prepareRecentsView(recentsView);
+        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
+        applyStackLayout(
+                recentsView,
+                false,
+                Math.max(taskViewCount, STACK_STABLE_VISIBLE_RADIUS),
+                "dismissRelayoutPreCapture",
+                false);
+    }
+
     static boolean requestStackLayout(
             View recentsView,
             String source,
