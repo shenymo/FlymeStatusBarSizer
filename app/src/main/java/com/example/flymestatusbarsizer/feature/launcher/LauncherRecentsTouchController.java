@@ -185,6 +185,7 @@ final class LauncherRecentsTouchController {
                         return true;
                     }
                     Object result = chain.proceed();
+                    applyStackLayoutAfterPagedMove(recentsView, motionEvent);
                     if (entryTakeover) {
                         keepAppToRecentsEntryTakeoverDataReady(recentsView);
                     }
@@ -1350,7 +1351,9 @@ final class LauncherRecentsTouchController {
             targetStates.put(taskView, targetState);
             StackDismissRelayoutStartState startState = startStates.get(taskView);
             if (startState == null) {
-                adjustedStartStates.put(taskView, targetState);
+                adjustedStartStates.put(
+                        taskView,
+                        createStackDismissFadeInStartState(targetState));
                 continue;
             }
             float targetVisibleOffset =
@@ -1410,10 +1413,52 @@ final class LauncherRecentsTouchController {
         animator.start();
     }
 
+    private static void applyStackLayoutAfterPagedMove(View recentsView, MotionEvent motionEvent) {
+        if (recentsView == null
+                || motionEvent == null
+                || motionEvent.getActionMasked() != MotionEvent.ACTION_MOVE
+                || !LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+            return;
+        }
+        cancelStackDismissRelayoutAnimation(recentsView);
+        if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
+            recentsView.invalidate();
+        }
+    }
+
+    private static void cancelStackDismissRelayoutAnimation(View recentsView) {
+        ValueAnimator animator =
+                LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.remove(recentsView);
+        if (animator != null) {
+            animator.cancel();
+        }
+    }
+
     static boolean isStackDismissRelayoutAnimationActive(View recentsView) {
         return recentsView != null
                 && LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS
                 .containsKey(recentsView);
+    }
+
+    private static LauncherRecentsTaskVisuals.StackTaskVisualState
+    createStackDismissFadeInStartState(
+            LauncherRecentsTaskVisuals.StackTaskVisualState targetState) {
+        return new LauncherRecentsTaskVisuals.StackTaskVisualState(
+                targetState.pivotX,
+                targetState.pivotY,
+                targetState.horizontalOffsetX,
+                targetState.taskOffsetX,
+                targetState.taskOffsetY,
+                targetState.boxTranslationY,
+                targetState.scale,
+                0f,
+                0f,
+                0f,
+                targetState.blurProgress,
+                targetState.fullscreenProgress,
+                targetState.translationZ,
+                targetState.stackContentBlurEnabled,
+                targetState.clearShadow);
     }
 
     private static LauncherRecentsTaskVisuals.StackTaskVisualState
