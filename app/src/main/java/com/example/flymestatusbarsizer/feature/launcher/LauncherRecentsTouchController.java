@@ -1322,11 +1322,7 @@ final class LauncherRecentsTouchController {
             int dismissedIndex,
             HashMap<View, StackDismissRelayoutStartState> startStates) {
         if (dismissedIndex < 0 || startStates == null || startStates.isEmpty()) {
-            LauncherRecentsLayoutEngine.applyStackLayout(
-                    recentsView,
-                    false,
-                    "dismissRelayoutNoStart",
-                    true);
+            finishStackDismissRelayout(recentsView, "dismissRelayoutNoStart");
             return;
         }
         HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> targetStates =
@@ -1368,11 +1364,7 @@ final class LauncherRecentsTouchController {
                             primaryScrollHorizontal));
         }
         if (targetStates.isEmpty()) {
-            LauncherRecentsLayoutEngine.applyStackLayout(
-                    recentsView,
-                    false,
-                    "dismissRelayoutNoTarget",
-                    true);
+            finishStackDismissRelayout(recentsView, "dismissRelayoutNoTarget");
             return;
         }
         ValueAnimator runningAnimator =
@@ -1408,18 +1400,66 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.get(recentsView)
                         == animation) {
                     LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.remove(recentsView);
-                    LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
-                    LauncherRecentsLayoutEngine.applyStackLayout(
-                            recentsView,
-                            false,
-                            "dismissRelayoutEnd",
-                            true);
-                    recentsView.invalidate();
+                    finishStackDismissRelayout(recentsView, "dismissRelayoutEnd");
                 }
             }
         });
         LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.put(recentsView, animator);
         animator.start();
+    }
+
+    private static void finishStackDismissRelayout(
+            View recentsView,
+            String source) {
+        if (recentsView == null) {
+            return;
+        }
+        syncStackDismissPageFields(recentsView);
+        LauncherRecentsState.setGestureStackReleasedStable(
+                recentsView,
+                LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView));
+        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
+        LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, source, true);
+        forceEnsureStackVisibleTaskData(recentsView, 15, true);
+        recentsView.requestLayout();
+        recentsView.invalidate();
+    }
+
+    private static void syncStackDismissPageFields(View recentsView) {
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        if (recentsView == null || taskViewCount <= 0) {
+            return;
+        }
+        int primaryScroll = resolvePrimaryScroll(recentsView);
+        int nearestPage = 0;
+        int nearestScroll = LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getScrollForPage",
+                LauncherRecentsCompat.INT_ARG,
+                primaryScroll,
+                0);
+        int nearestDistance = Math.abs(nearestScroll - primaryScroll);
+        for (int i = 1; i < taskViewCount; i++) {
+            int pageScroll = LauncherRecentsCompat.invokeInt(
+                    recentsView,
+                    "getScrollForPage",
+                    LauncherRecentsCompat.INT_ARG,
+                    primaryScroll,
+                    i);
+            int distance = Math.abs(pageScroll - primaryScroll);
+            if (distance < nearestDistance) {
+                nearestPage = i;
+                nearestScroll = pageScroll;
+                nearestDistance = distance;
+            }
+        }
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", nearestPage);
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", nearestPage);
+        LauncherRecentsCompat.setIntField(recentsView, "mNextPage", -1);
+        LauncherRecentsCompat.setIntField(
+                recentsView,
+                "mCurrentPageScrollDiff",
+                primaryScroll - nearestScroll);
     }
 
     private static StackDismissRelayoutStartState findAdjacentStackDismissRelayoutState(
