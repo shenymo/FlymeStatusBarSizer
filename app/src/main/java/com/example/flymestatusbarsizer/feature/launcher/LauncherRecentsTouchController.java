@@ -1420,9 +1420,33 @@ final class LauncherRecentsTouchController {
                 LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView));
         LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
         LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, source, true);
+        hideUnmanagedStackDismissTasks(recentsView);
         forceEnsureStackVisibleTaskData(recentsView, 15, true);
         recentsView.requestLayout();
         recentsView.invalidate();
+    }
+
+    private static void hideUnmanagedStackDismissTasks(View recentsView) {
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null
+                    || LauncherRecentsCompat.isDesktopTask(taskView)
+                    || LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES
+                    .containsKey(taskView)
+                    || taskView.getVisibility() != View.VISIBLE) {
+                continue;
+            }
+            if (taskView.getAlpha() <= 0.01f
+                    && LauncherRecentsTaskVisuals.readStableAlpha(taskView) <= 0.01f) {
+                continue;
+            }
+            LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
+            LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
+            LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(taskView, 0f);
+            LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
+            LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
+        }
     }
 
     private static void syncStackDismissPageFields(View recentsView) {
