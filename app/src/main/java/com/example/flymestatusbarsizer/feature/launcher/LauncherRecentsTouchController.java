@@ -1415,9 +1415,6 @@ final class LauncherRecentsTouchController {
             return;
         }
         syncStackDismissPageFields(recentsView);
-        LauncherRecentsState.setGestureStackReleasedStable(
-                recentsView,
-                LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView));
         LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
         LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, source, true);
         hideUnmanagedStackDismissTasks(recentsView);
