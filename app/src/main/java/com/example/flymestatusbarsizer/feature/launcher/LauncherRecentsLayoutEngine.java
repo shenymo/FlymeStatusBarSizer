@@ -1958,7 +1958,7 @@ final class LauncherRecentsLayoutEngine {
         float effectiveRawOffset = physicalRawOffset;
         float progress = effectiveRawOffset / context.pageSpan;
         if (context.desktopOverviewEntryWindow) {
-            progress = index;
+            progress = -index;
         }
         float layoutProgress = resolveStackReleaseSettledProgress(
                 progress,
