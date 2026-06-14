@@ -18,9 +18,9 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_ENTRY_INITIAL_SPREAD_RATIO = 0.8f;
     private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.05f;
     private static final float STACK_RIGHT_VISIBLE_RATIO = 0.80f;
-    private static final float STACK_LEFT_MOVE_RATIO = 0.72f;
-    private static final float STACK_RIGHT_BASE_SPEEDUP_RATIO = 0.10f;
-    private static final float STACK_RIGHT_SPEEDUP_RATIO = 0.32f;
+    private static final float STACK_LEFT_MOVE_RATIO = 0.45f;
+    private static final float STACK_RIGHT_BASE_SPEEDUP_RATIO = 0.16f;
+    private static final float STACK_RIGHT_SPEEDUP_RATIO = 0.40f;
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
     private static final float STACK_RELEASE_SETTLED_PROGRESS_SHIFT = 0.70f;
     private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
@@ -57,6 +57,7 @@ final class LauncherRecentsLayoutEngine {
         final float stackVerticalProgress;
         final boolean gestureStackReleaseActive;
         final boolean overviewStateStackAnimationActive;
+        final boolean desktopOverviewEntryWindow;
         final float overviewStateStackHandoffProgress;
         final float stackReleaseProgress;
         final float stackSettledShiftProgress;
@@ -82,6 +83,7 @@ final class LauncherRecentsLayoutEngine {
                 float stackVerticalProgress,
                 boolean gestureStackReleaseActive,
                 boolean overviewStateStackAnimationActive,
+                boolean desktopOverviewEntryWindow,
                 float overviewStateStackHandoffProgress,
                 float stackReleaseProgress,
                 float stackSettledShiftProgress,
@@ -105,6 +107,7 @@ final class LauncherRecentsLayoutEngine {
             this.stackVerticalProgress = stackVerticalProgress;
             this.gestureStackReleaseActive = gestureStackReleaseActive;
             this.overviewStateStackAnimationActive = overviewStateStackAnimationActive;
+            this.desktopOverviewEntryWindow = desktopOverviewEntryWindow;
             this.overviewStateStackHandoffProgress = overviewStateStackHandoffProgress;
             this.stackReleaseProgress = stackReleaseProgress;
             this.stackSettledShiftProgress = stackSettledShiftProgress;
@@ -1550,6 +1553,11 @@ final class LauncherRecentsLayoutEngine {
                 || appEntrySessionActive);
         boolean appEntryLightWindow = stackLayoutRadius == STACK_ENTRY_LIGHT_RADIUS
                 && (gestureStackReleaseActive || appEntrySessionActive);
+        boolean desktopOverviewEntryWindow = stackLayoutRadius == STACK_ENTRY_LIGHT_RADIUS
+                && overviewStateStackAnimationActive
+                && !gestureStackReleaseActive
+                && !appEntrySessionActive
+                && runningTaskChildIndex < 0;
         boolean stableFillWindow = LauncherRecentsState.isGestureStackReleasedStable(recentsView);
         int fillBoundaryTargetCount = resolveStackLayoutFillBoundaryTargetCount(
                 recentsView,
@@ -1562,6 +1570,10 @@ final class LauncherRecentsLayoutEngine {
                 taskViewCount,
                 stackLayoutRadius,
                 entryLightWindow);
+        if (desktopOverviewEntryWindow) {
+            fillBoundaryTargetCount = Math.min(taskViewCount, 3);
+            lightAnchorIndex = 0;
+        }
         ArrayList<Integer> activeIndices = resolveStackLayoutActiveIndices(
                 taskViewCount,
                 lightAnchorIndex,
@@ -1666,6 +1678,7 @@ final class LauncherRecentsLayoutEngine {
                 stackVerticalProgress,
                 gestureStackReleaseActive,
                 overviewStateStackAnimationActive,
+                desktopOverviewEntryWindow,
                 overviewStateStackHandoffProgress,
                 stackReleaseProgress,
                 stackSettledShiftProgress,
@@ -1944,6 +1957,9 @@ final class LauncherRecentsLayoutEngine {
         float physicalRawOffset = layoutRawOffset + nativeDismissTranslationPrimary;
         float effectiveRawOffset = physicalRawOffset;
         float progress = effectiveRawOffset / context.pageSpan;
+        if (context.desktopOverviewEntryWindow) {
+            progress = index;
+        }
         float layoutProgress = resolveStackReleaseSettledProgress(
                 progress,
                 context.stackSettledShiftProgress);
