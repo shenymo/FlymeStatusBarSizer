@@ -63,6 +63,8 @@ final class SettingsStore {
             "launcher_ios_stack_recents_enabled";
     static final String KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED =
             "launcher_ios_stack_recents_blur_enabled";
+    static final String KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED =
+            "launcher_ios_stack_recents_clear_all_button_enabled";
     static final String KEY_LAUNCHER_FOLDER_BG_COLOR = "launcher_folder_bg_color";
     static final String KEY_NOTIFICATION_BACKGROUND_COLOR = "notification_background_color";
     static final String KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED =
@@ -164,6 +166,7 @@ final class SettingsStore {
     static final int DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP = 0;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED = false;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED = true;
+    static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED = true;
     static final String DEFAULT_LAUNCHER_FOLDER_BG_COLOR = "";
     static final String DEFAULT_NOTIFICATION_BACKGROUND_COLOR = "";
     static final boolean DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED = false;
@@ -255,6 +258,7 @@ final class SettingsStore {
             KEY_NOTIFICATION_APP_ICON_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED,
+            KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED,
             KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
             KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,
             KEY_MBACK_HIDE_PILL,
@@ -505,6 +509,8 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED;
             case KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED:
                 return DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED;
+            case KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED:
+                return DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED;
             case KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED:
                 return DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED;
             case KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED:

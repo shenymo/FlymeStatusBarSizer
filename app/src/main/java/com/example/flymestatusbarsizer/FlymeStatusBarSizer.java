@@ -6926,6 +6926,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean enabled;
         public final boolean launcherIosStackRecentsEnabled;
         public final boolean launcherIosStackRecentsBlurEnabled;
+        public final boolean launcherIosStackRecentsClearAllButtonEnabled;
         public final boolean launcherRecentsPerfLoggingEnabled;
         public final boolean launcherRecentsFlowLoggingEnabled;
 
@@ -6936,6 +6937,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                     && config.launcherIosStackRecentsEnabled;
             launcherIosStackRecentsBlurEnabled = launcherIosStackRecentsEnabled
                     && config.launcherIosStackRecentsBlurEnabled;
+            launcherIosStackRecentsClearAllButtonEnabled = launcherIosStackRecentsEnabled
+                    && config.launcherIosStackRecentsClearAllButtonEnabled;
             launcherRecentsPerfLoggingEnabled = enabled
                     && config != null
                     && config.launcherRecentsPerfLoggingEnabled;

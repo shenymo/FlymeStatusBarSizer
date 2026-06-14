@@ -514,9 +514,14 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static void ensureStackClearAllButtonReady(View recentsView) {
-        if (recentsView == null
-                || !shouldUseStackLayout(recentsView)
-                || LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
+        if (recentsView == null || !shouldUseStackLayout(recentsView)) {
+            return;
+        }
+        if (!isStackClearAllButtonEnabled(recentsView)) {
+            hideStackClearAllButton(recentsView);
+            return;
+        }
+        if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
                 || !isStackClearAllButtonAllowed(recentsView)) {
             return;
         }
@@ -556,6 +561,12 @@ final class LauncherRecentsLayoutEngine {
             clearAllButton.setEnabled(true);
             clearAllButton.setClickable(true);
         }
+    }
+
+    private static boolean isStackClearAllButtonEnabled(View recentsView) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
+        return config != null && config.launcherIosStackRecentsClearAllButtonEnabled;
     }
 
     private static boolean isStackClearAllButtonAllowed(View recentsView) {

@@ -4,6 +4,7 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
+import android.animation.AnimatorSet;
 import android.animation.ValueAnimator;
 import android.os.Handler;
 import android.os.SystemClock;
@@ -17,11 +18,13 @@ import android.view.ViewParent;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.WeakHashMap;
+import java.util.function.Consumer;
 
 final class LauncherRecentsTouchController {
     private static final String TASK_VIEW_DISMISS_TOUCH_CONTROLLER_CLASS =
@@ -73,9 +76,172 @@ final class LauncherRecentsTouchController {
                 loader,
                 TASK_VIEW_DISMISS_TOUCH_CONTROLLER_CLASS);
         hookRecentsViewTaskVisibilityForDismiss(module, loader);
+        hookRecentsViewClearAllDismissAnimationForStack(module, loader);
         hookRecentsViewLoadVisibleTaskDataForStack(module, loader);
         hookTaskViewListVisibilityForStack(module, loader);
         hookTaskViewAppFlowVisibilityForStack(module, loader);
+    }
+
+    private static void hookRecentsViewClearAllDismissAnimationForStack(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> recentsViewClass =
+                    Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Class<?> taskViewClass =
+                    Class.forName(LauncherRecentsCompat.TASK_VIEW_CLASS, false, loader);
+            Class<?> pendingAnimationClass =
+                    Class.forName("com.android.launcher3.anim.PendingAnimation", false, loader);
+            Constructor<?> pendingAnimationConstructor =
+                    pendingAnimationClass.getDeclaredConstructor(long.class);
+            pendingAnimationConstructor.setAccessible(true);
+            Method method = recentsViewClass.getDeclaredMethod(
+                    "createAllTasksDismissAnimationMz",
+                    long.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (!(thisObject instanceof View)
+                        || !LauncherRecentsLayoutEngine.shouldUseStackLayout((View) thisObject)) {
+                    return chain.proceed();
+                }
+                long durationMs = chain.getArg(0) instanceof Long
+                        ? (Long) chain.getArg(0)
+                        : 300L;
+                if (!runStackClearAllDismissAnimation(
+                        (View) thisObject,
+                        pendingAnimationConstructor,
+                        pendingAnimationClass,
+                        taskViewClass,
+                        durationMs)) {
+                    return chain.proceed();
+                }
+                return null;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.createAllTasksDismissAnimationMz",
+                    t);
+        }
+    }
+
+    private static boolean runStackClearAllDismissAnimation(
+            View recentsView,
+            Constructor<?> pendingAnimationConstructor,
+            Class<?> pendingAnimationClass,
+            Class<?> taskViewClass,
+            long durationMs) {
+        Object pendingAnimation = LauncherRecentsCompat.createPendingAnimationInstance(
+                pendingAnimationConstructor,
+                durationMs);
+        if (pendingAnimation == null) {
+            return false;
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        if (taskViewCount <= 0) {
+            return false;
+        }
+        Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "getRunningTaskView");
+        View runningTaskView = runningTaskObject instanceof View ? (View) runningTaskObject : null;
+        if (runningTaskView != null) {
+            LauncherRecentsCompat.invokeCompat(runningTaskView, "dismissGuidePopupWindow");
+        }
+
+        ArrayList<View> visibleTasks = new ArrayList<>();
+        ArrayList<Integer> visibleTaskIndices = new ArrayList<>();
+        ArrayList<View> hiddenTasks = new ArrayList<>();
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null) {
+                continue;
+            }
+            if (isStackClearAllTaskVisible(recentsView, taskView)) {
+                visibleTasks.add(taskView);
+                visibleTaskIndices.add(i);
+            } else {
+                hiddenTasks.add(taskView);
+            }
+        }
+        if (visibleTasks.isEmpty()) {
+            return false;
+        }
+
+        boolean runningTaskAnimated = false;
+        for (int i = 0; i < visibleTasks.size(); i++) {
+            View taskView = visibleTasks.get(i);
+            boolean isRunningTask = taskView == runningTaskView;
+            runningTaskAnimated |= isRunningTask;
+            if (!LauncherRecentsCompat.invokeMethodReflectively(
+                    recentsView,
+                    "addDismissedTaskAnimationsMz",
+                    new Class<?>[]{
+                            taskViewClass,
+                            pendingAnimationClass,
+                            long.class,
+                            boolean.class
+                    },
+                    taskView,
+                    pendingAnimation,
+                    visibleTaskIndices.get(i) * 30L,
+                    isRunningTask)) {
+                return false;
+            }
+        }
+        boolean finalRunningTaskAnimated = runningTaskAnimated;
+        Consumer<Boolean> endListener = success -> LauncherRecentsCompat.invokeMethodReflectively(
+                recentsView,
+                "lambda$createAllTasksDismissAnimationMz$71",
+                new Class<?>[]{taskViewClass, boolean.class, Boolean.class},
+                runningTaskView,
+                finalRunningTaskAnimated,
+                Boolean.TRUE.equals(success));
+        if (!LauncherRecentsCompat.invokeMethodReflectively(
+                pendingAnimation,
+                "addEndListener",
+                new Class<?>[]{Consumer.class},
+                endListener)) {
+            return false;
+        }
+        Object animation = LauncherRecentsCompat.invokeCompat(pendingAnimation, "buildAnim");
+        if (!(animation instanceof Animator)) {
+            return false;
+        }
+        for (int i = 0; i < hiddenTasks.size(); i++) {
+            hiddenTasks.get(i).setAlpha(0f);
+        }
+        LauncherRecentsCompat.writeField(recentsView, "mPendingAnimation", pendingAnimation);
+        AnimatorSet animatorSet = new AnimatorSet();
+        animatorSet.play((Animator) animation);
+        animatorSet.start();
+        return true;
+    }
+
+    private static boolean isStackClearAllTaskVisible(View recentsView, View taskView) {
+        if (recentsView == null
+                || taskView == null
+                || taskView.getVisibility() != View.VISIBLE
+                || taskView.getWidth() <= 0
+                || taskView.getHeight() <= 0
+                || taskView.getAlpha() <= 0f) {
+            return false;
+        }
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        float primarySize = primaryScrollHorizontal ? taskView.getWidth() : taskView.getHeight();
+        float primaryScale = Math.max(
+                0.01f,
+                primaryScrollHorizontal ? taskView.getScaleX() : taskView.getScaleY());
+        float primaryPivot = primaryScrollHorizontal ? taskView.getPivotX() : taskView.getPivotY();
+        float primaryStart = primaryScrollHorizontal ? taskView.getX() : taskView.getY();
+        int primaryScroll =
+                primaryScrollHorizontal ? recentsView.getScrollX() : recentsView.getScrollY();
+        float scaledStart = primaryStart + primaryPivot - (primaryPivot * primaryScale)
+                - primaryScroll;
+        float scaledEnd = scaledStart + (primarySize * primaryScale);
+        float viewportSize =
+                primaryScrollHorizontal ? recentsView.getWidth() : recentsView.getHeight();
+        return scaledEnd > 0f && scaledStart < viewportSize;
     }
 
     private static void hookPagedViewOnInterceptTouchEvent(

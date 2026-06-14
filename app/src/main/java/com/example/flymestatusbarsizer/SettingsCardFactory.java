@@ -199,6 +199,11 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED);
         activity.addDivider(content);
+        activity.addSwitchRow(content, "显示清除全部按钮",
+                "只在 IOS 式堆叠后台开启时生效。",
+                SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED,
+                SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED);
+        activity.addDivider(content);
         activity.addActionButtonRow(content, "重启系统桌面",
                 "后台布局需要重启系统桌面后再看完整效果。",
                 "重启", activity::restartLauncher);
