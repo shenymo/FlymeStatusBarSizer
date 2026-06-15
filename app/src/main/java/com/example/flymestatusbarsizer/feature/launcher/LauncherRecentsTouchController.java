@@ -42,6 +42,8 @@ final class LauncherRecentsTouchController {
     private static final long STACK_VISIBLE_DATA_CLEANUP_IDLE_DELAY_MS = 450L;
     private static final long STACK_VISIBLE_DATA_CLEANUP_RETRY_DELAY_MS = 250L;
     private static final float STACK_LEFT_RELEASE_ALPHA_THRESHOLD = 0.05f;
+    private static final float STACK_SCROLL_TOUCH_SLOP_RATIO = 0.5f;
+    private static final float STACK_UNSNAPPED_FLING_FRICTION = 0.03f;
     private static final int STACK_APP_FLOW_LIGHT_RADIUS = 3;
     private static final String STACK_APP_FLOW_HIDDEN = "<stack-hidden>";
     private static final ThreadLocal<Boolean> TASK_DISMISS_VISIBILITY_BYPASS =
@@ -306,6 +308,7 @@ final class LauncherRecentsTouchController {
                     boolean overviewTakeover = !entryTakeover
                             && takeOverOverviewStateOnHorizontalMove(recentsView, motionEvent);
                     clearGestureReleaseTaskStatesOnUserMove(recentsView, motionEvent);
+                    startStackScrollEarlier(recentsView, motionEvent);
                     if (handleMovingStackBlankTapHomeExit(recentsView, motionEvent)) {
                         logStackFlow("touch:event:movingBlankTapHome",
                                 recentsView, motionEvent, null);
@@ -545,6 +548,46 @@ final class LauncherRecentsTouchController {
             return;
         }
         LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
+    }
+
+    private static void startStackScrollEarlier(View recentsView, MotionEvent motionEvent) {
+        if (recentsView == null
+                || motionEvent == null
+                || motionEvent.getActionMasked() != MotionEvent.ACTION_MOVE
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || !LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false)) {
+            return;
+        }
+        float downX = LauncherRecentsCompat.readFloatField(
+                recentsView,
+                "mDownMotionX",
+                motionEvent.getX());
+        float downY = LauncherRecentsCompat.readFloatField(
+                recentsView,
+                "mDownMotionY",
+                motionEvent.getY());
+        float dx = motionEvent.getX() - downX;
+        float dy = motionEvent.getY() - downY;
+        float primaryDelta = resolveGesturePrimaryDelta(recentsView, dx, dy);
+        float secondaryDelta = resolveGestureSecondaryDelta(recentsView, dx, dy);
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        float downPrimary = primaryScrollHorizontal ? downX : downY;
+        int touchSlop = ViewConfiguration.get(recentsView.getContext()).getScaledTouchSlop();
+        if (Math.abs(primaryDelta) <= touchSlop * STACK_SCROLL_TOUCH_SLOP_RATIO
+                || Math.abs(primaryDelta) <= Math.abs(secondaryDelta)) {
+            return;
+        }
+        LauncherRecentsCompat.setBooleanField(recentsView, "mIsBeingDragged", true);
+        LauncherRecentsCompat.setIntField(
+                recentsView,
+                "mLastMotion",
+                Math.round(downPrimary));
+        LauncherRecentsCompat.invokeCompat(recentsView, "pageBeginTransition");
+        ViewParent parent = recentsView.getParent();
+        if (parent != null) {
+            parent.requestDisallowInterceptTouchEvent(true);
+        }
     }
 
     private static boolean takeOverAppToRecentsEntryOnHorizontalMove(
@@ -3034,7 +3077,7 @@ final class LauncherRecentsTouchController {
                     recentsView, motionEvent, "velocity=" + primaryVelocity);
             return;
         }
-        setScrollerFriction(scroller, 0.01f);
+        setScrollerFriction(scroller, STACK_UNSNAPPED_FLING_FRICTION);
         if (!startScrollerFling(
                 recentsView,
                 scroller,
