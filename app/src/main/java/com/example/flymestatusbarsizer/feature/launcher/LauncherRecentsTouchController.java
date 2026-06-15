@@ -1489,7 +1489,7 @@ final class LauncherRecentsTouchController {
             int dismissedIndex,
             HashMap<View, StackDismissRelayoutStartState> startStates) {
         if (dismissedIndex < 0 || startStates == null || startStates.isEmpty()) {
-            finishStackDismissRelayout(recentsView, "dismissRelayoutNoStart");
+            finishStackDismissRelayout(recentsView, "dismissRelayoutNoStart", false);
             return;
         }
         HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> targetStates =
@@ -1505,6 +1505,18 @@ final class LauncherRecentsTouchController {
             }
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        final boolean snapToPageAfterRelayout = !fillFromAfter
+                || dismissedIndex >= taskViewCount - 1;
+        final boolean projectRightEdgeTarget = fillFromAfter
+                && dismissedIndex >= taskViewCount - 1;
+        int rightEdgeTargetScroll = projectRightEdgeTarget
+                ? LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getScrollForPage",
+                LauncherRecentsCompat.INT_ARG,
+                resolvePrimaryScroll(recentsView),
+                Math.max(0, Math.min(dismissedIndex, Math.max(0, taskViewCount - 1))))
+                : 0;
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             StackDismissRelayoutStartState startState = startStates.get(taskView);
@@ -1525,13 +1537,22 @@ final class LauncherRecentsTouchController {
             animationStartStates.put(taskView, startState.visualState);
             targetStates.put(
                     taskView,
-                    createStackDismissSlotTargetState(
+                    projectRightEdgeTarget
+                            ? createStackDismissProjectedTargetState(
+                            recentsView,
+                            taskView,
+                            i,
+                            rightEdgeTargetScroll,
+                            startState,
+                            targetSlot,
+                            primaryScrollHorizontal)
+                            : createStackDismissSlotTargetState(
                             startState,
                             targetSlot,
                             primaryScrollHorizontal));
         }
         if (targetStates.isEmpty()) {
-            finishStackDismissRelayout(recentsView, "dismissRelayoutNoTarget");
+            finishStackDismissRelayout(recentsView, "dismissRelayoutNoTarget", false);
             return;
         }
         ValueAnimator runningAnimator =
@@ -1567,7 +1588,10 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.get(recentsView)
                         == animation) {
                     LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.remove(recentsView);
-                    finishStackDismissRelayout(recentsView, "dismissRelayoutEnd");
+                    finishStackDismissRelayout(
+                            recentsView,
+                            "dismissRelayoutEnd",
+                            snapToPageAfterRelayout);
                 }
             }
         });
@@ -1577,11 +1601,12 @@ final class LauncherRecentsTouchController {
 
     private static void finishStackDismissRelayout(
             View recentsView,
-            String source) {
+            String source,
+            boolean snapToPage) {
         if (recentsView == null) {
             return;
         }
-        syncStackDismissPageFields(recentsView);
+        syncStackDismissPageFields(recentsView, snapToPage);
         LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
         LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, source, true);
         hideUnmanagedStackDismissTasks(recentsView);
@@ -1613,7 +1638,7 @@ final class LauncherRecentsTouchController {
         }
     }
 
-    private static void syncStackDismissPageFields(View recentsView) {
+    private static void syncStackDismissPageFields(View recentsView, boolean snapToPage) {
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         if (recentsView == null || taskViewCount <= 0) {
             return;
@@ -1641,6 +1666,10 @@ final class LauncherRecentsTouchController {
                 nearestDistance = distance;
             }
         }
+        if (snapToPage) {
+            setStackDismissPage(recentsView, nearestPage);
+            return;
+        }
         LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", nearestPage);
         LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", nearestPage);
         LauncherRecentsCompat.setIntField(recentsView, "mNextPage", -1);
@@ -1667,6 +1696,51 @@ final class LauncherRecentsTouchController {
             }
         }
         return nearest;
+    }
+
+    private static LauncherRecentsTaskVisuals.StackTaskVisualState
+    createStackDismissProjectedTargetState(
+            View recentsView,
+            View taskView,
+            int projectedIndex,
+            int targetScroll,
+            StackDismissRelayoutStartState start,
+            StackDismissRelayoutStartState targetSlot,
+            boolean primaryScrollHorizontal) {
+        LauncherRecentsTaskVisuals.StackTaskVisualState startState = start.visualState;
+        LauncherRecentsTaskVisuals.StackTaskVisualState slotState = targetSlot.visualState;
+        float targetVisibleOffset =
+                LauncherRecentsLayoutEngine.resolveStackDismissProjectedVisibleOffset(
+                        recentsView,
+                        taskView,
+                        projectedIndex,
+                        targetScroll);
+        float visibleOffsetDelta = targetVisibleOffset - start.visibleOffset;
+        float targetHorizontalOffsetX = slotState.horizontalOffsetX;
+        return new LauncherRecentsTaskVisuals.StackTaskVisualState(
+                slotState.pivotX,
+                slotState.pivotY,
+                targetHorizontalOffsetX,
+                primaryScrollHorizontal
+                        ? startState.taskOffsetX + visibleOffsetDelta
+                        + startState.horizontalOffsetX - targetHorizontalOffsetX
+                        : slotState.taskOffsetX,
+                primaryScrollHorizontal
+                        ? slotState.taskOffsetY
+                        : startState.taskOffsetY + visibleOffsetDelta,
+                slotState.boxTranslationY,
+                LauncherRecentsLayoutEngine.resolveStackScaleForVisibleOffset(
+                        recentsView,
+                        taskView,
+                        targetVisibleOffset),
+                slotState.attachAlpha,
+                slotState.stableAlpha,
+                slotState.activityTitleAlpha,
+                slotState.blurProgress,
+                slotState.fullscreenProgress,
+                slotState.translationZ,
+                slotState.stackContentBlurEnabled,
+                slotState.clearShadow);
     }
 
     private static LauncherRecentsTaskVisuals.StackTaskVisualState
