@@ -2052,7 +2052,7 @@ final class LauncherRecentsLayoutEngine {
                 index);
     }
 
-    private static float resolveTaskRawOffset(View recentsView, int index, int primaryScroll) {
+    static float resolveTaskRawOffset(View recentsView, int index, int primaryScroll) {
         return resolveTaskRawOffset(recentsView, index)
                 + resolvePrimaryScroll(recentsView)
                 - primaryScroll;

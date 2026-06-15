@@ -1456,6 +1456,13 @@ final class LauncherRecentsTouchController {
                                 taskView,
                                 targetScroll)
                         : new HashMap<>();
+        adjustStackDismissRelayoutTargets(
+                recentsView,
+                dismissedIndex,
+                startStates,
+                targetStates,
+                primaryScrollHorizontal,
+                targetScroll);
         boolean removedTask = LauncherRecentsCompat.invokeMethodReflectively(
                 recentsView,
                 "removeTaskInternal",
@@ -1525,6 +1532,68 @@ final class LauncherRecentsTouchController {
             }
         }
         return afterCount > 0 && afterCount >= beforeCount;
+    }
+
+    private static void adjustStackDismissRelayoutTargets(
+            View recentsView,
+            int dismissedIndex,
+            HashMap<View, StackDismissRelayoutStartState> startStates,
+            HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> targetStates,
+            boolean primaryScrollHorizontal,
+            int targetScroll) {
+        if (dismissedIndex < 0 || startStates == null || targetStates == null) {
+            return;
+        }
+        for (View taskView : new ArrayList<>(targetStates.keySet())) {
+            StackDismissRelayoutStartState startState = startStates.get(taskView);
+            LauncherRecentsTaskVisuals.StackTaskVisualState targetState =
+                    targetStates.get(taskView);
+            if (startState == null || targetState == null || startState.index <= dismissedIndex) {
+                continue;
+            }
+            int projectedIndex = startState.index - 1;
+            float oldRawOffset = LauncherRecentsLayoutEngine.resolveTaskRawOffset(
+                    recentsView,
+                    startState.index,
+                    targetScroll);
+            float newRawOffset = LauncherRecentsLayoutEngine.resolveTaskRawOffset(
+                    recentsView,
+                    projectedIndex,
+                    targetScroll);
+            float delta = newRawOffset - oldRawOffset;
+            if (Math.abs(delta) <= 0.01f) {
+                continue;
+            }
+            targetStates.put(
+                    taskView,
+                    offsetStackDismissRelayoutTarget(
+                            targetState,
+                            primaryScrollHorizontal,
+                            delta));
+        }
+    }
+
+    private static LauncherRecentsTaskVisuals.StackTaskVisualState
+    offsetStackDismissRelayoutTarget(
+            LauncherRecentsTaskVisuals.StackTaskVisualState state,
+            boolean primaryScrollHorizontal,
+            float primaryDelta) {
+        return new LauncherRecentsTaskVisuals.StackTaskVisualState(
+                state.pivotX,
+                state.pivotY,
+                state.horizontalOffsetX,
+                primaryScrollHorizontal ? state.taskOffsetX + primaryDelta : state.taskOffsetX,
+                primaryScrollHorizontal ? state.taskOffsetY : state.taskOffsetY + primaryDelta,
+                state.boxTranslationY,
+                state.scale,
+                state.attachAlpha,
+                state.stableAlpha,
+                state.activityTitleAlpha,
+                state.blurProgress,
+                state.fullscreenProgress,
+                state.translationZ,
+                state.stackContentBlurEnabled,
+                state.clearShadow);
     }
 
     private static void animateStackDismissRelayout(
