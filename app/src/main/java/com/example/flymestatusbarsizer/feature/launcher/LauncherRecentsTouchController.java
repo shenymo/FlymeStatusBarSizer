@@ -1160,7 +1160,21 @@ final class LauncherRecentsTouchController {
 
     private static float resolveStackDismissDirectionSign(View recentsView) {
         float nativeSign = isStackDismissGoingUp(recentsView, 1f) ? 1f : -1f;
-        return isPrimaryScrollHorizontal(recentsView) ? nativeSign : -nativeSign;
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        if (!primaryScrollHorizontal && isSeascapeOrientation(recentsView)) {
+            return nativeSign;
+        }
+        return primaryScrollHorizontal ? nativeSign : -nativeSign;
+    }
+
+    private static boolean isSeascapeOrientation(View recentsView) {
+        Object orientationHandler =
+                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
+        Object value = LauncherRecentsCompat.invokeCompat(
+                orientationHandler,
+                "getRotation",
+                LauncherRecentsCompat.NO_ARGS);
+        return value instanceof Integer && (Integer) value == 3;
     }
 
     private static boolean isStackDismissGestureTowardDismiss(

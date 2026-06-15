@@ -697,6 +697,16 @@ final class LauncherRecentsLayoutEngine {
                 : recentsView.getScrollY();
     }
 
+    private static boolean isSeascapeOrientation(View recentsView) {
+        Object orientationHandler =
+                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
+        Object value = LauncherRecentsCompat.invokeCompat(
+                orientationHandler,
+                "getRotation",
+                LauncherRecentsCompat.NO_ARGS);
+        return value instanceof Integer && (Integer) value == 3;
+    }
+
     private static float resolvePrimarySize(View view, boolean primaryScrollHorizontal) {
         return primaryScrollHorizontal ? view.getWidth() : view.getHeight();
     }
@@ -3024,17 +3034,26 @@ final class LauncherRecentsLayoutEngine {
             float taskCenteredPrimaryStartPx,
             float leftEdgeRevealProgress,
             boolean primaryScrollHorizontal) {
+        boolean mirroredPrimary = shouldMirrorStackPrimary(recentsView, primaryScrollHorizontal);
+        float visualProgress = mirroredPrimary ? -progress : progress;
         float leftBoundOffsetPx = resolveStackLeftBoundOffset(
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx,
-                progress < 0f ? 1f : leftEdgeRevealProgress);
+                visualProgress < 0f ? 1f : leftEdgeRevealProgress);
         float visibleOffset = resolveStackUnclampedVisibleOffset(
                 recentsView,
-                progress,
+                visualProgress,
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx,
                 primaryScrollHorizontal);
-        return Math.max(leftBoundOffsetPx, visibleOffset);
+        float offset = Math.max(leftBoundOffsetPx, visibleOffset);
+        return mirroredPrimary ? -offset : offset;
+    }
+
+    private static boolean shouldMirrorStackPrimary(
+            View recentsView,
+            boolean primaryScrollHorizontal) {
+        return !primaryScrollHorizontal && isSeascapeOrientation(recentsView);
     }
 
     private static float resolveStackUnclampedVisibleOffset(
@@ -3111,7 +3130,9 @@ final class LauncherRecentsLayoutEngine {
             float taskCenteredPrimaryStartPx,
             float leftEdgeRevealProgress,
             boolean primaryScrollHorizontal) {
-        if (progress >= 0f) {
+        boolean mirroredPrimary = shouldMirrorStackPrimary(recentsView, primaryScrollHorizontal);
+        float visualProgress = mirroredPrimary ? -progress : progress;
+        if (visualProgress >= 0f) {
             return 1f;
         }
         float currentOffset = resolveStackVisibleOffset(
@@ -3121,9 +3142,10 @@ final class LauncherRecentsLayoutEngine {
                 taskCenteredPrimaryStartPx,
                 leftEdgeRevealProgress,
                 primaryScrollHorizontal);
+        float frontProgress = mirroredPrimary ? -(visualProgress + 1f) : progress + 1f;
         float frontOffset = resolveStackVisibleOffset(
                 recentsView,
-                progress + 1f,
+                frontProgress,
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx,
                 leftEdgeRevealProgress,
@@ -3143,10 +3165,14 @@ final class LauncherRecentsLayoutEngine {
             boolean primaryScrollHorizontal) {
         float taskCenterPrimary =
                 taskCenteredPrimaryStartPx + visibleOffset + (taskPrimarySize * 0.5f);
+        float primarySize = resolvePrimarySize(recentsView, primaryScrollHorizontal);
+        if (!primaryScrollHorizontal && isSeascapeOrientation(recentsView)) {
+            taskCenterPrimary = primarySize - taskCenterPrimary;
+        }
         return remapProgress(
                 taskCenterPrimary,
                 0f,
-                resolvePrimarySize(recentsView, primaryScrollHorizontal));
+                primarySize);
     }
 
     private static float resolveStackReleaseSettledProgress(
