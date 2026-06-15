@@ -3131,7 +3131,7 @@ final class LauncherRecentsLayoutEngine {
         float distancePx = Math.abs(frontOffset - currentOffset);
         float opaqueDistancePx = Math.max(
                 1f,
-                taskPrimarySize * 0.35f);
+                taskPrimarySize * 0.24f);
         return smoothStep(remapProgress(distancePx, 0f, opaqueDistancePx));
     }
 
