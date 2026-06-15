@@ -89,6 +89,7 @@ final class HomePageController {
 
         ImageView donationButton = new ImageView(activity);
         donationButton.setImageResource(R.drawable.ic_donate_copy);
+        donationButton.setColorFilter(activity.primaryColor());
         donationButton.setContentDescription("捐赠");
         donationButton.setScaleType(ImageView.ScaleType.CENTER);
         donationButton.setPadding(
