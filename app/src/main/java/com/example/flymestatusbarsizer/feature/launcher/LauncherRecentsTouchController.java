@@ -1435,6 +1435,27 @@ final class LauncherRecentsTouchController {
         LauncherRecentsLayoutEngine.prepareStackDismissRelayoutCapture(recentsView);
         HashMap<View, StackDismissRelayoutStartState> startStates =
                 captureStackDismissRelayoutStartStates(recentsView);
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        boolean fillFromAfter = shouldFillStackDismissFromAfter(dismissedIndex, startStates);
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        boolean snapToPageAfterRelayout = !fillFromAfter;
+        int startScroll = resolvePrimaryScroll(recentsView);
+        int[] targetPageAndScroll = snapToPageAfterRelayout
+                ? resolveNearestStackDismissPageAndScroll(
+                        recentsView,
+                        startScroll,
+                        Math.max(0, taskViewCount - 1))
+                : null;
+        int targetScroll = targetPageAndScroll != null
+                ? targetPageAndScroll[1]
+                : startScroll;
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> targetStates =
+                dismissedIndex >= 0
+                        ? LauncherRecentsLayoutEngine.computeStackLayout(
+                                recentsView,
+                                taskView,
+                                targetScroll)
+                        : new HashMap<>();
         boolean removedTask = LauncherRecentsCompat.invokeMethodReflectively(
                 recentsView,
                 "removeTaskInternal",
@@ -1446,7 +1467,15 @@ final class LauncherRecentsTouchController {
             return false;
         }
         ((ViewGroup) recentsView).removeViewInLayout(taskView);
-        animateStackDismissRelayout(recentsView, dismissedIndex, startStates);
+        animateStackDismissRelayout(
+                recentsView,
+                dismissedIndex,
+                startStates,
+                targetStates,
+                primaryScrollHorizontal,
+                startScroll,
+                targetScroll,
+                snapToPageAfterRelayout);
         recentsView.invalidate();
         return true;
     }
@@ -1475,30 +1504,19 @@ final class LauncherRecentsTouchController {
                     taskView,
                     new StackDismissRelayoutStartState(
                             i,
-                            visualState,
-                            LauncherRecentsLayoutEngine.resolveStackTaskCurrentVisibleOffset(
-                                    recentsView,
-                                    taskView,
-                                    i)));
+                            visualState));
         }
         return states;
     }
 
-    private static void animateStackDismissRelayout(
-            View recentsView,
+    private static boolean shouldFillStackDismissFromAfter(
             int dismissedIndex,
             HashMap<View, StackDismissRelayoutStartState> startStates) {
-        if (dismissedIndex < 0 || startStates == null || startStates.isEmpty()) {
-            finishStackDismissRelayout(recentsView, "dismissRelayoutNoStart", false);
-            return;
-        }
-        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> targetStates =
-                new HashMap<>();
-        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> animationStartStates =
-                new HashMap<>();
-        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         int beforeCount = 0;
         int afterCount = 0;
+        if (startStates == null) {
+            return false;
+        }
         for (StackDismissRelayoutStartState state : startStates.values()) {
             if (state.index > dismissedIndex) {
                 afterCount++;
@@ -1506,67 +1524,36 @@ final class LauncherRecentsTouchController {
                 beforeCount++;
             }
         }
-        boolean fillFromAfter = afterCount > 0 && afterCount >= beforeCount;
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        final boolean snapToPageAfterRelayout = !fillFromAfter;
-        final int startScroll = resolvePrimaryScroll(recentsView);
-        final int[] targetPageAndScroll = snapToPageAfterRelayout
-                ? resolveNearestStackDismissPageAndScroll(recentsView, startScroll, taskViewCount)
-                : null;
-        final int targetScroll = targetPageAndScroll != null
-                ? targetPageAndScroll[1]
-                : startScroll;
-        final boolean animatePageScroll = snapToPageAfterRelayout && targetScroll != startScroll;
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            StackDismissRelayoutStartState startState = startStates.get(taskView);
-            if (startState == null
-                    || (fillFromAfter
-                    ? startState.index < dismissedIndex
-                    : startState.index > dismissedIndex)) {
-                continue;
-            }
-            StackDismissRelayoutStartState targetSlot =
-                    findAdjacentStackDismissRelayoutState(
-                            startStates,
-                            startState.index,
-                            fillFromAfter);
-            if (targetSlot == null) {
-                continue;
-            }
-            animationStartStates.put(taskView, startState.visualState);
-            targetStates.put(
-                    taskView,
-                    createStackDismissSlotTargetState(
-                            startState,
-                            targetSlot,
-                            primaryScrollHorizontal));
+        return afterCount > 0 && afterCount >= beforeCount;
+    }
+
+    private static void animateStackDismissRelayout(
+            View recentsView,
+            int dismissedIndex,
+            HashMap<View, StackDismissRelayoutStartState> startStates,
+            HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> targetStates,
+            boolean primaryScrollHorizontal,
+            int startScroll,
+            int targetScroll,
+            boolean snapToPageAfterRelayout) {
+        if (dismissedIndex < 0 || startStates == null || startStates.isEmpty()) {
+            finishStackDismissRelayout(recentsView, "dismissRelayoutNoStart", false);
+            return;
         }
-        if (targetStates.isEmpty()) {
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> animationStartStates =
+                new HashMap<>();
+        final boolean animatePageScroll = snapToPageAfterRelayout && targetScroll != startScroll;
+        if (targetStates == null || targetStates.isEmpty()) {
             finishStackDismissRelayout(recentsView, "dismissRelayoutNoTarget", false);
             return;
         }
-        if (animatePageScroll) {
-            HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> currentStates =
-                    captureCurrentStackDismissVisualStates(recentsView);
-            HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> finalStates =
-                    captureStackDismissFinalStatesAtScroll(
-                            recentsView,
-                            currentStates,
-                            primaryScrollHorizontal,
-                            targetPageAndScroll[0],
-                            targetScroll,
-                            startScroll);
-            for (View taskView : finalStates.keySet()) {
-                LauncherRecentsTaskVisuals.StackTaskVisualState currentState =
-                        currentStates.get(taskView);
-                LauncherRecentsTaskVisuals.StackTaskVisualState finalState =
-                        finalStates.get(taskView);
-                if (currentState != null && finalState != null) {
-                    animationStartStates.put(taskView, currentState);
-                    targetStates.put(taskView, finalState);
-                }
-            }
+        for (View taskView : targetStates.keySet()) {
+            StackDismissRelayoutStartState startState = startStates.get(taskView);
+            animationStartStates.put(
+                    taskView,
+                    startState != null
+                            ? startState.visualState
+                            : createStackDismissCurrentStartState(taskView));
         }
         ValueAnimator runningAnimator =
                 LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.remove(recentsView);
@@ -1707,84 +1694,6 @@ final class LauncherRecentsTouchController {
         return new int[]{nearestPage, nearestScroll};
     }
 
-    private static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState>
-    captureCurrentStackDismissVisualStates(View recentsView) {
-        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> states = new HashMap<>();
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
-                continue;
-            }
-            states.put(taskView, createStackDismissCurrentStartState(taskView));
-        }
-        return states;
-    }
-
-    private static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState>
-    captureStackDismissFinalStatesAtScroll(
-            View recentsView,
-            HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> currentStates,
-            boolean primaryScrollHorizontal,
-            int targetPage,
-            int targetScroll,
-            int startScroll) {
-        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> finalStates =
-                new HashMap<>();
-        if (recentsView == null || currentStates == null || currentStates.isEmpty()) {
-            return finalStates;
-        }
-        int originalCurrentPage = LauncherRecentsCompat.readIntField(
-                recentsView,
-                "mCurrentPage",
-                targetPage);
-        int originalScrollOverPage = LauncherRecentsCompat.readIntField(
-                recentsView,
-                "mCurrentScrollOverPage",
-                originalCurrentPage);
-        int originalNextPage = LauncherRecentsCompat.readIntField(
-                recentsView,
-                "mNextPage",
-                -1);
-        int originalPageScrollDiff = LauncherRecentsCompat.readIntField(
-                recentsView,
-                "mCurrentPageScrollDiff",
-                0);
-        scrollStackDismissTo(recentsView, primaryScrollHorizontal, targetScroll);
-        setStackDismissPageFields(recentsView, targetPage, targetPage, 0);
-        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
-        LauncherRecentsLayoutEngine.applyStackLayout(
-                recentsView,
-                false,
-                "dismissRelayoutTargetCapture",
-                false);
-        for (View taskView : currentStates.keySet()) {
-            LauncherRecentsTaskVisuals.StackTaskVisualState state =
-                    LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.get(taskView);
-            if (state != null) {
-                finalStates.put(taskView, state);
-            }
-        }
-        scrollStackDismissTo(recentsView, primaryScrollHorizontal, startScroll);
-        LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", originalCurrentPage);
-        LauncherRecentsCompat.setIntField(
-                recentsView,
-                "mCurrentScrollOverPage",
-                originalScrollOverPage);
-        LauncherRecentsCompat.setIntField(recentsView, "mNextPage", originalNextPage);
-        LauncherRecentsCompat.setIntField(
-                recentsView,
-                "mCurrentPageScrollDiff",
-                originalPageScrollDiff);
-        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
-        for (View taskView : currentStates.keySet()) {
-            LauncherRecentsTaskVisuals.applyStackTaskVisualState(
-                    taskView,
-                    currentStates.get(taskView));
-        }
-        return finalStates;
-    }
-
     private static void setStackDismissPageFields(
             View recentsView,
             int page,
@@ -1797,56 +1706,6 @@ final class LauncherRecentsTouchController {
                 recentsView,
                 "mCurrentPageScrollDiff",
                 currentPageScrollDiff);
-    }
-
-    private static StackDismissRelayoutStartState findAdjacentStackDismissRelayoutState(
-            HashMap<View, StackDismissRelayoutStartState> states,
-            int index,
-            boolean before) {
-        StackDismissRelayoutStartState nearest = null;
-        for (StackDismissRelayoutStartState state : states.values()) {
-            if (before ? state.index >= index : state.index <= index) {
-                continue;
-            }
-            if (nearest == null
-                    || (before
-                    ? state.index > nearest.index
-                    : state.index < nearest.index)) {
-                nearest = state;
-            }
-        }
-        return nearest;
-    }
-
-    private static LauncherRecentsTaskVisuals.StackTaskVisualState
-    createStackDismissSlotTargetState(
-            StackDismissRelayoutStartState start,
-            StackDismissRelayoutStartState targetSlot,
-            boolean primaryScrollHorizontal) {
-        LauncherRecentsTaskVisuals.StackTaskVisualState startState = start.visualState;
-        LauncherRecentsTaskVisuals.StackTaskVisualState slotState = targetSlot.visualState;
-        float visibleOffsetDelta = targetSlot.visibleOffset - start.visibleOffset;
-        return new LauncherRecentsTaskVisuals.StackTaskVisualState(
-                slotState.pivotX,
-                slotState.pivotY,
-                slotState.horizontalOffsetX,
-                primaryScrollHorizontal
-                        ? startState.taskOffsetX + visibleOffsetDelta
-                        + startState.horizontalOffsetX - slotState.horizontalOffsetX
-                        : slotState.taskOffsetX,
-                primaryScrollHorizontal
-                        ? slotState.taskOffsetY
-                        : startState.taskOffsetY + visibleOffsetDelta,
-                slotState.boxTranslationY,
-                slotState.scale,
-                slotState.attachAlpha,
-                slotState.stableAlpha,
-                slotState.activityTitleAlpha,
-                slotState.blurProgress,
-                slotState.fullscreenProgress,
-                slotState.translationZ,
-                slotState.stackContentBlurEnabled,
-                slotState.clearShadow);
     }
 
     private static void applyStackLayoutAfterPagedMove(View recentsView, MotionEvent motionEvent) {
@@ -1939,15 +1798,12 @@ final class LauncherRecentsTouchController {
     private static final class StackDismissRelayoutStartState {
         final int index;
         final LauncherRecentsTaskVisuals.StackTaskVisualState visualState;
-        final float visibleOffset;
 
         StackDismissRelayoutStartState(
                 int index,
-                LauncherRecentsTaskVisuals.StackTaskVisualState visualState,
-                float visibleOffset) {
+                LauncherRecentsTaskVisuals.StackTaskVisualState visualState) {
             this.index = index;
             this.visualState = visualState;
-            this.visibleOffset = visibleOffset;
         }
     }
 

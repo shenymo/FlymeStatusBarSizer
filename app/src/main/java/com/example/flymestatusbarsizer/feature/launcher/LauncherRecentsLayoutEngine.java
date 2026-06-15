@@ -11,6 +11,7 @@ import android.view.ViewParent;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashMap;
 
 final class LauncherRecentsLayoutEngine {
     private static final String LAUNCHER_STATE_CLASS = "com.android.launcher3.LauncherState";
@@ -52,6 +53,8 @@ final class LauncherRecentsLayoutEngine {
         final float referencePrimarySize;
         final float pageSpan;
         final boolean primaryScrollHorizontal;
+        final int primaryScroll;
+        final float leftEdgeRevealProgress;
         final float blankTapExitProgress;
         final float stackEntryProgress;
         final float stackVerticalProgress;
@@ -78,6 +81,8 @@ final class LauncherRecentsLayoutEngine {
                 float referencePrimarySize,
                 float pageSpan,
                 boolean primaryScrollHorizontal,
+                int primaryScroll,
+                float leftEdgeRevealProgress,
                 float blankTapExitProgress,
                 float stackEntryProgress,
                 float stackVerticalProgress,
@@ -102,6 +107,8 @@ final class LauncherRecentsLayoutEngine {
             this.referencePrimarySize = referencePrimarySize;
             this.pageSpan = pageSpan;
             this.primaryScrollHorizontal = primaryScrollHorizontal;
+            this.primaryScroll = primaryScroll;
+            this.leftEdgeRevealProgress = leftEdgeRevealProgress;
             this.blankTapExitProgress = blankTapExitProgress;
             this.stackEntryProgress = stackEntryProgress;
             this.stackVerticalProgress = stackVerticalProgress;
@@ -156,6 +163,30 @@ final class LauncherRecentsLayoutEngine {
             this.nativeDismissTranslationPrimary = nativeDismissTranslationPrimary;
             this.gestureReleaseTaskState = gestureReleaseTaskState;
             this.blankTapExitState = blankTapExitState;
+        }
+    }
+
+    private static final class ComputedStackLayout {
+        final ArrayList<Integer> activeIndices;
+        final ArrayList<Integer> processIndices;
+        final View runningTaskView;
+        final boolean appEntrySessionActive;
+        final int[] runningTaskIds;
+        final HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> visualStates =
+                new HashMap<>();
+        final ArrayList<View> coreOnlyTaskViews = new ArrayList<>();
+
+        ComputedStackLayout(
+                ArrayList<Integer> activeIndices,
+                ArrayList<Integer> processIndices,
+                View runningTaskView,
+                boolean appEntrySessionActive,
+                int[] runningTaskIds) {
+            this.activeIndices = activeIndices;
+            this.processIndices = processIndices;
+            this.runningTaskView = runningTaskView;
+            this.appEntrySessionActive = appEntrySessionActive;
+            this.runningTaskIds = runningTaskIds;
         }
     }
 
@@ -1538,17 +1569,128 @@ final class LauncherRecentsLayoutEngine {
             return false;
         }
 
+        boolean blankTapExitActive =
+                LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView);
+        if (blankTapExitActive) {
+            applyBlankTapHomeExitRecentsFrame(
+                    recentsView,
+                    LauncherRecentsTransitionController.readBlankTapHomeExitProgress(recentsView));
+        }
+        ComputedStackLayout layout = computeStackLayoutInternal(
+                recentsView,
+                taskViewCount,
+                stackLayoutRadius,
+                config,
+                null,
+                null);
+        LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.put(
+                recentsView,
+                new ArrayList<>(layout.activeIndices));
+
+        for (int index = 0; index < layout.processIndices.size(); index++) {
+            int i = layout.processIndices.get(index);
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null) {
+                continue;
+            }
+            if (LauncherRecentsCompat.isDesktopTask(taskView)) {
+                restoreTaskTransform(taskView);
+                continue;
+            }
+            if (taskView != layout.runningTaskView
+                    && sharesTaskIds(taskView, layout.runningTaskIds)) {
+                restoreTaskTransform(taskView);
+                LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
+                LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
+                continue;
+            }
+            if (!layout.activeIndices.contains(i)) {
+                hideLightStackTask(taskView);
+                continue;
+            }
+            if (layout.appEntrySessionActive && taskView == layout.runningTaskView) {
+                LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 1f);
+                LauncherRecentsTaskVisuals.setStableAlpha(taskView, 1f);
+                LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
+                continue;
+            }
+            LauncherRecentsTaskVisuals.StackTaskVisualState visualState =
+                    layout.visualStates.get(taskView);
+            if (visualState == null) {
+                continue;
+            }
+            if (captureStockState) {
+                LauncherRecentsTaskVisuals.captureStockTaskState(taskView);
+            }
+            if (layout.coreOnlyTaskViews.contains(taskView)) {
+                LauncherRecentsTaskVisuals.applyStackTaskCoreVisualState(taskView, visualState);
+            } else {
+                LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, visualState);
+            }
+        }
+        return true;
+    }
+
+    static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> computeStackLayout(
+            View recentsView,
+            View excludedTaskView,
+            Integer targetScroll) {
+        if (recentsView == null) {
+            return new HashMap<>();
+        }
+        return computeStackLayout(
+                recentsView,
+                resolveStackLayoutRadius(recentsView),
+                excludedTaskView,
+                targetScroll);
+    }
+
+    static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> computeStackLayout(
+            View recentsView,
+            int stackLayoutRadius,
+            View excludedTaskView,
+            Integer targetScroll) {
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> states = new HashMap<>();
+        if (recentsView == null) {
+            return states;
+        }
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
+        int taskViewCount = resolveProjectedTaskViewCount(recentsView, excludedTaskView);
+        if (!shouldUseStackLayout(config, recentsView, taskViewCount)) {
+            return states;
+        }
+        return computeStackLayoutInternal(
+                recentsView,
+                taskViewCount,
+                stackLayoutRadius,
+                config,
+                excludedTaskView,
+                targetScroll).visualStates;
+    }
+
+    private static ComputedStackLayout computeStackLayoutInternal(
+            View recentsView,
+            int taskViewCount,
+            int stackLayoutRadius,
+            FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config,
+            View excludedTaskView,
+            Integer targetScroll) {
         float pageSpacing = LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0);
         Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
                 recentsView,
                 "getRunningTaskView");
         View runningTaskView = runningTaskObject instanceof View
+                && runningTaskObject != excludedTaskView
                 ? (View) runningTaskObject
                 : null;
-        int runningTaskChildIndex = -1;
-        if (runningTaskView != null && recentsView instanceof ViewGroup) {
-            runningTaskChildIndex = ((ViewGroup) recentsView).indexOfChild(runningTaskView);
-        }
+        int runningTaskChildIndex = findProjectedTaskIndex(
+                recentsView,
+                runningTaskView,
+                excludedTaskView);
         boolean gestureStackReleaseActive =
                 LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                         recentsView);
@@ -1579,7 +1721,8 @@ final class LauncherRecentsLayoutEngine {
                 runningTaskChildIndex,
                 taskViewCount,
                 stackLayoutRadius,
-                entryLightWindow);
+                entryLightWindow,
+                targetScroll);
         if (desktopOverviewEntryWindow) {
             fillBoundaryTargetCount = Math.min(taskViewCount, 3);
             lightAnchorIndex = 0;
@@ -1590,24 +1733,28 @@ final class LauncherRecentsLayoutEngine {
                 stackLayoutRadius,
                 fillBoundaryTargetCount,
                 stableFillWindow);
-        ArrayList<Integer> lastActiveIndices =
-                LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.get(recentsView);
         ArrayList<Integer> processIndices = resolveStackLayoutProcessIndices(
                 taskViewCount,
                 activeIndices,
-                lastActiveIndices);
-        LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.put(
-                recentsView,
-                new ArrayList<>(activeIndices));
+                LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.get(recentsView));
+        ComputedStackLayout result = new ComputedStackLayout(
+                activeIndices,
+                processIndices,
+                runningTaskView,
+                appEntrySessionActive,
+                resolveTaskIds(runningTaskView));
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        int primaryScroll = targetScroll != null ? targetScroll : resolvePrimaryScroll(recentsView);
         float referenceWidth = 0f;
         float referenceHeight = 0f;
         float referencePrimarySize = 0f;
         float pageSpan = 0f;
 
         for (int index = 0; index < activeIndices.size(); index++) {
-            int i = activeIndices.get(index);
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            View taskView = getProjectedTaskViewAt(
+                    recentsView,
+                    activeIndices.get(index),
+                    excludedTaskView);
             if (taskView == null) {
                 continue;
             }
@@ -1665,14 +1812,6 @@ final class LauncherRecentsLayoutEngine {
             stackVerticalProgress = 1f;
             stackSettledShiftProgress = smoothStep(stackReleaseProgress);
         }
-        int edgeScrollCorrection = resolveEdgeScrollCorrection(recentsView);
-        float maxTranslationZ = FlymeStatusBarSizer.dp(recentsView.getContext(), 24);
-        float zStepPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 8);
-        boolean blankTapExitActive =
-                LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView);
-        if (blankTapExitActive) {
-            applyBlankTapHomeExitRecentsFrame(recentsView, blankTapExitProgress);
-        }
         StackLayoutContext layoutContext = new StackLayoutContext(
                 recentsView,
                 taskViewCount,
@@ -1683,6 +1822,8 @@ final class LauncherRecentsLayoutEngine {
                 referencePrimarySize,
                 pageSpan,
                 primaryScrollHorizontal,
+                primaryScroll,
+                resolveLeftEdgeRevealProgress(recentsView, primaryScroll),
                 blankTapExitProgress,
                 stackEntryProgress,
                 stackVerticalProgress,
@@ -1692,45 +1833,23 @@ final class LauncherRecentsLayoutEngine {
                 overviewStateStackHandoffProgress,
                 stackReleaseProgress,
                 stackSettledShiftProgress,
-                edgeScrollCorrection,
+                resolveEdgeScrollCorrection(recentsView, primaryScroll),
                 appEntrySessionActive,
-                maxTranslationZ,
-                zStepPx,
-                blankTapExitActive,
+                FlymeStatusBarSizer.dp(recentsView.getContext(), 24),
+                FlymeStatusBarSizer.dp(recentsView.getContext(), 8),
+                LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView),
                 config.launcherIosStackRecentsBlurEnabled);
 
-        int[] runningTaskIds = resolveTaskIds(runningTaskView);
         for (int index = 0; index < processIndices.size(); index++) {
             int i = processIndices.get(index);
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView == null) {
+            View taskView = getProjectedTaskViewAt(recentsView, i, excludedTaskView);
+            if (taskView == null
+                    || LauncherRecentsCompat.isDesktopTask(taskView)
+                    || (taskView != runningTaskView
+                    && sharesTaskIds(taskView, result.runningTaskIds))
+                    || !activeIndices.contains(i)
+                    || (appEntrySessionActive && taskView == runningTaskView)) {
                 continue;
-            }
-            if (LauncherRecentsCompat.isDesktopTask(taskView)) {
-                restoreTaskTransform(taskView);
-                continue;
-            }
-            if (taskView != runningTaskView && sharesTaskIds(taskView, runningTaskIds)) {
-                restoreTaskTransform(taskView);
-                LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
-                LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
-                continue;
-            }
-            if (!activeIndices.contains(i)) {
-                hideLightStackTask(taskView);
-                continue;
-            }
-            if (appEntrySessionActive && taskView == runningTaskView) {
-                LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 1f);
-                LauncherRecentsTaskVisuals.setStableAlpha(taskView, 1f);
-                LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
-                continue;
-            }
-            if (captureStockState) {
-                LauncherRecentsTaskVisuals.captureStockTaskState(taskView);
             }
             boolean coreOnly = shouldApplyCoreOnlyDuringGestureRelease(
                     gestureStackReleaseActive,
@@ -1742,12 +1861,11 @@ final class LauncherRecentsLayoutEngine {
                             buildStackTaskInput(layoutContext, taskView, i),
                             coreOnly);
             if (coreOnly) {
-                LauncherRecentsTaskVisuals.applyStackTaskCoreVisualState(taskView, visualState);
-            } else {
-                LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, visualState);
+                result.coreOnlyTaskViews.add(taskView);
             }
+            result.visualStates.put(taskView, visualState);
         }
-        return true;
+        return result;
     }
 
     private static boolean shouldApplyCoreOnlyDuringGestureRelease(
@@ -1866,6 +1984,60 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
+    private static int resolveProjectedTaskViewCount(View recentsView, View excludedTaskView) {
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        if (excludedTaskView == null) {
+            return taskViewCount;
+        }
+        return findProjectedTaskIndex(recentsView, excludedTaskView, null) >= 0
+                ? Math.max(0, taskViewCount - 1)
+                : taskViewCount;
+    }
+
+    private static View getProjectedTaskViewAt(
+            View recentsView,
+            int projectedIndex,
+            View excludedTaskView) {
+        if (excludedTaskView == null) {
+            return LauncherRecentsCompat.getTaskViewAt(recentsView, projectedIndex);
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        int projected = 0;
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == excludedTaskView) {
+                continue;
+            }
+            if (projected == projectedIndex) {
+                return taskView;
+            }
+            projected++;
+        }
+        return null;
+    }
+
+    private static int findProjectedTaskIndex(
+            View recentsView,
+            View targetTaskView,
+            View excludedTaskView) {
+        if (targetTaskView == null) {
+            return -1;
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        int projected = 0;
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == excludedTaskView) {
+                continue;
+            }
+            if (taskView == targetTaskView) {
+                return projected;
+            }
+            projected++;
+        }
+        return -1;
+    }
+
     private static int resolveTaskRawOffset(View recentsView, int index) {
         return LauncherRecentsCompat.invokeInt(
                 recentsView,
@@ -1880,18 +2052,10 @@ final class LauncherRecentsLayoutEngine {
                 index);
     }
 
-    static float resolveStackTaskCurrentVisibleOffset(
-            View recentsView,
-            View taskView,
-            int index) {
-        if (recentsView == null || taskView == null) {
-            return 0f;
-        }
-        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+    private static float resolveTaskRawOffset(View recentsView, int index, int primaryScroll) {
         return resolveTaskRawOffset(recentsView, index)
-                + readTaskPrimaryDismissTranslation(taskView, primaryScrollHorizontal)
-                + readTaskPrimaryOffsetField(taskView, primaryScrollHorizontal)
-                + readTaskPrimaryHorizontalOffsetField(taskView, primaryScrollHorizontal);
+                + resolvePrimaryScroll(recentsView)
+                - primaryScroll;
     }
 
     static float resolveStackDismissProjectedVisibleOffset(
@@ -1959,7 +2123,7 @@ final class LauncherRecentsLayoutEngine {
                         || LauncherRecentsState.isGestureStackReleasedStable(context.recentsView))
                         ? LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView)
                         : null;
-        float rawOffset = resolveTaskRawOffset(context.recentsView, index);
+        float rawOffset = resolveTaskRawOffset(context.recentsView, index, context.primaryScroll);
         float nativeDismissTranslationPrimary = readTaskPrimaryDismissTranslation(
                 taskView,
                 context.primaryScrollHorizontal);
@@ -2019,6 +2183,7 @@ final class LauncherRecentsLayoutEngine {
                 input.layoutProgress,
                 input.taskPrimarySize,
                 input.taskCenteredPrimaryStartPx,
+                context.leftEdgeRevealProgress,
                 context.primaryScrollHorizontal);
         float finalTaskOffsetY = stackEntryLiftPx * (1.0f - context.stackVerticalProgress);
         float taskEntryProgress = resolveTaskStackEntryProgress(
@@ -2029,6 +2194,7 @@ final class LauncherRecentsLayoutEngine {
                 input.collapsedReferenceProgress,
                 input.taskPrimarySize,
                 input.taskCenteredPrimaryStartPx,
+                context.leftEdgeRevealProgress,
                 context.primaryScrollHorizontal) * STACK_ENTRY_INITIAL_SPREAD_RATIO;
         float desiredVisibleOffset = lerp(
                 collapsedVisibleOffset,
@@ -2117,6 +2283,7 @@ final class LauncherRecentsLayoutEngine {
                 input.layoutProgress,
                 input.taskPrimarySize,
                 input.taskCenteredPrimaryStartPx,
+                context.leftEdgeRevealProgress,
                 context.primaryScrollHorizontal);
         if (!blankTapExitTaskActive) {
             desiredStableAlpha *= stackLeftClampAlpha;
@@ -2408,11 +2575,27 @@ final class LauncherRecentsLayoutEngine {
             int taskViewCount,
             int stackLayoutRadius,
             boolean entryWindow) {
+        return resolveStackLayoutAnchorIndex(
+                recentsView,
+                runningTaskChildIndex,
+                taskViewCount,
+                stackLayoutRadius,
+                entryWindow,
+                null);
+    }
+
+    private static int resolveStackLayoutAnchorIndex(
+            View recentsView,
+            int runningTaskChildIndex,
+            int taskViewCount,
+            int stackLayoutRadius,
+            boolean entryWindow,
+            Integer targetScroll) {
         if (entryWindow && runningTaskChildIndex >= 0) {
             return runningTaskChildIndex;
         }
         if (!entryWindow && stackLayoutRadius == STACK_STABLE_VISIBLE_RADIUS) {
-            return resolveNearestStackLayoutPage(recentsView, taskViewCount);
+            return resolveNearestStackLayoutPage(recentsView, taskViewCount, targetScroll);
         }
         if (runningTaskChildIndex >= 0) {
             return runningTaskChildIndex;
@@ -2422,7 +2605,14 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static int resolveNearestStackLayoutPage(View recentsView, int taskViewCount) {
-        int primaryScroll = resolvePrimaryScroll(recentsView);
+        return resolveNearestStackLayoutPage(recentsView, taskViewCount, null);
+    }
+
+    private static int resolveNearestStackLayoutPage(
+            View recentsView,
+            int taskViewCount,
+            Integer targetScroll) {
+        int primaryScroll = targetScroll != null ? targetScroll : resolvePrimaryScroll(recentsView);
         int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
         int scrollOverPage = LauncherRecentsCompat.readIntField(
                 recentsView,
@@ -2905,6 +3095,22 @@ final class LauncherRecentsLayoutEngine {
             float taskPrimarySize,
             float taskCenteredPrimaryStartPx,
             boolean primaryScrollHorizontal) {
+        return resolveStackLeftClampAlpha(
+                recentsView,
+                progress,
+                taskPrimarySize,
+                taskCenteredPrimaryStartPx,
+                resolveLeftEdgeRevealProgress(recentsView),
+                primaryScrollHorizontal);
+    }
+
+    private static float resolveStackLeftClampAlpha(
+            View recentsView,
+            float progress,
+            float taskPrimarySize,
+            float taskCenteredPrimaryStartPx,
+            float leftEdgeRevealProgress,
+            boolean primaryScrollHorizontal) {
         if (progress >= 0f) {
             return 1f;
         }
@@ -2913,12 +3119,14 @@ final class LauncherRecentsLayoutEngine {
                 progress,
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx,
+                leftEdgeRevealProgress,
                 primaryScrollHorizontal);
         float frontOffset = resolveStackVisibleOffset(
                 recentsView,
                 progress + 1f,
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx,
+                leftEdgeRevealProgress,
                 primaryScrollHorizontal);
         float distancePx = Math.abs(frontOffset - currentOffset);
         float opaqueDistancePx = Math.max(
@@ -2968,7 +3176,10 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static int resolveEdgeScrollCorrection(View recentsView) {
-        int primaryScroll = resolvePrimaryScroll(recentsView);
+        return resolveEdgeScrollCorrection(recentsView, resolvePrimaryScroll(recentsView));
+    }
+
+    private static int resolveEdgeScrollCorrection(View recentsView, int primaryScroll) {
         int minScroll = LauncherRecentsCompat.readIntField(recentsView, "mMinScroll", primaryScroll);
         int maxScroll = LauncherRecentsCompat.readIntField(recentsView, "mMaxScroll", primaryScroll);
         int clampedScroll = Math.max(minScroll, Math.min(primaryScroll, maxScroll));
