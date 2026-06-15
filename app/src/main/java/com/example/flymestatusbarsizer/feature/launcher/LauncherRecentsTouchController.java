@@ -1497,13 +1497,16 @@ final class LauncherRecentsTouchController {
         HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> animationStartStates =
                 new HashMap<>();
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
-        boolean fillFromAfter = false;
+        int beforeCount = 0;
+        int afterCount = 0;
         for (StackDismissRelayoutStartState state : startStates.values()) {
             if (state.index > dismissedIndex) {
-                fillFromAfter = true;
-                break;
+                afterCount++;
+            } else if (state.index < dismissedIndex) {
+                beforeCount++;
             }
         }
+        boolean fillFromAfter = afterCount > 0 && afterCount >= beforeCount;
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         final boolean snapToPageAfterRelayout = !fillFromAfter;
         for (int i = 0; i < taskViewCount; i++) {
