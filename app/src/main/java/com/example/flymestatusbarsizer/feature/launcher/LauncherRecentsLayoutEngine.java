@@ -1037,6 +1037,14 @@ final class LauncherRecentsLayoutEngine {
                 ? (View) runningTaskObject
                 : null;
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        int runningTaskChildIndex = recentsView instanceof ViewGroup && runningTaskView != null
+                ? ((ViewGroup) recentsView).indexOfChild(runningTaskView)
+                : -1;
+        boolean shiftSeascapeFirstRunningAnchor = shouldShiftSeascapeFirstRunningAnchor(
+                recentsView,
+                primaryScrollHorizontal,
+                runningTaskView,
+                runningTaskChildIndex);
         float pageSpacing = LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0);
         float referencePrimarySize = 0f;
         float pageSpan = 0f;
@@ -1096,6 +1104,9 @@ final class LauncherRecentsLayoutEngine {
                     primaryScrollHorizontal);
             float startRawOffset = rawOffsets[i];
             float targetRawOffset = startRawOffset + scrollDelta;
+            if (shiftSeascapeFirstRunningAnchor) {
+                targetRawOffset += pageSpan;
+            }
             float targetProgress = targetRawOffset / pageSpan;
             float targetVisibleOffset = resolveStackVisibleOffset(
                     recentsView,
@@ -2134,6 +2145,9 @@ final class LauncherRecentsLayoutEngine {
                         ? LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView)
                         : null;
         float rawOffset = resolveTaskRawOffset(context.recentsView, index, context.primaryScroll);
+        if (shouldShiftSeascapeFirstRunningAnchor(context)) {
+            rawOffset += context.pageSpan;
+        }
         float nativeDismissTranslationPrimary = readTaskPrimaryDismissTranslation(
                 taskView,
                 context.primaryScrollHorizontal);
@@ -3054,6 +3068,25 @@ final class LauncherRecentsLayoutEngine {
             View recentsView,
             boolean primaryScrollHorizontal) {
         return !primaryScrollHorizontal && isSeascapeOrientation(recentsView);
+    }
+
+    private static boolean shouldShiftSeascapeFirstRunningAnchor(StackLayoutContext context) {
+        return context != null
+                && shouldShiftSeascapeFirstRunningAnchor(
+                context.recentsView,
+                context.primaryScrollHorizontal,
+                context.runningTaskView,
+                context.runningTaskChildIndex);
+    }
+
+    private static boolean shouldShiftSeascapeFirstRunningAnchor(
+            View recentsView,
+            boolean primaryScrollHorizontal,
+            View runningTaskView,
+            int runningTaskChildIndex) {
+        return runningTaskView != null
+                && runningTaskChildIndex == 0
+                && shouldMirrorStackPrimary(recentsView, primaryScrollHorizontal);
     }
 
     private static float resolveStackUnclampedVisibleOffset(
