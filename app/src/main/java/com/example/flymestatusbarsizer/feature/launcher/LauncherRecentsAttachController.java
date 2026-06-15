@@ -53,13 +53,8 @@ final class LauncherRecentsAttachController {
                         true);
                 LauncherRecentsStateAnimationController.clearOverviewEntryState(recentsView);
                 LauncherRecentsLayoutEngine.hideStackClearAllButton(recentsView);
+                LauncherRecentsState.clearAppToRecentsGestureState(recentsView);
                 LauncherRecentsState.setSwipeUpGestureActive(recentsView, true);
-                LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
-                LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
-                LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
-                LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
-                LauncherRecentsState.setPendingGestureRecentsStackRelease(recentsView, false);
-                LauncherRecentsState.setPendingGestureRecentsStackReleaseHandoff(recentsView, false);
                 LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                 LauncherRecentsState.trackRecentsView(recentsView);
                 return chain.proceed();
@@ -171,12 +166,7 @@ final class LauncherRecentsAttachController {
                                 recentsView);
                         return chain.proceed();
                     }
-                    // 【方案一 1-B】守卫：入场流程任意阶段均不允许清除状态触发恢复布局。
-                    // 补充 isGestureStackReleasedStable：release 动画结束后系统仍会回调
-                    // setRecentsAttachedToAppWindowForFlyme(false)，此时前三个条件全为 false，
-                    // 但若不阻止，clearAppToRecentsEntrySession 会把 gestureReleasedStable 重置
-                    // 为 false，导致下一帧 resolveStockStackEntryProgress 读到未收敛的
-                    // mAdjacentPageHorizontalOffset，瞬间拉低名称/图标透明度。
+                    // Release 结束后系统还会 detach，需保留 stable 状态避免下一帧读到未收敛偏移。
                     boolean shouldKeepDeferred =
                             LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                                     || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
@@ -256,12 +246,7 @@ final class LauncherRecentsAttachController {
             LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
         }
         endAppToRecentsEntrySessionWithoutLayout(recentsView);
-        LauncherRecentsLayoutEngine.startStackLayoutRecovery(recentsView);
-        LauncherRecentsLayoutEngine.applyStackLayout(
-                recentsView,
-                false,
-                "appEntryClearRestore",
-                true);
+        LauncherRecentsLayoutEngine.restoreStackLayout(recentsView, "appEntryClearRestore");
         recentsView.requestLayout();
         recentsView.invalidate();
     }
@@ -271,11 +256,7 @@ final class LauncherRecentsAttachController {
             return;
         }
         LauncherRecentsPerf.flow("attach:entrySession:endWithoutLayout", recentsView);
-        LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
-        LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
-        LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
-        LauncherRecentsState.setPendingGestureRecentsStackRelease(recentsView, false);
-        LauncherRecentsState.setPendingGestureRecentsStackReleaseHandoff(recentsView, false);
+        LauncherRecentsState.clearAppToRecentsEntryState(recentsView);
         LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
         LauncherRecentsLayoutEngine.resetTaskPageViewScales(recentsView);
     }

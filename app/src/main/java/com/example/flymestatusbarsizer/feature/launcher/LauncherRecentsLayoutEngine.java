@@ -37,7 +37,7 @@ final class LauncherRecentsLayoutEngine {
     private static final int STACK_GESTURE_RELEASE_CORE_RADIUS = 2;
     private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
     private static final int STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR = 2;
-    private static final long STACK_LAYOUT_DUPLICATE_WINDOW_NS = 16_000_000L; // 【方案三 3-A】扩大到 16ms，覆盖 120Hz 设备一帧内的多次重复触发
+    private static final long STACK_LAYOUT_DUPLICATE_WINDOW_NS = 16_000_000L;
 
     private LauncherRecentsLayoutEngine() {
     }
@@ -396,8 +396,7 @@ final class LauncherRecentsLayoutEngine {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
-                    // 【方案三 3-B】手势释放动画运行期间，动画帧回调已经负责 apply layout，
-                    // 此处跳过冗余触发，避免每帧重复计算 3~5 次堆叠布局
+                    // 动画帧已负责刷新布局，此处只跳过重复触发。
                     if (LauncherRecentsTransitionController
                             .isGestureRecentsStackReleaseAnimationActive(recentsView)
                             || LauncherRecentsTouchController
@@ -2336,6 +2335,11 @@ final class LauncherRecentsLayoutEngine {
                 recentsView,
                 "radius=" + (STACK_ENTRY_LIGHT_RADIUS + STACK_LAYOUT_RECOVERY_RADIUS_STEP));
         recentsView.postOnAnimation(() -> runStackLayoutRecoveryFrame(recentsView));
+    }
+
+    static void restoreStackLayout(View recentsView, String source) {
+        startStackLayoutRecovery(recentsView);
+        applyStackLayout(recentsView, false, source, true);
     }
 
     static boolean isStackLayoutRecoveryActive(View recentsView) {

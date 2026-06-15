@@ -1755,11 +1755,7 @@ final class LauncherRecentsTouchController {
     }
 
     private static void settleStackDismissLayoutState(View recentsView) {
-        LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
-        LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
-        LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
-        LauncherRecentsState.setPendingGestureRecentsStackRelease(recentsView, false);
-        LauncherRecentsState.setPendingGestureRecentsStackReleaseHandoff(recentsView, false);
+        LauncherRecentsState.clearAppToRecentsEntryState(recentsView);
         clearStackAppFlowVisibilityCache();
     }
 

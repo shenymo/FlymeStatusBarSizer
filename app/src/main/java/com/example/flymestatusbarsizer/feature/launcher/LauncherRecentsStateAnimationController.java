@@ -655,9 +655,7 @@ final class LauncherRecentsStateAnimationController {
             return;
         }
         LauncherRecentsPerf.flow("state:overview:touchTakeover", recentsView);
-        markOverviewPeekStockAnimation(recentsView, false);
-        markOverviewStateStackAnimation(recentsView, false);
-        LauncherRecentsState.setOverviewStateStackSettled(recentsView, true);
+        LauncherRecentsState.clearOverviewStackAnimationState(recentsView, true);
     }
 
     private static void clearOverviewStateStackAnimation(View recentsView) {
@@ -665,23 +663,14 @@ final class LauncherRecentsStateAnimationController {
             return;
         }
         LauncherRecentsPerf.flow("state:overview:clear", recentsView);
-        markOverviewPeekStockAnimation(recentsView, false);
-        markOverviewStateStackAnimation(recentsView, false);
-        LauncherRecentsState.setOverviewStateStackSettled(recentsView, true);
-        LauncherRecentsLayoutEngine.startStackLayoutRecovery(recentsView);
-        LauncherRecentsLayoutEngine.applyStackLayout(
-                recentsView,
-                false,
-                "overviewStateClearRestore",
-                true);
+        LauncherRecentsState.clearOverviewStackAnimationState(recentsView, true);
+        LauncherRecentsLayoutEngine.restoreStackLayout(recentsView, "overviewStateClearRestore");
         LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
     }
 
     static void clearOverviewEntryState(View recentsView) {
         LauncherRecentsPerf.flow("state:overview:clearEntry", recentsView);
-        markOverviewPeekStockAnimation(recentsView, false);
-        markOverviewStateStackAnimation(recentsView, false);
-        LauncherRecentsState.setOverviewStateStackSettled(recentsView, false);
+        LauncherRecentsState.clearOverviewStackAnimationState(recentsView, false);
         LauncherRecentsState.setOverviewPreReleaseStockMode(recentsView, false);
         LauncherRecentsState.setOverviewStateStackReleaseRequested(recentsView, false);
     }

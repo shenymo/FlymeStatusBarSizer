@@ -408,6 +408,28 @@ final class LauncherRecentsState {
         }
     }
 
+    static void clearAppToRecentsEntryState(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        if (state == null) {
+            return;
+        }
+        state.appToRecentsEntrySessionActive = false;
+        state.appToRecentsStackLayoutDeferred = false;
+        state.appToRecentsGestureReleased = false;
+        state.pendingGestureRecentsStackRelease = false;
+        state.pendingGestureRecentsStackReleaseHandoff = false;
+    }
+
+    static void clearAppToRecentsGestureState(View recentsView) {
+        clearAppToRecentsEntryState(recentsView);
+        RecentsViewState state = findRecentsViewState(recentsView);
+        if (state == null) {
+            return;
+        }
+        state.gestureStackReleasedStable = false;
+        state.swipeUpGestureActive = false;
+    }
+
     static void setAppToRecentsEntrySessionActive(View recentsView, boolean active) {
         RecentsViewState state = active
                 ? ensureRecentsViewState(recentsView)
@@ -504,6 +526,18 @@ final class LauncherRecentsState {
     static boolean isSwipeUpGestureActive(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
         return state != null && state.swipeUpGestureActive;
+    }
+
+    static void clearOverviewStackAnimationState(View recentsView, boolean settled) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        if (state == null) {
+            return;
+        }
+        state.overviewPeekStockAnimationActive = false;
+        state.overviewStateStackAnimationActive = false;
+        state.overviewStateStackSettled = settled;
+        state.overviewStateStackStartAdjacentOffset = null;
+        state.overviewStateStackBaselineCaptured = false;
     }
 
     static void setOverviewStateStackAnimationActive(View recentsView, boolean active) {

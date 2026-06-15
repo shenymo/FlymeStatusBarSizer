@@ -273,9 +273,7 @@ final class LauncherRecentsTransitionController {
                                     false);
                         }
                     } else {
-                        // 【方案一 1-C】仅在没有待处理的手势释放时才清除 entry session，
-                        // 否则下一帧 gestureReleased 到位后走 shouldPrepareGestureRelease 分支，
-                        // 提前清除会触发一帧平铺恢复布局
+                        // 有待处理释放时继续等下一帧，避免提前恢复平铺布局。
                         if (!isPendingGestureRecentsStackRelease(recentsView)) {
                             LauncherRecentsPerf.flow("enter:gestureAnimationEnd:clearNonRecents",
                                     recentsView);
@@ -316,13 +314,7 @@ final class LauncherRecentsTransitionController {
         }
         LauncherRecentsPerf.flow("enter:clearNonRecentsState", recentsView);
         cancelGestureRecentsStackReleaseAnimation(recentsView, true);
-        LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
-        LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
-        LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
-        LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
-        LauncherRecentsState.setPendingGestureRecentsStackRelease(recentsView, false);
-        LauncherRecentsState.setPendingGestureRecentsStackReleaseHandoff(recentsView, false);
-        LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
+        LauncherRecentsState.clearAppToRecentsGestureState(recentsView);
         LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
         LauncherRecentsStateAnimationController.clearOverviewEntryState(recentsView);
         LauncherRecentsLayoutEngine.hideStackClearAllButton(recentsView);
@@ -866,11 +858,7 @@ final class LauncherRecentsTransitionController {
             cancelGestureRecentsStackReleaseAnimation(recentsView, true);
         }
         LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
-        LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
-        LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
-        LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
-        LauncherRecentsState.setPendingGestureRecentsStackRelease(recentsView, false);
-        LauncherRecentsState.setPendingGestureRecentsStackReleaseHandoff(recentsView, false);
+        LauncherRecentsState.clearAppToRecentsEntryState(recentsView);
         clearForcedRecentsTranslationX(recentsView);
         clearForcedRecentsTranslationY(recentsView);
         LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
@@ -910,11 +898,7 @@ final class LauncherRecentsTransitionController {
                 recentsView,
                 "forceFinishScroller",
                 LauncherRecentsCompat.NO_ARGS);
-        markGestureRecentsStackReleaseHandoffPending(recentsView, false);
-        markPendingGestureRecentsStackRelease(recentsView, false);
-        LauncherRecentsState.setAppToRecentsEntrySessionActive(recentsView, false);
-        LauncherRecentsState.setAppToRecentsStackLayoutDeferred(recentsView, false);
-        LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
+        LauncherRecentsState.clearAppToRecentsEntryState(recentsView);
         LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
         LauncherRecentsLayoutEngine.captureGestureStackReleaseTaskStates(
                 recentsView,
