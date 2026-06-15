@@ -1036,6 +1036,7 @@ final class LauncherRecentsLaunchController {
         if (state.frozenTaskStates.isEmpty()) {
             captureFrozenTaskLaunchLayout(recentsView, state);
         }
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         for (int i = 0; i < state.frozenTaskStates.size(); i++) {
             LauncherRecentsState.TaskLaunchFrozenTaskState taskState =
                     state.frozenTaskStates.get(i);
@@ -1062,12 +1063,14 @@ final class LauncherRecentsLaunchController {
             taskView.setScaleY(taskState.scaleY);
             taskView.setAlpha(taskState.alpha);
             taskView.setTranslationZ(taskState.translationZ);
-            taskView.setX(taskState.x + resolveTaskLaunchSiblingExitOffset(
+            float siblingExitOffset = resolveTaskLaunchSiblingExitOffset(
                     recentsView,
                     state,
                     taskState,
-                    exitProgress));
-            taskView.setY(taskState.y);
+                    exitProgress,
+                    primaryScrollHorizontal);
+            taskView.setX(primaryScrollHorizontal ? taskState.x + siblingExitOffset : taskState.x);
+            taskView.setY(primaryScrollHorizontal ? taskState.y : taskState.y + siblingExitOffset);
         }
         recentsView.invalidate();
     }
@@ -1090,7 +1093,8 @@ final class LauncherRecentsLaunchController {
             View recentsView,
             LauncherRecentsState.LaunchTransitionGeometryState state,
             LauncherRecentsState.TaskLaunchFrozenTaskState taskState,
-            float progress) {
+            float progress,
+            boolean primaryScrollHorizontal) {
         if (progress <= 0f || recentsView == null || state == null || taskState == null) {
             return 0f;
         }
@@ -1099,12 +1103,21 @@ final class LauncherRecentsLaunchController {
         if (targetState == null || taskState.target) {
             return 0f;
         }
-        float distance = recentsView.getWidth()
-                + (taskState.taskView.getWidth() * TASK_LAUNCH_SIBLING_EXIT_EXTRA_WIDTH_RATIO);
-        float taskCenterX = taskState.x + (taskState.taskView.getWidth() * taskState.scaleX * 0.5f);
-        float targetCenterX =
-                targetState.x + (targetState.taskView.getWidth() * targetState.scaleX * 0.5f);
-        float direction = taskCenterX < targetCenterX ? -1f : 1f;
+        float taskSize = primaryScrollHorizontal
+                ? taskState.taskView.getWidth()
+                : taskState.taskView.getHeight();
+        float targetSize = primaryScrollHorizontal
+                ? targetState.taskView.getWidth()
+                : targetState.taskView.getHeight();
+        float taskScale = primaryScrollHorizontal ? taskState.scaleX : taskState.scaleY;
+        float targetScale = primaryScrollHorizontal ? targetState.scaleX : targetState.scaleY;
+        float distance = (primaryScrollHorizontal ? recentsView.getWidth() : recentsView.getHeight())
+                + (taskSize * TASK_LAUNCH_SIBLING_EXIT_EXTRA_WIDTH_RATIO);
+        float taskCenter = (primaryScrollHorizontal ? taskState.x : taskState.y)
+                + (taskSize * taskScale * 0.5f);
+        float targetCenter = (primaryScrollHorizontal ? targetState.x : targetState.y)
+                + (targetSize * targetScale * 0.5f);
+        float direction = taskCenter < targetCenter ? -1f : 1f;
         return direction * distance * progress;
     }
 
@@ -1233,6 +1246,18 @@ final class LauncherRecentsLaunchController {
             LauncherRecentsLayoutEngine.reapplyOriginalTransforms(recentsView);
         }
         recentsView.invalidate();
+    }
+
+    private static boolean isPrimaryScrollHorizontal(View recentsView) {
+        Object orientationHandler =
+                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
+        Object value = LauncherRecentsCompat.invokeCompat(
+                orientationHandler,
+                "getPrimaryValue",
+                new Class<?>[]{int.class, int.class},
+                1,
+                0);
+        return !(value instanceof Integer) || (Integer) value == 1;
     }
 
     private static String taskLaunchDetails(

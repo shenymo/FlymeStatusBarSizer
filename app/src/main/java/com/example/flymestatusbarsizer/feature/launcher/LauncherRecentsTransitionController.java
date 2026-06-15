@@ -957,11 +957,12 @@ final class LauncherRecentsTransitionController {
                 "getRunningTaskView");
         if (runningTaskObject instanceof View && recentsView instanceof ViewGroup) {
             int runningTaskPage = ((ViewGroup) recentsView).indexOfChild((View) runningTaskObject);
-            if (runningTaskPage > 0) {
-                return runningTaskPage - 1;
-            }
-            if (runningTaskPage == 0) {
-                return 0;
+            if (runningTaskPage >= 0) {
+                int anchorPage = runningTaskPage + (isSeascapeOrientation(recentsView) ? 1 : -1);
+                if (anchorPage >= 0 && anchorPage < pageCount) {
+                    return anchorPage;
+                }
+                return Math.max(0, Math.min(runningTaskPage, pageCount - 1));
             }
         }
         int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
@@ -978,10 +979,28 @@ final class LauncherRecentsTransitionController {
                 recentsView,
                 anchorPage,
                 resolvePrimaryScroll(recentsView)));
-        LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", anchorPage);
-        LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", anchorPage);
-        LauncherRecentsCompat.setIntField(recentsView, "mNextPage", anchorPage);
+        int currentPage = resolveAppToRecentsNormalizedCurrentPage(recentsView, anchorPage);
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", currentPage);
+        LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", currentPage);
+        LauncherRecentsCompat.setIntField(recentsView, "mNextPage", currentPage);
         LauncherRecentsCompat.setIntField(recentsView, "mCurrentPageScrollDiff", 0);
+    }
+
+    private static int resolveAppToRecentsNormalizedCurrentPage(
+            View recentsView,
+            int anchorPage) {
+        if (!isSeascapeOrientation(recentsView)
+                || !(recentsView instanceof ViewGroup)) {
+            return anchorPage;
+        }
+        Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "getRunningTaskView");
+        if (!(runningTaskObject instanceof View)) {
+            return anchorPage;
+        }
+        int runningTaskPage = ((ViewGroup) recentsView).indexOfChild((View) runningTaskObject);
+        return runningTaskPage >= 0 ? runningTaskPage : anchorPage;
     }
 
     private static void applyAppToRecentsStackAnchorScroll(
@@ -1052,6 +1071,16 @@ final class LauncherRecentsTransitionController {
                 1,
                 0);
         return !(value instanceof Integer) || (Integer) value == 1;
+    }
+
+    private static boolean isSeascapeOrientation(View recentsView) {
+        Object orientationHandler =
+                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
+        Object value = LauncherRecentsCompat.invokeCompat(
+                orientationHandler,
+                "getRotation",
+                LauncherRecentsCompat.NO_ARGS);
+        return value instanceof Integer && (Integer) value == 3;
     }
 
     static void finishRunningTaskRecentsAnimation(View recentsView) {

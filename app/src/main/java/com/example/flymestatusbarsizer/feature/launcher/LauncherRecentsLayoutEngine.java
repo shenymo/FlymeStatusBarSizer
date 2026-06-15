@@ -1037,14 +1037,6 @@ final class LauncherRecentsLayoutEngine {
                 ? (View) runningTaskObject
                 : null;
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
-        int runningTaskChildIndex = recentsView instanceof ViewGroup && runningTaskView != null
-                ? ((ViewGroup) recentsView).indexOfChild(runningTaskView)
-                : -1;
-        boolean shiftSeascapeFirstRunningAnchor = shouldShiftSeascapeFirstRunningAnchor(
-                recentsView,
-                primaryScrollHorizontal,
-                runningTaskView,
-                runningTaskChildIndex);
         float pageSpacing = LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0);
         float referencePrimarySize = 0f;
         float pageSpan = 0f;
@@ -1104,9 +1096,6 @@ final class LauncherRecentsLayoutEngine {
                     primaryScrollHorizontal);
             float startRawOffset = rawOffsets[i];
             float targetRawOffset = startRawOffset + scrollDelta;
-            if (shiftSeascapeFirstRunningAnchor) {
-                targetRawOffset += pageSpan;
-            }
             float targetProgress = targetRawOffset / pageSpan;
             float targetVisibleOffset = resolveStackVisibleOffset(
                     recentsView,
@@ -1748,12 +1737,20 @@ final class LauncherRecentsLayoutEngine {
             fillBoundaryTargetCount = Math.min(taskViewCount, 3);
             lightAnchorIndex = 0;
         }
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        boolean seascapeEntryWindow = entryLightWindow
+                && !stableFillWindow
+                && fillBoundaryTargetCount > 0
+                && runningTaskChildIndex >= 0
+                && !primaryScrollHorizontal
+                && isSeascapeOrientation(recentsView);
         ArrayList<Integer> activeIndices = resolveStackLayoutActiveIndices(
                 taskViewCount,
                 lightAnchorIndex,
                 stackLayoutRadius,
                 fillBoundaryTargetCount,
-                stableFillWindow);
+                stableFillWindow,
+                seascapeEntryWindow);
         ArrayList<Integer> processIndices = resolveStackLayoutProcessIndices(
                 taskViewCount,
                 activeIndices,
@@ -1764,7 +1761,6 @@ final class LauncherRecentsLayoutEngine {
                 runningTaskView,
                 appEntrySessionActive,
                 resolveTaskIds(runningTaskView));
-        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         int primaryScroll = targetScroll != null ? targetScroll : resolvePrimaryScroll(recentsView);
         float referenceWidth = 0f;
         float referenceHeight = 0f;
@@ -1902,7 +1898,8 @@ final class LauncherRecentsLayoutEngine {
             int anchorIndex,
             int radius,
             int fillBoundaryTargetCount,
-            boolean stableFillWindow) {
+            boolean stableFillWindow,
+            boolean seascapeEntryWindow) {
         ArrayList<Integer> indices = new ArrayList<>();
         if (taskViewCount <= 0 || radius < 0) {
             return indices;
@@ -1910,6 +1907,12 @@ final class LauncherRecentsLayoutEngine {
         anchorIndex = Math.max(0, Math.min(anchorIndex, taskViewCount - 1));
         if (fillBoundaryTargetCount > 0) {
             int targetCount = Math.min(taskViewCount, fillBoundaryTargetCount);
+            if (seascapeEntryWindow) {
+                for (int i = targetCount - 1; i >= 0; i--) {
+                    appendStackLayoutIndex(indices, anchorIndex + i, taskViewCount);
+                }
+                return indices;
+            }
             if (stableFillWindow) {
                 appendStableStackLayoutIndices(indices, anchorIndex, taskViewCount, targetCount);
                 return indices;
@@ -2145,9 +2148,6 @@ final class LauncherRecentsLayoutEngine {
                         ? LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView)
                         : null;
         float rawOffset = resolveTaskRawOffset(context.recentsView, index, context.primaryScroll);
-        if (shouldShiftSeascapeFirstRunningAnchor(context)) {
-            rawOffset += context.pageSpan;
-        }
         float nativeDismissTranslationPrimary = readTaskPrimaryDismissTranslation(
                 taskView,
                 context.primaryScrollHorizontal);
@@ -3048,8 +3048,8 @@ final class LauncherRecentsLayoutEngine {
             float taskCenteredPrimaryStartPx,
             float leftEdgeRevealProgress,
             boolean primaryScrollHorizontal) {
-        boolean mirroredPrimary = shouldMirrorStackPrimary(recentsView, primaryScrollHorizontal);
-        float visualProgress = mirroredPrimary ? -progress : progress;
+        int primaryAxisSign = resolveStackPrimaryAxisSign(recentsView, primaryScrollHorizontal);
+        float visualProgress = progress * primaryAxisSign;
         float leftBoundOffsetPx = resolveStackLeftBoundOffset(
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx,
@@ -3061,32 +3061,13 @@ final class LauncherRecentsLayoutEngine {
                 taskCenteredPrimaryStartPx,
                 primaryScrollHorizontal);
         float offset = Math.max(leftBoundOffsetPx, visibleOffset);
-        return mirroredPrimary ? -offset : offset;
+        return offset * primaryAxisSign;
     }
 
-    private static boolean shouldMirrorStackPrimary(
+    private static int resolveStackPrimaryAxisSign(
             View recentsView,
             boolean primaryScrollHorizontal) {
-        return !primaryScrollHorizontal && isSeascapeOrientation(recentsView);
-    }
-
-    private static boolean shouldShiftSeascapeFirstRunningAnchor(StackLayoutContext context) {
-        return context != null
-                && shouldShiftSeascapeFirstRunningAnchor(
-                context.recentsView,
-                context.primaryScrollHorizontal,
-                context.runningTaskView,
-                context.runningTaskChildIndex);
-    }
-
-    private static boolean shouldShiftSeascapeFirstRunningAnchor(
-            View recentsView,
-            boolean primaryScrollHorizontal,
-            View runningTaskView,
-            int runningTaskChildIndex) {
-        return runningTaskView != null
-                && runningTaskChildIndex == 0
-                && shouldMirrorStackPrimary(recentsView, primaryScrollHorizontal);
+        return !primaryScrollHorizontal && isSeascapeOrientation(recentsView) ? -1 : 1;
     }
 
     private static float resolveStackUnclampedVisibleOffset(
@@ -3163,8 +3144,8 @@ final class LauncherRecentsLayoutEngine {
             float taskCenteredPrimaryStartPx,
             float leftEdgeRevealProgress,
             boolean primaryScrollHorizontal) {
-        boolean mirroredPrimary = shouldMirrorStackPrimary(recentsView, primaryScrollHorizontal);
-        float visualProgress = mirroredPrimary ? -progress : progress;
+        int primaryAxisSign = resolveStackPrimaryAxisSign(recentsView, primaryScrollHorizontal);
+        float visualProgress = progress * primaryAxisSign;
         if (visualProgress >= 0f) {
             return 1f;
         }
@@ -3175,7 +3156,7 @@ final class LauncherRecentsLayoutEngine {
                 taskCenteredPrimaryStartPx,
                 leftEdgeRevealProgress,
                 primaryScrollHorizontal);
-        float frontProgress = mirroredPrimary ? -(visualProgress + 1f) : progress + 1f;
+        float frontProgress = (visualProgress + 1f) * primaryAxisSign;
         float frontOffset = resolveStackVisibleOffset(
                 recentsView,
                 frontProgress,
@@ -3199,7 +3180,7 @@ final class LauncherRecentsLayoutEngine {
         float taskCenterPrimary =
                 taskCenteredPrimaryStartPx + visibleOffset + (taskPrimarySize * 0.5f);
         float primarySize = resolvePrimarySize(recentsView, primaryScrollHorizontal);
-        if (!primaryScrollHorizontal && isSeascapeOrientation(recentsView)) {
+        if (resolveStackPrimaryAxisSign(recentsView, primaryScrollHorizontal) < 0) {
             taskCenterPrimary = primarySize - taskCenterPrimary;
         }
         return remapProgress(
