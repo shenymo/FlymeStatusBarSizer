@@ -1022,6 +1022,14 @@ final class LauncherRecentsLayoutEngine {
             View recentsView,
             int startScroll,
             int targetScroll) {
+        captureGestureStackReleaseTaskStates(recentsView, startScroll, targetScroll, null);
+    }
+
+    static void captureGestureStackReleaseTaskStates(
+            View recentsView,
+            int startScroll,
+            int targetScroll,
+            HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> startVisualStates) {
         LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
         if (recentsView == null) {
             return;
@@ -1037,6 +1045,45 @@ final class LauncherRecentsLayoutEngine {
                 ? (View) runningTaskObject
                 : null;
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        if (!primaryScrollHorizontal) {
+            HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> targetVisualStates =
+                    computeGestureReleaseTargetVisualStates(recentsView, targetScroll);
+            if (!targetVisualStates.isEmpty()) {
+                for (View taskView : targetVisualStates.keySet()) {
+                    if (taskView == null
+                            || LauncherRecentsCompat.isDesktopTask(taskView)
+                            || (taskView != runningTaskView
+                            && sharesRunningTaskIds(taskView, runningTaskView))) {
+                        continue;
+                    }
+                    LauncherRecentsTaskVisuals.StackTaskVisualState startVisualState =
+                            startVisualStates != null ? startVisualStates.get(taskView) : null;
+                    if (startVisualState == null) {
+                        startVisualState = captureCurrentStackTaskVisualState(taskView);
+                    }
+                    LauncherRecentsTaskVisuals.StackTaskVisualState targetVisualState =
+                            targetVisualStates.get(taskView);
+                    targetVisualState = compensateGestureReleaseTargetStateForFrozenScroll(
+                            targetVisualState,
+                            startScroll,
+                            targetScroll,
+                            primaryScrollHorizontal);
+                    if (taskView == runningTaskView) {
+                        startVisualState = ensureVisibleGestureReleaseStartState(
+                                startVisualState,
+                                targetVisualState);
+                    }
+                    if (startVisualState != null && targetVisualState != null) {
+                        LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.put(
+                                taskView,
+                                new LauncherRecentsState.GestureReleaseTaskState(
+                                        startVisualState,
+                                        targetVisualState));
+                    }
+                }
+                return;
+            }
+        }
         float pageSpacing = LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0);
         float referencePrimarySize = 0f;
         float pageSpan = 0f;
@@ -1120,6 +1167,117 @@ final class LauncherRecentsLayoutEngine {
                             startVisibleOffset,
                             targetVisibleOffset,
                             startHorizontalOffsetX));
+        }
+    }
+
+    private static LauncherRecentsTaskVisuals.StackTaskVisualState
+            compensateGestureReleaseTargetStateForFrozenScroll(
+            LauncherRecentsTaskVisuals.StackTaskVisualState state,
+            int startScroll,
+            int targetScroll,
+            boolean primaryScrollHorizontal) {
+        if (state == null || startScroll == targetScroll) {
+            return state;
+        }
+        float scrollDelta = targetScroll - startScroll;
+        return new LauncherRecentsTaskVisuals.StackTaskVisualState(
+                state.pivotX,
+                state.pivotY,
+                state.horizontalOffsetX,
+                primaryScrollHorizontal ? state.taskOffsetX - scrollDelta : state.taskOffsetX,
+                primaryScrollHorizontal ? state.taskOffsetY : state.taskOffsetY - scrollDelta,
+                state.boxTranslationY,
+                state.scale,
+                state.attachAlpha,
+                state.stableAlpha,
+                state.activityTitleAlpha,
+                state.blurProgress,
+                state.fullscreenProgress,
+                state.translationZ,
+                state.stackContentBlurEnabled,
+                state.clearShadow);
+    }
+
+    private static LauncherRecentsTaskVisuals.StackTaskVisualState
+            ensureVisibleGestureReleaseStartState(
+            LauncherRecentsTaskVisuals.StackTaskVisualState startState,
+            LauncherRecentsTaskVisuals.StackTaskVisualState targetState) {
+        if (startState == null || targetState == null) {
+            return startState;
+        }
+        return new LauncherRecentsTaskVisuals.StackTaskVisualState(
+                startState.pivotX,
+                startState.pivotY,
+                startState.horizontalOffsetX,
+                startState.taskOffsetX,
+                startState.taskOffsetY,
+                startState.boxTranslationY,
+                startState.scale,
+                Math.max(startState.attachAlpha, targetState.attachAlpha),
+                Math.max(startState.stableAlpha, targetState.stableAlpha),
+                Math.max(startState.activityTitleAlpha, targetState.activityTitleAlpha),
+                startState.blurProgress,
+                startState.fullscreenProgress,
+                startState.translationZ,
+                startState.stackContentBlurEnabled,
+                startState.clearShadow);
+    }
+
+    static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState>
+            captureCurrentStackTaskVisualStates(View recentsView) {
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> states = new HashMap<>();
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
+                continue;
+            }
+            states.put(taskView, captureCurrentStackTaskVisualState(taskView));
+        }
+        return states;
+    }
+
+    private static LauncherRecentsTaskVisuals.StackTaskVisualState
+            captureCurrentStackTaskVisualState(View taskView) {
+        if (taskView == null) {
+            return null;
+        }
+        return new LauncherRecentsTaskVisuals.StackTaskVisualState(
+                taskView.getPivotX(),
+                taskView.getPivotY(),
+                LauncherRecentsCompat.readFloatField(
+                        taskView,
+                        "horizontalOffsetTranslationX",
+                        0f),
+                LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationX", 0f),
+                LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationY", 0f),
+                LauncherRecentsCompat.readFloatField(
+                        taskView,
+                        "boxTranslationY",
+                        LauncherRecentsTaskVisuals.readOriginalBoxTranslationY(taskView)),
+                LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f),
+                LauncherRecentsTaskVisuals.readAttachAlpha(taskView),
+                LauncherRecentsTaskVisuals.readStableAlpha(taskView),
+                LauncherRecentsTaskVisuals.readActivityTitleAlpha(taskView),
+                LauncherRecentsTaskVisuals.readStackContentBlurProgress(taskView),
+                LauncherRecentsCompat.readFloatField(taskView, "fullscreenProgress", 0f),
+                taskView.getTranslationZ(),
+                true,
+                true);
+    }
+
+    private static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState>
+            computeGestureReleaseTargetVisualStates(View recentsView, int targetScroll) {
+        boolean stable = LauncherRecentsState.isGestureStackReleasedStable(recentsView);
+        LauncherRecentsState.setGestureStackReleasedStable(recentsView, true);
+        try {
+            return computeStackLayout(
+                    recentsView,
+                    STACK_STABLE_VISIBLE_RADIUS,
+                    null,
+                    targetScroll);
+        } finally {
+            LauncherRecentsState.setGestureStackReleasedStable(recentsView, stable);
         }
     }
 
@@ -2199,6 +2357,13 @@ final class LauncherRecentsLayoutEngine {
             StackTaskInput input,
             boolean coreOnly) {
         View taskView = input.taskView;
+        if (input.gestureReleaseTaskState != null
+                && input.gestureReleaseTaskState.startVisualState != null
+                && input.gestureReleaseTaskState.targetVisualState != null) {
+            return input.gestureReleaseTaskState.startVisualState.lerpTo(
+                    input.gestureReleaseTaskState.targetVisualState,
+                    context.stackReleaseProgress);
+        }
         float stackEntryLiftPx = Math.min(
                 input.taskHeight * STACK_ENTRY_LIFT_RATIO,
                 FlymeStatusBarSizer.dp(context.recentsView.getContext(), 40));

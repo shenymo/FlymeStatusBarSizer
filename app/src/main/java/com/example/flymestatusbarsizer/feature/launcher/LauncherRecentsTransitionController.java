@@ -12,6 +12,7 @@ import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 
 import java.lang.reflect.Method;
+import java.util.HashMap;
 
 final class LauncherRecentsTransitionController {
     private static final String ABS_SWIPE_UP_HANDLER_CLASS =
@@ -109,6 +110,9 @@ final class LauncherRecentsTransitionController {
                         "endTarget=" + endTarget
                                 + " shouldPrepareRelease=" + shouldPrepareGestureRelease);
                 if (shouldPrepareGestureRelease) {
+                    HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> startVisualStates =
+                            LauncherRecentsLayoutEngine.captureCurrentStackTaskVisualStates(
+                                    recentsView);
                     LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
                     markPendingGestureRecentsStackRelease(recentsView, true);
                     LauncherRecentsState.trackRecentsView(recentsView);
@@ -119,7 +123,8 @@ final class LauncherRecentsTransitionController {
                         startGestureRecentsStackReleaseAnimation(
                                 recentsView,
                                 (AnimatorSet) chain.getArg(0),
-                                true);
+                                true,
+                                startVisualStates);
                     }
                     return null;
                 } else {
@@ -710,7 +715,8 @@ final class LauncherRecentsTransitionController {
     private static void startGestureRecentsStackReleaseAnimation(
             View recentsView,
             AnimatorSet animatorSet,
-            boolean ensureRunningTaskScreenshot) {
+            boolean ensureRunningTaskScreenshot,
+            HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> startVisualStates) {
         if (recentsView == null) {
             return;
         }
@@ -757,7 +763,8 @@ final class LauncherRecentsTransitionController {
                         recentsView,
                         handoffStartScroll[0],
                         stackAnchorTargetScroll,
-                        ensureRunningTaskScreenshot);
+                        ensureRunningTaskScreenshot,
+                        startVisualStates);
                 handoffStarted[0] = true;
             }
             float handoffProgress = LauncherRecentsLayoutEngine.smoothStep(
@@ -778,11 +785,13 @@ final class LauncherRecentsTransitionController {
                     recentsView,
                     "progress=" + progress
                             + " handoffProgress=" + handoffProgress);
-            applyAppToRecentsStackAnchorScroll(
-                    recentsView,
-                    handoffStartScroll[0],
-                    stackAnchorTargetScroll,
-                    handoffProgress);
+            if (!hasGestureReleaseVisualStates(recentsView)) {
+                applyAppToRecentsStackAnchorScroll(
+                        recentsView,
+                        handoffStartScroll[0],
+                        stackAnchorTargetScroll,
+                        handoffProgress);
+            }
             LauncherRecentsPerf.hit("animationFrame:gestureRelease", recentsView);
             LauncherRecentsLayoutEngine.requestStackLayout(
                     recentsView,
@@ -821,7 +830,8 @@ final class LauncherRecentsTransitionController {
                             recentsView,
                             handoffStartScroll[0],
                             stackAnchorTargetScroll,
-                            ensureRunningTaskScreenshot);
+                            ensureRunningTaskScreenshot,
+                            startVisualStates);
                     handoffStarted[0] = true;
                 }
                 markGestureRecentsStackReleaseHandoffPending(recentsView, false);
@@ -831,6 +841,7 @@ final class LauncherRecentsTransitionController {
                 normalizeAppToRecentsStackAnchor(recentsView, stackAnchorPage);
                 LauncherRecentsState.setGestureStackReleasedStable(recentsView, true);
                 clearGestureRecentsStackReleaseProgress(recentsView);
+                LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
                 LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15, true);
@@ -869,7 +880,8 @@ final class LauncherRecentsTransitionController {
             View recentsView,
             int stackAnchorStartScroll,
             int stackAnchorTargetScroll,
-            boolean ensureRunningTaskScreenshot) {
+            boolean ensureRunningTaskScreenshot,
+            HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> startVisualStates) {
         if (recentsView == null) {
             return;
         }
@@ -903,7 +915,8 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsLayoutEngine.captureGestureStackReleaseTaskStates(
                 recentsView,
                 stackAnchorStartScroll,
-                stackAnchorTargetScroll);
+                stackAnchorTargetScroll,
+                startVisualStates);
         setGestureRecentsStackReleaseProgress(recentsView, 0f);
         LauncherRecentsLayoutEngine.applyStackLayout(
                 recentsView,
@@ -1022,6 +1035,22 @@ final class LauncherRecentsTransitionController {
                         + " progress=" + progress
                         + " primaryScroll=" + primaryScroll);
         setPrimaryScroll(recentsView, primaryScroll);
+    }
+
+    private static boolean hasGestureReleaseVisualStates(View recentsView) {
+        if (recentsView == null) {
+            return false;
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            LauncherRecentsState.GestureReleaseTaskState state =
+                    LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView);
+            if (state != null && state.startVisualState != null && state.targetVisualState != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static int resolveScrollForPage(View recentsView, int page, int fallback) {

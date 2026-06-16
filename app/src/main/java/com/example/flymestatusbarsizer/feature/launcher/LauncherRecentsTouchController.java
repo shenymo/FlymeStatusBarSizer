@@ -619,6 +619,8 @@ final class LauncherRecentsTouchController {
                 motionEvent,
                 "dx=" + Math.round(dx) + " dy=" + Math.round(dy));
         LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> startVisualStates =
+                LauncherRecentsLayoutEngine.captureCurrentStackTaskVisualStates(recentsView);
         int currentScroll = resolvePrimaryScroll(recentsView);
         LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
                 recentsView,
@@ -629,7 +631,8 @@ final class LauncherRecentsTouchController {
         LauncherRecentsLayoutEngine.captureGestureStackReleaseTaskStates(
                 recentsView,
                 currentScroll,
-                currentScroll);
+                currentScroll,
+                startVisualStates);
         LauncherRecentsTransitionController.setGestureRecentsStackReleaseProgress(
                 recentsView,
                 0f);
