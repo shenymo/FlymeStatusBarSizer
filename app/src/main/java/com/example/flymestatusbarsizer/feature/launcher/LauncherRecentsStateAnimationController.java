@@ -378,7 +378,10 @@ final class LauncherRecentsStateAnimationController {
                 pendingAnimation,
                 "addOnFrameCallback",
                 new Class<?>[]{Runnable.class},
-                (Runnable) () -> {
+                (Runnable) () -> LauncherRecentsPerf.measure(
+                        "frameCost:overviewState",
+                        recentsView,
+                        () -> {
                     if (isOverviewStateStackAnimationActive(recentsView)) {
                         LauncherRecentsPerf.flow("state:overview:frame", recentsView);
                         LauncherRecentsPerf.hit("animationFrame:overviewState", recentsView);
@@ -388,7 +391,7 @@ final class LauncherRecentsStateAnimationController {
                                 false,
                                 false);
                     }
-                });
+                }));
         LauncherRecentsCompat.invokeMethodReflectively(
                 pendingAnimation,
                 "addListener",
@@ -419,7 +422,10 @@ final class LauncherRecentsStateAnimationController {
                 pendingAnimation,
                 "addOnFrameListener",
                 new Class<?>[]{ValueAnimator.AnimatorUpdateListener.class},
-                (ValueAnimator.AnimatorUpdateListener) animation -> {
+                (ValueAnimator.AnimatorUpdateListener) animation -> LauncherRecentsPerf.measure(
+                        "frameCost:blankTapSystem",
+                        recentsView,
+                        () -> {
                     Object value = animation.getAnimatedValue();
                     float progress = value instanceof Float
                             ? (Float) value
@@ -432,7 +438,7 @@ final class LauncherRecentsStateAnimationController {
                     LauncherRecentsPerf.hit("animationFrame:blankTapSystem", recentsView);
                     LauncherRecentsLayoutEngine.applyBlankTapHomeExitFrame(recentsView, progress);
                     recentsView.invalidate();
-                });
+                }));
         LauncherRecentsCompat.invokeMethodReflectively(
                 pendingAnimation,
                 "addListener",
@@ -474,6 +480,7 @@ final class LauncherRecentsStateAnimationController {
         }
         LauncherRecentsPerf.flow("state:overview:begin",
                 recentsView, "pendingAnimation=" + (pendingAnimation != null));
+        LauncherRecentsPerf.startSpan("overviewState", recentsView);
         LauncherRecentsState.setOverviewStateStackReleaseRequested(recentsView, false);
         LauncherRecentsState.setOverviewPreReleaseStockMode(recentsView, false);
         LauncherRecentsLayoutEngine.cancelStackLayoutRecovery(recentsView);
@@ -655,6 +662,7 @@ final class LauncherRecentsStateAnimationController {
             return;
         }
         LauncherRecentsPerf.flow("state:overview:touchTakeover", recentsView);
+        LauncherRecentsPerf.endSpan("overviewState", recentsView);
         LauncherRecentsState.clearOverviewStackAnimationState(recentsView, true);
     }
 
@@ -663,6 +671,7 @@ final class LauncherRecentsStateAnimationController {
             return;
         }
         LauncherRecentsPerf.flow("state:overview:clear", recentsView);
+        LauncherRecentsPerf.endSpan("overviewState", recentsView);
         LauncherRecentsState.clearOverviewStackAnimationState(recentsView, true);
         LauncherRecentsLayoutEngine.restoreStackLayout(recentsView, "overviewStateClearRestore");
         LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);

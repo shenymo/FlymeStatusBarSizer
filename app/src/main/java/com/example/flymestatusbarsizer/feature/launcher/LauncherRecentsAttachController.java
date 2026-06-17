@@ -47,6 +47,7 @@ final class LauncherRecentsAttachController {
                     return chain.proceed();
                 }
                 LauncherRecentsPerf.flow("attach:gestureAnimationStart", recentsView);
+                LauncherRecentsPerf.startSpan("enterRecents", recentsView);
                 LauncherRecentsLaunchController.clearTaskLaunchFrozenForNewGesture(recentsView);
                 LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
                         recentsView,
@@ -57,7 +58,12 @@ final class LauncherRecentsAttachController {
                 LauncherRecentsState.setSwipeUpGestureActive(recentsView, true);
                 LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                 LauncherRecentsState.trackRecentsView(recentsView);
-                return chain.proceed();
+                long nativeStartNs = LauncherRecentsPerf.start(recentsView);
+                try {
+                    return chain.proceed();
+                } finally {
+                    LauncherRecentsPerf.end("native:onGestureAnimationStart", nativeStartNs);
+                }
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
@@ -77,10 +83,16 @@ final class LauncherRecentsAttachController {
             Method method = clazz.getDeclaredMethod("applyLoadPlan", List.class);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                Object result = chain.proceed();
                 View recentsView = chain.getThisObject() instanceof View
                         ? (View) chain.getThisObject()
                         : null;
+                long nativeStartNs = LauncherRecentsPerf.start(recentsView);
+                Object result;
+                try {
+                    result = chain.proceed();
+                } finally {
+                    LauncherRecentsPerf.end("native:applyLoadPlan", nativeStartNs);
+                }
                 if (recentsView != null
                         && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
                     LauncherRecentsPerf.flow("attach:applyLoadPlan",

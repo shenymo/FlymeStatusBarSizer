@@ -6,6 +6,7 @@ import android.util.Log;
 import android.view.View;
 
 import java.util.HashMap;
+import java.util.WeakHashMap;
 
 final class LauncherRecentsPerf {
     private static final String TAG = "FSBS-RecentsPerf";
@@ -14,6 +15,7 @@ final class LauncherRecentsPerf {
     private static final long SLOW_CALL_NS = 4_000_000L;
 
     private static final HashMap<String, Stats> STATS = new HashMap<>();
+    private static final HashMap<String, WeakHashMap<View, Long>> SPANS = new HashMap<>();
     private static final ThreadLocal<View> CURRENT_VIEW = new ThreadLocal<>();
 
     private LauncherRecentsPerf() {
@@ -70,6 +72,46 @@ final class LauncherRecentsPerf {
         stats.count = 0;
         stats.slowCount = 0;
         return costNs;
+    }
+
+    static void startSpan(String name, View view) {
+        if (!enabled(view) || view == null) {
+            return;
+        }
+        WeakHashMap<View, Long> spans = SPANS.get(name);
+        if (spans == null) {
+            spans = new WeakHashMap<>();
+            SPANS.put(name, spans);
+        }
+        CURRENT_VIEW.set(view);
+        if (!spans.containsKey(view)) {
+            spans.put(view, System.nanoTime());
+        }
+    }
+
+    static long endSpan(String name, View view) {
+        if (!enabled(view) || view == null) {
+            return 0L;
+        }
+        WeakHashMap<View, Long> spans = SPANS.get(name);
+        if (spans == null) {
+            return 0L;
+        }
+        Long startNs = spans.remove(view);
+        if (startNs == null) {
+            return 0L;
+        }
+        CURRENT_VIEW.set(view);
+        return end("flowTotal:" + name, startNs);
+    }
+
+    static void measure(String name, View view, Runnable runnable) {
+        long startNs = start(view);
+        try {
+            runnable.run();
+        } finally {
+            end(name, startNs);
+        }
     }
 
     static boolean isSlowCall(long costNs) {

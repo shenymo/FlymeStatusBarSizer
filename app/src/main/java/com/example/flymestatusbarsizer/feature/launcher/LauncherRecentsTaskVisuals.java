@@ -567,24 +567,26 @@ final class LauncherRecentsTaskVisuals {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || taskView == null) {
             return;
         }
-        markStackTaskVisualStateDirty(taskView);
-        float blurPx = FlymeStatusBarSizer.dp(
-                taskView.getContext(),
-                STACK_CONTENT_MAX_BLUR_DP) * LauncherRecentsLayoutEngine.clamp(
-                blurProgress,
-                0f,
-                1f);
-        LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
-        if (targets == null) {
-            return;
-        }
-        for (int i = 0; i < targets.snapshotViews.length; i++) {
-            applyStackContentBlur(targets.snapshotViews[i], blurPx);
-            applyStackIconBlur(
-                    targets.iconViews[i],
-                    targets.iconAsViews[i],
-                    blurPx);
-        }
+        LauncherRecentsPerf.measure("blur:applyProgress", taskView, () -> {
+            markStackTaskVisualStateDirty(taskView);
+            float blurPx = FlymeStatusBarSizer.dp(
+                    taskView.getContext(),
+                    STACK_CONTENT_MAX_BLUR_DP) * LauncherRecentsLayoutEngine.clamp(
+                    blurProgress,
+                    0f,
+                    1f);
+            LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
+            if (targets == null) {
+                return;
+            }
+            for (int i = 0; i < targets.snapshotViews.length; i++) {
+                applyStackContentBlur(targets.snapshotViews[i], blurPx);
+                applyStackIconBlur(
+                        targets.iconViews[i],
+                        targets.iconAsViews[i],
+                        blurPx);
+            }
+        });
     }
 
     static float readStackContentBlurProgress(View taskView) {
@@ -611,16 +613,18 @@ final class LauncherRecentsTaskVisuals {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || taskView == null) {
             return;
         }
-        LauncherRecentsState.StackContentTargets targets =
-                LauncherRecentsState.STACK_CONTENT_TARGETS.get(taskView);
-        if (targets == null) {
-            return;
-        }
-        for (int i = 0; i < targets.snapshotViews.length; i++) {
-            clearStackContentTargetBlurIfApplied(targets.snapshotViews[i]);
-            clearStackIconBlurIfApplied(targets.iconAsViews[i]);
-        }
-        LauncherRecentsState.STACK_CONTENT_TARGETS.remove(taskView);
+        LauncherRecentsPerf.measure("blur:clearProgress", taskView, () -> {
+            LauncherRecentsState.StackContentTargets targets =
+                    LauncherRecentsState.STACK_CONTENT_TARGETS.get(taskView);
+            if (targets == null) {
+                return;
+            }
+            for (int i = 0; i < targets.snapshotViews.length; i++) {
+                clearStackContentTargetBlurIfApplied(targets.snapshotViews[i]);
+                clearStackIconBlurIfApplied(targets.iconAsViews[i]);
+            }
+            LauncherRecentsState.STACK_CONTENT_TARGETS.remove(taskView);
+        });
     }
 
     static void clearRecentsStackContentBlur(View recentsView) {
@@ -911,13 +915,20 @@ final class LauncherRecentsTaskVisuals {
                 && Math.abs(lastAppliedBlurPx - appliedBlurPx) < MODULE_APPLIED_EPSILON) {
             return;
         }
-        if (appliedBlurPx == 0f) {
-            view.setRenderEffect(null);
-        } else {
-            view.setRenderEffect(RenderEffect.createBlurEffect(
-                    appliedBlurPx,
-                    appliedBlurPx,
-                    Shader.TileMode.CLAMP));
+        long renderStartNs = LauncherRecentsPerf.start(view);
+        try {
+            if (appliedBlurPx == 0f) {
+                view.setRenderEffect(null);
+            } else {
+                view.setRenderEffect(RenderEffect.createBlurEffect(
+                        appliedBlurPx,
+                        appliedBlurPx,
+                        Shader.TileMode.CLAMP));
+            }
+        } finally {
+            LauncherRecentsPerf.end(
+                    appliedBlurPx == 0f ? "blur:clearRenderEffect" : "blur:setRenderEffect",
+                    renderStartNs);
         }
         LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.put(view, appliedBlurPx);
     }

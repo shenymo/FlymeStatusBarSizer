@@ -339,6 +339,9 @@ final class LauncherRecentsLayoutEngine {
                 Object result = chain.proceed();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    if (shouldSkipIdleCurvePropertiesRelayout(methodName, recentsView)) {
+                        return result;
+                    }
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     scheduleStackLayoutFromHook(
@@ -355,6 +358,26 @@ final class LauncherRecentsLayoutEngine {
                     "Failed to hook RecentsView." + methodName,
                     t);
         }
+    }
+
+    private static boolean shouldSkipIdleCurvePropertiesRelayout(
+            String methodName,
+            View recentsView) {
+        return "updateCurveProperties".equals(methodName)
+                && shouldUseStackLayout(recentsView)
+                && LauncherRecentsCompat.invokeBoolean(recentsView, "isScrollerFinished", true)
+                && !LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false)
+                && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
+                && !LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+                && !LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView)
+                && !LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
+                recentsView)
+                && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
+                && !LauncherRecentsTouchController.isStackDismissRelayoutAnimationActive(
+                recentsView)
+                && !LauncherRecentsState.hasActiveTaskLaunchTransitionGeometry(recentsView)
+                && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView);
     }
 
     private static void hookRecentsViewOnScrollChanged(

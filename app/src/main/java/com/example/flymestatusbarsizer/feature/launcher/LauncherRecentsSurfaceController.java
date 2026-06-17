@@ -33,19 +33,30 @@ final class LauncherRecentsSurfaceController {
                 Object surfaceValue = LauncherRecentsCompat.getFieldCompat(manager, "mOverviewSurface");
                 boolean surfaceValid = surfaceValue instanceof SurfaceControl
                         && ((SurfaceControl) surfaceValue).isValid();
+                View windowView = resolveWindowView(manager);
                 LauncherRecentsPerf.flow("surface:setShown",
-                        resolveWindowView(manager),
+                        windowView,
                         "shown=" + shown
                                 + " wasShown=" + wasShown
                                 + " surfaceValid=" + surfaceValid);
-                checkSurface(manager);
-                if (shown != wasShown) {
-                    LauncherRecentsCompat.setBooleanField(manager, "mShown", shown);
+                long totalStartNs = LauncherRecentsPerf.start(windowView);
+                try {
+                    checkSurface(manager);
+                    if (shown != wasShown) {
+                        LauncherRecentsCompat.setBooleanField(manager, "mShown", shown);
+                    }
+                    if (shown) {
+                        ensureWindowViewVisible(manager);
+                    }
+                    long transactionStartNs = LauncherRecentsPerf.start(windowView);
+                    try {
+                        setSurfaceVisible(manager, shown);
+                    } finally {
+                        LauncherRecentsPerf.end("surface:transaction", transactionStartNs);
+                    }
+                } finally {
+                    LauncherRecentsPerf.end("surface:setShown", totalStartNs);
                 }
-                if (shown) {
-                    ensureWindowViewVisible(manager);
-                }
-                setSurfaceVisible(manager, shown);
                 return null;
             });
         } catch (Throwable t) {
