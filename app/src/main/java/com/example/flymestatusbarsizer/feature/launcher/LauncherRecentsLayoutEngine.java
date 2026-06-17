@@ -1999,6 +1999,16 @@ final class LauncherRecentsLayoutEngine {
                 fillBoundaryTargetCount,
                 stableFillWindow,
                 seascapeEntryWindow);
+        addLiveStackScrollActiveIndices(
+                recentsView,
+                taskViewCount,
+                stackLayoutRadius,
+                fillBoundaryTargetCount,
+                stableFillWindow,
+                seascapeEntryWindow,
+                entryLightWindow,
+                targetScroll,
+                activeIndices);
         ArrayList<Integer> processIndices = resolveStackLayoutProcessIndices(
                 taskViewCount,
                 activeIndices,
@@ -2139,6 +2149,32 @@ final class LauncherRecentsLayoutEngine {
             int anchorIndex) {
         return gestureStackReleaseActive
                 && Math.abs(index - anchorIndex) > STACK_GESTURE_RELEASE_CORE_RADIUS;
+    }
+
+    private static void addLiveStackScrollActiveIndices(
+            View recentsView,
+            int taskViewCount,
+            int stackLayoutRadius,
+            int fillBoundaryTargetCount,
+            boolean stableFillWindow,
+            boolean seascapeEntryWindow,
+            boolean entryWindow,
+            Integer targetScroll,
+            ArrayList<Integer> activeIndices) {
+        if (entryWindow
+                || stackLayoutRadius != STACK_STABLE_VISIBLE_RADIUS
+                || LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView) == null) {
+            return;
+        }
+        int liveAnchorIndex = resolveNearestStackLayoutPage(recentsView, taskViewCount, targetScroll);
+        ArrayList<Integer> liveIndices = resolveStackLayoutActiveIndices(
+                taskViewCount,
+                liveAnchorIndex,
+                stackLayoutRadius,
+                fillBoundaryTargetCount,
+                stableFillWindow,
+                seascapeEntryWindow);
+        appendStackLayoutIndices(activeIndices, liveIndices, taskViewCount);
     }
 
     private static ArrayList<Integer> resolveStackLayoutActiveIndices(
