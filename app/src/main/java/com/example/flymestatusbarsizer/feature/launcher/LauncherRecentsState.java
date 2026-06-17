@@ -45,6 +45,8 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, PendingStackLayoutApplyState> PENDING_STACK_LAYOUT_APPLIES =
             new WeakHashMap<>();
+    static final WeakHashMap<View, PrepareRecentsViewState> PREPARE_RECENTS_VIEW_STATES =
+            new WeakHashMap<>();
     static final WeakHashMap<View, ArrayList<Integer>> LAST_STACK_LAYOUT_ACTIVE_INDICES =
             new WeakHashMap<>();
     static final WeakHashMap<View, Integer> LAST_STACK_STOCK_CAPTURE_TASK_COUNTS =
@@ -307,6 +309,17 @@ final class LauncherRecentsState {
             this.dynamicOnly = dynamicOnly;
             this.source = source;
         }
+    }
+
+    static final class PrepareRecentsViewState {
+        boolean recentsClipsReady;
+        Object clipParent;
+        boolean clearAllReady;
+        boolean clearAllEnabled;
+        boolean clearAllAllowed;
+        View clearAllButton;
+        int visibleTaskDataPage = Integer.MIN_VALUE;
+        int visibleTaskDataBucket = Integer.MIN_VALUE;
     }
 
     static final class TaskLaunchTransitionGeometryContext {

@@ -461,14 +461,10 @@ final class LauncherRecentsLayoutEngine {
                             recentsView,
                             "isScrollerFinished",
                             true)) {
-                        if (applyDynamicStackLayoutIfNeeded(recentsView)) {
-                            recentsView.invalidate();
-                        }
+                        applyDynamicStackLayoutIfNeeded(recentsView);
                         return result;
                     }
-                    if (requestStackLayout(recentsView, "dispatchScrollChanged", false, false)) {
-                        recentsView.invalidate();
-                    }
+                    requestStackLayout(recentsView, "dispatchScrollChanged", false, false);
                 }
                 return result;
             });
@@ -554,11 +550,19 @@ final class LauncherRecentsLayoutEngine {
         }
         try {
             ViewGroup group = (ViewGroup) recentsView;
-            group.setClipChildren(false);
-            group.setClipToPadding(false);
+            LauncherRecentsState.PrepareRecentsViewState state =
+                    prepareRecentsViewState(recentsView);
+            if (!state.recentsClipsReady
+                    || group.getClipChildren()
+                    || group.getClipToPadding()) {
+                group.setClipChildren(false);
+                group.setClipToPadding(false);
+                state.recentsClipsReady = true;
+            }
             ViewParent parent = group.getParent();
-            if (parent instanceof ViewGroup) {
+            if (parent instanceof ViewGroup && parent != state.clipParent) {
                 ((ViewGroup) parent).setClipChildren(false);
+                state.clipParent = parent;
             }
             ensureStackClearAllButtonReady(recentsView);
         } finally {
@@ -570,12 +574,25 @@ final class LauncherRecentsLayoutEngine {
         if (recentsView == null || !shouldUseStackLayout(recentsView)) {
             return;
         }
-        if (!isStackClearAllButtonEnabled(recentsView)) {
+        LauncherRecentsState.PrepareRecentsViewState state =
+                prepareRecentsViewState(recentsView);
+        boolean enabled = isStackClearAllButtonEnabled(recentsView);
+        boolean allowed = enabled
+                && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
+                && isStackClearAllButtonAllowed(recentsView);
+        if (state.clearAllReady
+                && state.clearAllEnabled == enabled
+                && state.clearAllAllowed == allowed) {
+            return;
+        }
+        state.clearAllReady = true;
+        state.clearAllEnabled = enabled;
+        state.clearAllAllowed = allowed;
+        if (!enabled) {
             hideStackClearAllButton(recentsView);
             return;
         }
-        if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
-                || !isStackClearAllButtonAllowed(recentsView)) {
+        if (!allowed) {
             return;
         }
         Object value = LauncherRecentsCompat.invokeCompat(recentsView, "getClearAllButton");
@@ -583,6 +600,10 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         View clearAllButton = (View) value;
+        if (state.clearAllButton == clearAllButton && clearAllButton.getAlpha() >= 0.99f) {
+            return;
+        }
+        state.clearAllButton = clearAllButton;
         LauncherRecentsCompat.invokeCompat(
                 clearAllButton,
                 "setScrollAlpha",
@@ -614,6 +635,17 @@ final class LauncherRecentsLayoutEngine {
             clearAllButton.setEnabled(true);
             clearAllButton.setClickable(true);
         }
+    }
+
+    private static LauncherRecentsState.PrepareRecentsViewState prepareRecentsViewState(
+            View recentsView) {
+        LauncherRecentsState.PrepareRecentsViewState state =
+                LauncherRecentsState.PREPARE_RECENTS_VIEW_STATES.get(recentsView);
+        if (state == null) {
+            state = new LauncherRecentsState.PrepareRecentsViewState();
+            LauncherRecentsState.PREPARE_RECENTS_VIEW_STATES.put(recentsView, state);
+        }
+        return state;
     }
 
     private static boolean isStackClearAllButtonEnabled(View recentsView) {
@@ -660,6 +692,11 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         View clearAllButton = (View) value;
+        LauncherRecentsState.PrepareRecentsViewState state =
+                prepareRecentsViewState(recentsView);
+        state.clearAllReady = true;
+        state.clearAllAllowed = false;
+        state.clearAllButton = clearAllButton;
         LauncherRecentsCompat.invokeCompat(
                 clearAllButton,
                 "setVisibilityAlpha",
@@ -1304,16 +1341,16 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
-    static void applyStackLayout(View recentsView, boolean captureStockState, String source) {
-        applyStackLayout(recentsView, captureStockState, source, true);
+    static boolean applyStackLayout(View recentsView, boolean captureStockState, String source) {
+        return applyStackLayout(recentsView, captureStockState, source, true);
     }
 
-    static void applyStackLayout(
+    static boolean applyStackLayout(
             View recentsView,
             boolean captureStockState,
             String source,
             boolean syncVisibleTaskData) {
-        applyStackLayout(
+        return applyStackLayout(
                 recentsView,
                 captureStockState,
                 resolveStackLayoutRadius(recentsView),
@@ -1367,15 +1404,20 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsPerf.flow("layout:dynamic:skip", recentsView);
             return false;
         }
-        if (shouldCaptureStockTaskStatesForStackApply(recentsView)) {
-            captureStockTaskStatesForStackApply(recentsView);
+        boolean captureStockState = shouldCaptureStockTaskStatesForStackApply(recentsView);
+        if (captureStockState) {
+            LauncherRecentsPerf.hit("animationFrame:applyDynamicCapture", recentsView);
         }
-        applyStackLayout(recentsView, false, "applyDynamic", false);
-        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
-            LauncherRecentsTouchController.ensureStackVisibleTaskDataIfNeeded(recentsView, 15);
-        }
-        LauncherRecentsPerf.flow("layout:dynamic:applied", recentsView);
-        return true;
+        boolean scheduled = scheduleStackLayout(
+                recentsView,
+                captureStockState,
+                "applyDynamic",
+                LauncherRecentsState.isGestureStackReleasedStable(recentsView),
+                true);
+        LauncherRecentsPerf.flow(scheduled
+                ? "layout:dynamic:scheduled"
+                : "layout:dynamic:skipSchedule", recentsView);
+        return scheduled;
     }
 
     private static boolean scheduleStackLayout(
@@ -1505,29 +1547,31 @@ final class LauncherRecentsLayoutEngine {
         if (shouldCaptureStockTaskStatesForStackApply(recentsView)) {
             captureStockTaskStatesForStackApply(recentsView);
         }
-        applyStackLayout(
+        boolean layoutApplied = applyStackLayout(
                 recentsView,
                 false,
                 pendingState.source != null ? pendingState.source : "scheduled",
                 pendingState.syncVisibleTaskData);
         LauncherRecentsPerf.flow("layout:runScheduled:applied",
                 recentsView, "source=" + pendingState.source);
-        recentsView.invalidate();
+        if (layoutApplied) {
+            recentsView.invalidate();
+        }
     }
 
-    private static void applyStackLayout(
+    private static boolean applyStackLayout(
             View recentsView,
             boolean captureStockState,
             int stackLayoutRadius,
             String source,
             boolean syncVisibleTaskData) {
         if (recentsView == null) {
-            return;
+            return false;
         }
         if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
             LauncherRecentsPerf.flow("layout:apply:skipSwipeUp",
                     recentsView, "source=" + source);
-            return;
+            return false;
         }
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
                 FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
@@ -1545,7 +1589,7 @@ final class LauncherRecentsLayoutEngine {
                     "source=" + source
                             + " radius=" + stackLayoutRadius
                             + " syncVisible=" + syncVisibleTaskData);
-            return;
+            return false;
         }
         LauncherRecentsPerf.flow("layout:apply:start",
                 recentsView,
@@ -1566,7 +1610,9 @@ final class LauncherRecentsLayoutEngine {
             long layoutCostNs = LauncherRecentsPerf.end("layoutCompute:" + source, layoutStartNs);
             reportSlowApplyDynamicLayout(recentsView, source, stackLayoutRadius, layoutCostNs);
         }
-        if (syncVisibleTaskData && layoutApplied) {
+        if (syncVisibleTaskData
+                && layoutApplied
+                && shouldRunVisibleTaskDataSync(recentsView, source)) {
             long visibleDataStartNs = LauncherRecentsPerf.start(recentsView);
             try {
                 LauncherRecentsTouchController.ensureStackVisibleTaskDataIfNeeded(recentsView, 15);
@@ -1580,6 +1626,7 @@ final class LauncherRecentsLayoutEngine {
                         + " applied=" + layoutApplied
                         + " syncVisible=" + syncVisibleTaskData);
         LauncherRecentsPerf.end("applyStackLayoutTotal:" + source, totalStartNs);
+        return layoutApplied;
     }
 
     private static void reportSlowApplyDynamicLayout(
@@ -1625,6 +1672,24 @@ final class LauncherRecentsLayoutEngine {
         }
         return resolvePrimaryScroll(recentsView)
                 / Math.max(1, primarySize / STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR);
+    }
+
+    private static boolean shouldRunVisibleTaskDataSync(View recentsView, String source) {
+        return !shouldCoalesceStackLayoutSource(source)
+                || shouldSyncVisibleTaskDataForCurrentBucket(recentsView);
+    }
+
+    private static boolean shouldSyncVisibleTaskDataForCurrentBucket(View recentsView) {
+        LauncherRecentsState.PrepareRecentsViewState state =
+                prepareRecentsViewState(recentsView);
+        int page = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
+        int bucket = resolveSlowLogScrollBucket(recentsView);
+        if (state.visibleTaskDataPage == page && state.visibleTaskDataBucket == bucket) {
+            return false;
+        }
+        state.visibleTaskDataPage = page;
+        state.visibleTaskDataBucket = bucket;
+        return true;
     }
 
     private static boolean shouldSkipDuplicateStackLayout(

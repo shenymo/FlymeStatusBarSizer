@@ -101,7 +101,6 @@ final class LauncherRecentsAttachController {
                                     .isAppToRecentsStackLayoutDeferred(recentsView));
                     LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                     LauncherRecentsState.trackRecentsView(recentsView);
-                    LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                     if (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)) {
                         LauncherRecentsPerf.flow("attach:applyLoadPlan:applyDynamic",
                                 recentsView);

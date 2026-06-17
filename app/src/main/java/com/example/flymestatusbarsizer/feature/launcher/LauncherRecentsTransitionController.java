@@ -550,7 +550,6 @@ final class LauncherRecentsTransitionController {
                             "launcherTransitionProgress",
                             false,
                             false);
-                    recentsView.invalidate();
                 }
                 return result;
             });

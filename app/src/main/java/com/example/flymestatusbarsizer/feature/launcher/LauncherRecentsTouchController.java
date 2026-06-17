@@ -427,7 +427,6 @@ final class LauncherRecentsTouchController {
                     View recentsView = (View) thisObject;
                     if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
                         logStackFlow("freeScroll:settle:applied", recentsView, null, null);
-                        recentsView.invalidate();
                         return null;
                     }
                 }
@@ -454,7 +453,6 @@ final class LauncherRecentsTouchController {
                     View recentsView = (View) thisObject;
                     if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
                         logStackFlow("snapToDestination:applied", recentsView, null, null);
-                        recentsView.invalidate();
                         return null;
                     }
                 }
@@ -1868,9 +1866,7 @@ final class LauncherRecentsTouchController {
             return;
         }
         cancelStackDismissRelayoutAnimation(recentsView);
-        if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
-            recentsView.invalidate();
-        }
+        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
     }
 
     private static void cancelStackDismissRelayoutAnimation(View recentsView) {
@@ -3050,9 +3046,7 @@ final class LauncherRecentsTouchController {
         }
         releasePagedEdgeEffects(recentsView, motionEvent);
         LauncherRecentsCompat.invokeCompat(recentsView, "resetTouchState", LauncherRecentsCompat.NO_ARGS);
-        if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
-            recentsView.invalidate();
-        }
+        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
     }
 
     private static void startUnsnappedFlingIfNeeded(View recentsView, MotionEvent motionEvent) {
