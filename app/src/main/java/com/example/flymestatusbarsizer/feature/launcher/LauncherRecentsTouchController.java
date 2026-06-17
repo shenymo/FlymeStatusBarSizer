@@ -3107,6 +3107,7 @@ final class LauncherRecentsTouchController {
         state.addMovement(motionEvent);
         if (!shouldTakeOverStackPagedScroll(recentsView)) {
             clearStackScrollGesture(recentsView);
+            LauncherRecentsState.clearStackScrollFixedAnchorPage(recentsView);
             return null;
         }
 
@@ -3176,6 +3177,7 @@ final class LauncherRecentsTouchController {
         cancelStackDismissRelayoutAnimation(recentsView);
         LauncherRecentsState.trackRecentsView(recentsView);
         LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+        freezeStackScrollLayoutAnchor(recentsView, state.startScroll);
         clearGestureReleaseTaskStatesForStackDismiss(recentsView);
         LauncherRecentsCompat.invokeCompat(
                 recentsView,
@@ -3227,28 +3229,30 @@ final class LauncherRecentsTouchController {
         int pageCount = resolvePageCount(recentsView);
         int[] target = resolveNearestStackPageAndScroll(recentsView, projectedScroll, pageCount);
         int targetPage = target[0];
-        int targetScroll = target[1];
-        LauncherRecentsCompat.setIntField(recentsView, "mNextPage", targetPage);
+        int targetPageScroll = target[1];
+        LauncherRecentsCompat.setIntField(recentsView, "mNextPage", -1);
         logStackFlow("stackScroll:finish",
                 recentsView,
                 motionEvent,
                 "velocity=" + Math.round(primaryVelocity)
                         + " targetPage=" + targetPage
-                        + " targetScroll=" + targetScroll);
-        animateStackScrollTo(recentsView, currentScroll, targetScroll, targetPage, primaryVelocity);
+                        + " targetPageScroll=" + targetPageScroll
+                        + " targetScroll=" + projectedScroll);
+        animateStackScrollTo(recentsView, currentScroll, projectedScroll, primaryVelocity);
     }
 
     private static void animateStackScrollTo(
             View recentsView,
             int startScroll,
             int targetScroll,
-            int targetPage,
             float primaryVelocity) {
         cancelStackScrollAnimation(recentsView);
+        freezeStackScrollLayoutAnchorIfNeeded(recentsView, startScroll);
         if (startScroll == targetScroll) {
             setPrimaryScroll(recentsView, targetScroll);
-            setStackDismissPageFields(recentsView, targetPage, -1, 0);
+            syncStackScrollPageFields(recentsView, false);
             LauncherRecentsCompat.invokeCompat(recentsView, "pageEndTransition");
+            LauncherRecentsState.clearStackScrollFixedAnchorPage(recentsView);
             LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
             return;
         }
@@ -3266,6 +3270,7 @@ final class LauncherRecentsTouchController {
             int scroll = Math.round(
                     LauncherRecentsLayoutEngine.lerp(startScroll, targetScroll, progress));
             setPrimaryScroll(recentsView, scroll);
+            syncStackScrollPageFields(recentsView, false);
             LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
         });
         animator.addListener(new AnimatorListenerAdapter() {
@@ -3280,15 +3285,29 @@ final class LauncherRecentsTouchController {
             public void onAnimationEnd(Animator animation) {
                 STACK_SCROLL_ANIMATORS.remove(recentsView);
                 if (canceled) {
+                    LauncherRecentsState.clearStackScrollFixedAnchorPage(recentsView);
                     return;
                 }
                 setPrimaryScroll(recentsView, targetScroll);
-                setStackDismissPageFields(recentsView, targetPage, -1, 0);
+                syncStackScrollPageFields(recentsView, false);
                 LauncherRecentsCompat.invokeCompat(recentsView, "pageEndTransition");
+                LauncherRecentsState.clearStackScrollFixedAnchorPage(recentsView);
                 LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
             }
         });
         animator.start();
+    }
+
+    private static void freezeStackScrollLayoutAnchorIfNeeded(View recentsView, int primaryScroll) {
+        if (LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView) == null) {
+            freezeStackScrollLayoutAnchor(recentsView, primaryScroll);
+        }
+    }
+
+    private static void freezeStackScrollLayoutAnchor(View recentsView, int primaryScroll) {
+        int[] pageAndScroll =
+                resolveNearestStackPageAndScroll(recentsView, primaryScroll, resolvePageCount(recentsView));
+        LauncherRecentsState.setStackScrollFixedAnchorPage(recentsView, pageAndScroll[0]);
     }
 
     private static void syncStackScrollPageFields(View recentsView, boolean snapToPage) {
@@ -3377,6 +3396,7 @@ final class LauncherRecentsTouchController {
         }
         releasePagedEdgeEffects(recentsView, motionEvent);
         LauncherRecentsCompat.invokeCompat(recentsView, "resetTouchState", LauncherRecentsCompat.NO_ARGS);
+        LauncherRecentsState.clearStackScrollFixedAnchorPage(recentsView);
         LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
     }
 

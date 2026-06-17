@@ -1755,6 +1755,8 @@ final class LauncherRecentsLayoutEngine {
         key = mixStackLayoutApplyKey(
                 key,
                 LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0));
+        Integer fixedAnchorPage = LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView);
+        key = mixStackLayoutApplyKey(key, fixedAnchorPage != null ? fixedAnchorPage : -1);
         key = mixStackLayoutApplyKey(
                 key,
                 taskViewCount);
@@ -2872,6 +2874,11 @@ final class LauncherRecentsLayoutEngine {
             return runningTaskChildIndex;
         }
         if (!entryWindow && stackLayoutRadius == STACK_STABLE_VISIBLE_RADIUS) {
+            Integer fixedAnchorPage =
+                    LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView);
+            if (fixedAnchorPage != null) {
+                return Math.max(0, Math.min(fixedAnchorPage, Math.max(0, taskViewCount - 1)));
+            }
             return resolveNearestStackLayoutPage(recentsView, taskViewCount, targetScroll);
         }
         if (runningTaskChildIndex >= 0) {
