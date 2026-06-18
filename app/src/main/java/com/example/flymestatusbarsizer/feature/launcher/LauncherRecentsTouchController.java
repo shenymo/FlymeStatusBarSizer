@@ -2981,8 +2981,6 @@ final class LauncherRecentsTouchController {
                             currentScroll));
         }
         LauncherRecentsCompat.invokeCompat(recentsView, "resetTouchState", LauncherRecentsCompat.NO_ARGS);
-        LauncherRecentsCompat.invokeCompat(recentsView, "pageEndTransition", LauncherRecentsCompat.NO_ARGS);
-        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
         recentsView.invalidate();
     }
 
