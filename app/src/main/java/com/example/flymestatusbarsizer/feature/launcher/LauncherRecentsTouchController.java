@@ -17,7 +17,6 @@ import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
-import android.widget.OverScroller;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -43,8 +42,6 @@ final class LauncherRecentsTouchController {
     private static final long STACK_VISIBLE_DATA_CLEANUP_IDLE_DELAY_MS = 450L;
     private static final long STACK_VISIBLE_DATA_CLEANUP_RETRY_DELAY_MS = 250L;
     private static final float STACK_LEFT_RELEASE_ALPHA_THRESHOLD = 0.05f;
-    private static final float STACK_SCROLL_TOUCH_SLOP_RATIO = 0.5f;
-    private static final float STACK_SCROLL_FLING_FRICTION_MULTIPLIER = 2.4f;
     private static final int STACK_APP_FLOW_LIGHT_RADIUS = 3;
     private static final String STACK_APP_FLOW_HIDDEN = "<stack-hidden>";
     private static final ThreadLocal<Boolean> TASK_DISMISS_VISIBILITY_BYPASS =
@@ -57,10 +54,6 @@ final class LauncherRecentsTouchController {
             new WeakHashMap<>();
     private static final WeakHashMap<View, StackVisibleTaskDataSyncState>
             STACK_VISIBLE_TASK_DATA_SYNC_STATES = new WeakHashMap<>();
-    private static final WeakHashMap<View, StackScrollGestureState> STACK_SCROLL_GESTURES =
-            new WeakHashMap<>();
-    private static final WeakHashMap<View, OverScroller> STACK_SCROLL_FLINGS =
-            new WeakHashMap<>();
 
     private LauncherRecentsTouchController() {
     }
@@ -318,7 +311,6 @@ final class LauncherRecentsTouchController {
                     boolean overviewTakeover = !entryTakeover
                             && takeOverOverviewStateOnHorizontalMove(recentsView, motionEvent);
                     clearGestureReleaseTaskStatesOnUserMove(recentsView, motionEvent);
-                    startStackScrollEarlier(recentsView, motionEvent);
                     if (handleMovingStackBlankTapHomeExit(recentsView, motionEvent)) {
                         logStackFlow("touch:event:movingBlankTapHome",
                                 recentsView, motionEvent, null);
@@ -354,18 +346,12 @@ final class LauncherRecentsTouchController {
                                 LauncherRecentsCompat.NO_ARGS);
                         return true;
                     }
-                    Boolean stackScrollHandled =
-                            handleStackPagedScrollTouch(recentsView, motionEvent);
-                    if (stackScrollHandled != null) {
-                        return stackScrollHandled;
-                    }
-                    if (LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                            && shouldSuppressPagedRelease(recentsView, motionEvent)) {
-                        logStackFlow("touch:event:suppressPagedRelease",
+                    if (shouldUseNativeStackFreeFling(recentsView, motionEvent)) {
+                        logStackFlow("touch:event:nativeFreeFling",
                                 recentsView, motionEvent, null);
                         LauncherRecentsState.trackRecentsView(recentsView);
                         LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-                        suppressPagedRelease(recentsView, motionEvent);
+                        startNativeStackFreeFling(recentsView, motionEvent);
                         return true;
                     }
                     long nativeStartNs = LauncherRecentsPerf.start(recentsView);
@@ -567,46 +553,6 @@ final class LauncherRecentsTouchController {
             return;
         }
         LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
-    }
-
-    private static void startStackScrollEarlier(View recentsView, MotionEvent motionEvent) {
-        if (recentsView == null
-                || motionEvent == null
-                || motionEvent.getActionMasked() != MotionEvent.ACTION_MOVE
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                || !LauncherRecentsState.isGestureStackReleasedStable(recentsView)
-                || LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false)) {
-            return;
-        }
-        float downX = LauncherRecentsCompat.readFloatField(
-                recentsView,
-                "mDownMotionX",
-                motionEvent.getX());
-        float downY = LauncherRecentsCompat.readFloatField(
-                recentsView,
-                "mDownMotionY",
-                motionEvent.getY());
-        float dx = motionEvent.getX() - downX;
-        float dy = motionEvent.getY() - downY;
-        float primaryDelta = resolveGesturePrimaryDelta(recentsView, dx, dy);
-        float secondaryDelta = resolveGestureSecondaryDelta(recentsView, dx, dy);
-        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
-        float downPrimary = primaryScrollHorizontal ? downX : downY;
-        int touchSlop = ViewConfiguration.get(recentsView.getContext()).getScaledTouchSlop();
-        if (Math.abs(primaryDelta) <= touchSlop * STACK_SCROLL_TOUCH_SLOP_RATIO
-                || Math.abs(primaryDelta) <= Math.abs(secondaryDelta)) {
-            return;
-        }
-        LauncherRecentsCompat.setBooleanField(recentsView, "mIsBeingDragged", true);
-        LauncherRecentsCompat.setIntField(
-                recentsView,
-                "mLastMotion",
-                Math.round(downPrimary));
-        LauncherRecentsCompat.invokeCompat(recentsView, "pageBeginTransition");
-        ViewParent parent = recentsView.getParent();
-        if (parent != null) {
-            parent.requestDisallowInterceptTouchEvent(true);
-        }
     }
 
     private static boolean takeOverAppToRecentsEntryOnHorizontalMove(
@@ -1965,49 +1911,6 @@ final class LauncherRecentsTouchController {
         }
     }
 
-    private static final class StackScrollGestureState {
-        final View recentsView;
-        final float downPrimary;
-        final float downSecondary;
-        final int activePointerId;
-        VelocityTracker velocityTracker;
-        boolean dragging;
-        int startScroll;
-        float startPrimary;
-
-        StackScrollGestureState(View recentsView, MotionEvent motionEvent) {
-            this.recentsView = recentsView;
-            this.downPrimary = resolvePrimaryDirection(recentsView, motionEvent);
-            this.downSecondary = resolveSecondaryDirection(recentsView, motionEvent);
-            this.activePointerId = motionEvent.getPointerId(0);
-            this.startScroll = resolvePrimaryScroll(recentsView);
-            this.startPrimary = this.downPrimary;
-            this.velocityTracker = VelocityTracker.obtain();
-            this.velocityTracker.addMovement(motionEvent);
-        }
-
-        void addMovement(MotionEvent motionEvent) {
-            if (velocityTracker != null && motionEvent != null) {
-                velocityTracker.addMovement(motionEvent);
-            }
-        }
-
-        float computePrimaryVelocity() {
-            if (velocityTracker == null) {
-                return 0f;
-            }
-            velocityTracker.computeCurrentVelocity(1000);
-            return resolvePrimaryVelocity(recentsView, velocityTracker, activePointerId);
-        }
-
-        void recycleVelocityTracker() {
-            if (velocityTracker != null) {
-                velocityTracker.recycle();
-                velocityTracker = null;
-            }
-        }
-    }
-
     private static final class StackDismissGestureState {
         final View recentsView;
         final View taskView;
@@ -2608,19 +2511,12 @@ final class LauncherRecentsTouchController {
     }
 
     private static boolean isRecentsScrollerActive(View recentsView) {
-        if (isStackScrollFlingActive(recentsView)) {
-            return true;
-        }
         Object scroller = LauncherRecentsCompat.getFieldCompat(recentsView, "mScroller");
         if (isScrollerActive(scroller)) {
             return true;
         }
         Object activeScroller = LauncherRecentsCompat.getFieldCompat(scroller, "usingScroller");
         return activeScroller != scroller && isScrollerActive(activeScroller);
-    }
-
-    private static boolean isStackScrollFlingActive(View recentsView) {
-        return recentsView != null && STACK_SCROLL_FLINGS.containsKey(recentsView);
     }
 
     private static boolean isScrollerActive(Object scroller) {
@@ -2985,20 +2881,6 @@ final class LauncherRecentsTouchController {
         taskIds.add(taskId);
     }
 
-    private static boolean shouldSuppressPagedRelease(
-            View recentsView,
-            MotionEvent motionEvent) {
-        if (recentsView == null || motionEvent == null) {
-            return false;
-        }
-        if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
-            return false;
-        }
-        int action = motionEvent.getActionMasked();
-        return (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)
-                && LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false);
-    }
-
     private static boolean shouldSkipBlankTapPagedRelease(
             View recentsView,
             MotionEvent motionEvent) {
@@ -3020,6 +2902,90 @@ final class LauncherRecentsTouchController {
                 && isBlankTapOnStack(recentsView, motionEvent);
     }
 
+    private static boolean shouldUseNativeStackFreeFling(
+            View recentsView,
+            MotionEvent motionEvent) {
+        if (recentsView == null
+                || motionEvent == null
+                || motionEvent.getActionMasked() != MotionEvent.ACTION_UP
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || !LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsState.isSwipeUpGestureActive(recentsView)
+                || !LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false)) {
+            return false;
+        }
+        float downX = LauncherRecentsCompat.readFloatField(
+                recentsView,
+                "mDownMotionX",
+                motionEvent.getX());
+        float downY = LauncherRecentsCompat.readFloatField(
+                recentsView,
+                "mDownMotionY",
+                motionEvent.getY());
+        float dx = motionEvent.getX() - downX;
+        float dy = motionEvent.getY() - downY;
+        return Math.abs(resolveGesturePrimaryDelta(recentsView, dx, dy))
+                > Math.abs(resolveGestureSecondaryDelta(recentsView, dx, dy));
+    }
+
+    private static void startNativeStackFreeFling(View recentsView, MotionEvent motionEvent) {
+        clearRecentsDeferredSnap(recentsView);
+        releasePagedEdgeEffects(recentsView, motionEvent);
+        Object velocityTrackerValue =
+                LauncherRecentsCompat.getFieldCompat(recentsView, "mVelocityTracker");
+        Object scroller = LauncherRecentsCompat.getFieldCompat(recentsView, "mScroller");
+        if (!(velocityTrackerValue instanceof VelocityTracker) || scroller == null) {
+            LauncherRecentsCompat.invokeCompat(recentsView, "resetTouchState", LauncherRecentsCompat.NO_ARGS);
+            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+            return;
+        }
+        VelocityTracker velocityTracker = (VelocityTracker) velocityTrackerValue;
+        velocityTracker.addMovement(motionEvent);
+        int maximumVelocity =
+                LauncherRecentsCompat.invokeInt(recentsView, "getMaximumVelocity", Integer.MAX_VALUE);
+        velocityTracker.computeCurrentVelocity(1000, maximumVelocity);
+        int activePointerId =
+                LauncherRecentsCompat.readIntField(recentsView, "mActivePointerId", -1);
+        int primaryVelocity = Math.round(
+                resolvePrimaryVelocity(recentsView, velocityTracker, activePointerId));
+        int currentScroll = resolvePrimaryScroll(recentsView);
+        int minScroll = LauncherRecentsCompat.readIntField(recentsView, "mMinScroll", currentScroll);
+        int maxScroll = LauncherRecentsCompat.readIntField(recentsView, "mMaxScroll", currentScroll);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "abortScrollerAnimation",
+                LauncherRecentsCompat.NO_ARGS);
+        LauncherRecentsCompat.invokeCompat(scroller, "setFriction", LauncherRecentsCompat.FLOAT_ARG, 0.03f);
+        if (Math.abs(primaryVelocity)
+                >= ViewConfiguration.get(recentsView.getContext()).getScaledMinimumFlingVelocity()) {
+            startScrollerFling(recentsView, scroller, currentScroll, primaryVelocity, minScroll, maxScroll);
+            LauncherRecentsCompat.setIntField(
+                    recentsView,
+                    "mNextPage",
+                    LauncherRecentsCompat.invokeInt(
+                            recentsView,
+                            "getDestinationPage",
+                            LauncherRecentsCompat.INT_ARG,
+                            -1,
+                            readScrollerFinalX(scroller, currentScroll)));
+        } else {
+            invokeScrollerSpringBack(scroller, currentScroll, minScroll, maxScroll);
+            LauncherRecentsCompat.setIntField(
+                    recentsView,
+                    "mNextPage",
+                    LauncherRecentsCompat.invokeInt(
+                            recentsView,
+                            "getDestinationPage",
+                            LauncherRecentsCompat.INT_ARG,
+                            -1,
+                            currentScroll));
+        }
+        LauncherRecentsCompat.invokeCompat(recentsView, "resetTouchState", LauncherRecentsCompat.NO_ARGS);
+        LauncherRecentsCompat.invokeCompat(recentsView, "pageEndTransition", LauncherRecentsCompat.NO_ARGS);
+        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        recentsView.invalidate();
+    }
+
     private static boolean handleMovingStackBlankTapHomeExit(
             View recentsView,
             MotionEvent motionEvent) {
@@ -3034,7 +3000,6 @@ final class LauncherRecentsTouchController {
         }
         if (!LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
                 || LauncherRecentsState.isSwipeUpGestureActive(recentsView)
-                || isStackScrollFlingActive(recentsView)
                 || LauncherRecentsCompat.invokeBoolean(recentsView, "isScrollerFinished", true)
                 || findStackTaskUnderPoint(recentsView, motionEvent.getX(), motionEvent.getY())
                 != null) {
@@ -3092,363 +3057,6 @@ final class LauncherRecentsTouchController {
                 motionEvent.getY()) == null;
     }
 
-    private static Boolean handleStackPagedScrollTouch(
-            View recentsView,
-            MotionEvent motionEvent) {
-        if (recentsView == null || motionEvent == null) {
-            return null;
-        }
-        int action = motionEvent.getActionMasked();
-        if (action == MotionEvent.ACTION_DOWN) {
-            cancelStackScrollAnimation(recentsView);
-            STACK_SCROLL_GESTURES.remove(recentsView);
-            if (shouldTakeOverStackPagedScroll(recentsView)) {
-                STACK_SCROLL_GESTURES.put(
-                        recentsView,
-                        new StackScrollGestureState(recentsView, motionEvent));
-            }
-            return null;
-        }
-
-        StackScrollGestureState state = STACK_SCROLL_GESTURES.get(recentsView);
-        if (state == null) {
-            return null;
-        }
-        state.addMovement(motionEvent);
-        if (!shouldTakeOverStackPagedScroll(recentsView)) {
-            clearStackScrollGesture(recentsView);
-            LauncherRecentsState.clearStackScrollFixedAnchorPage(recentsView);
-            return null;
-        }
-
-        if (action == MotionEvent.ACTION_MOVE) {
-            if (!state.dragging && !shouldStartStackPagedScroll(state, motionEvent)) {
-                return null;
-            }
-            if (!state.dragging) {
-                beginStackPagedScroll(state, motionEvent);
-            }
-            updateStackPagedScroll(state, motionEvent);
-            return true;
-        }
-
-        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-            if (!state.dragging) {
-                clearStackScrollGesture(recentsView);
-                return null;
-            }
-            finishStackPagedScroll(
-                    recentsView,
-                    motionEvent,
-                    action == MotionEvent.ACTION_CANCEL
-                            ? 0f
-                            : state.computePrimaryVelocity(),
-                    action == MotionEvent.ACTION_CANCEL);
-            return true;
-        }
-        return state.dragging ? true : null;
-    }
-
-    private static boolean shouldTakeOverStackPagedScroll(View recentsView) {
-        return recentsView != null
-                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                && LauncherRecentsState.isGestureStackReleasedStable(recentsView)
-                && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
-                && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
-                && !LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
-                && !LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                && !LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
-                && !LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
-                && !LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
-                recentsView)
-                && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView);
-    }
-
-    private static boolean shouldStartStackPagedScroll(
-            StackScrollGestureState state,
-            MotionEvent motionEvent) {
-        float primaryDelta =
-                resolvePrimaryDirection(state.recentsView, motionEvent) - state.downPrimary;
-        float secondaryDelta =
-                resolveSecondaryDirection(state.recentsView, motionEvent) - state.downSecondary;
-        int touchSlop = ViewConfiguration.get(state.recentsView.getContext()).getScaledTouchSlop();
-        return Math.abs(primaryDelta) > touchSlop * STACK_SCROLL_TOUCH_SLOP_RATIO
-                && Math.abs(primaryDelta) > Math.abs(secondaryDelta);
-    }
-
-    private static void beginStackPagedScroll(
-            StackScrollGestureState state,
-            MotionEvent motionEvent) {
-        View recentsView = state.recentsView;
-        state.dragging = true;
-        state.startScroll = resolvePrimaryScroll(recentsView);
-        state.startPrimary = resolvePrimaryDirection(recentsView, motionEvent);
-        cancelStackScrollAnimation(recentsView);
-        cancelStackDismissRelayoutAnimation(recentsView);
-        LauncherRecentsState.trackRecentsView(recentsView);
-        LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-        freezeStackScrollLayoutAnchor(recentsView, state.startScroll);
-        clearGestureReleaseTaskStatesForStackDismiss(recentsView);
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "abortScrollerAnimation",
-                LauncherRecentsCompat.NO_ARGS);
-        LauncherRecentsCompat.setBooleanField(recentsView, "mIsBeingDragged", true);
-        LauncherRecentsCompat.setIntField(
-                recentsView,
-                "mLastMotion",
-                Math.round(resolvePrimaryDirection(recentsView, motionEvent)));
-        LauncherRecentsCompat.invokeCompat(recentsView, "pageBeginTransition");
-        requestParentDisallowIntercept(recentsView, true);
-        logStackFlow("stackScroll:begin", recentsView, motionEvent, null);
-    }
-
-    private static void updateStackPagedScroll(
-            StackScrollGestureState state,
-            MotionEvent motionEvent) {
-        View recentsView = state.recentsView;
-        int primaryScroll = Math.round(
-                state.startScroll
-                        - (resolvePrimaryDirection(recentsView, motionEvent)
-                        - state.startPrimary));
-        setPrimaryScroll(recentsView, primaryScroll);
-        syncStackScrollPageFields(recentsView, false);
-        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
-    }
-
-    private static void finishStackPagedScroll(
-            View recentsView,
-            MotionEvent motionEvent,
-            float primaryVelocity,
-            boolean canceled) {
-        clearStackScrollGesture(recentsView);
-        requestParentDisallowIntercept(recentsView, false);
-        releasePagedEdgeEffects(recentsView, motionEvent);
-        LauncherRecentsCompat.invokeCompat(recentsView, "resetTouchState", LauncherRecentsCompat.NO_ARGS);
-        int currentScroll = resolvePrimaryScroll(recentsView);
-        int minScroll =
-                LauncherRecentsCompat.readIntField(recentsView, "mMinScroll", currentScroll);
-        int maxScroll =
-                LauncherRecentsCompat.readIntField(recentsView, "mMaxScroll", currentScroll);
-        LauncherRecentsCompat.setIntField(recentsView, "mNextPage", -1);
-        logStackFlow("stackScroll:finish",
-                recentsView,
-                motionEvent,
-                "velocity=" + Math.round(primaryVelocity)
-                        + " currentScroll=" + currentScroll);
-        if (!canceled && shouldStartFreeScrollFling(recentsView, Math.round(primaryVelocity))) {
-            startStackScrollFling(
-                    recentsView,
-                    currentScroll,
-                    Math.round(primaryVelocity),
-                    minScroll,
-                    maxScroll);
-            return;
-        }
-        finishStackScrollAt(recentsView, clamp(currentScroll, minScroll, maxScroll), true);
-    }
-
-    private static void startStackScrollFling(
-            View recentsView,
-            int startScroll,
-            int primaryVelocity,
-            int minScroll,
-            int maxScroll) {
-        cancelStackScrollAnimation(recentsView);
-        freezeStackScrollLayoutAnchorIfNeeded(recentsView, startScroll);
-        if ((startScroll <= minScroll && primaryVelocity > 0)
-                || (startScroll >= maxScroll && primaryVelocity < 0)) {
-            finishStackScrollAt(recentsView, clamp(startScroll, minScroll, maxScroll), true);
-            return;
-        }
-        OverScroller scroller = new OverScroller(recentsView.getContext());
-        scroller.setFriction(
-                ViewConfiguration.getScrollFriction() * STACK_SCROLL_FLING_FRICTION_MULTIPLIER);
-        scroller.fling(
-                startScroll,
-                0,
-                -primaryVelocity,
-                0,
-                minScroll,
-                maxScroll,
-                0,
-                0);
-        STACK_SCROLL_FLINGS.put(recentsView, scroller);
-        logStackFlow("stackScroll:fling:start",
-                recentsView,
-                null,
-                "velocity=" + primaryVelocity
-                        + " startScroll=" + startScroll
-                        + " finalScroll=" + scroller.getFinalX());
-        recentsView.postOnAnimation(() -> runStackScrollFlingFrame(recentsView));
-    }
-
-    private static void runStackScrollFlingFrame(View recentsView) {
-        OverScroller scroller = STACK_SCROLL_FLINGS.get(recentsView);
-        if (recentsView == null || scroller == null) {
-            return;
-        }
-        if (!scroller.computeScrollOffset()) {
-            finishStackScrollAt(recentsView, resolvePrimaryScroll(recentsView), true);
-            return;
-        }
-        setPrimaryScroll(recentsView, scroller.getCurrX());
-        syncStackScrollPageFields(recentsView, false);
-        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
-        if (!scroller.isFinished()) {
-            recentsView.postOnAnimation(() -> runStackScrollFlingFrame(recentsView));
-            return;
-        }
-        finishStackScrollAt(recentsView, scroller.getCurrX(), true);
-    }
-
-    private static void finishStackScrollAt(
-            View recentsView,
-            int targetScroll,
-            boolean endTransition) {
-        STACK_SCROLL_FLINGS.remove(recentsView);
-        setPrimaryScroll(recentsView, targetScroll);
-        syncStackScrollPageFields(recentsView, false);
-        if (endTransition) {
-            LauncherRecentsCompat.invokeCompat(recentsView, "pageEndTransition");
-        }
-        LauncherRecentsState.clearStackScrollFixedAnchorPage(recentsView);
-        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
-    }
-
-    private static void freezeStackScrollLayoutAnchorIfNeeded(View recentsView, int primaryScroll) {
-        if (LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView) == null) {
-            freezeStackScrollLayoutAnchor(recentsView, primaryScroll);
-        }
-    }
-
-    private static void freezeStackScrollLayoutAnchor(View recentsView, int primaryScroll) {
-        int[] pageAndScroll =
-                resolveNearestStackPageAndScroll(recentsView, primaryScroll, resolvePageCount(recentsView));
-        LauncherRecentsState.setStackScrollFixedAnchorPage(recentsView, pageAndScroll[0]);
-    }
-
-    private static void syncStackScrollPageFields(View recentsView, boolean snapToPage) {
-        int primaryScroll = resolvePrimaryScroll(recentsView);
-        int[] pageAndScroll =
-                resolveNearestStackPageAndScroll(recentsView, primaryScroll, resolvePageCount(recentsView));
-        int nearestPage = pageAndScroll[0];
-        int nearestScroll = pageAndScroll[1];
-        setStackDismissPageFields(
-                recentsView,
-                nearestPage,
-                snapToPage ? nearestPage : -1,
-                snapToPage ? 0 : primaryScroll - nearestScroll);
-    }
-
-    private static int resolvePageCount(View recentsView) {
-        int fallback = recentsView instanceof ViewGroup ? ((ViewGroup) recentsView).getChildCount() : 0;
-        return Math.max(
-                1,
-                LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", fallback));
-    }
-
-    private static int[] resolveNearestStackPageAndScroll(
-            View recentsView,
-            int primaryScroll,
-            int pageCount) {
-        int nearestPage = 0;
-        int nearestScroll = LauncherRecentsCompat.invokeInt(
-                recentsView,
-                "getScrollForPage",
-                LauncherRecentsCompat.INT_ARG,
-                primaryScroll,
-                0);
-        int nearestDistance = Math.abs(nearestScroll - primaryScroll);
-        for (int i = 1; i < pageCount; i++) {
-            int pageScroll = LauncherRecentsCompat.invokeInt(
-                    recentsView,
-                    "getScrollForPage",
-                    LauncherRecentsCompat.INT_ARG,
-                    primaryScroll,
-                    i);
-            int distance = Math.abs(pageScroll - primaryScroll);
-            if (distance < nearestDistance) {
-                nearestPage = i;
-                nearestScroll = pageScroll;
-                nearestDistance = distance;
-            }
-        }
-        return new int[]{nearestPage, nearestScroll};
-    }
-
-    private static void clearStackScrollGesture(View recentsView) {
-        StackScrollGestureState state = STACK_SCROLL_GESTURES.remove(recentsView);
-        if (state != null) {
-            state.recycleVelocityTracker();
-        }
-    }
-
-    private static void cancelStackScrollAnimation(View recentsView) {
-        OverScroller scroller = STACK_SCROLL_FLINGS.remove(recentsView);
-        if (scroller != null) {
-            scroller.forceFinished(true);
-        }
-        LauncherRecentsState.clearStackScrollFixedAnchorPage(recentsView);
-    }
-
-    private static int clamp(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
-    }
-
-    private static void suppressPagedRelease(View recentsView, MotionEvent motionEvent) {
-        if (recentsView == null) {
-            return;
-        }
-        logStackFlow("pagedRelease:suppress", recentsView, motionEvent, null);
-        clearRecentsDeferredSnap(recentsView);
-        if (motionEvent != null && motionEvent.getActionMasked() == MotionEvent.ACTION_UP) {
-            if (startUnsnappedFlingIfNeeded(recentsView, motionEvent)) {
-                LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
-                return;
-            }
-        } else {
-            LauncherRecentsCompat.invokeCompat(
-                    recentsView,
-                    "abortScrollerAnimation",
-                    LauncherRecentsCompat.NO_ARGS);
-        }
-        releasePagedEdgeEffects(recentsView, motionEvent);
-        LauncherRecentsCompat.invokeCompat(recentsView, "resetTouchState", LauncherRecentsCompat.NO_ARGS);
-        LauncherRecentsState.clearStackScrollFixedAnchorPage(recentsView);
-        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
-    }
-
-    private static boolean startUnsnappedFlingIfNeeded(View recentsView, MotionEvent motionEvent) {
-        if (recentsView == null || motionEvent == null) {
-            return false;
-        }
-        Object velocityTrackerValue =
-                LauncherRecentsCompat.getFieldCompat(recentsView, "mVelocityTracker");
-        if (!(velocityTrackerValue instanceof VelocityTracker)) {
-            logStackFlow("pagedRelease:fling:noVelocityTracker",
-                    recentsView, motionEvent, null);
-            return false;
-        }
-        VelocityTracker velocityTracker = (VelocityTracker) velocityTrackerValue;
-        velocityTracker.addMovement(motionEvent);
-        int maximumVelocity =
-                LauncherRecentsCompat.invokeInt(recentsView, "getMaximumVelocity", Integer.MAX_VALUE);
-        velocityTracker.computeCurrentVelocity(1000, maximumVelocity);
-        int activePointerId =
-                LauncherRecentsCompat.readIntField(recentsView, "mActivePointerId", -1);
-        int primaryVelocity = Math.round(
-                resolvePrimaryVelocity(recentsView, velocityTracker, activePointerId));
-        finishStackPagedScroll(recentsView, motionEvent, primaryVelocity, false);
-        return true;
-    }
-
-    private static boolean shouldStartFreeScrollFling(View recentsView, int primaryVelocity) {
-        int minimumVelocity =
-                ViewConfiguration.get(recentsView.getContext()).getScaledMinimumFlingVelocity();
-        return Math.abs(primaryVelocity) >= minimumVelocity;
-    }
-
     private static float resolvePrimaryVelocity(
             View recentsView,
             VelocityTracker velocityTracker,
@@ -3488,32 +3096,6 @@ final class LauncherRecentsTouchController {
                 : recentsView.getScrollY();
     }
 
-    private static float resolvePrimaryDirection(View recentsView, MotionEvent motionEvent) {
-        Object orientationHandler =
-                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
-        Object value = LauncherRecentsCompat.invokeCompat(
-                orientationHandler,
-                "getPrimaryDirection",
-                new Class<?>[]{MotionEvent.class, int.class},
-                motionEvent,
-                0);
-        if (value instanceof Float) {
-            return (Float) value;
-        }
-        if (value instanceof Double) {
-            return ((Double) value).floatValue();
-        }
-        return isPrimaryScrollHorizontal(recentsView) ? motionEvent.getX() : motionEvent.getY();
-    }
-
-    private static float resolveSecondaryDirection(View recentsView, MotionEvent motionEvent) {
-        return isPrimaryScrollHorizontal(recentsView) ? motionEvent.getY() : motionEvent.getX();
-    }
-
-    private static void setPrimaryScroll(View recentsView, int primaryScroll) {
-        scrollStackDismissTo(recentsView, isPrimaryScrollHorizontal(recentsView), primaryScroll);
-    }
-
     private static void scrollStackDismissTo(
             View recentsView,
             boolean primaryScrollHorizontal,
@@ -3549,51 +3131,12 @@ final class LauncherRecentsTouchController {
         return isPrimaryScrollHorizontal(recentsView) ? dy : dx;
     }
 
-    private static void startPagedSpringBack(
-            View recentsView,
-            int primaryScroll,
-            int minScroll,
-            int maxScroll) {
-        Object scroller = LauncherRecentsCompat.getFieldCompat(recentsView, "mScroller");
-        if (scroller == null) {
-            return;
-        }
-        invokeScrollerSpringBack(scroller, primaryScroll, minScroll, maxScroll);
-        LauncherRecentsCompat.setIntField(
-                recentsView,
-                "mNextPage",
-                LauncherRecentsCompat.readIntField(recentsView, "mCurrentPage", -1));
-    }
-
-    private static boolean startScrollerFling(
-            View recentsView,
-            Object scroller,
-            int primaryScroll,
-            int primaryVelocity,
-            int minScroll,
-            int maxScroll) {
-        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
-        int overX = Math.round(
-                resolvePrimarySize(recentsView, primaryScrollHorizontal) * 0.5f * 0.07f);
-        invokeScrollerFling10(scroller, primaryScroll, primaryVelocity, minScroll, maxScroll, overX);
-        int afterFinalX = readScrollerFinalX(scroller, primaryScroll);
-        if (afterFinalX != primaryScroll) {
-            return true;
-        }
-        invokeScrollerFling8(scroller, primaryScroll, primaryVelocity, minScroll, maxScroll);
-        return readScrollerFinalX(scroller, primaryScroll) != primaryScroll;
-    }
-
-    private static void setScrollerFriction(Object scroller, float friction) {
-        invokeScrollerMethod(scroller, "setFriction", LauncherRecentsCompat.FLOAT_ARG, friction);
-    }
-
     private static void invokeScrollerSpringBack(
             Object scroller,
             int primaryScroll,
             int minScroll,
             int maxScroll) {
-        invokeScrollerMethod(
+        LauncherRecentsCompat.invokeCompat(
                 scroller,
                 "springBack",
                 new Class<?>[]{
@@ -3612,14 +3155,17 @@ final class LauncherRecentsTouchController {
                 0);
     }
 
-    private static void invokeScrollerFling10(
+    private static void startScrollerFling(
+            View recentsView,
             Object scroller,
             int primaryScroll,
             int primaryVelocity,
             int minScroll,
-            int maxScroll,
-            int overX) {
-        invokeScrollerMethod(
+            int maxScroll) {
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        int overX = Math.round(
+                resolvePrimarySize(recentsView, primaryScrollHorizontal) * 0.5f * 0.07f);
+        boolean handled = LauncherRecentsCompat.invokeMethodReflectively(
                 scroller,
                 "fling",
                 new Class<?>[]{
@@ -3644,15 +3190,10 @@ final class LauncherRecentsTouchController {
                 0,
                 overX,
                 0);
-    }
-
-    private static void invokeScrollerFling8(
-            Object scroller,
-            int primaryScroll,
-            int primaryVelocity,
-            int minScroll,
-            int maxScroll) {
-        invokeScrollerMethod(
+        if (handled) {
+            return;
+        }
+        LauncherRecentsCompat.invokeMethodReflectively(
                 scroller,
                 "fling",
                 new Class<?>[]{
@@ -3675,25 +3216,7 @@ final class LauncherRecentsTouchController {
                 0);
     }
 
-    private static void invokeScrollerMethod(
-            Object scroller,
-            String methodName,
-            Class<?>[] parameterTypes,
-            Object... args) {
-        if (scroller == null) {
-            return;
-        }
-        LauncherRecentsCompat.invokeCompat(scroller, methodName, parameterTypes, args);
-        Object activeScroller = LauncherRecentsCompat.getFieldCompat(scroller, "usingScroller");
-        if (activeScroller != null && activeScroller != scroller) {
-            LauncherRecentsCompat.invokeCompat(activeScroller, methodName, parameterTypes, args);
-        }
-    }
-
     private static int readScrollerFinalX(Object scroller, int fallback) {
-        if (scroller == null) {
-            return fallback;
-        }
         Object value = LauncherRecentsCompat.invokeCompat(scroller, "getFinalX", LauncherRecentsCompat.NO_ARGS);
         if (value instanceof Integer) {
             return (Integer) value;
