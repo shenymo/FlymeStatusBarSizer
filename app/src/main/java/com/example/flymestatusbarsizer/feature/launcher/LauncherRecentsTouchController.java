@@ -259,6 +259,7 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsCompat.isRecentsViewObject(thisObject)
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    clearStackFlingFixedAnchorOnTouchStart(recentsView, motionEvent);
                     keepAppToRecentsEntryHeadsVisibleOnTouchDown(recentsView, motionEvent);
                     ensureClearAllButtonReadyOnTouchDown(recentsView, motionEvent);
                     if (handleMovingStackBlankTapHomeExit(recentsView, motionEvent)) {
@@ -304,6 +305,7 @@ final class LauncherRecentsTouchController {
                         && thisObject instanceof View
                         && motionEvent != null) {
                     View recentsView = (View) thisObject;
+                    clearStackFlingFixedAnchorOnTouchStart(recentsView, motionEvent);
                     keepAppToRecentsEntryHeadsVisibleOnTouchDown(recentsView, motionEvent);
                     ensureClearAllButtonReadyOnTouchDown(recentsView, motionEvent);
                     boolean entryTakeover =
@@ -2951,6 +2953,7 @@ final class LauncherRecentsTouchController {
         int currentScroll = resolvePrimaryScroll(recentsView);
         int minScroll = LauncherRecentsCompat.readIntField(recentsView, "mMinScroll", currentScroll);
         int maxScroll = LauncherRecentsCompat.readIntField(recentsView, "mMaxScroll", currentScroll);
+        setStackFlingFixedAnchorPage(recentsView, currentScroll);
         LauncherRecentsCompat.invokeCompat(
                 recentsView,
                 "abortScrollerAnimation",
@@ -2981,7 +2984,88 @@ final class LauncherRecentsTouchController {
                             currentScroll));
         }
         LauncherRecentsCompat.invokeCompat(recentsView, "resetTouchState", LauncherRecentsCompat.NO_ARGS);
+        scheduleStackFlingFixedAnchorClearOnScrollerFinish(recentsView);
         recentsView.invalidate();
+    }
+
+    private static void clearStackFlingFixedAnchorOnTouchStart(
+            View recentsView,
+            MotionEvent motionEvent) {
+        if (motionEvent != null && motionEvent.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            clearStackFlingFixedAnchorPage(recentsView, false);
+        }
+    }
+
+    private static void setStackFlingFixedAnchorPage(View recentsView, int primaryScroll) {
+        if (recentsView == null) {
+            return;
+        }
+        int page = resolveNearestStackFlingAnchorPage(recentsView, primaryScroll);
+        if (page < 0) {
+            return;
+        }
+        LauncherRecentsState.setStackScrollFixedAnchorPage(recentsView, page);
+        logStackFlow("stackFling:anchor:set", recentsView, null, "page=" + page);
+    }
+
+    private static int resolveNearestStackFlingAnchorPage(View recentsView, int primaryScroll) {
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        if (taskViewCount <= 0) {
+            return -1;
+        }
+        int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
+        int nearestPage = Math.max(0, Math.min(currentPage, taskViewCount - 1));
+        int nearestDistance = Integer.MAX_VALUE;
+        for (int i = 0; i < taskViewCount; i++) {
+            int pageScroll = LauncherRecentsCompat.invokeInt(
+                    recentsView,
+                    "getScrollForPage",
+                    LauncherRecentsCompat.INT_ARG,
+                    primaryScroll,
+                    i);
+            int distance = Math.abs(pageScroll - primaryScroll);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestPage = i;
+            }
+        }
+        return nearestPage;
+    }
+
+    private static void scheduleStackFlingFixedAnchorClearOnScrollerFinish(View recentsView) {
+        if (recentsView == null
+                || LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView) == null) {
+            return;
+        }
+        recentsView.postOnAnimation(() -> {
+            if (recentsView == null
+                    || LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView) == null) {
+                return;
+            }
+            if (!LauncherRecentsCompat.invokeBoolean(recentsView, "isScrollerFinished", true)) {
+                scheduleStackFlingFixedAnchorClearOnScrollerFinish(recentsView);
+                return;
+            }
+            clearStackFlingFixedAnchorPage(recentsView, true);
+        });
+    }
+
+    private static void clearStackFlingFixedAnchorPage(
+            View recentsView,
+            boolean applyFinalLayout) {
+        if (recentsView == null
+                || LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView) == null) {
+            return;
+        }
+        LauncherRecentsState.clearStackScrollFixedAnchorPage(recentsView);
+        logStackFlow("stackFling:anchor:clear",
+                recentsView,
+                null,
+                "applyFinalLayout=" + applyFinalLayout);
+        if (applyFinalLayout) {
+            LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+            forceEnsureStackVisibleTaskData(recentsView, 15, true);
+        }
     }
 
     private static boolean handleMovingStackBlankTapHomeExit(

@@ -321,7 +321,10 @@ final class LauncherRecentsLayoutEngine {
                                 methodName + "_scaleSuppress");
                         return null;
                     }
-                    if (shouldSuppressStockPageOffsetUpdate(methodName, recentsView)) {
+                    if (shouldSuppressStockPageOffsetUpdate(methodName, recentsView)
+                            || shouldSuppressStockHorizontalOffsetUpdate(
+                            methodName,
+                            recentsView)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
                         scheduleStackLayoutFromHook(
@@ -396,6 +399,9 @@ final class LauncherRecentsLayoutEngine {
                     View recentsView = (View) thisObject;
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
+                    if (isStackScrollerActive(recentsView)) {
+                        applyDynamicStackLayoutImmediatelyForScroll(recentsView);
+                    }
                 }
                 return result;
             });
@@ -1398,6 +1404,24 @@ final class LauncherRecentsLayoutEngine {
         return scheduled;
     }
 
+    private static boolean applyDynamicStackLayoutImmediatelyForScroll(View recentsView) {
+        if (recentsView == null || !shouldApplyDynamicStackLayout(recentsView)) {
+            return false;
+        }
+        if (shouldCaptureStockTaskStatesForStackApply(recentsView)) {
+            captureStockTaskStatesForStackApply(recentsView);
+        }
+        boolean layoutApplied = applyStackLayout(
+                recentsView,
+                false,
+                "onScrollChangedSync",
+                true);
+        if (layoutApplied) {
+            recentsView.invalidate();
+        }
+        return layoutApplied;
+    }
+
     private static boolean scheduleStackLayout(
             View recentsView,
             boolean captureStockState,
@@ -1990,7 +2014,7 @@ final class LauncherRecentsLayoutEngine {
                 fillBoundaryTargetCount,
                 stableFillWindow,
                 seascapeEntryWindow);
-        addLiveStackScrollActiveIndices(
+        addFixedStackScrollActiveIndices(
                 recentsView,
                 taskViewCount,
                 stackLayoutRadius,
@@ -2142,7 +2166,7 @@ final class LauncherRecentsLayoutEngine {
                 && Math.abs(index - anchorIndex) > STACK_GESTURE_RELEASE_CORE_RADIUS;
     }
 
-    private static void addLiveStackScrollActiveIndices(
+    private static void addFixedStackScrollActiveIndices(
             View recentsView,
             int taskViewCount,
             int stackLayoutRadius,
@@ -2157,15 +2181,19 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView) == null) {
             return;
         }
-        int liveAnchorIndex = resolveNearestStackLayoutPage(recentsView, taskViewCount, targetScroll);
-        ArrayList<Integer> liveIndices = resolveStackLayoutActiveIndices(
+        int fixedAnchorIndex = Math.max(
+                0,
+                Math.min(
+                        LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView),
+                        Math.max(0, taskViewCount - 1)));
+        ArrayList<Integer> fixedIndices = resolveStackLayoutActiveIndices(
                 taskViewCount,
-                liveAnchorIndex,
+                fixedAnchorIndex,
                 stackLayoutRadius,
                 fillBoundaryTargetCount,
                 stableFillWindow,
                 seascapeEntryWindow);
-        appendStackLayoutIndices(activeIndices, liveIndices, taskViewCount);
+        appendStackLayoutIndices(activeIndices, fixedIndices, taskViewCount);
     }
 
     private static ArrayList<Integer> resolveStackLayoutActiveIndices(
@@ -2901,11 +2929,6 @@ final class LauncherRecentsLayoutEngine {
             return runningTaskChildIndex;
         }
         if (!entryWindow && stackLayoutRadius == STACK_STABLE_VISIBLE_RADIUS) {
-            Integer fixedAnchorPage =
-                    LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView);
-            if (fixedAnchorPage != null) {
-                return Math.max(0, Math.min(fixedAnchorPage, Math.max(0, taskViewCount - 1)));
-            }
             return resolveNearestStackLayoutPage(recentsView, taskViewCount, targetScroll);
         }
         if (runningTaskChildIndex >= 0) {
@@ -3019,19 +3042,50 @@ final class LauncherRecentsLayoutEngine {
         return "updatePageOffsetsForFlyme".equals(methodName)
                 && shouldUseStackLayout(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
-                && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
+                && (isStackScrollerActive(recentsView)
+                || shouldSuppressStockPageOffsetUpdateForTransition(recentsView));
+    }
+
+    private static boolean shouldSuppressStockHorizontalOffsetUpdate(
+            String methodName,
+            View recentsView) {
+        return "updateHorizontalOffset".equals(methodName)
+                && shouldUseStackLayout(recentsView)
+                && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
+                && (isStackScrollerActive(recentsView)
+                || shouldSuppressStockPageOffsetUpdateForTransition(recentsView));
+    }
+
+    private static boolean isStackScrollerActive(View recentsView) {
+        Object scroller = LauncherRecentsCompat.getFieldCompat(recentsView, "mScroller");
+        if (isScrollerActive(scroller)) {
+            return true;
+        }
+        Object activeScroller = LauncherRecentsCompat.getFieldCompat(scroller, "usingScroller");
+        return activeScroller != scroller && isScrollerActive(activeScroller);
+    }
+
+    private static boolean isScrollerActive(Object scroller) {
+        Object value = LauncherRecentsCompat.invokeCompat(
+                scroller,
+                "isFinished",
+                LauncherRecentsCompat.NO_ARGS);
+        return value instanceof Boolean && !((Boolean) value);
+    }
+
+    private static boolean shouldSuppressStockPageOffsetUpdateForTransition(View recentsView) {
+        return (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                 || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
-                recentsView)
+                        recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
-                recentsView)
-                // handoff 开始后 deferred 已清零但 progress 尚未建立，此帧也需压制
+                        recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
-                recentsView))
+                        recentsView))
                 && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
-                recentsView)
+                        recentsView)
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
-                recentsView)
+                        recentsView)
                 || isStackLayoutRecoveryActive(recentsView));
     }
 

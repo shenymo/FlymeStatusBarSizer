@@ -285,13 +285,28 @@ final class LauncherRecentsTaskVisuals {
         rememberOriginalTaskState(taskView);
         LauncherRecentsState.LAST_STOCK_TASK_OFFSET_XS.put(
                 taskView,
-                LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationX", 0f));
+                readStockFloatWithoutApplied(
+                        taskView,
+                        "taskOffsetTranslationX",
+                        0f,
+                        LauncherRecentsState.LAST_STOCK_TASK_OFFSET_XS,
+                        LauncherRecentsState.LAST_APPLIED_TASK_OFFSET_XS));
         LauncherRecentsState.LAST_STOCK_TASK_OFFSET_YS.put(
                 taskView,
-                LauncherRecentsCompat.readFloatField(taskView, "taskOffsetTranslationY", 0f));
+                readStockFloatWithoutApplied(
+                        taskView,
+                        "taskOffsetTranslationY",
+                        0f,
+                        LauncherRecentsState.LAST_STOCK_TASK_OFFSET_YS,
+                        LauncherRecentsState.LAST_APPLIED_TASK_OFFSET_YS));
         LauncherRecentsState.LAST_STOCK_HORIZONTAL_OFFSET_XS.put(
                 taskView,
-                LauncherRecentsCompat.readFloatField(taskView, "horizontalOffsetTranslationX", 0f));
+                readStockFloatWithoutApplied(
+                        taskView,
+                        "horizontalOffsetTranslationX",
+                        0f,
+                        LauncherRecentsState.LAST_STOCK_HORIZONTAL_OFFSET_XS,
+                        LauncherRecentsState.LAST_APPLIED_HORIZONTAL_OFFSET_XS));
         LauncherRecentsState.LAST_STOCK_NON_GRID_SCALES.put(
                 taskView,
                 LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f));
@@ -307,6 +322,21 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_STOCK_FULLSCREEN_PROGRESSES.put(
                 taskView,
                 LauncherRecentsCompat.readFloatField(taskView, "fullscreenProgress", 0f));
+    }
+
+    private static float readStockFloatWithoutApplied(
+            View taskView,
+            String fieldName,
+            float fallback,
+            java.util.WeakHashMap<View, Float> stockValues,
+            java.util.WeakHashMap<View, Float> appliedValues) {
+        float currentValue = LauncherRecentsCompat.readFloatField(taskView, fieldName, fallback);
+        Float appliedValue = appliedValues.get(taskView);
+        if (appliedValue != null && approximatelyEqual(currentValue, appliedValue)) {
+            Float stockValue = stockValues.get(taskView);
+            return stockValue != null ? stockValue : fallback;
+        }
+        return currentValue;
     }
 
     static void setHorizontalOffsetTranslationX(View taskView, float value) {
