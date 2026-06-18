@@ -707,25 +707,6 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
-    static void resetTaskPageViewScales(View recentsView) {
-        if (!(recentsView instanceof ViewGroup)) {
-            return;
-        }
-        ViewGroup group = (ViewGroup) recentsView;
-        for (int i = 0; i < group.getChildCount(); i++) {
-            View child = group.getChildAt(i);
-            if (child == null) {
-                continue;
-            }
-            child.setScaleX(1f);
-            child.setScaleY(1f);
-            if (child.getWidth() > 0 && child.getHeight() > 0) {
-                child.setPivotX(child.getWidth() * 0.5f);
-                child.setPivotY(child.getHeight() * 0.5f);
-            }
-        }
-    }
-
     private static boolean isPrimaryScrollHorizontal(View recentsView) {
         Object orientationHandler =
                 LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");

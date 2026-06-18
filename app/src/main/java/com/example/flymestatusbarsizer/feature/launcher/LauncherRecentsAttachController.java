@@ -269,7 +269,6 @@ final class LauncherRecentsAttachController {
         LauncherRecentsPerf.flow("attach:entrySession:endWithoutLayout", recentsView);
         LauncherRecentsState.clearAppToRecentsEntryState(recentsView);
         LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
-        LauncherRecentsLayoutEngine.resetTaskPageViewScales(recentsView);
     }
 
     private static View resolveRecentsView(Object factory) {
