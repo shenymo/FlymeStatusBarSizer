@@ -316,12 +316,9 @@ final class LauncherRecentsLayoutEngine {
                     if (shouldSuppressStockPageScaleUpdate(methodName, recentsView)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
-                        scheduleStackLayoutFromHook(
+                        applyStackLayoutFromScaleSuppress(
                                 recentsView,
-                                false,
-                                methodName + "_scaleSuppress",
-                                false,
-                                true);
+                                methodName + "_scaleSuppress");
                         return null;
                     }
                     if (shouldSuppressStockPageOffsetUpdate(methodName, recentsView)) {
@@ -1484,6 +1481,19 @@ final class LauncherRecentsLayoutEngine {
                 source,
                 syncVisibleTaskData,
                 dynamicOnly);
+    }
+
+    private static void applyStackLayoutFromScaleSuppress(View recentsView, String source) {
+        if (!shouldApplyDynamicStackLayout(recentsView)
+                || shouldBlockAppToRecentsStackApply(recentsView)) {
+            return;
+        }
+        applyStackLayout(
+                recentsView,
+                false,
+                source,
+                false);
+        recentsView.invalidate();
     }
 
     private static String mergeScheduledStackLayoutSource(String currentSource, String nextSource) {
@@ -3062,7 +3072,8 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
-                recentsView))
+                recentsView)
+                || LauncherRecentsState.isGestureStackReleasedStable(recentsView))
                 && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                 || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
                 // handoff 开始后 deferred 已清零但 progress/stable 尚未建立，此帧也需压制。
