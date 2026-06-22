@@ -12,7 +12,6 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.WeakHashMap;
 
 final class LauncherRecentsLayoutEngine {
     private static final String LAUNCHER_STATE_CLASS = "com.android.launcher3.LauncherState";
@@ -40,8 +39,6 @@ final class LauncherRecentsLayoutEngine {
     private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
     private static final int STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR = 2;
     private static final long STACK_LAYOUT_DUPLICATE_WINDOW_NS = 16_000_000L;
-    private static final WeakHashMap<View, String> LAST_PAGE_SCALE_LOG_KEYS =
-            new WeakHashMap<>();
 
     private LauncherRecentsLayoutEngine() {
     }
@@ -339,15 +336,9 @@ final class LauncherRecentsLayoutEngine {
                         return null;
                     }
                 }
-                if ("updatePageScales".equals(methodName) && thisObject instanceof View) {
-                    logPageScaleSnapshot("layout:updatePageScales:beforeStock", (View) thisObject);
-                }
                 Object result = chain.proceed();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
-                    if ("updatePageScales".equals(methodName)) {
-                        logPageScaleSnapshot("layout:updatePageScales:afterStock", recentsView);
-                    }
                     if (shouldSkipIdleCurvePropertiesRelayout(methodName, recentsView)) {
                         return result;
                     }
@@ -367,58 +358,6 @@ final class LauncherRecentsLayoutEngine {
                     "Failed to hook RecentsView." + methodName,
                     t);
         }
-    }
-
-    private static void logPageScaleSnapshot(String name, View recentsView) {
-        if (!LauncherRecentsPerf.flowEnabled(recentsView)) {
-            return;
-        }
-        float adjacentScale = LauncherRecentsCompat.readFloatField(
-                recentsView,
-                "mAdjacentPageScale",
-                0f);
-        boolean stable = LauncherRecentsState.isGestureStackReleasedStable(recentsView);
-        boolean releaseActive = LauncherRecentsTransitionController
-                .isGestureRecentsStackReleaseAnimationActive(recentsView);
-        boolean releaseProgress = LauncherRecentsTransitionController
-                .hasGestureRecentsStackReleaseProgress(recentsView);
-        int adjacentBucket = Math.round(adjacentScale * 20f);
-        String key = name + ":" + adjacentBucket + ":" + stable
-                + ":" + releaseActive + ":" + releaseProgress;
-        if (key.equals(LAST_PAGE_SCALE_LOG_KEYS.get(recentsView))) {
-            return;
-        }
-        LAST_PAGE_SCALE_LOG_KEYS.put(recentsView, key);
-        StringBuilder details = new StringBuilder();
-        details.append("adjacentScale=")
-                .append(adjacentScale)
-                .append(" stable=")
-                .append(stable)
-                .append(" releaseActive=")
-                .append(releaseActive)
-                .append(" releaseProgress=")
-                .append(releaseProgress);
-        int taskViewCount = Math.min(
-                3,
-                LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0));
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView == null) {
-                continue;
-            }
-            details.append(" t")
-                    .append(i)
-                    .append(" scaleX=")
-                    .append(taskView.getScaleX())
-                    .append(" scaleY=")
-                    .append(taskView.getScaleY())
-                    .append(" nonGrid=")
-                    .append(LauncherRecentsCompat.readFloatField(
-                            taskView,
-                            "nonGridScale",
-                            1f));
-        }
-        LauncherRecentsPerf.flow(name, recentsView, details.toString());
     }
 
     private static boolean shouldSkipIdleCurvePropertiesRelayout(
