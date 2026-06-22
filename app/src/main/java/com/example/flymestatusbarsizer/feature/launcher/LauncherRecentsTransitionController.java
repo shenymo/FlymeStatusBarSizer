@@ -394,7 +394,11 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
         markPendingGestureRecentsStackRelease(recentsView, false);
         LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
-        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+        LauncherRecentsLayoutEngine.applyStableStackLayout(
+                recentsView,
+                false,
+                "finishGestureEndSync",
+                false);
         LauncherRecentsLayoutEngine.ensureStackClearAllButtonReady(recentsView);
         LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15, true);
         recentsView.invalidate();
@@ -870,10 +874,14 @@ final class LauncherRecentsTransitionController {
                 setGestureRecentsStackReleaseProgress(recentsView, 1f);
                 normalizeAppToRecentsStackAnchor(recentsView, stackAnchorPage);
                 LauncherRecentsState.setGestureStackReleasedStable(recentsView, true);
+                LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
+                LauncherRecentsLayoutEngine.applyStableStackLayout(
+                        recentsView,
+                        false,
+                        "gestureReleaseEndSync",
+                        false);
                 clearGestureRecentsStackReleaseProgress(recentsView);
                 LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
-                LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
-                LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
                 LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15, true);
                 recentsView.invalidate();
                 LauncherRecentsPerf.flow("enter:gestureRelease:end", recentsView);
