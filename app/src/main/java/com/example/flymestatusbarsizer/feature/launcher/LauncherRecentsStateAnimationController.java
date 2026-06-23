@@ -470,7 +470,7 @@ final class LauncherRecentsStateAnimationController {
                 "setContentAlpha",
                 LauncherRecentsCompat.FLOAT_ARG,
                 0f);
-        LauncherRecentsLayoutEngine.finishBlankTapHomeExitTaskCleanup(recentsView);
+        LauncherRecentsLayoutEngine.clearBlankTapHomeExitPendingLayout(recentsView);
     }
 
     private static void beginOverviewStateStackAnimation(

@@ -999,7 +999,11 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsState.BlankTapHomeExitTaskState state =
                     LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.get(taskView);
             if (state == null) {
-                hideBlankTapHomeExitTask(taskView);
+                LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(taskView, 0f);
+                LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
+                LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
                 continue;
             }
             float taskWidth = taskView.getWidth() > 0
@@ -1034,9 +1038,7 @@ final class LauncherRecentsLayoutEngine {
                         exitVisibleOffset,
                         pathProgress);
                 desiredScale *= 1.0f - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * pathProgress);
-                desiredStableAlpha *= resolveBlankTapExitAlpha(
-                        pathProgress,
-                        state.centerVisibleOffset);
+                desiredStableAlpha *= exitAlpha;
                 desiredAttachAlpha *= exitAlpha;
             } else {
                 desiredStableAlpha = 0f;
@@ -1070,29 +1072,13 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
-    static void finishBlankTapHomeExitTaskCleanup(View recentsView) {
+    static void clearBlankTapHomeExitPendingLayout(View recentsView) {
         if (recentsView == null) {
             return;
         }
         LauncherRecentsState.PENDING_STACK_LAYOUT_APPLIES.remove(recentsView);
         LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
-                continue;
-            }
-            hideBlankTapHomeExitTask(taskView);
-        }
         recentsView.invalidate();
-    }
-
-    private static void hideBlankTapHomeExitTask(View taskView) {
-        LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
-        LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
-        LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(taskView, 0f);
-        LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
-        LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
     }
 
     static void captureGestureStackReleaseTaskStates(
