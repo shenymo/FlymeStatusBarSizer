@@ -692,6 +692,9 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static void hideStackClearAllButton(View recentsView) {
+        if (recentsView == null || !shouldUseStackLayout(recentsView)) {
+            return;
+        }
         Object value = LauncherRecentsCompat.invokeCompat(recentsView, "getClearAllButton");
         if (!(value instanceof View)) {
             return;
