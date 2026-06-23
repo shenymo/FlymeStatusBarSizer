@@ -993,9 +993,13 @@ final class LauncherRecentsLayoutEngine {
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null) {
+                continue;
+            }
             LauncherRecentsState.BlankTapHomeExitTaskState state =
                     LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.get(taskView);
-            if (taskView == null || state == null) {
+            if (state == null) {
+                hideBlankTapHomeExitTask(taskView);
                 continue;
             }
             float taskWidth = taskView.getWidth() > 0
@@ -1012,8 +1016,10 @@ final class LauncherRecentsLayoutEngine {
             float desiredVisibleOffset = state.startVisibleOffset;
             float desiredScale = state.startScale;
             float desiredStableAlpha = state.startStableAlpha;
+            float desiredAttachAlpha = state.startAttachAlpha;
+            float pathProgress = smoothStep(clampedProgress);
+            float exitAlpha = resolveBlankTapExitAlpha(pathProgress, state.centerVisibleOffset);
             if (state.startStableAlpha > 0f) {
-                float pathProgress = smoothStep(clampedProgress);
                 float controlVisibleOffset = state.centerVisibleOffset;
                 float taskStartPx = taskCenteredPrimaryStartPx + controlVisibleOffset;
                 float exitTravelPx = Math.max(
@@ -1028,13 +1034,16 @@ final class LauncherRecentsLayoutEngine {
                         exitVisibleOffset,
                         pathProgress);
                 desiredScale *= 1.0f - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * pathProgress);
-                desiredStableAlpha *= resolveBlankTapExitAlpha(pathProgress);
+                desiredStableAlpha *= resolveBlankTapExitAlpha(
+                        pathProgress,
+                        state.centerVisibleOffset);
+                desiredAttachAlpha *= exitAlpha;
             } else {
                 desiredStableAlpha = 0f;
+                desiredAttachAlpha = 0f;
             }
             float taskOffsetPrimary =
                     desiredVisibleOffset - state.startRawOffset - state.startDismissTranslationX;
-            float pathProgress = smoothStep(clampedProgress);
             float horizontalOffsetX = lerp(state.startHorizontalOffsetX, 0f, pathProgress);
             float taskOffsetX = primaryScrollHorizontal
                     ? taskOffsetPrimary - horizontalOffsetX
@@ -1050,16 +1059,40 @@ final class LauncherRecentsLayoutEngine {
                             taskOffsetY,
                             state.startBoxTranslationY,
                             desiredScale,
-                            state.startAttachAlpha,
+                            desiredAttachAlpha,
                             desiredStableAlpha,
-                            state.startActivityTitleAlpha * resolveBlankTapExitAlpha(
-                                    clampedProgress),
+                            state.startActivityTitleAlpha * exitAlpha,
                             state.startStackContentBlurProgress,
                             state.startFullscreenProgress,
                             state.startTranslationZ,
                             true,
                             false));
         }
+    }
+
+    static void finishBlankTapHomeExitTaskCleanup(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        LauncherRecentsState.PENDING_STACK_LAYOUT_APPLIES.remove(recentsView);
+        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
+                continue;
+            }
+            hideBlankTapHomeExitTask(taskView);
+        }
+        recentsView.invalidate();
+    }
+
+    private static void hideBlankTapHomeExitTask(View taskView) {
+        LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
+        LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
+        LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(taskView, 0f);
+        LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
+        LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
     }
 
     static void captureGestureStackReleaseTaskStates(
@@ -2623,10 +2656,15 @@ final class LauncherRecentsLayoutEngine {
                         exitVisibleOffset,
                         pathProgress);
                 desiredScale *= 1.0f - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * pathProgress);
-                desiredStableAlpha *= resolveBlankTapExitAlpha(pathProgress);
+                float exitAlpha = resolveBlankTapExitAlpha(
+                        pathProgress,
+                        blankTapExitState.centerVisibleOffset);
+                desiredStableAlpha *= exitAlpha;
+                desiredAttachAlpha *= exitAlpha;
                 activityTitleAlpha = 1f;
             } else {
                 desiredStableAlpha = 0f;
+                desiredAttachAlpha = 0f;
                 activityTitleAlpha = 0f;
             }
         }
@@ -3223,6 +3261,16 @@ final class LauncherRecentsLayoutEngine {
             return 1f;
         }
         return lerp(1f, 0f, smoothStep(remapProgress(progress, 0.88f, 1f)));
+    }
+
+    private static float resolveBlankTapExitAlpha(float progress, float centerVisibleOffset) {
+        if (Math.abs(centerVisibleOffset) < 1f) {
+            return resolveBlankTapExitAlpha(progress);
+        }
+        if (progress < 0.28f) {
+            return 1f;
+        }
+        return lerp(1f, 0f, smoothStep(remapProgress(progress, 0.28f, 0.62f)));
     }
 
     static boolean shouldUseStackLayout(View recentsView) {
