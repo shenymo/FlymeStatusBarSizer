@@ -680,6 +680,11 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_CLOCK_DETAIL_POPUP_ENABLED,
                 SettingsStore.DEFAULT_CLOCK_DETAIL_POPUP_ENABLED);
         activity.addDivider(page);
+        activity.addSwitchRow(page, "显示农历日期",
+                "控制详细时间弹窗中的农历日期显示",
+                SettingsStore.KEY_CLOCK_DETAIL_LUNAR_DATE_ENABLED,
+                SettingsStore.DEFAULT_CLOCK_DETAIL_LUNAR_DATE_ENABLED);
+        activity.addDivider(page);
         LinearLayout actionGridEditorSection = new LinearLayout(activity);
         actionGridEditorSection.setOrientation(LinearLayout.VERTICAL);
         boolean actionGridEnabled = SettingsStore.readBoolean(

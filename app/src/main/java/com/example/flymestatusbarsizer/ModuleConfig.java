@@ -54,6 +54,7 @@ final class ModuleConfig {
     int clockFontWeight = SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT;
     int clockAndCarrierTextSizePercent = SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT;
     boolean clockDetailPopupEnabled = SettingsStore.DEFAULT_CLOCK_DETAIL_POPUP_ENABLED;
+    boolean clockDetailLunarDateEnabled = SettingsStore.DEFAULT_CLOCK_DETAIL_LUNAR_DATE_ENABLED;
     boolean clockDetailActionGridEnabled = SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED;
     String clockDetailActionGridItemsJson =
             SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON;
@@ -325,6 +326,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_CLOCK_DETAIL_POPUP_ENABLED,
                     SettingsStore.DEFAULT_CLOCK_DETAIL_POPUP_ENABLED);
+            config.clockDetailLunarDateEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_CLOCK_DETAIL_LUNAR_DATE_ENABLED,
+                    SettingsStore.DEFAULT_CLOCK_DETAIL_LUNAR_DATE_ENABLED);
             config.clockDetailActionGridEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED,

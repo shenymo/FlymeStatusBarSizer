@@ -48,6 +48,7 @@ final class SettingsStore {
     static final String KEY_CLOCK_FONT_WEIGHT = "clock_font_weight";
     static final String KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = "clock_and_carrier_text_size_percent";
     static final String KEY_CLOCK_DETAIL_POPUP_ENABLED = "clock_detail_popup_enabled";
+    static final String KEY_CLOCK_DETAIL_LUNAR_DATE_ENABLED = "clock_detail_lunar_date_enabled";
     static final String KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED = "clock_detail_action_grid_enabled";
     static final String KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON = "clock_detail_action_grid_items_json";
     static final String KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON =
@@ -150,6 +151,7 @@ final class SettingsStore {
     static final int DEFAULT_CLOCK_FONT_WEIGHT = 900;
     static final int DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = 100;
     static final boolean DEFAULT_CLOCK_DETAIL_POPUP_ENABLED = false;
+    static final boolean DEFAULT_CLOCK_DETAIL_LUNAR_DATE_ENABLED = true;
     static final boolean DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED = false;
     static final String DEFAULT_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON =
             ClockDetailActionCodec.DEFAULT_PRESET_JSON;
@@ -252,6 +254,7 @@ final class SettingsStore {
             KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
             KEY_CLOCK_BOLD_ENABLED,
             KEY_CLOCK_DETAIL_POPUP_ENABLED,
+            KEY_CLOCK_DETAIL_LUNAR_DATE_ENABLED,
             KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED,
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
@@ -497,6 +500,8 @@ final class SettingsStore {
                 return DEFAULT_CLOCK_BOLD_ENABLED;
             case KEY_CLOCK_DETAIL_POPUP_ENABLED:
                 return DEFAULT_CLOCK_DETAIL_POPUP_ENABLED;
+            case KEY_CLOCK_DETAIL_LUNAR_DATE_ENABLED:
+                return DEFAULT_CLOCK_DETAIL_LUNAR_DATE_ENABLED;
             case KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED:
                 return DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED;
             case KEY_MBACK_LONG_TOUCH_URL_ENABLED:

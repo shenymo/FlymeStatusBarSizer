@@ -222,6 +222,7 @@ final class ClockDetailPopupController {
     private ClockDetailRecentApp[] latestRecentApps = ClockDetailRecentApp.EMPTY_ARRAY;
     private ClockDetailRecentApp[] renderedRecentApps = ClockDetailRecentApp.EMPTY_ARRAY;
     private ClockDetailMediaSnapshot latestMediaSnapshot = ClockDetailMediaSnapshot.EMPTY;
+    private boolean lunarDateEnabled = true;
     private Locale cachedLocale;
     private TimeZone cachedTimeZone;
     private boolean cached24HourMode;
@@ -406,6 +407,8 @@ final class ClockDetailPopupController {
         }
         refreshActionGridConfig(config);
         if (isPopupShowing()) {
+            refreshLunarDateConfig(config);
+            refreshDateTextIfNeeded(System.currentTimeMillis(), true);
             applyLatestActionGridView();
             requestPopupLayoutRefresh();
         }
@@ -692,6 +695,7 @@ final class ClockDetailPopupController {
         FlymeStatusBarSizer.disableAncestorClipping(anchor, 6);
         FlymeStatusBarSizer.ClockConfigSnapshot clockConfig =
                 FlymeStatusBarSizer.loadClockConfig(contentView.getContext());
+        refreshLunarDateConfig(clockConfig);
         refreshActionGridConfig(clockConfig);
         applyPalette(resolvePalette());
         resetTransientPopupState();
@@ -851,7 +855,7 @@ final class ClockDetailPopupController {
         String dateText = dateFormatter != null
                 ? dateFormatter.format(reusableDate)
                 : "";
-        String lunarDateText = lunarDateFormatter != null
+        String lunarDateText = lunarDateEnabled && lunarDateFormatter != null
                 ? lunarDateFormatter.format(nowMillis, cachedTimeZone, cachedLocale)
                 : "";
         boolean changed = setTextIfChanged(dateView, dateText);
@@ -3009,6 +3013,10 @@ final class ClockDetailPopupController {
         latestActionEntries = ClockDetailActionResolver.resolveEntries(
                 contentView.getContext(),
                 ClockDetailActionCodec.decode(config.clockDetailActionGridItemsJson));
+    }
+
+    private void refreshLunarDateConfig(FlymeStatusBarSizer.ClockConfigSnapshot config) {
+        lunarDateEnabled = config == null || config.clockDetailLunarDateEnabled;
     }
 
     private void applyLatestActionGridView() {
