@@ -574,35 +574,38 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static void ensureStackClearAllButtonReady(View recentsView) {
-        if (recentsView == null || !shouldUseStackLayout(recentsView)) {
+        syncStackClearAllButton(recentsView, false);
+    }
+
+    private static void syncStackClearAllButton(View recentsView, boolean forceHide) {
+        if (recentsView == null) {
             return;
         }
         LauncherRecentsState.PrepareRecentsViewState state =
                 prepareRecentsViewState(recentsView);
-        boolean enabled = isStackClearAllButtonEnabled(recentsView);
-        boolean allowed = enabled
-                && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
-                && isStackClearAllButtonAllowed(recentsView);
-        if (!enabled || !allowed) {
-            state.clearAllReady = true;
-            state.clearAllEnabled = enabled;
-            state.clearAllAllowed = false;
-            hideStackClearAllButton(recentsView);
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        if (!shouldUseStackLayout(config, recentsView, taskViewCount)) {
+            releaseStackClearAllButton(state, taskViewCount > 1);
             return;
         }
         Object value = LauncherRecentsCompat.invokeCompat(recentsView, "getClearAllButton");
         if (!(value instanceof View)) {
+            clearStackClearAllButtonState(state);
             return;
         }
         View clearAllButton = (View) value;
-        if (state.clearAllReady
-                && state.clearAllEnabled == enabled
-                && state.clearAllAllowed
-                && state.clearAllButton == clearAllButton
-                && clearAllButton.getAlpha() >= 0.99f
-                && clearAllButton.getVisibility() == View.VISIBLE
-                && clearAllButton.isEnabled()
-                && clearAllButton.isClickable()) {
+        boolean enabled = config.launcherIosStackRecentsClearAllButtonEnabled;
+        boolean allowed = enabled
+                && !forceHide
+                && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
+                && isStackClearAllButtonAllowed(recentsView);
+        if (!enabled || !allowed) {
+            hideStackClearAllButtonView(state, clearAllButton, enabled);
+            return;
+        }
+        if (isStackClearAllButtonShown(state, clearAllButton)) {
             return;
         }
         state.clearAllReady = true;
@@ -635,11 +638,9 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsCompat.FLOAT_ARG,
                 1f);
         LauncherRecentsCompat.invokeCompat(clearAllButton, "updateAlphaPublic");
-        if (clearAllButton.getAlpha() >= 0.1f) {
-            clearAllButton.setVisibility(View.VISIBLE);
-            clearAllButton.setEnabled(true);
-            clearAllButton.setClickable(true);
-        }
+        clearAllButton.setVisibility(View.VISIBLE);
+        clearAllButton.setEnabled(true);
+        clearAllButton.setClickable(true);
     }
 
     private static LauncherRecentsState.PrepareRecentsViewState prepareRecentsViewState(
@@ -651,12 +652,6 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsState.PREPARE_RECENTS_VIEW_STATES.put(recentsView, state);
         }
         return state;
-    }
-
-    private static boolean isStackClearAllButtonEnabled(View recentsView) {
-        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
-                FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
-        return config != null && config.launcherIosStackRecentsClearAllButtonEnabled;
     }
 
     private static boolean isStackClearAllButtonAllowed(View recentsView) {
@@ -692,17 +687,18 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static void hideStackClearAllButton(View recentsView) {
-        if (recentsView == null || !shouldUseStackLayout(recentsView)) {
+        syncStackClearAllButton(recentsView, true);
+    }
+
+    private static void hideStackClearAllButtonView(
+            LauncherRecentsState.PrepareRecentsViewState state,
+            View clearAllButton,
+            boolean enabled) {
+        if (isStackClearAllButtonHidden(state, clearAllButton, enabled)) {
             return;
         }
-        Object value = LauncherRecentsCompat.invokeCompat(recentsView, "getClearAllButton");
-        if (!(value instanceof View)) {
-            return;
-        }
-        View clearAllButton = (View) value;
-        LauncherRecentsState.PrepareRecentsViewState state =
-                prepareRecentsViewState(recentsView);
         state.clearAllReady = true;
+        state.clearAllEnabled = enabled;
         state.clearAllAllowed = false;
         state.clearAllButton = clearAllButton;
         LauncherRecentsCompat.invokeCompat(
@@ -713,9 +709,72 @@ final class LauncherRecentsLayoutEngine {
         LauncherRecentsCompat.invokeCompat(clearAllButton, "updateAlphaPublic");
         clearAllButton.setEnabled(false);
         clearAllButton.setClickable(false);
-        if (clearAllButton.getAlpha() < 0.1f) {
-            clearAllButton.setVisibility(View.INVISIBLE);
+        clearAllButton.setVisibility(View.INVISIBLE);
+    }
+
+    private static void releaseStackClearAllButton(
+            LauncherRecentsState.PrepareRecentsViewState state,
+            boolean showButton) {
+        if (isStackClearAllButtonStateEmpty(state)) {
+            return;
         }
+        View clearAllButton = state.clearAllButton;
+        if (clearAllButton != null) {
+            LauncherRecentsCompat.invokeCompat(
+                    clearAllButton,
+                    "setVisibilityAlpha",
+                    LauncherRecentsCompat.FLOAT_ARG,
+                    1f);
+            LauncherRecentsCompat.invokeCompat(clearAllButton, "updateAlphaPublic");
+            clearAllButton.setEnabled(true);
+            clearAllButton.setClickable(true);
+            if (showButton) {
+                clearAllButton.setVisibility(View.VISIBLE);
+            }
+        }
+        clearStackClearAllButtonState(state);
+    }
+
+    private static boolean isStackClearAllButtonShown(
+            LauncherRecentsState.PrepareRecentsViewState state,
+            View clearAllButton) {
+        return state.clearAllReady
+                && state.clearAllEnabled
+                && state.clearAllAllowed
+                && state.clearAllButton == clearAllButton
+                && clearAllButton.getAlpha() >= 0.99f
+                && clearAllButton.getVisibility() == View.VISIBLE
+                && clearAllButton.isEnabled()
+                && clearAllButton.isClickable();
+    }
+
+    private static boolean isStackClearAllButtonHidden(
+            LauncherRecentsState.PrepareRecentsViewState state,
+            View clearAllButton,
+            boolean enabled) {
+        return state.clearAllReady
+                && state.clearAllEnabled == enabled
+                && !state.clearAllAllowed
+                && state.clearAllButton == clearAllButton
+                && clearAllButton.getVisibility() == View.INVISIBLE
+                && !clearAllButton.isEnabled()
+                && !clearAllButton.isClickable();
+    }
+
+    private static boolean isStackClearAllButtonStateEmpty(
+            LauncherRecentsState.PrepareRecentsViewState state) {
+        return !state.clearAllReady
+                && !state.clearAllEnabled
+                && !state.clearAllAllowed
+                && state.clearAllButton == null;
+    }
+
+    private static void clearStackClearAllButtonState(
+            LauncherRecentsState.PrepareRecentsViewState state) {
+        state.clearAllReady = false;
+        state.clearAllEnabled = false;
+        state.clearAllAllowed = false;
+        state.clearAllButton = null;
     }
 
     private static boolean isPrimaryScrollHorizontal(View recentsView) {
