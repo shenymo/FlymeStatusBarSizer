@@ -33,6 +33,7 @@ final class LauncherRecentsTouchController {
     private static final long STACK_DISMISS_SUCCESS_ANIM_MS = 180L;
     private static final long STACK_DISMISS_CANCEL_ANIM_MS = 320L;
     private static final long STACK_DISMISS_RELAYOUT_ANIM_MS = STACK_DISMISS_CANCEL_ANIM_MS;
+    private static final float STACK_DISMISS_DRAG_RELAYOUT_MAX_PROGRESS = 0.5f;
     private static final float STACK_DISMISS_SECONDARY_DOMINANCE = 1.2f;
     private static final float STACK_DISMISS_MIN_FLING_VELOCITY = -1200f;
     private static final float STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO = 1.40f;
@@ -1229,6 +1230,7 @@ final class LauncherRecentsTouchController {
                 "resetTouchState",
                 LauncherRecentsCompat.NO_ARGS);
         releasePagedEdgeEffects(state.recentsView, motionEvent);
+        prepareStackDismissRelayoutForDrag(state);
         requestParentDisallowIntercept(state.recentsView, true);
         LauncherRecentsTaskVisuals.setTranslationZ(
                 state.taskView,
@@ -1251,6 +1253,11 @@ final class LauncherRecentsTouchController {
                         ? translation
                         : state.startDismissTranslation;
         applyStackDismissProgress(state, state.currentDismissTranslation);
+        applyStackDismissRelayoutProgress(
+                state,
+                resolveStackDismissDragRelayoutProgress(
+                        state,
+                        state.currentDismissTranslation));
     }
 
     private static void finishStackDismissGesture(
@@ -1291,6 +1298,7 @@ final class LauncherRecentsTouchController {
                 state.recentsView, null, taskDetails(state.recentsView, state.taskView));
         float start = state.currentDismissTranslation;
         float end = state.dismissDirectionSign * resolveStackDismissDistance(state);
+        float startRelayoutProgress = state.relayoutProgress;
         ValueAnimator animator = ValueAnimator.ofFloat(start, end);
         state.animator = animator;
         animator.setDuration(STACK_DISMISS_SUCCESS_ANIM_MS);
@@ -1303,6 +1311,15 @@ final class LauncherRecentsTouchController {
             state.currentDismissTranslation = value;
             LauncherRecentsPerf.hit("animationFrame:dismissSuccess", state.recentsView);
             applyStackDismissProgress(state, value);
+            applyStackDismissRelayoutProgress(
+                    state,
+                    LauncherRecentsLayoutEngine.lerp(
+                            startRelayoutProgress,
+                            1f,
+                            LauncherRecentsLayoutEngine.clamp(
+                                    animation.getAnimatedFraction(),
+                                    0f,
+                                    1f)));
         }));
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
@@ -1311,6 +1328,7 @@ final class LauncherRecentsTouchController {
                 logStackFlow("dismiss:animateSuccess:end",
                         state.recentsView, null, taskDetails(state.recentsView, state.taskView));
                 applyStackDismissProgress(state, end);
+                applyStackDismissRelayoutProgress(state, 1f);
                 finishStackDismissAfterSlideOut(state);
             }
         });
@@ -1333,6 +1351,7 @@ final class LauncherRecentsTouchController {
         logStackFlow("dismiss:animateCancel:start",
                 state.recentsView, null, taskDetails(state.recentsView, state.taskView));
         float start = state.currentDismissTranslation;
+        float startRelayoutProgress = state.relayoutProgress;
         ValueAnimator animator = ValueAnimator.ofFloat(start, state.startDismissTranslation);
         state.animator = animator;
         animator.setDuration(STACK_DISMISS_CANCEL_ANIM_MS);
@@ -1345,6 +1364,15 @@ final class LauncherRecentsTouchController {
             state.currentDismissTranslation = value;
             LauncherRecentsPerf.hit("animationFrame:dismissCancel", state.recentsView);
             applyStackDismissProgress(state, value);
+            applyStackDismissRelayoutProgress(
+                    state,
+                    LauncherRecentsLayoutEngine.lerp(
+                            startRelayoutProgress,
+                            0f,
+                            LauncherRecentsLayoutEngine.clamp(
+                                    animation.getAnimatedFraction(),
+                                    0f,
+                                    1f)));
         }));
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
@@ -1352,6 +1380,7 @@ final class LauncherRecentsTouchController {
                 state.animator = null;
                 logStackFlow("dismiss:animateCancel:end",
                         state.recentsView, null, taskDetails(state.recentsView, state.taskView));
+                applyStackDismissRelayoutProgress(state, 0f);
                 resetStackDismissVisuals(state);
                 LauncherRecentsPerf.endSpan("dismissTask", state.recentsView);
             }
@@ -1365,6 +1394,138 @@ final class LauncherRecentsTouchController {
         setStackDismissTranslation(state, dismissTranslation);
         LauncherRecentsTaskVisuals.setStableAlpha(state.taskView, state.originalStableAlpha);
         state.recentsView.invalidate();
+    }
+
+    private static void prepareStackDismissRelayoutForDrag(StackDismissGestureState state) {
+        if (state == null || !(state.recentsView instanceof ViewGroup)) {
+            return;
+        }
+        cancelStackDismissRelayoutAnimation(state.recentsView);
+        int dismissedIndex = findTaskViewIndex(state.recentsView, state.taskView);
+        if (dismissedIndex < 0) {
+            return;
+        }
+        LauncherRecentsLayoutEngine.prepareStackDismissRelayoutCapture(state.recentsView);
+        HashMap<View, StackDismissRelayoutStartState> startStates =
+                captureStackDismissRelayoutStartStates(state.recentsView);
+        if (startStates.isEmpty()) {
+            return;
+        }
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(state.recentsView);
+        boolean fillFromAfter = shouldFillStackDismissFromAfter(dismissedIndex, startStates);
+        int taskViewCount = LauncherRecentsCompat.invokeInt(
+                state.recentsView,
+                "getTaskViewCount",
+                0);
+        boolean snapToPageAfterRelayout = !fillFromAfter;
+        int startScroll = resolvePrimaryScroll(state.recentsView);
+        int[] targetPageAndScroll = snapToPageAfterRelayout
+                ? resolveNearestStackDismissPageAndScroll(
+                        state.recentsView,
+                        startScroll,
+                        Math.max(0, taskViewCount - 1))
+                : null;
+        int targetScroll = targetPageAndScroll != null
+                ? targetPageAndScroll[1]
+                : startScroll;
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> targetStates =
+                LauncherRecentsLayoutEngine.computeStackLayout(
+                        state.recentsView,
+                        state.taskView,
+                        targetScroll);
+        if (targetStates.isEmpty() && taskViewCount == 2) {
+            targetStates = createSingleTaskDismissTargetStates(state.recentsView, state.taskView);
+        }
+        adjustStackDismissRelayoutTargets(
+                state.recentsView,
+                dismissedIndex,
+                startStates,
+                targetStates,
+                primaryScrollHorizontal,
+                targetScroll);
+        if (targetStates.isEmpty()) {
+            return;
+        }
+        state.dismissedIndex = dismissedIndex;
+        state.relayoutPrepared = true;
+        state.relayoutPrimaryScrollHorizontal = primaryScrollHorizontal;
+        state.relayoutSnapToPageAfterRelayout = snapToPageAfterRelayout;
+        state.relayoutStartScroll = startScroll;
+        state.relayoutTargetScroll = targetScroll;
+        state.relayoutStartStates = startStates;
+        state.relayoutStartVisualStates = new HashMap<>();
+        state.relayoutTargetStates = targetStates;
+        for (View taskView : targetStates.keySet()) {
+            StackDismissRelayoutStartState startState = startStates.get(taskView);
+            state.relayoutStartVisualStates.put(
+                    taskView,
+                    startState != null
+                            ? startState.visualState
+                            : createStackDismissCurrentStartState(taskView));
+        }
+        LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.put(
+                state.recentsView,
+                null);
+        applyStackDismissRelayoutProgress(state, 0f);
+    }
+
+    private static float resolveStackDismissDragRelayoutProgress(
+            StackDismissGestureState state,
+            float dismissTranslation) {
+        float distance = state.dismissDirectionSign
+                * (dismissTranslation - state.startDismissTranslation);
+        float threshold = resolveStackDismissThreshold(state);
+        if (threshold <= 0f) {
+            return 0f;
+        }
+        return LauncherRecentsLayoutEngine.clamp(distance / (threshold * 2f), 0f, 1f)
+                * STACK_DISMISS_DRAG_RELAYOUT_MAX_PROGRESS;
+    }
+
+    private static void applyStackDismissRelayoutProgress(
+            StackDismissGestureState state,
+            float progress) {
+        if (state == null || !state.relayoutPrepared) {
+            return;
+        }
+        float clampedProgress = LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f);
+        state.relayoutProgress = clampedProgress;
+        boolean animatePageScroll = state.relayoutSnapToPageAfterRelayout
+                && state.relayoutTargetScroll != state.relayoutStartScroll;
+        if (animatePageScroll) {
+            int scroll = Math.round(LauncherRecentsLayoutEngine.lerp(
+                    state.relayoutStartScroll,
+                    state.relayoutTargetScroll,
+                    clampedProgress));
+            scrollStackDismissTo(
+                    state.recentsView,
+                    state.relayoutPrimaryScrollHorizontal,
+                    scroll);
+        }
+        for (View taskView : state.relayoutTargetStates.keySet()) {
+            LauncherRecentsTaskVisuals.StackTaskVisualState startState =
+                    state.relayoutStartVisualStates.get(taskView);
+            LauncherRecentsTaskVisuals.StackTaskVisualState targetState =
+                    state.relayoutTargetStates.get(taskView);
+            if (startState != null && targetState != null) {
+                LauncherRecentsTaskVisuals.applyStackTaskVisualState(
+                        taskView,
+                        startState.lerpTo(targetState, clampedProgress));
+            }
+        }
+        state.recentsView.invalidate();
+    }
+
+    private static void clearStackDismissRelayoutProgress(StackDismissGestureState state) {
+        if (state == null || !state.relayoutPrepared) {
+            return;
+        }
+        LauncherRecentsState.ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS.remove(state.recentsView);
+        state.relayoutPrepared = false;
+        state.relayoutStartStates = null;
+        state.relayoutStartVisualStates = null;
+        state.relayoutTargetStates = null;
+        state.relayoutProgress = 0f;
     }
 
     private static void preheatStackDismissVisibleTaskData(View recentsView) {
@@ -1383,6 +1544,8 @@ final class LauncherRecentsTouchController {
 
     private static void resetStackDismissVisuals(StackDismissGestureState state) {
         state.cancelAnimator();
+        applyStackDismissRelayoutProgress(state, 0f);
+        clearStackDismissRelayoutProgress(state);
         setStackDismissTranslation(state, state.startDismissTranslation);
         LauncherRecentsTaskVisuals.setStableAlpha(state.taskView, state.originalStableAlpha);
         LauncherRecentsTaskVisuals.setTranslationZ(state.taskView, state.originalTranslationZ);
@@ -1400,6 +1563,7 @@ final class LauncherRecentsTouchController {
             resetStackDismissVisuals(state);
         } else {
             state.cancelAnimator();
+            clearStackDismissRelayoutProgress(state);
         }
     }
 
@@ -1474,6 +1638,27 @@ final class LauncherRecentsTouchController {
             logStackFlow("dismiss:commit:missingClass",
                     recentsView, null, taskDetails(recentsView, taskView));
             return false;
+        }
+        if (state.relayoutPrepared) {
+            boolean removedTask = LauncherRecentsCompat.invokeMethodReflectively(
+                    recentsView,
+                    "removeTaskInternal",
+                    new Class<?>[]{taskViewClass},
+                    taskView);
+            if (!removedTask) {
+                logStackFlow("dismiss:commit:removeFailed",
+                        recentsView, null, taskDetails(recentsView, taskView));
+                return false;
+            }
+            ((ViewGroup) recentsView).removeViewInLayout(taskView);
+            boolean snapToPageAfterRelayout = state.relayoutSnapToPageAfterRelayout;
+            clearStackDismissRelayoutProgress(state);
+            finishStackDismissRelayout(
+                    recentsView,
+                    "dismissRelayoutEnd",
+                    snapToPageAfterRelayout);
+            recentsView.invalidate();
+            return true;
         }
         int dismissedIndex = findTaskViewIndex(recentsView, taskView);
         LauncherRecentsLayoutEngine.prepareStackDismissRelayoutCapture(recentsView);
@@ -1971,8 +2156,18 @@ final class LauncherRecentsTouchController {
         final float originalTranslationZ;
         VelocityTracker velocityTracker;
         ValueAnimator animator;
+        HashMap<View, StackDismissRelayoutStartState> relayoutStartStates;
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> relayoutStartVisualStates;
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> relayoutTargetStates;
         boolean dragging;
+        boolean relayoutPrepared;
+        boolean relayoutPrimaryScrollHorizontal;
+        boolean relayoutSnapToPageAfterRelayout;
+        int dismissedIndex = -1;
+        int relayoutStartScroll;
+        int relayoutTargetScroll;
         float currentDismissTranslation;
+        float relayoutProgress;
 
         StackDismissGestureState(View recentsView, View taskView, MotionEvent motionEvent) {
             this.recentsView = recentsView;
