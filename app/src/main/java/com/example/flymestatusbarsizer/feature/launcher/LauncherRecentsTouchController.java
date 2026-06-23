@@ -1495,6 +1495,9 @@ final class LauncherRecentsTouchController {
                                 taskView,
                                 targetScroll)
                         : new HashMap<>();
+        if (targetStates.isEmpty() && taskViewCount == 2 && dismissedIndex >= 0) {
+            targetStates = createSingleTaskDismissTargetStates(recentsView, taskView);
+        }
         adjustStackDismissRelayoutTargets(
                 recentsView,
                 dismissedIndex,
@@ -1727,7 +1730,9 @@ final class LauncherRecentsTouchController {
         syncStackDismissPageFields(recentsView, snapToPage);
         LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
         LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, source, true);
-        hideUnmanagedStackDismissTasks(recentsView);
+        if (LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+            hideUnmanagedStackDismissTasks(recentsView);
+        }
         forceEnsureStackVisibleTaskData(recentsView, 15, true);
         recentsView.requestLayout();
         recentsView.invalidate();
@@ -1865,6 +1870,42 @@ final class LauncherRecentsTouchController {
                 LauncherRecentsCompat.readFloatField(taskView, "fullscreenProgress", 0f),
                 taskView.getTranslationZ(),
                 blurProgress > 0.001f,
+                false);
+    }
+
+    private static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState>
+    createSingleTaskDismissTargetStates(View recentsView, View dismissedTaskView) {
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> states = new HashMap<>();
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null
+                    || taskView == dismissedTaskView
+                    || LauncherRecentsCompat.isDesktopTask(taskView)) {
+                continue;
+            }
+            states.put(taskView, createSingleTaskDismissTargetState(taskView));
+        }
+        return states;
+    }
+
+    private static LauncherRecentsTaskVisuals.StackTaskVisualState
+    createSingleTaskDismissTargetState(View taskView) {
+        return new LauncherRecentsTaskVisuals.StackTaskVisualState(
+                taskView.getPivotX(),
+                taskView.getPivotY(),
+                0f,
+                0f,
+                0f,
+                LauncherRecentsTaskVisuals.readOriginalBoxTranslationY(taskView),
+                LauncherRecentsTaskVisuals.readOriginalNonGridScale(taskView),
+                LauncherRecentsTaskVisuals.readLastStockAttachAlpha(taskView),
+                LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView),
+                1f,
+                0f,
+                LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView),
+                LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView),
+                false,
                 false);
     }
 
