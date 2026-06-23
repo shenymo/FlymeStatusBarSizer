@@ -433,8 +433,10 @@ final class LauncherRecentsStateAnimationController {
                     LauncherRecentsTransitionController.setBlankTapHomeExitProgress(
                             recentsView,
                             progress);
-                    LauncherRecentsPerf.flow("leave:blankTapSystem:frame",
-                            recentsView, "progress=" + progress);
+                    if (LauncherRecentsPerf.flowEnabled(recentsView)) {
+                        LauncherRecentsPerf.flow("leave:blankTapSystem:frame",
+                                recentsView, "progress=" + progress);
+                    }
                     LauncherRecentsPerf.hit("animationFrame:blankTapSystem", recentsView);
                     LauncherRecentsLayoutEngine.applyBlankTapHomeExitFrame(recentsView, progress);
                     recentsView.invalidate();

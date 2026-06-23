@@ -990,6 +990,10 @@ final class LauncherRecentsLayoutEngine {
         float clampedProgress = clamp(progress, 0f, 1f);
         applyBlankTapHomeExitRecentsFrame(recentsView, clampedProgress);
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        float pathProgress = smoothStep(clampedProgress);
+        float fallbackWidth = Math.max(1f, recentsView.getWidth());
+        float fallbackHeight = Math.max(1f, recentsView.getHeight());
+        float exitMarginPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 64);
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
@@ -999,19 +1003,18 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsState.BlankTapHomeExitTaskState state =
                     LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.get(taskView);
             if (state == null) {
-                LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
-                LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
+                hideLightStackTask(taskView);
+                if (LauncherRecentsState.STACK_CONTENT_TARGETS.containsKey(taskView)) {
+                    LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
+                }
                 continue;
             }
             float taskWidth = taskView.getWidth() > 0
                     ? taskView.getWidth()
-                    : Math.max(1f, recentsView.getWidth());
+                    : fallbackWidth;
             float taskHeight = taskView.getHeight() > 0
                     ? taskView.getHeight()
-                    : Math.max(1f, recentsView.getHeight());
+                    : fallbackHeight;
             float taskPrimarySize = primaryScrollHorizontal ? taskWidth : taskHeight;
             float taskCenteredPrimaryStartPx = resolveTaskCenteredPrimaryStartPx(
                     recentsView,
@@ -1021,15 +1024,12 @@ final class LauncherRecentsLayoutEngine {
             float desiredScale = state.startScale;
             float desiredStableAlpha = state.startStableAlpha;
             float desiredAttachAlpha = state.startAttachAlpha;
-            float pathProgress = smoothStep(clampedProgress);
             float exitAlpha = resolveBlankTapExitAlpha(pathProgress, state.centerVisibleOffset);
             if (state.startStableAlpha > 0f) {
                 float controlVisibleOffset = state.centerVisibleOffset;
                 float taskStartPx = taskCenteredPrimaryStartPx + controlVisibleOffset;
                 float exitTravelPx = Math.max(
-                        taskStartPx + taskPrimarySize + FlymeStatusBarSizer.dp(
-                                recentsView.getContext(),
-                                64),
+                        taskStartPx + taskPrimarySize + exitMarginPx,
                         taskPrimarySize * (1f + BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO));
                 float exitVisibleOffset = controlVisibleOffset - exitTravelPx;
                 desiredVisibleOffset = quadraticBezier(
