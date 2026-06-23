@@ -7,6 +7,7 @@ import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
+import android.view.ViewTreeObserver;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -400,7 +401,7 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (isStackScrollerActive(recentsView)) {
-                        applyDynamicStackLayoutImmediatelyForScroll(recentsView);
+                        requestStackLayoutForScroll(recentsView);
                     }
                 }
                 return result;
@@ -1472,6 +1473,18 @@ final class LauncherRecentsLayoutEngine {
                 true);
     }
 
+    private static boolean requestStackLayoutForScroll(View recentsView) {
+        if (recentsView == null || !shouldApplyDynamicStackLayout(recentsView)) {
+            return false;
+        }
+        return scheduleStackLayoutBeforeDraw(
+                recentsView,
+                false,
+                "onScrollChanged",
+                false,
+                true);
+    }
+
     static boolean applyDynamicStackLayoutIfNeeded(View recentsView) {
         if (recentsView == null) {
             return false;
@@ -1500,22 +1513,34 @@ final class LauncherRecentsLayoutEngine {
         return scheduled;
     }
 
-    private static boolean applyDynamicStackLayoutImmediatelyForScroll(View recentsView) {
-        if (recentsView == null || !shouldApplyDynamicStackLayout(recentsView)) {
-            return false;
-        }
-        if (shouldCaptureStockTaskStatesForStackApply(recentsView)) {
-            captureStockTaskStatesForStackApply(recentsView);
-        }
-        boolean layoutApplied = applyStackLayout(
+    private static boolean scheduleStackLayout(
+            View recentsView,
+            boolean captureStockState,
+            String source,
+            boolean syncVisibleTaskData,
+            boolean dynamicOnly) {
+        return scheduleStackLayout(
                 recentsView,
-                false,
-                "onScrollChangedSync",
+                captureStockState,
+                source,
+                syncVisibleTaskData,
+                dynamicOnly,
                 false);
-        if (layoutApplied) {
-            recentsView.invalidate();
-        }
-        return layoutApplied;
+    }
+
+    private static boolean scheduleStackLayoutBeforeDraw(
+            View recentsView,
+            boolean captureStockState,
+            String source,
+            boolean syncVisibleTaskData,
+            boolean dynamicOnly) {
+        return scheduleStackLayout(
+                recentsView,
+                captureStockState,
+                source,
+                syncVisibleTaskData,
+                dynamicOnly,
+                true);
     }
 
     private static boolean scheduleStackLayout(
@@ -1523,7 +1548,8 @@ final class LauncherRecentsLayoutEngine {
             boolean captureStockState,
             String source,
             boolean syncVisibleTaskData,
-            boolean dynamicOnly) {
+            boolean dynamicOnly,
+            boolean beforeDraw) {
         if (recentsView == null) {
             return false;
         }
@@ -1539,6 +1565,10 @@ final class LauncherRecentsLayoutEngine {
             pendingState.syncVisibleTaskData |= syncVisibleTaskData;
             pendingState.dynamicOnly &= dynamicOnly;
             pendingState.source = mergeScheduledStackLayoutSource(pendingState.source, source);
+            if (beforeDraw && !pendingState.preDrawScheduled) {
+                pendingState.preDrawScheduled = true;
+                postStackLayoutBeforeDraw(recentsView);
+            }
             LauncherRecentsPerf.flow("layout:schedule:merge",
                     recentsView,
                     "source=" + pendingState.source
@@ -1554,14 +1584,42 @@ final class LauncherRecentsLayoutEngine {
                         syncVisibleTaskData,
                         dynamicOnly,
                         source));
+        if (beforeDraw) {
+            LauncherRecentsState.PENDING_STACK_LAYOUT_APPLIES.get(recentsView)
+                    .preDrawScheduled = true;
+        }
         LauncherRecentsPerf.flow("layout:schedule",
                 recentsView,
                 "source=" + source
                         + " capture=" + captureStockState
                         + " syncVisible=" + syncVisibleTaskData
                         + " dynamicOnly=" + dynamicOnly);
-        recentsView.postOnAnimation(() -> runScheduledStackLayout(recentsView));
+        if (beforeDraw) {
+            postStackLayoutBeforeDraw(recentsView);
+        } else {
+            recentsView.postOnAnimation(() -> runScheduledStackLayout(recentsView));
+        }
         return true;
+    }
+
+    private static void postStackLayoutBeforeDraw(View recentsView) {
+        ViewTreeObserver observer = recentsView.getViewTreeObserver();
+        if (!observer.isAlive()) {
+            recentsView.postOnAnimation(() -> runScheduledStackLayout(recentsView));
+            return;
+        }
+        observer.addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+            @Override
+            public boolean onPreDraw() {
+                ViewTreeObserver currentObserver = recentsView.getViewTreeObserver();
+                if (currentObserver.isAlive()) {
+                    currentObserver.removeOnPreDrawListener(this);
+                }
+                runScheduledStackLayout(recentsView);
+                return true;
+            }
+        });
+        recentsView.invalidate();
     }
 
     private static void scheduleStackLayoutFromHook(

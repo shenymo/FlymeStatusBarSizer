@@ -298,6 +298,7 @@ final class LauncherRecentsState {
         boolean captureStockState;
         boolean syncVisibleTaskData;
         boolean dynamicOnly;
+        boolean preDrawScheduled;
         String source;
 
         PendingStackLayoutApplyState(
