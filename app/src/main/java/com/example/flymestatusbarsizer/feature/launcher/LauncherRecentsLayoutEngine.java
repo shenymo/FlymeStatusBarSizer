@@ -1511,7 +1511,7 @@ final class LauncherRecentsLayoutEngine {
                 recentsView,
                 false,
                 "onScrollChangedSync",
-                true);
+                false);
         if (layoutApplied) {
             recentsView.invalidate();
         }
