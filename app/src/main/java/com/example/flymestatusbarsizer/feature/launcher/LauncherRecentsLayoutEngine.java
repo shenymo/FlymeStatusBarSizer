@@ -583,19 +583,11 @@ final class LauncherRecentsLayoutEngine {
         boolean allowed = enabled
                 && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
                 && isStackClearAllButtonAllowed(recentsView);
-        if (state.clearAllReady
-                && state.clearAllEnabled == enabled
-                && state.clearAllAllowed == allowed) {
-            return;
-        }
-        state.clearAllReady = true;
-        state.clearAllEnabled = enabled;
-        state.clearAllAllowed = allowed;
-        if (!enabled) {
+        if (!enabled || !allowed) {
+            state.clearAllReady = true;
+            state.clearAllEnabled = enabled;
+            state.clearAllAllowed = false;
             hideStackClearAllButton(recentsView);
-            return;
-        }
-        if (!allowed) {
             return;
         }
         Object value = LauncherRecentsCompat.invokeCompat(recentsView, "getClearAllButton");
@@ -603,9 +595,19 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         View clearAllButton = (View) value;
-        if (state.clearAllButton == clearAllButton && clearAllButton.getAlpha() >= 0.99f) {
+        if (state.clearAllReady
+                && state.clearAllEnabled == enabled
+                && state.clearAllAllowed
+                && state.clearAllButton == clearAllButton
+                && clearAllButton.getAlpha() >= 0.99f
+                && clearAllButton.getVisibility() == View.VISIBLE
+                && clearAllButton.isEnabled()
+                && clearAllButton.isClickable()) {
             return;
         }
+        state.clearAllReady = true;
+        state.clearAllEnabled = true;
+        state.clearAllAllowed = true;
         state.clearAllButton = clearAllButton;
         LauncherRecentsCompat.invokeCompat(
                 clearAllButton,
