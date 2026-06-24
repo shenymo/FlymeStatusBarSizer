@@ -1477,6 +1477,10 @@ final class LauncherRecentsLayoutEngine {
         if (recentsView == null || !shouldApplyDynamicStackLayout(recentsView)) {
             return false;
         }
+        if (shouldBlockStackDismissLayout(recentsView, "onScrollChangedSync")) {
+            LauncherRecentsPerf.flow("layout:scrollSync:skipDismiss", recentsView);
+            return false;
+        }
         if (shouldCaptureStockTaskStatesForStackApply(recentsView)) {
             captureStockTaskStatesForStackApply(recentsView);
         }
@@ -1493,6 +1497,10 @@ final class LauncherRecentsLayoutEngine {
 
     static boolean applyDynamicStackLayoutIfNeeded(View recentsView) {
         if (recentsView == null) {
+            return false;
+        }
+        if (shouldBlockStackDismissLayout(recentsView, "applyDynamic")) {
+            LauncherRecentsPerf.flow("layout:dynamic:skipDismiss", recentsView);
             return false;
         }
         LauncherRecentsPerf.flow("layout:dynamic:start", recentsView);
@@ -1557,6 +1565,11 @@ final class LauncherRecentsLayoutEngine {
             boolean dynamicOnly,
             boolean beforeDraw) {
         if (recentsView == null) {
+            return false;
+        }
+        if (shouldBlockStackDismissLayout(recentsView, source)) {
+            LauncherRecentsPerf.flow("layout:schedule:skipDismiss",
+                    recentsView, "source=" + source);
             return false;
         }
         if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
@@ -1650,9 +1663,7 @@ final class LauncherRecentsLayoutEngine {
 
     private static void applyStackLayoutFromScaleSuppress(View recentsView, String source) {
         if (!shouldApplyDynamicStackLayout(recentsView)
-                || shouldBlockAppToRecentsStackApply(recentsView)
-                || LauncherRecentsTouchController.isStackDismissRelayoutAnimationActive(
-                recentsView)) {
+                || shouldBlockAppToRecentsStackApply(recentsView)) {
             return;
         }
         applyStackLayout(
@@ -1681,6 +1692,19 @@ final class LauncherRecentsLayoutEngine {
                 && !"contentAlpha_blankExit".equals(source);
     }
 
+    private static boolean shouldBlockStackDismissLayout(View recentsView, String source) {
+        return LauncherRecentsTouchController.isStackDismissInteractionActive(recentsView)
+                && !isStackDismissOwnedLayoutSource(source);
+    }
+
+    private static boolean isStackDismissOwnedLayoutSource(String source) {
+        return "dismissEntryTakeover".equals(source)
+                || "dismissRelayoutPreCapture".equals(source)
+                || "dismissRelayoutEnd".equals(source)
+                || "dismissRelayoutNoStart".equals(source)
+                || "dismissRelayoutNoTarget".equals(source);
+    }
+
     private static void runScheduledStackLayout(View recentsView) {
         LauncherRecentsState.PendingStackLayoutApplyState pendingState =
                 LauncherRecentsState.PENDING_STACK_LAYOUT_APPLIES.remove(recentsView);
@@ -1697,8 +1721,8 @@ final class LauncherRecentsLayoutEngine {
                     recentsView, "source=" + pendingState.source);
             return;
         }
-        if (LauncherRecentsTouchController.isStackDismissRelayoutAnimationActive(recentsView)) {
-            LauncherRecentsPerf.flow("layout:runScheduled:skipDismissRelayout",
+        if (shouldBlockStackDismissLayout(recentsView, pendingState.source)) {
+            LauncherRecentsPerf.flow("layout:runScheduled:skipDismiss",
                     recentsView, "source=" + pendingState.source);
             return;
         }
@@ -1743,6 +1767,11 @@ final class LauncherRecentsLayoutEngine {
             String source,
             boolean syncVisibleTaskData) {
         if (recentsView == null) {
+            return false;
+        }
+        if (shouldBlockStackDismissLayout(recentsView, source)) {
+            LauncherRecentsPerf.flow("layout:apply:skipDismiss",
+                    recentsView, "source=" + source);
             return false;
         }
         if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {

@@ -877,6 +877,11 @@ final class LauncherRecentsTouchController {
         return recentsView != null && STACK_DISMISS_GESTURES.containsKey(recentsView);
     }
 
+    static boolean isStackDismissInteractionActive(View recentsView) {
+        return isStackDismissDragActive(recentsView)
+                || isStackDismissRelayoutAnimationActive(recentsView);
+    }
+
     private static Boolean handleStackDismissControllerTouch(
             Object controller,
             MotionEvent motionEvent,
@@ -1218,6 +1223,7 @@ final class LauncherRecentsTouchController {
         state.taskView.animate().cancel();
         LauncherRecentsState.trackRecentsView(state.recentsView);
         LauncherRecentsLayoutEngine.prepareRecentsView(state.recentsView);
+        settleAppToRecentsForStackDismiss(state.recentsView);
         clearGestureReleaseTaskStatesForStackDismiss(state.recentsView);
         settleStackDismissLayoutState(state.recentsView);
         clearRecentsDeferredSnap(state.recentsView);
@@ -1237,6 +1243,52 @@ final class LauncherRecentsTouchController {
                 state.originalTranslationZ);
         applyStackDismissProgress(state, state.currentDismissTranslation);
         preheatStackDismissVisibleTaskData(state.recentsView);
+    }
+
+    private static void settleAppToRecentsForStackDismiss(View recentsView) {
+        if (recentsView == null || !isAppToRecentsEntryTouchTakeoverNeeded(recentsView)) {
+            return;
+        }
+        logStackFlow("dismiss:entryTakeover", recentsView, null, null);
+        LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
+                recentsView,
+                true);
+        LauncherRecentsTransitionController.forceRecentsTranslationZero(recentsView);
+        LauncherRecentsAttachController.endAppToRecentsEntrySessionWithoutLayout(recentsView);
+        LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
+        LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
+        LauncherRecentsCompat.writeField(recentsView, "mCurrentGestureEndTarget", null);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setEnableFreeScroll",
+                new Class[]{boolean.class, boolean.class},
+                true,
+                true);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setEnableDrawingLiveTile",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                false);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setRunningTaskViewShowScreenshot",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                true);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setRunningTaskHidden",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                false);
+        LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
+        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
+        LauncherRecentsLayoutEngine.applyStableStackLayout(
+                recentsView,
+                false,
+                "dismissEntryTakeover",
+                false);
+        forceEnsureStackVisibleTaskData(recentsView, 15, true);
+        recentsView.requestLayout();
+        recentsView.invalidate();
     }
 
     private static void updateStackDismissDrag(
@@ -2015,8 +2067,7 @@ final class LauncherRecentsTouchController {
         if (recentsView == null
                 || motionEvent == null
                 || motionEvent.getActionMasked() != MotionEvent.ACTION_MOVE
-                || !LauncherRecentsState.isAppToRecentsStackSettled(recentsView)
-                || isStackDismissRelayoutAnimationActive(recentsView)) {
+                || !LauncherRecentsState.isAppToRecentsStackSettled(recentsView)) {
             return;
         }
         cancelStackDismissRelayoutAnimation(recentsView);
