@@ -401,7 +401,7 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (isStackScrollerActive(recentsView)) {
-                        requestStackLayoutForScroll(recentsView);
+                        applyDynamicStackLayoutImmediatelyForScroll(recentsView);
                     }
                 }
                 return result;
@@ -1473,16 +1473,22 @@ final class LauncherRecentsLayoutEngine {
                 true);
     }
 
-    private static boolean requestStackLayoutForScroll(View recentsView) {
+    private static boolean applyDynamicStackLayoutImmediatelyForScroll(View recentsView) {
         if (recentsView == null || !shouldApplyDynamicStackLayout(recentsView)) {
             return false;
         }
-        return scheduleStackLayoutBeforeDraw(
+        if (shouldCaptureStockTaskStatesForStackApply(recentsView)) {
+            captureStockTaskStatesForStackApply(recentsView);
+        }
+        boolean layoutApplied = applyStackLayout(
                 recentsView,
                 false,
-                "onScrollChanged",
-                false,
-                true);
+                "onScrollChangedSync",
+                false);
+        if (layoutApplied) {
+            recentsView.invalidate();
+        }
+        return layoutApplied;
     }
 
     static boolean applyDynamicStackLayoutIfNeeded(View recentsView) {
