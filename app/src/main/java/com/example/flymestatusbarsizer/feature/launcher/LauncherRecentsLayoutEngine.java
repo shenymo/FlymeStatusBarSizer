@@ -1577,6 +1577,11 @@ final class LauncherRecentsLayoutEngine {
                     recentsView, "source=" + source);
             return false;
         }
+        if (LauncherRecentsState.isOverviewPreReleaseStockMode(recentsView)) {
+            LauncherRecentsPerf.flow("layout:schedule:skipOverviewPreReleaseStock",
+                    recentsView, "source=" + source);
+            return false;
+        }
         LauncherRecentsState.PendingStackLayoutApplyState pendingState =
                 LauncherRecentsState.PENDING_STACK_LAYOUT_APPLIES.get(recentsView);
         if (pendingState != null) {
@@ -1776,6 +1781,11 @@ final class LauncherRecentsLayoutEngine {
         }
         if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
             LauncherRecentsPerf.flow("layout:apply:skipSwipeUp",
+                    recentsView, "source=" + source);
+            return false;
+        }
+        if (LauncherRecentsState.isOverviewPreReleaseStockMode(recentsView)) {
+            LauncherRecentsPerf.flow("layout:apply:skipOverviewPreReleaseStock",
                     recentsView, "source=" + source);
             return false;
         }
