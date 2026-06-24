@@ -214,8 +214,7 @@ final class LauncherRecentsPerf {
                 || LauncherRecentsTransitionController
                 .isGestureRecentsStackReleaseAnimationActive(view)
                 || LauncherRecentsState.isPendingGestureRecentsStackRelease(view)
-                || LauncherRecentsState.isPendingGestureRecentsStackReleaseHandoff(view)
-                || LauncherRecentsState.isGestureStackReleasedStable(view)) {
+                || LauncherRecentsState.isPendingGestureRecentsStackReleaseHandoff(view)) {
             return "enterRecentsAnim";
         }
         if (LauncherRecentsState.isSwipeUpGestureActive(view)

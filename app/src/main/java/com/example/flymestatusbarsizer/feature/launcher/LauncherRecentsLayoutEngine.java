@@ -661,7 +661,7 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsState.isPendingGestureRecentsStackReleaseHandoff(recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
                 recentsView)
-                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsState.isAppToRecentsStackSettled(recentsView)
                 || LauncherRecentsState.isOverviewStateStackSettled(recentsView)
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                 recentsView)) {
@@ -1396,8 +1396,8 @@ final class LauncherRecentsLayoutEngine {
 
     private static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState>
             computeGestureReleaseTargetVisualStates(View recentsView, int targetScroll) {
-        boolean stable = LauncherRecentsState.isGestureStackReleasedStable(recentsView);
-        LauncherRecentsState.setGestureStackReleasedStable(recentsView, true);
+        boolean wasSettled = LauncherRecentsState.isAppToRecentsStackSettled(recentsView);
+        LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
         try {
             return computeStackLayout(
                     recentsView,
@@ -1405,7 +1405,7 @@ final class LauncherRecentsLayoutEngine {
                     null,
                     targetScroll);
         } finally {
-            LauncherRecentsState.setGestureStackReleasedStable(recentsView, stable);
+            LauncherRecentsState.setAppToRecentsStackSettled(recentsView, wasSettled);
         }
     }
 
@@ -1511,7 +1511,7 @@ final class LauncherRecentsLayoutEngine {
                 recentsView,
                 captureStockState,
                 "applyDynamic",
-                LauncherRecentsState.isGestureStackReleasedStable(recentsView),
+                LauncherRecentsState.isAppToRecentsStackSettled(recentsView),
                 true);
         LauncherRecentsPerf.flow(scheduled
                 ? "layout:dynamic:scheduled"
@@ -1650,7 +1650,9 @@ final class LauncherRecentsLayoutEngine {
 
     private static void applyStackLayoutFromScaleSuppress(View recentsView, String source) {
         if (!shouldApplyDynamicStackLayout(recentsView)
-                || shouldBlockAppToRecentsStackApply(recentsView)) {
+                || shouldBlockAppToRecentsStackApply(recentsView)
+                || LauncherRecentsTouchController.isStackDismissRelayoutAnimationActive(
+                recentsView)) {
             return;
         }
         applyStackLayout(
@@ -1882,7 +1884,8 @@ final class LauncherRecentsLayoutEngine {
         if (recentsView == null || !shouldCoalesceStackLayoutSource(source)) {
             return false;
         }
-        if (shouldOwnStackTaskAlpha(recentsView)) {
+        if (shouldOwnStackTaskAlpha(recentsView)
+                && !LauncherRecentsState.isAppToRecentsStackSettled(recentsView)) {
             return false;
         }
         long key = resolveStackLayoutApplyKey(recentsView, taskViewCount, stackLayoutRadius, config);
@@ -1965,7 +1968,7 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView) ? 1 : 0);
         key = mixStackLayoutApplyKey(
                 key,
-                LauncherRecentsState.isGestureStackReleasedStable(recentsView) ? 1 : 0);
+                LauncherRecentsState.isAppToRecentsStackSettled(recentsView) ? 1 : 0);
         key = mixStackLayoutApplyKey(
                 key,
                 LauncherRecentsState.isOverviewStateStackSettled(recentsView) ? 1 : 0);
@@ -2148,7 +2151,7 @@ final class LauncherRecentsLayoutEngine {
                 && !gestureStackReleaseActive
                 && !appEntrySessionActive
                 && runningTaskChildIndex < 0;
-        boolean stableFillWindow = LauncherRecentsState.isGestureStackReleasedStable(recentsView);
+        boolean stableFillWindow = LauncherRecentsState.isAppToRecentsStackSettled(recentsView);
         int fillBoundaryTargetCount = resolveStackLayoutFillBoundaryTargetCount(
                 recentsView,
                 taskViewCount,
@@ -2258,7 +2261,7 @@ final class LauncherRecentsLayoutEngine {
         float stackReleaseProgress = gestureStackReleaseActive
                 ? clamp(gestureStackReleaseProgress, 0f, 1f)
                 : 1f;
-        float stackSettledShiftProgress = LauncherRecentsState.isGestureStackReleasedStable(
+        float stackSettledShiftProgress = LauncherRecentsState.isAppToRecentsStackSettled(
                 recentsView)
                 ? 1f
                 : 0f;
@@ -2429,7 +2432,7 @@ final class LauncherRecentsLayoutEngine {
         if (taskViewCount <= 0) {
             return 0;
         }
-        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)) {
+        if (LauncherRecentsState.isAppToRecentsStackSettled(recentsView)) {
             return Math.min(taskViewCount, (radius * 2) + 2);
         }
         if (appEntryLightWindow) {
@@ -2568,7 +2571,7 @@ final class LauncherRecentsLayoutEngine {
                 - targetScroll;
         float layoutProgress = resolveStackReleaseSettledProgress(
                 (rawOffset + resolveEdgeScrollCorrection(recentsView)) / pageSpan,
-                LauncherRecentsState.isGestureStackReleasedStable(recentsView) ? 1f : 0f);
+                LauncherRecentsState.isAppToRecentsStackSettled(recentsView) ? 1f : 0f);
         return resolveStackVisibleOffset(
                 recentsView,
                 layoutProgress,
@@ -2612,7 +2615,7 @@ final class LauncherRecentsLayoutEngine {
             int index) {
         LauncherRecentsState.GestureReleaseTaskState gestureReleaseTaskState =
                 (context.gestureStackReleaseActive
-                        || LauncherRecentsState.isGestureStackReleasedStable(context.recentsView))
+                        || LauncherRecentsState.isAppToRecentsStackSettled(context.recentsView))
                         ? LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView)
                         : null;
         float rawOffset = resolveTaskRawOffset(context.recentsView, index, context.primaryScroll);
@@ -2959,7 +2962,7 @@ final class LauncherRecentsLayoutEngine {
         // 头部内容不再二次衰减；实际透明度由 TaskView 自身 alpha 决定。
         boolean entryInProgress = (context.gestureStackReleaseActive
                 || isAppToRecentsEntryInProgress(context.recentsView))
-                && !LauncherRecentsState.isGestureStackReleasedStable(context.recentsView);
+                && !LauncherRecentsState.isAppToRecentsStackSettled(context.recentsView);
         float appliedActivityTitleAlpha;
         if (context.blankTapExitActive) {
             appliedActivityTitleAlpha = activityTitleAlpha;
@@ -3277,11 +3280,10 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
-                recentsView)
-                || LauncherRecentsState.isGestureStackReleasedStable(recentsView))
+                recentsView))
                 && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                 || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
-                // handoff 开始后 deferred 已清零但 progress/stable 尚未建立，此帧也需压制。
+                // handoff 开始后 deferred 已清零但 progress 尚未建立，此帧也需压制。
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
                 recentsView)
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
@@ -3315,7 +3317,7 @@ final class LauncherRecentsLayoutEngine {
                 && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
                 && (LauncherRecentsTransitionController
                 .shouldSuppressGestureReleaseStockTaskVisuals(recentsView)
-                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+                || LauncherRecentsState.isAppToRecentsStackSettled(recentsView)
                 || LauncherRecentsState.isOverviewStateStackSettled(recentsView)
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                 recentsView)
@@ -3449,7 +3451,7 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static float resolveStackEntryProgress(View recentsView) {
-        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+        if (LauncherRecentsState.isAppToRecentsStackSettled(recentsView)
                 || LauncherRecentsState.isOverviewStateStackSettled(recentsView)) {
             return 1f;
         }
@@ -3463,7 +3465,7 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static float resolveStackVerticalProgress(View recentsView) {
-        if (LauncherRecentsState.isGestureStackReleasedStable(recentsView)
+        if (LauncherRecentsState.isAppToRecentsStackSettled(recentsView)
                 || LauncherRecentsState.isOverviewStateStackSettled(recentsView)) {
             return 1f;
         }
@@ -3476,8 +3478,7 @@ final class LauncherRecentsLayoutEngine {
     /**
      * 判断当前是否处于 app→recents 入场流程的任意阶段：
      * - 手势上滑进行中（layoutDeferred=true），mAdjacentPageHorizontalOffset 尚未从 1 收敛到 0
-     * - 手势已松手但 release 动画仍在运行（gestureReleased=true 但未 stable）
-     * - release 结束后系统仍在收敛 updatePageScales，此时继续调度完整布局会刷帧
+     * - 手势已松手但 release 动画仍在运行
      * 上述阶段读取系统 mAdjacentPageHorizontalOffset/mContentAlpha 会得到未收敛值，
      * 导致 stackEntryProgress 偏低，进而拉低名称/图标透明度。
      */
@@ -3485,7 +3486,6 @@ final class LauncherRecentsLayoutEngine {
         return LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
                 || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                 || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
-                || LauncherRecentsState.isGestureStackReleasedStable(recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
                 recentsView);
     }

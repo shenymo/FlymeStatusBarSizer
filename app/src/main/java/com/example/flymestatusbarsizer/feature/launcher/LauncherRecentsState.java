@@ -119,7 +119,7 @@ final class LauncherRecentsState {
         boolean appToRecentsEntrySessionActive;
         boolean appToRecentsStackLayoutDeferred;
         boolean appToRecentsGestureReleased;
-        boolean gestureStackReleasedStable;
+        boolean appToRecentsStackSettled;
         boolean pendingGestureRecentsStackRelease;
         boolean pendingGestureRecentsStackReleaseHandoff;
         boolean overviewStateStackAnimationActive;
@@ -455,7 +455,7 @@ final class LauncherRecentsState {
         if (state == null) {
             return;
         }
-        state.gestureStackReleasedStable = false;
+        state.appToRecentsStackSettled = false;
         state.swipeUpGestureActive = false;
     }
 
@@ -501,18 +501,18 @@ final class LauncherRecentsState {
         return state != null && state.appToRecentsGestureReleased;
     }
 
-    static void setGestureStackReleasedStable(View recentsView, boolean stable) {
-        RecentsViewState state = stable
+    static void setAppToRecentsStackSettled(View recentsView, boolean settled) {
+        RecentsViewState state = settled
                 ? ensureRecentsViewState(recentsView)
                 : findRecentsViewState(recentsView);
         if (state != null) {
-            state.gestureStackReleasedStable = stable;
+            state.appToRecentsStackSettled = settled;
         }
     }
 
-    static boolean isGestureStackReleasedStable(View recentsView) {
+    static boolean isAppToRecentsStackSettled(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
-        return state != null && state.gestureStackReleasedStable;
+        return state != null && state.appToRecentsStackSettled;
     }
 
     static void setPendingGestureRecentsStackRelease(View recentsView, boolean active) {

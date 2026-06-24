@@ -183,7 +183,7 @@ final class LauncherRecentsAttachController {
                                     || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                                     || LauncherRecentsTransitionController
                                     .isGestureRecentsStackReleaseAnimationActive(recentsView)
-                                    || LauncherRecentsState.isGestureStackReleasedStable(recentsView);
+                                    || LauncherRecentsState.isAppToRecentsStackSettled(recentsView);
                     if (shouldKeepDeferred) {
                         LauncherRecentsPerf.flow("attach:setRecentsAttached:keepDeferred",
                                 recentsView);
@@ -254,7 +254,7 @@ final class LauncherRecentsAttachController {
                 recentsView,
                 true);
         if (!keepExpanded) {
-            LauncherRecentsState.setGestureStackReleasedStable(recentsView, false);
+            LauncherRecentsState.setAppToRecentsStackSettled(recentsView, false);
         }
         endAppToRecentsEntrySessionWithoutLayout(recentsView);
         LauncherRecentsLayoutEngine.restoreStackLayout(recentsView, "appEntryClearRestore");
