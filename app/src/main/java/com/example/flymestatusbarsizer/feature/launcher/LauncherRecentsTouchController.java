@@ -425,6 +425,11 @@ final class LauncherRecentsTouchController {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    if (LauncherRecentsState.isAppToRecentsStackSettled(recentsView)) {
+                        Object result = chain.proceed();
+                        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                        return result;
+                    }
                     if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
                         logStackFlow("freeScroll:settle:applied", recentsView, null, null);
                         return null;
@@ -451,6 +456,11 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsCompat.isRecentsViewObject(thisObject)
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    if (LauncherRecentsState.isAppToRecentsStackSettled(recentsView)) {
+                        Object result = chain.proceed();
+                        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
+                        return result;
+                    }
                     if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
                         logStackFlow("snapToDestination:applied", recentsView, null, null);
                         return null;
@@ -3219,27 +3229,7 @@ final class LauncherRecentsTouchController {
     private static boolean shouldUseNativeStackFreeFling(
             View recentsView,
             MotionEvent motionEvent) {
-        if (recentsView == null
-                || motionEvent == null
-                || motionEvent.getActionMasked() != MotionEvent.ACTION_UP
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                || !LauncherRecentsState.isAppToRecentsStackSettled(recentsView)
-                || LauncherRecentsState.isSwipeUpGestureActive(recentsView)
-                || !LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false)) {
-            return false;
-        }
-        float downX = LauncherRecentsCompat.readFloatField(
-                recentsView,
-                "mDownMotionX",
-                motionEvent.getX());
-        float downY = LauncherRecentsCompat.readFloatField(
-                recentsView,
-                "mDownMotionY",
-                motionEvent.getY());
-        float dx = motionEvent.getX() - downX;
-        float dy = motionEvent.getY() - downY;
-        return Math.abs(resolveGesturePrimaryDelta(recentsView, dx, dy))
-                > Math.abs(resolveGestureSecondaryDelta(recentsView, dx, dy));
+        return false;
     }
 
     private static void startNativeStackFreeFling(View recentsView, MotionEvent motionEvent) {
