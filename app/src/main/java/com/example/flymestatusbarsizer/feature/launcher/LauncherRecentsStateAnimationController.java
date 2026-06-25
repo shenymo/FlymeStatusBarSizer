@@ -390,10 +390,6 @@ final class LauncherRecentsStateAnimationController {
                                 "overviewStateFrame",
                                 false,
                                 false);
-                        LauncherRecentsTouchController
-                                .forceEnsureStackVisibleTaskDataDuringStackTransition(
-                                        recentsView,
-                                        15);
                     }
                 }));
         LauncherRecentsCompat.invokeMethodReflectively(

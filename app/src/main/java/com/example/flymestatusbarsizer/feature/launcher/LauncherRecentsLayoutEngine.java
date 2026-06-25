@@ -65,7 +65,6 @@ final class LauncherRecentsLayoutEngine {
         final float overviewStateStackHandoffProgress;
         final float stackReleaseProgress;
         final float stackSettledShiftProgress;
-        final float stackUserProgressOffset;
         final int edgeScrollCorrection;
         final boolean appEntrySessionActive;
         final float maxTranslationZ;
@@ -94,7 +93,6 @@ final class LauncherRecentsLayoutEngine {
                 float overviewStateStackHandoffProgress,
                 float stackReleaseProgress,
                 float stackSettledShiftProgress,
-                float stackUserProgressOffset,
                 int edgeScrollCorrection,
                 boolean appEntrySessionActive,
                 float maxTranslationZ,
@@ -121,7 +119,6 @@ final class LauncherRecentsLayoutEngine {
             this.overviewStateStackHandoffProgress = overviewStateStackHandoffProgress;
             this.stackReleaseProgress = stackReleaseProgress;
             this.stackSettledShiftProgress = stackSettledShiftProgress;
-            this.stackUserProgressOffset = stackUserProgressOffset;
             this.edgeScrollCorrection = edgeScrollCorrection;
             this.appEntrySessionActive = appEntrySessionActive;
             this.maxTranslationZ = maxTranslationZ;
@@ -1980,6 +1977,8 @@ final class LauncherRecentsLayoutEngine {
         key = mixStackLayoutApplyKey(
                 key,
                 LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0));
+        Integer fixedAnchorPage = LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView);
+        key = mixStackLayoutApplyKey(key, fixedAnchorPage != null ? fixedAnchorPage : -1);
         key = mixStackLayoutApplyKey(
                 key,
                 taskViewCount);
@@ -2012,10 +2011,6 @@ final class LauncherRecentsLayoutEngine {
         key = mixStackLayoutApplyKey(
                 key,
                 LauncherRecentsState.isOverviewStateStackSettled(recentsView) ? 1 : 0);
-        key = mixStackLayoutApplyKey(
-                key,
-                quantizeStackLayoutFloat(
-                        LauncherRecentsState.getStackUserProgressOffset(recentsView)));
         key = mixStackLayoutApplyKey(
                 key,
                 config != null && config.launcherIosStackRecentsBlurEnabled ? 1 : 0);
@@ -2226,6 +2221,16 @@ final class LauncherRecentsLayoutEngine {
                 fillBoundaryTargetCount,
                 stableFillWindow,
                 seascapeEntryWindow);
+        addFixedStackScrollActiveIndices(
+                recentsView,
+                taskViewCount,
+                stackLayoutRadius,
+                fillBoundaryTargetCount,
+                stableFillWindow,
+                seascapeEntryWindow,
+                entryLightWindow,
+                targetScroll,
+                activeIndices);
         ArrayList<Integer> processIndices = resolveStackLayoutProcessIndices(
                 taskViewCount,
                 activeIndices,
@@ -2304,12 +2309,6 @@ final class LauncherRecentsLayoutEngine {
             stackVerticalProgress = 1f;
             stackSettledShiftProgress = smoothStep(stackReleaseProgress);
         }
-        float stackUserProgressOffset =
-                gestureStackReleaseActive
-                        || overviewStateStackAnimationActive
-                        || appEntrySessionActive
-                        ? 0f
-                        : LauncherRecentsState.getStackUserProgressOffset(recentsView);
         StackLayoutContext layoutContext = new StackLayoutContext(
                 recentsView,
                 taskViewCount,
@@ -2331,7 +2330,6 @@ final class LauncherRecentsLayoutEngine {
                 overviewStateStackHandoffProgress,
                 stackReleaseProgress,
                 stackSettledShiftProgress,
-                stackUserProgressOffset,
                 resolveEdgeScrollCorrection(recentsView, primaryScroll),
                 appEntrySessionActive,
                 FlymeStatusBarSizer.dp(recentsView.getContext(), 24),
@@ -2373,6 +2371,36 @@ final class LauncherRecentsLayoutEngine {
             int anchorIndex) {
         return gestureStackReleaseActive
                 && Math.abs(index - anchorIndex) > STACK_GESTURE_RELEASE_CORE_RADIUS;
+    }
+
+    private static void addFixedStackScrollActiveIndices(
+            View recentsView,
+            int taskViewCount,
+            int stackLayoutRadius,
+            int fillBoundaryTargetCount,
+            boolean stableFillWindow,
+            boolean seascapeEntryWindow,
+            boolean entryWindow,
+            Integer targetScroll,
+            ArrayList<Integer> activeIndices) {
+        if (entryWindow
+                || stackLayoutRadius != STACK_STABLE_VISIBLE_RADIUS
+                || LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView) == null) {
+            return;
+        }
+        int fixedAnchorIndex = Math.max(
+                0,
+                Math.min(
+                        LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView),
+                        Math.max(0, taskViewCount - 1)));
+        ArrayList<Integer> fixedIndices = resolveStackLayoutActiveIndices(
+                taskViewCount,
+                fixedAnchorIndex,
+                stackLayoutRadius,
+                fillBoundaryTargetCount,
+                stableFillWindow,
+                seascapeEntryWindow);
+        appendStackLayoutIndices(activeIndices, fixedIndices, taskViewCount);
     }
 
     private static ArrayList<Integer> resolveStackLayoutActiveIndices(
@@ -2643,12 +2671,6 @@ final class LauncherRecentsLayoutEngine {
         float layoutProgress = resolveStackReleaseSettledProgress(
                 progress,
                 context.stackSettledShiftProgress);
-        if (context.stackUserProgressOffset > 0f) {
-            layoutProgress -= context.stackUserProgressOffset
-                    * resolveStackPrimaryAxisSign(
-                    context.recentsView,
-                    context.primaryScrollHorizontal);
-        }
         float taskWidth = taskView.getWidth() > 0 ? taskView.getWidth() : context.referenceWidth;
         float taskHeight = taskView.getHeight() > 0 ? taskView.getHeight() : context.referenceHeight;
         float taskPrimarySize = resolveTaskPrimarySize(

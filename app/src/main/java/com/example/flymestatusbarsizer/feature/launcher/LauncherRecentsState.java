@@ -130,7 +130,7 @@ final class LauncherRecentsState {
         boolean overviewStateStackReleaseRequested;
         boolean taskLaunchRequestStarted;
         boolean swipeUpGestureActive;
-        float stackUserProgressOffset;
+        Integer stackScrollFixedAnchorPage;
         Float overviewStateStackStartAdjacentOffset;
         LaunchTransitionGeometryState activeTaskLaunchTransitionGeometry;
     }
@@ -457,7 +457,6 @@ final class LauncherRecentsState {
         }
         state.appToRecentsStackSettled = false;
         state.swipeUpGestureActive = false;
-        state.stackUserProgressOffset = 0f;
     }
 
     static void setAppToRecentsEntrySessionActive(View recentsView, boolean active) {
@@ -508,41 +507,12 @@ final class LauncherRecentsState {
                 : findRecentsViewState(recentsView);
         if (state != null) {
             state.appToRecentsStackSettled = settled;
-            if (!settled) {
-                state.stackUserProgressOffset = 0f;
-            }
         }
     }
 
     static boolean isAppToRecentsStackSettled(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
         return state != null && state.appToRecentsStackSettled;
-    }
-
-    static void setStackUserProgressOffset(View recentsView, float offset) {
-        float clampedOffset = Math.max(0f, offset);
-        RecentsViewState state = clampedOffset > 0.001f
-                ? ensureRecentsViewState(recentsView)
-                : findRecentsViewState(recentsView);
-        if (state != null) {
-            state.stackUserProgressOffset = clampedOffset;
-        }
-    }
-
-    static float getStackUserProgressOffset(View recentsView) {
-        RecentsViewState state = findRecentsViewState(recentsView);
-        return state != null ? state.stackUserProgressOffset : 0f;
-    }
-
-    static boolean hasStackUserProgressOffset(View recentsView) {
-        return getStackUserProgressOffset(recentsView) > 0.001f;
-    }
-
-    static void clearStackUserProgressOffset(View recentsView) {
-        RecentsViewState state = findRecentsViewState(recentsView);
-        if (state != null) {
-            state.stackUserProgressOffset = 0f;
-        }
     }
 
     static void setPendingGestureRecentsStackRelease(View recentsView, boolean active) {
@@ -587,6 +557,25 @@ final class LauncherRecentsState {
         return state != null && state.swipeUpGestureActive;
     }
 
+    static void setStackScrollFixedAnchorPage(View recentsView, int page) {
+        RecentsViewState state = ensureRecentsViewState(recentsView);
+        if (state != null) {
+            state.stackScrollFixedAnchorPage = page;
+        }
+    }
+
+    static Integer getStackScrollFixedAnchorPage(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null ? state.stackScrollFixedAnchorPage : null;
+    }
+
+    static void clearStackScrollFixedAnchorPage(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        if (state != null) {
+            state.stackScrollFixedAnchorPage = null;
+        }
+    }
+
     static void clearOverviewStackAnimationState(View recentsView, boolean settled) {
         RecentsViewState state = findRecentsViewState(recentsView);
         if (state == null) {
@@ -597,9 +586,6 @@ final class LauncherRecentsState {
         state.overviewStateStackSettled = settled;
         state.overviewStateStackStartAdjacentOffset = null;
         state.overviewStateStackBaselineCaptured = false;
-        if (!settled) {
-            state.stackUserProgressOffset = 0f;
-        }
     }
 
     static void setOverviewStateStackAnimationActive(View recentsView, boolean active) {
@@ -698,9 +684,6 @@ final class LauncherRecentsState {
                 : findRecentsViewState(recentsView);
         if (state != null) {
             state.overviewStateStackSettled = settled;
-            if (!settled) {
-                state.stackUserProgressOffset = 0f;
-            }
         }
     }
 

@@ -822,9 +822,6 @@ final class LauncherRecentsTransitionController {
                     "gestureReleaseFrame",
                     false,
                     false);
-            LauncherRecentsTouchController.forceEnsureStackVisibleTaskDataDuringStackTransition(
-                    recentsView,
-                    15);
             recentsView.invalidate();
         }));
         animator.addListener(new AnimatorListenerAdapter() {
