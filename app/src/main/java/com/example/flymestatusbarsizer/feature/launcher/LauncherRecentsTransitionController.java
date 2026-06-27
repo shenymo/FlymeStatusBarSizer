@@ -925,6 +925,11 @@ final class LauncherRecentsTransitionController {
                         + " targetScroll=" + stackAnchorTargetScroll
                         + " ensureScreenshot=" + ensureRunningTaskScreenshot);
         LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> handoffStartVisualStates =
+                LauncherRecentsLayoutEngine.captureCurrentStackTaskVisualStates(recentsView);
+        if (handoffStartVisualStates.isEmpty() && startVisualStates != null) {
+            handoffStartVisualStates = startVisualStates;
+        }
         if (ensureRunningTaskScreenshot) {
             prepareRunningTaskScreenshotForStackRelease(recentsView);
         } else {
@@ -950,7 +955,7 @@ final class LauncherRecentsTransitionController {
                 recentsView,
                 stackAnchorStartScroll,
                 stackAnchorTargetScroll,
-                startVisualStates);
+                handoffStartVisualStates);
         setGestureRecentsStackReleaseProgress(recentsView, 0f);
         LauncherRecentsLayoutEngine.applyStackLayout(
                 recentsView,
