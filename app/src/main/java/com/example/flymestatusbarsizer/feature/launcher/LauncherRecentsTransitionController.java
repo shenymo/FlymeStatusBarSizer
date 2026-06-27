@@ -17,9 +17,6 @@ import java.util.HashMap;
 final class LauncherRecentsTransitionController {
     private static final String ABS_SWIPE_UP_HANDLER_CLASS =
             "com.android.quickstep.AbsSwipeUpHandler";
-    private static final String LAUNCHER_STATE_CLASS = "com.android.launcher3.LauncherState";
-    private static final String FLYME_LAUNCHER_STATE_CLASS =
-            "com.meizu.flyme.launcher.FlymeLauncherState";
     private static final long GESTURE_STACK_RELEASE_DURATION_MS = 320L;
     private static final float GESTURE_STACK_RELEASE_HANDOFF_START_PROGRESS = 0f;
     private static final DecelerateInterpolator GESTURE_STACK_RELEASE_INTERPOLATOR =
@@ -461,13 +458,6 @@ final class LauncherRecentsTransitionController {
             module.intercept(method, chain -> {
                 Object result = chain.proceed();
                 View recentsView = resolveHandlerRecentsView(chain.getThisObject());
-                if (isLastTaskGestureEndTarget(result)
-                        && isLauncherHomeQuickSwitchGesture(recentsView, loader)) {
-                    LauncherRecentsPerf.flow("enter:calculateEndTarget:keepHomeQuickSwitch",
-                            recentsView,
-                            "oldTarget=" + result);
-                    return result;
-                }
                 int targetPage = resolveStackQuickSwitchTargetPage(recentsView);
                 if (targetPage >= 0 && isLastTaskGestureEndTarget(result)) {
                     LauncherRecentsPerf.flow("enter:calculateEndTarget:quickSwitch",
@@ -538,32 +528,6 @@ final class LauncherRecentsTransitionController {
 
     private static boolean isLastTaskGestureEndTarget(Object value) {
         return value instanceof Enum && "LAST_TASK".equals(((Enum<?>) value).name());
-    }
-
-    private static boolean isLauncherHomeQuickSwitchGesture(
-            View recentsView,
-            ClassLoader loader) {
-        Object container = LauncherRecentsCompat.getFieldCompat(recentsView, "mContainer");
-        Object stateManager = LauncherRecentsCompat.invokeCompat(container, "getStateManager");
-        return isHomeQuickSwitchState(
-                LauncherRecentsCompat.invokeCompat(stateManager, "getState"),
-                loader)
-                || isHomeQuickSwitchState(
-                LauncherRecentsCompat.invokeCompat(stateManager, "getCurrentStableState"),
-                loader)
-                || isHomeQuickSwitchState(
-                LauncherRecentsCompat.invokeCompat(stateManager, "getTargetState"),
-                loader);
-    }
-
-    private static boolean isHomeQuickSwitchState(Object state, ClassLoader loader) {
-        Object normalState =
-                LauncherRecentsCompat.readStaticFieldCompat(LAUNCHER_STATE_CLASS, "NORMAL", loader);
-        Object overviewPeekState = LauncherRecentsCompat.readStaticFieldCompat(
-                FLYME_LAUNCHER_STATE_CLASS,
-                "OVERVIEW_PEEK",
-                loader);
-        return state != null && (state == normalState || state == overviewPeekState);
     }
 
     private static void hookAbsSwipeUpHandlerLauncherTransitionProgress(
