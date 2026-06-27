@@ -128,6 +128,7 @@ final class LauncherRecentsState {
         boolean overviewStateStackSettled;
         boolean overviewPreReleaseStockMode;
         boolean overviewStateStackReleaseRequested;
+        boolean launcherQuickSwitchStockMode;
         boolean taskLaunchRequestStarted;
         boolean swipeUpGestureActive;
         Integer stackScrollFixedAnchorPage;
@@ -673,6 +674,20 @@ final class LauncherRecentsState {
     static boolean isOverviewStateStackSettled(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
         return state != null && state.overviewStateStackSettled;
+    }
+
+    static void setLauncherQuickSwitchStockMode(View recentsView, boolean active) {
+        RecentsViewState state = active
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.launcherQuickSwitchStockMode = active;
+        }
+    }
+
+    static boolean isLauncherQuickSwitchStockMode(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.launcherQuickSwitchStockMode;
     }
 
     static LaunchTransitionGeometryState getActiveTaskLaunchTransitionGeometry(View recentsView) {

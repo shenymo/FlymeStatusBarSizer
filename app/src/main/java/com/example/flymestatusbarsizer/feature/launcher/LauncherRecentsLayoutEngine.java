@@ -17,6 +17,8 @@ import java.util.HashMap;
 
 final class LauncherRecentsLayoutEngine {
     private static final String LAUNCHER_STATE_CLASS = "com.android.launcher3.LauncherState";
+    private static final String FLYME_LAUNCHER_STATE_CLASS =
+            "com.meizu.flyme.launcher.FlymeLauncherState";
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
     private static final float STACK_ENTRY_INITIAL_SPREAD_RATIO = 0.8f;
     private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.05f;
@@ -3451,6 +3453,7 @@ final class LauncherRecentsLayoutEngine {
                 && config.enabled
                 && config.launcherIosStackRecentsEnabled
                 && taskViewCount > 1
+                && !shouldKeepLauncherQuickSwitchStockLayout(recentsView)
                 && !LauncherRecentsCompat.invokeBoolean(recentsView, "showAsGrid", false)
                 && !LauncherRecentsCompat.invokeBoolean(
                         recentsView,
@@ -3476,6 +3479,70 @@ final class LauncherRecentsLayoutEngine {
         return recentsView != null
                 && (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 || LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView));
+    }
+
+    private static boolean shouldKeepLauncherQuickSwitchStockLayout(View recentsView) {
+        if (recentsView == null) {
+            return false;
+        }
+        if (isLauncherQuickSwitchCall()) {
+            LauncherRecentsState.setLauncherQuickSwitchStockMode(recentsView, true);
+            return true;
+        }
+        if (!LauncherRecentsState.isLauncherQuickSwitchStockMode(recentsView)) {
+            return false;
+        }
+        if (LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView)) {
+            LauncherRecentsState.setLauncherQuickSwitchStockMode(recentsView, false);
+            return false;
+        }
+        boolean keepStock = isLauncherHomeOrOverviewPeekState(recentsView);
+        if (!keepStock) {
+            LauncherRecentsState.setLauncherQuickSwitchStockMode(recentsView, false);
+        }
+        return keepStock;
+    }
+
+    private static boolean isLauncherQuickSwitchCall() {
+        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+        for (StackTraceElement element : stackTrace) {
+            if (element != null
+                    && element.getClassName() != null
+                    && element.getClassName().contains("QuickSwitchTouchController")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isLauncherHomeOrOverviewPeekState(View recentsView) {
+        Object container = LauncherRecentsCompat.getFieldCompat(recentsView, "mContainer");
+        Object stateManager = LauncherRecentsCompat.invokeCompat(container, "getStateManager");
+        return isLauncherHomeOrOverviewPeekStateObject(
+                LauncherRecentsCompat.invokeCompat(stateManager, "getState"))
+                || isLauncherHomeOrOverviewPeekStateObject(
+                LauncherRecentsCompat.invokeCompat(stateManager, "getCurrentStableState"))
+                || isLauncherHomeOrOverviewPeekStateObject(
+                LauncherRecentsCompat.invokeCompat(stateManager, "getTargetState"));
+    }
+
+    private static boolean isLauncherHomeOrOverviewPeekStateObject(Object state) {
+        if (state == null) {
+            return false;
+        }
+        ClassLoader loader = state.getClass().getClassLoader();
+        Object normalState = LauncherRecentsCompat.readStaticFieldCompat(
+                LAUNCHER_STATE_CLASS,
+                "NORMAL",
+                loader);
+        Object overviewPeekState = LauncherRecentsCompat.readStaticFieldCompat(
+                FLYME_LAUNCHER_STATE_CLASS,
+                "OVERVIEW_PEEK",
+                loader);
+        return state == normalState
+                || state == overviewPeekState
+                || state.getClass().getName().contains("OverviewPeekState");
     }
 
     static void reapplyOriginalTransforms(View recentsView) {
