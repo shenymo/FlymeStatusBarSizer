@@ -50,6 +50,8 @@ final class LauncherRecentsTouchController {
             new ThreadLocal<>();
     private static final WeakHashMap<View, StackDismissGestureState> STACK_DISMISS_GESTURES =
             new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> STACK_HORIZONTAL_GESTURE_LOCKS =
+            new WeakHashMap<>();
     private static final WeakHashMap<View, ArrayList<Integer>> STACK_VISIBLE_TASK_IDS =
             new WeakHashMap<>();
     private static final WeakHashMap<View, ArrayList<Integer>> STACK_LOADED_TASK_IDS =
@@ -261,6 +263,7 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsCompat.isRecentsViewObject(thisObject)
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    clearStackHorizontalGestureLockOnTouchEnd(recentsView, motionEvent);
                     clearStackFlingFixedAnchorOnTouchStart(recentsView, motionEvent);
                     keepAppToRecentsEntryHeadsVisibleOnTouchDown(recentsView, motionEvent);
                     ensureClearAllButtonReadyOnTouchDown(recentsView, motionEvent);
@@ -307,6 +310,7 @@ final class LauncherRecentsTouchController {
                         && thisObject instanceof View
                         && motionEvent != null) {
                     View recentsView = (View) thisObject;
+                    clearStackHorizontalGestureLockOnTouchEnd(recentsView, motionEvent);
                     clearStackFlingFixedAnchorOnTouchStart(recentsView, motionEvent);
                     keepAppToRecentsEntryHeadsVisibleOnTouchDown(recentsView, motionEvent);
                     ensureClearAllButtonReadyOnTouchDown(recentsView, motionEvent);
@@ -1101,9 +1105,16 @@ final class LauncherRecentsTouchController {
         float secondaryDelta = resolveGestureSecondaryDelta(recentsView, dx, dy);
         float absPrimary = Math.abs(primaryDelta);
         float absSecondary = Math.abs(secondaryDelta);
+        if (Boolean.TRUE.equals(STACK_HORIZONTAL_GESTURE_LOCKS.get(recentsView))) {
+            return false;
+        }
+        if (absPrimary > touchSlop && absPrimary > absSecondary) {
+            STACK_HORIZONTAL_GESTURE_LOCKS.put(recentsView, Boolean.TRUE);
+            return false;
+        }
         return resolveStackDismissDirectionSign(recentsView) * secondaryDelta > 0f
                 && absSecondary > touchSlop
-                && absSecondary >= absPrimary * 0.8f;
+                && absSecondary >= absPrimary * STACK_DISMISS_SECONDARY_DOMINANCE;
     }
 
     private static void releasePagedTouchForStackDismiss(View recentsView) {
@@ -3296,6 +3307,20 @@ final class LauncherRecentsTouchController {
             MotionEvent motionEvent) {
         if (motionEvent != null && motionEvent.getActionMasked() == MotionEvent.ACTION_DOWN) {
             clearStackFlingFixedAnchorPage(recentsView, false);
+        }
+    }
+
+    private static void clearStackHorizontalGestureLockOnTouchEnd(
+            View recentsView,
+            MotionEvent motionEvent) {
+        if (recentsView == null || motionEvent == null) {
+            return;
+        }
+        int action = motionEvent.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN
+                || action == MotionEvent.ACTION_UP
+                || action == MotionEvent.ACTION_CANCEL) {
+            STACK_HORIZONTAL_GESTURE_LOCKS.remove(recentsView);
         }
     }
 
