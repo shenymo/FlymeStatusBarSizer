@@ -6,6 +6,8 @@ android {
     namespace "com.example.flymestatusbarsizer"
     compileSdk 36
 
+    def buildVersion = new java.text.SimpleDateFormat("yyyyMMddHHmm").format(new Date())
+    def buildCode = Integer.parseInt(new java.text.SimpleDateFormat("yyyyMMddHH").format(new Date()))
     def buildDate = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())
 
     buildFeatures {
@@ -34,8 +36,8 @@ signingConfigs {
         applicationId "com.fiyme.statusbarsizer"
         minSdk 26
         targetSdk 36
-        versionCode 2026062301
-        versionName "2026.06.23.01"
+        versionCode buildCode
+        versionName buildVersion
         buildConfigField "String", "BUILD_DATE", "\"${buildDate}\""
     }
 
@@ -62,6 +64,14 @@ signingConfigs {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set(output.versionName.map { "${it}.apk" })
+        }
     }
 }
 
