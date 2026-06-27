@@ -7,7 +7,6 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ValueAnimator;
 import android.os.Handler;
-import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
@@ -36,11 +35,9 @@ final class LauncherRecentsTouchController {
     private static final float STACK_DISMISS_DRAG_RELAYOUT_MAX_PROGRESS = 0.5f;
     private static final float STACK_DISMISS_SECONDARY_DOMINANCE = 1.2f;
     private static final float STACK_DISMISS_MIN_FLING_VELOCITY = -1200f;
-    private static final float STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO = 1.40f;
+    private static final int STACK_VISIBLE_TASK_DATA_TARGET_COUNT = 4;
     private static final int STACK_VISIBLE_DATA_SCROLL_BUCKET_DIVISOR = 2;
     private static final long STACK_VISIBLE_DATA_SYNC_RETRY_DELAY_MS = 64L;
-    private static final long STACK_VISIBLE_DATA_CLEANUP_IDLE_DELAY_MS = 450L;
-    private static final long STACK_VISIBLE_DATA_CLEANUP_RETRY_DELAY_MS = 250L;
     private static final float STACK_LEFT_RELEASE_ALPHA_THRESHOLD = 0.05f;
     private static final int STACK_APP_FLOW_LIGHT_RADIUS = 3;
     private static final String STACK_APP_FLOW_HIDDEN = "<stack-hidden>";
@@ -2352,13 +2349,10 @@ final class LauncherRecentsTouchController {
             return false;
         }
         int anchorIndex = resolveStackVisibleTaskDataAnchorIndex(recentsView, taskViewCount);
-        int radius = resolveStackVisibleTaskDataRadius(recentsView);
         return isStackVisibleTaskDataIndexVisible(
-                recentsView,
                 taskIndex,
                 taskViewCount,
-                anchorIndex,
-                radius)
+                anchorIndex)
                 && isStackTaskWithinVisibleDataBounds(recentsView, taskView);
     }
 
@@ -2371,10 +2365,8 @@ final class LauncherRecentsTouchController {
         float taskStart = (primaryScrollHorizontal ? taskView.getX() : taskView.getY())
                 - resolvePrimaryScroll(recentsView);
         float taskSize = resolvePrimarySize(taskView, primaryScrollHorizontal);
-        float viewportStart = -taskSize;
-        float viewportEnd = resolvePrimarySize(recentsView, primaryScrollHorizontal)
-                * (1f + STACK_VISIBLE_DATA_RIGHT_MARGIN_RATIO);
-        return taskStart + taskSize > viewportStart && taskStart < viewportEnd;
+        float viewportEnd = resolvePrimarySize(recentsView, primaryScrollHorizontal);
+        return taskStart + taskSize > 0f && taskStart < viewportEnd;
     }
 
     private static boolean shouldSuppressStackTaskDataUnload(View taskView, int changes) {
@@ -2435,7 +2427,6 @@ final class LauncherRecentsTouchController {
                             + " bucket=" + bucket
                             + " taskCount=" + taskViewCount
                             + " currentPage=" + currentPage);
-            markStackVisibleTaskDataTouched(state, false);
             return;
         }
         logStackFlow("visibleData:ensureIfNeeded:force",
@@ -2492,7 +2483,6 @@ final class LauncherRecentsTouchController {
                                 + " taskCount=" + taskViewCount
                                 + " currentPage=" + currentPage
                                 + " forceRelease=" + forceRelease);
-                markStackVisibleTaskDataTouched(state, forceRelease);
                 return;
             }
             if (shouldDelayStackVisibleTaskDataSync(recentsView, forceRelease, allowDelay)) {
@@ -2599,14 +2589,6 @@ final class LauncherRecentsTouchController {
                 && state.scrollBucket == scrollBucket;
     }
 
-    private static void markStackVisibleTaskDataTouched(
-            StackVisibleTaskDataSyncState state,
-            boolean forceRelease) {
-        if (state != null && !forceRelease) {
-            state.lastLoadUptimeMs = SystemClock.uptimeMillis();
-        }
-    }
-
     private static int resolveStackVisibleTaskDataBucket(View recentsView) {
         if (recentsView == null) {
             return Integer.MIN_VALUE;
@@ -2634,22 +2616,15 @@ final class LauncherRecentsTouchController {
             return;
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        StackVisibleTaskDataSyncState syncState =
-                STACK_VISIBLE_TASK_DATA_SYNC_STATES.get(recentsView);
-        markStackVisibleTaskDataTouched(syncState, forceRelease);
         ArrayList<Integer> visibleTaskIds = new ArrayList<>();
-        boolean hasPendingReleases = false;
         ArrayList<Integer> loadedTaskIds = ensureStackLoadedTaskIds(recentsView);
 
         long scanStartNs = LauncherRecentsPerf.start(recentsView);
         try {
             int anchorIndex = resolveStackVisibleTaskDataAnchorIndex(recentsView, taskViewCount);
-            int radius = resolveStackVisibleTaskDataRadius(recentsView);
             ArrayList<Integer> visibleTaskIndices = resolveStackVisibleTaskDataIndices(
-                    recentsView,
                     taskViewCount,
-                    anchorIndex,
-                    radius);
+                    anchorIndex);
             for (int index = 0; index < visibleTaskIndices.size(); index++) {
                 int i = visibleTaskIndices.get(index);
                 View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
@@ -2712,95 +2687,9 @@ final class LauncherRecentsTouchController {
             }
         }
 
-        StackVisibleTaskDataSyncState state = STACK_VISIBLE_TASK_DATA_SYNC_STATES.get(recentsView);
-        if (state != null) {
-            hasPendingReleases = !removedTaskIds.isEmpty();
-            if (forceRelease) {
-                state.pendingCleanupRunnable = null;
-                state.pendingCleanupChanges = 0;
-                state.pendingReleaseTaskIds.clear();
-                releaseStackTaskDataForIds(recentsView, removedTaskIds, changes);
-            } else if (hasPendingReleases) {
-                scheduleDeferredCleanup(recentsView, state, changes, removedTaskIds);
-            }
+        if (!removedTaskIds.isEmpty()) {
+            releaseStackTaskDataForIds(recentsView, removedTaskIds, changes);
         }
-    }
-
-    private static void scheduleDeferredCleanup(
-            final View recentsView,
-            final StackVisibleTaskDataSyncState state,
-            final int changes,
-            ArrayList<Integer> taskIds) {
-        appendUniqueTaskIds(state.pendingReleaseTaskIds, taskIds);
-        if (state.pendingCleanupRunnable != null) {
-            state.pendingCleanupChanges |= changes;
-            logStackFlow("visibleData:cleanup:alreadyPending",
-                    recentsView,
-                    null,
-                    "changes=" + state.pendingCleanupChanges
-                            + " pendingIds=" + state.pendingReleaseTaskIds);
-            LauncherRecentsPerf.hit("visibleTaskDataSync:cleanupAlreadyPending", recentsView);
-            return;
-        }
-        state.pendingCleanupChanges = changes;
-        state.pendingCleanupRunnable = new Runnable() {
-            @Override
-            public void run() {
-                state.pendingCleanupRunnable = null;
-                int cleanupChanges = state.pendingCleanupChanges;
-                ArrayList<Integer> cleanupTaskIds = new ArrayList<>(state.pendingReleaseTaskIds);
-                state.pendingReleaseTaskIds.clear();
-                if (shouldDelayStackVisibleTaskDataCleanup(recentsView, state)) {
-                    logStackFlow("visibleData:cleanup:retryActive",
-                            recentsView, null, "pendingIds=" + cleanupTaskIds);
-                    scheduleDeferredCleanup(recentsView, state, cleanupChanges, cleanupTaskIds);
-                    return;
-                }
-                if (!isStackVisibleTaskDataCleanupIdle(state)) {
-                    logStackFlow("visibleData:cleanup:retryBusy",
-                            recentsView, null, "pendingIds=" + cleanupTaskIds);
-                    scheduleDeferredCleanup(recentsView, state, cleanupChanges, cleanupTaskIds);
-                    return;
-                }
-                logStackFlow("visibleData:cleanup:run",
-                        recentsView,
-                        null,
-                        "changes=" + cleanupChanges + " pendingIds=" + cleanupTaskIds);
-                long startNs = LauncherRecentsPerf.start(recentsView);
-                try {
-                    releaseStackTaskDataForIds(
-                            recentsView,
-                            cleanupTaskIds,
-                            cleanupChanges);
-                } finally {
-                    LauncherRecentsPerf.end("visibleTaskDataSync:deferredCleanup", startNs);
-                }
-            }
-        };
-        recentsView.postDelayed(
-                state.pendingCleanupRunnable,
-                shouldDelayStackVisibleTaskDataCleanup(recentsView, state)
-                        ? STACK_VISIBLE_DATA_CLEANUP_RETRY_DELAY_MS
-                        : STACK_VISIBLE_DATA_CLEANUP_IDLE_DELAY_MS);
-        logStackFlow("visibleData:cleanup:schedule",
-                recentsView,
-                null,
-                "changes=" + changes + " pendingIds=" + state.pendingReleaseTaskIds);
-    }
-
-    private static boolean shouldDelayStackVisibleTaskDataCleanup(
-            View recentsView,
-            StackVisibleTaskDataSyncState state) {
-        if (isTransitionAnimationActive(recentsView) || isRecentsScrollerActive(recentsView)) {
-            return true;
-        }
-        if (state != null
-                && !state.delayedGestureBackgroundCleanup
-                && isGestureRecentsBackground(recentsView)) {
-            state.delayedGestureBackgroundCleanup = true;
-            return true;
-        }
-        return false;
     }
 
     private static boolean isRecentsScrollerActive(View recentsView) {
@@ -2818,14 +2707,6 @@ final class LauncherRecentsTouchController {
                 "isFinished",
                 LauncherRecentsCompat.NO_ARGS);
         return value instanceof Boolean && !((Boolean) value);
-    }
-
-    private static boolean isStackVisibleTaskDataCleanupIdle(
-            StackVisibleTaskDataSyncState state) {
-        return state == null
-                || state.lastLoadUptimeMs <= 0L
-                || SystemClock.uptimeMillis() - state.lastLoadUptimeMs
-                >= STACK_VISIBLE_DATA_CLEANUP_IDLE_DELAY_MS;
     }
 
     private static ArrayList<Integer> resolveRemovedStackTaskIds(
@@ -2992,88 +2873,37 @@ final class LauncherRecentsTouchController {
         return nearestPage;
     }
 
-    private static int resolveStackVisibleTaskDataRadius(View recentsView) {
-        return isTransitionAnimationActive(recentsView) ? 3 : 2;
-    }
-
     private static ArrayList<Integer> resolveStackVisibleTaskDataIndices(
-            View recentsView,
             int taskViewCount,
-            int anchorIndex,
-            int radius) {
+            int anchorIndex) {
         ArrayList<Integer> indices = new ArrayList<>();
-        if (taskViewCount <= 0 || radius < 0) {
+        if (taskViewCount <= 0) {
             return indices;
         }
         anchorIndex = Math.max(0, Math.min(anchorIndex, taskViewCount - 1));
-        if (shouldUseStackEntryVisibleTaskDataWindow(recentsView)) {
-            int targetCount = resolveStackVisibleTaskDataFillBoundaryTargetCount(
-                    recentsView,
-                    taskViewCount,
-                    radius);
-            appendStackVisibleTaskDataIndex(indices, anchorIndex, taskViewCount);
-            if (targetCount > 0) {
-                if (LauncherRecentsState.isAppToRecentsStackSettled(recentsView)) {
-                    appendStableStackVisibleTaskDataIndices(
-                            indices,
-                            anchorIndex,
-                            taskViewCount,
-                            targetCount);
-                    return indices;
-                }
-                for (int i = 1; indices.size() < targetCount; i++) {
-                    appendStackVisibleTaskDataIndex(indices, anchorIndex - i, taskViewCount);
-                    if (indices.size() >= targetCount) {
-                        break;
-                    }
-                    appendStackVisibleTaskDataIndex(indices, anchorIndex + i, taskViewCount);
-                }
-                return indices;
+        appendStackVisibleTaskDataIndex(indices, anchorIndex, taskViewCount);
+        appendStackVisibleTaskDataIndex(indices, anchorIndex - 1, taskViewCount);
+        for (int i = 1;
+                indices.size() < STACK_VISIBLE_TASK_DATA_TARGET_COUNT && i < taskViewCount;
+                i++) {
+            appendStackVisibleTaskDataIndex(indices, anchorIndex + i, taskViewCount);
+            if (indices.size() >= STACK_VISIBLE_TASK_DATA_TARGET_COUNT) {
+                break;
             }
-            for (int i = 1; i <= radius; i++) {
+            if (i > 1) {
                 appendStackVisibleTaskDataIndex(indices, anchorIndex - i, taskViewCount);
             }
-            for (int i = 1; i <= radius; i++) {
-                appendStackVisibleTaskDataIndex(indices, anchorIndex + i, taskViewCount);
-            }
-            return indices;
-        }
-        int start = Math.max(0, anchorIndex - radius);
-        int end = Math.min(taskViewCount - 1, anchorIndex + radius);
-        for (int i = start; i <= end; i++) {
-            indices.add(i);
         }
         return indices;
     }
 
-    private static void appendStableStackVisibleTaskDataIndices(
-            ArrayList<Integer> target,
-            int anchorIndex,
-            int taskViewCount,
-            int targetCount) {
-        appendStackVisibleTaskDataIndex(target, anchorIndex - 1, taskViewCount);
-        for (int i = 1; target.size() < targetCount; i++) {
-            appendStackVisibleTaskDataIndex(target, anchorIndex + i, taskViewCount);
-            if (target.size() >= targetCount) {
-                break;
-            }
-            if (i > 1) {
-                appendStackVisibleTaskDataIndex(target, anchorIndex - i, taskViewCount);
-            }
-        }
-    }
-
     private static boolean isStackVisibleTaskDataIndexVisible(
-            View recentsView,
             int taskIndex,
             int taskViewCount,
-            int anchorIndex,
-            int radius) {
+            int anchorIndex) {
         return resolveStackVisibleTaskDataIndices(
-                recentsView,
                 taskViewCount,
-                anchorIndex,
-                radius).contains(taskIndex);
+                anchorIndex).contains(taskIndex);
     }
 
     private static void appendStackVisibleTaskDataIndex(
@@ -3083,32 +2913,6 @@ final class LauncherRecentsTouchController {
         if (index >= 0 && index < taskViewCount && !target.contains(index)) {
             target.add(index);
         }
-    }
-
-    private static boolean shouldUseStackEntryVisibleTaskDataWindow(View recentsView) {
-        return LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(recentsView)
-                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
-                recentsView)
-                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
-                || LauncherRecentsState.isAppToRecentsStackSettled(recentsView);
-    }
-
-    private static int resolveStackVisibleTaskDataFillBoundaryTargetCount(
-            View recentsView,
-            int taskViewCount,
-            int radius) {
-        if (taskViewCount <= 0) {
-            return 0;
-        }
-        if (LauncherRecentsState.isAppToRecentsStackSettled(recentsView)) {
-            return Math.min(taskViewCount, (radius * 2) + 2);
-        }
-        if (LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
-                recentsView)
-                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)) {
-            return Math.min(taskViewCount, (radius * 2) + 1);
-        }
-        return 0;
     }
 
     private static final int KEY_TASK_IDS_CACHE = 0x7f999999;
@@ -3807,11 +3611,6 @@ final class LauncherRecentsTouchController {
         int scrollBucket;
         Runnable pendingSyncRunnable;
         int pendingSyncChanges;
-        Runnable pendingCleanupRunnable;
-        int pendingCleanupChanges;
-        boolean delayedGestureBackgroundCleanup;
-        final ArrayList<Integer> pendingReleaseTaskIds = new ArrayList<>();
-        long lastLoadUptimeMs;
     }
 
     static void clearRecentsDeferredSnap(View recentsView) {
