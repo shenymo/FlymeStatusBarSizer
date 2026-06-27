@@ -953,11 +953,6 @@ final class LauncherRecentsTransitionController {
                 stackAnchorTargetScroll,
                 handoffStartVisualStates);
         setGestureRecentsStackReleaseProgress(recentsView, 0f);
-        LauncherRecentsLayoutEngine.applyStackLayout(
-                recentsView,
-                false,
-                "gestureReleaseHandoffBegin",
-                true);
         recentsView.invalidate();
     }
 

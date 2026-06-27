@@ -1260,10 +1260,10 @@ final class LauncherRecentsLayoutEngine {
         }
         int expectedCount = LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.size();
         int appliedCount = 0;
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
+        for (View taskView : LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.keySet()) {
+            if (taskView == null
+                    || taskView.getParent() == null
+                    || LauncherRecentsCompat.isDesktopTask(taskView)) {
                 continue;
             }
             LauncherRecentsState.GestureReleaseTaskState state =
@@ -1271,7 +1271,7 @@ final class LauncherRecentsLayoutEngine {
             if (state == null) {
                 continue;
             }
-            LauncherRecentsTaskVisuals.applyStackTaskVisualState(
+            LauncherRecentsTaskVisuals.applyStackTaskCoreVisualState(
                     taskView,
                     state.startVisualState.lerpTo(state.targetVisualState, progress));
             appliedCount++;

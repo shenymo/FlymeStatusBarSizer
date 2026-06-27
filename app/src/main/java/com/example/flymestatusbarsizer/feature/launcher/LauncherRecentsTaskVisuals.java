@@ -177,6 +177,7 @@ final class LauncherRecentsTaskVisuals {
         setNonGridScale(taskView, state.scale);
         setAttachAlpha(taskView, state.attachAlpha);
         setStableAlpha(taskView, state.stableAlpha);
+        setTranslationZ(taskView, state.translationZ);
         LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.put(taskView, state);
     }
 
