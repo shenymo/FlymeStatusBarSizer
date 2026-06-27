@@ -365,6 +365,7 @@ final class LauncherRecentsTouchController {
                     } finally {
                         LauncherRecentsPerf.end("native:onTouchEvent", nativeStartNs);
                     }
+                    setStackFlingFixedAnchorAfterPagedRelease(recentsView, motionEvent);
                     applyStackLayoutAfterPagedMove(recentsView, motionEvent);
                     if (entryTakeover) {
                         keepAppToRecentsEntryTakeoverDataReady(recentsView);
@@ -3296,6 +3297,26 @@ final class LauncherRecentsTouchController {
         if (motionEvent != null && motionEvent.getActionMasked() == MotionEvent.ACTION_DOWN) {
             clearStackFlingFixedAnchorPage(recentsView, false);
         }
+    }
+
+    private static void setStackFlingFixedAnchorAfterPagedRelease(
+            View recentsView,
+            MotionEvent motionEvent) {
+        if (recentsView == null
+                || motionEvent == null
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || isTransitionAnimationActive(recentsView)) {
+            return;
+        }
+        int action = motionEvent.getActionMasked();
+        if (action != MotionEvent.ACTION_UP && action != MotionEvent.ACTION_CANCEL) {
+            return;
+        }
+        if (!isRecentsScrollerActive(recentsView)) {
+            return;
+        }
+        setStackFlingFixedAnchorPage(recentsView, resolvePrimaryScroll(recentsView));
+        scheduleStackFlingFixedAnchorClearOnScrollerFinish(recentsView);
     }
 
     private static void setStackFlingFixedAnchorPage(View recentsView, int primaryScroll) {

@@ -1959,6 +1959,7 @@ final class LauncherRecentsLayoutEngine {
         return "applyDynamic".equals(source)
                 || "scheduled".equals(source)
                 || "onScrollChanged".equals(source)
+                || "onScrollChangedSync".equals(source)
                 || "refreshTrackedViews".equals(source)
                 || "overviewStateClearRestore".equals(source)
                 || "contentAlpha_blankExit".equals(source)
