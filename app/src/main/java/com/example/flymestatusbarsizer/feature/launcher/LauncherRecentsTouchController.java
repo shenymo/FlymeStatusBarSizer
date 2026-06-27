@@ -2519,6 +2519,9 @@ final class LauncherRecentsTouchController {
             state.currentPage = currentPage;
             state.scrollBucket = scrollBucket;
             rememberStackVisibleTaskDataScrollState(state, primaryScroll, scrollDirection);
+            boolean lightweightSync = shouldUseLightweightStackVisibleTaskDataSync(
+                    recentsView,
+                    forceRelease);
             logStackFlow("visibleData:force:run",
                     recentsView,
                     null,
@@ -2526,8 +2529,9 @@ final class LauncherRecentsTouchController {
                             + " bucket=" + scrollBucket
                             + " taskCount=" + taskViewCount
                             + " currentPage=" + currentPage
-                            + " forceRelease=" + forceRelease);
-            ensureStackVisibleTaskData(recentsView, changes, forceRelease);
+                            + " forceRelease=" + forceRelease
+                            + " lightweight=" + lightweightSync);
+            ensureStackVisibleTaskData(recentsView, changes, forceRelease, lightweightSync);
         } finally {
             LauncherRecentsPerf.end("visibleTaskDataSync:force", perfStartNs);
         }
@@ -2577,6 +2581,15 @@ final class LauncherRecentsTouchController {
         Object stateManager = LauncherRecentsCompat.invokeCompat(recentsView, "getStateManager");
         Object state = LauncherRecentsCompat.invokeCompat(stateManager, "getState");
         return state != null && "Background".equals(String.valueOf(state));
+    }
+
+    private static boolean shouldUseLightweightStackVisibleTaskDataSync(
+            View recentsView,
+            boolean forceRelease) {
+        return !forceRelease
+                && recentsView != null
+                && (LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false)
+                || isRecentsScrollerActive(recentsView));
     }
 
     private static StackVisibleTaskDataSyncState findStackVisibleTaskDataSyncState(
@@ -2659,6 +2672,14 @@ final class LauncherRecentsTouchController {
     }
 
     static void ensureStackVisibleTaskData(final View recentsView, final int changes, boolean forceRelease) {
+        ensureStackVisibleTaskData(recentsView, changes, forceRelease, false);
+    }
+
+    private static void ensureStackVisibleTaskData(
+            final View recentsView,
+            final int changes,
+            boolean forceRelease,
+            boolean lightweightSync) {
         if (recentsView == null || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
             return;
         }
@@ -2704,14 +2725,15 @@ final class LauncherRecentsTouchController {
         ArrayList<Integer> lastVisibleTaskIds = STACK_VISIBLE_TASK_IDS.get(recentsView);
         boolean visibleTaskIdsChanged = lastVisibleTaskIds == null
                 || !lastVisibleTaskIds.equals(visibleTaskIds);
-        ArrayList<Integer> removedTaskIds = resolveRemovedStackTaskIds(
-                lastVisibleTaskIds,
-                visibleTaskIds);
+        ArrayList<Integer> removedTaskIds = lightweightSync
+                ? new ArrayList<>()
+                : resolveLoadedStackTaskIdsOutsideVisible(loadedTaskIds, visibleTaskIds);
         logStackFlow("visibleData:sync",
                 recentsView,
                 null,
                 "changes=" + changes
                         + " forceRelease=" + forceRelease
+                        + " lightweight=" + lightweightSync
                         + " visibleIds=" + visibleTaskIds
                         + " removedIds=" + removedTaskIds);
         if (visibleTaskIds.isEmpty()) {
@@ -2720,7 +2742,7 @@ final class LauncherRecentsTouchController {
             STACK_VISIBLE_TASK_IDS.put(recentsView, new ArrayList<>(visibleTaskIds));
         }
         Object viewModel = LauncherRecentsCompat.getFieldCompat(recentsView, "mRecentsViewModel");
-        if (viewModel != null && !visibleTaskIds.isEmpty() && visibleTaskIdsChanged) {
+        if (!lightweightSync && viewModel != null && !visibleTaskIds.isEmpty() && visibleTaskIdsChanged) {
             long updateModelStartNs = LauncherRecentsPerf.start(recentsView);
             try {
                 LauncherRecentsCompat.invokeCompat(
@@ -2735,7 +2757,7 @@ final class LauncherRecentsTouchController {
             }
         }
 
-        if (!removedTaskIds.isEmpty()) {
+        if (!lightweightSync && !removedTaskIds.isEmpty()) {
             releaseStackTaskDataForIds(recentsView, removedTaskIds, changes);
         }
     }
@@ -2757,16 +2779,16 @@ final class LauncherRecentsTouchController {
         return value instanceof Boolean && !((Boolean) value);
     }
 
-    private static ArrayList<Integer> resolveRemovedStackTaskIds(
-            ArrayList<Integer> oldIds,
-            ArrayList<Integer> newIds) {
+    private static ArrayList<Integer> resolveLoadedStackTaskIdsOutsideVisible(
+            ArrayList<Integer> loadedTaskIds,
+            ArrayList<Integer> visibleTaskIds) {
         ArrayList<Integer> removed = new ArrayList<>();
-        if (oldIds == null || oldIds.isEmpty()) {
+        if (loadedTaskIds == null || loadedTaskIds.isEmpty()) {
             return removed;
         }
-        for (int i = 0; i < oldIds.size(); i++) {
-            int taskId = oldIds.get(i);
-            if (!newIds.contains(taskId)) {
+        for (int i = 0; i < loadedTaskIds.size(); i++) {
+            int taskId = loadedTaskIds.get(i);
+            if (visibleTaskIds == null || !visibleTaskIds.contains(taskId)) {
                 removed.add(taskId);
             }
         }
@@ -3248,6 +3270,7 @@ final class LauncherRecentsTouchController {
             return;
         }
         if (!isRecentsScrollerActive(recentsView)) {
+            forceEnsureStackVisibleTaskData(recentsView, 15, true);
             return;
         }
         setStackFlingFixedAnchorPage(recentsView, resolvePrimaryScroll(recentsView));
