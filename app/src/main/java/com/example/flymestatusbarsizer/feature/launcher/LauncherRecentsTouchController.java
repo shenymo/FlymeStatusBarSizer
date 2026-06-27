@@ -2478,13 +2478,37 @@ final class LauncherRecentsTouchController {
         logStackFlow("visibleData:force:start",
                 recentsView, null, "changes=" + changes + " forceRelease=" + forceRelease);
         long perfStartNs = LauncherRecentsPerf.start(recentsView);
+        long stepStartNs = perfStartNs;
+        long setupNs = 0L;
+        long scrollNs = 0L;
+        long skipNs = 0L;
+        long delayNs = 0L;
+        long lightweightNs = 0L;
+        long runNs = 0L;
+        int taskViewCount = 0;
+        int currentPage = 0;
+        int scrollBucket = Integer.MIN_VALUE;
+        int primaryScroll = 0;
+        int scrollDirection = 0;
+        boolean lightweightSync = false;
+        String result = "run";
         try {
             StackVisibleTaskDataSyncState state = ensureStackVisibleTaskDataSyncState(recentsView);
-            int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-            int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
-            int scrollBucket = resolveStackVisibleTaskDataBucket(recentsView);
-            int primaryScroll = resolvePrimaryScroll(recentsView);
-            int scrollDirection = resolveStackVisibleTaskDataScrollDirection(state, primaryScroll);
+            taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+            currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
+            if (stepStartNs != 0L) {
+                long nowNs = System.nanoTime();
+                setupNs = nowNs - stepStartNs;
+                stepStartNs = nowNs;
+            }
+            scrollBucket = resolveStackVisibleTaskDataBucket(recentsView);
+            primaryScroll = resolvePrimaryScroll(recentsView);
+            scrollDirection = resolveStackVisibleTaskDataScrollDirection(state, primaryScroll);
+            if (stepStartNs != 0L) {
+                long nowNs = System.nanoTime();
+                scrollNs = nowNs - stepStartNs;
+                stepStartNs = nowNs;
+            }
             if (shouldSkipStackVisibleTaskDataSync(
                     recentsView,
                     state,
@@ -2493,6 +2517,12 @@ final class LauncherRecentsTouchController {
                     scrollBucket,
                     scrollDirection,
                     forceRelease)) {
+                if (stepStartNs != 0L) {
+                    long nowNs = System.nanoTime();
+                    skipNs = nowNs - stepStartNs;
+                    stepStartNs = nowNs;
+                }
+                result = "skipDuplicate";
                 logStackFlow("visibleData:force:skipDuplicate",
                         recentsView,
                         null,
@@ -2504,7 +2534,13 @@ final class LauncherRecentsTouchController {
                 rememberStackVisibleTaskDataScrollState(state, primaryScroll, scrollDirection);
                 return;
             }
+            if (stepStartNs != 0L) {
+                long nowNs = System.nanoTime();
+                skipNs = nowNs - stepStartNs;
+                stepStartNs = nowNs;
+            }
             if (shouldDelayStackVisibleTaskDataSync(recentsView, forceRelease, allowDelay)) {
+                result = "delay";
                 logStackFlow("visibleData:force:delayGestureBackground",
                         recentsView,
                         null,
@@ -2513,15 +2549,30 @@ final class LauncherRecentsTouchController {
                                 + " taskCount=" + taskViewCount
                                 + " currentPage=" + currentPage);
                 scheduleDeferredStackVisibleTaskDataSync(recentsView, state, changes);
+                if (stepStartNs != 0L) {
+                    long nowNs = System.nanoTime();
+                    delayNs = nowNs - stepStartNs;
+                    stepStartNs = nowNs;
+                }
                 return;
+            }
+            if (stepStartNs != 0L) {
+                long nowNs = System.nanoTime();
+                delayNs = nowNs - stepStartNs;
+                stepStartNs = nowNs;
             }
             state.taskViewCount = taskViewCount;
             state.currentPage = currentPage;
             state.scrollBucket = scrollBucket;
             rememberStackVisibleTaskDataScrollState(state, primaryScroll, scrollDirection);
-            boolean lightweightSync = shouldUseLightweightStackVisibleTaskDataSync(
+            lightweightSync = shouldUseLightweightStackVisibleTaskDataSync(
                     recentsView,
                     forceRelease);
+            if (stepStartNs != 0L) {
+                long nowNs = System.nanoTime();
+                lightweightNs = nowNs - stepStartNs;
+                stepStartNs = nowNs;
+            }
             logStackFlow("visibleData:force:run",
                     recentsView,
                     null,
@@ -2532,8 +2583,31 @@ final class LauncherRecentsTouchController {
                             + " forceRelease=" + forceRelease
                             + " lightweight=" + lightweightSync);
             ensureStackVisibleTaskData(recentsView, changes, forceRelease, lightweightSync);
+            if (stepStartNs != 0L) {
+                runNs = System.nanoTime() - stepStartNs;
+            }
         } finally {
-            LauncherRecentsPerf.end("visibleTaskDataSync:force", perfStartNs);
+            long totalNs = LauncherRecentsPerf.end("visibleTaskDataSync:force", perfStartNs);
+            LauncherRecentsPerf.logSlowCall(
+                    "visibleTaskDataSync:forceBreakdown",
+                    recentsView,
+                    totalNs,
+                    "result=" + result
+                            + " changes=" + changes
+                            + " forceRelease=" + forceRelease
+                            + " allowDelay=" + allowDelay
+                            + " lightweight=" + lightweightSync
+                            + " taskCount=" + taskViewCount
+                            + " page=" + currentPage
+                            + " bucket=" + scrollBucket
+                            + " scroll=" + primaryScroll
+                            + " direction=" + scrollDirection
+                            + " setupMs=" + (setupNs / 1_000_000f)
+                            + " scrollMs=" + (scrollNs / 1_000_000f)
+                            + " skipMs=" + (skipNs / 1_000_000f)
+                            + " delayMs=" + (delayNs / 1_000_000f)
+                            + " lightweightMs=" + (lightweightNs / 1_000_000f)
+                            + " runMs=" + (runNs / 1_000_000f));
         }
     }
 
@@ -2683,82 +2757,141 @@ final class LauncherRecentsTouchController {
         if (recentsView == null || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
             return;
         }
+        long totalStartNs = LauncherRecentsPerf.start(recentsView);
+        long stepStartNs = totalStartNs;
+        long setupNs = 0L;
+        long scanNs = 0L;
+        long postScanNs = 0L;
+        long updateModelNs = 0L;
+        long releaseNs = 0L;
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         ArrayList<Integer> visibleTaskIds = new ArrayList<>();
         ArrayList<Integer> loadedTaskIds = ensureStackLoadedTaskIds(recentsView);
+        int visibleCount = 0;
+        int removedCount = 0;
+        boolean visibleTaskIdsChanged = false;
+        boolean updatedModel = false;
+        boolean releasedTasks = false;
+        if (stepStartNs != 0L) {
+            long nowNs = System.nanoTime();
+            setupNs = nowNs - stepStartNs;
+            stepStartNs = nowNs;
+        }
 
-        long scanStartNs = LauncherRecentsPerf.start(recentsView);
         try {
-            int anchorIndex = resolveStackVisibleTaskDataAnchorIndex(recentsView, taskViewCount);
-            ArrayList<Integer> visibleTaskIndices = resolveStackVisibleTaskDataIndices(
-                    taskViewCount,
-                    anchorIndex,
-                    resolveStackVisibleTaskDataScrollDirection(recentsView));
-            for (int index = 0; index < visibleTaskIndices.size(); index++) {
-                int i = visibleTaskIndices.get(index);
-                View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-                if (!isStackTaskDataVisible(recentsView, taskView, true)) {
-                    continue;
-                }
-                boolean needsUpdate = false;
-                ArrayList<Integer> taskIds = resolveStackTaskIds(taskView);
-                for (int j = 0; j < taskIds.size(); j++) {
-                    int taskId = taskIds.get(j);
-                    visibleTaskIds.add(taskId);
-                    if (!loadedTaskIds.contains(taskId)) {
-                        needsUpdate = true;
+            long scanStartNs = LauncherRecentsPerf.start(recentsView);
+            try {
+                int anchorIndex = resolveStackVisibleTaskDataAnchorIndex(recentsView, taskViewCount);
+                ArrayList<Integer> visibleTaskIndices = resolveStackVisibleTaskDataIndices(
+                        taskViewCount,
+                        anchorIndex,
+                        resolveStackVisibleTaskDataScrollDirection(recentsView));
+                for (int index = 0; index < visibleTaskIndices.size(); index++) {
+                    int i = visibleTaskIndices.get(index);
+                    View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+                    if (!isStackTaskDataVisible(recentsView, taskView, true)) {
+                        continue;
+                    }
+                    boolean needsUpdate = false;
+                    ArrayList<Integer> taskIds = resolveStackTaskIds(taskView);
+                    for (int j = 0; j < taskIds.size(); j++) {
+                        int taskId = taskIds.get(j);
+                        visibleTaskIds.add(taskId);
+                        if (!loadedTaskIds.contains(taskId)) {
+                            needsUpdate = true;
+                        }
+                    }
+                    if (needsUpdate) {
+                        LauncherRecentsCompat.invokeCompat(
+                                taskView,
+                                "onTaskListVisibilityChanged",
+                                new Class<?>[]{boolean.class, int.class},
+                                true,
+                                changes);
+                        appendUniqueTaskIds(loadedTaskIds, taskIds);
                     }
                 }
-                if (needsUpdate) {
+            } finally {
+                scanNs = LauncherRecentsPerf.end("visibleTaskDataSync:scanAndLoad", scanStartNs);
+                if (stepStartNs != 0L) {
+                    stepStartNs = System.nanoTime();
+                }
+            }
+            ArrayList<Integer> lastVisibleTaskIds = STACK_VISIBLE_TASK_IDS.get(recentsView);
+            visibleTaskIdsChanged = lastVisibleTaskIds == null
+                    || !lastVisibleTaskIds.equals(visibleTaskIds);
+            ArrayList<Integer> removedTaskIds = lightweightSync
+                    ? new ArrayList<>()
+                    : resolveLoadedStackTaskIdsOutsideVisible(loadedTaskIds, visibleTaskIds);
+            visibleCount = visibleTaskIds.size();
+            removedCount = removedTaskIds.size();
+            logStackFlow("visibleData:sync",
+                    recentsView,
+                    null,
+                    "changes=" + changes
+                            + " forceRelease=" + forceRelease
+                            + " lightweight=" + lightweightSync
+                            + " visibleIds=" + visibleTaskIds
+                            + " removedIds=" + removedTaskIds);
+            if (visibleTaskIds.isEmpty()) {
+                STACK_VISIBLE_TASK_IDS.remove(recentsView);
+            } else if (visibleTaskIdsChanged) {
+                STACK_VISIBLE_TASK_IDS.put(recentsView, new ArrayList<>(visibleTaskIds));
+            }
+            if (stepStartNs != 0L) {
+                long nowNs = System.nanoTime();
+                postScanNs = nowNs - stepStartNs;
+                stepStartNs = nowNs;
+            }
+            Object viewModel = LauncherRecentsCompat.getFieldCompat(recentsView, "mRecentsViewModel");
+            if (!lightweightSync && viewModel != null && !visibleTaskIds.isEmpty()
+                    && visibleTaskIdsChanged) {
+                updatedModel = true;
+                long updateModelStartNs = LauncherRecentsPerf.start(recentsView);
+                try {
                     LauncherRecentsCompat.invokeCompat(
-                            taskView,
-                            "onTaskListVisibilityChanged",
-                            new Class<?>[]{boolean.class, int.class},
-                            true,
-                            changes);
-                    appendUniqueTaskIds(loadedTaskIds, taskIds);
+                            viewModel,
+                            "updateVisibleTasks",
+                            new Class<?>[]{List.class},
+                            visibleTaskIds);
+                } finally {
+                    updateModelNs = LauncherRecentsPerf.end(
+                            "visibleTaskDataSync:updateVisibleTasks",
+                            updateModelStartNs);
+                }
+            }
+            if (stepStartNs != 0L) {
+                stepStartNs = System.nanoTime();
+            }
+
+            if (!lightweightSync && !removedTaskIds.isEmpty()) {
+                releasedTasks = true;
+                long releaseStartNs = totalStartNs != 0L ? System.nanoTime() : 0L;
+                releaseStackTaskDataForIds(recentsView, removedTaskIds, changes);
+                if (releaseStartNs != 0L) {
+                    releaseNs = System.nanoTime() - releaseStartNs;
                 }
             }
         } finally {
-            LauncherRecentsPerf.end("visibleTaskDataSync:scanAndLoad", scanStartNs);
-        }
-        ArrayList<Integer> lastVisibleTaskIds = STACK_VISIBLE_TASK_IDS.get(recentsView);
-        boolean visibleTaskIdsChanged = lastVisibleTaskIds == null
-                || !lastVisibleTaskIds.equals(visibleTaskIds);
-        ArrayList<Integer> removedTaskIds = lightweightSync
-                ? new ArrayList<>()
-                : resolveLoadedStackTaskIdsOutsideVisible(loadedTaskIds, visibleTaskIds);
-        logStackFlow("visibleData:sync",
-                recentsView,
-                null,
-                "changes=" + changes
-                        + " forceRelease=" + forceRelease
-                        + " lightweight=" + lightweightSync
-                        + " visibleIds=" + visibleTaskIds
-                        + " removedIds=" + removedTaskIds);
-        if (visibleTaskIds.isEmpty()) {
-            STACK_VISIBLE_TASK_IDS.remove(recentsView);
-        } else if (visibleTaskIdsChanged) {
-            STACK_VISIBLE_TASK_IDS.put(recentsView, new ArrayList<>(visibleTaskIds));
-        }
-        Object viewModel = LauncherRecentsCompat.getFieldCompat(recentsView, "mRecentsViewModel");
-        if (!lightweightSync && viewModel != null && !visibleTaskIds.isEmpty() && visibleTaskIdsChanged) {
-            long updateModelStartNs = LauncherRecentsPerf.start(recentsView);
-            try {
-                LauncherRecentsCompat.invokeCompat(
-                        viewModel,
-                        "updateVisibleTasks",
-                        new Class<?>[]{List.class},
-                        visibleTaskIds);
-            } finally {
-                LauncherRecentsPerf.end(
-                        "visibleTaskDataSync:updateVisibleTasks",
-                        updateModelStartNs);
-            }
-        }
-
-        if (!lightweightSync && !removedTaskIds.isEmpty()) {
-            releaseStackTaskDataForIds(recentsView, removedTaskIds, changes);
+            long totalNs = totalStartNs != 0L ? System.nanoTime() - totalStartNs : 0L;
+            LauncherRecentsPerf.logSlowCall(
+                    "visibleTaskDataSync:runBreakdown",
+                    recentsView,
+                    totalNs,
+                    "changes=" + changes
+                            + " forceRelease=" + forceRelease
+                            + " lightweight=" + lightweightSync
+                            + " taskCount=" + taskViewCount
+                            + " visibleCount=" + visibleCount
+                            + " removedCount=" + removedCount
+                            + " changed=" + visibleTaskIdsChanged
+                            + " updatedModel=" + updatedModel
+                            + " released=" + releasedTasks
+                            + " setupMs=" + (setupNs / 1_000_000f)
+                            + " scanMs=" + (scanNs / 1_000_000f)
+                            + " postScanMs=" + (postScanNs / 1_000_000f)
+                            + " updateModelMs=" + (updateModelNs / 1_000_000f)
+                            + " releaseMs=" + (releaseNs / 1_000_000f));
         }
     }
 
