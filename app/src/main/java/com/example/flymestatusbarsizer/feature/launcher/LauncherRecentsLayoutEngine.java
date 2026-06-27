@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer.feature.launcher;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
+import android.graphics.Canvas;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
@@ -206,6 +207,7 @@ final class LauncherRecentsLayoutEngine {
         hookRecentsViewSetTaskIconVisible(module, loader);
         hookRecentsViewOnScrollChanged(module, loader);
         hookRecentsViewDispatchScrollChanged(module, loader);
+        hookRecentsViewDispatchDraw(module, loader);
         hookRecentsViewContentAlpha(module, loader);
     }
 
@@ -475,6 +477,51 @@ final class LauncherRecentsLayoutEngine {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook RecentsView.dispatchScrollChanged",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewDispatchDraw(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("dispatchDraw", Canvas.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                Canvas canvas = chain.getArg(0) instanceof Canvas
+                        ? (Canvas) chain.getArg(0)
+                        : null;
+                if (!(thisObject instanceof View)
+                        || canvas == null
+                        || !shouldUseStackLayout((View) thisObject)) {
+                    return chain.proceed();
+                }
+                View recentsView = (View) thisObject;
+                Object value = LauncherRecentsCompat.invokeCompat(
+                        recentsView,
+                        "getUndampedOverScrollShift",
+                        LauncherRecentsCompat.NO_ARGS);
+                float shift = value instanceof Number ? ((Number) value).floatValue() : 0f;
+                if (Math.abs(shift) <= 0.5f) {
+                    return chain.proceed();
+                }
+                int saveCount = canvas.save();
+                if (isPrimaryScrollHorizontal(recentsView)) {
+                    canvas.translate(-shift, 0f);
+                } else {
+                    canvas.translate(0f, -shift);
+                }
+                try {
+                    return chain.proceed();
+                } finally {
+                    canvas.restoreToCount(saveCount);
+                }
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.dispatchDraw",
                     t);
         }
     }
@@ -934,17 +981,7 @@ final class LauncherRecentsLayoutEngine {
             if (shouldHideStackLayoutTask(i, blankTapAnchorIndex, STACK_STABLE_VISIBLE_RADIUS)) {
                 continue;
             }
-            int rawOffset = LauncherRecentsCompat.invokeInt(
-                    recentsView,
-                    "getUnclampedScrollOffset",
-                    LauncherRecentsCompat.INT_ARG,
-                    LauncherRecentsCompat.invokeInt(
-                            recentsView,
-                            "getScrollOffset",
-                            LauncherRecentsCompat.INT_ARG,
-                            0,
-                            i),
-                    i);
+            int rawOffset = resolveTaskRawOffset(recentsView, i);
             float dismissTranslationPrimary = readTaskPrimaryDismissTranslation(
                     taskView,
                     primaryScrollHorizontal);
@@ -1221,17 +1258,7 @@ final class LauncherRecentsLayoutEngine {
             if (taskView == null) {
                 continue;
             }
-            rawOffsets[i] = LauncherRecentsCompat.invokeInt(
-                    recentsView,
-                    "getUnclampedScrollOffset",
-                    LauncherRecentsCompat.INT_ARG,
-                    LauncherRecentsCompat.invokeInt(
-                            recentsView,
-                            "getScrollOffset",
-                            LauncherRecentsCompat.INT_ARG,
-                            0,
-                            i),
-                    i);
+            rawOffsets[i] = resolveTaskRawOffset(recentsView, i);
             float taskPrimarySize = resolvePrimarySize(taskView, primaryScrollHorizontal);
             if (taskPrimarySize > 0) {
                 referencePrimarySize = Math.max(referencePrimarySize, taskPrimarySize);
@@ -2573,17 +2600,24 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static int resolveTaskRawOffset(View recentsView, int index) {
-        return LauncherRecentsCompat.invokeInt(
+        int primaryScroll = resolvePrimaryScroll(recentsView);
+        int pageScroll = LauncherRecentsCompat.invokeInt(
                 recentsView,
-                "getUnclampedScrollOffset",
+                "getScrollForPage",
                 LauncherRecentsCompat.INT_ARG,
-                LauncherRecentsCompat.invokeInt(
-                        recentsView,
-                        "getScrollOffset",
-                        LauncherRecentsCompat.INT_ARG,
-                        0,
-                        index),
+                primaryScroll,
                 index);
+        int scrollPositionOffset = LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getOffsetFromScrollPosition",
+                LauncherRecentsCompat.INT_ARG,
+                0,
+                index);
+        int overScrollShift = LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getOverScrollShift",
+                0);
+        return pageScroll - primaryScroll + scrollPositionOffset - overScrollShift;
     }
 
     static float resolveTaskRawOffset(View recentsView, int index, int primaryScroll) {
