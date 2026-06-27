@@ -36,6 +36,7 @@ final class LauncherRecentsTouchController {
     private static final float STACK_DISMISS_SECONDARY_DOMINANCE = 1.2f;
     private static final float STACK_DISMISS_MIN_FLING_VELOCITY = -1200f;
     private static final int STACK_VISIBLE_TASK_DATA_TARGET_COUNT = 4;
+    private static final int STACK_VISIBLE_TASK_DATA_PRELOAD_COUNT = 1;
     private static final int STACK_VISIBLE_DATA_SCROLL_BUCKET_DIVISOR = 2;
     private static final long STACK_VISIBLE_DATA_SYNC_RETRY_DELAY_MS = 64L;
     private static final float STACK_LEFT_RELEASE_ALPHA_THRESHOLD = 0.05f;
@@ -2348,12 +2349,21 @@ final class LauncherRecentsTouchController {
         if (taskIndex < 0 || taskIndex >= taskViewCount) {
             return false;
         }
+        int scrollDirection = resolveStackVisibleTaskDataScrollDirection(recentsView);
         int anchorIndex = resolveStackVisibleTaskDataAnchorIndex(recentsView, taskViewCount);
-        return isStackVisibleTaskDataIndexVisible(
+        if (!isStackVisibleTaskDataIndexVisible(
                 taskIndex,
                 taskViewCount,
-                anchorIndex)
-                && isStackTaskWithinVisibleDataBounds(recentsView, taskView);
+                anchorIndex,
+                scrollDirection)) {
+            return false;
+        }
+        return isStackTaskWithinVisibleDataBounds(recentsView, taskView)
+                || isStackVisibleTaskDataPreloadIndex(
+                taskIndex,
+                taskViewCount,
+                anchorIndex,
+                scrollDirection);
     }
 
     private static float readStackTaskDataAlpha(View taskView) {
@@ -2377,7 +2387,8 @@ final class LauncherRecentsTouchController {
         if ((changes & 2) != 2) {
             return false;
         }
-        return shouldExposeStackTaskForDismissVisibility(recentsView, taskView);
+        return isStackTaskDataVisible(recentsView, taskView, false)
+                || shouldExposeStackTaskForDismissVisibility(recentsView, taskView);
     }
 
     private static boolean isTransitionAnimationActive(View recentsView) {
@@ -2413,12 +2424,15 @@ final class LauncherRecentsTouchController {
         }
         int bucket = resolveStackVisibleTaskDataBucket(recentsView);
         StackVisibleTaskDataSyncState state = findStackVisibleTaskDataSyncState(recentsView);
+        int primaryScroll = resolvePrimaryScroll(recentsView);
+        int scrollDirection = resolveStackVisibleTaskDataScrollDirection(state, primaryScroll);
         if (shouldSkipStackVisibleTaskDataSync(
                 recentsView,
                 state,
                 taskViewCount,
                 currentPage,
                 bucket,
+                scrollDirection,
                 false)) {
             logStackFlow("visibleData:ensureIfNeeded:skipDuplicate",
                     recentsView,
@@ -2427,6 +2441,7 @@ final class LauncherRecentsTouchController {
                             + " bucket=" + bucket
                             + " taskCount=" + taskViewCount
                             + " currentPage=" + currentPage);
+            rememberStackVisibleTaskDataScrollState(state, primaryScroll, scrollDirection);
             return;
         }
         logStackFlow("visibleData:ensureIfNeeded:force",
@@ -2468,12 +2483,15 @@ final class LauncherRecentsTouchController {
             int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
             int currentPage = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
             int scrollBucket = resolveStackVisibleTaskDataBucket(recentsView);
+            int primaryScroll = resolvePrimaryScroll(recentsView);
+            int scrollDirection = resolveStackVisibleTaskDataScrollDirection(state, primaryScroll);
             if (shouldSkipStackVisibleTaskDataSync(
                     recentsView,
                     state,
                     taskViewCount,
                     currentPage,
                     scrollBucket,
+                    scrollDirection,
                     forceRelease)) {
                 logStackFlow("visibleData:force:skipDuplicate",
                         recentsView,
@@ -2483,6 +2501,7 @@ final class LauncherRecentsTouchController {
                                 + " taskCount=" + taskViewCount
                                 + " currentPage=" + currentPage
                                 + " forceRelease=" + forceRelease);
+                rememberStackVisibleTaskDataScrollState(state, primaryScroll, scrollDirection);
                 return;
             }
             if (shouldDelayStackVisibleTaskDataSync(recentsView, forceRelease, allowDelay)) {
@@ -2499,6 +2518,7 @@ final class LauncherRecentsTouchController {
             state.taskViewCount = taskViewCount;
             state.currentPage = currentPage;
             state.scrollBucket = scrollBucket;
+            rememberStackVisibleTaskDataScrollState(state, primaryScroll, scrollDirection);
             logStackFlow("visibleData:force:run",
                     recentsView,
                     null,
@@ -2580,13 +2600,40 @@ final class LauncherRecentsTouchController {
             int taskViewCount,
             int currentPage,
             int scrollBucket,
+            int scrollDirection,
             boolean forceRelease) {
         if (state == null || forceRelease || isLastStackVisibleTaskIdsEmpty(recentsView)) {
             return false;
         }
         return state.taskViewCount == taskViewCount
                 && state.currentPage == currentPage
-                && state.scrollBucket == scrollBucket;
+                && state.scrollBucket == scrollBucket
+                && state.scrollDirection == scrollDirection;
+    }
+
+    private static int resolveStackVisibleTaskDataScrollDirection(
+            StackVisibleTaskDataSyncState state,
+            int primaryScroll) {
+        if (state == null || state.primaryScroll == Integer.MIN_VALUE) {
+            return 0;
+        }
+        return Integer.compare(primaryScroll, state.primaryScroll);
+    }
+
+    private static int resolveStackVisibleTaskDataScrollDirection(View recentsView) {
+        StackVisibleTaskDataSyncState state = findStackVisibleTaskDataSyncState(recentsView);
+        return state != null ? state.scrollDirection : 0;
+    }
+
+    private static void rememberStackVisibleTaskDataScrollState(
+            StackVisibleTaskDataSyncState state,
+            int primaryScroll,
+            int scrollDirection) {
+        if (state == null) {
+            return;
+        }
+        state.primaryScroll = primaryScroll;
+        state.scrollDirection = scrollDirection;
     }
 
     private static int resolveStackVisibleTaskDataBucket(View recentsView) {
@@ -2624,7 +2671,8 @@ final class LauncherRecentsTouchController {
             int anchorIndex = resolveStackVisibleTaskDataAnchorIndex(recentsView, taskViewCount);
             ArrayList<Integer> visibleTaskIndices = resolveStackVisibleTaskDataIndices(
                     taskViewCount,
-                    anchorIndex);
+                    anchorIndex,
+                    resolveStackVisibleTaskDataScrollDirection(recentsView));
             for (int index = 0; index < visibleTaskIndices.size(); index++) {
                 int i = visibleTaskIndices.get(index);
                 View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
@@ -2875,6 +2923,25 @@ final class LauncherRecentsTouchController {
 
     private static ArrayList<Integer> resolveStackVisibleTaskDataIndices(
             int taskViewCount,
+            int anchorIndex,
+            int scrollDirection) {
+        ArrayList<Integer> indices = resolveStackBaseVisibleTaskDataIndices(
+                taskViewCount,
+                anchorIndex);
+        if (scrollDirection != 0 && STACK_VISIBLE_TASK_DATA_PRELOAD_COUNT > 0) {
+            appendStackVisibleTaskDataIndex(
+                    indices,
+                    resolveStackVisibleTaskDataPreloadIndex(
+                            taskViewCount,
+                            anchorIndex,
+                            scrollDirection),
+                    taskViewCount);
+        }
+        return indices;
+    }
+
+    private static ArrayList<Integer> resolveStackBaseVisibleTaskDataIndices(
+            int taskViewCount,
             int anchorIndex) {
         ArrayList<Integer> indices = new ArrayList<>();
         if (taskViewCount <= 0) {
@@ -2900,10 +2967,49 @@ final class LauncherRecentsTouchController {
     private static boolean isStackVisibleTaskDataIndexVisible(
             int taskIndex,
             int taskViewCount,
-            int anchorIndex) {
+            int anchorIndex,
+            int scrollDirection) {
         return resolveStackVisibleTaskDataIndices(
                 taskViewCount,
-                anchorIndex).contains(taskIndex);
+                anchorIndex,
+                scrollDirection).contains(taskIndex);
+    }
+
+    private static boolean isStackVisibleTaskDataPreloadIndex(
+            int taskIndex,
+            int taskViewCount,
+            int anchorIndex,
+            int scrollDirection) {
+        return taskIndex == resolveStackVisibleTaskDataPreloadIndex(
+                taskViewCount,
+                anchorIndex,
+                scrollDirection);
+    }
+
+    private static int resolveStackVisibleTaskDataPreloadIndex(
+            int taskViewCount,
+            int anchorIndex,
+            int scrollDirection) {
+        if (taskViewCount <= 0 || scrollDirection == 0) {
+            return -1;
+        }
+        ArrayList<Integer> indices = resolveStackBaseVisibleTaskDataIndices(
+                taskViewCount,
+                anchorIndex);
+        if (indices.isEmpty()) {
+            return -1;
+        }
+        int edgeIndex = indices.get(0);
+        for (int i = 1; i < indices.size(); i++) {
+            int index = indices.get(i);
+            if (scrollDirection > 0) {
+                edgeIndex = Math.max(edgeIndex, index);
+            } else {
+                edgeIndex = Math.min(edgeIndex, index);
+            }
+        }
+        int preloadIndex = edgeIndex + (scrollDirection > 0 ? 1 : -1);
+        return preloadIndex >= 0 && preloadIndex < taskViewCount ? preloadIndex : -1;
     }
 
     private static void appendStackVisibleTaskDataIndex(
@@ -3609,6 +3715,8 @@ final class LauncherRecentsTouchController {
         int taskViewCount;
         int currentPage;
         int scrollBucket;
+        int primaryScroll = Integer.MIN_VALUE;
+        int scrollDirection;
         Runnable pendingSyncRunnable;
         int pendingSyncChanges;
     }
