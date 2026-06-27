@@ -2613,11 +2613,7 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsCompat.INT_ARG,
                 0,
                 index);
-        int overScrollShift = LauncherRecentsCompat.invokeInt(
-                recentsView,
-                "getOverScrollShift",
-                0);
-        return pageScroll - primaryScroll + scrollPositionOffset - overScrollShift;
+        return pageScroll - primaryScroll + scrollPositionOffset;
     }
 
     static float resolveTaskRawOffset(View recentsView, int index, int primaryScroll) {
@@ -2695,7 +2691,11 @@ final class LauncherRecentsLayoutEngine {
         float nativeDismissTranslationPrimary = readTaskPrimaryDismissTranslation(
                 taskView,
                 context.primaryScrollHorizontal);
-        float layoutRawOffset = rawOffset + context.edgeScrollCorrection;
+        int overScrollShift = LauncherRecentsCompat.invokeInt(
+                context.recentsView,
+                "getOverScrollShift",
+                0);
+        float layoutRawOffset = rawOffset + context.edgeScrollCorrection + overScrollShift;
         float physicalRawOffset = layoutRawOffset + nativeDismissTranslationPrimary;
         float effectiveRawOffset = physicalRawOffset;
         float progress = effectiveRawOffset / context.pageSpan;
