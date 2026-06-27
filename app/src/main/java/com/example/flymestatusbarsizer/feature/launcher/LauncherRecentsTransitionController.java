@@ -811,19 +811,10 @@ final class LauncherRecentsTransitionController {
                     recentsView,
                     "progress=" + progress
                             + " handoffProgress=" + handoffProgress);
-            if (!hasGestureReleaseVisualStates(recentsView)) {
-                applyAppToRecentsStackAnchorScroll(
-                        recentsView,
-                        handoffStartScroll[0],
-                        stackAnchorTargetScroll,
-                        handoffProgress);
-            }
             LauncherRecentsPerf.hit("animationFrame:gestureRelease", recentsView);
-            LauncherRecentsLayoutEngine.requestStackLayout(
+            LauncherRecentsLayoutEngine.applyCachedGestureReleaseFrame(
                     recentsView,
-                    "gestureReleaseFrame",
-                    false,
-                    false);
+                    handoffProgress);
             recentsView.invalidate();
         }));
         animator.addListener(new AnimatorListenerAdapter() {
@@ -1053,43 +1044,6 @@ final class LauncherRecentsTransitionController {
         }
         int runningTaskPage = ((ViewGroup) recentsView).indexOfChild((View) runningTaskObject);
         return runningTaskPage >= 0 ? runningTaskPage : anchorPage;
-    }
-
-    private static void applyAppToRecentsStackAnchorScroll(
-            View recentsView,
-            int startScroll,
-            int targetScroll,
-            float progress) {
-        if (recentsView == null || startScroll == targetScroll) {
-            return;
-        }
-        int primaryScroll = Math.round(LauncherRecentsLayoutEngine.lerp(
-                startScroll,
-                targetScroll,
-                progress));
-        LauncherRecentsPerf.flow("enter:gestureRelease:anchorScroll",
-                recentsView,
-                "startScroll=" + startScroll
-                        + " targetScroll=" + targetScroll
-                        + " progress=" + progress
-                        + " primaryScroll=" + primaryScroll);
-        setPrimaryScroll(recentsView, primaryScroll);
-    }
-
-    private static boolean hasGestureReleaseVisualStates(View recentsView) {
-        if (recentsView == null) {
-            return false;
-        }
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            LauncherRecentsState.GestureReleaseTaskState state =
-                    LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView);
-            if (state != null && state.startVisualState != null && state.targetVisualState != null) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static int resolveScrollForPage(View recentsView, int page, int fallback) {

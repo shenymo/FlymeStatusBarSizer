@@ -304,6 +304,9 @@ final class LauncherRecentsLayoutEngine {
                                 false);
                         return null;
                     }
+                    if (shouldSuppressCachedGestureReleaseStockMethod(methodName, recentsView)) {
+                        return null;
+                    }
                     if (shouldSuppressStackAlphaVisualMethod(methodName, recentsView)) {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
@@ -544,13 +547,15 @@ final class LauncherRecentsLayoutEngine {
                         LauncherRecentsState.trackRecentsView(recentsView);
                         prepareRecentsView(recentsView);
                         LauncherRecentsCompat.writeField(recentsView, "mContentAlpha", 1f);
-                        LauncherRecentsTaskVisuals.forceRecentsTaskAlphaVisible(recentsView);
-                        scheduleStackLayoutFromHook(
-                                recentsView,
-                                false,
-                                "contentAlpha_gestureReleaseSuppress",
-                                true,
-                                true);
+                        if (!isCachedGestureReleaseFrameActive(recentsView)) {
+                            LauncherRecentsTaskVisuals.forceRecentsTaskAlphaVisible(recentsView);
+                            scheduleStackLayoutFromHook(
+                                    recentsView,
+                                    false,
+                                    "contentAlpha_gestureReleaseSuppress",
+                                    true,
+                                    true);
+                        }
                         recentsView.invalidate();
                         return null;
                     }
@@ -1210,119 +1215,92 @@ final class LauncherRecentsLayoutEngine {
                 ? (View) runningTaskObject
                 : null;
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
-        if (!primaryScrollHorizontal) {
-            HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> targetVisualStates =
-                    computeGestureReleaseTargetVisualStates(recentsView, targetScroll);
-            if (!targetVisualStates.isEmpty()) {
-                for (View taskView : targetVisualStates.keySet()) {
-                    if (taskView == null
-                            || LauncherRecentsCompat.isDesktopTask(taskView)
-                            || (taskView != runningTaskView
-                            && sharesRunningTaskIds(taskView, runningTaskView))) {
-                        continue;
-                    }
-                    LauncherRecentsTaskVisuals.StackTaskVisualState startVisualState =
-                            startVisualStates != null ? startVisualStates.get(taskView) : null;
-                    if (startVisualState == null) {
-                        startVisualState = captureCurrentStackTaskVisualState(taskView);
-                    }
-                    LauncherRecentsTaskVisuals.StackTaskVisualState targetVisualState =
-                            targetVisualStates.get(taskView);
-                    targetVisualState = compensateGestureReleaseTargetStateForFrozenScroll(
-                            targetVisualState,
-                            startScroll,
-                            targetScroll,
-                            primaryScrollHorizontal);
-                    if (taskView == runningTaskView) {
-                        startVisualState = ensureVisibleGestureReleaseStartState(
-                                startVisualState,
-                                targetVisualState);
-                    }
-                    if (startVisualState != null && targetVisualState != null) {
-                        LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.put(
-                                taskView,
-                                new LauncherRecentsState.GestureReleaseTaskState(
-                                        startVisualState,
-                                        targetVisualState));
-                    }
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> targetVisualStates =
+                computeGestureReleaseTargetVisualStates(recentsView, targetScroll);
+        if (!targetVisualStates.isEmpty()) {
+            for (View taskView : targetVisualStates.keySet()) {
+                if (taskView == null
+                        || LauncherRecentsCompat.isDesktopTask(taskView)
+                        || (taskView != runningTaskView
+                        && sharesRunningTaskIds(taskView, runningTaskView))) {
+                    continue;
                 }
-                return;
-            }
-        }
-        float pageSpacing = LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0);
-        float referencePrimarySize = 0f;
-        float pageSpan = 0f;
-        float[] rawOffsets = new float[taskViewCount];
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView == null) {
-                continue;
-            }
-            rawOffsets[i] = resolveTaskRawOffset(recentsView, i);
-            float taskPrimarySize = resolvePrimarySize(taskView, primaryScrollHorizontal);
-            if (taskPrimarySize > 0) {
-                referencePrimarySize = Math.max(referencePrimarySize, taskPrimarySize);
-                pageSpan = Math.max(pageSpan, taskPrimarySize + pageSpacing);
-            }
-        }
-        if (referencePrimarySize <= 0f) {
-            referencePrimarySize = Math.max(
-                    1f,
-                    resolvePrimarySize(recentsView, primaryScrollHorizontal));
-        }
-        if (pageSpan <= 1f) {
-            pageSpan = referencePrimarySize + pageSpacing;
-        }
-        if (pageSpan <= 1f) {
-            pageSpan = Math.max(1f, referencePrimarySize);
-        }
-        float scrollDelta = startScroll - targetScroll;
-        float targetLeftEdgeRevealProgress = resolveLeftEdgeRevealProgress(
-                recentsView,
-                targetScroll);
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView == null
-                    || LauncherRecentsCompat.isDesktopTask(taskView)
-                    || (taskView != runningTaskView
-                    && sharesRunningTaskIds(taskView, runningTaskView))) {
-                continue;
-            }
-            float taskPrimarySize = resolveTaskPrimarySize(
-                    taskView,
-                    referencePrimarySize,
-                    primaryScrollHorizontal);
-            float taskCenteredPrimaryStartPx = resolveTaskCenteredPrimaryStartPx(
-                    recentsView,
-                    taskPrimarySize,
-                    primaryScrollHorizontal);
-            float startRawOffset = rawOffsets[i];
-            float targetRawOffset = startRawOffset + scrollDelta;
-            float targetProgress = targetRawOffset / pageSpan;
-            float targetVisibleOffset = resolveStackVisibleOffset(
-                    recentsView,
-                    resolveStackReleaseSettledProgress(targetProgress, 1f),
-                    taskPrimarySize,
-                    taskCenteredPrimaryStartPx,
-                    targetLeftEdgeRevealProgress,
-                    primaryScrollHorizontal);
-            float startVisibleOffset =
-                    startRawOffset
-                            + readTaskPrimaryDismissTranslation(
+                LauncherRecentsTaskVisuals.StackTaskVisualState startVisualState =
+                        startVisualStates != null ? startVisualStates.get(taskView) : null;
+                if (startVisualState == null) {
+                    startVisualState = captureCurrentStackTaskVisualState(taskView);
+                }
+                LauncherRecentsTaskVisuals.StackTaskVisualState targetVisualState =
+                        targetVisualStates.get(taskView);
+                targetVisualState = compensateGestureReleaseTargetStateForFrozenScroll(
+                        targetVisualState,
+                        startScroll,
+                        targetScroll,
+                        primaryScrollHorizontal);
+                if (taskView == runningTaskView) {
+                    startVisualState = ensureVisibleGestureReleaseStartState(
+                            startVisualState,
+                            targetVisualState);
+                }
+                if (startVisualState != null && targetVisualState != null) {
+                    LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.put(
                             taskView,
-                            primaryScrollHorizontal)
-                            + readTaskPrimaryOffset(taskView, primaryScrollHorizontal)
-                            + readTaskPrimaryHorizontalOffset(taskView, primaryScrollHorizontal);
-            float startHorizontalOffsetX = readTaskPrimaryHorizontalOffset(
-                    taskView,
-                    primaryScrollHorizontal);
-            LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.put(
-                    taskView,
-                    new LauncherRecentsState.GestureReleaseTaskState(
-                            startVisibleOffset,
-                            targetVisibleOffset,
-                            startHorizontalOffsetX));
+                            new LauncherRecentsState.GestureReleaseTaskState(
+                                    startVisualState,
+                                    targetVisualState));
+                }
+            }
+            return;
         }
+    }
+
+    static boolean applyCachedGestureReleaseFrame(View recentsView, float progress) {
+        if (!hasCachedGestureReleaseVisualStates(recentsView)) {
+            return false;
+        }
+        int expectedCount = LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.size();
+        int appliedCount = 0;
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
+                continue;
+            }
+            LauncherRecentsState.GestureReleaseTaskState state =
+                    LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView);
+            if (state == null) {
+                continue;
+            }
+            LauncherRecentsTaskVisuals.applyStackTaskVisualState(
+                    taskView,
+                    state.startVisualState.lerpTo(state.targetVisualState, progress));
+            appliedCount++;
+        }
+        return appliedCount == expectedCount;
+    }
+
+    private static boolean isCachedGestureReleaseFrameActive(View recentsView) {
+        return LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
+                recentsView)
+                && hasCachedGestureReleaseVisualStates(recentsView);
+    }
+
+    private static boolean hasCachedGestureReleaseVisualStates(View recentsView) {
+        if (recentsView == null
+                || LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.isEmpty()) {
+            return false;
+        }
+        for (View taskView : LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.keySet()) {
+            LauncherRecentsState.GestureReleaseTaskState state =
+                    LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView);
+            if (state == null || state.startVisualState == null || state.targetVisualState == null) {
+                return false;
+            }
+            if (taskView == null || taskView.getParent() == null) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static LauncherRecentsTaskVisuals.StackTaskVisualState
@@ -1680,6 +1658,9 @@ final class LauncherRecentsLayoutEngine {
             boolean syncVisibleTaskData,
             boolean dynamicOnly) {
         if (!shouldApplyDynamicStackLayout(recentsView)) {
+            return;
+        }
+        if (isCachedGestureReleaseFrameActive(recentsView)) {
             return;
         }
         if (isAppToRecentsEntryInProgress(recentsView)) {
@@ -2781,12 +2762,6 @@ final class LauncherRecentsLayoutEngine {
                     1.0f,
                     smoothStep(context.stackReleaseProgress));
         }
-        if (input.gestureReleaseTaskState != null) {
-            desiredVisibleOffset = lerp(
-                    input.gestureReleaseTaskState.startVisibleOffset,
-                    input.gestureReleaseTaskState.targetVisibleOffset,
-                    context.stackReleaseProgress);
-        }
         float desiredLayerProgress = resolveStackLayerProgress(
                 context.recentsView,
                 input.taskCenteredPrimaryStartPx,
@@ -2918,36 +2893,20 @@ final class LauncherRecentsLayoutEngine {
             appliedTranslationZ = blankTapExitState.startTranslationZ;
         }
         if (context.gestureStackReleaseActive) {
-            if (input.gestureReleaseTaskState != null) {
-                float appliedPrimaryHorizontalOffset = lerp(
-                        input.gestureReleaseTaskState.startHorizontalOffsetX,
-                        0f,
+            appliedHorizontalOffsetX = lerp(
+                    LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView),
+                    appliedHorizontalOffsetX,
+                    context.stackReleaseProgress);
+            if (context.primaryScrollHorizontal) {
+                appliedTaskOffsetX = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockTaskOffsetX(taskView),
+                        appliedTaskOffsetX,
                         context.stackReleaseProgress);
-                appliedHorizontalOffsetX = context.primaryScrollHorizontal
-                        ? appliedPrimaryHorizontalOffset
-                        : 0f;
-                float appliedPrimaryTaskOffset =
-                        translationCompensationPrimary - appliedPrimaryHorizontalOffset;
-                appliedTaskOffsetX = context.primaryScrollHorizontal ? appliedPrimaryTaskOffset : 0f;
-                appliedTaskOffsetY = context.primaryScrollHorizontal
-                        ? appliedTaskOffsetY
-                        : appliedPrimaryTaskOffset + desiredTaskOffsetY;
             } else {
-                appliedHorizontalOffsetX = lerp(
-                        LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView),
-                        appliedHorizontalOffsetX,
+                appliedTaskOffsetY = lerp(
+                        LauncherRecentsTaskVisuals.readLastStockTaskOffsetY(taskView),
+                        appliedTaskOffsetY,
                         context.stackReleaseProgress);
-                if (context.primaryScrollHorizontal) {
-                    appliedTaskOffsetX = lerp(
-                            LauncherRecentsTaskVisuals.readLastStockTaskOffsetX(taskView),
-                            appliedTaskOffsetX,
-                            context.stackReleaseProgress);
-                } else {
-                    appliedTaskOffsetY = lerp(
-                            LauncherRecentsTaskVisuals.readLastStockTaskOffsetY(taskView),
-                            appliedTaskOffsetY,
-                            context.stackReleaseProgress);
-                }
             }
             if (context.primaryScrollHorizontal) {
                 appliedTaskOffsetY = lerp(
@@ -3380,6 +3339,17 @@ final class LauncherRecentsLayoutEngine {
         return ("resetTaskVisuals".equals(methodName)
                 || "applyAttachAlpha".equals(methodName))
                 && shouldOwnStackTaskAlpha(recentsView);
+    }
+
+    private static boolean shouldSuppressCachedGestureReleaseStockMethod(
+            String methodName,
+            View recentsView) {
+        return isCachedGestureReleaseFrameActive(recentsView)
+                && ("updatePageScales".equals(methodName)
+                || "updatePageOffsetsForFlyme".equals(methodName)
+                || "updateHorizontalOffset".equals(methodName)
+                || "resetTaskVisuals".equals(methodName)
+                || "applyAttachAlpha".equals(methodName));
     }
 
     private static boolean shouldOwnStackTaskAlpha(View recentsView) {
