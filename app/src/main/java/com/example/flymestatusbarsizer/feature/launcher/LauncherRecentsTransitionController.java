@@ -119,8 +119,7 @@ final class LauncherRecentsTransitionController {
                                     recentsView);
                     LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
                     markPendingGestureRecentsStackRelease(recentsView, true);
-                    LauncherRecentsState.trackRecentsView(recentsView);
-                    LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+                    prepareStackRecentsView(recentsView);
                     if (chain.getArg(0) instanceof AnimatorSet) {
                         LauncherRecentsPerf.flow("enter:prepareGestureEnd:startReleaseAnimation",
                                 recentsView);
@@ -144,8 +143,7 @@ final class LauncherRecentsTransitionController {
                 if (recentsView != null
                         && isRecentsGestureEndTarget(endTarget)
                         && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
-                    LauncherRecentsState.trackRecentsView(recentsView);
-                    LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+                    prepareStackRecentsView(recentsView);
                 }
                 return result;
             });
@@ -263,8 +261,7 @@ final class LauncherRecentsTransitionController {
                         clearNonRecentsGestureEndState(recentsView);
                         return result;
                     }
-                    LauncherRecentsState.trackRecentsView(recentsView);
-                    LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+                    prepareStackRecentsView(recentsView);
                     boolean gestureReleased =
                             LauncherRecentsState.isAppToRecentsGestureReleased(recentsView);
                     boolean releaseAnimationActive =
@@ -333,6 +330,11 @@ final class LauncherRecentsTransitionController {
                 || isGestureRecentsStackReleaseHandoffPending(recentsView)
                 || isGestureRecentsStackReleaseAnimationActive(recentsView)
                 || LauncherRecentsState.isAppToRecentsStackSettled(recentsView));
+    }
+
+    private static void prepareStackRecentsView(View recentsView) {
+        LauncherRecentsState.trackRecentsView(recentsView);
+        LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
     }
 
     private static void clearNonRecentsGestureEndState(View recentsView) {

@@ -7,6 +7,8 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.view.View;
 
+import io.github.libxposed.api.XposedInterface;
+
 import java.lang.reflect.Method;
 
 final class LauncherRecentsStateAnimationController {
@@ -32,8 +34,18 @@ final class LauncherRecentsStateAnimationController {
         if (module == null || loader == null) {
             return;
         }
-        hookRecentsViewStateWithAnimation(module, loader);
-        hookRecentsViewStateAnimationInternal(module, loader);
+        hookRecentsViewAnimatedStateMethod(
+                module,
+                loader,
+                "setStateWithAnimation",
+                "state:setWithAnimation",
+                "Failed to hook RecentsViewStateController.setStateWithAnimation");
+        hookRecentsViewAnimatedStateMethod(
+                module,
+                loader,
+                "setStateWithAnimationInternalForFlyme",
+                "state:setWithAnimationInternal",
+                "Failed to hook RecentsViewStateController.setStateWithAnimationInternalForFlyme");
         hookRecentsViewStateImmediate(module, loader);
         hookHomeToOverviewGoOverview(module, loader);
         hookNoButtonNavbarOverviewMotionPause(module, loader);
@@ -230,9 +242,12 @@ final class LauncherRecentsStateAnimationController {
         return recentsView instanceof View ? (View) recentsView : null;
     }
 
-    private static void hookRecentsViewStateWithAnimation(
+    private static void hookRecentsViewAnimatedStateMethod(
             FlymeStatusBarSizer module,
-            ClassLoader loader) {
+            ClassLoader loader,
+            String methodName,
+            String flowTag,
+            String failureMessage) {
         try {
             Class<?> clazz = Class.forName(RECENTS_VIEW_STATE_CONTROLLER_CLASS, false, loader);
             Class<?> launcherStateClass = Class.forName(LAUNCHER_STATE_CLASS, false, loader);
@@ -241,91 +256,46 @@ final class LauncherRecentsStateAnimationController {
             Class<?> pendingAnimationClass =
                     Class.forName(PENDING_ANIMATION_CLASS, false, loader);
             Method method = clazz.getDeclaredMethod(
-                    "setStateWithAnimation",
+                    methodName,
                     launcherStateClass,
                     stateAnimationConfigClass,
                     pendingAnimationClass);
             method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object thisObject = chain.getThisObject();
-                Object toState = chain.getArg(0);
-                Object pendingAnimation = chain.getArg(2);
-                View recentsView = resolveControllerRecentsView(thisObject);
-                boolean shouldTakeOver =
-                        shouldTakeOverOverviewPeekToOverview(recentsView, toState, loader);
-                LauncherRecentsPerf.flow("state:setWithAnimation",
-                        recentsView,
-                        "toState=" + toState
-                                + " takeOver=" + shouldTakeOver
-                                + " pendingAnimation=" + (pendingAnimation != null));
-                if (shouldTakeOver) {
-                    beginOverviewStateStackAnimation(recentsView, pendingAnimation);
-                } else {
-                    updateOverviewPeekStockAnimation(recentsView, toState, loader);
-                }
-                prepareHomeExitFromRecentsIfNeeded(recentsView, toState, pendingAnimation, loader);
-                Object result = chain.proceed();
-                if (shouldAttachBlankTapHomeExitToSystemAnimation(recentsView, toState, loader)) {
-                    LauncherRecentsPerf.flow("state:setWithAnimation:attachBlankTapSystem",
-                            recentsView, "toState=" + toState);
-                    attachBlankTapHomeExitSystemCallbacks(recentsView, pendingAnimation, loader);
-                }
-                return result;
-            });
+            module.intercept(method, createAnimatedStateHook(loader, flowTag));
         } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook RecentsViewStateController.setStateWithAnimation",
-                    t);
+            FlymeStatusBarSizer.logLauncherWarning(failureMessage, t);
         }
     }
 
-    private static void hookRecentsViewStateAnimationInternal(
-            FlymeStatusBarSizer module,
-            ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(RECENTS_VIEW_STATE_CONTROLLER_CLASS, false, loader);
-            Class<?> launcherStateClass = Class.forName(LAUNCHER_STATE_CLASS, false, loader);
-            Class<?> stateAnimationConfigClass =
-                    Class.forName(STATE_ANIMATION_CONFIG_CLASS, false, loader);
-            Class<?> pendingAnimationClass =
-                    Class.forName(PENDING_ANIMATION_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod(
-                    "setStateWithAnimationInternalForFlyme",
-                    launcherStateClass,
-                    stateAnimationConfigClass,
-                    pendingAnimationClass);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object thisObject = chain.getThisObject();
-                Object toState = chain.getArg(0);
-                Object pendingAnimation = chain.getArg(2);
-                View recentsView = resolveControllerRecentsView(thisObject);
-                boolean shouldTakeOver =
-                        shouldTakeOverOverviewPeekToOverview(recentsView, toState, loader);
-                LauncherRecentsPerf.flow("state:setWithAnimationInternal",
-                        recentsView,
-                        "toState=" + toState
-                                + " takeOver=" + shouldTakeOver
-                                + " pendingAnimation=" + (pendingAnimation != null));
-                if (shouldTakeOver) {
-                    beginOverviewStateStackAnimation(recentsView, pendingAnimation);
-                } else {
-                    updateOverviewPeekStockAnimation(recentsView, toState, loader);
-                }
-                prepareHomeExitFromRecentsIfNeeded(recentsView, toState, pendingAnimation, loader);
-                Object result = chain.proceed();
-                if (shouldAttachBlankTapHomeExitToSystemAnimation(recentsView, toState, loader)) {
-                    LauncherRecentsPerf.flow("state:setWithAnimationInternal:attachBlankTapSystem",
-                            recentsView, "toState=" + toState);
-                    attachBlankTapHomeExitSystemCallbacks(recentsView, pendingAnimation, loader);
-                }
-                return result;
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook RecentsViewStateController.setStateWithAnimationInternalForFlyme",
-                    t);
-        }
+    private static XposedInterface.Hooker createAnimatedStateHook(
+            ClassLoader loader,
+            String flowTag) {
+        return chain -> {
+            Object thisObject = chain.getThisObject();
+            Object toState = chain.getArg(0);
+            Object pendingAnimation = chain.getArg(2);
+            View recentsView = resolveControllerRecentsView(thisObject);
+            boolean shouldTakeOver =
+                    shouldTakeOverOverviewPeekToOverview(recentsView, toState, loader);
+            LauncherRecentsPerf.flow(flowTag,
+                    recentsView,
+                    "toState=" + toState
+                            + " takeOver=" + shouldTakeOver
+                            + " pendingAnimation=" + (pendingAnimation != null));
+            if (shouldTakeOver) {
+                beginOverviewStateStackAnimation(recentsView, pendingAnimation);
+            } else {
+                updateOverviewPeekStockAnimation(recentsView, toState, loader);
+            }
+            prepareHomeExitFromRecentsIfNeeded(recentsView, toState, pendingAnimation, loader);
+            Object result = chain.proceed();
+            if (shouldAttachBlankTapHomeExitToSystemAnimation(recentsView, toState, loader)) {
+                LauncherRecentsPerf.flow(flowTag + ":attachBlankTapSystem",
+                        recentsView, "toState=" + toState);
+                attachBlankTapHomeExitSystemCallbacks(recentsView, pendingAnimation, loader);
+            }
+            return result;
+        };
     }
 
     private static void hookRecentsViewStateImmediate(
