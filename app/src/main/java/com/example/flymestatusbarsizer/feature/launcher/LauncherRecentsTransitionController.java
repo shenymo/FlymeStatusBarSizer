@@ -787,6 +787,7 @@ final class LauncherRecentsTransitionController {
                 handoffStartScroll[0] = resolvePrimaryScroll(recentsView);
                 beginGestureRecentsStackReleaseHandoff(
                         recentsView,
+                        stackAnchorPage,
                         handoffStartScroll[0],
                         stackAnchorTargetScroll,
                         ensureRunningTaskScreenshot,
@@ -847,6 +848,7 @@ final class LauncherRecentsTransitionController {
                             recentsView);
                     beginGestureRecentsStackReleaseHandoff(
                             recentsView,
+                            stackAnchorPage,
                             handoffStartScroll[0],
                             stackAnchorTargetScroll,
                             ensureRunningTaskScreenshot,
@@ -903,6 +905,7 @@ final class LauncherRecentsTransitionController {
 
     private static void beginGestureRecentsStackReleaseHandoff(
             View recentsView,
+            int stackAnchorPage,
             int stackAnchorStartScroll,
             int stackAnchorTargetScroll,
             boolean ensureRunningTaskScreenshot,
@@ -940,11 +943,13 @@ final class LauncherRecentsTransitionController {
                 recentsView,
                 "forceFinishScroller",
                 LauncherRecentsCompat.NO_ARGS);
+        int actualStartScroll = resolvePrimaryScroll(recentsView);
+        normalizeAppToRecentsStackAnchorPage(recentsView, stackAnchorPage);
         LauncherRecentsState.clearAppToRecentsEntryState(recentsView);
         LauncherRecentsState.setAppToRecentsStackSettled(recentsView, false);
         LauncherRecentsLayoutEngine.captureGestureStackReleaseTaskStates(
                 recentsView,
-                stackAnchorStartScroll,
+                actualStartScroll,
                 stackAnchorTargetScroll,
                 handoffStartVisualStates);
         setGestureRecentsStackReleaseProgress(recentsView, 0f);
@@ -1022,6 +1027,13 @@ final class LauncherRecentsTransitionController {
                 recentsView,
                 anchorPage,
                 resolvePrimaryScroll(recentsView)));
+        normalizeAppToRecentsStackAnchorPage(recentsView, anchorPage);
+    }
+
+    private static void normalizeAppToRecentsStackAnchorPage(View recentsView, int anchorPage) {
+        if (recentsView == null || anchorPage < 0) {
+            return;
+        }
         int currentPage = resolveAppToRecentsNormalizedCurrentPage(recentsView, anchorPage);
         LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", currentPage);
         LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", currentPage);
