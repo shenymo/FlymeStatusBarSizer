@@ -1851,8 +1851,7 @@ final class LauncherRecentsLayoutEngine {
                     captureStockState,
                     taskViewCount,
                     stackLayoutRadius,
-                    config,
-                    "onScrollChangedSync".equals(source));
+                    config);
         } finally {
             long layoutCostNs = LauncherRecentsPerf.end("layoutCompute:" + source, layoutStartNs);
             reportSlowApplyDynamicLayout(recentsView, source, stackLayoutRadius, layoutCostNs);
@@ -2062,8 +2061,7 @@ final class LauncherRecentsLayoutEngine {
             boolean captureStockState,
             int taskViewCount,
             int stackLayoutRadius,
-            FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config,
-            boolean coreVisualOnly) {
+            FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config) {
         if (recentsView == null) {
             return false;
         }
@@ -2138,7 +2136,7 @@ final class LauncherRecentsLayoutEngine {
             if (captureStockState) {
                 LauncherRecentsTaskVisuals.captureStockTaskState(taskView);
             }
-            if (coreVisualOnly || layout.coreOnlyTaskViews.contains(taskView)) {
+            if (layout.coreOnlyTaskViews.contains(taskView)) {
                 LauncherRecentsTaskVisuals.applyStackTaskCoreVisualState(taskView, visualState);
             } else {
                 LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, visualState);

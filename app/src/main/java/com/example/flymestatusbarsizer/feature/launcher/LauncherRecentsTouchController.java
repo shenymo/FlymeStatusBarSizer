@@ -2633,9 +2633,9 @@ final class LauncherRecentsTouchController {
             boolean allowDelay) {
         return allowDelay
                 && !forceRelease
-                && !isLastStackVisibleTaskIdsEmpty(recentsView)
                 && (isStackScrollInProgress(recentsView)
                 || (LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView) == null
+                && !isLastStackVisibleTaskIdsEmpty(recentsView)
                 && isGestureRecentsBackground(recentsView)));
     }
 
@@ -2681,8 +2681,7 @@ final class LauncherRecentsTouchController {
     }
 
     static boolean shouldDeferStackVisibleTaskDataSync(View recentsView) {
-        return isStackScrollInProgress(recentsView, false)
-                && !isLastStackVisibleTaskIdsEmpty(recentsView);
+        return isStackScrollInProgress(recentsView, false);
     }
 
     private static boolean isStackScrollInProgress(View recentsView) {
