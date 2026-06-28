@@ -293,6 +293,10 @@ final class LauncherRecentsState {
     static final class PrepareRecentsViewState {
         boolean recentsClipsReady;
         Object clipParent;
+        long clearAllLastSyncNs;
+        boolean clearAllLastForceHide;
+        boolean clearAllLastBlankTapExitActive;
+        boolean clearAllButtonReady;
         boolean clearAllReady;
         boolean clearAllEnabled;
         boolean clearAllAllowed;

@@ -43,6 +43,7 @@ final class LauncherRecentsLayoutEngine {
     private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
     private static final int STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR = 2;
     private static final long STACK_LAYOUT_DUPLICATE_WINDOW_NS = 16_000_000L;
+    private static final long CLEAR_ALL_BUTTON_SYNC_WINDOW_NS = 16_000_000L;
 
     private LauncherRecentsLayoutEngine() {
     }
@@ -615,21 +616,27 @@ final class LauncherRecentsLayoutEngine {
             ViewGroup group = (ViewGroup) recentsView;
             LauncherRecentsState.PrepareRecentsViewState state =
                     prepareRecentsViewState(recentsView);
-            if (!state.recentsClipsReady
-                    || group.getClipChildren()
-                    || group.getClipToPadding()) {
-                group.setClipChildren(false);
-                group.setClipToPadding(false);
-                state.recentsClipsReady = true;
-            }
-            ViewParent parent = group.getParent();
-            if (parent instanceof ViewGroup && parent != state.clipParent) {
-                ((ViewGroup) parent).setClipChildren(false);
-                state.clipParent = parent;
-            }
-            ensureStackClearAllButtonReady(recentsView);
+            prepareRecentsViewOnce(group, state);
+            syncStackClearAllButton(recentsView, state, false);
         } finally {
             LauncherRecentsPerf.end("prepareRecentsView", perfStartNs);
+        }
+    }
+
+    private static void prepareRecentsViewOnce(
+            ViewGroup group,
+            LauncherRecentsState.PrepareRecentsViewState state) {
+        if (!state.recentsClipsReady
+                || group.getClipChildren()
+                || group.getClipToPadding()) {
+            group.setClipChildren(false);
+            group.setClipToPadding(false);
+            state.recentsClipsReady = true;
+        }
+        ViewParent parent = group.getParent();
+        if (parent instanceof ViewGroup && parent != state.clipParent) {
+            ((ViewGroup) parent).setClipChildren(false);
+            state.clipParent = parent;
         }
     }
 
@@ -643,6 +650,25 @@ final class LauncherRecentsLayoutEngine {
         }
         LauncherRecentsState.PrepareRecentsViewState state =
                 prepareRecentsViewState(recentsView);
+        syncStackClearAllButton(recentsView, state, forceHide);
+    }
+
+    private static void syncStackClearAllButton(
+            View recentsView,
+            LauncherRecentsState.PrepareRecentsViewState state,
+            boolean forceHide) {
+        boolean blankTapExitActive =
+                LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView);
+        long nowNs = System.nanoTime();
+        if (state.clearAllLastSyncNs > 0L
+                && nowNs - state.clearAllLastSyncNs <= CLEAR_ALL_BUTTON_SYNC_WINDOW_NS
+                && state.clearAllLastForceHide == forceHide
+                && state.clearAllLastBlankTapExitActive == blankTapExitActive) {
+            return;
+        }
+        state.clearAllLastSyncNs = nowNs;
+        state.clearAllLastForceHide = forceHide;
+        state.clearAllLastBlankTapExitActive = blankTapExitActive;
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
                 FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
@@ -650,16 +676,15 @@ final class LauncherRecentsLayoutEngine {
             releaseStackClearAllButton(state, taskViewCount > 1);
             return;
         }
-        Object value = LauncherRecentsCompat.invokeCompat(recentsView, "getClearAllButton");
-        if (!(value instanceof View)) {
+        View clearAllButton = getCachedStackClearAllButton(recentsView, state);
+        if (clearAllButton == null) {
             clearStackClearAllButtonState(state);
             return;
         }
-        View clearAllButton = (View) value;
         boolean enabled = config.launcherIosStackRecentsClearAllButtonEnabled;
         boolean allowed = enabled
                 && !forceHide
-                && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
+                && !blankTapExitActive
                 && isStackClearAllButtonAllowed(recentsView);
         if (!enabled || !allowed) {
             hideStackClearAllButtonView(state, clearAllButton, enabled);
@@ -701,6 +726,23 @@ final class LauncherRecentsLayoutEngine {
         clearAllButton.setVisibility(View.VISIBLE);
         clearAllButton.setEnabled(true);
         clearAllButton.setClickable(true);
+    }
+
+    private static View getCachedStackClearAllButton(
+            View recentsView,
+            LauncherRecentsState.PrepareRecentsViewState state) {
+        if (state.clearAllButtonReady) {
+            return state.clearAllButton;
+        }
+        Object value = LauncherRecentsCompat.invokeCompat(recentsView, "getClearAllButton");
+        if (!(value instanceof View)) {
+            state.clearAllButtonReady = false;
+            state.clearAllButton = null;
+            return null;
+        }
+        state.clearAllButtonReady = true;
+        state.clearAllButton = (View) value;
+        return state.clearAllButton;
     }
 
     private static LauncherRecentsState.PrepareRecentsViewState prepareRecentsViewState(
@@ -831,6 +873,7 @@ final class LauncherRecentsLayoutEngine {
 
     private static void clearStackClearAllButtonState(
             LauncherRecentsState.PrepareRecentsViewState state) {
+        state.clearAllButtonReady = false;
         state.clearAllReady = false;
         state.clearAllEnabled = false;
         state.clearAllAllowed = false;
