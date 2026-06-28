@@ -1706,11 +1706,11 @@ final class LauncherRecentsLayoutEngine {
                 || shouldBlockAppToRecentsStackApply(recentsView)) {
             return;
         }
-        applyStackLayout(
+        scheduleStackLayoutFromHook(
                 recentsView,
                 false,
-                source);
-        recentsView.invalidate();
+                source,
+                true);
     }
 
     private static String mergeScheduledStackLayoutSource(String currentSource, String nextSource) {
