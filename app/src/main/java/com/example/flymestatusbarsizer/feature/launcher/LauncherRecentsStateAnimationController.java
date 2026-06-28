@@ -327,7 +327,6 @@ final class LauncherRecentsStateAnimationController {
                     LauncherRecentsLayoutEngine.requestStackLayout(
                             recentsView,
                             "stateImmediate",
-                            false,
                             false);
                     clearOverviewStateStackAnimation(recentsView);
                 }
@@ -358,7 +357,6 @@ final class LauncherRecentsStateAnimationController {
                         LauncherRecentsLayoutEngine.requestStackLayout(
                                 recentsView,
                                 "overviewStateFrame",
-                                false,
                                 false);
                     }
                 }));

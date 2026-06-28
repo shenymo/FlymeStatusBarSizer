@@ -107,8 +107,7 @@ final class LauncherRecentsAttachController {
                         LauncherRecentsLayoutEngine.requestStackLayout(
                                 recentsView,
                                 "applyLoadPlan",
-                                true,
-                                false);
+                                true);
                     }
                 }
                 return result;

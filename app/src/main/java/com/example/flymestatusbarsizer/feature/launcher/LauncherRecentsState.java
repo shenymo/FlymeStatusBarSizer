@@ -267,29 +267,24 @@ final class LauncherRecentsState {
     static final class StackLayoutApplyState {
         final long key;
         final long timeNs;
-        final boolean syncedVisibleTaskData;
 
-        StackLayoutApplyState(long key, long timeNs, boolean syncedVisibleTaskData) {
+        StackLayoutApplyState(long key, long timeNs) {
             this.key = key;
             this.timeNs = timeNs;
-            this.syncedVisibleTaskData = syncedVisibleTaskData;
         }
     }
 
     static final class PendingStackLayoutApplyState {
         boolean captureStockState;
-        boolean syncVisibleTaskData;
         boolean dynamicOnly;
         boolean preDrawScheduled;
         String source;
 
         PendingStackLayoutApplyState(
                 boolean captureStockState,
-                boolean syncVisibleTaskData,
                 boolean dynamicOnly,
                 String source) {
             this.captureStockState = captureStockState;
-            this.syncVisibleTaskData = syncVisibleTaskData;
             this.dynamicOnly = dynamicOnly;
             this.source = source;
         }

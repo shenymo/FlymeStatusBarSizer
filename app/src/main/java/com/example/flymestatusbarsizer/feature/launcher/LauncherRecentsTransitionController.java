@@ -293,7 +293,6 @@ final class LauncherRecentsTransitionController {
                             LauncherRecentsLayoutEngine.requestStackLayout(
                                     recentsView,
                                     "gestureAnimationEndRelease",
-                                    false,
                                     false);
                         }
                     } else {
@@ -399,8 +398,7 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsLayoutEngine.applyStableStackLayout(
                 recentsView,
                 false,
-                "finishGestureEndSync",
-                false);
+                "finishGestureEndSync");
         LauncherRecentsLayoutEngine.ensureStackClearAllButtonReady(recentsView);
         recentsView.invalidate();
         LauncherRecentsPerf.flow("enter:finishGestureEnd:end", recentsView);
@@ -612,7 +610,6 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsLayoutEngine.requestStackLayout(
                 recentsView,
                 "blankTapPrepare",
-                false,
                 false);
         recentsView.invalidate();
     }
@@ -643,7 +640,6 @@ final class LauncherRecentsTransitionController {
             LauncherRecentsLayoutEngine.requestStackLayout(
                     recentsView,
                     "blankTapClear",
-                    false,
                     false);
         }
         recentsView.invalidate();
@@ -863,8 +859,7 @@ final class LauncherRecentsTransitionController {
                 LauncherRecentsLayoutEngine.applyStableStackLayout(
                         recentsView,
                         false,
-                        "gestureReleaseEndSync",
-                        false);
+                        "gestureReleaseEndSync");
                 clearGestureRecentsStackReleaseProgress(recentsView);
                 LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
                 recentsView.invalidate();

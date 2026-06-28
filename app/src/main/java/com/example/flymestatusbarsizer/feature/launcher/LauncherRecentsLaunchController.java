@@ -1260,8 +1260,7 @@ final class LauncherRecentsLaunchController {
             LauncherRecentsLayoutEngine.applyStackLayout(
                     recentsView,
                     false,
-                    "launchClearRestore",
-                    true);
+                    "launchClearRestore");
         } else {
             LauncherRecentsLayoutEngine.reapplyOriginalTransforms(recentsView);
         }
