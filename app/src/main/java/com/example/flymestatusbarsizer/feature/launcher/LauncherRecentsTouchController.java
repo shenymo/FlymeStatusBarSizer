@@ -43,6 +43,7 @@ final class LauncherRecentsTouchController {
     private static final long STACK_VISIBLE_DATA_LIGHTWEIGHT_SYNC_MIN_INTERVAL_MS = 64L;
     private static final long STACK_VISIBLE_DATA_SYNC_RETRY_DELAY_MS = 64L;
     private static final long STACK_VISIBLE_DATA_RELEASE_DELAY_MS = 64L;
+    private static final boolean STACK_EXTRA_VISIBLE_TASK_DATA_SYNC_ENABLED = false;
     private static final float STACK_LEFT_RELEASE_ALPHA_THRESHOLD = 0.05f;
     private static final int STACK_APP_FLOW_LIGHT_RADIUS = 3;
     private static final String STACK_APP_FLOW_HIDDEN = "<stack-hidden>";
@@ -2411,6 +2412,9 @@ final class LauncherRecentsTouchController {
     }
 
     static void ensureStackVisibleTaskDataIfNeeded(View recentsView, int changes) {
+        if (!STACK_EXTRA_VISIBLE_TASK_DATA_SYNC_ENABLED) {
+            return;
+        }
         if (recentsView == null || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
             return;
         }
@@ -2472,6 +2476,9 @@ final class LauncherRecentsTouchController {
             int changes,
             boolean forceRelease,
             boolean allowDelay) {
+        if (!STACK_EXTRA_VISIBLE_TASK_DATA_SYNC_ENABLED) {
+            return;
+        }
         if (recentsView == null) {
             return;
         }
