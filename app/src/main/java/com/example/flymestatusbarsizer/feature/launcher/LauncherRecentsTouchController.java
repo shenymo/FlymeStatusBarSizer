@@ -7,6 +7,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ValueAnimator;
 import android.os.Handler;
+import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
@@ -37,8 +38,11 @@ final class LauncherRecentsTouchController {
     private static final float STACK_DISMISS_MIN_FLING_VELOCITY = -1200f;
     private static final int STACK_VISIBLE_TASK_DATA_TARGET_COUNT = 4;
     private static final int STACK_VISIBLE_TASK_DATA_PRELOAD_COUNT = 1;
+    private static final int STACK_VISIBLE_DATA_RELEASE_BATCH_SIZE = 4;
     private static final int STACK_VISIBLE_DATA_SCROLL_BUCKET_DIVISOR = 2;
+    private static final long STACK_VISIBLE_DATA_LIGHTWEIGHT_SYNC_MIN_INTERVAL_MS = 64L;
     private static final long STACK_VISIBLE_DATA_SYNC_RETRY_DELAY_MS = 64L;
+    private static final long STACK_VISIBLE_DATA_RELEASE_DELAY_MS = 64L;
     private static final float STACK_LEFT_RELEASE_ALPHA_THRESHOLD = 0.05f;
     private static final int STACK_APP_FLOW_LIGHT_RADIUS = 3;
     private static final String STACK_APP_FLOW_HIDDEN = "<stack-hidden>";
@@ -261,6 +265,7 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsCompat.isRecentsViewObject(thisObject)
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    LauncherRecentsFrameRateController.onTouch(recentsView, motionEvent);
                     clearStackHorizontalGestureLockOnTouchEnd(recentsView, motionEvent);
                     clearStackFlingFixedAnchorOnTouchStart(recentsView, motionEvent);
                     keepAppToRecentsEntryHeadsVisibleOnTouchDown(recentsView, motionEvent);
@@ -308,6 +313,7 @@ final class LauncherRecentsTouchController {
                         && thisObject instanceof View
                         && motionEvent != null) {
                     View recentsView = (View) thisObject;
+                    LauncherRecentsFrameRateController.onTouch(recentsView, motionEvent);
                     clearStackHorizontalGestureLockOnTouchEnd(recentsView, motionEvent);
                     clearStackFlingFixedAnchorOnTouchStart(recentsView, motionEvent);
                     keepAppToRecentsEntryHeadsVisibleOnTouchDown(recentsView, motionEvent);
@@ -2568,6 +2574,14 @@ final class LauncherRecentsTouchController {
             lightweightSync = shouldUseLightweightStackVisibleTaskDataSync(
                     recentsView,
                     forceRelease);
+            if (lightweightSync
+                    && state.lastLightweightSyncUptimeMs > 0L
+                    && SystemClock.uptimeMillis() - state.lastLightweightSyncUptimeMs
+                    < STACK_VISIBLE_DATA_LIGHTWEIGHT_SYNC_MIN_INTERVAL_MS) {
+                result = "skipLightweightThrottle";
+                rememberStackVisibleTaskDataScrollState(state, primaryScroll, scrollDirection);
+                return;
+            }
             if (stepStartNs != 0L) {
                 long nowNs = System.nanoTime();
                 lightweightNs = nowNs - stepStartNs;
@@ -2583,6 +2597,9 @@ final class LauncherRecentsTouchController {
                             + " forceRelease=" + forceRelease
                             + " lightweight=" + lightweightSync);
             ensureStackVisibleTaskData(recentsView, changes, forceRelease, lightweightSync);
+            if (lightweightSync) {
+                state.lastLightweightSyncUptimeMs = SystemClock.uptimeMillis();
+            }
             if (stepStartNs != 0L) {
                 runNs = System.nanoTime() - stepStartNs;
             }
@@ -2981,6 +2998,14 @@ final class LauncherRecentsTouchController {
             View recentsView,
             ArrayList<Integer> taskIdsToRelease,
             int changes) {
+        releaseStackTaskDataForIds(recentsView, taskIdsToRelease, changes, false);
+    }
+
+    private static void releaseStackTaskDataForIds(
+            View recentsView,
+            ArrayList<Integer> taskIdsToRelease,
+            int changes,
+            boolean fromDelayedRelease) {
         ArrayList<Integer> loadedTaskIds = STACK_LOADED_TASK_IDS.get(recentsView);
         if (recentsView == null
                 || loadedTaskIds == null
@@ -2988,7 +3013,18 @@ final class LauncherRecentsTouchController {
                 || taskIdsToRelease.isEmpty()) {
             return;
         }
+        if (!fromDelayedRelease) {
+            scheduleStackTaskDataRelease(recentsView, taskIdsToRelease, changes);
+            return;
+        }
+        if (LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false)
+                || isRecentsScrollerActive(recentsView)) {
+            scheduleStackTaskDataRelease(recentsView, taskIdsToRelease, changes);
+            return;
+        }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        int releasedTaskViewCount = 0;
+        ArrayList<Integer> remainingTaskIds = new ArrayList<>();
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             if (taskView == null) {
@@ -3002,14 +3038,23 @@ final class LauncherRecentsTouchController {
             }
             boolean hadVisibleData = false;
             ArrayList<Integer> taskIds = resolveStackTaskIds(taskView);
+            ArrayList<Integer> releasableTaskIds = new ArrayList<>();
             for (int j = 0; j < taskIds.size(); j++) {
                 int taskId = taskIds.get(j);
                 if (taskIdsToRelease.contains(taskId) && loadedTaskIds.contains(taskId)) {
-                    loadedTaskIds.remove((Integer) taskId);
+                    releasableTaskIds.add(taskId);
                     hadVisibleData = true;
                 }
             }
             if (hadVisibleData) {
+                if (releasedTaskViewCount >= STACK_VISIBLE_DATA_RELEASE_BATCH_SIZE) {
+                    appendUniqueTaskIds(remainingTaskIds, releasableTaskIds);
+                    continue;
+                }
+                for (int j = 0; j < releasableTaskIds.size(); j++) {
+                    loadedTaskIds.remove((Integer) releasableTaskIds.get(j));
+                }
+                releasedTaskViewCount++;
                 logStackFlow("visibleData:releaseTask",
                         recentsView,
                         null,
@@ -3030,6 +3075,36 @@ final class LauncherRecentsTouchController {
         if (loadedTaskIds.isEmpty()) {
             STACK_LOADED_TASK_IDS.remove(recentsView);
         }
+        if (!remainingTaskIds.isEmpty()) {
+            scheduleStackTaskDataRelease(recentsView, remainingTaskIds, changes);
+        }
+    }
+
+    private static void scheduleStackTaskDataRelease(
+            View recentsView,
+            ArrayList<Integer> taskIdsToRelease,
+            int changes) {
+        if (recentsView == null || taskIdsToRelease == null || taskIdsToRelease.isEmpty()) {
+            return;
+        }
+        StackVisibleTaskDataSyncState state = ensureStackVisibleTaskDataSyncState(recentsView);
+        if (state.pendingReleaseTaskIds == null) {
+            state.pendingReleaseTaskIds = new ArrayList<>();
+        }
+        appendUniqueTaskIds(state.pendingReleaseTaskIds, taskIdsToRelease);
+        state.pendingReleaseChanges |= changes;
+        if (state.pendingReleaseRunnable != null) {
+            return;
+        }
+        state.pendingReleaseRunnable = () -> {
+            ArrayList<Integer> releaseIds = state.pendingReleaseTaskIds;
+            int releaseChanges = state.pendingReleaseChanges;
+            state.pendingReleaseTaskIds = null;
+            state.pendingReleaseChanges = 0;
+            state.pendingReleaseRunnable = null;
+            releaseStackTaskDataForIds(recentsView, releaseIds, releaseChanges, true);
+        };
+        recentsView.postDelayed(state.pendingReleaseRunnable, STACK_VISIBLE_DATA_RELEASE_DELAY_MS);
     }
 
     private static int resolveStackVisibleTaskDataAnchorIndex(View recentsView, int taskViewCount) {
@@ -3875,6 +3950,10 @@ final class LauncherRecentsTouchController {
         int scrollDirection;
         Runnable pendingSyncRunnable;
         int pendingSyncChanges;
+        Runnable pendingReleaseRunnable;
+        ArrayList<Integer> pendingReleaseTaskIds;
+        int pendingReleaseChanges;
+        long lastLightweightSyncUptimeMs;
     }
 
     static void clearRecentsDeferredSnap(View recentsView) {

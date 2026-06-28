@@ -110,6 +110,9 @@ final class LauncherRecentsLaunchController {
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
                     int visibility = chain.getArg(0) instanceof Integer ? (Integer) chain.getArg(0) : 0;
+                    if (visibility != View.VISIBLE) {
+                        LauncherRecentsFrameRateController.releaseNow(recentsView);
+                    }
                     if (visibility != View.VISIBLE
                             && LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
                         clearTaskLaunchTransitionGeometry(recentsView, false);
@@ -136,6 +139,7 @@ final class LauncherRecentsLaunchController {
                 Object result = chain.proceed();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    LauncherRecentsFrameRateController.releaseNow(recentsView);
                     if (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
                         clearTaskLaunchTransitionGeometry(recentsView, false);
                     }

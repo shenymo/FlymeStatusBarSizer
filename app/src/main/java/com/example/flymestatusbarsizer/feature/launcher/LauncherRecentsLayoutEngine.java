@@ -472,7 +472,7 @@ final class LauncherRecentsLayoutEngine {
                             recentsView,
                             "isScrollerFinished",
                             true)) {
-                        applyDynamicStackLayoutIfNeeded(recentsView);
+                        LauncherRecentsFrameRateController.onActiveScroll(recentsView);
                         return result;
                     }
                     requestStackLayout(recentsView, "dispatchScrollChanged", false, false);
