@@ -350,6 +350,7 @@ final class LauncherRecentsTouchController {
                         startNativeStackFreeFling(recentsView, motionEvent);
                         return true;
                     }
+                    clearStackPagedReleaseVelocity(recentsView, motionEvent);
                     long nativeStartNs = LauncherRecentsPerf.start(recentsView);
                     Object result;
                     try {
@@ -2341,6 +2342,25 @@ final class LauncherRecentsTouchController {
         return false;
     }
 
+    private static void clearStackPagedReleaseVelocity(
+            View recentsView,
+            MotionEvent motionEvent) {
+        if (recentsView == null
+                || motionEvent == null
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || !LauncherRecentsState.isAppToRecentsStackSettled(recentsView)) {
+            return;
+        }
+        int action = motionEvent.getActionMasked();
+        if (action != MotionEvent.ACTION_UP && action != MotionEvent.ACTION_CANCEL) {
+            return;
+        }
+        Object velocityTracker = LauncherRecentsCompat.getFieldCompat(recentsView, "mVelocityTracker");
+        if (velocityTracker instanceof VelocityTracker) {
+            ((VelocityTracker) velocityTracker).clear();
+        }
+    }
+
     private static void startNativeStackFreeFling(View recentsView, MotionEvent motionEvent) {
         clearRecentsDeferredSnap(recentsView);
         releasePagedEdgeEffects(recentsView, motionEvent);
@@ -2402,9 +2422,13 @@ final class LauncherRecentsTouchController {
     private static void clearStackFlingFixedAnchorOnTouchStart(
             View recentsView,
             MotionEvent motionEvent) {
-        if (motionEvent != null && motionEvent.getActionMasked() == MotionEvent.ACTION_DOWN) {
-            clearStackFlingFixedAnchorPage(recentsView, false);
+        if (motionEvent == null || motionEvent.getActionMasked() != MotionEvent.ACTION_DOWN) {
+            return;
         }
+        if (!LauncherRecentsCompat.invokeBoolean(recentsView, "isScrollerFinished", true)) {
+            return;
+        }
+        clearStackFlingFixedAnchorPage(recentsView, false);
     }
 
     private static void clearStackHorizontalGestureLockOnTouchEnd(
@@ -2432,9 +2456,6 @@ final class LauncherRecentsTouchController {
         }
         int action = motionEvent.getActionMasked();
         if (action != MotionEvent.ACTION_UP && action != MotionEvent.ACTION_CANCEL) {
-            return;
-        }
-        if (!isRecentsScrollerActive(recentsView)) {
             return;
         }
         setStackFlingFixedAnchorPage(recentsView, resolvePrimaryScroll(recentsView));
