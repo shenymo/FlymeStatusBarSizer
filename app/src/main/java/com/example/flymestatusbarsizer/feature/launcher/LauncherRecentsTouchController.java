@@ -2097,7 +2097,6 @@ final class LauncherRecentsTouchController {
             return;
         }
         cancelStackDismissRelayoutAnimation(recentsView);
-        LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView);
     }
 
     private static void cancelStackDismissRelayoutAnimation(View recentsView) {
@@ -2634,9 +2633,10 @@ final class LauncherRecentsTouchController {
             boolean allowDelay) {
         return allowDelay
                 && !forceRelease
-                && LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView) == null
                 && !isLastStackVisibleTaskIdsEmpty(recentsView)
-                && isGestureRecentsBackground(recentsView);
+                && (isStackScrollInProgress(recentsView)
+                || (LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView) == null
+                && isGestureRecentsBackground(recentsView)));
     }
 
     private static void scheduleDeferredStackVisibleTaskDataSync(
@@ -2657,7 +2657,7 @@ final class LauncherRecentsTouchController {
                 state.pendingSyncRunnable = null;
                 int syncChanges = state.pendingSyncChanges;
                 state.pendingSyncChanges = 0;
-                forceEnsureStackVisibleTaskData(recentsView, syncChanges, false, false);
+                forceEnsureStackVisibleTaskData(recentsView, syncChanges, false, true);
             }
         };
         recentsView.postDelayed(state.pendingSyncRunnable, STACK_VISIBLE_DATA_SYNC_RETRY_DELAY_MS);
@@ -2677,6 +2677,19 @@ final class LauncherRecentsTouchController {
     private static boolean shouldUseLightweightStackVisibleTaskDataSync(
             View recentsView,
             boolean forceRelease) {
+        return isStackScrollInProgress(recentsView, forceRelease);
+    }
+
+    static boolean shouldDeferStackVisibleTaskDataSync(View recentsView) {
+        return isStackScrollInProgress(recentsView, false)
+                && !isLastStackVisibleTaskIdsEmpty(recentsView);
+    }
+
+    private static boolean isStackScrollInProgress(View recentsView) {
+        return isStackScrollInProgress(recentsView, false);
+    }
+
+    private static boolean isStackScrollInProgress(View recentsView, boolean forceRelease) {
         return !forceRelease
                 && recentsView != null
                 && (LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false)

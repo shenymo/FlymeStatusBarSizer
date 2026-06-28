@@ -347,7 +347,10 @@ final class LauncherRecentsLayoutEngine {
                 Object result = chain.proceed();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
-                    if (shouldSkipIdleCurvePropertiesRelayout(methodName, recentsView)) {
+                    if (shouldSkipIdleCurvePropertiesRelayout(methodName, recentsView)
+                            || shouldSkipActiveScrollCurvePropertiesRelayout(
+                            methodName,
+                            recentsView)) {
                         return result;
                     }
                     LauncherRecentsState.trackRecentsView(recentsView);
@@ -386,6 +389,16 @@ final class LauncherRecentsLayoutEngine {
                 recentsView)
                 && !LauncherRecentsState.hasActiveTaskLaunchTransitionGeometry(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView);
+    }
+
+    private static boolean shouldSkipActiveScrollCurvePropertiesRelayout(
+            String methodName,
+            View recentsView) {
+        return "updateCurveProperties".equals(methodName)
+                && shouldUseStackLayout(recentsView)
+                && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
+                && (isStackScrollerActive(recentsView)
+                || LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false));
     }
 
     private static void hookRecentsViewOnScrollChanged(
@@ -1662,6 +1675,10 @@ final class LauncherRecentsLayoutEngine {
         if (!shouldApplyDynamicStackLayout(recentsView)) {
             return;
         }
+        if (isStackScrollerActive(recentsView)
+                || LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false)) {
+            return;
+        }
         if (isCachedGestureReleaseFrameActive(recentsView)) {
             return;
         }
@@ -1834,7 +1851,8 @@ final class LauncherRecentsLayoutEngine {
                     captureStockState,
                     taskViewCount,
                     stackLayoutRadius,
-                    config);
+                    config,
+                    "onScrollChangedSync".equals(source));
         } finally {
             long layoutCostNs = LauncherRecentsPerf.end("layoutCompute:" + source, layoutStartNs);
             reportSlowApplyDynamicLayout(recentsView, source, stackLayoutRadius, layoutCostNs);
@@ -1906,6 +1924,9 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static boolean shouldRunVisibleTaskDataSync(View recentsView, String source) {
+        if (LauncherRecentsTouchController.shouldDeferStackVisibleTaskDataSync(recentsView)) {
+            return false;
+        }
         return !shouldCoalesceStackLayoutSource(source)
                 || shouldSyncVisibleTaskDataForCurrentBucket(recentsView);
     }
@@ -2041,7 +2062,8 @@ final class LauncherRecentsLayoutEngine {
             boolean captureStockState,
             int taskViewCount,
             int stackLayoutRadius,
-            FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config) {
+            FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config,
+            boolean coreVisualOnly) {
         if (recentsView == null) {
             return false;
         }
@@ -2116,7 +2138,7 @@ final class LauncherRecentsLayoutEngine {
             if (captureStockState) {
                 LauncherRecentsTaskVisuals.captureStockTaskState(taskView);
             }
-            if (layout.coreOnlyTaskViews.contains(taskView)) {
+            if (coreVisualOnly || layout.coreOnlyTaskViews.contains(taskView)) {
                 LauncherRecentsTaskVisuals.applyStackTaskCoreVisualState(taskView, visualState);
             } else {
                 LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, visualState);
