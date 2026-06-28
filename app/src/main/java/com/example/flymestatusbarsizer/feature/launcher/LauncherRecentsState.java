@@ -55,8 +55,6 @@ final class LauncherRecentsState {
     // Visible task data and click guards.
     static final WeakHashMap<View, String> LAST_STACK_APP_FLOW_PACKAGES =
             new WeakHashMap<>();
-    static final WeakHashMap<View, Integer> LAST_STACK_TASK_LIST_VISIBILITY_CHANGES =
-            new WeakHashMap<>();
     static final WeakHashMap<View, Boolean> BYPASS_TASK_CLICK_INTERCEPTION =
             new WeakHashMap<>();
 
@@ -304,8 +302,6 @@ final class LauncherRecentsState {
         boolean clearAllEnabled;
         boolean clearAllAllowed;
         View clearAllButton;
-        int visibleTaskDataPage = Integer.MIN_VALUE;
-        int visibleTaskDataBucket = Integer.MIN_VALUE;
     }
 
     static final class TaskLaunchTransitionGeometryContext {

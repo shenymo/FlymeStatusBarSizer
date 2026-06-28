@@ -402,7 +402,6 @@ final class LauncherRecentsTransitionController {
                 "finishGestureEndSync",
                 false);
         LauncherRecentsLayoutEngine.ensureStackClearAllButtonReady(recentsView);
-        LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15, true);
         recentsView.invalidate();
         LauncherRecentsPerf.flow("enter:finishGestureEnd:end", recentsView);
         LauncherRecentsPerf.endSpan("enterRecents", recentsView);
@@ -610,7 +609,6 @@ final class LauncherRecentsTransitionController {
         clearEntryStateForBlankTapHomeExit(recentsView, true);
         markBlankTapHomeExitActive(recentsView, true);
         setBlankTapHomeExitProgress(recentsView, 0f);
-        LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15);
         LauncherRecentsLayoutEngine.requestStackLayout(
                 recentsView,
                 "blankTapPrepare",
@@ -869,7 +867,6 @@ final class LauncherRecentsTransitionController {
                         false);
                 clearGestureRecentsStackReleaseProgress(recentsView);
                 LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
-                LauncherRecentsTouchController.forceEnsureStackVisibleTaskData(recentsView, 15, true);
                 recentsView.invalidate();
                 LauncherRecentsPerf.flow("enter:gestureRelease:end", recentsView);
                 LauncherRecentsPerf.endSpan("enterRecentsRelease", recentsView);

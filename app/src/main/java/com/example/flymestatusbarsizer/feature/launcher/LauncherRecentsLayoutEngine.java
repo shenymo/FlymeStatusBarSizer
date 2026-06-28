@@ -1856,16 +1856,6 @@ final class LauncherRecentsLayoutEngine {
             long layoutCostNs = LauncherRecentsPerf.end("layoutCompute:" + source, layoutStartNs);
             reportSlowApplyDynamicLayout(recentsView, source, stackLayoutRadius, layoutCostNs);
         }
-        if (syncVisibleTaskData
-                && layoutApplied
-                && shouldRunVisibleTaskDataSync(recentsView, source)) {
-            long visibleDataStartNs = LauncherRecentsPerf.start(recentsView);
-            try {
-                LauncherRecentsTouchController.ensureStackVisibleTaskDataIfNeeded(recentsView, 15);
-            } finally {
-                LauncherRecentsPerf.end("visibleTaskDataSync:" + source, visibleDataStartNs);
-            }
-        }
         if (logApply) {
             LauncherRecentsPerf.flow("layout:apply:end",
                     recentsView,
@@ -1920,27 +1910,6 @@ final class LauncherRecentsLayoutEngine {
         }
         return resolvePrimaryScroll(recentsView)
                 / Math.max(1, primarySize / STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR);
-    }
-
-    private static boolean shouldRunVisibleTaskDataSync(View recentsView, String source) {
-        if (LauncherRecentsTouchController.shouldDeferStackVisibleTaskDataSync(recentsView)) {
-            return false;
-        }
-        return !shouldCoalesceStackLayoutSource(source)
-                || shouldSyncVisibleTaskDataForCurrentBucket(recentsView);
-    }
-
-    private static boolean shouldSyncVisibleTaskDataForCurrentBucket(View recentsView) {
-        LauncherRecentsState.PrepareRecentsViewState state =
-                prepareRecentsViewState(recentsView);
-        int page = LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0);
-        int bucket = resolveSlowLogScrollBucket(recentsView);
-        if (state.visibleTaskDataPage == page && state.visibleTaskDataBucket == bucket) {
-            return false;
-        }
-        state.visibleTaskDataPage = page;
-        state.visibleTaskDataBucket = bucket;
-        return true;
     }
 
     private static boolean shouldSkipDuplicateStackLayout(
