@@ -2523,14 +2523,10 @@ final class LauncherRecentsLayoutEngine {
             int targetCount) {
         appendStackLayoutIndex(target, anchorIndex, taskViewCount);
         appendStackLayoutIndex(target, anchorIndex - 1, taskViewCount);
-        for (int i = 1; target.size() < targetCount; i++) {
-            appendStackLayoutIndex(target, anchorIndex + i, taskViewCount);
-            if (target.size() >= targetCount) {
-                break;
-            }
-            if (i > 1) {
-                appendStackLayoutIndex(target, anchorIndex + i, taskViewCount);
-            }
+        appendStackLayoutIndex(target, anchorIndex + 1, taskViewCount);
+        appendStackLayoutIndex(target, anchorIndex + 2, taskViewCount);
+        for (int i = 2; target.size() < targetCount && i < taskViewCount; i++) {
+            appendStackLayoutIndex(target, anchorIndex - i, taskViewCount);
         }
     }
 
