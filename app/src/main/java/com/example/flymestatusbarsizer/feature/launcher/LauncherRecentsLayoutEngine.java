@@ -217,6 +217,9 @@ final class LauncherRecentsLayoutEngine {
                 if (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
                     continue;
                 }
+                if (!shouldUseStackLayout(recentsView)) {
+                    continue;
+                }
                 prepareRecentsView(recentsView);
                 if (shouldApplyDynamicStackLayout(recentsView)) {
                     scheduleStackLayout(
@@ -224,8 +227,6 @@ final class LauncherRecentsLayoutEngine {
                             false,
                             "refreshTrackedViews",
                             true);
-                } else if (!shouldUseStackLayout(recentsView)) {
-                    reapplyOriginalTransforms(recentsView);
                 }
             }
         };
@@ -2025,8 +2026,6 @@ final class LauncherRecentsLayoutEngine {
         }
         if (!shouldUseStackLayout(config, recentsView, taskViewCount)) {
             LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.remove(recentsView);
-            restoreStackTaskVisibility(recentsView, taskViewCount);
-            restoreTaskTransforms(recentsView, taskViewCount);
             return false;
         }
         LauncherRecentsState.LaunchTransitionGeometryState launchState =
@@ -3188,7 +3187,6 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         if (!shouldUseStackLayout(recentsView)) {
-            restoreStackTaskVisibility(recentsView);
             return;
         }
         HashSet<View> visibleTaskViews = new HashSet<>();
@@ -3217,7 +3215,6 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         if (!shouldUseStackLayout(recentsView)) {
-            restoreStackTaskVisibility(recentsView);
             return;
         }
         HashSet<View> visibleTaskViews = new HashSet<>();
@@ -3289,43 +3286,16 @@ final class LauncherRecentsLayoutEngine {
             int taskViewCount,
             HashSet<View> visibleTaskViews) {
         if (recentsView == null || visibleTaskViews == null || visibleTaskViews.isEmpty()) {
-            restoreStackTaskVisibility(recentsView, taskViewCount);
             return;
         }
-        boolean clipped = false;
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
                 continue;
             }
             int visibility = visibleTaskViews.contains(taskView) ? View.VISIBLE : View.INVISIBLE;
-            clipped |= visibility == View.INVISIBLE;
             if (taskView.getVisibility() != visibility) {
                 taskView.setVisibility(visibility);
-            }
-        }
-        if (clipped) {
-            LauncherRecentsState.STACK_TASK_VISIBILITY_CLIPPED.put(recentsView, true);
-        } else {
-            LauncherRecentsState.STACK_TASK_VISIBILITY_CLIPPED.remove(recentsView);
-        }
-    }
-
-    static void restoreStackTaskVisibility(View recentsView) {
-        restoreStackTaskVisibility(
-                recentsView,
-                LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0));
-    }
-
-    private static void restoreStackTaskVisibility(View recentsView, int taskViewCount) {
-        if (recentsView == null
-                || LauncherRecentsState.STACK_TASK_VISIBILITY_CLIPPED.remove(recentsView) == null) {
-            return;
-        }
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView != null && taskView.getVisibility() != View.VISIBLE) {
-                taskView.setVisibility(View.VISIBLE);
             }
         }
     }
@@ -3656,23 +3626,6 @@ final class LauncherRecentsLayoutEngine {
         return state == normalState
                 || state == overviewPeekState
                 || state.getClass().getName().contains("OverviewPeekState");
-    }
-
-    static void reapplyOriginalTransforms(View recentsView) {
-        LauncherRecentsTransitionController.cancelBlankTapHomeExitAnimation(recentsView, true);
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        restoreStackTaskVisibility(recentsView, taskViewCount);
-        restoreTaskTransforms(recentsView, taskViewCount);
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "updatePageScales",
-                LauncherRecentsCompat.NO_ARGS);
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "updatePageOffsetsForFlyme",
-                LauncherRecentsCompat.NO_ARGS);
-        recentsView.requestLayout();
-        recentsView.invalidate();
     }
 
     static float resolveStackEntryProgress(View recentsView) {

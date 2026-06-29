@@ -1261,8 +1261,6 @@ final class LauncherRecentsLaunchController {
                     recentsView,
                     false,
                     "launchClearRestore");
-        } else {
-            LauncherRecentsLayoutEngine.reapplyOriginalTransforms(recentsView);
         }
         recentsView.invalidate();
     }
