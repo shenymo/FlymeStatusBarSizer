@@ -2409,7 +2409,7 @@ final class LauncherRecentsLayoutEngine {
                 break;
             }
             if (i > 1) {
-                appendStackLayoutIndex(target, anchorIndex - i, taskViewCount);
+                appendStackLayoutIndex(target, anchorIndex + i, taskViewCount);
             }
         }
     }
