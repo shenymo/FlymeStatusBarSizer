@@ -62,6 +62,7 @@ final class LauncherRecentsPerf {
         View view = CURRENT_VIEW.get();
         Log.i(TAG, name
                 + stateSuffix(view)
+                + " taskCount=" + taskCount(view)
                 + " count=" + stats.count
                 + " avgMs=" + (stats.totalNs / stats.count / 1_000_000f)
                 + " maxMs=" + (stats.maxNs / 1_000_000f)
@@ -124,8 +125,26 @@ final class LauncherRecentsPerf {
         }
         Log.i(TAG, name
                 + stateSuffix(view)
+                + " taskCount=" + taskCount(view)
                 + " costMs=" + (costNs / 1_000_000f)
                 + (details != null && !details.isEmpty() ? " " + details : ""));
+    }
+
+    static void logLayoutComputeDetail(
+            String name,
+            View view,
+            long costNs,
+            int computedTaskCount,
+            boolean applied) {
+        if (costNs == 0L || !enabled(view)) {
+            return;
+        }
+        Log.i(TAG, name
+                + stateSuffix(view)
+                + " taskCount=" + taskCount(view)
+                + " costMs=" + (costNs / 1_000_000f)
+                + " computedTaskCount=" + computedTaskCount
+                + " applied=" + applied);
     }
 
     static void hit(String name) {
@@ -179,7 +198,14 @@ final class LauncherRecentsPerf {
     }
 
     private static int taskCount(View view) {
-        return LauncherRecentsCompat.invokeInt(view, "getTaskViewCount", 0);
+        int count = LauncherRecentsCompat.invokeInt(view, "getTaskViewCount", 0);
+        if (count > 0) {
+            return count;
+        }
+        View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(view);
+        return recentsView != view
+                ? LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0)
+                : count;
     }
 
     private static int primaryScroll(View view) {

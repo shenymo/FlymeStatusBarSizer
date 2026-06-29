@@ -1840,11 +1840,11 @@ final class LauncherRecentsLayoutEngine {
                     "source=" + source
                             + " radius=" + stackLayoutRadius);
         }
-        boolean layoutApplied = false;
+        int computedTaskCount = -1;
         long totalStartNs = LauncherRecentsPerf.start(recentsView);
         long layoutStartNs = LauncherRecentsPerf.start(recentsView);
         try {
-            layoutApplied = applyStackLayoutMeasured(
+            computedTaskCount = applyStackLayoutMeasured(
                     recentsView,
                     captureStockState,
                     taskViewCount,
@@ -1852,8 +1852,20 @@ final class LauncherRecentsLayoutEngine {
                     config);
         } finally {
             long layoutCostNs = LauncherRecentsPerf.end("layoutCompute:" + source, layoutStartNs);
-            reportSlowApplyDynamicLayout(recentsView, source, stackLayoutRadius, layoutCostNs);
+            LauncherRecentsPerf.logLayoutComputeDetail(
+                    "layoutComputeDetail:" + source,
+                    recentsView,
+                    layoutCostNs,
+                    computedTaskCount,
+                    computedTaskCount >= 0);
+            reportSlowApplyDynamicLayout(
+                    recentsView,
+                    source,
+                    stackLayoutRadius,
+                    layoutCostNs,
+                    computedTaskCount);
         }
+        boolean layoutApplied = computedTaskCount >= 0;
         if (logApply) {
             LauncherRecentsPerf.flow("layout:apply:end",
                     recentsView,
@@ -1868,11 +1880,11 @@ final class LauncherRecentsLayoutEngine {
             View recentsView,
             String source,
             int stackLayoutRadius,
-            long layoutCostNs) {
+            long layoutCostNs,
+            int computedTaskCount) {
         if (!"applyDynamic".equals(source) || !LauncherRecentsPerf.isSlowCall(layoutCostNs)) {
             return;
         }
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         int scrollBucket = resolveSlowLogScrollBucket(recentsView);
         boolean blankTapExitActive =
                 LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView);
@@ -1888,9 +1900,9 @@ final class LauncherRecentsLayoutEngine {
                 "slowApplyDynamicLayout",
                 recentsView,
                 layoutCostNs,
-                "taskCount=" + taskViewCount
-                        + " layoutRadius=" + stackLayoutRadius
+                "layoutRadius=" + stackLayoutRadius
                         + " scrollBucket=" + scrollBucket
+                        + " computedTaskCount=" + computedTaskCount
                         + " blankTapExit=" + blankTapExitActive
                         + " gestureRelease=" + gestureReleaseActive
                         + " overviewState=" + overviewStateActive);
@@ -1926,9 +1938,12 @@ final class LauncherRecentsLayoutEngine {
         long nowNs = System.nanoTime();
         LauncherRecentsState.StackLayoutApplyState lastState =
                 LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.get(recentsView);
-        if (lastState != null
-                && lastState.key == key
-                && nowNs - lastState.timeNs <= STACK_LAYOUT_DUPLICATE_WINDOW_NS
+        boolean sameLayout = lastState != null && lastState.key == key;
+        boolean duplicateInSameFrame = sameLayout
+                && nowNs - lastState.timeNs <= STACK_LAYOUT_DUPLICATE_WINDOW_NS;
+        boolean stableDuplicate = sameLayout
+                && LauncherRecentsState.isAppToRecentsStackSettled(recentsView);
+        if ((duplicateInSameFrame || stableDuplicate)
                 && !LauncherRecentsTaskVisuals.hasAppliedTaskScaleMismatch(recentsView)) {
             return true;
         }
@@ -2017,27 +2032,27 @@ final class LauncherRecentsLayoutEngine {
         return Math.round(value * 1000f);
     }
 
-    private static boolean applyStackLayoutMeasured(
+    private static int applyStackLayoutMeasured(
             View recentsView,
             boolean captureStockState,
             int taskViewCount,
             int stackLayoutRadius,
             FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config) {
         if (recentsView == null) {
-            return false;
+            return -1;
         }
         if (!shouldUseStackLayout(config, recentsView, taskViewCount)) {
             LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.remove(recentsView);
-            return false;
+            return -1;
         }
         LauncherRecentsState.LaunchTransitionGeometryState launchState =
                 LauncherRecentsState.getActiveTaskLaunchTransitionGeometry(recentsView);
         if (launchState != null && launchState.frozen) {
             LauncherRecentsLaunchController.applyFrozenTaskLaunchLayout(recentsView);
-            return false;
+            return -1;
         }
         if (shouldBlockAppToRecentsStackApply(recentsView)) {
-            return false;
+            return -1;
         }
 
         boolean blankTapExitActive =
@@ -2095,7 +2110,7 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, visualState);
             }
         }
-        return true;
+        return layout.visualStates.size();
     }
 
     static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> computeStackLayout(
@@ -2408,7 +2423,7 @@ final class LauncherRecentsLayoutEngine {
             return 0;
         }
         if (LauncherRecentsState.isAppToRecentsStackSettled(recentsView)) {
-            return Math.min(taskViewCount, (radius * 2) + 2);
+            return Math.min(taskViewCount, 4);
         }
         if (appEntryLightWindow) {
             return Math.min(taskViewCount, (radius * 2) + 1);
