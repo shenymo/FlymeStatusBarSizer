@@ -18,6 +18,7 @@ final class LauncherRecentsCompat {
     static final Class<?>[] INT_ARG = new Class[]{int.class};
     static final Class<?>[] FLOAT_ARG = new Class[]{float.class};
     static final Class<?>[] BOOLEAN_ARG = new Class[]{boolean.class};
+    static final Class<?>[] BOOLEAN_INT_ARG = new Class[]{boolean.class, int.class};
 
     static final String LAUNCHER_RECENTS_VIEW_CLASS =
             "com.android.quickstep.views.LauncherRecentsView";

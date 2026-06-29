@@ -5,6 +5,7 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import android.graphics.Canvas;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.SparseBooleanArray;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
@@ -2385,11 +2386,23 @@ final class LauncherRecentsLayoutEngine {
                     gestureStackReleaseActive,
                     i,
                     lightAnchorIndex);
+            StackTaskInput input = buildStackTaskInput(layoutContext, taskView, i);
             LauncherRecentsTaskVisuals.StackTaskVisualState visualState =
                     buildStackTaskVisualState(
                             layoutContext,
-                            buildStackTaskInput(layoutContext, taskView, i),
+                            input,
                             coreOnly);
+            if (stableFillWindow
+                    && isStableStackEdgeIndex(i, activeIndices)
+                    && !isStackVisualStateVisibleInViewport(layoutContext, input, visualState)) {
+                hideLightStackTask(taskView);
+                replaceStableStackEdgeIndex(
+                        i,
+                        activeIndices,
+                        processIndices,
+                        taskViewCount);
+                continue;
+            }
             if (coreOnly) {
                 result.coreOnlyTaskViews.add(taskView);
             }
@@ -2404,6 +2417,61 @@ final class LauncherRecentsLayoutEngine {
             int anchorIndex) {
         return gestureStackReleaseActive
                 && Math.abs(index - anchorIndex) > STACK_GESTURE_RELEASE_CORE_RADIUS;
+    }
+
+    private static boolean isStackVisualStateVisibleInViewport(
+            StackLayoutContext context,
+            StackTaskInput input,
+            LauncherRecentsTaskVisuals.StackTaskVisualState state) {
+        if (context == null || input == null || state == null) {
+            return false;
+        }
+        float visibleOffset = input.rawOffset
+                + (context.primaryScrollHorizontal
+                ? state.horizontalOffsetX + state.taskOffsetX
+                : state.taskOffsetY);
+        return isTaskVisibleInViewport(
+                context.recentsView,
+                input.taskCenteredPrimaryStartPx,
+                input.taskPrimarySize,
+                visibleOffset,
+                state.scale,
+                context.primaryScrollHorizontal);
+    }
+
+    private static boolean isStableStackEdgeIndex(int index, ArrayList<Integer> activeIndices) {
+        if (activeIndices == null || activeIndices.size() <= 1) {
+            return false;
+        }
+        int minIndex = Integer.MAX_VALUE;
+        int maxIndex = Integer.MIN_VALUE;
+        for (int i = 0; i < activeIndices.size(); i++) {
+            int activeIndex = activeIndices.get(i);
+            minIndex = Math.min(minIndex, activeIndex);
+            maxIndex = Math.max(maxIndex, activeIndex);
+        }
+        return index == minIndex || index == maxIndex;
+    }
+
+    private static void replaceStableStackEdgeIndex(
+            int index,
+            ArrayList<Integer> activeIndices,
+            ArrayList<Integer> processIndices,
+            int taskViewCount) {
+        if (activeIndices == null || activeIndices.size() <= 1) {
+            return;
+        }
+        int minIndex = Integer.MAX_VALUE;
+        int maxIndex = Integer.MIN_VALUE;
+        for (int i = 0; i < activeIndices.size(); i++) {
+            int activeIndex = activeIndices.get(i);
+            minIndex = Math.min(minIndex, activeIndex);
+            maxIndex = Math.max(maxIndex, activeIndex);
+        }
+        activeIndices.remove(Integer.valueOf(index));
+        int replacement = index == minIndex ? maxIndex + 1 : minIndex - 1;
+        appendStackLayoutIndex(activeIndices, replacement, taskViewCount);
+        appendStackLayoutIndex(processIndices, replacement, taskViewCount);
     }
 
     private static ArrayList<Integer> resolveStackLayoutActiveIndices(
@@ -3254,7 +3322,7 @@ final class LauncherRecentsLayoutEngine {
         appendStackTaskVisibilityIndices(
                 recentsView,
                 taskViewCount,
-                layout.processIndices,
+                layout.activeIndices,
                 visibleTaskViews);
         appendStackTaskVisibilityView(recentsView, layout.runningTaskView, visibleTaskViews);
         return visibleTaskViews;
@@ -3394,11 +3462,54 @@ final class LauncherRecentsLayoutEngine {
             if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
                 continue;
             }
-            int visibility = visibleTaskViews.contains(taskView) ? View.VISIBLE : View.INVISIBLE;
+            boolean visible = visibleTaskViews.contains(taskView);
+            int visibility = visible ? View.VISIBLE : View.INVISIBLE;
+            boolean visibilityChanged = taskView.getVisibility() != visibility;
             if (taskView.getVisibility() != visibility) {
                 taskView.setVisibility(visibility);
             }
+            int dataStateChanged = updateStackTaskVisibleDataState(
+                    recentsView,
+                    taskView,
+                    visible);
+            if (dataStateChanged > 0 || (dataStateChanged < 0 && visibilityChanged)) {
+                LauncherRecentsCompat.invokeCompat(
+                        taskView,
+                        "onTaskListVisibilityChanged",
+                        LauncherRecentsCompat.BOOLEAN_INT_ARG,
+                        visible,
+                        15);
+            }
         }
+    }
+
+    private static int updateStackTaskVisibleDataState(
+            View recentsView,
+            View taskView,
+            boolean visible) {
+        Object value = LauncherRecentsCompat.getFieldCompat(recentsView, "mHasVisibleTaskData");
+        if (!(value instanceof SparseBooleanArray)) {
+            return -1;
+        }
+        int[] taskIds = resolveTaskIds(taskView);
+        if (taskIds == null || taskIds.length == 0) {
+            return -1;
+        }
+        SparseBooleanArray visibleTaskData = (SparseBooleanArray) value;
+        boolean changed = false;
+        for (int taskId : taskIds) {
+            boolean oldVisible = visibleTaskData.get(taskId);
+            if (visible) {
+                if (!oldVisible) {
+                    visibleTaskData.put(taskId, true);
+                    changed = true;
+                }
+            } else if (oldVisible) {
+                visibleTaskData.delete(taskId);
+                changed = true;
+            }
+        }
+        return changed ? 1 : 0;
     }
 
     private static boolean shouldHideStackLayoutTask(int index, int anchorIndex, int radius) {
