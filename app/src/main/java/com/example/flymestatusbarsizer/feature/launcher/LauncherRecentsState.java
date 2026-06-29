@@ -129,7 +129,6 @@ final class LauncherRecentsState {
         boolean launcherQuickSwitchStockMode;
         boolean taskLaunchRequestStarted;
         boolean swipeUpGestureActive;
-        Integer stackScrollFixedAnchorPage;
         Float overviewStateStackStartAdjacentOffset;
         LaunchTransitionGeometryState activeTaskLaunchTransitionGeometry;
     }
@@ -534,25 +533,6 @@ final class LauncherRecentsState {
     static boolean isSwipeUpGestureActive(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
         return state != null && state.swipeUpGestureActive;
-    }
-
-    static void setStackScrollFixedAnchorPage(View recentsView, int page) {
-        RecentsViewState state = ensureRecentsViewState(recentsView);
-        if (state != null) {
-            state.stackScrollFixedAnchorPage = page;
-        }
-    }
-
-    static Integer getStackScrollFixedAnchorPage(View recentsView) {
-        RecentsViewState state = findRecentsViewState(recentsView);
-        return state != null ? state.stackScrollFixedAnchorPage : null;
-    }
-
-    static void clearStackScrollFixedAnchorPage(View recentsView) {
-        RecentsViewState state = findRecentsViewState(recentsView);
-        if (state != null) {
-            state.stackScrollFixedAnchorPage = null;
-        }
     }
 
     static void clearOverviewStackAnimationState(View recentsView, boolean settled) {

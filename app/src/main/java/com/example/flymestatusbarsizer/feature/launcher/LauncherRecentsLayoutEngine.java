@@ -21,7 +21,6 @@ final class LauncherRecentsLayoutEngine {
             "com.meizu.flyme.launcher.FlymeLauncherState";
     private static final float STACK_ENTRY_LIFT_RATIO = 0.05f;
     private static final float STACK_ENTRY_INITIAL_SPREAD_RATIO = 0.8f;
-    private static final float STACK_LEFT_EDGE_INSET_RATIO = -0.05f;
     private static final float STACK_RIGHT_VISIBLE_RATIO = 0.80f;
     private static final float STACK_LEFT_MOVE_RATIO = 0.45f;
     private static final float STACK_RIGHT_BASE_SPEEDUP_RATIO = 0.16f;
@@ -29,7 +28,6 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
     private static final float STACK_RELEASE_SETTLED_PROGRESS_SHIFT = 0.70f;
     private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
-    private static final float STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO = 0.30f;
     private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
     private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
     private static final float STACK_MIN_SCALE = 0.92f;
@@ -59,7 +57,6 @@ final class LauncherRecentsLayoutEngine {
         final float pageSpan;
         final boolean primaryScrollHorizontal;
         final int primaryScroll;
-        final float leftEdgeRevealProgress;
         final float blankTapExitProgress;
         final float stackEntryProgress;
         final float stackVerticalProgress;
@@ -87,7 +84,6 @@ final class LauncherRecentsLayoutEngine {
                 float pageSpan,
                 boolean primaryScrollHorizontal,
                 int primaryScroll,
-                float leftEdgeRevealProgress,
                 float blankTapExitProgress,
                 float stackEntryProgress,
                 float stackVerticalProgress,
@@ -113,7 +109,6 @@ final class LauncherRecentsLayoutEngine {
             this.pageSpan = pageSpan;
             this.primaryScrollHorizontal = primaryScrollHorizontal;
             this.primaryScroll = primaryScroll;
-            this.leftEdgeRevealProgress = leftEdgeRevealProgress;
             this.blankTapExitProgress = blankTapExitProgress;
             this.stackEntryProgress = stackEntryProgress;
             this.stackVerticalProgress = stackVerticalProgress;
@@ -1975,8 +1970,6 @@ final class LauncherRecentsLayoutEngine {
         key = mixStackLayoutApplyKey(
                 key,
                 LauncherRecentsCompat.invokeInt(recentsView, "getCurrentPage", 0));
-        Integer fixedAnchorPage = LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView);
-        key = mixStackLayoutApplyKey(key, fixedAnchorPage != null ? fixedAnchorPage : -1);
         key = mixStackLayoutApplyKey(
                 key,
                 taskViewCount);
@@ -2219,16 +2212,6 @@ final class LauncherRecentsLayoutEngine {
                 fillBoundaryTargetCount,
                 stableFillWindow,
                 seascapeEntryWindow);
-        addFixedStackScrollActiveIndices(
-                recentsView,
-                taskViewCount,
-                stackLayoutRadius,
-                fillBoundaryTargetCount,
-                stableFillWindow,
-                seascapeEntryWindow,
-                entryLightWindow,
-                targetScroll,
-                activeIndices);
         ArrayList<Integer> processIndices = resolveStackLayoutProcessIndices(
                 taskViewCount,
                 activeIndices,
@@ -2318,7 +2301,6 @@ final class LauncherRecentsLayoutEngine {
                 pageSpan,
                 primaryScrollHorizontal,
                 primaryScroll,
-                resolveLeftEdgeRevealProgress(recentsView, primaryScroll),
                 blankTapExitProgress,
                 stackEntryProgress,
                 stackVerticalProgress,
@@ -2369,36 +2351,6 @@ final class LauncherRecentsLayoutEngine {
             int anchorIndex) {
         return gestureStackReleaseActive
                 && Math.abs(index - anchorIndex) > STACK_GESTURE_RELEASE_CORE_RADIUS;
-    }
-
-    private static void addFixedStackScrollActiveIndices(
-            View recentsView,
-            int taskViewCount,
-            int stackLayoutRadius,
-            int fillBoundaryTargetCount,
-            boolean stableFillWindow,
-            boolean seascapeEntryWindow,
-            boolean entryWindow,
-            Integer targetScroll,
-            ArrayList<Integer> activeIndices) {
-        if (entryWindow
-                || stackLayoutRadius != STACK_STABLE_VISIBLE_RADIUS
-                || LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView) == null) {
-            return;
-        }
-        int fixedAnchorIndex = Math.max(
-                0,
-                Math.min(
-                        LauncherRecentsState.getStackScrollFixedAnchorPage(recentsView),
-                        Math.max(0, taskViewCount - 1)));
-        ArrayList<Integer> fixedIndices = resolveStackLayoutActiveIndices(
-                taskViewCount,
-                fixedAnchorIndex,
-                stackLayoutRadius,
-                fillBoundaryTargetCount,
-                stableFillWindow,
-                seascapeEntryWindow);
-        appendStackLayoutIndices(activeIndices, fixedIndices, taskViewCount);
     }
 
     private static ArrayList<Integer> resolveStackLayoutActiveIndices(
@@ -2729,7 +2681,6 @@ final class LauncherRecentsLayoutEngine {
                 input.layoutProgress,
                 input.taskPrimarySize,
                 input.taskCenteredPrimaryStartPx,
-                context.leftEdgeRevealProgress,
                 context.primaryScrollHorizontal);
         float finalTaskOffsetY = stackEntryLiftPx * (1.0f - context.stackVerticalProgress);
         float taskEntryProgress = resolveTaskStackEntryProgress(
@@ -2740,7 +2691,6 @@ final class LauncherRecentsLayoutEngine {
                 input.collapsedReferenceProgress,
                 input.taskPrimarySize,
                 input.taskCenteredPrimaryStartPx,
-                context.leftEdgeRevealProgress,
                 context.primaryScrollHorizontal) * STACK_ENTRY_INITIAL_SPREAD_RATIO;
         float desiredVisibleOffset = lerp(
                 collapsedVisibleOffset,
@@ -2828,7 +2778,6 @@ final class LauncherRecentsLayoutEngine {
                 input.layoutProgress,
                 input.taskPrimarySize,
                 input.taskCenteredPrimaryStartPx,
-                context.leftEdgeRevealProgress,
                 context.primaryScrollHorizontal);
         if (!blankTapExitTaskActive) {
             desiredStableAlpha *= stackLeftClampAlpha;
@@ -3652,28 +3601,11 @@ final class LauncherRecentsLayoutEngine {
             float taskPrimarySize,
             float taskCenteredPrimaryStartPx,
             boolean primaryScrollHorizontal) {
-        return resolveStackVisibleOffset(
-                recentsView,
-                progress,
-                taskPrimarySize,
-                taskCenteredPrimaryStartPx,
-                resolveLeftEdgeRevealProgress(recentsView),
-                primaryScrollHorizontal);
-    }
-
-    private static float resolveStackVisibleOffset(
-            View recentsView,
-            float progress,
-            float taskPrimarySize,
-            float taskCenteredPrimaryStartPx,
-            float leftEdgeRevealProgress,
-            boolean primaryScrollHorizontal) {
         int primaryAxisSign = resolveStackPrimaryAxisSign(recentsView, primaryScrollHorizontal);
         float visualProgress = progress * primaryAxisSign;
         float leftBoundOffsetPx = resolveStackLeftBoundOffset(
                 taskPrimarySize,
-                taskCenteredPrimaryStartPx,
-                visualProgress < 0f ? 1f : leftEdgeRevealProgress);
+                taskCenteredPrimaryStartPx);
         float visibleOffset = resolveStackUnclampedVisibleOffset(
                 recentsView,
                 visualProgress,
@@ -3730,16 +3662,8 @@ final class LauncherRecentsLayoutEngine {
 
     private static float resolveStackLeftBoundOffset(
             float taskPrimarySize,
-            float taskCenteredPrimaryStartPx,
-            float leftEdgeRevealProgress) {
-        float stackLeftOffsetPx =
-                -taskCenteredPrimaryStartPx + (taskPrimarySize * STACK_LEFT_EDGE_INSET_RATIO);
-        float stackLeftRestOffsetPx =
-                -taskCenteredPrimaryStartPx + (taskPrimarySize * STACK_LEFT_REST_INSET_RATIO);
-        return lerp(
-                stackLeftRestOffsetPx,
-                stackLeftOffsetPx,
-                leftEdgeRevealProgress);
+            float taskCenteredPrimaryStartPx) {
+        return -taskCenteredPrimaryStartPx + (taskPrimarySize * STACK_LEFT_REST_INSET_RATIO);
     }
 
     private static float resolveStackLeftClampAlpha(
@@ -3747,22 +3671,6 @@ final class LauncherRecentsLayoutEngine {
             float progress,
             float taskPrimarySize,
             float taskCenteredPrimaryStartPx,
-            boolean primaryScrollHorizontal) {
-        return resolveStackLeftClampAlpha(
-                recentsView,
-                progress,
-                taskPrimarySize,
-                taskCenteredPrimaryStartPx,
-                resolveLeftEdgeRevealProgress(recentsView),
-                primaryScrollHorizontal);
-    }
-
-    private static float resolveStackLeftClampAlpha(
-            View recentsView,
-            float progress,
-            float taskPrimarySize,
-            float taskCenteredPrimaryStartPx,
-            float leftEdgeRevealProgress,
             boolean primaryScrollHorizontal) {
         int primaryAxisSign = resolveStackPrimaryAxisSign(recentsView, primaryScrollHorizontal);
         float visualProgress = progress * primaryAxisSign;
@@ -3774,7 +3682,6 @@ final class LauncherRecentsLayoutEngine {
                 progress,
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx,
-                leftEdgeRevealProgress,
                 primaryScrollHorizontal);
         float frontProgress = (visualProgress + 1f) * primaryAxisSign;
         float frontOffset = resolveStackVisibleOffset(
@@ -3782,7 +3689,6 @@ final class LauncherRecentsLayoutEngine {
                 frontProgress,
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx,
-                leftEdgeRevealProgress,
                 primaryScrollHorizontal);
         float distancePx = Math.abs(frontOffset - currentOffset);
         float opaqueDistancePx = Math.max(
@@ -3816,23 +3722,6 @@ final class LauncherRecentsLayoutEngine {
             return progress;
         }
         return progress + (STACK_RELEASE_SETTLED_PROGRESS_SHIFT * stackSettledShiftProgress);
-    }
-
-    private static float resolveLeftEdgeRevealProgress(View recentsView) {
-        return resolveLeftEdgeRevealProgress(recentsView, resolvePrimaryScroll(recentsView));
-    }
-
-    private static float resolveLeftEdgeRevealProgress(View recentsView, int primaryScroll) {
-        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
-        int minScroll = LauncherRecentsCompat.readIntField(
-                recentsView,
-                "mMinScroll",
-                resolvePrimaryScroll(recentsView));
-        float revealRange = Math.max(
-                1f,
-                resolvePrimarySize(recentsView, primaryScrollHorizontal)
-                        * STACK_LEFT_EDGE_REVEAL_SCROLL_RATIO);
-        return 1.0f - remapProgress(primaryScroll - minScroll, 0f, revealRange);
     }
 
     private static int resolveEdgeScrollCorrection(View recentsView) {
