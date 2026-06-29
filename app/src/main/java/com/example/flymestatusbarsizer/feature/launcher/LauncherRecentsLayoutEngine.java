@@ -1294,6 +1294,7 @@ final class LauncherRecentsLayoutEngine {
                                     targetVisualState));
                 }
             }
+            ensureGestureReleaseTaskViewsVisible(recentsView);
             return;
         }
     }
@@ -1315,6 +1316,7 @@ final class LauncherRecentsLayoutEngine {
             if (state == null) {
                 continue;
             }
+            ensureStackTaskViewVisible(taskView);
             LauncherRecentsTaskVisuals.applyStackTaskCoreVisualState(
                     taskView,
                     state.startVisualState.lerpTo(state.targetVisualState, progress));
@@ -3158,6 +3160,17 @@ final class LauncherRecentsLayoutEngine {
             int taskViewCount,
             ComputedStackLayout layout) {
         HashSet<View> visibleTaskViews = new HashSet<>();
+        if (LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
+                recentsView)
+                && !LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.isEmpty()) {
+            appendStackTaskVisibilityViews(
+                    recentsView,
+                    LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.keySet(),
+                    visibleTaskViews);
+            if (!visibleTaskViews.isEmpty()) {
+                return visibleTaskViews;
+            }
+        }
         if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
                 && !LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.isEmpty()) {
             appendStackTaskVisibilityViews(
@@ -3279,6 +3292,27 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         visibleTaskViews.add(taskView);
+    }
+
+    private static void ensureGestureReleaseTaskViewsVisible(View recentsView) {
+        if (recentsView == null
+                || LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.isEmpty()) {
+            return;
+        }
+        for (View taskView : LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.keySet()) {
+            if (taskView == null
+                    || LauncherRecentsCompat.isDesktopTask(taskView)
+                    || LauncherRecentsCompat.resolveOwningRecentsView(taskView) != recentsView) {
+                continue;
+            }
+            ensureStackTaskViewVisible(taskView);
+        }
+    }
+
+    private static void ensureStackTaskViewVisible(View taskView) {
+        if (taskView != null && taskView.getVisibility() != View.VISIBLE) {
+            taskView.setVisibility(View.VISIBLE);
+        }
     }
 
     private static void applyStackTaskVisibility(
