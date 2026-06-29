@@ -3453,6 +3453,7 @@ final class LauncherRecentsLayoutEngine {
         if (recentsView == null || visibleTaskViews == null || visibleTaskViews.isEmpty()) {
             return;
         }
+        boolean deferUnload = isStackScrollerActive(recentsView);
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
@@ -3464,6 +3465,9 @@ final class LauncherRecentsLayoutEngine {
             boolean visibilityChanged = currentVisibility != visibility;
             if (visibilityChanged) {
                 taskView.setVisibility(visibility);
+            }
+            if (!visible && deferUnload) {
+                continue;
             }
             Boolean dataStateChanged = updateStackTaskVisibleDataState(
                     recentsView,
