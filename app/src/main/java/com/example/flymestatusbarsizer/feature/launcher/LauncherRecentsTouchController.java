@@ -77,21 +77,17 @@ final class LauncherRecentsTouchController {
             FlymeStatusBarSizer module,
             ClassLoader loader) {
         try {
-            Class<?> clazz = Class.forName(
+            Method method = Class.forName(
                     LauncherRecentsCompat.LAUNCHER_RECENTS_VIEW_CLASS,
                     false,
-                    loader);
-            Method method = clazz.getDeclaredMethod("isOverViewState");
+                    loader).getDeclaredMethod("isOverViewState");
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                Object result = chain.proceed();
-                if (Boolean.TRUE.equals(result)) {
-                    return true;
-                }
                 Object thisObject = chain.getThisObject();
                 return thisObject instanceof View
-                        && LauncherRecentsLayoutEngine.shouldUseStackLayout((View) thisObject)
-                        && LauncherRecentsState.isAppToRecentsStackSettled((View) thisObject);
+                        && LauncherRecentsState.isAppToRecentsStackSettled((View) thisObject)
+                        ? true
+                        : chain.proceed();
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
