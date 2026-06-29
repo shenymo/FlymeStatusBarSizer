@@ -139,12 +139,14 @@ final class LauncherRecentsPerf {
         if (costNs == 0L || !enabled(view)) {
             return;
         }
+        String computedPackages = LauncherRecentsState.LAST_STACK_LAYOUT_COMPUTED_PACKAGES.get(view);
         Log.i(TAG, name
                 + stateSuffix(view)
                 + " taskCount=" + taskCount(view)
                 + " costMs=" + (costNs / 1_000_000f)
                 + " computedTaskCount=" + computedTaskCount
-                + " applied=" + applied);
+                + " applied=" + applied
+                + (computedPackages != null ? " computedPackages=" + computedPackages : ""));
     }
 
     static void hit(String name) {

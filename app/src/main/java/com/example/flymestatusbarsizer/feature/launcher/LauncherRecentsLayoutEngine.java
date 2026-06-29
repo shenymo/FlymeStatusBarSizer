@@ -2041,6 +2041,7 @@ final class LauncherRecentsLayoutEngine {
         if (recentsView == null) {
             return -1;
         }
+        LauncherRecentsState.LAST_STACK_LAYOUT_COMPUTED_PACKAGES.remove(recentsView);
         if (!shouldUseStackLayout(config, recentsView, taskViewCount)) {
             LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.remove(recentsView);
             return -1;
@@ -2076,6 +2077,7 @@ final class LauncherRecentsLayoutEngine {
                 resolveStackTaskVisibilityWhitelist(recentsView, taskViewCount, layout);
         applyStackTaskVisibility(recentsView, taskViewCount, visibleTaskViews);
 
+        StringBuilder computedPackages = new StringBuilder();
         for (int index = 0; index < layout.processIndices.size(); index++) {
             int i = layout.processIndices.get(index);
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
@@ -2101,6 +2103,7 @@ final class LauncherRecentsLayoutEngine {
             if (visualState == null) {
                 continue;
             }
+            appendComputedTaskPackage(computedPackages, i, taskView);
             if (captureStockState) {
                 LauncherRecentsTaskVisuals.captureStockTaskState(taskView);
             }
@@ -2110,7 +2113,56 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, visualState);
             }
         }
+        if (computedPackages.length() > 0) {
+            LauncherRecentsState.LAST_STACK_LAYOUT_COMPUTED_PACKAGES.put(
+                    recentsView,
+                    computedPackages.toString());
+        } else {
+            LauncherRecentsState.LAST_STACK_LAYOUT_COMPUTED_PACKAGES.remove(recentsView);
+        }
         return layout.visualStates.size();
+    }
+
+    private static void appendComputedTaskPackage(
+            StringBuilder builder,
+            int index,
+            View taskView) {
+        if (builder == null) {
+            return;
+        }
+        if (builder.length() > 0) {
+            builder.append(',');
+        }
+        builder.append(index).append(':').append(resolveTaskPackageNames(taskView));
+    }
+
+    private static String resolveTaskPackageNames(View taskView) {
+        Object tasksObject = LauncherRecentsCompat.invokeCompat(taskView, "getTasks");
+        if (!(tasksObject instanceof Object[])) {
+            return "?";
+        }
+        Object[] tasks = (Object[]) tasksObject;
+        StringBuilder packages = new StringBuilder();
+        for (Object task : tasks) {
+            String packageName = resolveTaskPackageName(task);
+            if (packageName == null || packageName.isEmpty()) {
+                continue;
+            }
+            if (packages.length() > 0) {
+                packages.append('+');
+            }
+            packages.append(packageName);
+        }
+        return packages.length() > 0 ? packages.toString() : "?";
+    }
+
+    private static String resolveTaskPackageName(Object task) {
+        Object key = LauncherRecentsCompat.invokeCompat(task, "getKey");
+        Object packageName = LauncherRecentsCompat.invokeCompat(key, "getPackageName");
+        if (packageName instanceof String) {
+            return (String) packageName;
+        }
+        return null;
     }
 
     static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> computeStackLayout(
