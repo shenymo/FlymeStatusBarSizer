@@ -47,6 +47,8 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, PrepareRecentsViewState> PREPARE_RECENTS_VIEW_STATES =
             new WeakHashMap<>();
+    static final WeakHashMap<View, Boolean> STACK_TASK_VISIBILITY_CLIPPED =
+            new WeakHashMap<>();
     static final WeakHashMap<View, ArrayList<Integer>> LAST_STACK_LAYOUT_ACTIVE_INDICES =
             new WeakHashMap<>();
     static final WeakHashMap<View, Integer> LAST_STACK_STOCK_CAPTURE_TASK_COUNTS =

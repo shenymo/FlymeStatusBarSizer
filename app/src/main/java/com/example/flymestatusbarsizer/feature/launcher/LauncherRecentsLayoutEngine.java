@@ -14,6 +14,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 
 final class LauncherRecentsLayoutEngine {
     private static final String LAUNCHER_STATE_CLASS = "com.android.launcher3.LauncherState";
@@ -2022,6 +2023,12 @@ final class LauncherRecentsLayoutEngine {
         if (recentsView == null) {
             return false;
         }
+        if (!shouldUseStackLayout(config, recentsView, taskViewCount)) {
+            LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.remove(recentsView);
+            restoreStackTaskVisibility(recentsView, taskViewCount);
+            restoreTaskTransforms(recentsView, taskViewCount);
+            return false;
+        }
         LauncherRecentsState.LaunchTransitionGeometryState launchState =
                 LauncherRecentsState.getActiveTaskLaunchTransitionGeometry(recentsView);
         if (launchState != null && launchState.frozen) {
@@ -2029,11 +2036,6 @@ final class LauncherRecentsLayoutEngine {
             return false;
         }
         if (shouldBlockAppToRecentsStackApply(recentsView)) {
-            return false;
-        }
-        if (!shouldUseStackLayout(config, recentsView, taskViewCount)) {
-            LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.remove(recentsView);
-            restoreTaskTransforms(recentsView, taskViewCount);
             return false;
         }
 
@@ -2054,6 +2056,9 @@ final class LauncherRecentsLayoutEngine {
         LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.put(
                 recentsView,
                 new ArrayList<>(layout.activeIndices));
+        HashSet<View> visibleTaskViews =
+                resolveStackTaskVisibilityWhitelist(recentsView, taskViewCount, layout);
+        applyStackTaskVisibility(recentsView, taskViewCount, visibleTaskViews);
 
         for (int index = 0; index < layout.processIndices.size(); index++) {
             int i = layout.processIndices.get(index);
@@ -2068,11 +2073,7 @@ final class LauncherRecentsLayoutEngine {
             if (taskView != layout.runningTaskView
                     && sharesTaskIds(taskView, layout.runningTaskIds)) {
                 restoreTaskTransform(taskView);
-                LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(taskView, 0f);
-                LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
-                LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
+                hideLightStackTask(taskView);
                 continue;
             }
             if (!layout.activeIndices.contains(i)) {
@@ -3153,6 +3154,182 @@ final class LauncherRecentsLayoutEngine {
                 page);
     }
 
+    private static HashSet<View> resolveStackTaskVisibilityWhitelist(
+            View recentsView,
+            int taskViewCount,
+            ComputedStackLayout layout) {
+        HashSet<View> visibleTaskViews = new HashSet<>();
+        if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
+                && !LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.isEmpty()) {
+            appendStackTaskVisibilityViews(
+                    recentsView,
+                    LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.keySet(),
+                    visibleTaskViews);
+            if (!visibleTaskViews.isEmpty()) {
+                return visibleTaskViews;
+            }
+        }
+        if (layout == null) {
+            return visibleTaskViews;
+        }
+        appendStackTaskVisibilityIndices(
+                recentsView,
+                taskViewCount,
+                layout.processIndices,
+                visibleTaskViews);
+        appendStackTaskVisibilityView(recentsView, layout.runningTaskView, visibleTaskViews);
+        return visibleTaskViews;
+    }
+
+    static void applyTaskLaunchVisibility(
+            View recentsView,
+            LauncherRecentsState.LaunchTransitionGeometryState state) {
+        if (recentsView == null || state == null) {
+            return;
+        }
+        if (!shouldUseStackLayout(recentsView)) {
+            restoreStackTaskVisibility(recentsView);
+            return;
+        }
+        HashSet<View> visibleTaskViews = new HashSet<>();
+        for (int i = 0; i < state.frozenTaskStates.size(); i++) {
+            LauncherRecentsState.TaskLaunchFrozenTaskState taskState =
+                    state.frozenTaskStates.get(i);
+            if (taskState == null) {
+                continue;
+            }
+            if (taskState.target || taskState.visibility == View.VISIBLE) {
+                appendStackTaskVisibilityView(recentsView, taskState.taskView, visibleTaskViews);
+            }
+        }
+        appendStackTaskVisibilityView(recentsView, state.targetTaskView, visibleTaskViews);
+        applyStackTaskVisibility(
+                recentsView,
+                LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0),
+                visibleTaskViews);
+    }
+
+    static void applyStackDismissTaskVisibility(
+            View recentsView,
+            HashMap<View, ?> startStates,
+            HashMap<View, ?> targetStates) {
+        if (recentsView == null) {
+            return;
+        }
+        if (!shouldUseStackLayout(recentsView)) {
+            restoreStackTaskVisibility(recentsView);
+            return;
+        }
+        HashSet<View> visibleTaskViews = new HashSet<>();
+        if (startStates != null) {
+            appendStackTaskVisibilityViews(recentsView, startStates.keySet(), visibleTaskViews);
+        }
+        if (targetStates != null) {
+            appendStackTaskVisibilityViews(recentsView, targetStates.keySet(), visibleTaskViews);
+        }
+        applyStackTaskVisibility(
+                recentsView,
+                LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0),
+                visibleTaskViews);
+    }
+
+    static void applyStackDismissTargetVisibility(
+            View recentsView,
+            HashMap<View, ?> targetStates) {
+        applyStackDismissTaskVisibility(recentsView, null, targetStates);
+    }
+
+    private static void appendStackTaskVisibilityIndices(
+            View recentsView,
+            int taskViewCount,
+            ArrayList<Integer> indices,
+            HashSet<View> visibleTaskViews) {
+        if (indices == null) {
+            return;
+        }
+        for (int index = 0; index < indices.size(); index++) {
+            int i = indices.get(index);
+            if (i < 0 || i >= taskViewCount) {
+                continue;
+            }
+            appendStackTaskVisibilityView(
+                    recentsView,
+                    LauncherRecentsCompat.getTaskViewAt(recentsView, i),
+                    visibleTaskViews);
+        }
+    }
+
+    private static void appendStackTaskVisibilityViews(
+            View recentsView,
+            Iterable<View> taskViews,
+            HashSet<View> visibleTaskViews) {
+        if (taskViews == null) {
+            return;
+        }
+        for (View taskView : taskViews) {
+            appendStackTaskVisibilityView(recentsView, taskView, visibleTaskViews);
+        }
+    }
+
+    private static void appendStackTaskVisibilityView(
+            View recentsView,
+            View taskView,
+            HashSet<View> visibleTaskViews) {
+        if (taskView == null
+                || visibleTaskViews == null
+                || LauncherRecentsCompat.isDesktopTask(taskView)
+                || LauncherRecentsCompat.resolveOwningRecentsView(taskView) != recentsView) {
+            return;
+        }
+        visibleTaskViews.add(taskView);
+    }
+
+    private static void applyStackTaskVisibility(
+            View recentsView,
+            int taskViewCount,
+            HashSet<View> visibleTaskViews) {
+        if (recentsView == null || visibleTaskViews == null || visibleTaskViews.isEmpty()) {
+            restoreStackTaskVisibility(recentsView, taskViewCount);
+            return;
+        }
+        boolean clipped = false;
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
+                continue;
+            }
+            int visibility = visibleTaskViews.contains(taskView) ? View.VISIBLE : View.INVISIBLE;
+            clipped |= visibility == View.INVISIBLE;
+            if (taskView.getVisibility() != visibility) {
+                taskView.setVisibility(visibility);
+            }
+        }
+        if (clipped) {
+            LauncherRecentsState.STACK_TASK_VISIBILITY_CLIPPED.put(recentsView, true);
+        } else {
+            LauncherRecentsState.STACK_TASK_VISIBILITY_CLIPPED.remove(recentsView);
+        }
+    }
+
+    static void restoreStackTaskVisibility(View recentsView) {
+        restoreStackTaskVisibility(
+                recentsView,
+                LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0));
+    }
+
+    private static void restoreStackTaskVisibility(View recentsView, int taskViewCount) {
+        if (recentsView == null
+                || LauncherRecentsState.STACK_TASK_VISIBILITY_CLIPPED.remove(recentsView) == null) {
+            return;
+        }
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView != null && taskView.getVisibility() != View.VISIBLE) {
+                taskView.setVisibility(View.VISIBLE);
+            }
+        }
+    }
+
     private static boolean shouldHideStackLayoutTask(int index, int anchorIndex, int radius) {
         return radius >= 0 && Math.abs(index - anchorIndex) > radius;
     }
@@ -3164,6 +3341,7 @@ final class LauncherRecentsLayoutEngine {
         LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 0f);
         LauncherRecentsTaskVisuals.setStableAlpha(taskView, 0f);
         LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(taskView, 0f);
+        LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
         LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
     }
 
@@ -3483,6 +3661,7 @@ final class LauncherRecentsLayoutEngine {
     static void reapplyOriginalTransforms(View recentsView) {
         LauncherRecentsTransitionController.cancelBlankTapHomeExitAnimation(recentsView, true);
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        restoreStackTaskVisibility(recentsView, taskViewCount);
         restoreTaskTransforms(recentsView, taskViewCount);
         LauncherRecentsCompat.invokeCompat(
                 recentsView,

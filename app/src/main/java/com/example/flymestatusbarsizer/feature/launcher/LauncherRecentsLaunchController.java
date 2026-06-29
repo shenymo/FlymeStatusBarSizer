@@ -1055,6 +1055,7 @@ final class LauncherRecentsLaunchController {
         if (state.frozenTaskStates.isEmpty()) {
             captureFrozenTaskLaunchLayout(recentsView, state);
         }
+        LauncherRecentsLayoutEngine.applyTaskLaunchVisibility(recentsView, state);
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         for (int i = 0; i < state.frozenTaskStates.size(); i++) {
             LauncherRecentsState.TaskLaunchFrozenTaskState taskState =
@@ -1075,7 +1076,6 @@ final class LauncherRecentsLaunchController {
                         taskView,
                         taskState.stackVisualState);
             }
-            taskView.setVisibility(taskState.visibility);
             taskView.setPivotX(taskState.pivotX);
             taskView.setPivotY(taskState.pivotY);
             taskView.setScaleX(taskState.scaleX);

@@ -1473,6 +1473,10 @@ final class LauncherRecentsTouchController {
         if (targetStates.isEmpty()) {
             return;
         }
+        LauncherRecentsLayoutEngine.applyStackDismissTaskVisibility(
+                state.recentsView,
+                startStates,
+                targetStates);
         state.dismissedIndex = dismissedIndex;
         state.relayoutPrepared = true;
         state.relayoutPrimaryScrollHorizontal = primaryScrollHorizontal;
@@ -1729,6 +1733,7 @@ final class LauncherRecentsTouchController {
             return false;
         }
         ((ViewGroup) recentsView).removeViewInLayout(taskView);
+        LauncherRecentsLayoutEngine.applyStackDismissTargetVisibility(recentsView, targetStates);
         animateStackDismissRelayout(
                 recentsView,
                 dismissedIndex,
@@ -1871,6 +1876,7 @@ final class LauncherRecentsTouchController {
             finishStackDismissRelayout(recentsView, "dismissRelayoutNoTarget", false);
             return;
         }
+        LauncherRecentsLayoutEngine.applyStackDismissTargetVisibility(recentsView, targetStates);
         for (View taskView : targetStates.keySet()) {
             StackDismissRelayoutStartState startState = startStates.get(taskView);
             animationStartStates.put(
