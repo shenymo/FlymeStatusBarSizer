@@ -993,10 +993,6 @@ final class LauncherRecentsTransitionController {
         if (runningTaskObject instanceof View && recentsView instanceof ViewGroup) {
             int runningTaskPage = ((ViewGroup) recentsView).indexOfChild((View) runningTaskObject);
             if (runningTaskPage >= 0) {
-                int anchorPage = runningTaskPage + (isSeascapeOrientation(recentsView) ? 1 : -1);
-                if (anchorPage >= 0 && anchorPage < pageCount) {
-                    return anchorPage;
-                }
                 return Math.max(0, Math.min(runningTaskPage, pageCount - 1));
             }
         }

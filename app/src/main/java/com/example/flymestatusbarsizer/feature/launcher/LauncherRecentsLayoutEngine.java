@@ -26,7 +26,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_RIGHT_BASE_SPEEDUP_RATIO = 0.16f;
     private static final float STACK_RIGHT_SPEEDUP_RATIO = 0.40f;
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
-    private static final float STACK_RELEASE_SETTLED_PROGRESS_SHIFT = 0.70f;
+    private static final float APP_ENTRY_VISUAL_SHIFT = 0.70f;
     private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
     private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
     private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
@@ -65,7 +65,6 @@ final class LauncherRecentsLayoutEngine {
         final boolean desktopOverviewEntryWindow;
         final float overviewStateStackHandoffProgress;
         final float stackReleaseProgress;
-        final float stackSettledShiftProgress;
         final int edgeScrollCorrection;
         final boolean appEntrySessionActive;
         final float maxTranslationZ;
@@ -92,7 +91,6 @@ final class LauncherRecentsLayoutEngine {
                 boolean desktopOverviewEntryWindow,
                 float overviewStateStackHandoffProgress,
                 float stackReleaseProgress,
-                float stackSettledShiftProgress,
                 int edgeScrollCorrection,
                 boolean appEntrySessionActive,
                 float maxTranslationZ,
@@ -117,7 +115,6 @@ final class LauncherRecentsLayoutEngine {
             this.desktopOverviewEntryWindow = desktopOverviewEntryWindow;
             this.overviewStateStackHandoffProgress = overviewStateStackHandoffProgress;
             this.stackReleaseProgress = stackReleaseProgress;
-            this.stackSettledShiftProgress = stackSettledShiftProgress;
             this.edgeScrollCorrection = edgeScrollCorrection;
             this.appEntrySessionActive = appEntrySessionActive;
             this.maxTranslationZ = maxTranslationZ;
@@ -2082,12 +2079,6 @@ final class LauncherRecentsLayoutEngine {
                 hideLightStackTask(taskView);
                 continue;
             }
-            if (layout.appEntrySessionActive && taskView == layout.runningTaskView) {
-                LauncherRecentsTaskVisuals.setAttachAlpha(taskView, 1f);
-                LauncherRecentsTaskVisuals.setStableAlpha(taskView, 1f);
-                LauncherRecentsTaskVisuals.setTranslationZ(taskView, 0f);
-                continue;
-            }
             LauncherRecentsTaskVisuals.StackTaskVisualState visualState =
                     layout.visualStates.get(taskView);
             if (visualState == null) {
@@ -2281,14 +2272,9 @@ final class LauncherRecentsLayoutEngine {
         float stackReleaseProgress = gestureStackReleaseActive
                 ? clamp(gestureStackReleaseProgress, 0f, 1f)
                 : 1f;
-        float stackSettledShiftProgress = LauncherRecentsState.isAppToRecentsStackSettled(
-                recentsView)
-                ? 1f
-                : 0f;
         if (gestureStackReleaseActive) {
             stackEntryProgress = 1f;
             stackVerticalProgress = 1f;
-            stackSettledShiftProgress = smoothStep(stackReleaseProgress);
         }
         StackLayoutContext layoutContext = new StackLayoutContext(
                 recentsView,
@@ -2309,7 +2295,6 @@ final class LauncherRecentsLayoutEngine {
                 desktopOverviewEntryWindow,
                 overviewStateStackHandoffProgress,
                 stackReleaseProgress,
-                stackSettledShiftProgress,
                 resolveEdgeScrollCorrection(recentsView, primaryScroll),
                 appEntrySessionActive,
                 FlymeStatusBarSizer.dp(recentsView.getContext(), 24),
@@ -2324,8 +2309,7 @@ final class LauncherRecentsLayoutEngine {
                     || LauncherRecentsCompat.isDesktopTask(taskView)
                     || (taskView != runningTaskView
                     && sharesTaskIds(taskView, result.runningTaskIds))
-                    || !activeIndices.contains(i)
-                    || (appEntrySessionActive && taskView == runningTaskView)) {
+                    || !activeIndices.contains(i)) {
                 continue;
             }
             boolean coreOnly = shouldApplyCoreOnlyDuringGestureRelease(
@@ -2561,9 +2545,11 @@ final class LauncherRecentsLayoutEngine {
         float rawOffset = resolveTaskRawOffset(recentsView, projectedIndex)
                 + resolvePrimaryScroll(recentsView)
                 - targetScroll;
-        float layoutProgress = resolveStackReleaseSettledProgress(
-                (rawOffset + resolveEdgeScrollCorrection(recentsView)) / pageSpan,
-                LauncherRecentsState.isAppToRecentsStackSettled(recentsView) ? 1f : 0f);
+        float layoutProgress =
+                (rawOffset + resolveEdgeScrollCorrection(recentsView)) / pageSpan;
+        if (isAppEntryVisualShiftActive(recentsView)) {
+            layoutProgress += APP_ENTRY_VISUAL_SHIFT;
+        }
         return resolveStackVisibleOffset(
                 recentsView,
                 layoutProgress,
@@ -2625,9 +2611,7 @@ final class LauncherRecentsLayoutEngine {
         if (context.desktopOverviewEntryWindow) {
             progress = -index;
         }
-        float layoutProgress = resolveStackReleaseSettledProgress(
-                progress,
-                context.stackSettledShiftProgress);
+        float layoutProgress = progress;
         float taskWidth = taskView.getWidth() > 0 ? taskView.getWidth() : context.referenceWidth;
         float taskHeight = taskView.getHeight() > 0 ? taskView.getHeight() : context.referenceHeight;
         float taskPrimarySize = resolveTaskPrimarySize(
@@ -2661,6 +2645,17 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.get(taskView));
     }
 
+    private static boolean isAppEntryVisualShiftActive(StackLayoutContext context) {
+        return context != null
+                && (context.gestureStackReleaseActive
+                || isAppEntryVisualShiftActive(context.recentsView));
+    }
+
+    private static boolean isAppEntryVisualShiftActive(View recentsView) {
+        return recentsView != null
+                && LauncherRecentsState.isAppToRecentsStackSettled(recentsView);
+    }
+
     private static LauncherRecentsTaskVisuals.StackTaskVisualState buildStackTaskVisualState(
             StackLayoutContext context,
             StackTaskInput input,
@@ -2676,9 +2671,13 @@ final class LauncherRecentsLayoutEngine {
         float stackEntryLiftPx = Math.min(
                 input.taskHeight * STACK_ENTRY_LIFT_RATIO,
                 FlymeStatusBarSizer.dp(context.recentsView.getContext(), 40));
+        float visualLayoutProgress = input.layoutProgress;
+        if (isAppEntryVisualShiftActive(context)) {
+            visualLayoutProgress += APP_ENTRY_VISUAL_SHIFT;
+        }
         float finalVisibleOffset = resolveStackVisibleOffset(
                 context.recentsView,
-                input.layoutProgress,
+                visualLayoutProgress,
                 input.taskPrimarySize,
                 input.taskCenteredPrimaryStartPx,
                 context.primaryScrollHorizontal);
@@ -3713,15 +3712,6 @@ final class LauncherRecentsLayoutEngine {
                 taskCenterPrimary,
                 0f,
                 primarySize);
-    }
-
-    private static float resolveStackReleaseSettledProgress(
-            float progress,
-            float stackSettledShiftProgress) {
-        if (stackSettledShiftProgress <= 0f) {
-            return progress;
-        }
-        return progress + (STACK_RELEASE_SETTLED_PROGRESS_SHIFT * stackSettledShiftProgress);
     }
 
     private static int resolveEdgeScrollCorrection(View recentsView) {
