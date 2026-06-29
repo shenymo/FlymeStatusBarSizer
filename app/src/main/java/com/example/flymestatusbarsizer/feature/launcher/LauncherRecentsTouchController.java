@@ -68,7 +68,6 @@ final class LauncherRecentsTouchController {
                 TASK_VIEW_DISMISS_TOUCH_CONTROLLER_CLASS);
         hookRecentsViewTaskVisibilityForDismiss(module, loader);
         hookRecentsViewClearAllDismissAnimationForStack(module, loader);
-        hookRecentsViewLoadVisibleTaskDataForStack(module, loader);
         hookTaskViewListVisibilityForStack(module, loader);
         hookTaskViewAppFlowVisibilityForStack(module, loader);
     }
@@ -794,23 +793,6 @@ final class LauncherRecentsTouchController {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook RecentsView.isTaskViewVisible",
-                    t);
-        }
-    }
-
-    private static void hookRecentsViewLoadVisibleTaskDataForStack(
-            FlymeStatusBarSizer module,
-            ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod("loadVisibleTaskData", int.class);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                return chain.proceed();
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook RecentsView.loadVisibleTaskData",
                     t);
         }
     }

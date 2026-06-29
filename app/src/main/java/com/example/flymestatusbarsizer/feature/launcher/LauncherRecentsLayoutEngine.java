@@ -3464,15 +3464,17 @@ final class LauncherRecentsLayoutEngine {
             }
             boolean visible = visibleTaskViews.contains(taskView);
             int visibility = visible ? View.VISIBLE : View.INVISIBLE;
-            boolean visibilityChanged = taskView.getVisibility() != visibility;
-            if (taskView.getVisibility() != visibility) {
+            int currentVisibility = taskView.getVisibility();
+            boolean visibilityChanged = currentVisibility != visibility;
+            if (visibilityChanged) {
                 taskView.setVisibility(visibility);
             }
-            int dataStateChanged = updateStackTaskVisibleDataState(
+            Boolean dataStateChanged = updateStackTaskVisibleDataState(
                     recentsView,
                     taskView,
                     visible);
-            if (dataStateChanged > 0 || (dataStateChanged < 0 && visibilityChanged)) {
+            if (Boolean.TRUE.equals(dataStateChanged)
+                    || (dataStateChanged == null && visibilityChanged)) {
                 LauncherRecentsCompat.invokeCompat(
                         taskView,
                         "onTaskListVisibilityChanged",
@@ -3483,17 +3485,17 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
-    private static int updateStackTaskVisibleDataState(
+    private static Boolean updateStackTaskVisibleDataState(
             View recentsView,
             View taskView,
             boolean visible) {
         Object value = LauncherRecentsCompat.getFieldCompat(recentsView, "mHasVisibleTaskData");
         if (!(value instanceof SparseBooleanArray)) {
-            return -1;
+            return null;
         }
         int[] taskIds = resolveTaskIds(taskView);
         if (taskIds == null || taskIds.length == 0) {
-            return -1;
+            return null;
         }
         SparseBooleanArray visibleTaskData = (SparseBooleanArray) value;
         boolean changed = false;
@@ -3509,7 +3511,7 @@ final class LauncherRecentsLayoutEngine {
                 changed = true;
             }
         }
-        return changed ? 1 : 0;
+        return changed;
     }
 
     private static boolean shouldHideStackLayoutTask(int index, int anchorIndex, int radius) {
