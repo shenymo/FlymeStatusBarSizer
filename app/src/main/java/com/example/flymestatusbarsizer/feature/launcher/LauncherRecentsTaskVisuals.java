@@ -15,9 +15,13 @@ import java.util.List;
 final class LauncherRecentsTaskVisuals {
     private static final float MODULE_APPLIED_EPSILON = 0.01f;
     private static final int STACK_CONTENT_MAX_BLUR_DP = 18;
-    private static final float STACK_CONTENT_BLUR_STEP_PX = 0.5f;
+    private static final float STACK_CONTENT_MEDIUM_BLUR_RATIO = 0.5f;
     private static final String ACTIVITY_TITLE_FIELD = "mActivityTitle";
     private static final String TASK_HEAD_FIELD = "mTaskHead";
+    private static RenderEffect stackContentMediumBlurEffect;
+    private static RenderEffect stackContentStrongBlurEffect;
+    private static float stackContentMediumBlurPx = -1f;
+    private static float stackContentStrongBlurPx = -1f;
     private static final ViewOutlineProvider STACK_TASK_NO_SHADOW_OUTLINE_PROVIDER =
             new ViewOutlineProvider() {
                 @Override
@@ -72,7 +76,7 @@ final class LauncherRecentsTaskVisuals {
             this.attachAlpha = attachAlpha;
             this.stableAlpha = stableAlpha;
             this.activityTitleAlpha = activityTitleAlpha;
-            this.blurProgress = blurProgress;
+            this.blurProgress = quantizeStackContentBlurProgress(blurProgress);
             this.fullscreenProgress = fullscreenProgress;
             this.translationZ = translationZ;
             this.stackContentBlurEnabled = stackContentBlurEnabled;
@@ -940,7 +944,7 @@ final class LauncherRecentsTaskVisuals {
         if (view == null) {
             return;
         }
-        float appliedBlurPx = quantizeStackContentBlurPx(blurPx);
+        float appliedBlurPx = quantizeStackContentBlurPx(view, blurPx);
         Float lastAppliedBlurPx = LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.get(view);
         if (lastAppliedBlurPx != null
                 && Math.abs(lastAppliedBlurPx - appliedBlurPx) < MODULE_APPLIED_EPSILON) {
@@ -951,10 +955,7 @@ final class LauncherRecentsTaskVisuals {
             if (appliedBlurPx == 0f) {
                 view.setRenderEffect(null);
             } else {
-                view.setRenderEffect(RenderEffect.createBlurEffect(
-                        appliedBlurPx,
-                        appliedBlurPx,
-                        Shader.TileMode.CLAMP));
+                view.setRenderEffect(resolveStackContentBlurEffect(view, appliedBlurPx));
             }
         } finally {
             LauncherRecentsPerf.end(
@@ -964,11 +965,50 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.put(view, appliedBlurPx);
     }
 
-    private static float quantizeStackContentBlurPx(float blurPx) {
+    private static float quantizeStackContentBlurPx(View view, float blurPx) {
         if (blurPx <= MODULE_APPLIED_EPSILON) {
             return 0f;
         }
-        return Math.round(blurPx / STACK_CONTENT_BLUR_STEP_PX) * STACK_CONTENT_BLUR_STEP_PX;
+        float maxBlurPx = FlymeStatusBarSizer.dp(view.getContext(), STACK_CONTENT_MAX_BLUR_DP);
+        if (maxBlurPx <= MODULE_APPLIED_EPSILON) {
+            return 0f;
+        }
+        float mediumBlurPx = maxBlurPx * STACK_CONTENT_MEDIUM_BLUR_RATIO;
+        return blurPx <= mediumBlurPx ? mediumBlurPx : maxBlurPx;
+    }
+
+    private static float quantizeStackContentBlurProgress(float blurProgress) {
+        if (blurProgress <= MODULE_APPLIED_EPSILON) {
+            return 0f;
+        }
+        return blurProgress <= STACK_CONTENT_MEDIUM_BLUR_RATIO
+                ? STACK_CONTENT_MEDIUM_BLUR_RATIO
+                : 1f;
+    }
+
+    private static RenderEffect resolveStackContentBlurEffect(View view, float blurPx) {
+        float maxBlurPx = FlymeStatusBarSizer.dp(view.getContext(), STACK_CONTENT_MAX_BLUR_DP);
+        float mediumBlurPx = maxBlurPx * STACK_CONTENT_MEDIUM_BLUR_RATIO;
+        if (approximatelyEqual(blurPx, mediumBlurPx)) {
+            if (stackContentMediumBlurEffect == null
+                    || !approximatelyEqual(stackContentMediumBlurPx, blurPx)) {
+                stackContentMediumBlurPx = blurPx;
+                stackContentMediumBlurEffect = RenderEffect.createBlurEffect(
+                        blurPx,
+                        blurPx,
+                        Shader.TileMode.CLAMP);
+            }
+            return stackContentMediumBlurEffect;
+        }
+        if (stackContentStrongBlurEffect == null
+                || !approximatelyEqual(stackContentStrongBlurPx, blurPx)) {
+            stackContentStrongBlurPx = blurPx;
+            stackContentStrongBlurEffect = RenderEffect.createBlurEffect(
+                    blurPx,
+                    blurPx,
+                    Shader.TileMode.CLAMP);
+        }
+        return stackContentStrongBlurEffect;
     }
 
     private static float readAppliedStackContentBlurPx(View view) {

@@ -412,7 +412,7 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
                     if (isStackScrollerActive(recentsView)) {
-                        applyDynamicStackLayoutImmediatelyForScroll(recentsView);
+                        applyOrScheduleDynamicStackLayoutForScroll(recentsView);
                     }
                 }
                 return result;
@@ -1511,7 +1511,7 @@ final class LauncherRecentsLayoutEngine {
                 true);
     }
 
-    private static boolean applyDynamicStackLayoutImmediatelyForScroll(View recentsView) {
+    private static boolean applyOrScheduleDynamicStackLayoutForScroll(View recentsView) {
         if (recentsView == null || !shouldApplyDynamicStackLayout(recentsView)) {
             return false;
         }
@@ -1519,17 +1519,24 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsPerf.flow("layout:scrollSync:skipDismiss", recentsView);
             return false;
         }
-        if (shouldCaptureStockTaskStatesForStackApply(recentsView)) {
-            captureStockTaskStatesForStackApply(recentsView);
+        if (!LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false)) {
+            if (shouldCaptureStockTaskStatesForStackApply(recentsView)) {
+                captureStockTaskStatesForStackApply(recentsView);
+            }
+            boolean layoutApplied = applyStackLayout(
+                    recentsView,
+                    false,
+                    "onScrollChangedSync");
+            if (layoutApplied) {
+                recentsView.invalidate();
+            }
+            return layoutApplied;
         }
-        boolean layoutApplied = applyStackLayout(
+        return scheduleStackLayoutBeforeDraw(
                 recentsView,
-                false,
-                "onScrollChangedSync");
-        if (layoutApplied) {
-            recentsView.invalidate();
-        }
-        return layoutApplied;
+                shouldCaptureStockTaskStatesForStackApply(recentsView),
+                "onScrollChangedSync",
+                true);
     }
 
     static boolean applyDynamicStackLayoutIfNeeded(View recentsView) {
