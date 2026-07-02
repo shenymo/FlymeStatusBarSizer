@@ -5,7 +5,6 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import android.graphics.Canvas;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.SparseBooleanArray;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
@@ -15,7 +14,6 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 
 final class LauncherRecentsLayoutEngine {
     private static final String LAUNCHER_STATE_CLASS = "com.android.launcher3.LauncherState";
@@ -2081,11 +2079,6 @@ final class LauncherRecentsLayoutEngine {
         LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.put(
                 recentsView,
                 new ArrayList<>(layout.activeIndices));
-        if (shouldApplyStackTaskVisibility(recentsView)) {
-            HashSet<View> visibleTaskViews =
-                    resolveStackTaskVisibilityWhitelist(recentsView, taskViewCount, layout);
-            applyStackTaskVisibility(recentsView, taskViewCount, visibleTaskViews);
-        }
 
         StringBuilder computedPackages = new StringBuilder();
         for (int index = 0; index < layout.processIndices.size(); index++) {
@@ -3295,44 +3288,6 @@ final class LauncherRecentsLayoutEngine {
                 page);
     }
 
-    private static HashSet<View> resolveStackTaskVisibilityWhitelist(
-            View recentsView,
-            int taskViewCount,
-            ComputedStackLayout layout) {
-        HashSet<View> visibleTaskViews = new HashSet<>();
-        if (LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
-                recentsView)
-                && !LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.isEmpty()) {
-            appendStackTaskVisibilityViews(
-                    recentsView,
-                    LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.keySet(),
-                    visibleTaskViews);
-            if (!visibleTaskViews.isEmpty()) {
-                return visibleTaskViews;
-            }
-        }
-        if (LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
-                && !LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.isEmpty()) {
-            appendStackTaskVisibilityViews(
-                    recentsView,
-                    LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.keySet(),
-                    visibleTaskViews);
-            if (!visibleTaskViews.isEmpty()) {
-                return visibleTaskViews;
-            }
-        }
-        if (layout == null) {
-            return visibleTaskViews;
-        }
-        appendStackTaskVisibilityIndices(
-                recentsView,
-                taskViewCount,
-                layout.activeIndices,
-                visibleTaskViews);
-        appendStackTaskVisibilityView(recentsView, layout.runningTaskView, visibleTaskViews);
-        return visibleTaskViews;
-    }
-
     static void applyTaskLaunchVisibility(
             View recentsView,
             LauncherRecentsState.LaunchTransitionGeometryState state) {
@@ -3342,7 +3297,6 @@ final class LauncherRecentsLayoutEngine {
         if (!shouldUseStackLayout(recentsView)) {
             return;
         }
-        HashSet<View> visibleTaskViews = new HashSet<>();
         for (int i = 0; i < state.frozenTaskStates.size(); i++) {
             LauncherRecentsState.TaskLaunchFrozenTaskState taskState =
                     state.frozenTaskStates.get(i);
@@ -3350,14 +3304,10 @@ final class LauncherRecentsLayoutEngine {
                 continue;
             }
             if (taskState.target || taskState.visibility == View.VISIBLE) {
-                appendStackTaskVisibilityView(recentsView, taskState.taskView, visibleTaskViews);
+                ensureStackTaskViewVisibleIfOwned(recentsView, taskState.taskView);
             }
         }
-        appendStackTaskVisibilityView(recentsView, state.targetTaskView, visibleTaskViews);
-        applyStackTaskVisibility(
-                recentsView,
-                LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0),
-                visibleTaskViews);
+        ensureStackTaskViewVisibleIfOwned(recentsView, state.targetTaskView);
     }
 
     static void applyStackDismissTaskVisibility(
@@ -3370,17 +3320,12 @@ final class LauncherRecentsLayoutEngine {
         if (!shouldUseStackLayout(recentsView)) {
             return;
         }
-        HashSet<View> visibleTaskViews = new HashSet<>();
         if (startStates != null) {
-            appendStackTaskVisibilityViews(recentsView, startStates.keySet(), visibleTaskViews);
+            ensureStackTaskViewsVisible(recentsView, startStates.keySet());
         }
         if (targetStates != null) {
-            appendStackTaskVisibilityViews(recentsView, targetStates.keySet(), visibleTaskViews);
+            ensureStackTaskViewsVisible(recentsView, targetStates.keySet());
         }
-        applyStackTaskVisibility(
-                recentsView,
-                LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0),
-                visibleTaskViews);
     }
 
     static void applyStackDismissTargetVisibility(
@@ -3389,49 +3334,13 @@ final class LauncherRecentsLayoutEngine {
         applyStackDismissTaskVisibility(recentsView, null, targetStates);
     }
 
-    private static void appendStackTaskVisibilityIndices(
-            View recentsView,
-            int taskViewCount,
-            ArrayList<Integer> indices,
-            HashSet<View> visibleTaskViews) {
-        if (indices == null) {
-            return;
-        }
-        for (int index = 0; index < indices.size(); index++) {
-            int i = indices.get(index);
-            if (i < 0 || i >= taskViewCount) {
-                continue;
-            }
-            appendStackTaskVisibilityView(
-                    recentsView,
-                    LauncherRecentsCompat.getTaskViewAt(recentsView, i),
-                    visibleTaskViews);
-        }
-    }
-
-    private static void appendStackTaskVisibilityViews(
-            View recentsView,
-            Iterable<View> taskViews,
-            HashSet<View> visibleTaskViews) {
+    private static void ensureStackTaskViewsVisible(View recentsView, Iterable<View> taskViews) {
         if (taskViews == null) {
             return;
         }
         for (View taskView : taskViews) {
-            appendStackTaskVisibilityView(recentsView, taskView, visibleTaskViews);
+            ensureStackTaskViewVisibleIfOwned(recentsView, taskView);
         }
-    }
-
-    private static void appendStackTaskVisibilityView(
-            View recentsView,
-            View taskView,
-            HashSet<View> visibleTaskViews) {
-        if (taskView == null
-                || visibleTaskViews == null
-                || LauncherRecentsCompat.isDesktopTask(taskView)
-                || LauncherRecentsCompat.resolveOwningRecentsView(taskView) != recentsView) {
-            return;
-        }
-        visibleTaskViews.add(taskView);
     }
 
     private static void ensureGestureReleaseTaskViewsVisible(View recentsView) {
@@ -3449,83 +3358,19 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
+    private static void ensureStackTaskViewVisibleIfOwned(View recentsView, View taskView) {
+        if (taskView == null
+                || LauncherRecentsCompat.isDesktopTask(taskView)
+                || LauncherRecentsCompat.resolveOwningRecentsView(taskView) != recentsView) {
+            return;
+        }
+        ensureStackTaskViewVisible(taskView);
+    }
+
     private static void ensureStackTaskViewVisible(View taskView) {
         if (taskView != null && taskView.getVisibility() != View.VISIBLE) {
             taskView.setVisibility(View.VISIBLE);
         }
-    }
-
-    private static void applyStackTaskVisibility(
-            View recentsView,
-            int taskViewCount,
-            HashSet<View> visibleTaskViews) {
-        if (recentsView == null || visibleTaskViews == null || visibleTaskViews.isEmpty()) {
-            return;
-        }
-        boolean deferUnload = isStackScrollerActive(recentsView);
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
-                continue;
-            }
-            boolean visible = visibleTaskViews.contains(taskView);
-            int visibility = visible ? View.VISIBLE : View.INVISIBLE;
-            int currentVisibility = taskView.getVisibility();
-            boolean visibilityChanged = currentVisibility != visibility;
-            if (visibilityChanged) {
-                taskView.setVisibility(visibility);
-            }
-            if (!visible && deferUnload) {
-                continue;
-            }
-            Boolean dataStateChanged = updateStackTaskVisibleDataState(
-                    recentsView,
-                    taskView,
-                    visible);
-            if (Boolean.TRUE.equals(dataStateChanged)
-                    || (dataStateChanged == null && visibilityChanged)) {
-                LauncherRecentsCompat.invokeCompat(
-                        taskView,
-                        "onTaskListVisibilityChanged",
-                        LauncherRecentsCompat.BOOLEAN_INT_ARG,
-                        visible,
-                        15);
-            }
-        }
-    }
-
-    private static boolean shouldApplyStackTaskVisibility(View recentsView) {
-        return LauncherRecentsState.isAppToRecentsStackSettled(recentsView)
-                || LauncherRecentsState.isOverviewStateStackSettled(recentsView);
-    }
-
-    private static Boolean updateStackTaskVisibleDataState(
-            View recentsView,
-            View taskView,
-            boolean visible) {
-        Object value = LauncherRecentsCompat.getFieldCompat(recentsView, "mHasVisibleTaskData");
-        if (!(value instanceof SparseBooleanArray)) {
-            return null;
-        }
-        int[] taskIds = resolveTaskIds(taskView);
-        if (taskIds == null || taskIds.length == 0) {
-            return null;
-        }
-        SparseBooleanArray visibleTaskData = (SparseBooleanArray) value;
-        boolean changed = false;
-        for (int taskId : taskIds) {
-            boolean oldVisible = visibleTaskData.get(taskId);
-            if (visible) {
-                if (!oldVisible) {
-                    visibleTaskData.put(taskId, true);
-                    changed = true;
-                }
-            } else if (oldVisible) {
-                visibleTaskData.delete(taskId);
-                changed = true;
-            }
-        }
-        return changed;
     }
 
     private static boolean shouldHideStackLayoutTask(int index, int anchorIndex, int radius) {
