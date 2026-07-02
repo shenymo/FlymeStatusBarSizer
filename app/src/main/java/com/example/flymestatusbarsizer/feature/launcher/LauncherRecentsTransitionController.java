@@ -936,7 +936,10 @@ final class LauncherRecentsTransitionController {
                 "forceFinishScroller",
                 LauncherRecentsCompat.NO_ARGS);
         int actualStartScroll = resolvePrimaryScroll(recentsView);
-        normalizeAppToRecentsStackAnchorPage(recentsView, stackAnchorPage);
+        normalizeAppToRecentsStackAnchorPage(
+                recentsView,
+                stackAnchorPage,
+                resolveScrollForPage(recentsView, stackAnchorPage, resolvePrimaryScroll(recentsView)));
         LauncherRecentsState.clearAppToRecentsEntryState(recentsView);
         LauncherRecentsState.setAppToRecentsStackSettled(recentsView, false);
         LauncherRecentsLayoutEngine.captureGestureStackReleaseTaskStates(
@@ -993,6 +996,9 @@ final class LauncherRecentsTransitionController {
         if (runningTaskObject instanceof View && recentsView instanceof ViewGroup) {
             int runningTaskPage = ((ViewGroup) recentsView).indexOfChild((View) runningTaskObject);
             if (runningTaskPage >= 0) {
+                if (runningTaskPage > 0 && runningTaskPage < pageCount - 1) {
+                    return runningTaskPage - 1;
+                }
                 return Math.max(0, Math.min(runningTaskPage, pageCount - 1));
             }
         }
@@ -1006,22 +1012,30 @@ final class LauncherRecentsTransitionController {
         }
         LauncherRecentsPerf.flow("enter:gestureRelease:normalizeAnchor",
                 recentsView, "anchorPage=" + anchorPage);
-        setPrimaryScroll(recentsView, LauncherRecentsLayoutEngine.resolveAppEntryAnchorTargetScroll(
+        int targetScroll = LauncherRecentsLayoutEngine.resolveAppEntryAnchorTargetScroll(
                 recentsView,
                 anchorPage,
-                resolvePrimaryScroll(recentsView)));
-        normalizeAppToRecentsStackAnchorPage(recentsView, anchorPage);
+                resolvePrimaryScroll(recentsView));
+        setPrimaryScroll(recentsView, targetScroll);
+        normalizeAppToRecentsStackAnchorPage(recentsView, anchorPage, targetScroll);
     }
 
-    private static void normalizeAppToRecentsStackAnchorPage(View recentsView, int anchorPage) {
+    private static void normalizeAppToRecentsStackAnchorPage(
+            View recentsView,
+            int anchorPage,
+            int targetScroll) {
         if (recentsView == null || anchorPage < 0) {
             return;
         }
         int currentPage = resolveAppToRecentsNormalizedCurrentPage(recentsView, anchorPage);
+        int pageScroll = resolveScrollForPage(recentsView, currentPage, targetScroll);
         LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", currentPage);
         LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", currentPage);
         LauncherRecentsCompat.setIntField(recentsView, "mNextPage", currentPage);
-        LauncherRecentsCompat.setIntField(recentsView, "mCurrentPageScrollDiff", 0);
+        LauncherRecentsCompat.setIntField(
+                recentsView,
+                "mCurrentPageScrollDiff",
+                targetScroll - pageScroll);
     }
 
     private static int resolveAppToRecentsNormalizedCurrentPage(

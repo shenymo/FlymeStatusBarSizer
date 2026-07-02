@@ -2741,20 +2741,30 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static boolean isRunningTaskBetweenTwoTasks(View recentsView, int anchorPage) {
+        int runningTaskPage = resolveRunningTaskPage(recentsView);
+        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
+        return runningTaskPage == anchorPage
+                && runningTaskPage > 0
+                && runningTaskPage < pageCount - 1;
+    }
+
+    private static boolean shouldPlaceRunningTaskInNextSlot(View recentsView) {
+        int runningTaskPage = resolveRunningTaskPage(recentsView);
+        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
+        return runningTaskPage > 0 && runningTaskPage < pageCount - 1;
+    }
+
+    private static int resolveRunningTaskPage(View recentsView) {
         if (!(recentsView instanceof ViewGroup)) {
-            return false;
+            return -1;
         }
         Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
                 recentsView,
                 "getRunningTaskView");
         if (!(runningTaskObject instanceof View)) {
-            return false;
+            return -1;
         }
-        int runningTaskPage = ((ViewGroup) recentsView).indexOfChild((View) runningTaskObject);
-        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
-        return runningTaskPage == anchorPage
-                && runningTaskPage > 0
-                && runningTaskPage < pageCount - 1;
+        return ((ViewGroup) recentsView).indexOfChild((View) runningTaskObject);
     }
 
     private static StackTaskInput buildStackTaskInput(
@@ -2817,13 +2827,15 @@ final class LauncherRecentsLayoutEngine {
 
     private static boolean isAppEntryVisualShiftActive(StackLayoutContext context) {
         return context != null
+                && !shouldPlaceRunningTaskInNextSlot(context.recentsView)
                 && (context.gestureStackReleaseActive
                 || isAppEntryVisualShiftActive(context.recentsView));
     }
 
     private static boolean isAppEntryVisualShiftActive(View recentsView) {
         return recentsView != null
-                && LauncherRecentsState.isAppToRecentsStackSettled(recentsView);
+                && LauncherRecentsState.isAppToRecentsStackSettled(recentsView)
+                && !shouldPlaceRunningTaskInNextSlot(recentsView);
     }
 
     private static LauncherRecentsTaskVisuals.StackTaskVisualState buildStackTaskVisualState(
@@ -3238,6 +3250,16 @@ final class LauncherRecentsLayoutEngine {
             int stackLayoutRadius,
             boolean entryWindow,
             Integer targetScroll) {
+        if (runningTaskChildIndex > 0
+                && runningTaskChildIndex < taskViewCount - 1
+                && (entryWindow
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
+                recentsView)
+                || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                recentsView)
+                || LauncherRecentsState.isAppToRecentsStackSettled(recentsView))) {
+            return runningTaskChildIndex - 1;
+        }
         if (entryWindow && runningTaskChildIndex >= 0) {
             return runningTaskChildIndex;
         }
@@ -3322,6 +3344,9 @@ final class LauncherRecentsLayoutEngine {
             View recentsView,
             int fallbackScroll,
             int page) {
+        if (LauncherRecentsState.isAppToRecentsStackSettled(recentsView)) {
+            return resolveAppEntryAnchorTargetScroll(recentsView, page, fallbackScroll);
+        }
         return LauncherRecentsCompat.invokeInt(
                 recentsView,
                 "getScrollForPage",
