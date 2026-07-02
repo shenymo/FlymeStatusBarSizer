@@ -2775,13 +2775,13 @@ final class LauncherRecentsLayoutEngine {
                 1f,
                 resolvePrimarySize(recentsView, primaryScrollHorizontal)
                         + LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0));
-        return targetScroll + Math.round(APP_ENTRY_VISUAL_SHIFT * pageSpan);
+        return targetScroll - Math.round(APP_ENTRY_VISUAL_SHIFT * pageSpan);
     }
 
     private static boolean isRunningTaskBetweenTwoTasks(View recentsView, int anchorPage) {
         int runningTaskPage = resolveRunningTaskPage(recentsView);
         int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
-        return runningTaskPage == anchorPage
+        return anchorPage == runningTaskPage - 1
                 && runningTaskPage > 0
                 && runningTaskPage < pageCount - 1;
     }

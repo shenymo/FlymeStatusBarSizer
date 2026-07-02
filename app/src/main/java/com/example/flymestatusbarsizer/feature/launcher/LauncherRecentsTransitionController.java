@@ -853,7 +853,10 @@ final class LauncherRecentsTransitionController {
                 setForcedRecentsTranslationX(recentsView, 0f);
                 setForcedRecentsTranslationY(recentsView, 0f);
                 setGestureRecentsStackReleaseProgress(recentsView, 1f);
-                normalizeAppToRecentsStackAnchor(recentsView, stackAnchorPage);
+                normalizeAppToRecentsStackAnchor(
+                        recentsView,
+                        stackAnchorPage,
+                        stackAnchorTargetScroll);
                 LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
                 LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
                 LauncherRecentsLayoutEngine.applyStableStackLayout(
@@ -1016,6 +1019,16 @@ final class LauncherRecentsTransitionController {
                 recentsView,
                 anchorPage,
                 resolvePrimaryScroll(recentsView));
+        normalizeAppToRecentsStackAnchor(recentsView, anchorPage, targetScroll);
+    }
+
+    private static void normalizeAppToRecentsStackAnchor(
+            View recentsView,
+            int anchorPage,
+            int targetScroll) {
+        if (recentsView == null || anchorPage < 0) {
+            return;
+        }
         setPrimaryScroll(recentsView, targetScroll);
         normalizeAppToRecentsStackAnchorPage(recentsView, anchorPage, targetScroll);
     }
