@@ -2081,9 +2081,11 @@ final class LauncherRecentsLayoutEngine {
         LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.put(
                 recentsView,
                 new ArrayList<>(layout.activeIndices));
-        HashSet<View> visibleTaskViews =
-                resolveStackTaskVisibilityWhitelist(recentsView, taskViewCount, layout);
-        applyStackTaskVisibility(recentsView, taskViewCount, visibleTaskViews);
+        if (shouldApplyStackTaskVisibility(recentsView)) {
+            HashSet<View> visibleTaskViews =
+                    resolveStackTaskVisibilityWhitelist(recentsView, taskViewCount, layout);
+            applyStackTaskVisibility(recentsView, taskViewCount, visibleTaskViews);
+        }
 
         StringBuilder computedPackages = new StringBuilder();
         for (int index = 0; index < layout.processIndices.size(); index++) {
@@ -3490,6 +3492,11 @@ final class LauncherRecentsLayoutEngine {
                         15);
             }
         }
+    }
+
+    private static boolean shouldApplyStackTaskVisibility(View recentsView) {
+        return LauncherRecentsState.isAppToRecentsStackSettled(recentsView)
+                || LauncherRecentsState.isOverviewStateStackSettled(recentsView);
     }
 
     private static Boolean updateStackTaskVisibleDataState(
