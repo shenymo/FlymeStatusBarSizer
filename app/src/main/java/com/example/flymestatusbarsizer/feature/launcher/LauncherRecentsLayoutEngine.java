@@ -3956,6 +3956,7 @@ final class LauncherRecentsLayoutEngine {
         int primaryAxisSign = resolveStackPrimaryAxisSign(recentsView, primaryScrollHorizontal);
         float visualProgress = progress * primaryAxisSign;
         float leftBoundOffsetPx = resolveStackLeftBoundOffset(
+                recentsView,
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx);
         float visibleOffset = resolveStackUnclampedVisibleOffset(
@@ -4013,9 +4014,18 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static float resolveStackLeftBoundOffset(
+            View recentsView,
             float taskPrimarySize,
             float taskCenteredPrimaryStartPx) {
-        return -taskCenteredPrimaryStartPx + (taskPrimarySize * STACK_LEFT_REST_INSET_RATIO);
+        float insetRatio = isDesktopOverviewStack(recentsView)
+                ? 0f
+                : STACK_LEFT_REST_INSET_RATIO;
+        return -taskCenteredPrimaryStartPx + (taskPrimarySize * insetRatio);
+    }
+
+    private static boolean isDesktopOverviewStack(View recentsView) {
+        return LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(recentsView)
+                || LauncherRecentsState.isOverviewStateStackSettled(recentsView);
     }
 
     private static float resolveStackLeftClampAlpha(
