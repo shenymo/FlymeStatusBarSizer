@@ -27,6 +27,8 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, GestureReleaseTaskState> GESTURE_STACK_RELEASE_TASK_STATES =
             new WeakHashMap<>();
+    static final WeakHashMap<View, GestureReleaseTaskState> OVERVIEW_STATE_STACK_ENTRY_TASK_STATES =
+            new WeakHashMap<>();
 
     // Home exit animation.
     static final WeakHashMap<View, Float> BLANK_TAP_HOME_EXIT_PROGRESS =
@@ -547,6 +549,7 @@ final class LauncherRecentsState {
         state.overviewStateStackSettled = settled;
         state.overviewStateStackStartAdjacentOffset = null;
         state.overviewStateStackBaselineCaptured = false;
+        OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.clear();
     }
 
     static void setOverviewStateStackAnimationActive(View recentsView, boolean active) {

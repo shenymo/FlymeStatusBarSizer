@@ -42,6 +42,8 @@ final class LauncherRecentsLayoutEngine {
     private static final int STACK_SLOW_LOG_SCROLL_BUCKET_DIVISOR = 2;
     private static final long STACK_LAYOUT_DUPLICATE_WINDOW_NS = 16_000_000L;
     private static final long CLEAR_ALL_BUTTON_SYNC_WINDOW_NS = 16_000_000L;
+    private static final ThreadLocal<Boolean> COMPUTING_OVERVIEW_STATE_STACK_TARGET =
+            new ThreadLocal<>();
 
     private LauncherRecentsLayoutEngine() {
     }
@@ -135,6 +137,7 @@ final class LauncherRecentsLayoutEngine {
         final float taskCenteredPrimaryStartPx;
         final float nativeDismissTranslationPrimary;
         final LauncherRecentsState.GestureReleaseTaskState gestureReleaseTaskState;
+        final LauncherRecentsState.GestureReleaseTaskState overviewEntryTaskState;
         final LauncherRecentsState.BlankTapHomeExitTaskState blankTapExitState;
 
         StackTaskInput(
@@ -148,6 +151,7 @@ final class LauncherRecentsLayoutEngine {
                 float taskCenteredPrimaryStartPx,
                 float nativeDismissTranslationPrimary,
                 LauncherRecentsState.GestureReleaseTaskState gestureReleaseTaskState,
+                LauncherRecentsState.GestureReleaseTaskState overviewEntryTaskState,
                 LauncherRecentsState.BlankTapHomeExitTaskState blankTapExitState) {
             this.taskView = taskView;
             this.rawOffset = rawOffset;
@@ -159,6 +163,7 @@ final class LauncherRecentsLayoutEngine {
             this.taskCenteredPrimaryStartPx = taskCenteredPrimaryStartPx;
             this.nativeDismissTranslationPrimary = nativeDismissTranslationPrimary;
             this.gestureReleaseTaskState = gestureReleaseTaskState;
+            this.overviewEntryTaskState = overviewEntryTaskState;
             this.blankTapExitState = blankTapExitState;
         }
     }
@@ -1459,6 +1464,38 @@ final class LauncherRecentsLayoutEngine {
         }
     }
 
+    static void captureOverviewStateStackEntryTaskStates(
+            View recentsView,
+            HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> startVisualStates) {
+        LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.clear();
+        if (recentsView == null || startVisualStates == null || startVisualStates.isEmpty()) {
+            return;
+        }
+        COMPUTING_OVERVIEW_STATE_STACK_TARGET.set(Boolean.TRUE);
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> targetVisualStates;
+        try {
+            targetVisualStates = computeStackLayout(
+                    recentsView,
+                    STACK_ENTRY_LIGHT_RADIUS,
+                    null,
+                    null);
+        } finally {
+            COMPUTING_OVERVIEW_STATE_STACK_TARGET.remove();
+        }
+        for (View taskView : targetVisualStates.keySet()) {
+            LauncherRecentsTaskVisuals.StackTaskVisualState startState =
+                    startVisualStates.get(taskView);
+            LauncherRecentsTaskVisuals.StackTaskVisualState targetState =
+                    targetVisualStates.get(taskView);
+            if (startState == null || targetState == null) {
+                continue;
+            }
+            LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.put(
+                    taskView,
+                    new LauncherRecentsState.GestureReleaseTaskState(startState, targetState));
+        }
+    }
+
     static boolean applyStackLayout(View recentsView, boolean captureStockState, String source) {
         return applyStackLayout(
                 recentsView,
@@ -2344,7 +2381,8 @@ final class LauncherRecentsLayoutEngine {
         float stackReleaseProgress = gestureStackReleaseActive
                 ? clamp(gestureStackReleaseProgress, 0f, 1f)
                 : 1f;
-        if (gestureStackReleaseActive) {
+        if (gestureStackReleaseActive
+                || Boolean.TRUE.equals(COMPUTING_OVERVIEW_STATE_STACK_TARGET.get())) {
             stackEntryProgress = 1f;
             stackVerticalProgress = 1f;
         }
@@ -2792,6 +2830,7 @@ final class LauncherRecentsLayoutEngine {
             progress = -index;
         }
         float layoutProgress = progress;
+        float collapsedReferenceProgress = progress;
         float taskWidth = taskView.getWidth() > 0 ? taskView.getWidth() : context.referenceWidth;
         float taskHeight = taskView.getHeight() > 0 ? taskView.getHeight() : context.referenceHeight;
         float taskPrimarySize = resolveTaskPrimarySize(
@@ -2802,7 +2841,6 @@ final class LauncherRecentsLayoutEngine {
                 context.recentsView,
                 taskPrimarySize,
                 context.primaryScrollHorizontal);
-        float collapsedReferenceProgress = progress;
         if (context.appEntrySessionActive && context.runningTaskView != null) {
             collapsedReferenceProgress = resolveAppEntryCollapsedProgress(
                     taskView,
@@ -2822,7 +2860,20 @@ final class LauncherRecentsLayoutEngine {
                 taskCenteredPrimaryStartPx,
                 nativeDismissTranslationPrimary,
                 gestureReleaseTaskState,
+                resolveOverviewEntryTaskState(context, taskView),
                 LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.get(taskView));
+    }
+
+    private static LauncherRecentsState.GestureReleaseTaskState resolveOverviewEntryTaskState(
+            StackLayoutContext context,
+            View taskView) {
+        if (context == null
+                || taskView == null
+                || !context.desktopOverviewEntryWindow
+                || Boolean.TRUE.equals(COMPUTING_OVERVIEW_STATE_STACK_TARGET.get())) {
+            return null;
+        }
+        return LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.get(taskView);
     }
 
     private static boolean isAppEntryVisualShiftActive(StackLayoutContext context) {
@@ -2849,6 +2900,13 @@ final class LauncherRecentsLayoutEngine {
             return input.gestureReleaseTaskState.startVisualState.lerpTo(
                     input.gestureReleaseTaskState.targetVisualState,
                     context.stackReleaseProgress);
+        }
+        if (input.overviewEntryTaskState != null
+                && input.overviewEntryTaskState.startVisualState != null
+                && input.overviewEntryTaskState.targetVisualState != null) {
+            return input.overviewEntryTaskState.startVisualState.lerpTo(
+                    input.overviewEntryTaskState.targetVisualState,
+                    context.overviewStateStackHandoffProgress);
         }
         float stackEntryLiftPx = Math.min(
                 input.taskHeight * STACK_ENTRY_LIFT_RATIO,
@@ -3069,7 +3127,8 @@ final class LauncherRecentsLayoutEngine {
                 appliedBlurProgress = lerp(0f, appliedBlurProgress, context.stackReleaseProgress);
             }
         }
-        if (context.overviewStateStackAnimationActive) {
+        if (context.overviewStateStackAnimationActive
+                && !Boolean.TRUE.equals(COMPUTING_OVERVIEW_STATE_STACK_TARGET.get())) {
             appliedHorizontalOffsetX = lerp(
                     LauncherRecentsTaskVisuals.readLastStockHorizontalOffsetX(taskView),
                     appliedHorizontalOffsetX,
@@ -3936,15 +3995,7 @@ final class LauncherRecentsLayoutEngine {
             View recentsView,
             float taskPrimarySize,
             float taskCenteredPrimaryStartPx) {
-        float insetRatio = isDesktopOverviewStack(recentsView)
-                ? 0f
-                : STACK_LEFT_REST_INSET_RATIO;
-        return -taskCenteredPrimaryStartPx + (taskPrimarySize * insetRatio);
-    }
-
-    private static boolean isDesktopOverviewStack(View recentsView) {
-        return LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(recentsView)
-                || LauncherRecentsState.isOverviewStateStackSettled(recentsView);
+        return -taskCenteredPrimaryStartPx + (taskPrimarySize * STACK_LEFT_REST_INSET_RATIO);
     }
 
     private static float resolveStackLeftClampAlpha(

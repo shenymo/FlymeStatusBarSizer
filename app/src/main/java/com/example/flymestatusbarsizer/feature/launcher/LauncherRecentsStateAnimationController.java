@@ -10,6 +10,7 @@ import android.view.View;
 import io.github.libxposed.api.XposedInterface;
 
 import java.lang.reflect.Method;
+import java.util.HashMap;
 
 final class LauncherRecentsStateAnimationController {
     private static final String RECENTS_VIEW_STATE_CONTROLLER_CLASS =
@@ -462,6 +463,8 @@ final class LauncherRecentsStateAnimationController {
                         recentsView,
                         "mAdjacentPageHorizontalOffset",
                         0.53f));
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> startVisualStates =
+                LauncherRecentsLayoutEngine.captureCurrentStackTaskVisualStates(recentsView);
         long perfStartNs = LauncherRecentsPerf.start(recentsView);
         try {
             LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
@@ -470,6 +473,9 @@ final class LauncherRecentsStateAnimationController {
             LauncherRecentsPerf.end("captureStockTaskStates:overviewBegin", perfStartNs);
         }
         markOverviewStateStackAnimation(recentsView, true);
+        LauncherRecentsLayoutEngine.captureOverviewStateStackEntryTaskStates(
+                recentsView,
+                startVisualStates);
         attachOverviewStateAnimationCallbacks(recentsView, pendingAnimation);
         if (pendingAnimation == null) {
             LauncherRecentsPerf.flow("state:overview:scheduleFallbackClear",
