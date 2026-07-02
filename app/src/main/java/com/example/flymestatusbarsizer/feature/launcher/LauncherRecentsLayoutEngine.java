@@ -2722,6 +2722,41 @@ final class LauncherRecentsLayoutEngine {
         return lerp(STACK_MIN_SCALE, 1f, layerProgress);
     }
 
+    static int resolveAppEntryAnchorTargetScroll(View recentsView, int anchorPage, int fallback) {
+        int targetScroll = LauncherRecentsCompat.invokeInt(
+                recentsView,
+                "getScrollForPage",
+                LauncherRecentsCompat.INT_ARG,
+                fallback,
+                anchorPage);
+        if (!isRunningTaskBetweenTwoTasks(recentsView, anchorPage)) {
+            return targetScroll;
+        }
+        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
+        float pageSpan = Math.max(
+                1f,
+                resolvePrimarySize(recentsView, primaryScrollHorizontal)
+                        + LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0));
+        return targetScroll + Math.round(APP_ENTRY_VISUAL_SHIFT * pageSpan);
+    }
+
+    private static boolean isRunningTaskBetweenTwoTasks(View recentsView, int anchorPage) {
+        if (!(recentsView instanceof ViewGroup)) {
+            return false;
+        }
+        Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "getRunningTaskView");
+        if (!(runningTaskObject instanceof View)) {
+            return false;
+        }
+        int runningTaskPage = ((ViewGroup) recentsView).indexOfChild((View) runningTaskObject);
+        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
+        return runningTaskPage == anchorPage
+                && runningTaskPage > 0
+                && runningTaskPage < pageCount - 1;
+    }
+
     private static StackTaskInput buildStackTaskInput(
             StackLayoutContext context,
             View taskView,
@@ -3204,6 +3239,13 @@ final class LauncherRecentsLayoutEngine {
             boolean entryWindow,
             Integer targetScroll) {
         if (entryWindow && runningTaskChildIndex >= 0) {
+            return runningTaskChildIndex;
+        }
+        if (runningTaskChildIndex >= 0
+                && (LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
+                recentsView)
+                || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                recentsView))) {
             return runningTaskChildIndex;
         }
         if (!entryWindow && stackLayoutRadius == STACK_STABLE_VISIBLE_RADIUS) {

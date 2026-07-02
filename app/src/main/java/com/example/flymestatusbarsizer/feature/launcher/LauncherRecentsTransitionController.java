@@ -746,7 +746,7 @@ final class LauncherRecentsTransitionController {
         final float releaseStartTranslationX = recentsView.getTranslationX();
         final float releaseStartTranslationY = recentsView.getTranslationY();
         final int stackAnchorPage = resolveAppToRecentsStackAnchorPage(recentsView);
-        final int stackAnchorTargetScroll = resolveScrollForPage(
+        final int stackAnchorTargetScroll = LauncherRecentsLayoutEngine.resolveAppEntryAnchorTargetScroll(
                 recentsView,
                 stackAnchorPage,
                 resolvePrimaryScroll(recentsView));
@@ -1006,7 +1006,7 @@ final class LauncherRecentsTransitionController {
         }
         LauncherRecentsPerf.flow("enter:gestureRelease:normalizeAnchor",
                 recentsView, "anchorPage=" + anchorPage);
-        setPrimaryScroll(recentsView, resolveScrollForPage(
+        setPrimaryScroll(recentsView, LauncherRecentsLayoutEngine.resolveAppEntryAnchorTargetScroll(
                 recentsView,
                 anchorPage,
                 resolvePrimaryScroll(recentsView)));
