@@ -1,9 +1,7 @@
 package com.example.flymestatusbarsizer.feature.windowmode;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
-import com.example.flymestatusbarsizer.feature.clock.ClockDetailPopupBridge;
 import com.example.flymestatusbarsizer.feature.mback.MBackHooks;
-import com.example.flymestatusbarsizer.feature.mback.MBackStarOverlayBridge;
 
 import android.content.Context;
 import android.os.Handler;
@@ -17,10 +15,7 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 public final class WindowModeSideGestureHooks {
-    private static final int ACTION_INTENT_URI = 0;
-    private static final int ACTION_CLOCK_POPUP = 1;
-    private static final int ACTION_STAR_APPS = 2;
-    private static final Map<Object, Integer> ACTIVE_ACTIONS = new WeakHashMap<>();
+    private static final Map<Object, Boolean> ACTIVE_ACTIONS = new WeakHashMap<>();
     private static final Map<Object, Boolean> PREWARMED_LAUNCHERS = new WeakHashMap<>();
     private static Class<?> appLauncherWindowClass;
 
@@ -204,32 +199,16 @@ public final class WindowModeSideGestureHooks {
         if (!config.enabled || !config.sideGestureEnabled) {
             return false;
         }
-        boolean handled = false;
-        if (config.sideGestureAction == ACTION_CLOCK_POPUP) {
-            View anchor = resolveAnchor(target);
-            if (anchor != null) {
-                anchor.post(() -> ClockDetailPopupBridge.showFromMBack(anchor));
-                handled = true;
-            }
-        } else if (config.sideGestureAction == ACTION_STAR_APPS) {
-            View anchor = resolveAnchor(target);
-            if (anchor != null) {
-                postStarEvent(anchor, event, true);
-                handled = true;
-            }
-        } else if (config.sideGestureAction == ACTION_INTENT_URI) {
-            handled = MBackHooks.launchConfiguredIntent(context, config.sideGestureIntentUri);
-        }
+        boolean handled = MBackHooks.launchConfiguredIntent(context, config.sideGestureIntentUri);
         if (handled && target != null) {
             synchronized (ACTIVE_ACTIONS) {
-                ACTIVE_ACTIONS.put(target, config.sideGestureAction);
+                ACTIVE_ACTIONS.put(target, Boolean.TRUE);
             }
         }
         return handled;
     }
 
     private static boolean consumeActiveGesture(Object target, MotionEvent event) {
-        Integer action;
         synchronized (ACTIVE_ACTIONS) {
             if (target == null || !ACTIVE_ACTIONS.containsKey(target)) {
                 return false;
@@ -237,13 +216,6 @@ public final class WindowModeSideGestureHooks {
             if (event != null && event.getActionMasked() == MotionEvent.ACTION_DOWN) {
                 ACTIVE_ACTIONS.remove(target);
                 return false;
-            }
-            action = ACTIVE_ACTIONS.get(target);
-        }
-        if (action != null && action == ACTION_STAR_APPS) {
-            View anchor = resolveAnchor(target);
-            if (anchor != null) {
-                postStarEvent(anchor, event, false);
             }
         }
         if (isTerminalEvent(event)) {
@@ -260,22 +232,6 @@ public final class WindowModeSideGestureHooks {
         }
         int action = event.getActionMasked();
         return action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL;
-    }
-
-    private static void postStarEvent(View anchor, MotionEvent event, boolean show) {
-        MotionEvent copy = event == null ? null : MotionEvent.obtain(event);
-        anchor.post(() -> {
-            try {
-                if (show) {
-                    MBackStarOverlayBridge.show(anchor);
-                }
-                MBackStarOverlayBridge.dispatchMBackMotionEvent(copy);
-            } finally {
-                if (copy != null) {
-                    copy.recycle();
-                }
-            }
-        });
     }
 
     private static Context resolveContext(Object target) {

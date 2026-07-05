@@ -603,15 +603,13 @@ final class SettingsCardFactory {
                 SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED);
         activity.addDivider(page);
         activity.addChoiceRow(page, "触发动作",
-                "可选发送 URL / Intent、底部时间弹窗，或者后台应用星图。",
+                "发送 URL / Intent。",
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ACTION,
                 SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION,
                 new int[]{
-                        SettingsStore.MBACK_LONG_TOUCH_ACTION_INTENT_URI,
-                        SettingsStore.MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP,
-                        SettingsStore.MBACK_LONG_TOUCH_ACTION_STAR_APPS
+                        SettingsStore.MBACK_LONG_TOUCH_ACTION_INTENT_URI
                 },
-                new String[]{"URL / Intent", "底部时间弹窗", "后台应用星图"});
+                new String[]{"URL / Intent"});
         activity.addDivider(page);
         activity.addTextSettingRow(page, "目标 URL / Intent URI",
                 "只在“URL / Intent”模式下生效。支持 https://、自定义 scheme 和 intent:// URI。留空则回退 Flyme 小窗面板。",
@@ -620,7 +618,7 @@ final class SettingsCardFactory {
                 "未设置");
         activity.addDivider(page);
         activity.addActionButtonRow(page, "测试 URL / Intent",
-                "只测试当前填写的 URL / Intent URI，不测试底部时间弹窗模式。",
+                "只测试当前填写的 URL / Intent URI。",
                 "立即测试", activity::testLaunchWindowModeSideGestureIntent);
         return page;
     }

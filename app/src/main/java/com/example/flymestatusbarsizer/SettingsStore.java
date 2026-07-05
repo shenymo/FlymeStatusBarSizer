@@ -168,7 +168,7 @@ final class SettingsStore {
     static final int DEFAULT_MBACK_LONG_TOUCH_ACTION = MBACK_LONG_TOUCH_ACTION_STAR_APPS;
     static final String DEFAULT_MBACK_LONG_TOUCH_INTENT_URI = "";
     static final boolean DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED = false;
-    static final int DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION = MBACK_LONG_TOUCH_ACTION_STAR_APPS;
+    static final int DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION = MBACK_LONG_TOUCH_ACTION_INTENT_URI;
     static final String DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI = "";
     static final boolean DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED = false;
     static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
@@ -607,6 +607,12 @@ final class SettingsStore {
             default:
                 return MBACK_LONG_TOUCH_ACTION_INTENT_URI;
         }
+    }
+
+    static int normalizeWindowModeSideGestureAction(int value) {
+        return value == MBACK_LONG_TOUCH_ACTION_INTENT_URI
+                ? value
+                : MBACK_LONG_TOUCH_ACTION_INTENT_URI;
     }
 
     static int normalizeBatteryTextFont(int value) {

@@ -368,7 +368,7 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
                     SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED);
-            config.windowModeSideGestureAction = SettingsStore.normalizeMBackLongTouchAction(
+            config.windowModeSideGestureAction = SettingsStore.normalizeWindowModeSideGestureAction(
                     SettingsStore.readInt(
                             prefs,
                             SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ACTION,
