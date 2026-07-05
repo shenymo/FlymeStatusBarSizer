@@ -167,6 +167,13 @@ final class SettingsCardFactory {
                 buildMBackActionPage());
     }
 
+    View createWindowModeSideGestureSettingsCard() {
+        return activity.buildSectionCard(
+                "小窗侧边手势",
+                "接管 Flyme 小窗的左右侧边触发手势，改为执行模块动作。",
+                buildWindowModeSideGesturePage());
+    }
+
     View createMBackNavigationSettingsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -576,6 +583,45 @@ final class SettingsCardFactory {
         activity.addActionButtonRow(page, "测试 URL / Intent",
                 "只测试当前填写的 URL / Intent URI，不测试底部时间弹窗模式。",
                 "立即测试", activity::testLaunchMBackIntent);
+        return page;
+    }
+
+    private LinearLayout buildWindowModeSideGesturePage() {
+        LinearLayout page = new LinearLayout(activity);
+        page.setOrientation(LinearLayout.VERTICAL);
+
+        activity.addProfileSectionHeader(page, "侧边手势",
+                "只接管 Flyme 小窗侧边触发回调。关闭后恢复原来的小窗面板。");
+        activity.addSwitchRow(page, "预热原生小窗面板",
+                "提前准备 Flyme 原生小窗选择面板，降低首次触发卡顿。",
+                SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
+                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED);
+        activity.addDivider(page);
+        activity.addSwitchRow(page, "接管侧边小窗手势",
+                "拦截屏幕左右侧边的小窗触发手势，改为执行这里配置的动作。",
+                SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
+                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED);
+        activity.addDivider(page);
+        activity.addChoiceRow(page, "触发动作",
+                "可选发送 URL / Intent、底部时间弹窗，或者后台应用星图。",
+                SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ACTION,
+                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION,
+                new int[]{
+                        SettingsStore.MBACK_LONG_TOUCH_ACTION_INTENT_URI,
+                        SettingsStore.MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP,
+                        SettingsStore.MBACK_LONG_TOUCH_ACTION_STAR_APPS
+                },
+                new String[]{"URL / Intent", "底部时间弹窗", "后台应用星图"});
+        activity.addDivider(page);
+        activity.addTextSettingRow(page, "目标 URL / Intent URI",
+                "只在“URL / Intent”模式下生效。支持 https://、自定义 scheme 和 intent:// URI。留空则回退 Flyme 小窗面板。",
+                SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
+                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
+                "未设置");
+        activity.addDivider(page);
+        activity.addActionButtonRow(page, "测试 URL / Intent",
+                "只测试当前填写的 URL / Intent URI，不测试底部时间弹窗模式。",
+                "立即测试", activity::testLaunchWindowModeSideGestureIntent);
         return page;
     }
 

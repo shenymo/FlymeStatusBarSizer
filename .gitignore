@@ -44,3 +44,6 @@ jadx/
 apk/
 com.meizu.flyme.launcher_dumpdex_jadx/
 skills/
+com.flyme.systemuitools_dumpdex_jadx/
+com.android.systemui_dumpdex_jadx/
+/redump_outputs

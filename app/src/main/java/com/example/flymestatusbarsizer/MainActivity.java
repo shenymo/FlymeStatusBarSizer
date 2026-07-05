@@ -1075,9 +1075,21 @@ public class MainActivity extends Activity {
     }
 
     void testLaunchMBackIntent() {
-        String raw = readStringSetting(
+        testLaunchIntentSetting(
                 SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI,
                 SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI);
+    }
+
+    void testLaunchWindowModeSideGestureIntent() {
+        testLaunchIntentSetting(
+                SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
+                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI);
+    }
+
+    private void testLaunchIntentSetting(String key, String defaultValue) {
+        String raw = readStringSetting(
+                key,
+                defaultValue);
         if (TextUtils.isEmpty(raw) || TextUtils.isEmpty(raw.trim())) {
             showToast("请先填写目标 URL 或 Intent URI");
             return;
@@ -1834,6 +1846,10 @@ public class MainActivity extends Activity {
 
     View createMBackActionSettingsCard() {
         return settingsCardFactory.createMBackActionSettingsCard();
+    }
+
+    View createWindowModeSideGestureSettingsCard() {
+        return settingsCardFactory.createWindowModeSideGestureSettingsCard();
     }
 
     View createMBackNavigationSettingsCard() {

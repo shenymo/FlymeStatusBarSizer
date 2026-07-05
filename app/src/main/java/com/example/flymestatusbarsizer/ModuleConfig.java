@@ -63,6 +63,11 @@ final class ModuleConfig {
     boolean mbackLongTouchIntentEnabled = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
     int mbackLongTouchAction = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION;
     String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
+    boolean windowModeSideGestureEnabled = SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED;
+    int windowModeSideGestureAction = SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION;
+    String windowModeSideGestureIntentUri = SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI;
+    boolean windowModeSideGesturePrewarmEnabled =
+            SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED;
     boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
     boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
     int notificationAppIconSizeDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
@@ -355,6 +360,23 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_MBACK_LONG_TOUCH_INTENT_URI,
                     SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI);
+            config.windowModeSideGestureEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
+                    SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED);
+            config.windowModeSideGestureAction = SettingsStore.normalizeMBackLongTouchAction(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ACTION,
+                            SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION));
+            config.windowModeSideGestureIntentUri = SettingsStore.readString(
+                    prefs,
+                    SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
+                    SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI);
+            config.windowModeSideGesturePrewarmEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
+                    SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED);
             config.mbackNavBarTransparent = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,

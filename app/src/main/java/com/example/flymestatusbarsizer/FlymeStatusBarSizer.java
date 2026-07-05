@@ -7,6 +7,7 @@ import com.example.flymestatusbarsizer.feature.launcher.LauncherRecentsHooks;
 import com.example.flymestatusbarsizer.feature.mback.MBackHooks;
 import com.example.flymestatusbarsizer.feature.notification.NotificationHooks;
 import com.example.flymestatusbarsizer.feature.onemind.OneMindPerfHooks;
+import com.example.flymestatusbarsizer.feature.windowmode.WindowModeSideGestureHooks;
 
 import android.content.ComponentCallbacks;
 import android.content.Context;
@@ -66,6 +67,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     public static final String ONEMIND_LOG_TAG = "FSS-OneMind";
     private static final String SYSTEM_UI = "com.android.systemui";
     private static final String FLYME_LAUNCHER = "com.meizu.flyme.launcher";
+    private static final String FLYME_SYSTEMUI_TOOLS = "com.flyme.systemuitools";
     private static final String MEIZU_PPS = "com.meizu.pps";
     private static volatile FlymeStatusBarSizer MODULE;
 
@@ -212,6 +214,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (FLYME_LAUNCHER.equals(packageName)) {
             hookFlymeLauncher(loader);
         }
+        if (FLYME_SYSTEMUI_TOOLS.equals(packageName)) {
+            WindowModeSideGestureHooks.install(this, loader);
+        }
         if (MEIZU_PPS.equals(packageName)) {
             logOneMindConfigSnapshot("package loaded, firstPackage=" + param.isFirstPackage()
                     + ", pid=" + android.os.Process.myPid()
@@ -298,6 +303,11 @@ public class FlymeStatusBarSizer extends XposedModule {
         return new MBackConfigSnapshot(config);
     }
 
+    public static WindowModeSideGestureConfigSnapshot loadWindowModeSideGestureConfig(Context context) {
+        ModuleConfig config = ModuleConfig.load(context);
+        return new WindowModeSideGestureConfigSnapshot(config);
+    }
+
     public static ImeConfigSnapshot loadImeConfig(Context context) {
         ModuleConfig config = ModuleConfig.load(context);
         return new ImeConfigSnapshot(config);
@@ -324,6 +334,13 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     public static void logMBackWarning(String message, Throwable throwable) {
+        FlymeStatusBarSizer module = MODULE;
+        if (module != null) {
+            module.log(android.util.Log.WARN, TAG, message, throwable);
+        }
+    }
+
+    public static void logWindowModeWarning(String message, Throwable throwable) {
         FlymeStatusBarSizer module = MODULE;
         if (module != null) {
             module.log(android.util.Log.WARN, TAG, message, throwable);
@@ -6829,6 +6846,25 @@ public class FlymeStatusBarSizer extends XposedModule {
             mbackHidePill = config != null && config.mbackHidePill;
             mbackInsetSize = config == null ? -1 : config.mbackInsetSize;
             mbackNavBarHeight = config == null ? -1 : config.mbackNavBarHeight;
+        }
+    }
+
+    public static final class WindowModeSideGestureConfigSnapshot {
+        public final boolean enabled;
+        public final boolean sideGestureEnabled;
+        public final int sideGestureAction;
+        public final String sideGestureIntentUri;
+        public final boolean sideGesturePrewarmEnabled;
+
+        private WindowModeSideGestureConfigSnapshot(ModuleConfig config) {
+            enabled = config != null && config.enabled;
+            sideGestureEnabled = config != null && config.windowModeSideGestureEnabled;
+            sideGestureAction = config == null
+                    ? SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION
+                    : config.windowModeSideGestureAction;
+            sideGestureIntentUri = config == null ? "" : config.windowModeSideGestureIntentUri;
+            sideGesturePrewarmEnabled = config != null
+                    && config.windowModeSideGesturePrewarmEnabled;
         }
     }
 

@@ -56,6 +56,11 @@ final class SettingsStore {
     static final String KEY_MBACK_LONG_TOUCH_URL_ENABLED = "mback_long_touch_url_enabled";
     static final String KEY_MBACK_LONG_TOUCH_ACTION = "mback_long_touch_action";
     static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
+    static final String KEY_WINDOWMODE_SIDE_GESTURE_ENABLED = "windowmode_side_gesture_enabled";
+    static final String KEY_WINDOWMODE_SIDE_GESTURE_ACTION = "windowmode_side_gesture_action";
+    static final String KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI = "windowmode_side_gesture_intent_uri";
+    static final String KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED =
+            "windowmode_side_gesture_prewarm_enabled";
     static final String KEY_MBACK_NAV_BAR_TRANSPARENT = "mback_nav_bar_transparent";
     static final String KEY_NOTIFICATION_APP_ICON_ENABLED = "notification_app_icon_enabled";
     static final String KEY_NOTIFICATION_APP_ICON_SIZE_DP = "notification_app_icon_size_dp";
@@ -162,6 +167,10 @@ final class SettingsStore {
     static final int MBACK_LONG_TOUCH_ACTION_STAR_APPS = 2;
     static final int DEFAULT_MBACK_LONG_TOUCH_ACTION = MBACK_LONG_TOUCH_ACTION_STAR_APPS;
     static final String DEFAULT_MBACK_LONG_TOUCH_INTENT_URI = "";
+    static final boolean DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED = false;
+    static final int DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION = MBACK_LONG_TOUCH_ACTION_STAR_APPS;
+    static final String DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI = "";
+    static final boolean DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED = false;
     static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
     static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
     static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
@@ -226,6 +235,7 @@ final class SettingsStore {
             KEY_CLOCK_FONT_WEIGHT,
             KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
             KEY_MBACK_LONG_TOUCH_ACTION,
+            KEY_WINDOWMODE_SIDE_GESTURE_ACTION,
             KEY_NOTIFICATION_APP_ICON_SIZE_DP,
             KEY_NOTIFICATION_APP_ICON_PADDING_DP,
             KEY_MBACK_INSET_SIZE,
@@ -257,6 +267,8 @@ final class SettingsStore {
             KEY_CLOCK_DETAIL_LUNAR_DATE_ENABLED,
             KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED,
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
+            KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
+            KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
@@ -280,6 +292,7 @@ final class SettingsStore {
             KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON,
             KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON,
             KEY_MBACK_LONG_TOUCH_INTENT_URI,
+            KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
             KEY_LAUNCHER_FOLDER_BG_COLOR,
             KEY_NOTIFICATION_BACKGROUND_COLOR,
             KEY_IME_CONTROL_BAR_BUTTON_SLOTS
@@ -443,6 +456,8 @@ final class SettingsStore {
                 return DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT;
             case KEY_MBACK_LONG_TOUCH_ACTION:
                 return DEFAULT_MBACK_LONG_TOUCH_ACTION;
+            case KEY_WINDOWMODE_SIDE_GESTURE_ACTION:
+                return DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION;
             case KEY_NOTIFICATION_APP_ICON_SIZE_DP:
                 return DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
             case KEY_NOTIFICATION_APP_ICON_PADDING_DP:
@@ -506,6 +521,10 @@ final class SettingsStore {
                 return DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED;
             case KEY_MBACK_LONG_TOUCH_URL_ENABLED:
                 return DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
+            case KEY_WINDOWMODE_SIDE_GESTURE_ENABLED:
+                return DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED;
+            case KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED:
+                return DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED;
             case KEY_MBACK_NAV_BAR_TRANSPARENT:
                 return DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
             case KEY_NOTIFICATION_APP_ICON_ENABLED:
@@ -548,6 +567,9 @@ final class SettingsStore {
         }
         if (KEY_MBACK_LONG_TOUCH_INTENT_URI.equals(key)) {
             return DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
+        }
+        if (KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI.equals(key)) {
+            return DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI;
         }
         if (KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON.equals(key)) {
             return DEFAULT_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON;
