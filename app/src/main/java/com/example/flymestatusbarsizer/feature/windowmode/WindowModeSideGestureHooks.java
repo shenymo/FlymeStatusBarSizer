@@ -22,6 +22,7 @@ public final class WindowModeSideGestureHooks {
     private static final int ACTION_STAR_APPS = 2;
     private static final Map<Object, Integer> ACTIVE_ACTIONS = new WeakHashMap<>();
     private static final Map<Object, Boolean> PREWARMED_LAUNCHERS = new WeakHashMap<>();
+    private static Class<?> appLauncherWindowClass;
 
     private WindowModeSideGestureHooks() {
     }
@@ -64,6 +65,7 @@ public final class WindowModeSideGestureHooks {
                     "com.flyme.systemuitools.windowmode.views.AppLauncherWindow",
                     false,
                     loader);
+            appLauncherWindowClass = clazz;
             Method method = clazz.getDeclaredMethod("X");
             method.setAccessible(true);
             module.intercept(method, chain -> {
@@ -71,17 +73,19 @@ public final class WindowModeSideGestureHooks {
                 prewarmAppLauncherWindow(chain.getThisObject());
                 return result;
             });
-            Method destroyMethod = clazz.getDeclaredMethod("D");
-            destroyMethod.setAccessible(true);
-            module.intercept(destroyMethod, chain -> {
-                try {
-                    return chain.proceed();
-                } finally {
-                    synchronized (PREWARMED_LAUNCHERS) {
-                        PREWARMED_LAUNCHERS.remove(chain.getThisObject());
+            Method destroyMethod = findNoArgVoidMethod(clazz, "D");
+            if (destroyMethod != null) {
+                destroyMethod.setAccessible(true);
+                module.intercept(destroyMethod, chain -> {
+                    try {
+                        return chain.proceed();
+                    } finally {
+                        synchronized (PREWARMED_LAUNCHERS) {
+                            PREWARMED_LAUNCHERS.remove(chain.getThisObject());
+                        }
                     }
-                }
-            });
+                });
+            }
         } catch (Throwable t) {
             FlymeStatusBarSizer.logWindowModeWarning(
                     "Failed to hook Flyme window mode app launcher prewarm",
@@ -117,13 +121,32 @@ public final class WindowModeSideGestureHooks {
 
     private static void invokePrewarmPrepare(Object target) {
         try {
-            Method method = target.getClass().getDeclaredMethod("R");
-            method.setAccessible(true);
-            method.invoke(target);
+            Method method = findPrewarmPrepareMethod(target.getClass());
+            if (method != null) {
+                method.setAccessible(true);
+                method.invoke(target);
+            }
         } catch (Throwable t) {
             FlymeStatusBarSizer.logWindowModeWarning(
                     "Failed to prewarm Flyme window mode app launcher",
                     t);
+        }
+    }
+
+    private static Method findPrewarmPrepareMethod(Class<?> clazz) {
+        Method method = findNoArgVoidMethod(clazz, "R");
+        if (method != null) {
+            return method;
+        }
+        return findNoArgVoidMethod(clazz, "Q");
+    }
+
+    private static Method findNoArgVoidMethod(Class<?> clazz, String name) {
+        try {
+            Method method = clazz.getDeclaredMethod(name);
+            return method.getReturnType() == Void.TYPE ? method : null;
+        } catch (Throwable ignored) {
+            return null;
         }
     }
 

@@ -192,6 +192,10 @@ final class ModuleConfig {
         systemUiContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
     }
 
+    static SharedPreferences getRemotePreferences() {
+        return remotePrefs;
+    }
+
     static Context getSystemUiContext() {
         return systemUiContext;
     }
