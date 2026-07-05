@@ -2117,7 +2117,9 @@ final class LauncherRecentsLayoutEngine {
                 recentsView,
                 new ArrayList<>(layout.activeIndices));
 
-        StringBuilder computedPackages = new StringBuilder();
+        StringBuilder computedPackages = LauncherRecentsPerf.enabled(recentsView)
+                ? new StringBuilder()
+                : null;
         for (int index = 0; index < layout.processIndices.size(); index++) {
             int i = layout.processIndices.get(index);
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
@@ -2143,7 +2145,9 @@ final class LauncherRecentsLayoutEngine {
             if (visualState == null) {
                 continue;
             }
-            appendComputedTaskPackage(computedPackages, i, taskView);
+            if (computedPackages != null) {
+                appendComputedTaskPackage(computedPackages, i, taskView);
+            }
             if (captureStockState) {
                 LauncherRecentsTaskVisuals.captureStockTaskState(taskView);
             }
@@ -2153,7 +2157,7 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, visualState);
             }
         }
-        if (computedPackages.length() > 0) {
+        if (computedPackages != null && computedPackages.length() > 0) {
             LauncherRecentsState.LAST_STACK_LAYOUT_COMPUTED_PACKAGES.put(
                     recentsView,
                     computedPackages.toString());
@@ -2564,9 +2568,14 @@ final class LauncherRecentsLayoutEngine {
         appendStackLayoutIndex(target, anchorIndex, taskViewCount);
         appendStackLayoutIndex(target, anchorIndex - 1, taskViewCount);
         appendStackLayoutIndex(target, anchorIndex + 1, taskViewCount);
+        appendStackLayoutIndex(target, anchorIndex - 2, taskViewCount);
         appendStackLayoutIndex(target, anchorIndex + 2, taskViewCount);
-        for (int i = 2; target.size() < targetCount && i < taskViewCount; i++) {
+        for (int i = 3; target.size() < targetCount && i < taskViewCount; i++) {
             appendStackLayoutIndex(target, anchorIndex - i, taskViewCount);
+            if (target.size() >= targetCount) {
+                break;
+            }
+            appendStackLayoutIndex(target, anchorIndex + i, taskViewCount);
         }
     }
 
@@ -2579,7 +2588,7 @@ final class LauncherRecentsLayoutEngine {
             return 0;
         }
         if (LauncherRecentsState.isAppToRecentsStackSettled(recentsView)) {
-            return Math.min(taskViewCount, 4);
+            return Math.min(taskViewCount, (STACK_STABLE_VISIBLE_RADIUS * 2) + 1);
         }
         if (appEntryLightWindow) {
             return Math.min(taskViewCount, (radius * 2) + 1);

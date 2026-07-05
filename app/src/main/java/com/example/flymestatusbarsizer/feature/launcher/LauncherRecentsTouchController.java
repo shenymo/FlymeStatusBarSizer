@@ -643,7 +643,6 @@ final class LauncherRecentsTouchController {
                 "overviewTouchTakeover",
                 false);
         LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
-        recentsView.requestLayout();
         recentsView.invalidate();
         recentsView.postOnAnimation(() -> finishAppToRecentsEntryTouchTakeover(recentsView));
         return true;
@@ -667,7 +666,6 @@ final class LauncherRecentsTouchController {
                 recentsView,
                 "overviewTakeoverReady",
                 false);
-        recentsView.requestLayout();
         recentsView.invalidate();
         recentsView.postDelayed(() -> clearAppToRecentsEntryTouchTakeover(recentsView), 80L);
     }
@@ -685,7 +683,6 @@ final class LauncherRecentsTouchController {
                 recentsView,
                 "entryTouchTakeoverClear",
                 false);
-        recentsView.requestLayout();
         recentsView.invalidate();
     }
 
@@ -728,7 +725,6 @@ final class LauncherRecentsTouchController {
                 recentsView,
                 "entryTouchTakeover",
                 false);
-        recentsView.requestLayout();
         recentsView.invalidate();
         return true;
     }
@@ -741,7 +737,6 @@ final class LauncherRecentsTouchController {
                 "entryTouchTakeoverFinish",
                 false);
         LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
-        recentsView.requestLayout();
         recentsView.invalidate();
     }
 
