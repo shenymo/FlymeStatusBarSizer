@@ -73,6 +73,7 @@ public final class WindowModeSideGestureHooks {
                 prewarmAppLauncherWindow(chain.getThisObject());
                 return result;
             });
+            installAppLaunchAnimationHook(module, loader, clazz);
             Method destroyMethod = findNoArgVoidMethod(clazz, "D");
             if (destroyMethod != null) {
                 destroyMethod.setAccessible(true);
@@ -91,6 +92,52 @@ public final class WindowModeSideGestureHooks {
                     "Failed to hook Flyme window mode app launcher prewarm",
                     t);
         }
+    }
+
+    private static void installAppLaunchAnimationHook(
+            FlymeStatusBarSizer module,
+            ClassLoader loader,
+            Class<?> appLauncherClass) {
+        try {
+            Class<?> itemClass = Class.forName("Y0.d", false, loader);
+            Method method = appLauncherClass.getDeclaredMethod(
+                    "j",
+                    itemClass,
+                    View.class,
+                    int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object item = chain.getArg(0);
+                View source = chain.getArg(1) instanceof View ? (View) chain.getArg(1) : null;
+                Context context = resolveAppLauncherContext(chain.getThisObject());
+                if (context == null && source != null) {
+                    context = source.getContext();
+                }
+                if (shouldAnimateNativeAppLaunch(context, item)) {
+                    WindowModeSmallWindowLaunchAnimator.play(context, source, item);
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logWindowModeWarning(
+                    "Failed to hook Flyme window mode app launch animation",
+                    t);
+        }
+    }
+
+    private static boolean shouldAnimateNativeAppLaunch(Context context, Object item) {
+        if (context == null || item == null) {
+            return false;
+        }
+        FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
+                FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
+        if (!config.enabled || config.sideGestureEnabled) {
+            return false;
+        }
+        String packageName = WindowModeSmallWindowLaunchAnimator.resolvePackageName(item);
+        return packageName != null
+                && !packageName.trim().isEmpty()
+                && !"com.meizu.aicy".equals(packageName);
     }
 
     private static void prewarmAppLauncherWindow(Object target) {
