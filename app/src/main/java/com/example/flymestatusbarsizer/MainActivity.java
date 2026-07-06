@@ -59,6 +59,7 @@ public class MainActivity extends Activity {
     static final int IME_CONTROL_BAR_POOL_ROW_ITEM_COUNT = 3;
     private static final String PACKAGE_SYSTEM_UI = "com.android.systemui";
     private static final String PACKAGE_FLYME_LAUNCHER = "com.meizu.flyme.launcher";
+    private static final String PACKAGE_FLYME_SYSTEMUI_TOOLS = "com.flyme.systemuitools";
     private static final String PACKAGE_MEIZU_PPS = "com.meizu.pps";
     private static final long SYSTEM_UI_RESTART_DELAY_MS = 600L;
     private static final String GITHUB_URL = "https://github.com/shenymo/FlymeStatusBarSizer";
@@ -1604,6 +1605,14 @@ public class MainActivity extends Activity {
 
     void restartLauncher() {
         restartPackageProcess(PACKAGE_FLYME_LAUNCHER, "系统桌面");
+    }
+
+    void restartSystemUiTools() {
+        restartRootCommands("SystemUITools", new String[]{
+                "pkill -f " + PACKAGE_FLYME_SYSTEMUI_TOOLS,
+                "killall " + PACKAGE_FLYME_SYSTEMUI_TOOLS,
+                "am crash " + PACKAGE_FLYME_SYSTEMUI_TOOLS
+        });
     }
 
     void restartOneMindPps() {

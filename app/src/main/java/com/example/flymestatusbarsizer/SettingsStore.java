@@ -61,6 +61,8 @@ final class SettingsStore {
     static final String KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI = "windowmode_side_gesture_intent_uri";
     static final String KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED =
             "windowmode_side_gesture_prewarm_enabled";
+    static final String KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED =
+            "windowmode_two_ring_launcher_enabled";
     static final String KEY_MBACK_NAV_BAR_TRANSPARENT = "mback_nav_bar_transparent";
     static final String KEY_NOTIFICATION_APP_ICON_ENABLED = "notification_app_icon_enabled";
     static final String KEY_NOTIFICATION_APP_ICON_SIZE_DP = "notification_app_icon_size_dp";
@@ -171,6 +173,7 @@ final class SettingsStore {
     static final int DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION = MBACK_LONG_TOUCH_ACTION_INTENT_URI;
     static final String DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI = "";
     static final boolean DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED = false;
+    static final boolean DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED = false;
     static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
     static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
     static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
@@ -269,6 +272,7 @@ final class SettingsStore {
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
             KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
+            KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
@@ -525,6 +529,8 @@ final class SettingsStore {
                 return DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED;
             case KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED:
                 return DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED;
+            case KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED:
+                return DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED;
             case KEY_MBACK_NAV_BAR_TRANSPARENT:
                 return DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
             case KEY_NOTIFICATION_APP_ICON_ENABLED:

@@ -68,6 +68,8 @@ final class ModuleConfig {
     String windowModeSideGestureIntentUri = SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI;
     boolean windowModeSideGesturePrewarmEnabled =
             SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED;
+    boolean windowModeTwoRingLauncherEnabled =
+            SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED;
     boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
     boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
     int notificationAppIconSizeDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
@@ -381,6 +383,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
                     SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED);
+            config.windowModeTwoRingLauncherEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
+                    SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED);
             config.mbackNavBarTransparent = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,

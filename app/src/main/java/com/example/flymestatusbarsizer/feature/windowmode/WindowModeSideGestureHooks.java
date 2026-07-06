@@ -117,7 +117,11 @@ public final class WindowModeSideGestureHooks {
             module.intercept(layoutMethod, chain -> {
                 Object result = chain.proceed();
                 try {
-                    relayoutTwoRingGestureLauncher(chain.getThisObject());
+                    Object target = chain.getThisObject();
+                    Context context = target instanceof View ? ((View) target).getContext() : null;
+                    if (isTwoRingLauncherEnabled(context)) {
+                        relayoutTwoRingGestureLauncher(target);
+                    }
                 } catch (Throwable t) {
                     FlymeStatusBarSizer.logWindowModeWarning(
                             "Failed before Flyme native two-ring layout fallback",
@@ -130,12 +134,16 @@ public final class WindowModeSideGestureHooks {
             hitMethod.setAccessible(true);
             module.intercept(hitMethod, chain -> {
                 try {
-                    Boolean result = selectTwoRingGestureChild(
-                            chain.getThisObject(),
-                            asFloat(chain.getArg(0)),
-                            asFloat(chain.getArg(1)));
-                    if (result != null) {
-                        return result;
+                    Object target = chain.getThisObject();
+                    Context context = target instanceof View ? ((View) target).getContext() : null;
+                    if (isTwoRingLauncherEnabled(context)) {
+                        Boolean result = selectTwoRingGestureChild(
+                                target,
+                                asFloat(chain.getArg(0)),
+                                asFloat(chain.getArg(1)));
+                        if (result != null) {
+                            return result;
+                        }
                     }
                 } catch (Throwable t) {
                     FlymeStatusBarSizer.logWindowModeWarning(
@@ -168,6 +176,9 @@ public final class WindowModeSideGestureHooks {
             module.intercept(method, chain -> {
                 Object original = chain.proceed();
                 try {
+                    if (!isTwoRingLauncherEnabled(resolveAppLauncherContext(chain.getThisObject()))) {
+                        return original;
+                    }
                     Object source = chain.getArg(0);
                     if (!(source instanceof List) || !(original instanceof List)) {
                         return original;
@@ -317,6 +328,12 @@ public final class WindowModeSideGestureHooks {
                     t);
             return null;
         }
+    }
+
+    private static boolean isTwoRingLauncherEnabled(Context context) {
+        FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
+                FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
+        return config.enabled && config.twoRingLauncherEnabled;
     }
 
     private static int resolveTwoRingIndex(int childIndex) {

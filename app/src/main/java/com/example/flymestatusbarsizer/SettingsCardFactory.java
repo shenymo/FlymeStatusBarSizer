@@ -597,6 +597,11 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
                 SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED);
         activity.addDivider(page);
+        activity.addSwitchRow(page, "双环小窗选择面板",
+                "把 Flyme 原生小窗应用选择面板改为双环；关闭后使用系统原生界面。",
+                SettingsStore.KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
+                SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED);
+        activity.addDivider(page);
         activity.addSwitchRow(page, "接管侧边小窗手势",
                 "拦截屏幕左右侧边的小窗触发手势，改为执行这里配置的动作。",
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
@@ -620,6 +625,10 @@ final class SettingsCardFactory {
         activity.addActionButtonRow(page, "测试 URL / Intent",
                 "只测试当前填写的 URL / Intent URI。",
                 "立即测试", activity::testLaunchWindowModeSideGestureIntent);
+        activity.addDivider(page);
+        activity.addActionButtonRow(page, "重启 SystemUITools",
+                "重启后小窗相关修改立即重新加载。",
+                "重启", activity::restartSystemUiTools);
         return page;
     }
 

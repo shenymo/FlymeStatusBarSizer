@@ -6856,6 +6856,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final int sideGestureAction;
         public final String sideGestureIntentUri;
         public final boolean sideGesturePrewarmEnabled;
+        public final boolean twoRingLauncherEnabled;
 
         private WindowModeSideGestureConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
@@ -6866,6 +6867,8 @@ public class FlymeStatusBarSizer extends XposedModule {
             sideGestureIntentUri = config == null ? "" : config.windowModeSideGestureIntentUri;
             sideGesturePrewarmEnabled = config != null
                     && config.windowModeSideGesturePrewarmEnabled;
+            twoRingLauncherEnabled = config != null
+                    && config.windowModeTwoRingLauncherEnabled;
         }
     }
 
