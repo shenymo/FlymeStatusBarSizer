@@ -26,7 +26,6 @@ public final class WindowModeSideGestureHooks {
     private static final Map<Object, Boolean> ACTIVE_ACTIONS = new WeakHashMap<>();
     private static final Map<Object, Boolean> PREWARMED_LAUNCHERS = new WeakHashMap<>();
     private static final Map<Object, HoverState> HOVER_STATES = new WeakHashMap<>();
-    private static final long HOVER_FULLSCREEN_TIMEOUT_MS = 1000L;
     private static final int TWO_RING_APP_LIMIT = 11;
     private static final int TWO_RING_OUTER_COUNT = 7;
     private static final Map<String, Field> FIELD_CACHE = new java.util.HashMap<>();
@@ -558,12 +557,13 @@ public final class WindowModeSideGestureHooks {
             return;
         }
         View child = launcher instanceof ViewGroup ? ((ViewGroup) launcher).getChildAt(index) : null;
+        int timeoutMs = resolveHoverFullscreenTimeoutMs(context);
         synchronized (HOVER_STATES) {
             HoverState old = HOVER_STATES.remove(launcher);
             if (old != null) {
                 old.clear();
             }
-            HoverState state = new HoverState(index, SystemClock.uptimeMillis(), child);
+            HoverState state = new HoverState(index, SystemClock.uptimeMillis(), timeoutMs, child);
             HOVER_STATES.put(launcher, state);
             state.start();
         }
@@ -600,7 +600,7 @@ public final class WindowModeSideGestureHooks {
             HoverState state = HOVER_STATES.get(launcher);
             return state != null
                     && state.index == readIntField(launcher, "m", -1)
-                    && SystemClock.uptimeMillis() - state.startTimeMs >= HOVER_FULLSCREEN_TIMEOUT_MS;
+                    && SystemClock.uptimeMillis() - state.startTimeMs >= state.timeoutMs;
         }
     }
 
@@ -608,6 +608,12 @@ public final class WindowModeSideGestureHooks {
         FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
                 FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
         return config.enabled && config.hoverFullscreenEnabled;
+    }
+
+    private static int resolveHoverFullscreenTimeoutMs(Context context) {
+        FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
+                FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
+        return Math.max(300, Math.min(2000, config.hoverFullscreenTimeoutMs));
     }
 
     private static boolean launchFullscreenApp(Context context, Object item) {
@@ -938,19 +944,21 @@ public final class WindowModeSideGestureHooks {
     private static final class HoverState {
         final int index;
         final long startTimeMs;
+        final int timeoutMs;
         final View hapticTarget;
         final Handler handler = new Handler(Looper.getMainLooper());
         final Runnable hapticRunnable = this::fireHaptic;
         boolean hapticFired;
 
-        HoverState(int index, long startTimeMs, View hapticTarget) {
+        HoverState(int index, long startTimeMs, int timeoutMs, View hapticTarget) {
             this.index = index;
             this.startTimeMs = startTimeMs;
+            this.timeoutMs = timeoutMs;
             this.hapticTarget = hapticTarget;
         }
 
         void start() {
-            handler.postDelayed(hapticRunnable, HOVER_FULLSCREEN_TIMEOUT_MS);
+            handler.postDelayed(hapticRunnable, timeoutMs);
         }
 
         void fireHaptic() {

@@ -72,6 +72,8 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED;
     boolean windowModeHoverFullscreenEnabled =
             SettingsStore.DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED;
+    int windowModeHoverFullscreenTimeoutMs =
+            SettingsStore.DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS;
     boolean windowModeTwoRingLauncherEnabled =
             SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED;
     int windowModeTwoRingInnerIconScalePercent =
@@ -399,6 +401,12 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED,
                     SettingsStore.DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED);
+            config.windowModeHoverFullscreenTimeoutMs =
+                    SettingsStore.normalizeWindowModeHoverFullscreenTimeoutMs(
+                            SettingsStore.readInt(
+                                    prefs,
+                                    SettingsStore.KEY_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS,
+                                    SettingsStore.DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS));
             config.windowModeTwoRingLauncherEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,

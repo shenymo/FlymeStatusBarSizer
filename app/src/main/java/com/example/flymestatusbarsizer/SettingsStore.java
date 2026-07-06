@@ -65,6 +65,8 @@ final class SettingsStore {
             "windowmode_app_launch_animation_enabled";
     static final String KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED =
             "windowmode_hover_fullscreen_enabled";
+    static final String KEY_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS =
+            "windowmode_hover_fullscreen_timeout_ms";
     static final String KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED =
             "windowmode_two_ring_launcher_enabled";
     static final String KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT =
@@ -183,6 +185,7 @@ final class SettingsStore {
     static final boolean DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED = false;
     static final boolean DEFAULT_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED = true;
     static final boolean DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED = false;
+    static final int DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS = 1000;
     static final boolean DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED = false;
     static final int DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT = 100;
     static final int DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT = 62;
@@ -251,6 +254,7 @@ final class SettingsStore {
             KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
             KEY_MBACK_LONG_TOUCH_ACTION,
             KEY_WINDOWMODE_SIDE_GESTURE_ACTION,
+            KEY_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS,
             KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT,
             KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT,
             KEY_NOTIFICATION_APP_ICON_SIZE_DP,
@@ -478,6 +482,8 @@ final class SettingsStore {
                 return DEFAULT_MBACK_LONG_TOUCH_ACTION;
             case KEY_WINDOWMODE_SIDE_GESTURE_ACTION:
                 return DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION;
+            case KEY_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS:
+                return DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS;
             case KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT:
                 return DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT;
             case KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT:
@@ -643,6 +649,10 @@ final class SettingsStore {
         return value == MBACK_LONG_TOUCH_ACTION_INTENT_URI
                 ? value
                 : MBACK_LONG_TOUCH_ACTION_INTENT_URI;
+    }
+
+    static int normalizeWindowModeHoverFullscreenTimeoutMs(int value) {
+        return Math.max(300, Math.min(2000, value));
     }
 
     static int normalizeWindowModeTwoRingInnerIconScalePercent(int value) {

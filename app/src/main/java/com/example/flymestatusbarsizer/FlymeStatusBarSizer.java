@@ -6858,6 +6858,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean sideGesturePrewarmEnabled;
         public final boolean appLaunchAnimationEnabled;
         public final boolean hoverFullscreenEnabled;
+        public final int hoverFullscreenTimeoutMs;
         public final boolean twoRingLauncherEnabled;
         public final int twoRingInnerIconScalePercent;
         public final int twoRingInnerRadiusPercent;
@@ -6876,6 +6877,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                     : config.windowModeAppLaunchAnimationEnabled;
             hoverFullscreenEnabled = config != null
                     && config.windowModeHoverFullscreenEnabled;
+            hoverFullscreenTimeoutMs = config == null
+                    ? SettingsStore.DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS
+                    : config.windowModeHoverFullscreenTimeoutMs;
             twoRingLauncherEnabled = config != null
                     && config.windowModeTwoRingLauncherEnabled;
             twoRingInnerIconScalePercent = config == null

@@ -602,10 +602,21 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED,
                 SettingsStore.DEFAULT_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED);
         activity.addDivider(page);
-        activity.addSwitchRow(page, "长停全屏打开",
-                "手指在小窗选择面板某个应用上停留 1 秒后，抬手改为全屏打开。",
+        LinearLayout hoverFullscreenOptions = buildWindowModeHoverFullscreenOptions();
+        boolean hoverFullscreenEnabled = SettingsStore.readBoolean(
+                activity.prefs(),
                 SettingsStore.KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED,
                 SettingsStore.DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED);
+        hoverFullscreenOptions.setVisibility(hoverFullscreenEnabled ? View.VISIBLE : View.GONE);
+        activity.addSwitchRow(page, "长停全屏打开",
+                "手指在小窗选择面板某个应用上停留达到阈值后，抬手改为全屏打开。",
+                SettingsStore.KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED,
+                SettingsStore.DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED,
+                (buttonView, isChecked) -> hoverFullscreenOptions.setVisibility(
+                        isChecked ? View.VISIBLE : View.GONE));
+        LinearLayout.LayoutParams hoverFullscreenOptionsLp = PageViewUtils.matchWrap();
+        hoverFullscreenOptionsLp.leftMargin = activity.dp(12);
+        page.addView(hoverFullscreenOptions, hoverFullscreenOptionsLp);
         activity.addDivider(page);
         LinearLayout twoRingOptions = buildWindowModeTwoRingOptions();
         boolean twoRingEnabled = SettingsStore.readBoolean(
@@ -687,6 +698,18 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT,
                 SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT,
                 45, 85, "%");
+        return card;
+    }
+
+    private LinearLayout buildWindowModeHoverFullscreenOptions() {
+        LinearLayout card = new LinearLayout(activity);
+        card.setOrientation(LinearLayout.VERTICAL);
+
+        activity.addSliderRow(card, "触发阈值",
+                "停留达到该时间后，抬手全屏打开。",
+                SettingsStore.KEY_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS,
+                SettingsStore.DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS,
+                300, 2000, "ms");
         return card;
     }
 
