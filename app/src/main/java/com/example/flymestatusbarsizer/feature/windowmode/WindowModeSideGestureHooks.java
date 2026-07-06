@@ -23,6 +23,7 @@ public final class WindowModeSideGestureHooks {
     private static final int TWO_RING_APP_LIMIT = 11;
     private static final int TWO_RING_OUTER_COUNT = 7;
     private static final float TWO_RING_INNER_RADIUS_RATIO = 0.62f;
+    private static final Map<String, Field> FIELD_CACHE = new java.util.HashMap<>();
     private static Class<?> appLauncherWindowClass;
 
     private WindowModeSideGestureHooks() {
@@ -560,12 +561,50 @@ public final class WindowModeSideGestureHooks {
         if (target == null || name == null) {
             return null;
         }
-        Class<?> clazz = target.getClass();
+        try {
+            Field field = findField(target.getClass(), name);
+            return field == null ? null : field.get(target);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static boolean writeField(Object target, String name, Object value) {
+        if (target == null || name == null) {
+            return false;
+        }
+        try {
+            Field field = findField(target.getClass(), name);
+            if (field == null) {
+                return false;
+            }
+            field.set(target, value);
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static Field findField(Class<?> startClass, String name) {
+        if (startClass == null || name == null) {
+            return null;
+        }
+        String key = startClass.getName() + "#" + name;
+        synchronized (FIELD_CACHE) {
+            Field cached = FIELD_CACHE.get(key);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        Class<?> clazz = startClass;
         while (clazz != null) {
             try {
                 Field field = clazz.getDeclaredField(name);
                 field.setAccessible(true);
-                return field.get(target);
+                synchronized (FIELD_CACHE) {
+                    FIELD_CACHE.put(key, field);
+                }
+                return field;
             } catch (NoSuchFieldException ignored) {
                 clazz = clazz.getSuperclass();
             } catch (Throwable ignored) {
@@ -573,26 +612,6 @@ public final class WindowModeSideGestureHooks {
             }
         }
         return null;
-    }
-
-    private static boolean writeField(Object target, String name, Object value) {
-        if (target == null || name == null) {
-            return false;
-        }
-        Class<?> clazz = target.getClass();
-        while (clazz != null) {
-            try {
-                Field field = clazz.getDeclaredField(name);
-                field.setAccessible(true);
-                field.set(target, value);
-                return true;
-            } catch (NoSuchFieldException ignored) {
-                clazz = clazz.getSuperclass();
-            } catch (Throwable ignored) {
-                return false;
-            }
-        }
-        return false;
     }
 
     private static int readIntField(Object target, String name, int fallback) {
