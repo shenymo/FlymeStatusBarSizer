@@ -70,6 +70,10 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED;
     boolean windowModeTwoRingLauncherEnabled =
             SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED;
+    int windowModeTwoRingInnerIconScalePercent =
+            SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT;
+    int windowModeTwoRingInnerRadiusPercent =
+            SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT;
     boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
     boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
     int notificationAppIconSizeDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
@@ -387,6 +391,18 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
                     SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED);
+            config.windowModeTwoRingInnerIconScalePercent =
+                    SettingsStore.normalizeWindowModeTwoRingInnerIconScalePercent(
+                            SettingsStore.readInt(
+                                    prefs,
+                                    SettingsStore.KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT,
+                                    SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT));
+            config.windowModeTwoRingInnerRadiusPercent =
+                    SettingsStore.normalizeWindowModeTwoRingInnerRadiusPercent(
+                            SettingsStore.readInt(
+                                    prefs,
+                                    SettingsStore.KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT,
+                                    SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT));
             config.mbackNavBarTransparent = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,

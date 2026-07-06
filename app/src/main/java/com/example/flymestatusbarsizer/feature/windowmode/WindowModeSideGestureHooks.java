@@ -22,7 +22,6 @@ public final class WindowModeSideGestureHooks {
     private static final Map<Object, Boolean> PREWARMED_LAUNCHERS = new WeakHashMap<>();
     private static final int TWO_RING_APP_LIMIT = 11;
     private static final int TWO_RING_OUTER_COUNT = 7;
-    private static final float TWO_RING_INNER_RADIUS_RATIO = 0.62f;
     private static final Map<String, Field> FIELD_CACHE = new java.util.HashMap<>();
     private static Class<?> appLauncherWindowClass;
 
@@ -236,12 +235,17 @@ public final class WindowModeSideGestureHooks {
             if (outerRadius <= 0f) {
                 return;
             }
+            FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
+                    FlymeStatusBarSizer.loadWindowModeSideGestureConfig(launcher.getContext());
+            float innerRadiusRatio = config.twoRingInnerRadiusPercent / 100f;
+            float innerIconScale = config.twoRingInnerIconScalePercent / 100f;
             for (int i = 0; i < childCount; i++) {
                 View child = ((android.view.ViewGroup) launcher).getChildAt(i);
                 if (child == null) {
                     continue;
                 }
-                float radius = resolveTwoRingRadius(i, outerRadius);
+                applyTwoRingInnerIconScale(child, i, innerIconScale);
+                float radius = resolveTwoRingRadius(i, outerRadius, innerRadiusRatio);
                 int ringIndex = resolveTwoRingIndex(i);
                 int ringCount = resolveTwoRingCount(i, childCount);
                 float angle = resolveTwoRingAngle(ringIndex, ringCount, safeDegrees);
@@ -347,10 +351,32 @@ public final class WindowModeSideGestureHooks {
                 : Math.max(1, childCount - TWO_RING_OUTER_COUNT);
     }
 
-    private static float resolveTwoRingRadius(int childIndex, float outerRadius) {
+    private static float resolveTwoRingRadius(int childIndex, float outerRadius, float innerRadiusRatio) {
         return childIndex < TWO_RING_OUTER_COUNT
                 ? outerRadius
-                : outerRadius * TWO_RING_INNER_RADIUS_RATIO;
+                : outerRadius * innerRadiusRatio;
+    }
+
+    private static void applyTwoRingInnerIconScale(View child, int childIndex, float innerIconScale) {
+        View icon = findAppIconView(child);
+        if (icon == null) {
+            return;
+        }
+        float scale = childIndex < TWO_RING_OUTER_COUNT ? 1f : innerIconScale;
+        icon.setScaleX(scale);
+        icon.setScaleY(scale);
+    }
+
+    private static View findAppIconView(View child) {
+        if (child == null) {
+            return null;
+        }
+        Context context = child.getContext();
+        int id = child.getResources().getIdentifier(
+                "app_icon",
+                "id",
+                context == null ? "com.flyme.systemuitools" : context.getPackageName());
+        return id == 0 ? null : child.findViewById(id);
     }
 
     private static float resolveTwoRingAngle(int index, int count, int safeDegrees) {

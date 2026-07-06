@@ -597,10 +597,21 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
                 SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED);
         activity.addDivider(page);
+        LinearLayout twoRingOptions = buildWindowModeTwoRingOptions();
+        boolean twoRingEnabled = SettingsStore.readBoolean(
+                activity.prefs(),
+                SettingsStore.KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
+                SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED);
+        twoRingOptions.setVisibility(twoRingEnabled ? View.VISIBLE : View.GONE);
         activity.addSwitchRow(page, "双环小窗选择面板",
                 "把 Flyme 原生小窗应用选择面板改为双环；关闭后使用系统原生界面。",
                 SettingsStore.KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
-                SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED);
+                SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
+                (buttonView, isChecked) -> twoRingOptions.setVisibility(
+                        isChecked ? View.VISIBLE : View.GONE));
+        LinearLayout.LayoutParams twoRingOptionsLp = PageViewUtils.matchWrap();
+        twoRingOptionsLp.leftMargin = activity.dp(12);
+        page.addView(twoRingOptions, twoRingOptionsLp);
         activity.addDivider(page);
         activity.addSwitchRow(page, "接管侧边小窗手势",
                 "拦截屏幕左右侧边的小窗触发手势，改为执行这里配置的动作。",
@@ -630,6 +641,31 @@ final class SettingsCardFactory {
                 "重启后小窗相关修改立即重新加载。",
                 "重启", activity::restartSystemUiTools);
         return page;
+    }
+
+    private LinearLayout buildWindowModeTwoRingOptions() {
+        LinearLayout card = new LinearLayout(activity);
+        card.setOrientation(LinearLayout.VERTICAL);
+
+        TextView title = new TextView(activity);
+        title.setText("双环内环");
+        title.setTextColor(activity.primaryColor());
+        title.setTextSize(13);
+        card.addView(title, activity.matchWrap());
+
+        activity.addDivider(card);
+        activity.addApplySliderRow(card, "内环图标大小",
+                "只改双环小窗选择面板内环的应用图标大小，默认 100%。",
+                SettingsStore.KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT,
+                SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT,
+                70, 120, "%");
+        activity.addDivider(card);
+        activity.addApplySliderRow(card, "内环半径",
+                "内环到手势中心的距离，默认 62%。",
+                SettingsStore.KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT,
+                SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT,
+                45, 85, "%");
+        return card;
     }
 
     private LinearLayout buildMBackImmersivePage() {

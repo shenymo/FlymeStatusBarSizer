@@ -63,6 +63,10 @@ final class SettingsStore {
             "windowmode_side_gesture_prewarm_enabled";
     static final String KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED =
             "windowmode_two_ring_launcher_enabled";
+    static final String KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT =
+            "windowmode_two_ring_inner_icon_scale_percent";
+    static final String KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT =
+            "windowmode_two_ring_inner_radius_percent";
     static final String KEY_MBACK_NAV_BAR_TRANSPARENT = "mback_nav_bar_transparent";
     static final String KEY_NOTIFICATION_APP_ICON_ENABLED = "notification_app_icon_enabled";
     static final String KEY_NOTIFICATION_APP_ICON_SIZE_DP = "notification_app_icon_size_dp";
@@ -174,6 +178,8 @@ final class SettingsStore {
     static final String DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI = "";
     static final boolean DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED = false;
     static final boolean DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED = false;
+    static final int DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT = 100;
+    static final int DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT = 62;
     static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
     static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
     static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
@@ -239,6 +245,8 @@ final class SettingsStore {
             KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
             KEY_MBACK_LONG_TOUCH_ACTION,
             KEY_WINDOWMODE_SIDE_GESTURE_ACTION,
+            KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT,
+            KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT,
             KEY_NOTIFICATION_APP_ICON_SIZE_DP,
             KEY_NOTIFICATION_APP_ICON_PADDING_DP,
             KEY_MBACK_INSET_SIZE,
@@ -462,6 +470,10 @@ final class SettingsStore {
                 return DEFAULT_MBACK_LONG_TOUCH_ACTION;
             case KEY_WINDOWMODE_SIDE_GESTURE_ACTION:
                 return DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION;
+            case KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT:
+                return DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT;
+            case KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT:
+                return DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT;
             case KEY_NOTIFICATION_APP_ICON_SIZE_DP:
                 return DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
             case KEY_NOTIFICATION_APP_ICON_PADDING_DP:
@@ -619,6 +631,14 @@ final class SettingsStore {
         return value == MBACK_LONG_TOUCH_ACTION_INTENT_URI
                 ? value
                 : MBACK_LONG_TOUCH_ACTION_INTENT_URI;
+    }
+
+    static int normalizeWindowModeTwoRingInnerIconScalePercent(int value) {
+        return Math.max(70, Math.min(120, value));
+    }
+
+    static int normalizeWindowModeTwoRingInnerRadiusPercent(int value) {
+        return Math.max(45, Math.min(85, value));
     }
 
     static int normalizeBatteryTextFont(int value) {
