@@ -434,13 +434,18 @@ public final class WindowModeSideGestureHooks {
                     int.class);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                Object item = chain.getArg(0);
-                View source = chain.getArg(1) instanceof View ? (View) chain.getArg(1) : null;
                 Context context = resolveAppLauncherContext(chain.getThisObject());
-                if (context == null && source != null) {
+                View source = null;
+                if (context == null && chain.getArg(1) instanceof View) {
+                    source = (View) chain.getArg(1);
                     context = source.getContext();
                 }
-                if (shouldAnimateNativeAppLaunch(context, item)) {
+                if (!isAppLaunchAnimationEnabled(context)) {
+                    return chain.proceed();
+                }
+                Object item = chain.getArg(0);
+                if (shouldAnimateNativeAppLaunch(item)) {
+                    source = chain.getArg(1) instanceof View ? (View) chain.getArg(1) : null;
                     final Object launchItem = item;
                     final int launchWay = chain.getArg(2) instanceof Integer
                             ? (Integer) chain.getArg(2)
@@ -463,13 +468,17 @@ public final class WindowModeSideGestureHooks {
         }
     }
 
-    private static boolean shouldAnimateNativeAppLaunch(Context context, Object item) {
-        if (context == null || item == null) {
+    private static boolean isAppLaunchAnimationEnabled(Context context) {
+        if (context == null) {
             return false;
         }
         FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
                 FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
-        if (!config.enabled || config.sideGestureEnabled) {
+        return config.enabled && config.appLaunchAnimationEnabled && !config.sideGestureEnabled;
+    }
+
+    private static boolean shouldAnimateNativeAppLaunch(Object item) {
+        if (item == null) {
             return false;
         }
         String packageName = WindowModeSmallWindowLaunchAnimator.resolvePackageName(item);

@@ -68,6 +68,8 @@ final class ModuleConfig {
     String windowModeSideGestureIntentUri = SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI;
     boolean windowModeSideGesturePrewarmEnabled =
             SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED;
+    boolean windowModeAppLaunchAnimationEnabled =
+            SettingsStore.DEFAULT_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED;
     boolean windowModeTwoRingLauncherEnabled =
             SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED;
     int windowModeTwoRingInnerIconScalePercent =
@@ -387,6 +389,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
                     SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED);
+            config.windowModeAppLaunchAnimationEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED,
+                    SettingsStore.DEFAULT_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED);
             config.windowModeTwoRingLauncherEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,

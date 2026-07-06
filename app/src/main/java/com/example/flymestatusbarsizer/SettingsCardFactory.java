@@ -597,6 +597,11 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
                 SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED);
         activity.addDivider(page);
+        activity.addSwitchRow(page, "小窗打开动画",
+                "控制从小窗选择面板点击应用后的模块展开动画；关闭后使用 Flyme 原生动画。",
+                SettingsStore.KEY_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED,
+                SettingsStore.DEFAULT_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED);
+        activity.addDivider(page);
         LinearLayout twoRingOptions = buildWindowModeTwoRingOptions();
         boolean twoRingEnabled = SettingsStore.readBoolean(
                 activity.prefs(),
