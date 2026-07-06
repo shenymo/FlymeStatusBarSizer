@@ -63,6 +63,8 @@ final class SettingsStore {
             "windowmode_side_gesture_prewarm_enabled";
     static final String KEY_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED =
             "windowmode_app_launch_animation_enabled";
+    static final String KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED =
+            "windowmode_hover_fullscreen_enabled";
     static final String KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED =
             "windowmode_two_ring_launcher_enabled";
     static final String KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT =
@@ -180,6 +182,7 @@ final class SettingsStore {
     static final String DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI = "";
     static final boolean DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED = false;
     static final boolean DEFAULT_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED = true;
+    static final boolean DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED = false;
     static final boolean DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED = false;
     static final int DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT = 100;
     static final int DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT = 62;
@@ -284,6 +287,7 @@ final class SettingsStore {
             KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
             KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
             KEY_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED,
+            KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED,
             KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
@@ -547,6 +551,8 @@ final class SettingsStore {
                 return DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED;
             case KEY_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED:
                 return DEFAULT_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED;
+            case KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED:
+                return DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED;
             case KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED:
                 return DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED;
             case KEY_MBACK_NAV_BAR_TRANSPARENT:

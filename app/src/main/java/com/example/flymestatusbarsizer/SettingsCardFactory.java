@@ -602,6 +602,11 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED,
                 SettingsStore.DEFAULT_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED);
         activity.addDivider(page);
+        activity.addSwitchRow(page, "长停全屏打开",
+                "手指在小窗选择面板某个应用上停留 1 秒后，抬手改为全屏打开。",
+                SettingsStore.KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED,
+                SettingsStore.DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED);
+        activity.addDivider(page);
         LinearLayout twoRingOptions = buildWindowModeTwoRingOptions();
         boolean twoRingEnabled = SettingsStore.readBoolean(
                 activity.prefs(),
@@ -618,12 +623,21 @@ final class SettingsCardFactory {
         twoRingOptionsLp.leftMargin = activity.dp(12);
         page.addView(twoRingOptions, twoRingOptionsLp);
         activity.addDivider(page);
+        LinearLayout sideGestureOptions = new LinearLayout(activity);
+        sideGestureOptions.setOrientation(LinearLayout.VERTICAL);
+        boolean sideGestureEnabled = SettingsStore.readBoolean(
+                activity.prefs(),
+                SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
+                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED);
+        sideGestureOptions.setVisibility(sideGestureEnabled ? View.VISIBLE : View.GONE);
         activity.addSwitchRow(page, "接管侧边小窗手势",
                 "拦截屏幕左右侧边的小窗触发手势，改为执行这里配置的动作。",
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
-                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED);
-        activity.addDivider(page);
-        activity.addChoiceRow(page, "触发动作",
+                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED,
+                (buttonView, isChecked) -> sideGestureOptions.setVisibility(
+                        isChecked ? View.VISIBLE : View.GONE));
+        activity.addDivider(sideGestureOptions);
+        activity.addChoiceRow(sideGestureOptions, "触发动作",
                 "发送 URL / Intent。",
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ACTION,
                 SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION,
@@ -631,16 +645,19 @@ final class SettingsCardFactory {
                         SettingsStore.MBACK_LONG_TOUCH_ACTION_INTENT_URI
                 },
                 new String[]{"URL / Intent"});
-        activity.addDivider(page);
-        activity.addTextSettingRow(page, "目标 URL / Intent URI",
+        activity.addDivider(sideGestureOptions);
+        activity.addTextSettingRow(sideGestureOptions, "目标 URL / Intent URI",
                 "只在“URL / Intent”模式下生效。支持 https://、自定义 scheme 和 intent:// URI。留空则回退 Flyme 小窗面板。",
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
                 SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
                 "未设置");
-        activity.addDivider(page);
-        activity.addActionButtonRow(page, "测试 URL / Intent",
+        activity.addDivider(sideGestureOptions);
+        activity.addActionButtonRow(sideGestureOptions, "测试 URL / Intent",
                 "只测试当前填写的 URL / Intent URI。",
                 "立即测试", activity::testLaunchWindowModeSideGestureIntent);
+        LinearLayout.LayoutParams sideGestureOptionsLp = PageViewUtils.matchWrap();
+        sideGestureOptionsLp.leftMargin = activity.dp(12);
+        page.addView(sideGestureOptions, sideGestureOptionsLp);
         activity.addDivider(page);
         activity.addActionButtonRow(page, "重启 SystemUITools",
                 "重启后小窗相关修改立即重新加载。",

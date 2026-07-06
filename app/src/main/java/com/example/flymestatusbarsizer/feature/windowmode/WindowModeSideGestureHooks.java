@@ -4,10 +4,15 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.feature.mback.MBackHooks;
 
 import android.content.Context;
+import android.content.Intent;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -20,6 +25,8 @@ import java.util.WeakHashMap;
 public final class WindowModeSideGestureHooks {
     private static final Map<Object, Boolean> ACTIVE_ACTIONS = new WeakHashMap<>();
     private static final Map<Object, Boolean> PREWARMED_LAUNCHERS = new WeakHashMap<>();
+    private static final Map<Object, HoverState> HOVER_STATES = new WeakHashMap<>();
+    private static final long HOVER_FULLSCREEN_TIMEOUT_MS = 1000L;
     private static final int TWO_RING_APP_LIMIT = 11;
     private static final int TWO_RING_OUTER_COUNT = 7;
     private static final Map<String, Field> FIELD_CACHE = new java.util.HashMap<>();
@@ -75,6 +82,7 @@ public final class WindowModeSideGestureHooks {
                 return result;
             });
             installAppLaunchAnimationHook(module, loader, clazz);
+            installNativeAppLauncherHoverFullscreenHook(module, loader);
             installNativeAppLauncherTwoRingHook(module, loader, clazz);
             Method destroyMethod = findNoArgVoidMethod(clazz, "D");
             if (destroyMethod != null) {
@@ -92,6 +100,52 @@ public final class WindowModeSideGestureHooks {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logWindowModeWarning(
                     "Failed to hook Flyme window mode app launcher prewarm",
+                    t);
+        }
+    }
+
+    private static void installNativeAppLauncherHoverFullscreenHook(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> gestureClass = Class.forName(
+                    "com.flyme.systemuitools.windowmode.widget.GestureAppLauncher",
+                    false,
+                    loader);
+            Method hoverMethod = gestureClass.getDeclaredMethod("x", int.class);
+            hoverMethod.setAccessible(true);
+            module.intercept(hoverMethod, chain -> {
+                Object result = chain.proceed();
+                recordHoverStart(chain.getThisObject(), asInt(chain.getArg(0)));
+                return result;
+            });
+
+            Method unhoverMethod = gestureClass.getDeclaredMethod("z", int.class);
+            unhoverMethod.setAccessible(true);
+            module.intercept(unhoverMethod, chain -> {
+                Object result = chain.proceed();
+                clearHoverIfMatches(chain.getThisObject(), asInt(chain.getArg(0)));
+                return result;
+            });
+
+            Method touchMethod = gestureClass.getDeclaredMethod("w", MotionEvent.class, int.class);
+            touchMethod.setAccessible(true);
+            module.intercept(touchMethod, chain -> {
+                MotionEvent event = chain.getArg(0) instanceof MotionEvent
+                        ? (MotionEvent) chain.getArg(0)
+                        : null;
+                if (event != null && event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    clearHover(chain.getThisObject());
+                }
+                Object result = chain.proceed();
+                if (isTerminalEvent(event)) {
+                    clearHover(chain.getThisObject());
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logWindowModeWarning(
+                    "Failed to hook Flyme native app launcher hover fullscreen",
                     t);
         }
     }
@@ -440,10 +494,16 @@ public final class WindowModeSideGestureHooks {
                     source = (View) chain.getArg(1);
                     context = source.getContext();
                 }
+                Object item = chain.getArg(0);
+                if (shouldLaunchFullscreenFromHover(chain.getThisObject(), context)
+                        && launchFullscreenApp(context, item)) {
+                    invokeNoArg(chain.getThisObject(), "Z");
+                    clearHover(resolveAppWindowGestureLauncher(chain.getThisObject()));
+                    return null;
+                }
                 if (!isAppLaunchAnimationEnabled(context)) {
                     return chain.proceed();
                 }
-                Object item = chain.getArg(0);
                 if (shouldAnimateNativeAppLaunch(item)) {
                     source = chain.getArg(1) instanceof View ? (View) chain.getArg(1) : null;
                     final Object launchItem = item;
@@ -485,6 +545,128 @@ public final class WindowModeSideGestureHooks {
         return packageName != null
                 && !packageName.trim().isEmpty()
                 && !"com.meizu.aicy".equals(packageName);
+    }
+
+    private static void recordHoverStart(Object launcher, int index) {
+        if (!(launcher instanceof View) || index < 0) {
+            clearHover(launcher);
+            return;
+        }
+        Context context = ((View) launcher).getContext();
+        if (!isHoverFullscreenEnabled(context)) {
+            clearHover(launcher);
+            return;
+        }
+        View child = launcher instanceof ViewGroup ? ((ViewGroup) launcher).getChildAt(index) : null;
+        synchronized (HOVER_STATES) {
+            HoverState old = HOVER_STATES.remove(launcher);
+            if (old != null) {
+                old.clear();
+            }
+            HoverState state = new HoverState(index, SystemClock.uptimeMillis(), child);
+            HOVER_STATES.put(launcher, state);
+            state.start();
+        }
+    }
+
+    private static void clearHoverIfMatches(Object launcher, int index) {
+        synchronized (HOVER_STATES) {
+            HoverState state = HOVER_STATES.get(launcher);
+            if (state != null && state.index == index) {
+                HOVER_STATES.remove(launcher);
+                state.clear();
+            }
+        }
+    }
+
+    private static void clearHover(Object launcher) {
+        synchronized (HOVER_STATES) {
+            HoverState state = HOVER_STATES.remove(launcher);
+            if (state != null) {
+                state.clear();
+            }
+        }
+    }
+
+    private static boolean shouldLaunchFullscreenFromHover(Object appWindow, Context context) {
+        if (!isHoverFullscreenEnabled(context)) {
+            return false;
+        }
+        Object launcher = resolveAppWindowGestureLauncher(appWindow);
+        if (launcher == null) {
+            return false;
+        }
+        synchronized (HOVER_STATES) {
+            HoverState state = HOVER_STATES.get(launcher);
+            return state != null
+                    && state.index == readIntField(launcher, "m", -1)
+                    && SystemClock.uptimeMillis() - state.startTimeMs >= HOVER_FULLSCREEN_TIMEOUT_MS;
+        }
+    }
+
+    private static boolean isHoverFullscreenEnabled(Context context) {
+        FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
+                FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
+        return config.enabled && config.hoverFullscreenEnabled;
+    }
+
+    private static boolean launchFullscreenApp(Context context, Object item) {
+        if (context == null || item == null) {
+            return false;
+        }
+        String packageName = WindowModeSmallWindowLaunchAnimator.resolvePackageName(item);
+        if (packageName == null
+                || packageName.trim().isEmpty()
+                || "com.meizu.aicy".equals(packageName)) {
+            return false;
+        }
+        try {
+            Intent intent = context.getPackageManager().getLaunchIntentForPackage(packageName);
+            if (intent == null) {
+                return false;
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+            Object launcherInfo = invokeNoArgObject(item, "e");
+            Object user = invokeNoArgObject(launcherInfo, "getUser");
+            if (user != null && startActivityAsUser(context, intent, user)) {
+                return true;
+            }
+            context.startActivity(intent);
+            return true;
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logWindowModeWarning(
+                    "Failed to launch Flyme app fullscreen from hover",
+                    t);
+            return false;
+        }
+    }
+
+    private static boolean startActivityAsUser(Context context, Intent intent, Object user) {
+        try {
+            for (Method method : Context.class.getMethods()) {
+                Class<?>[] types = method.getParameterTypes();
+                if (!"startActivityAsUser".equals(method.getName())) {
+                    continue;
+                }
+                if (types.length == 2
+                        && types[0].isAssignableFrom(Intent.class)
+                        && types[1].isInstance(user)) {
+                    method.setAccessible(true);
+                    method.invoke(context, intent, user);
+                    return true;
+                }
+                if (types.length == 3
+                        && types[0].isAssignableFrom(Intent.class)
+                        && types[1].isAssignableFrom(Bundle.class)
+                        && types[2].isInstance(user)) {
+                    method.setAccessible(true);
+                    method.invoke(context, intent, null, user);
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
     }
 
     private static void prewarmAppLauncherWindow(Object target) {
@@ -600,6 +782,11 @@ public final class WindowModeSideGestureHooks {
         return value instanceof Context ? (Context) value : null;
     }
 
+    private static Object resolveAppWindowGestureLauncher(Object target) {
+        Object value = readField(target, "j");
+        return value != null ? value : readField(target, "mGestureAppLauncher");
+    }
+
     private static View resolveAnchor(Object target) {
         Object value = readField(target, "mGestureAppLauncher");
         return value instanceof View ? (View) value : null;
@@ -709,6 +896,25 @@ public final class WindowModeSideGestureHooks {
         }
     }
 
+    private static Object invokeNoArgObject(Object target, String name) {
+        if (target == null || name == null) {
+            return null;
+        }
+        Class<?> clazz = target.getClass();
+        while (clazz != null) {
+            try {
+                Method method = clazz.getDeclaredMethod(name);
+                method.setAccessible(true);
+                return method.invoke(target);
+            } catch (NoSuchMethodException ignored) {
+                clazz = clazz.getSuperclass();
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     private static boolean invokeIntArg(Object target, String name, int value) {
         if (target == null || name == null) {
             return false;
@@ -727,5 +933,54 @@ public final class WindowModeSideGestureHooks {
             }
         }
         return false;
+    }
+
+    private static final class HoverState {
+        final int index;
+        final long startTimeMs;
+        final View hapticTarget;
+        final Handler handler = new Handler(Looper.getMainLooper());
+        final Runnable hapticRunnable = this::fireHaptic;
+        boolean hapticFired;
+
+        HoverState(int index, long startTimeMs, View hapticTarget) {
+            this.index = index;
+            this.startTimeMs = startTimeMs;
+            this.hapticTarget = hapticTarget;
+        }
+
+        void start() {
+            handler.postDelayed(hapticRunnable, HOVER_FULLSCREEN_TIMEOUT_MS);
+        }
+
+        void fireHaptic() {
+            if (hapticFired || hapticTarget == null) {
+                return;
+            }
+            hapticFired = true;
+            if (!hapticTarget.performHapticFeedback(
+                    HapticFeedbackConstants.CLOCK_TICK,
+                    HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING)) {
+                hapticTarget.performHapticFeedback(
+                        HapticFeedbackConstants.KEYBOARD_TAP,
+                        HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
+            }
+            hapticTarget.animate()
+                    .scaleX(1.16f)
+                    .scaleY(1.16f)
+                    .setDuration(120L)
+                    .start();
+        }
+
+        void clear() {
+            handler.removeCallbacks(hapticRunnable);
+            if (hapticFired && hapticTarget != null) {
+                hapticTarget.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(90L)
+                        .start();
+            }
+        }
     }
 }
