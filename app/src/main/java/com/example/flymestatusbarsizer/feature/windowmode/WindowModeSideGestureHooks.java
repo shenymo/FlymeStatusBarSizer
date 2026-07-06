@@ -425,6 +425,8 @@ public final class WindowModeSideGestureHooks {
             Class<?> appLauncherClass) {
         try {
             Class<?> itemClass = Class.forName("Y0.d", false, loader);
+            Method launchMethod = itemClass.getDeclaredMethod("G", int.class);
+            launchMethod.setAccessible(true);
             Method method = appLauncherClass.getDeclaredMethod(
                     "j",
                     itemClass,
@@ -439,7 +441,18 @@ public final class WindowModeSideGestureHooks {
                     context = source.getContext();
                 }
                 if (shouldAnimateNativeAppLaunch(context, item)) {
-                    WindowModeSmallWindowLaunchAnimator.play(context, source, item);
+                    final Object launchItem = item;
+                    final int launchWay = chain.getArg(2) instanceof Integer
+                            ? (Integer) chain.getArg(2)
+                            : 0;
+                    boolean handled = WindowModeSmallWindowLaunchAnimator.play(
+                            context,
+                            source,
+                            item,
+                            () -> launchNativeWindowModeApp(launchMethod, launchItem, launchWay));
+                    if (handled) {
+                        return null;
+                    }
                 }
                 return chain.proceed();
             });
@@ -592,6 +605,16 @@ public final class WindowModeSideGestureHooks {
             return field == null ? null : field.get(target);
         } catch (Throwable ignored) {
             return null;
+        }
+    }
+
+    private static void launchNativeWindowModeApp(Method launchMethod, Object item, int way) {
+        try {
+            launchMethod.invoke(item, way);
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logWindowModeWarning(
+                    "Failed to launch Flyme window mode app after animation",
+                    t);
         }
     }
 
