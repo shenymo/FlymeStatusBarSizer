@@ -13,6 +13,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -784,6 +785,7 @@ public final class NotificationHooks {
                 }
                 Object result = chain.proceed();
                 applyMediaNotificationTextFollowStatusBar(player);
+                applyMediaNotificationButtonTints(chain.getThisObject(), player);
                 return result;
             });
         } catch (Throwable t) {
@@ -797,6 +799,40 @@ public final class NotificationHooks {
         Object holder = FlymeStatusBarSizer.getFieldCompat(target, "mMediaViewHolder");
         Object player = FlymeStatusBarSizer.invokeNoArgCompat(holder, "getPlayer");
         return player instanceof View ? (View) player : null;
+    }
+
+    private static void applyMediaNotificationButtonTints(Object controller, View player) {
+        if (player == null) {
+            return;
+        }
+        FlymeStatusBarSizer.NotificationConfigSnapshot config =
+                FlymeStatusBarSizer.loadNotificationConfig(player.getContext());
+        if (!config.enabled || !config.notificationTextFollowStatusBarEnabled) {
+            return;
+        }
+        Integer textColor = resolveNotificationTextTintColor(player);
+        if (textColor == null) {
+            return;
+        }
+        Object holder = FlymeStatusBarSizer.getFieldCompat(controller, "mMediaViewHolder");
+        applyMediaHolderButtonTint(holder, "getActionPlayPause", textColor);
+        applyMediaHolderButtonTint(holder, "getActionNext", textColor);
+        applyMediaHolderButtonTint(holder, "getActionPrev", textColor);
+        applyMediaHolderButtonTint(holder, "getAction0", textColor);
+        applyMediaHolderButtonTint(holder, "getAction1", textColor);
+        applyMediaHolderButtonTint(holder, "getAction2", textColor);
+        applyMediaHolderButtonTint(holder, "getAction3", textColor);
+        applyMediaHolderButtonTint(holder, "getAction4", textColor);
+        applyMediaHolderButtonTint(holder, "getPlayButton", textColor);
+        applyMediaHolderButtonTint(holder, "getPrevButton", textColor);
+        applyMediaHolderButtonTint(holder, "getNextButton", textColor);
+    }
+
+    private static void applyMediaHolderButtonTint(Object holder, String methodName, int textColor) {
+        Object view = FlymeStatusBarSizer.invokeNoArgCompat(holder, methodName);
+        if (view instanceof ImageView) {
+            applyNotificationMediaButtonTint((ImageView) view, textColor);
+        }
     }
 
     private static void applyMediaNotificationTextFollowStatusBar(Object target) {
@@ -1251,6 +1287,10 @@ public final class NotificationHooks {
             } else {
                 restoreNotificationTextColor((TextView) view);
             }
+        } else if (view instanceof ImageView && isMediaNotificationControlButton(view)) {
+            if (enabled) {
+                applyNotificationMediaButtonTint((ImageView) view, textColor);
+            }
         }
         if (!(view instanceof ViewGroup)) {
             return;
@@ -1259,6 +1299,38 @@ public final class NotificationHooks {
         for (int i = 0; i < group.getChildCount(); i++) {
             updateNotificationTextColors(group.getChildAt(i), enabled, textColor);
         }
+    }
+
+    private static boolean isMediaNotificationControlButton(View view) {
+        if (!isInsideMediaNotificationRoot(view)) {
+            return false;
+        }
+        String idName = getViewIdName(view);
+        return "actionPlayPause".equals(idName)
+                || "actionNext".equals(idName)
+                || "actionPrev".equals(idName)
+                || "action0".equals(idName)
+                || "action1".equals(idName)
+                || "action2".equals(idName)
+                || "action3".equals(idName)
+                || "action4".equals(idName)
+                || "playOrpauseButton".equals(idName)
+                || "PrevButton".equals(idName)
+                || "NextButton".equals(idName);
+    }
+
+    private static boolean isInsideMediaNotificationRoot(View view) {
+        View current = view;
+        int depth = 0;
+        while (current != null && depth < 12) {
+            if (isMediaNotificationRoot(current)) {
+                return true;
+            }
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+            depth++;
+        }
+        return false;
     }
 
     private static void applyNotificationTextColor(TextView view, int textColor) {
@@ -1311,6 +1383,14 @@ public final class NotificationHooks {
                 NOTIFICATION_TEXT_APPLY_GUARDS.remove(view);
             }
         }
+    }
+
+    private static void applyNotificationMediaButtonTint(ImageView view, int textColor) {
+        ColorStateList tint = view.getImageTintList();
+        if (tint == null || tint.getDefaultColor() != textColor) {
+            view.setImageTintList(ColorStateList.valueOf(textColor));
+        }
+        view.setColorFilter(textColor, PorterDuff.Mode.SRC_IN);
     }
 
     private static void hookNotificationIconTint(FlymeStatusBarSizer module, ClassLoader loader) {
