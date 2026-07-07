@@ -589,9 +589,12 @@ public final class NotificationHooks {
                             config.notificationSystemBlurOnlyEnabled
                                     && config.notificationTextFollowStatusBarEnabled);
                     args = chain.getArgs().toArray();
-                    args[1] = config.notificationSystemBlurOnlyEnabled
-                            ? NOTIFICATION_SYSTEM_BLUR_ONLY_COLOR
-                            : config.notificationBackgroundColor;
+                    if (config.notificationSystemBlurOnlyEnabled) {
+                        args[0] = false;
+                        args[1] = NOTIFICATION_SYSTEM_BLUR_ONLY_COLOR;
+                    } else {
+                        args[1] = config.notificationBackgroundColor;
+                    }
                 } catch (Throwable t) {
                     FlymeStatusBarSizer.logNotificationWarning(
                             "Failed to apply notification background color",
@@ -611,6 +614,7 @@ public final class NotificationHooks {
             FlymeStatusBarSizer module, ClassLoader loader) {
         hookMzBackgroundBlur(module, loader);
         hookWallpaperBackgroundBlur(module, loader);
+        hookNotificationStaticBlurFallback(module, loader);
         hookMediaSystemBlurOnly(module, loader);
         hookMediaPlayerTextColor(module, loader);
     }
@@ -702,6 +706,43 @@ public final class NotificationHooks {
             args[colorArgIndex] = NOTIFICATION_SYSTEM_BLUR_ONLY_COLOR;
             return chain.proceed(args);
         });
+    }
+
+    private static void hookNotificationStaticBlurFallback(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.statusbar.notification.row.NotificationBackgroundView",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("setBlurBgForStatic", int.class, int.class);
+            Method liveMethod = clazz.getDeclaredMethod("setBlurBgForLive", int.class, int.class);
+            method.setAccessible(true);
+            liveMethod.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object target = chain.getThisObject();
+                if (!shouldApplyNotificationSystemBlurOnly(target)) {
+                    return chain.proceed();
+                }
+                Object radius = chain.getArg(1);
+                try {
+                    liveMethod.invoke(
+                            target,
+                            NOTIFICATION_SYSTEM_BLUR_ONLY_COLOR,
+                            radius instanceof Integer ? (Integer) radius : 0);
+                    return null;
+                } catch (Throwable t) {
+                    FlymeStatusBarSizer.logNotificationWarning(
+                            "Failed to apply notification live blur fallback",
+                            t);
+                    return chain.proceed();
+                }
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook notification static blur fallback",
+                    t);
+        }
     }
 
     private static void hookMediaSystemBlurOnly(FlymeStatusBarSizer module, ClassLoader loader) {
