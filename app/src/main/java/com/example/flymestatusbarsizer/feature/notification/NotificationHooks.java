@@ -51,6 +51,9 @@ public final class NotificationHooks {
     private static volatile Method flymeClearApplicationIconCacheMethod;
     private static volatile int LAST_NOTIFICATION_APP_ICON_VIEW_REFRESH_NIGHT = -1;
     private static volatile int LAST_STATUS_BAR_ICON_TINT = 0;
+    private static volatile int LAST_KEYGUARD_STATUS_BAR_ICON_TINT = 0;
+    private static volatile int LAST_STATUS_BAR_STATE = 0;
+    private static volatile boolean LAST_NOTIFICATION_SHADE_EXPANDED;
 
     private static final WeakHashMap<View, Boolean> NOTIFICATION_APP_ICON_RESTORE_GUARDS =
             new WeakHashMap<>();
@@ -224,8 +227,183 @@ public final class NotificationHooks {
     }
 
     private static void hookNotificationAppIcons(FlymeStatusBarSizer module, ClassLoader loader) {
+        hookStatusBarDarkReceiverTint(module, loader,
+                "com.android.systemui.statusbar.policy.Clock");
+        hookStatusBarDarkReceiverTint(module, loader,
+                "com.android.systemui.statusbar.pipeline.shared.ui.view.ModernStatusBarView");
+        hookStatusBarDarkReceiverTint(module, loader,
+                "com.flyme.statusbar.battery.FlymeBatteryMeterView");
+        hookStatusBarDarkReceiverTint(module, loader,
+                "com.flyme.statusbar.battery.FlymeBatteryTextView");
+        hookStatusBarDarkReceiverTint(module, loader,
+                "com.flyme.statusbar.connectionRateView.ConnectionRateView");
+        hookKeyguardStatusBarTint(module, loader,
+                "com.android.systemui.statusbar.phone.KeyguardStatusBarView");
+        hookKeyguardStatusBarTint(module, loader,
+                "com.flyme.statusbar.bouncer.KeyguardBouncerStatusBarView");
+        hookNotificationShadeState(module, loader);
         hookNotificationIconTint(module, loader);
         hookNotificationStatusBarIconUpdate(module, loader);
+    }
+
+    private static void hookKeyguardStatusBarTint(
+            FlymeStatusBarSizer module, ClassLoader loader, String className) {
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            Class<?> tintedIconManager = Class.forName(
+                    "com.android.systemui.statusbar.phone.ui.TintedIconManager",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("updateIconsAndTextColors", tintedIconManager);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                if (rememberKeyguardStatusBarViewTint(chain.getThisObject())) {
+                    scheduleNotificationTextFollowStatusBarRefresh(chain.getThisObject());
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning("Failed to hook keyguard status bar tint: "
+                    + className, t);
+        }
+    }
+
+    private static void hookNotificationShadeState(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.statusbar.StatusBarStateControllerImpl",
+                    false,
+                    loader);
+            Method stateMethod = clazz.getDeclaredMethod("updateStateAndNotifyListeners", int.class);
+            stateMethod.setAccessible(true);
+            module.intercept(stateMethod, chain -> {
+                Object result = chain.proceed();
+                Object state = chain.getArg(0);
+                if (state instanceof Integer) {
+                    LAST_STATUS_BAR_STATE = (Integer) state;
+                    scheduleNotificationTextFollowStatusBarRefresh(chain.getThisObject());
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook notification keyguard state", t);
+        }
+
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.shade.ShadeExpansionStateManager",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod(
+                    "onPanelExpansionChanged",
+                    float.class,
+                    boolean.class,
+                    boolean.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object fraction = chain.getArg(0);
+                Object expanded = chain.getArg(1);
+                boolean isExpanded = Boolean.TRUE.equals(expanded)
+                        || (fraction instanceof Float && (Float) fraction > 0f);
+                if (LAST_NOTIFICATION_SHADE_EXPANDED != isExpanded) {
+                    LAST_NOTIFICATION_SHADE_EXPANDED = isExpanded;
+                    scheduleNotificationTextFollowStatusBarRefresh(chain.getThisObject());
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook notification shade state", t);
+        }
+    }
+
+    private static void hookStatusBarDarkReceiverTint(
+            FlymeStatusBarSizer module, ClassLoader loader, String className) {
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            Method method = clazz.getDeclaredMethod(
+                    "onDarkChanged",
+                    ArrayList.class,
+                    float.class,
+                    int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (rememberStatusBarDarkChangeTint(target, chain.getArg(0), chain.getArg(2))
+                        || rememberStatusBarViewTint(target)) {
+                    scheduleNotificationTextFollowStatusBarRefresh(target);
+                }
+                return result;
+            });
+
+            try {
+                Method contrastMethod = clazz.getDeclaredMethod(
+                        "onDarkChangedWithContrast",
+                        ArrayList.class,
+                        int.class,
+                        int.class);
+                contrastMethod.setAccessible(true);
+                module.intercept(contrastMethod, chain -> {
+                    Object result = chain.proceed();
+                    Object target = chain.getThisObject();
+                    if (rememberStatusBarDarkChangeTint(target, chain.getArg(0), chain.getArg(1))
+                            || rememberStatusBarViewTint(target)) {
+                        scheduleNotificationTextFollowStatusBarRefresh(target);
+                    }
+                    return result;
+                });
+            } catch (NoSuchMethodException ignored) {
+            }
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning("Failed to hook status bar tint: "
+                    + className, t);
+        }
+    }
+
+    private static boolean rememberStatusBarDarkChangeTint(
+            Object target, Object areasArg, Object tintArg) {
+        if (!(target instanceof View) || !(tintArg instanceof Integer)) {
+            return false;
+        }
+        int tint = (Integer) tintArg;
+        if (areasArg instanceof Iterable<?> && !isStatusBarViewInTintAreas((View) target,
+                (Iterable<?>) areasArg)) {
+            tint = Color.WHITE;
+        }
+        return rememberStatusBarIconTint(tint);
+    }
+
+    private static boolean isStatusBarViewInTintAreas(View view, Iterable<?> areas) {
+        boolean hasArea = false;
+        for (Object area : areas) {
+            if (!(area instanceof Rect)) {
+                continue;
+            }
+            hasArea = true;
+            if (isStatusBarViewInTintArea(view, (Rect) area)) {
+                return true;
+            }
+        }
+        return !hasArea;
+    }
+
+    private static boolean isStatusBarViewInTintArea(View view, Rect area) {
+        if (area.isEmpty()) {
+            return true;
+        }
+        int width = view.getWidth();
+        if (width <= 0 || area.top > 0) {
+            return false;
+        }
+        int[] location = new int[2];
+        view.getLocationOnScreen(location);
+        int left = location[0];
+        int overlap = Math.max(0, Math.min(left + width, area.right) - Math.max(left, area.left));
+        return overlap * 2 > width;
     }
 
     private static void hookNotificationTextTintDispatcher(
@@ -239,8 +417,9 @@ public final class NotificationHooks {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object result = chain.proceed();
-                rememberStatusBarIconTint(chain.getThisObject());
-                refreshNotificationTextFollowStatusBarForTintChange(chain.getThisObject());
+                if (rememberStatusBarIconTint(chain.getThisObject())) {
+                    refreshNotificationTextFollowStatusBarForTintChange(chain.getThisObject());
+                }
                 return result;
             });
         } catch (Throwable t) {
@@ -264,6 +443,9 @@ public final class NotificationHooks {
                 Object result = chain.proceed();
                 Object target = chain.getThisObject();
                 if (target instanceof TextView) {
+                    if (rememberStatusBarClockTextTint((TextView) target)) {
+                        scheduleNotificationTextFollowStatusBarRefresh(target);
+                    }
                     applyNotificationTextViewTintIfNeeded((TextView) target);
                 }
                 return result;
@@ -723,6 +905,10 @@ public final class NotificationHooks {
     }
 
     private static Integer resolveNotificationTextTintColor(View root) {
+        if (shouldUseKeyguardNotificationTextColor(root)
+                && Color.alpha(LAST_KEYGUARD_STATUS_BAR_ICON_TINT) != 0) {
+            return LAST_KEYGUARD_STATUS_BAR_ICON_TINT;
+        }
         if (Color.alpha(LAST_STATUS_BAR_ICON_TINT) != 0) {
             return LAST_STATUS_BAR_ICON_TINT;
         }
@@ -730,11 +916,108 @@ public final class NotificationHooks {
         return textColor;
     }
 
-    private static void rememberStatusBarIconTint(Object dispatcher) {
+    private static boolean shouldUseKeyguardNotificationTextColor(View root) {
+        return !isHeadsUpNotificationView(root)
+                && (LAST_STATUS_BAR_STATE != 0
+                || LAST_NOTIFICATION_SHADE_EXPANDED);
+    }
+
+    private static boolean isHeadsUpNotificationView(View view) {
+        View current = view;
+        int depth = 0;
+        while (current != null && depth < 10) {
+            String className = current.getClass().getName();
+            if (className.contains("HeadsUp")
+                    || className.contains("LandscapeHeadsUpNotificationView")) {
+                return true;
+            }
+            if (className.contains("ExpandableNotificationRow")
+                    && (isTrueMethod(current, "isHeadsUp")
+                    || isTrueMethod(current, "isPinned")
+                    || isTrueMethod(current, "isHeadsUpState"))) {
+                return true;
+            }
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+            depth++;
+        }
+        return false;
+    }
+
+    private static boolean isTrueMethod(Object target, String name) {
+        Object value = FlymeStatusBarSizer.invokeNoArgCompat(target, name);
+        return value instanceof Boolean && (Boolean) value;
+    }
+
+    private static boolean rememberStatusBarIconTint(Object dispatcher) {
         Object value = FlymeStatusBarSizer.getFieldCompat(dispatcher, "mIconTint");
         if (value instanceof Integer && Color.alpha((Integer) value) != 0) {
-            LAST_STATUS_BAR_ICON_TINT = (Integer) value;
+            return rememberStatusBarIconTint((Integer) value);
         }
+        return false;
+    }
+
+    private static boolean rememberStatusBarIconTint(int tint) {
+        if (Color.alpha(tint) == 0 || LAST_STATUS_BAR_ICON_TINT == tint) {
+            return false;
+        }
+        LAST_STATUS_BAR_ICON_TINT = tint;
+        return true;
+    }
+
+    private static boolean rememberKeyguardStatusBarIconTint(int tint) {
+        if (Color.alpha(tint) == 0 || LAST_KEYGUARD_STATUS_BAR_ICON_TINT == tint) {
+            return false;
+        }
+        LAST_KEYGUARD_STATUS_BAR_ICON_TINT = tint;
+        return true;
+    }
+
+    private static boolean rememberKeyguardStatusBarViewTint(Object target) {
+        Object clock = FlymeStatusBarSizer.getFieldCompat(target, "mClock");
+        if (clock instanceof TextView) {
+            return rememberKeyguardStatusBarIconTint(((TextView) clock).getCurrentTextColor());
+        }
+        return false;
+    }
+
+    private static boolean rememberStatusBarViewTint(Object target) {
+        if (target instanceof TextView) {
+            return rememberStatusBarIconTint(((TextView) target).getCurrentTextColor());
+        }
+        if (target instanceof ImageView) {
+            ColorStateList tintList = ((ImageView) target).getImageTintList();
+            if (tintList != null) {
+                return rememberStatusBarIconTint(tintList.getDefaultColor());
+            }
+        }
+        return false;
+    }
+
+    private static boolean rememberStatusBarClockTextTint(TextView view) {
+        if (!"com.android.systemui.statusbar.policy.Clock".equals(view.getClass().getName())) {
+            return false;
+        }
+        String idName = FlymeStatusBarSizer.getSystemUiIdNameCompat(view);
+        if ("keyguard_clock".equals(idName) || isInsideKeyguardStatusBar(view)) {
+            return rememberKeyguardStatusBarIconTint(view.getCurrentTextColor());
+        }
+        return "clock".equals(idName) && rememberStatusBarViewTint(view);
+    }
+
+    private static boolean isInsideKeyguardStatusBar(View view) {
+        ViewParent parent = view.getParent();
+        int depth = 0;
+        while (parent instanceof View && depth < 8) {
+            String className = ((View) parent).getClass().getName();
+            if ("com.android.systemui.statusbar.phone.KeyguardStatusBarView".equals(className)
+                    || "com.flyme.statusbar.bouncer.KeyguardBouncerStatusBarView".equals(className)) {
+                return true;
+            }
+            parent = ((View) parent).getParent();
+            depth++;
+        }
+        return false;
     }
 
     private static void applyLiveNotificationControllerTextTint(Object controller) {
@@ -1000,7 +1283,9 @@ public final class NotificationHooks {
             module.intercept(updateIconColor, chain -> {
                 Object result = chain.proceed();
                 clearNotificationAppIconTintIfNeeded(chain.getThisObject());
-                scheduleNotificationTextFollowStatusBarRefresh(chain.getThisObject());
+                if (rememberStatusBarViewTint(chain.getThisObject())) {
+                    scheduleNotificationTextFollowStatusBarRefresh(chain.getThisObject());
+                }
                 return result;
             });
 
@@ -1013,7 +1298,14 @@ public final class NotificationHooks {
             module.intercept(onDarkChanged, chain -> {
                 Object result = chain.proceed();
                 clearNotificationAppIconTintIfNeeded(chain.getThisObject());
-                scheduleNotificationTextFollowStatusBarRefresh(chain.getThisObject());
+                if (rememberStatusBarViewTint(chain.getThisObject())) {
+                    scheduleNotificationTextFollowStatusBarRefresh(chain.getThisObject());
+                } else {
+                    Object tint = chain.getArg(2);
+                    if (tint instanceof Integer && rememberStatusBarIconTint((Integer) tint)) {
+                        scheduleNotificationTextFollowStatusBarRefresh(chain.getThisObject());
+                    }
+                }
                 return result;
             });
         } catch (Throwable t) {
