@@ -17,12 +17,14 @@ import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.LayerDrawable;
 import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.widget.ImageView;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import java.lang.reflect.Method;
@@ -643,6 +645,7 @@ public final class NotificationHooks {
         hookNotificationStaticBlurFallback(module, loader);
         hookMediaSystemBlurOnly(module, loader);
         hookMediaPlayerTextColor(module, loader);
+        hookMediaSeekBarProgressTint(module, loader);
     }
 
     private static void hookMzBackgroundBlur(FlymeStatusBarSizer module, ClassLoader loader) {
@@ -820,6 +823,53 @@ public final class NotificationHooks {
         }
     }
 
+    private static void hookMediaSeekBarProgressTint(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.media.controls.ui.binder.SeekBarObserver",
+                    false,
+                    loader);
+            Class<?> progressClass = Class.forName(
+                    "com.android.systemui.media.controls.ui.viewmodel.SeekBarViewModel$Progress",
+                    false,
+                    loader);
+            Method method;
+            try {
+                method = clazz.getDeclaredMethod("onChanged", progressClass);
+            } catch (NoSuchMethodException e) {
+                method = clazz.getDeclaredMethod("onChanged", Object.class);
+            }
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                applyMediaSeekBarObserverProgressTint(chain.getThisObject());
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook notification media progress tint",
+                    t);
+        }
+    }
+
+    private static void applyMediaSeekBarObserverProgressTint(Object observer) {
+        Object holder = FlymeStatusBarSizer.getFieldCompat(observer, "holder");
+        Object view = FlymeStatusBarSizer.invokeNoArgCompat(holder, "getSeekBar");
+        if (!(view instanceof SeekBar)) {
+            return;
+        }
+        SeekBar seekBar = (SeekBar) view;
+        FlymeStatusBarSizer.NotificationConfigSnapshot config =
+                FlymeStatusBarSizer.loadNotificationConfig(seekBar.getContext());
+        if (!config.enabled || !config.notificationTextFollowStatusBarEnabled) {
+            return;
+        }
+        Integer textColor = resolveNotificationTextTintColor(seekBar);
+        if (textColor != null) {
+            applyNotificationMediaProgressTint(seekBar, textColor);
+        }
+    }
+
     private static View resolveMediaPlayerView(Object target) {
         Object holder = FlymeStatusBarSizer.getFieldCompat(target, "mMediaViewHolder");
         Object player = FlymeStatusBarSizer.invokeNoArgCompat(holder, "getPlayer");
@@ -851,12 +901,20 @@ public final class NotificationHooks {
         applyMediaHolderButtonTint(holder, "getPlayButton", textColor);
         applyMediaHolderButtonTint(holder, "getPrevButton", textColor);
         applyMediaHolderButtonTint(holder, "getNextButton", textColor);
+        applyMediaHolderProgressTint(holder, textColor);
     }
 
     private static void applyMediaHolderButtonTint(Object holder, String methodName, int textColor) {
         Object view = FlymeStatusBarSizer.invokeNoArgCompat(holder, methodName);
         if (view instanceof ImageView) {
             applyNotificationMediaButtonTint((ImageView) view, textColor);
+        }
+    }
+
+    private static void applyMediaHolderProgressTint(Object holder, int textColor) {
+        Object view = FlymeStatusBarSizer.invokeNoArgCompat(holder, "getSeekBar");
+        if (view instanceof SeekBar) {
+            applyNotificationMediaProgressTint((SeekBar) view, textColor);
         }
     }
 
@@ -1335,6 +1393,10 @@ public final class NotificationHooks {
             if (enabled) {
                 applyNotificationMediaButtonTint((ImageView) view, textColor);
             }
+        } else if (view instanceof SeekBar && isMediaNotificationProgressBar(view)) {
+            if (enabled) {
+                applyNotificationMediaProgressTint((SeekBar) view, textColor);
+            }
         }
         if (!(view instanceof ViewGroup)) {
             return;
@@ -1361,6 +1423,11 @@ public final class NotificationHooks {
                 || "playOrpauseButton".equals(idName)
                 || "PrevButton".equals(idName)
                 || "NextButton".equals(idName);
+    }
+
+    private static boolean isMediaNotificationProgressBar(View view) {
+        return isInsideMediaNotificationRoot(view)
+                && "media_progress_bar".equals(getViewIdName(view));
     }
 
     private static boolean isInsideMediaNotificationRoot(View view) {
@@ -1435,6 +1502,31 @@ public final class NotificationHooks {
             view.setImageTintList(ColorStateList.valueOf(textColor));
         }
         view.setColorFilter(textColor, PorterDuff.Mode.SRC_IN);
+    }
+
+    private static void applyNotificationMediaProgressTint(SeekBar view, int textColor) {
+        ColorStateList tint = ColorStateList.valueOf(textColor);
+        if (view.getProgressTintList() == null
+                || view.getProgressTintList().getDefaultColor() != textColor) {
+            view.setProgressTintList(tint);
+        }
+        if (view.getThumbTintList() == null
+                || view.getThumbTintList().getDefaultColor() != textColor) {
+            view.setThumbTintList(tint);
+        }
+        Drawable progress = view.getProgressDrawable();
+        if (progress instanceof LayerDrawable) {
+            Drawable layer = ((LayerDrawable) progress).findDrawableByLayerId(android.R.id.progress);
+            if (layer != null) {
+                layer.setTint(textColor);
+            }
+        } else if (progress != null) {
+            progress.setTint(textColor);
+        }
+        Drawable thumb = view.getThumb();
+        if (thumb != null) {
+            thumb.setTint(textColor);
+        }
     }
 
     private static void hookNotificationIconTint(FlymeStatusBarSizer module, ClassLoader loader) {
