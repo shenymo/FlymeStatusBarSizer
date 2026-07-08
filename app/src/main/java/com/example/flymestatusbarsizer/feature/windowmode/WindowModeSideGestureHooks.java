@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.view.HapticFeedbackConstants;
@@ -31,12 +32,17 @@ public final class WindowModeSideGestureHooks {
     private static final Map<Object, Boolean> PREWARMED_LAUNCHERS = new WeakHashMap<>();
     private static final Map<Object, HoverState> HOVER_STATES = new WeakHashMap<>();
     private static final Map<Object, RecentRingState> RECENT_RING_STATES = new WeakHashMap<>();
+    private static final Object RECENT_PACKAGES_LOCK = new Object();
+    private static final Object BACKGROUND_LOCK = new Object();
     private static final int TWO_RING_APP_LIMIT = 11;
     private static final int TWO_RING_OUTER_COUNT = 7;
     private static final int RECENT_RING_COUNT = 4;
     private static final int RECENT_TASK_SCAN_LIMIT = 32;
     private static final Map<String, Field> FIELD_CACHE = new java.util.HashMap<>();
     private static final Map<String, Integer> APP_ICON_ID_CACHE = new HashMap<>();
+    private static ArrayList<String> recentPackagesCache = new ArrayList<>();
+    private static long recentPackagesCacheTimeMs;
+    private static Handler backgroundHandler;
     private static Class<?> appLauncherWindowClass;
 
     private WindowModeSideGestureHooks() {
@@ -86,8 +92,10 @@ public final class WindowModeSideGestureHooks {
             module.intercept(method, chain -> {
                 Object result = chain.proceed();
                 prewarmAppLauncherWindow(chain.getThisObject());
+                preloadRecentRingData(chain.getThisObject());
                 return result;
             });
+            installRecentRingPrepareRefreshHook(module, clazz);
             installNativeAppLauncherLaunchHook(module, loader, clazz);
             installNativeAppLauncherHoverFullscreenHook(module, loader);
             installNativeAppLauncherTwoRingHook(module, loader, clazz);
@@ -111,6 +119,32 @@ public final class WindowModeSideGestureHooks {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logWindowModeWarning(
                     "Failed to hook Flyme window mode app launcher prewarm",
+                    t);
+        }
+    }
+
+    private static void installRecentRingPrepareRefreshHook(
+            FlymeStatusBarSizer module,
+            Class<?> appLauncherClass) {
+        try {
+            Method method = findNoArgVoidMethod(appLauncherClass, "Q");
+            if (method == null) {
+                return;
+            }
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object appWindow = chain.getThisObject();
+                Context context = resolveAppLauncherContext(appWindow);
+                FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
+                        FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
+                if (config.enabled && config.twoRingLauncherEnabled && config.recentInnerRingEnabled) {
+                    refreshRecentPackagesCache(context);
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logWindowModeWarning(
+                    "Failed to hook Flyme native recent ring prepare refresh",
                     t);
         }
     }
@@ -366,6 +400,11 @@ public final class WindowModeSideGestureHooks {
     }
 
     private static ArrayList<String> readRecentPackages(Context context) {
+        ArrayList<String> cached = getCachedRecentPackages();
+        return cached == null ? refreshRecentPackagesCache(context) : cached;
+    }
+
+    private static ArrayList<String> refreshRecentPackagesCache(Context context) {
         ArrayList<String> result = new ArrayList<>();
         if (context == null) {
             return result;
@@ -397,7 +436,20 @@ public final class WindowModeSideGestureHooks {
                     "Failed to read Flyme native app launcher recent tasks",
                     t);
         }
+        synchronized (RECENT_PACKAGES_LOCK) {
+            recentPackagesCache = new ArrayList<>(result);
+            recentPackagesCacheTimeMs = SystemClock.uptimeMillis();
+        }
         return result;
+    }
+
+    private static ArrayList<String> getCachedRecentPackages() {
+        synchronized (RECENT_PACKAGES_LOCK) {
+            if (recentPackagesCacheTimeMs == 0L) {
+                return null;
+            }
+            return new ArrayList<>(recentPackagesCache);
+        }
     }
 
     private static ComponentName resolveRecentTaskComponent(ActivityManager.RecentTaskInfo taskInfo) {
@@ -899,6 +951,34 @@ public final class WindowModeSideGestureHooks {
         return false;
     }
 
+    private static void preloadRecentRingData(Object target) {
+        Context context = resolveAppLauncherContext(target);
+        FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
+                FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
+        if (!config.enabled || !config.twoRingLauncherEnabled || !config.recentInnerRingEnabled) {
+            return;
+        }
+        Handler handler = getBackgroundHandler();
+        if (handler == null) {
+            return;
+        }
+        handler.post(() -> {
+            refreshRecentPackagesCache(context);
+            invokeContextArg(readField(target, "g"), "P", context);
+        });
+    }
+
+    private static Handler getBackgroundHandler() {
+        synchronized (BACKGROUND_LOCK) {
+            if (backgroundHandler == null) {
+                HandlerThread thread = new HandlerThread("WindowModeRecentRing");
+                thread.start();
+                backgroundHandler = new Handler(thread.getLooper());
+            }
+            return backgroundHandler;
+        }
+    }
+
     private static void prewarmAppLauncherWindow(Object target) {
         if (target == null) {
             return;
@@ -1145,6 +1225,26 @@ public final class WindowModeSideGestureHooks {
                 Method method = clazz.getDeclaredMethod(name, int.class);
                 method.setAccessible(true);
                 method.invoke(target, value);
+                return true;
+            } catch (NoSuchMethodException ignored) {
+                clazz = clazz.getSuperclass();
+            } catch (Throwable ignored) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private static boolean invokeContextArg(Object target, String name, Context context) {
+        if (target == null || name == null || context == null) {
+            return false;
+        }
+        Class<?> clazz = target.getClass();
+        while (clazz != null) {
+            try {
+                Method method = clazz.getDeclaredMethod(name, Context.class);
+                method.setAccessible(true);
+                method.invoke(target, context);
                 return true;
             } catch (NoSuchMethodException ignored) {
                 clazz = clazz.getSuperclass();
