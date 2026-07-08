@@ -36,7 +36,6 @@ final class WindowModeSmallWindowLaunchAnimator {
     private static final int PRIVATE_FLAG_TRUSTED_OVERLAY = 16777216;
     private static final int FLYME_WINDOW_MODE_MINI = 11;
     private static final int FLYME_WINDOW_MODE_FREEFORM = 1035;
-    private static final long LAUNCH_DELAY_MS = 80L;
     private static final long DURATION_MS = 320L;
     private static final long EXIT_TIMEOUT_MS = 900L;
     private static final long FADE_OUT_MS = 140L;
@@ -83,11 +82,9 @@ final class WindowModeSmallWindowLaunchAnimator {
     private final FrameLayout card;
     private final ImageView imageView;
     private Drawable cardBackground;
-    private final Runnable launchRunnable = this::executeLaunchAction;
     private final Runnable exitTimeoutRunnable = this::markLaunchReady;
     private WindowManager windowManager;
     private ValueAnimator animator;
-    private Rect targetRect;
     private Object windowManagerExt;
     private Object windowModeListener;
     private boolean moveEnded;
@@ -273,7 +270,6 @@ final class WindowModeSmallWindowLaunchAnimator {
             }
             registerWindowModeListener();
             startAnimation();
-            MAIN_HANDLER.postDelayed(launchRunnable, LAUNCH_DELAY_MS);
         });
     }
 
@@ -339,28 +335,31 @@ final class WindowModeSmallWindowLaunchAnimator {
             return;
         }
         final Rect fallbackTarget = target;
-        targetRect = targetRect == null ? fallbackTarget : targetRect;
+        layoutCardAt(fallbackTarget);
+        applySmallWindowIconPadding();
+        card.setPivotX(0f);
+        card.setPivotY(0f);
+        final float startTranslationX = startRect.left - fallbackTarget.left;
+        final float startTranslationY = startRect.top - fallbackTarget.top;
+        final float startScaleX = startRect.width() / (float) Math.max(1, fallbackTarget.width());
+        final float startScaleY = startRect.height() / (float) Math.max(1, fallbackTarget.height());
+        card.setTranslationX(startTranslationX);
+        card.setTranslationY(startTranslationY);
+        card.setScaleX(startScaleX);
+        card.setScaleY(startScaleY);
+
         animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(DURATION_MS);
         animator.addUpdateListener(animation -> {
             float rawProgress = (Float) animation.getAnimatedValue();
             float progress = MOVE_INTERPOLATOR.getInterpolation(rawProgress);
-            Rect currentTarget = targetRect == null ? fallbackTarget : targetRect;
-            FrameLayout.LayoutParams params =
-                    card.getLayoutParams() instanceof FrameLayout.LayoutParams
-                            ? (FrameLayout.LayoutParams) card.getLayoutParams()
-                            : new FrameLayout.LayoutParams(startRect.width(), startRect.height());
-            params.leftMargin = Math.round(lerp(startRect.left, currentTarget.left, progress));
-            params.topMargin = Math.round(lerp(startRect.top, currentTarget.top, progress));
-            params.width = Math.max(1, Math.round(lerp(startRect.width(), currentTarget.width(), progress)));
-            params.height = Math.max(1, Math.round(lerp(startRect.height(), currentTarget.height(), progress)));
-            card.setLayoutParams(params);
-            setBlurCornerRadius(dp(WINDOW_CORNER_RADIUS_DP));
-            applySmallWindowIconPadding();
+            card.setTranslationX(lerp(startTranslationX, 0f, progress));
+            card.setTranslationY(lerp(startTranslationY, 0f, progress));
+            card.setScaleX(lerp(startScaleX, 1f, progress));
+            card.setScaleY(lerp(startScaleY, 1f, progress));
             float iconScale = resolveIconScale(rawProgress);
             imageView.setScaleX(iconScale);
             imageView.setScaleY(iconScale);
-            card.invalidateOutline();
         });
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
@@ -374,6 +373,7 @@ final class WindowModeSmallWindowLaunchAnimator {
                     return;
                 }
                 moveEnded = true;
+                executeLaunchAction();
                 if (launchReady) {
                     fadeOutAndCleanup();
                 } else {
@@ -382,6 +382,18 @@ final class WindowModeSmallWindowLaunchAnimator {
             }
         });
         animator.start();
+    }
+
+    private void layoutCardAt(Rect rect) {
+        FrameLayout.LayoutParams params =
+                card.getLayoutParams() instanceof FrameLayout.LayoutParams
+                        ? (FrameLayout.LayoutParams) card.getLayoutParams()
+                        : new FrameLayout.LayoutParams(rect.width(), rect.height());
+        params.leftMargin = rect.left;
+        params.topMargin = rect.top;
+        params.width = Math.max(1, rect.width());
+        params.height = Math.max(1, rect.height());
+        card.setLayoutParams(params);
     }
 
     private float resolveIconScale(float progress) {
@@ -559,34 +571,6 @@ final class WindowModeSmallWindowLaunchAnimator {
         return new Rect(left, top, left + targetWidth, top + targetHeight);
     }
 
-    private Rect clampExactRect(Rect rect) {
-        if (rect == null || rect.isEmpty()) {
-            return null;
-        }
-        int width = overlay.getWidth() > 0
-                ? overlay.getWidth()
-                : context.getResources().getDisplayMetrics().widthPixels;
-        int height = overlay.getHeight() > 0
-                ? overlay.getHeight()
-                : context.getResources().getDisplayMetrics().heightPixels;
-        if (width <= 0 || height <= 0) {
-            return null;
-        }
-        int margin = dp(12);
-        int targetWidth = Math.round(clamp(rect.width(), dp(120), width - margin * 2));
-        int targetHeight = Math.round(clamp(rect.height(), dp(160), height - margin * 2));
-        int left = Math.round(clamp(rect.left, margin, Math.max(margin, width - targetWidth - margin)));
-        int top = Math.round(clamp(rect.top, margin, Math.max(margin, height - targetHeight - margin)));
-        return new Rect(left, top, left + targetWidth, top + targetHeight);
-    }
-
-    private void updateTargetFromBound(Rect bound) {
-        Rect rect = clampExactRect(bound);
-        if (rect != null) {
-            targetRect = rect;
-        }
-    }
-
     private int[] resolvePreferredTargetSize(int width, int height) {
         int targetWidth = Math.round(width * TARGET_WIDTH_RATIO);
         int targetHeight = Math.round(targetWidth * TARGET_ASPECT_RATIO);
@@ -616,7 +600,6 @@ final class WindowModeSmallWindowLaunchAnimator {
             active = null;
         }
         MAIN_HANDLER.removeCallbacks(exitTimeoutRunnable);
-        MAIN_HANDLER.removeCallbacks(launchRunnable);
         unregisterWindowModeListener();
         if (bitmap != null && !bitmap.isRecycled()) {
             bitmap.recycle();
@@ -645,7 +628,7 @@ final class WindowModeSmallWindowLaunchAnimator {
     }
 
     private void markLaunchReady() {
-        if (cleaningUp) {
+        if (cleaningUp || !launchActionExecuted) {
             return;
         }
         launchReady = true;
@@ -776,21 +759,12 @@ final class WindowModeSmallWindowLaunchAnimator {
 
     private boolean isLaunchReadyCallback(String methodName, Object[] args) {
         if ("onBoundChanged".equals(methodName)) {
-            if (args != null && args.length > 4 && args[4] instanceof Rect) {
-                MAIN_HANDLER.post(() -> updateTargetFromBound((Rect) args[4]));
-            }
             return true;
         }
         if ("onWindowModeBoundChanged".equals(methodName)) {
-            if (args != null && args.length > 1 && args[1] instanceof Rect) {
-                MAIN_HANDLER.post(() -> updateTargetFromBound((Rect) args[1]));
-            }
             return true;
         }
         if ("onWindowModeFlingToTarget".equals(methodName)) {
-            if (args != null && args.length > 2 && args[2] instanceof Rect) {
-                MAIN_HANDLER.post(() -> updateTargetFromBound((Rect) args[2]));
-            }
             return true;
         }
         if ("onWindowModeChangeAnimationFinished".equals(methodName)
