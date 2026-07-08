@@ -21,6 +21,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -40,7 +41,7 @@ public final class WindowModeSideGestureHooks {
     private static final int RECENT_TASK_SCAN_LIMIT = 32;
     private static final Map<String, Field> FIELD_CACHE = new java.util.HashMap<>();
     private static final Map<String, Integer> APP_ICON_ID_CACHE = new HashMap<>();
-    private static ArrayList<String> recentPackagesCache = new ArrayList<>();
+    private static ArrayList<RecentPackage> recentPackagesCache = new ArrayList<>();
     private static long recentPackagesCacheTimeMs;
     private static Handler backgroundHandler;
     private static Class<?> appLauncherWindowClass;
@@ -138,7 +139,7 @@ public final class WindowModeSideGestureHooks {
                 FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
                         FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
                 if (config.enabled && config.twoRingLauncherEnabled && config.recentInnerRingEnabled) {
-                    refreshRecentPackagesCache(context);
+                    refreshRecentPackagesCache(appWindow, context);
                 }
                 return chain.proceed();
             });
@@ -335,7 +336,7 @@ public final class WindowModeSideGestureHooks {
             Constructor<?> constructor,
             HashSet<String> shownPackages) throws Exception {
         Context context = resolveAppLauncherContext(appWindow);
-        ArrayList<String> recentPackages = readRecentPackages(context);
+        ArrayList<RecentPackage> recentPackages = readRecentPackages(appWindow, context);
         if (recentPackages.isEmpty()) {
             return new ArrayList<>();
         }
@@ -345,7 +346,8 @@ public final class WindowModeSideGestureHooks {
                 itemClass,
                 shownPackages);
         ArrayList<Object> result = new ArrayList<>();
-        for (String packageName : recentPackages) {
+        for (RecentPackage recentPackage : recentPackages) {
+            String packageName = recentPackage.packageName;
             if (packageName == null
                     || packageName.isEmpty()
                     || shownPackages.contains(packageName)) {
@@ -399,42 +401,19 @@ public final class WindowModeSideGestureHooks {
         }
     }
 
-    private static ArrayList<String> readRecentPackages(Context context) {
-        ArrayList<String> cached = getCachedRecentPackages();
-        return cached == null ? refreshRecentPackagesCache(context) : cached;
+    private static ArrayList<RecentPackage> readRecentPackages(Object appWindow, Context context) {
+        ArrayList<RecentPackage> cached = getCachedRecentPackages();
+        return cached == null ? refreshRecentPackagesCache(appWindow, context) : cached;
     }
 
-    private static ArrayList<String> refreshRecentPackagesCache(Context context) {
-        ArrayList<String> result = new ArrayList<>();
-        if (context == null) {
-            return result;
-        }
-        try {
-            ActivityManager activityManager =
-                    (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-            if (activityManager == null) {
-                return result;
-            }
-            List<ActivityManager.RecentTaskInfo> recentTasks = activityManager.getRecentTasks(
-                    RECENT_TASK_SCAN_LIMIT,
-                    ActivityManager.RECENT_IGNORE_UNAVAILABLE);
-            if (recentTasks == null || recentTasks.isEmpty()) {
-                return result;
-            }
-            HashSet<String> seenPackages = new HashSet<>();
-            for (ActivityManager.RecentTaskInfo taskInfo : recentTasks) {
-                ComponentName component = resolveRecentTaskComponent(taskInfo);
-                String packageName = component == null ? null : component.getPackageName();
-                if (packageName != null
-                        && !packageName.trim().isEmpty()
-                        && seenPackages.add(packageName)) {
-                    result.add(packageName);
-                }
-            }
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logWindowModeWarning(
-                    "Failed to read Flyme native app launcher recent tasks",
-                    t);
+    private static ArrayList<RecentPackage> refreshRecentPackagesCache(Object appWindow, Context context) {
+        HashMap<String, RecentPackage> merged = new HashMap<>();
+        addFlymeRecentPackages(merged, appWindow);
+        addSystemRecentPackages(merged, context);
+        ArrayList<RecentPackage> result = new ArrayList<>(merged.values());
+        Collections.sort(result, (left, right) -> -Long.compare(left.timeMs, right.timeMs));
+        if (result.size() > RECENT_RING_COUNT) {
+            result = new ArrayList<>(result.subList(0, RECENT_RING_COUNT));
         }
         synchronized (RECENT_PACKAGES_LOCK) {
             recentPackagesCache = new ArrayList<>(result);
@@ -443,13 +422,86 @@ public final class WindowModeSideGestureHooks {
         return result;
     }
 
-    private static ArrayList<String> getCachedRecentPackages() {
+    private static void addFlymeRecentPackages(HashMap<String, RecentPackage> target, Object appWindow) {
+        Object manager = readField(appWindow, "g");
+        Object source = invokeNoArgObject(manager, "N");
+        if (!(source instanceof List)) {
+            return;
+        }
+        for (Object item : (List<?>) source) {
+            String packageName = resolveLauncherItemPackageName(item);
+            if (packageName != null && !packageName.isEmpty()) {
+                putRecentPackage(target, packageName, readLongNoArg(item, "i"));
+            }
+        }
+    }
+
+    private static void addSystemRecentPackages(HashMap<String, RecentPackage> target, Context context) {
+        if (context == null) {
+            return;
+        }
+        try {
+            ActivityManager activityManager =
+                    (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (activityManager == null) {
+                return;
+            }
+            List<ActivityManager.RecentTaskInfo> recentTasks = activityManager.getRecentTasks(
+                    RECENT_TASK_SCAN_LIMIT,
+                    ActivityManager.RECENT_IGNORE_UNAVAILABLE);
+            if (recentTasks == null || recentTasks.isEmpty()) {
+                return;
+            }
+            long fallbackTimeMs = System.currentTimeMillis();
+            for (int i = 0; i < recentTasks.size(); i++) {
+                ActivityManager.RecentTaskInfo taskInfo = recentTasks.get(i);
+                ComponentName component = resolveRecentTaskComponent(taskInfo);
+                String packageName = component == null ? null : component.getPackageName();
+                if (packageName != null && !packageName.trim().isEmpty()) {
+                    putRecentPackage(target, packageName,
+                            resolveRecentTaskTimeMs(taskInfo, fallbackTimeMs - i));
+                }
+            }
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logWindowModeWarning(
+                    "Failed to read Flyme native app launcher recent tasks",
+                    t);
+        }
+    }
+
+    private static void putRecentPackage(
+            HashMap<String, RecentPackage> target,
+            String packageName,
+            long timeMs) {
+        RecentPackage old = target.get(packageName);
+        if (old == null || timeMs > old.timeMs) {
+            target.put(packageName, new RecentPackage(packageName, timeMs));
+        }
+    }
+
+    private static ArrayList<RecentPackage> getCachedRecentPackages() {
         synchronized (RECENT_PACKAGES_LOCK) {
             if (recentPackagesCacheTimeMs == 0L) {
                 return null;
             }
             return new ArrayList<>(recentPackagesCache);
         }
+    }
+
+    private static long resolveRecentTaskTimeMs(
+            ActivityManager.RecentTaskInfo taskInfo,
+            long fallbackTimeMs) {
+        Object value = readField(taskInfo, "lastActiveTime");
+        if (!(value instanceof Number)) {
+            return fallbackTimeMs;
+        }
+        long timeMs = ((Number) value).longValue();
+        if (timeMs <= 0L) {
+            return fallbackTimeMs;
+        }
+        return timeMs < 1000000000000L
+                ? System.currentTimeMillis() - SystemClock.elapsedRealtime() + timeMs
+                : timeMs;
     }
 
     private static ComponentName resolveRecentTaskComponent(ActivityManager.RecentTaskInfo taskInfo) {
@@ -963,7 +1015,7 @@ public final class WindowModeSideGestureHooks {
             return;
         }
         handler.post(() -> {
-            refreshRecentPackagesCache(context);
+            refreshRecentPackagesCache(target, context);
             invokeContextArg(readField(target, "g"), "P", context);
         });
     }
@@ -1215,6 +1267,11 @@ public final class WindowModeSideGestureHooks {
         return null;
     }
 
+    private static long readLongNoArg(Object target, String name) {
+        Object value = invokeNoArgObject(target, name);
+        return value instanceof Number ? ((Number) value).longValue() : 0L;
+    }
+
     private static boolean invokeIntArg(Object target, String name, int value) {
         if (target == null || name == null) {
             return false;
@@ -1309,5 +1366,15 @@ public final class WindowModeSideGestureHooks {
     private static final class RecentRingState {
         int recentStart;
         int recentCount;
+    }
+
+    private static final class RecentPackage {
+        final String packageName;
+        final long timeMs;
+
+        RecentPackage(String packageName, long timeMs) {
+            this.packageName = packageName;
+            this.timeMs = timeMs;
+        }
     }
 }
