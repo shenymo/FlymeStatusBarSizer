@@ -7,9 +7,12 @@ import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.os.Handler;
 import android.os.SystemClock;
+import android.text.format.DateFormat;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import java.lang.ref.WeakReference;
@@ -35,6 +38,8 @@ public final class ClockHooks {
             new WeakHashMap<>();
     private static final WeakHashMap<TextView, ClockDetailPopupController> CLOCK_DETAIL_POPUPS =
             new WeakHashMap<>();
+    private static final WeakHashMap<View, Boolean> TRACKED_LOCKSCREEN_CLOCK_VIEWS =
+            new WeakHashMap<>();
     private static WeakReference<TextView> latestPrimaryStatusBarClockRef =
             new WeakReference<>(null);
     private static final Runnable CLOCK_SECOND_REFRESH_RUNNABLE =
@@ -50,6 +55,8 @@ public final class ClockHooks {
         hookClockWeekday(module, loader);
         hookClockAndCarrierTextSize(module, loader);
         hookClockPaddingRefresh(module, loader);
+        hookLockscreenCanvasClock(module, loader);
+        hookWallpaperBlurBitmapRefresh(module, loader);
     }
 
     public static void refreshTrackedViews() {
@@ -69,6 +76,13 @@ public final class ClockHooks {
                 syncClockDetailPopup(textView);
                 applyClockFontWeight(textView);
                 applyClockAndCarrierTextSize(textView);
+            }
+            ArrayList<View> lockscreenClockViews =
+                    new ArrayList<>(TRACKED_LOCKSCREEN_CLOCK_VIEWS.keySet());
+            for (View view : lockscreenClockViews) {
+                if (view != null) {
+                    syncLockscreenCanvasClock(view);
+                }
             }
         });
     }
@@ -138,6 +152,175 @@ public final class ClockHooks {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logClockWarning("Failed to hook Clock.reloadDimens", t);
         }
+    }
+
+    private static void hookLockscreenCanvasClock(FlymeStatusBarSizer module, ClassLoader loader) {
+        hookLockscreenClockClass(
+                module, loader, "com.flyme.keyguard.clock.FlymeDigitalClockLockScreen");
+        hookLockscreenClockClass(
+                module, loader, "com.flyme.keyguard.clock.DigitalClockAndWeatherForLockScreen");
+    }
+
+    private static void hookWallpaperBlurBitmapRefresh(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.wallpaper.WallpaperBlurDrawableManager",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("setWallpaperBitmap", android.graphics.Bitmap.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                refreshTrackedLockscreenCanvasClocks();
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning("Failed to hook wallpaper blur bitmap refresh", t);
+        }
+    }
+
+    private static void refreshTrackedLockscreenCanvasClocks() {
+        Handler handler = FlymeStatusBarSizer.getMainHandler();
+        if (handler == null) {
+            refreshTrackedLockscreenCanvasClocksNow();
+            return;
+        }
+        handler.post(ClockHooks::refreshTrackedLockscreenCanvasClocksNow);
+    }
+
+    private static void refreshTrackedLockscreenCanvasClocksNow() {
+        ArrayList<View> lockscreenClockViews =
+                new ArrayList<>(TRACKED_LOCKSCREEN_CLOCK_VIEWS.keySet());
+        for (View view : lockscreenClockViews) {
+            if (view != null) {
+                syncLockscreenCanvasClock(view);
+            }
+        }
+    }
+
+    private static void hookLockscreenClockClass(
+            FlymeStatusBarSizer module, ClassLoader loader, String className) {
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            hookLockscreenClockMethod(module, clazz, "updateTime");
+            hookLockscreenClockMethod(module, clazz, "updateColors", int.class);
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning("Failed to hook " + className, t);
+        }
+    }
+
+    private static void hookLockscreenClockMethod(
+            FlymeStatusBarSizer module, Class<?> clazz, String methodName, Class<?>... params) {
+        try {
+            Method method = clazz.getDeclaredMethod(methodName, params);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View) {
+                    View view = (View) thisObject;
+                    TRACKED_LOCKSCREEN_CLOCK_VIEWS.put(view, Boolean.TRUE);
+                    syncLockscreenCanvasClock(view);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning(
+                    "Failed to hook " + clazz.getName() + "." + methodName, t);
+        }
+    }
+
+    private static void syncLockscreenCanvasClock(View clockRoot) {
+        if (clockRoot == null) {
+            return;
+        }
+        FlymeStatusBarSizer.ClockConfigSnapshot config =
+                FlymeStatusBarSizer.loadClockConfig(clockRoot.getContext());
+        LinearLayout clockLayout = getLinearLayoutField(clockRoot, "clockLayout");
+        if (clockLayout == null) {
+            return;
+        }
+        if (config == null || !config.lockscreenCanvasClockEnabled) {
+            restoreLockscreenClock(clockRoot, clockLayout);
+            return;
+        }
+        LinearLayout hourLayout = getLinearLayoutField(clockRoot, "hourLayout");
+        LinearLayout minuteLayout = getLinearLayoutField(clockRoot, "minuteLayout");
+        if (hourLayout == null || minuteLayout == null) {
+            restoreLockscreenClock(clockRoot, clockLayout);
+            return;
+        }
+        hourLayout.setVisibility(View.GONE);
+        minuteLayout.setVisibility(View.GONE);
+        LockscreenCanvasClockView canvasClock = findLockscreenCanvasClock(clockLayout);
+        if (canvasClock == null) {
+            canvasClock = new LockscreenCanvasClockView(clockRoot.getContext());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.gravity = Gravity.CENTER;
+            clockLayout.addView(canvasClock, lp);
+        }
+        canvasClock.update(
+                resolveLockscreenTimeText(clockRoot),
+                getFloatField(clockRoot, "mTimeTextSize", 90f),
+                getIntField(clockRoot, "mWordTextColor", 0xffffffff),
+                getTypefaceField(clockRoot, "mTypeface"));
+    }
+
+    private static void restoreLockscreenClock(View clockRoot, ViewGroup clockLayout) {
+        LinearLayout hourLayout = getLinearLayoutField(clockRoot, "hourLayout");
+        LinearLayout minuteLayout = getLinearLayoutField(clockRoot, "minuteLayout");
+        if (hourLayout != null) {
+            hourLayout.setVisibility(View.VISIBLE);
+        }
+        if (minuteLayout != null) {
+            minuteLayout.setVisibility(View.VISIBLE);
+        }
+        LockscreenCanvasClockView canvasClock = findLockscreenCanvasClock(clockLayout);
+        if (canvasClock != null) {
+            clockLayout.removeView(canvasClock);
+        }
+    }
+
+    private static LockscreenCanvasClockView findLockscreenCanvasClock(ViewGroup clockLayout) {
+        if (clockLayout == null) {
+            return null;
+        }
+        for (int i = 0; i < clockLayout.getChildCount(); i++) {
+            View child = clockLayout.getChildAt(i);
+            if (child instanceof LockscreenCanvasClockView) {
+                return (LockscreenCanvasClockView) child;
+            }
+        }
+        return null;
+    }
+
+    private static String resolveLockscreenTimeText(View clockRoot) {
+        Object format = FlymeStatusBarSizer.getFieldCompat(clockRoot, "mFormat");
+        Object calendar = FlymeStatusBarSizer.getFieldCompat(clockRoot, "mCalendar");
+        CharSequence safeFormat = format instanceof CharSequence ? (CharSequence) format : "HH:mm";
+        Calendar safeCalendar = calendar instanceof Calendar ? (Calendar) calendar : Calendar.getInstance();
+        return DateFormat.format(safeFormat, safeCalendar).toString();
+    }
+
+    private static LinearLayout getLinearLayoutField(View target, String name) {
+        Object value = FlymeStatusBarSizer.getFieldCompat(target, name);
+        return value instanceof LinearLayout ? (LinearLayout) value : null;
+    }
+
+    private static int getIntField(View target, String name, int fallback) {
+        Object value = FlymeStatusBarSizer.getFieldCompat(target, name);
+        return value instanceof Number ? ((Number) value).intValue() : fallback;
+    }
+
+    private static float getFloatField(View target, String name, float fallback) {
+        Object value = FlymeStatusBarSizer.getFieldCompat(target, name);
+        return value instanceof Number ? ((Number) value).floatValue() : fallback;
+    }
+
+    private static Typeface getTypefaceField(View target, String name) {
+        Object value = FlymeStatusBarSizer.getFieldCompat(target, name);
+        return value instanceof Typeface ? (Typeface) value : null;
     }
 
     private static void hookConstructors(

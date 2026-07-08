@@ -53,6 +53,7 @@ final class ModuleConfig {
     boolean clockBoldEnabled = SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED;
     int clockFontWeight = SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT;
     int clockAndCarrierTextSizePercent = SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT;
+    boolean lockscreenCanvasClockEnabled = SettingsStore.DEFAULT_LOCKSCREEN_CANVAS_CLOCK_ENABLED;
     boolean clockDetailPopupEnabled = SettingsStore.DEFAULT_CLOCK_DETAIL_POPUP_ENABLED;
     boolean clockDetailLunarDateEnabled = SettingsStore.DEFAULT_CLOCK_DETAIL_LUNAR_DATE_ENABLED;
     boolean clockDetailActionGridEnabled = SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED;
@@ -347,6 +348,10 @@ final class ModuleConfig {
                             prefs,
                             SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
                             SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT));
+            config.lockscreenCanvasClockEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_LOCKSCREEN_CANVAS_CLOCK_ENABLED,
+                    SettingsStore.DEFAULT_LOCKSCREEN_CANVAS_CLOCK_ENABLED);
             config.clockDetailPopupEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_CLOCK_DETAIL_POPUP_ENABLED,

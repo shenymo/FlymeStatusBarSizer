@@ -47,6 +47,7 @@ final class SettingsStore {
     static final String KEY_CLOCK_BOLD_ENABLED = "clock_bold_enabled";
     static final String KEY_CLOCK_FONT_WEIGHT = "clock_font_weight";
     static final String KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = "clock_and_carrier_text_size_percent";
+    static final String KEY_LOCKSCREEN_CANVAS_CLOCK_ENABLED = "lockscreen_canvas_clock_enabled";
     static final String KEY_CLOCK_DETAIL_POPUP_ENABLED = "clock_detail_popup_enabled";
     static final String KEY_CLOCK_DETAIL_LUNAR_DATE_ENABLED = "clock_detail_lunar_date_enabled";
     static final String KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED = "clock_detail_action_grid_enabled";
@@ -159,6 +160,7 @@ final class SettingsStore {
     static final int DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP = 0;
     static final int DEFAULT_WIFI_Y_OFFSET_DP = 0;
     static final int DEFAULT_CLOCK_RIGHT_PADDING_OFFSET_DP = 0;
+    static final boolean DEFAULT_LOCKSCREEN_CANVAS_CLOCK_ENABLED = false;
     static final int CLOCK_RIGHT_PADDING_OFFSET_MIN_TENTH_DP = -30;
     static final int CLOCK_RIGHT_PADDING_OFFSET_MAX_TENTH_DP = 240;
     static final boolean DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED = false;
@@ -292,6 +294,7 @@ final class SettingsStore {
             KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL,
             KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
             KEY_CLOCK_BOLD_ENABLED,
+            KEY_LOCKSCREEN_CANVAS_CLOCK_ENABLED,
             KEY_CLOCK_DETAIL_POPUP_ENABLED,
             KEY_CLOCK_DETAIL_LUNAR_DATE_ENABLED,
             KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED,
@@ -555,6 +558,8 @@ final class SettingsStore {
                 return DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED;
             case KEY_CLOCK_BOLD_ENABLED:
                 return DEFAULT_CLOCK_BOLD_ENABLED;
+            case KEY_LOCKSCREEN_CANVAS_CLOCK_ENABLED:
+                return DEFAULT_LOCKSCREEN_CANVAS_CLOCK_ENABLED;
             case KEY_CLOCK_DETAIL_POPUP_ENABLED:
                 return DEFAULT_CLOCK_DETAIL_POPUP_ENABLED;
             case KEY_CLOCK_DETAIL_LUNAR_DATE_ENABLED:

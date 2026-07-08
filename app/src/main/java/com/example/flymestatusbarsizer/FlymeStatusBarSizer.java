@@ -6930,6 +6930,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final int clockFontWeight;
         public final float clockAndCarrierTextScale;
         public final int clockRightPaddingOffsetPx;
+        public final boolean lockscreenCanvasClockEnabled;
         public final boolean clockDetailPopupEnabled;
         public final boolean clockDetailLunarDateEnabled;
         public final boolean clockDetailActionGridEnabled;
@@ -6946,6 +6947,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                             context,
                             config.clockRightPaddingOffsetTenthDp))
                     : 0;
+            lockscreenCanvasClockEnabled = enabled
+                    && config != null
+                    && config.lockscreenCanvasClockEnabled;
             clockDetailPopupEnabled = enabled
                     && config != null
                     && config.clockDetailPopupEnabled;

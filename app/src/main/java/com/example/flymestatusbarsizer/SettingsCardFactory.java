@@ -824,6 +824,11 @@ final class SettingsCardFactory {
                 "同时控制左上角时间、锁屏界面运营商，以及网速显示文字大小。默认 100%。",
                 SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
                 SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT, 50, 200, "%");
+        activity.addDivider(page);
+        activity.addSwitchRow(page, "锁屏 Canvas 时钟",
+                "用代码绘制锁屏大时钟，第一版只替换大数字区域。",
+                SettingsStore.KEY_LOCKSCREEN_CANVAS_CLOCK_ENABLED,
+                SettingsStore.DEFAULT_LOCKSCREEN_CANVAS_CLOCK_ENABLED);
         return page;
     }
 
