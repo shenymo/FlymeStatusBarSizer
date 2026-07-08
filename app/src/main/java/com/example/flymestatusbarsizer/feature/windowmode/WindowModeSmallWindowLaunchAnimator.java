@@ -9,11 +9,9 @@ import android.content.Context;
 import android.content.pm.LauncherActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
@@ -21,6 +19,7 @@ import android.os.Looper;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
@@ -44,6 +43,11 @@ final class WindowModeSmallWindowLaunchAnimator {
     private static final float TARGET_WIDTH_RATIO = 0.68f;
     private static final float TARGET_ASPECT_RATIO = 1.35f;
     private static final float TARGET_MAX_HEIGHT_RATIO = 0.68f;
+    private static final float SMALL_WINDOW_ICON_SCALE = 1f / 3f;
+    private static final int WINDOW_CORNER_RADIUS_DP = 15;
+    private static final int BLUR_RADIUS_DP = 30;
+    private static final int BLUR_TINT_COLOR = 0x66FFFFFF;
+    private static final int BLUR_Z_ORDER_BOTTOM = -1;
     private static final int[] WINDOW_TYPES = new int[]{
             WINDOW_TYPE_STATUS_BAR_ADDITIONAL,
             WINDOW_TYPE_STATUS_BAR_SUB_PANEL,
@@ -78,7 +82,7 @@ final class WindowModeSmallWindowLaunchAnimator {
     private final FrameLayout overlay;
     private final FrameLayout card;
     private final ImageView imageView;
-    private final GradientDrawable cardBackground;
+    private Drawable cardBackground;
     private final Runnable exitTimeoutRunnable = this::markLaunchReady;
     private WindowManager windowManager;
     private ValueAnimator animator;
@@ -107,7 +111,6 @@ final class WindowModeSmallWindowLaunchAnimator {
         this.overlay = new FrameLayout(context);
         this.card = new FrameLayout(context);
         this.imageView = new ImageView(context);
-        this.cardBackground = new GradientDrawable();
         setupViews();
     }
 
@@ -224,9 +227,6 @@ final class WindowModeSmallWindowLaunchAnimator {
         overlay.setClipChildren(false);
         overlay.setClipToPadding(false);
 
-        cardBackground.setColor(Color.argb(238, 255, 255, 255));
-        cardBackground.setCornerRadius(dp(22));
-        card.setBackground(cardBackground);
         card.setClipToOutline(true);
         card.setElevation(dp(10));
         card.setClipChildren(false);
@@ -238,8 +238,6 @@ final class WindowModeSmallWindowLaunchAnimator {
             imageView.setImageBitmap(bitmap);
         }
         imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        int padding = dp(8);
-        imageView.setPadding(padding, padding, padding, padding);
         card.addView(imageView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
@@ -257,9 +255,25 @@ final class WindowModeSmallWindowLaunchAnimator {
         params.leftMargin = startRect.left;
         params.topMargin = startRect.top;
         overlay.addView(card, params);
-        registerWindowModeListener();
-        executeLaunchAction();
-        overlay.postDelayed(this::startAnimation, START_DELAY_MS);
+        applySmallWindowIconPadding();
+        overlay.post(() -> {
+            if (cleaningUp) {
+                return;
+            }
+            if (!overlay.isAttachedToWindow()) {
+                executeLaunchAction();
+                cleanup();
+                return;
+            }
+            if (!installBlurBackground(dp(WINDOW_CORNER_RADIUS_DP))) {
+                executeLaunchAction();
+                cleanup();
+                return;
+            }
+            registerWindowModeListener();
+            executeLaunchAction();
+            overlay.postDelayed(this::startAnimation, START_DELAY_MS);
+        });
     }
 
     private boolean attachOverlay() {
@@ -339,7 +353,8 @@ final class WindowModeSmallWindowLaunchAnimator {
             params.width = Math.max(1, Math.round(lerp(startRect.width(), currentTarget.width(), progress)));
             params.height = Math.max(1, Math.round(lerp(startRect.height(), currentTarget.height(), progress)));
             card.setLayoutParams(params);
-            cardBackground.setCornerRadius(lerp(dp(22), dp(30), progress));
+            setBlurCornerRadius(dp(WINDOW_CORNER_RADIUS_DP));
+            applySmallWindowIconPadding();
             float iconScale = resolveIconScale(rawProgress);
             imageView.setScaleX(iconScale);
             imageView.setScaleY(iconScale);
@@ -373,6 +388,61 @@ final class WindowModeSmallWindowLaunchAnimator {
         }
         float settleProgress = ICON_INTERPOLATOR.getInterpolation((progress - 0.18f) / 0.82f);
         return lerp(0.94f, 1.06f, settleProgress);
+    }
+
+    private boolean installBlurBackground(float cornerRadius) {
+        Object viewRoot = FlymeStatusBarSizer.invokeNoArgCompat(overlay, "getViewRootImpl");
+        Object blurDrawable = FlymeStatusBarSizer.invokeNoArgCompat(
+                viewRoot,
+                "createBackgroundBlurDrawable");
+        if (!(blurDrawable instanceof Drawable)) {
+            return false;
+        }
+        cardBackground = (Drawable) blurDrawable;
+        card.setBackground(cardBackground);
+        setBlurCornerRadius(cornerRadius);
+        FlymeStatusBarSizer.invokeMethodCompat(
+                cardBackground,
+                "setBlurRadius",
+                new Class[]{int.class},
+                dp(BLUR_RADIUS_DP));
+        FlymeStatusBarSizer.invokeMethodCompat(
+                cardBackground,
+                "setZAdjustment",
+                new Class[]{int.class},
+                BLUR_Z_ORDER_BOTTOM);
+        FlymeStatusBarSizer.invokeMethodCompat(
+                cardBackground,
+                "setColor",
+                new Class[]{int.class},
+                BLUR_TINT_COLOR);
+        return true;
+    }
+
+    private void setBlurCornerRadius(float radius) {
+        if (cardBackground == null) {
+            return;
+        }
+        FlymeStatusBarSizer.invokeMethodCompat(
+                cardBackground,
+                "setCornerRadius",
+                new Class[]{float.class},
+                radius);
+    }
+
+    private void applySmallWindowIconPadding() {
+        int width = card.getWidth();
+        int height = card.getHeight();
+        if (width <= 0 || height <= 0) {
+            ViewGroup.LayoutParams params = card.getLayoutParams();
+            if (params != null) {
+                width = params.width;
+                height = params.height;
+            }
+        }
+        int minSide = Math.max(1, Math.min(width, height));
+        int padding = Math.max(0, Math.round(minSide * (1f - SMALL_WINDOW_ICON_SCALE) / 2f));
+        imageView.setPadding(padding, padding, padding, padding);
     }
 
     private Drawable cloneDrawable(Drawable drawable) {
