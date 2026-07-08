@@ -624,8 +624,8 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
                 SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED);
         twoRingOptions.setVisibility(twoRingEnabled ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(page, "双环小窗选择面板",
-                "把 Flyme 原生小窗应用选择面板改为双环；关闭后使用系统原生界面。",
+        activity.addSwitchRow(page, "小窗环数扩展",
+                "扩展 Flyme 原生小窗选择面板的环数；关闭后使用系统原生界面。",
                 SettingsStore.KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
                 SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
                 (buttonView, isChecked) -> twoRingOptions.setVisibility(
@@ -681,23 +681,52 @@ final class SettingsCardFactory {
         card.setOrientation(LinearLayout.VERTICAL);
 
         TextView title = new TextView(activity);
-        title.setText("双环内环");
+        title.setText("环数扩展设置");
         title.setTextColor(activity.primaryColor());
         title.setTextSize(13);
         card.addView(title, activity.matchWrap());
 
         activity.addDivider(card);
         activity.addApplySliderRow(card, "内环图标大小",
-                "只改双环小窗选择面板内环的应用图标大小，默认 100%。",
+                "只改小窗环数扩展内环的应用图标大小，默认 100%。",
                 SettingsStore.KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT,
                 SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT,
-                70, 120, "%");
+                10, 100, "%");
         activity.addDivider(card);
         activity.addApplySliderRow(card, "内环半径",
                 "内环到手势中心的距离，默认 62%。",
                 SettingsStore.KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT,
                 SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT,
-                45, 85, "%");
+                10, 100, "%");
+        activity.addDivider(card);
+        LinearLayout recentOptions = new LinearLayout(activity);
+        recentOptions.setOrientation(LinearLayout.VERTICAL);
+        boolean recentEnabled = SettingsStore.readBoolean(
+                activity.prefs(),
+                SettingsStore.KEY_WINDOWMODE_RECENT_INNER_RING_ENABLED,
+                SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_ENABLED);
+        recentOptions.setVisibility(recentEnabled ? View.VISIBLE : View.GONE);
+        activity.addSwitchRow(card, "最内环显示最近使用应用",
+                "从最近任务中补充可小窗应用，并过滤当前面板已有应用。",
+                SettingsStore.KEY_WINDOWMODE_RECENT_INNER_RING_ENABLED,
+                SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_ENABLED,
+                (buttonView, isChecked) -> recentOptions.setVisibility(
+                        isChecked ? View.VISIBLE : View.GONE));
+        activity.addDivider(recentOptions);
+        activity.addApplySliderRow(recentOptions, "最内环图标大小",
+                "只改最近使用应用这一环的图标大小，默认 100%。",
+                SettingsStore.KEY_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT,
+                SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT,
+                10, 100, "%");
+        activity.addDivider(recentOptions);
+        activity.addApplySliderRow(recentOptions, "最内环半径",
+                "最内环到手势中心的距离，默认 38%。",
+                SettingsStore.KEY_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT,
+                SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT,
+                10, 100, "%");
+        LinearLayout.LayoutParams recentOptionsLp = PageViewUtils.matchWrap();
+        recentOptionsLp.leftMargin = activity.dp(12);
+        card.addView(recentOptions, recentOptionsLp);
         return card;
     }
 

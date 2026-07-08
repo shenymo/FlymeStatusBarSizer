@@ -73,6 +73,12 @@ final class SettingsStore {
             "windowmode_two_ring_inner_icon_scale_percent";
     static final String KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT =
             "windowmode_two_ring_inner_radius_percent";
+    static final String KEY_WINDOWMODE_RECENT_INNER_RING_ENABLED =
+            "windowmode_recent_inner_ring_enabled";
+    static final String KEY_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT =
+            "windowmode_recent_inner_ring_icon_scale_percent";
+    static final String KEY_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT =
+            "windowmode_recent_inner_ring_radius_percent";
     static final String KEY_MBACK_NAV_BAR_TRANSPARENT = "mback_nav_bar_transparent";
     static final String KEY_NOTIFICATION_APP_ICON_ENABLED = "notification_app_icon_enabled";
     static final String KEY_NOTIFICATION_APP_ICON_SIZE_DP = "notification_app_icon_size_dp";
@@ -189,6 +195,9 @@ final class SettingsStore {
     static final boolean DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED = false;
     static final int DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT = 100;
     static final int DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT = 62;
+    static final boolean DEFAULT_WINDOWMODE_RECENT_INNER_RING_ENABLED = false;
+    static final int DEFAULT_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT = 100;
+    static final int DEFAULT_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT = 38;
     static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
     static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
     static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
@@ -257,6 +266,8 @@ final class SettingsStore {
             KEY_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS,
             KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT,
             KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT,
+            KEY_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT,
+            KEY_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT,
             KEY_NOTIFICATION_APP_ICON_SIZE_DP,
             KEY_NOTIFICATION_APP_ICON_PADDING_DP,
             KEY_MBACK_INSET_SIZE,
@@ -293,6 +304,7 @@ final class SettingsStore {
             KEY_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED,
             KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED,
             KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
+            KEY_WINDOWMODE_RECENT_INNER_RING_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
@@ -488,6 +500,10 @@ final class SettingsStore {
                 return DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT;
             case KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT:
                 return DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT;
+            case KEY_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT:
+                return DEFAULT_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT;
+            case KEY_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT:
+                return DEFAULT_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT;
             case KEY_NOTIFICATION_APP_ICON_SIZE_DP:
                 return DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
             case KEY_NOTIFICATION_APP_ICON_PADDING_DP:
@@ -561,6 +577,8 @@ final class SettingsStore {
                 return DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED;
             case KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED:
                 return DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED;
+            case KEY_WINDOWMODE_RECENT_INNER_RING_ENABLED:
+                return DEFAULT_WINDOWMODE_RECENT_INNER_RING_ENABLED;
             case KEY_MBACK_NAV_BAR_TRANSPARENT:
                 return DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
             case KEY_NOTIFICATION_APP_ICON_ENABLED:
@@ -656,11 +674,19 @@ final class SettingsStore {
     }
 
     static int normalizeWindowModeTwoRingInnerIconScalePercent(int value) {
-        return Math.max(70, Math.min(120, value));
+        return Math.max(10, Math.min(100, value));
     }
 
     static int normalizeWindowModeTwoRingInnerRadiusPercent(int value) {
-        return Math.max(45, Math.min(85, value));
+        return Math.max(10, Math.min(100, value));
+    }
+
+    static int normalizeWindowModeRecentInnerRingIconScalePercent(int value) {
+        return Math.max(10, Math.min(100, value));
+    }
+
+    static int normalizeWindowModeRecentInnerRingRadiusPercent(int value) {
+        return Math.max(10, Math.min(100, value));
     }
 
     static int normalizeBatteryTextFont(int value) {

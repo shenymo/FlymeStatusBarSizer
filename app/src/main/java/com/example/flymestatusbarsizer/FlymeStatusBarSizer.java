@@ -6862,6 +6862,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean twoRingLauncherEnabled;
         public final int twoRingInnerIconScalePercent;
         public final int twoRingInnerRadiusPercent;
+        public final boolean recentInnerRingEnabled;
+        public final int recentInnerRingIconScalePercent;
+        public final int recentInnerRingRadiusPercent;
 
         private WindowModeSideGestureConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
@@ -6888,6 +6891,14 @@ public class FlymeStatusBarSizer extends XposedModule {
             twoRingInnerRadiusPercent = config == null
                     ? SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT
                     : config.windowModeTwoRingInnerRadiusPercent;
+            recentInnerRingEnabled = config != null
+                    && config.windowModeRecentInnerRingEnabled;
+            recentInnerRingIconScalePercent = config == null
+                    ? SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT
+                    : config.windowModeRecentInnerRingIconScalePercent;
+            recentInnerRingRadiusPercent = config == null
+                    ? SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT
+                    : config.windowModeRecentInnerRingRadiusPercent;
         }
     }
 

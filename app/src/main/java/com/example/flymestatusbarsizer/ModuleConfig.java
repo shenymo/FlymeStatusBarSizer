@@ -80,6 +80,12 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT;
     int windowModeTwoRingInnerRadiusPercent =
             SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT;
+    boolean windowModeRecentInnerRingEnabled =
+            SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_ENABLED;
+    int windowModeRecentInnerRingIconScalePercent =
+            SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT;
+    int windowModeRecentInnerRingRadiusPercent =
+            SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT;
     boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
     boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
     int notificationAppIconSizeDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
@@ -423,6 +429,22 @@ final class ModuleConfig {
                                     prefs,
                                     SettingsStore.KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT,
                                     SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT));
+            config.windowModeRecentInnerRingEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_WINDOWMODE_RECENT_INNER_RING_ENABLED,
+                    SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_ENABLED);
+            config.windowModeRecentInnerRingIconScalePercent =
+                    SettingsStore.normalizeWindowModeRecentInnerRingIconScalePercent(
+                            SettingsStore.readInt(
+                                    prefs,
+                                    SettingsStore.KEY_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT,
+                                    SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT));
+            config.windowModeRecentInnerRingRadiusPercent =
+                    SettingsStore.normalizeWindowModeRecentInnerRingRadiusPercent(
+                            SettingsStore.readInt(
+                                    prefs,
+                                    SettingsStore.KEY_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT,
+                                    SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT));
             config.mbackNavBarTransparent = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,

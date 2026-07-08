@@ -3,6 +3,8 @@ package com.example.flymestatusbarsizer.feature.windowmode;
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.feature.mback.MBackHooks;
 
+import android.app.ActivityManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
@@ -18,6 +20,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -26,8 +29,10 @@ public final class WindowModeSideGestureHooks {
     private static final Map<Object, Boolean> ACTIVE_ACTIONS = new WeakHashMap<>();
     private static final Map<Object, Boolean> PREWARMED_LAUNCHERS = new WeakHashMap<>();
     private static final Map<Object, HoverState> HOVER_STATES = new WeakHashMap<>();
+    private static final Map<Object, RecentRingState> RECENT_RING_STATES = new WeakHashMap<>();
     private static final int TWO_RING_APP_LIMIT = 11;
     private static final int TWO_RING_OUTER_COUNT = 7;
+    private static final int RECENT_RING_VISIBLE_COUNT = 4;
     private static final Map<String, Field> FIELD_CACHE = new java.util.HashMap<>();
     private static Class<?> appLauncherWindowClass;
 
@@ -90,8 +95,12 @@ public final class WindowModeSideGestureHooks {
                     try {
                         return chain.proceed();
                     } finally {
+                        Object launcher = resolveAppWindowGestureLauncher(chain.getThisObject());
                         synchronized (PREWARMED_LAUNCHERS) {
                             PREWARMED_LAUNCHERS.remove(chain.getThisObject());
+                        }
+                        synchronized (RECENT_RING_STATES) {
+                            RECENT_RING_STATES.remove(launcher);
                         }
                     }
                 });
@@ -228,8 +237,13 @@ public final class WindowModeSideGestureHooks {
             constructor.setAccessible(true);
             module.intercept(method, chain -> {
                 Object original = chain.proceed();
+                Object appWindow = chain.getThisObject();
                 try {
-                    if (!isTwoRingLauncherEnabled(resolveAppLauncherContext(chain.getThisObject()))) {
+                    Context context = resolveAppLauncherContext(appWindow);
+                    FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
+                            FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
+                    if (!config.enabled || !config.twoRingLauncherEnabled) {
+                        clearRecentRingState(appWindow);
                         return original;
                     }
                     Object source = chain.getArg(0);
@@ -239,18 +253,31 @@ public final class WindowModeSideGestureHooks {
                     List<?> sourceList = (List<?>) source;
                     List<?> originalList = (List<?>) original;
                     ArrayList<Object> result = new ArrayList<>();
+                    HashSet<String> shownPackages = new HashSet<>();
                     int count = Math.min(TWO_RING_APP_LIMIT, sourceList.size());
                     for (int i = 0; i < count; i++) {
                         Object item = sourceList.get(i);
                         if (itemClass.isInstance(item)) {
-                            result.add(constructor.newInstance(chain.getThisObject(), item));
+                            result.add(constructor.newInstance(appWindow, item));
+                            addPackageName(shownPackages, item);
                         }
                     }
                     if (!originalList.isEmpty()) {
                         result.add(originalList.get(originalList.size() - 1));
                     }
+                    int recentStart = result.size();
+                    if (config.recentInnerRingEnabled) {
+                        result.addAll(buildRecentLauncherItems(
+                                appWindow,
+                                sourceList,
+                                itemClass,
+                                constructor,
+                                shownPackages));
+                    }
+                    updateRecentRingState(appWindow, recentStart, result.size() - recentStart);
                     return result.isEmpty() ? original : result;
                 } catch (Throwable t) {
+                    clearRecentRingState(appWindow);
                     FlymeStatusBarSizer.logWindowModeWarning(
                             "Failed to build Flyme native two-ring app list, fallback original",
                             t);
@@ -261,6 +288,157 @@ public final class WindowModeSideGestureHooks {
             FlymeStatusBarSizer.logWindowModeWarning(
                     "Failed to hook Flyme native app launcher list size",
                     t);
+        }
+    }
+
+    private static List<Object> buildRecentLauncherItems(
+            Object appWindow,
+            List<?> sourceList,
+            Class<?> itemClass,
+            Constructor<?> constructor,
+            HashSet<String> shownPackages) throws Exception {
+        Context context = resolveAppLauncherContext(appWindow);
+        ArrayList<String> recentPackages = readRecentPackages(context);
+        if (recentPackages.isEmpty()) {
+            return new ArrayList<>();
+        }
+        ArrayList<Object> candidates = buildLauncherItemCandidates(appWindow, sourceList);
+        ArrayList<Object> result = new ArrayList<>();
+        HashSet<String> addedPackages = new HashSet<>();
+        for (String packageName : recentPackages) {
+            if (packageName == null
+                    || packageName.isEmpty()
+                    || shownPackages.contains(packageName)
+                    || !addedPackages.add(packageName)) {
+                continue;
+            }
+            Object item = findLauncherItemByPackage(candidates, itemClass, packageName);
+            if (item == null) {
+                continue;
+            }
+            result.add(constructor.newInstance(appWindow, item));
+            shownPackages.add(packageName);
+            if (result.size() >= RECENT_RING_VISIBLE_COUNT) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    private static ArrayList<Object> buildLauncherItemCandidates(Object appWindow, List<?> sourceList) {
+        ArrayList<Object> result = new ArrayList<>();
+        addAll(result, sourceList);
+        Object manager = readField(appWindow, "g");
+        addAll(result, invokeNoArgObject(manager, "F"));
+        addAll(result, invokeNoArgObject(manager, "G"));
+        return result;
+    }
+
+    private static void addAll(ArrayList<Object> target, Object source) {
+        if (!(source instanceof List)) {
+            return;
+        }
+        for (Object item : (List<?>) source) {
+            if (item != null && !target.contains(item)) {
+                target.add(item);
+            }
+        }
+    }
+
+    private static Object findLauncherItemByPackage(
+            List<?> candidates,
+            Class<?> itemClass,
+            String packageName) {
+        if (candidates == null || itemClass == null || packageName == null) {
+            return null;
+        }
+        for (Object item : candidates) {
+            if (itemClass.isInstance(item) && packageName.equals(resolveLauncherItemPackageName(item))) {
+                return item;
+            }
+        }
+        return null;
+    }
+
+    private static ArrayList<String> readRecentPackages(Context context) {
+        ArrayList<String> result = new ArrayList<>();
+        if (context == null) {
+            return result;
+        }
+        try {
+            ActivityManager activityManager =
+                    (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (activityManager == null) {
+                return result;
+            }
+            List<ActivityManager.RecentTaskInfo> recentTasks = activityManager.getRecentTasks(
+                    Integer.MAX_VALUE,
+                    ActivityManager.RECENT_IGNORE_UNAVAILABLE);
+            if (recentTasks == null || recentTasks.isEmpty()) {
+                return result;
+            }
+            HashSet<String> seenPackages = new HashSet<>();
+            for (ActivityManager.RecentTaskInfo taskInfo : recentTasks) {
+                ComponentName component = resolveRecentTaskComponent(taskInfo);
+                String packageName = component == null ? null : component.getPackageName();
+                if (packageName != null
+                        && !packageName.trim().isEmpty()
+                        && seenPackages.add(packageName)) {
+                    result.add(packageName);
+                }
+            }
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logWindowModeWarning(
+                    "Failed to read Flyme native app launcher recent tasks",
+                    t);
+        }
+        return result;
+    }
+
+    private static ComponentName resolveRecentTaskComponent(ActivityManager.RecentTaskInfo taskInfo) {
+        if (taskInfo == null) {
+            return null;
+        }
+        if (taskInfo.topActivity != null) {
+            return taskInfo.topActivity;
+        }
+        Intent baseIntent = taskInfo.baseIntent;
+        return baseIntent == null ? null : baseIntent.getComponent();
+    }
+
+    private static void addPackageName(HashSet<String> packages, Object item) {
+        String packageName = resolveLauncherItemPackageName(item);
+        if (packageName != null && !packageName.trim().isEmpty()) {
+            packages.add(packageName);
+        }
+    }
+
+    private static String resolveLauncherItemPackageName(Object item) {
+        Object value = invokeNoArgObject(item, "f");
+        return value instanceof String ? ((String) value).trim() : null;
+    }
+
+    private static void updateRecentRingState(Object appWindow, int recentStart, int recentCount) {
+        Object launcher = resolveAppWindowGestureLauncher(appWindow);
+        synchronized (RECENT_RING_STATES) {
+            if (launcher == null || recentCount <= 0) {
+                RECENT_RING_STATES.remove(launcher);
+                return;
+            }
+            RecentRingState old = RECENT_RING_STATES.get(launcher);
+            RecentRingState state = old == null
+                    ? new RecentRingState()
+                    : old;
+            state.recentStart = recentStart;
+            state.recentCount = recentCount;
+            RECENT_RING_STATES.put(launcher, state);
+        }
+    }
+
+    private static void clearRecentRingState(Object appWindow) {
+        Object launcher = resolveAppWindowGestureLauncher(appWindow);
+        synchronized (RECENT_RING_STATES) {
+            RECENT_RING_STATES.remove(launcher);
         }
     }
 
@@ -292,15 +470,31 @@ public final class WindowModeSideGestureHooks {
                     FlymeStatusBarSizer.loadWindowModeSideGestureConfig(launcher.getContext());
             float innerRadiusRatio = config.twoRingInnerRadiusPercent / 100f;
             float innerIconScale = config.twoRingInnerIconScalePercent / 100f;
+            float recentRadiusRatio = config.recentInnerRingRadiusPercent / 100f;
+            float recentIconScale = config.recentInnerRingIconScalePercent / 100f;
+            RecentRingState recentState = getRecentRingState(target, childCount);
+            int fixedCount = resolveFixedChildCount(childCount, recentState);
             for (int i = 0; i < childCount; i++) {
                 View child = ((android.view.ViewGroup) launcher).getChildAt(i);
                 if (child == null) {
                     continue;
                 }
-                applyTwoRingInnerIconScale(child, i, innerIconScale);
-                float radius = resolveTwoRingRadius(i, outerRadius, innerRadiusRatio);
-                int ringIndex = resolveTwoRingIndex(i);
-                int ringCount = resolveTwoRingCount(i, childCount);
+                int recentSlot = resolveRecentRingVisibleSlot(i, recentState);
+                if (isRecentRingChild(i, recentState) && recentSlot < 0) {
+                    child.setVisibility(View.INVISIBLE);
+                    continue;
+                }
+                child.setVisibility(View.VISIBLE);
+                applyTwoRingInnerIconScale(child, i, innerIconScale, recentState, recentIconScale);
+                float radius = resolveTwoRingRadius(
+                        i,
+                        fixedCount,
+                        outerRadius,
+                        innerRadiusRatio,
+                        recentRadiusRatio,
+                        recentState);
+                int ringIndex = resolveTwoRingIndex(i, recentSlot, recentState);
+                int ringCount = resolveTwoRingCount(i, fixedCount, recentState);
                 float angle = resolveTwoRingAngle(ringIndex, ringCount, safeDegrees);
                 Object layoutParams = child.getLayoutParams();
                 writeField(layoutParams, "a", angle);
@@ -349,15 +543,21 @@ public final class WindowModeSideGestureHooks {
             float centerY = readFloatField(target, "f", -1f);
             float distance = resolveTwoRingPointerDistance(target, launcher, x, y, centerY);
             double angle = resolveTwoRingPointerAngle(x, y, centerY, distance);
+            RecentRingState recentState = getRecentRingState(target, childCount);
+            int fixedCount = resolveFixedChildCount(childCount, recentState);
             int selected = -1;
             for (int i = 0; i < childCount; i++) {
                 View child = group.getChildAt(i);
-                if (child == null) {
+                if (child == null || child.getVisibility() != View.VISIBLE) {
                     continue;
                 }
                 Object layoutParams = child.getLayoutParams();
                 float childAngle = readFloatField(layoutParams, "a", -1f);
-                float halfRange = resolveTwoRingHitAngleRange(i, childCount, target) * 0.5f;
+                float halfRange = resolveTwoRingHitAngleRange(
+                        i,
+                        fixedCount,
+                        target,
+                        recentState) * 0.5f;
                 float minRadius = readFloatField(layoutParams, "b", -1f);
                 float maxRadius = readFloatField(layoutParams, "c", -1f);
                 if (angle >= childAngle - halfRange
@@ -394,28 +594,92 @@ public final class WindowModeSideGestureHooks {
         return config.enabled && config.twoRingLauncherEnabled;
     }
 
-    private static int resolveTwoRingIndex(int childIndex) {
+    private static RecentRingState getRecentRingState(Object target, int childCount) {
+        synchronized (RECENT_RING_STATES) {
+            RecentRingState state = RECENT_RING_STATES.get(target);
+            if (state == null
+                    || state.recentStart < 0
+                    || state.recentStart >= childCount
+                    || state.recentCount <= 0) {
+                return null;
+            }
+            state.recentCount = Math.min(state.recentCount, childCount - state.recentStart);
+            return state;
+        }
+    }
+
+    private static int resolveFixedChildCount(int childCount, RecentRingState recentState) {
+        return recentState == null ? childCount : Math.min(childCount, recentState.recentStart);
+    }
+
+    private static boolean isRecentRingChild(int childIndex, RecentRingState recentState) {
+        return recentState != null
+                && childIndex >= recentState.recentStart
+                && childIndex < recentState.recentStart + recentState.recentCount;
+    }
+
+    private static int resolveRecentRingVisibleSlot(int childIndex, RecentRingState recentState) {
+        if (!isRecentRingChild(childIndex, recentState)) {
+            return -1;
+        }
+        int relative = childIndex - recentState.recentStart;
+        return relative < resolveRecentVisibleCount(recentState) ? relative : -1;
+    }
+
+    private static int resolveRecentVisibleCount(RecentRingState recentState) {
+        return recentState == null ? 0 : Math.min(RECENT_RING_VISIBLE_COUNT, recentState.recentCount);
+    }
+
+    private static int resolveTwoRingIndex(
+            int childIndex,
+            int recentSlot,
+            RecentRingState recentState) {
+        if (isRecentRingChild(childIndex, recentState)) {
+            return Math.max(0, recentSlot);
+        }
         return childIndex < TWO_RING_OUTER_COUNT ? childIndex : childIndex - TWO_RING_OUTER_COUNT;
     }
 
-    private static int resolveTwoRingCount(int childIndex, int childCount) {
+    private static int resolveTwoRingCount(
+            int childIndex,
+            int fixedCount,
+            RecentRingState recentState) {
+        if (isRecentRingChild(childIndex, recentState)) {
+            return Math.max(1, resolveRecentVisibleCount(recentState));
+        }
         return childIndex < TWO_RING_OUTER_COUNT
-                ? Math.min(childCount, TWO_RING_OUTER_COUNT)
-                : Math.max(1, childCount - TWO_RING_OUTER_COUNT);
+                ? Math.min(fixedCount, TWO_RING_OUTER_COUNT)
+                : Math.max(1, fixedCount - TWO_RING_OUTER_COUNT);
     }
 
-    private static float resolveTwoRingRadius(int childIndex, float outerRadius, float innerRadiusRatio) {
+    private static float resolveTwoRingRadius(
+            int childIndex,
+            int fixedCount,
+            float outerRadius,
+            float innerRadiusRatio,
+            float recentRadiusRatio,
+            RecentRingState recentState) {
+        if (isRecentRingChild(childIndex, recentState)) {
+            return outerRadius * recentRadiusRatio;
+        }
         return childIndex < TWO_RING_OUTER_COUNT
                 ? outerRadius
                 : outerRadius * innerRadiusRatio;
     }
 
-    private static void applyTwoRingInnerIconScale(View child, int childIndex, float innerIconScale) {
+    private static void applyTwoRingInnerIconScale(
+            View child,
+            int childIndex,
+            float innerIconScale,
+            RecentRingState recentState,
+            float recentIconScale) {
         View icon = findAppIconView(child);
         if (icon == null) {
             return;
         }
-        float scale = childIndex < TWO_RING_OUTER_COUNT ? 1f : innerIconScale;
+        float scale = isRecentRingChild(childIndex, recentState)
+                ? recentIconScale
+                : childIndex < TWO_RING_OUTER_COUNT ? 1f : innerIconScale;
         icon.setScaleX(scale);
         icon.setScaleY(scale);
     }
@@ -443,9 +707,13 @@ public final class WindowModeSideGestureHooks {
         return (index * step) + (step * 0.5f) + safeDegrees;
     }
 
-    private static float resolveTwoRingHitAngleRange(int childIndex, int childCount, Object target) {
+    private static float resolveTwoRingHitAngleRange(
+            int childIndex,
+            int fixedCount,
+            Object target,
+            RecentRingState recentState) {
         int safeDegrees = readIntField(target, "v", 0);
-        int ringCount = resolveTwoRingCount(childIndex, childCount);
+        int ringCount = resolveTwoRingCount(childIndex, fixedCount, recentState);
         float range = safeDegrees == 0 ? 90f : 90f - (safeDegrees * 2f);
         return range / Math.max(1, ringCount);
     }
@@ -990,5 +1258,10 @@ public final class WindowModeSideGestureHooks {
                         .start();
             }
         }
+    }
+
+    private static final class RecentRingState {
+        int recentStart;
+        int recentCount;
     }
 }
