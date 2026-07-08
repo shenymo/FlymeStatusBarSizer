@@ -36,7 +36,7 @@ final class WindowModeSmallWindowLaunchAnimator {
     private static final int PRIVATE_FLAG_TRUSTED_OVERLAY = 16777216;
     private static final int FLYME_WINDOW_MODE_MINI = 11;
     private static final int FLYME_WINDOW_MODE_FREEFORM = 1035;
-    private static final long START_DELAY_MS = 48L;
+    private static final long LAUNCH_DELAY_MS = 80L;
     private static final long DURATION_MS = 320L;
     private static final long EXIT_TIMEOUT_MS = 900L;
     private static final long FADE_OUT_MS = 140L;
@@ -83,6 +83,7 @@ final class WindowModeSmallWindowLaunchAnimator {
     private final FrameLayout card;
     private final ImageView imageView;
     private Drawable cardBackground;
+    private final Runnable launchRunnable = this::executeLaunchAction;
     private final Runnable exitTimeoutRunnable = this::markLaunchReady;
     private WindowManager windowManager;
     private ValueAnimator animator;
@@ -271,8 +272,8 @@ final class WindowModeSmallWindowLaunchAnimator {
                 return;
             }
             registerWindowModeListener();
-            executeLaunchAction();
-            overlay.postDelayed(this::startAnimation, START_DELAY_MS);
+            startAnimation();
+            MAIN_HANDLER.postDelayed(launchRunnable, LAUNCH_DELAY_MS);
         });
     }
 
@@ -334,6 +335,7 @@ final class WindowModeSmallWindowLaunchAnimator {
         }
         if (target == null || target.isEmpty()) {
             cleanup();
+            executeLaunchAction();
             return;
         }
         final Rect fallbackTarget = target;
@@ -614,6 +616,7 @@ final class WindowModeSmallWindowLaunchAnimator {
             active = null;
         }
         MAIN_HANDLER.removeCallbacks(exitTimeoutRunnable);
+        MAIN_HANDLER.removeCallbacks(launchRunnable);
         unregisterWindowModeListener();
         if (bitmap != null && !bitmap.isRecycled()) {
             bitmap.recycle();
