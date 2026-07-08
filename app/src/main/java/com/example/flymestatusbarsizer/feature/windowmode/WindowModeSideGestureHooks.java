@@ -32,7 +32,7 @@ public final class WindowModeSideGestureHooks {
     private static final Map<Object, RecentRingState> RECENT_RING_STATES = new WeakHashMap<>();
     private static final int TWO_RING_APP_LIMIT = 11;
     private static final int TWO_RING_OUTER_COUNT = 7;
-    private static final int RECENT_RING_VISIBLE_COUNT = 4;
+    private static final int RECENT_RING_COUNT = 4;
     private static final Map<String, Field> FIELD_CACHE = new java.util.HashMap<>();
     private static Class<?> appLauncherWindowClass;
 
@@ -318,7 +318,7 @@ public final class WindowModeSideGestureHooks {
             }
             result.add(constructor.newInstance(appWindow, item));
             shownPackages.add(packageName);
-            if (result.size() >= RECENT_RING_VISIBLE_COUNT) {
+            if (result.size() >= RECENT_RING_COUNT) {
                 break;
             }
         }
@@ -425,10 +425,7 @@ public final class WindowModeSideGestureHooks {
                 RECENT_RING_STATES.remove(launcher);
                 return;
             }
-            RecentRingState old = RECENT_RING_STATES.get(launcher);
-            RecentRingState state = old == null
-                    ? new RecentRingState()
-                    : old;
+            RecentRingState state = new RecentRingState();
             state.recentStart = recentStart;
             state.recentCount = recentCount;
             RECENT_RING_STATES.put(launcher, state);
@@ -479,11 +476,6 @@ public final class WindowModeSideGestureHooks {
                 if (child == null) {
                     continue;
                 }
-                int recentSlot = resolveRecentRingVisibleSlot(i, recentState);
-                if (isRecentRingChild(i, recentState) && recentSlot < 0) {
-                    child.setVisibility(View.INVISIBLE);
-                    continue;
-                }
                 child.setVisibility(View.VISIBLE);
                 applyTwoRingInnerIconScale(child, i, innerIconScale, recentState, recentIconScale);
                 float radius = resolveTwoRingRadius(
@@ -493,7 +485,7 @@ public final class WindowModeSideGestureHooks {
                         innerRadiusRatio,
                         recentRadiusRatio,
                         recentState);
-                int ringIndex = resolveTwoRingIndex(i, recentSlot, recentState);
+                int ringIndex = resolveTwoRingIndex(i, recentState);
                 int ringCount = resolveTwoRingCount(i, fixedCount, recentState);
                 float angle = resolveTwoRingAngle(ringIndex, ringCount, safeDegrees);
                 Object layoutParams = child.getLayoutParams();
@@ -618,24 +610,11 @@ public final class WindowModeSideGestureHooks {
                 && childIndex < recentState.recentStart + recentState.recentCount;
     }
 
-    private static int resolveRecentRingVisibleSlot(int childIndex, RecentRingState recentState) {
-        if (!isRecentRingChild(childIndex, recentState)) {
-            return -1;
-        }
-        int relative = childIndex - recentState.recentStart;
-        return relative < resolveRecentVisibleCount(recentState) ? relative : -1;
-    }
-
-    private static int resolveRecentVisibleCount(RecentRingState recentState) {
-        return recentState == null ? 0 : Math.min(RECENT_RING_VISIBLE_COUNT, recentState.recentCount);
-    }
-
     private static int resolveTwoRingIndex(
             int childIndex,
-            int recentSlot,
             RecentRingState recentState) {
         if (isRecentRingChild(childIndex, recentState)) {
-            return Math.max(0, recentSlot);
+            return childIndex - recentState.recentStart;
         }
         return childIndex < TWO_RING_OUTER_COUNT ? childIndex : childIndex - TWO_RING_OUTER_COUNT;
     }
@@ -645,7 +624,7 @@ public final class WindowModeSideGestureHooks {
             int fixedCount,
             RecentRingState recentState) {
         if (isRecentRingChild(childIndex, recentState)) {
-            return Math.max(1, resolveRecentVisibleCount(recentState));
+            return Math.max(1, recentState.recentCount);
         }
         return childIndex < TWO_RING_OUTER_COUNT
                 ? Math.min(fixedCount, TWO_RING_OUTER_COUNT)
