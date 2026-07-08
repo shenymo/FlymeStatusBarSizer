@@ -20,6 +20,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +34,9 @@ public final class WindowModeSideGestureHooks {
     private static final int TWO_RING_APP_LIMIT = 11;
     private static final int TWO_RING_OUTER_COUNT = 7;
     private static final int RECENT_RING_COUNT = 4;
+    private static final int RECENT_TASK_SCAN_LIMIT = 32;
     private static final Map<String, Field> FIELD_CACHE = new java.util.HashMap<>();
+    private static final Map<String, Integer> APP_ICON_ID_CACHE = new HashMap<>();
     private static Class<?> appLauncherWindowClass;
 
     private WindowModeSideGestureHooks() {
@@ -302,17 +305,19 @@ public final class WindowModeSideGestureHooks {
         if (recentPackages.isEmpty()) {
             return new ArrayList<>();
         }
-        ArrayList<Object> candidates = buildLauncherItemCandidates(appWindow, sourceList);
+        HashMap<String, Object> candidates = buildLauncherItemCandidateMap(
+                appWindow,
+                sourceList,
+                itemClass,
+                shownPackages);
         ArrayList<Object> result = new ArrayList<>();
-        HashSet<String> addedPackages = new HashSet<>();
         for (String packageName : recentPackages) {
             if (packageName == null
                     || packageName.isEmpty()
-                    || shownPackages.contains(packageName)
-                    || !addedPackages.add(packageName)) {
+                    || shownPackages.contains(packageName)) {
                 continue;
             }
-            Object item = findLauncherItemByPackage(candidates, itemClass, packageName);
+            Object item = candidates.get(packageName);
             if (item == null) {
                 continue;
             }
@@ -325,39 +330,39 @@ public final class WindowModeSideGestureHooks {
         return result;
     }
 
-    private static ArrayList<Object> buildLauncherItemCandidates(Object appWindow, List<?> sourceList) {
-        ArrayList<Object> result = new ArrayList<>();
-        addAll(result, sourceList);
+    private static HashMap<String, Object> buildLauncherItemCandidateMap(
+            Object appWindow,
+            List<?> sourceList,
+            Class<?> itemClass,
+            HashSet<String> shownPackages) {
+        HashMap<String, Object> result = new HashMap<>();
+        addLauncherItemsByPackage(result, sourceList, itemClass, shownPackages);
         Object manager = readField(appWindow, "g");
-        addAll(result, invokeNoArgObject(manager, "F"));
-        addAll(result, invokeNoArgObject(manager, "G"));
+        addLauncherItemsByPackage(result, invokeNoArgObject(manager, "F"), itemClass, shownPackages);
+        addLauncherItemsByPackage(result, invokeNoArgObject(manager, "G"), itemClass, shownPackages);
         return result;
     }
 
-    private static void addAll(ArrayList<Object> target, Object source) {
+    private static void addLauncherItemsByPackage(
+            HashMap<String, Object> target,
+            Object source,
+            Class<?> itemClass,
+            HashSet<String> shownPackages) {
         if (!(source instanceof List)) {
             return;
         }
         for (Object item : (List<?>) source) {
-            if (item != null && !target.contains(item)) {
-                target.add(item);
+            if (item == null || !itemClass.isInstance(item)) {
+                continue;
+            }
+            String packageName = resolveLauncherItemPackageName(item);
+            if (packageName != null
+                    && !packageName.isEmpty()
+                    && !shownPackages.contains(packageName)
+                    && !target.containsKey(packageName)) {
+                target.put(packageName, item);
             }
         }
-    }
-
-    private static Object findLauncherItemByPackage(
-            List<?> candidates,
-            Class<?> itemClass,
-            String packageName) {
-        if (candidates == null || itemClass == null || packageName == null) {
-            return null;
-        }
-        for (Object item : candidates) {
-            if (itemClass.isInstance(item) && packageName.equals(resolveLauncherItemPackageName(item))) {
-                return item;
-            }
-        }
-        return null;
     }
 
     private static ArrayList<String> readRecentPackages(Context context) {
@@ -372,7 +377,7 @@ public final class WindowModeSideGestureHooks {
                 return result;
             }
             List<ActivityManager.RecentTaskInfo> recentTasks = activityManager.getRecentTasks(
-                    Integer.MAX_VALUE,
+                    RECENT_TASK_SCAN_LIMIT,
                     ActivityManager.RECENT_IGNORE_UNAVAILABLE);
             if (recentTasks == null || recentTasks.isEmpty()) {
                 return result;
@@ -659,6 +664,9 @@ public final class WindowModeSideGestureHooks {
         float scale = isRecentRingChild(childIndex, recentState)
                 ? recentIconScale
                 : childIndex < TWO_RING_OUTER_COUNT ? 1f : innerIconScale;
+        if (icon.getScaleX() == scale && icon.getScaleY() == scale) {
+            return;
+        }
         icon.setScaleX(scale);
         icon.setScaleY(scale);
     }
@@ -668,11 +676,21 @@ public final class WindowModeSideGestureHooks {
             return null;
         }
         Context context = child.getContext();
-        int id = child.getResources().getIdentifier(
-                "app_icon",
-                "id",
-                context == null ? "com.flyme.systemuitools" : context.getPackageName());
+        String packageName = context == null ? "com.flyme.systemuitools" : context.getPackageName();
+        int id = resolveAppIconId(child, packageName);
         return id == 0 ? null : child.findViewById(id);
+    }
+
+    private static int resolveAppIconId(View child, String packageName) {
+        synchronized (APP_ICON_ID_CACHE) {
+            Integer cached = APP_ICON_ID_CACHE.get(packageName);
+            if (cached != null) {
+                return cached;
+            }
+            int id = child.getResources().getIdentifier("app_icon", "id", packageName);
+            APP_ICON_ID_CACHE.put(packageName, id);
+            return id;
+        }
     }
 
     private static float resolveTwoRingAngle(int index, int count, int safeDegrees) {
