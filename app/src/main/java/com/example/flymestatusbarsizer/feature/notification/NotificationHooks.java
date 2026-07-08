@@ -105,6 +105,7 @@ public final class NotificationHooks {
         }
         hookNotificationTextTintDispatcher(module, loader);
         hookNotificationTextViewTint(module);
+        hookNotificationContentUpdateTextTint(module, loader);
         hookLiveNotificationTextTint(module, loader);
         hookLandscapeHeadsUpNotificationTextTint(module, loader);
         hookNotificationBlurMask(module, loader);
@@ -433,6 +434,30 @@ public final class NotificationHooks {
     private static void hookNotificationTextViewTint(FlymeStatusBarSizer module) {
         hookNotificationTextViewSetTextColor(module, int.class);
         hookNotificationTextViewSetTextColor(module, ColorStateList.class);
+    }
+
+    private static void hookNotificationContentUpdateTextTint(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.statusbar.notification.row.ExpandableNotificationRow",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("onNotificationUpdated");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                try {
+                    applyUpdatedNotificationTextFollowStatusBar(chain.getThisObject());
+                } catch (Throwable ignored) {
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook notification content text tint",
+                    t);
+        }
     }
 
     private static void hookNotificationTextViewSetTextColor(
@@ -891,6 +916,20 @@ public final class NotificationHooks {
                 && Color.blue(color) >= 245;
     }
 
+    private static void applyUpdatedNotificationTextFollowStatusBar(Object target) {
+        if (!(target instanceof View)) {
+            return;
+        }
+        FlymeStatusBarSizer.NotificationConfigSnapshot config =
+                FlymeStatusBarSizer.loadNotificationConfig(((View) target).getContext());
+        if (!config.enabled
+                || !config.notificationSystemBlurOnlyEnabled
+                || !config.notificationTextFollowStatusBarEnabled) {
+            return;
+        }
+        applyNotificationTextFollowStatusBar(target, true);
+    }
+
     private static void applyNotificationTextFollowStatusBar(Object target, boolean enabled) {
         View root = findNotificationTextRoot(target);
         if (root == null) {
@@ -1252,6 +1291,11 @@ public final class NotificationHooks {
         }
         View view = (View) target;
         if (isMediaNotificationRoot(view)) {
+            return view;
+        }
+        String viewClassName = view.getClass().getName();
+        if (viewClassName.contains("ExpandableNotificationRow")
+                || viewClassName.contains("NotificationContentView")) {
             return view;
         }
         View fallback = null;
