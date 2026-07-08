@@ -68,8 +68,6 @@ final class ModuleConfig {
     String windowModeSideGestureIntentUri = SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI;
     boolean windowModeSideGesturePrewarmEnabled =
             SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED;
-    boolean windowModeAppLaunchAnimationEnabled =
-            SettingsStore.DEFAULT_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED;
     boolean windowModeHoverFullscreenEnabled =
             SettingsStore.DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED;
     int windowModeHoverFullscreenTimeoutMs =
@@ -399,10 +397,6 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
                     SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED);
-            config.windowModeAppLaunchAnimationEnabled = SettingsStore.readBoolean(
-                    prefs,
-                    SettingsStore.KEY_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED,
-                    SettingsStore.DEFAULT_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED);
             config.windowModeHoverFullscreenEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED,

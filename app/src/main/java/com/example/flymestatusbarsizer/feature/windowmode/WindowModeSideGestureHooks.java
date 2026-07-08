@@ -88,7 +88,7 @@ public final class WindowModeSideGestureHooks {
                 prewarmAppLauncherWindow(chain.getThisObject());
                 return result;
             });
-            installAppLaunchAnimationHook(module, loader, clazz);
+            installNativeAppLauncherLaunchHook(module, loader, clazz);
             installNativeAppLauncherHoverFullscreenHook(module, loader);
             installNativeAppLauncherTwoRingHook(module, loader, clazz);
             Method destroyMethod = findNoArgVoidMethod(clazz, "D");
@@ -737,14 +737,12 @@ public final class WindowModeSideGestureHooks {
         return Math.toDegrees(Math.acos(value));
     }
 
-    private static void installAppLaunchAnimationHook(
+    private static void installNativeAppLauncherLaunchHook(
             FlymeStatusBarSizer module,
             ClassLoader loader,
             Class<?> appLauncherClass) {
         try {
             Class<?> itemClass = Class.forName("Y0.d", false, loader);
-            Method launchMethod = itemClass.getDeclaredMethod("G", int.class);
-            launchMethod.setAccessible(true);
             Method method = appLauncherClass.getDeclaredMethod(
                     "j",
                     itemClass,
@@ -753,10 +751,8 @@ public final class WindowModeSideGestureHooks {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Context context = resolveAppLauncherContext(chain.getThisObject());
-                View source = null;
                 if (context == null && chain.getArg(1) instanceof View) {
-                    source = (View) chain.getArg(1);
-                    context = source.getContext();
+                    context = ((View) chain.getArg(1)).getContext();
                 }
                 Object item = chain.getArg(0);
                 if (shouldLaunchFullscreenFromHover(chain.getThisObject(), context)
@@ -765,50 +761,13 @@ public final class WindowModeSideGestureHooks {
                     clearHover(resolveAppWindowGestureLauncher(chain.getThisObject()));
                     return null;
                 }
-                if (!isAppLaunchAnimationEnabled(context)) {
-                    return chain.proceed();
-                }
-                if (shouldAnimateNativeAppLaunch(item)) {
-                    source = chain.getArg(1) instanceof View ? (View) chain.getArg(1) : null;
-                    final Object launchItem = item;
-                    final int launchWay = chain.getArg(2) instanceof Integer
-                            ? (Integer) chain.getArg(2)
-                            : 0;
-                    boolean handled = WindowModeSmallWindowLaunchAnimator.play(
-                            context,
-                            source,
-                            item,
-                            () -> launchNativeWindowModeApp(launchMethod, launchItem, launchWay));
-                    if (handled) {
-                        return null;
-                    }
-                }
                 return chain.proceed();
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logWindowModeWarning(
-                    "Failed to hook Flyme window mode app launch animation",
+                    "Failed to hook Flyme window mode app launch",
                     t);
         }
-    }
-
-    private static boolean isAppLaunchAnimationEnabled(Context context) {
-        if (context == null) {
-            return false;
-        }
-        FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
-                FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
-        return config.enabled && config.appLaunchAnimationEnabled && !config.sideGestureEnabled;
-    }
-
-    private static boolean shouldAnimateNativeAppLaunch(Object item) {
-        if (item == null) {
-            return false;
-        }
-        String packageName = WindowModeSmallWindowLaunchAnimator.resolvePackageName(item);
-        return packageName != null
-                && !packageName.trim().isEmpty()
-                && !"com.meizu.aicy".equals(packageName);
     }
 
     private static void recordHoverStart(Object launcher, int index) {
@@ -885,7 +844,7 @@ public final class WindowModeSideGestureHooks {
         if (context == null || item == null) {
             return false;
         }
-        String packageName = WindowModeSmallWindowLaunchAnimator.resolvePackageName(item);
+        String packageName = resolveLauncherItemPackageName(item);
         if (packageName == null
                 || packageName.trim().isEmpty()
                 || "com.meizu.aicy".equals(packageName)) {
@@ -1072,16 +1031,6 @@ public final class WindowModeSideGestureHooks {
             return field == null ? null : field.get(target);
         } catch (Throwable ignored) {
             return null;
-        }
-    }
-
-    private static void launchNativeWindowModeApp(Method launchMethod, Object item, int way) {
-        try {
-            launchMethod.invoke(item, way);
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logWindowModeWarning(
-                    "Failed to launch Flyme window mode app after animation",
-                    t);
         }
     }
 

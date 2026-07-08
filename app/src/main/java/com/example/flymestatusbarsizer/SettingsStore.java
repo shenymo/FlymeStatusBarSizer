@@ -61,8 +61,6 @@ final class SettingsStore {
     static final String KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI = "windowmode_side_gesture_intent_uri";
     static final String KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED =
             "windowmode_side_gesture_prewarm_enabled";
-    static final String KEY_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED =
-            "windowmode_app_launch_animation_enabled";
     static final String KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED =
             "windowmode_hover_fullscreen_enabled";
     static final String KEY_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS =
@@ -189,7 +187,6 @@ final class SettingsStore {
     static final int DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION = MBACK_LONG_TOUCH_ACTION_INTENT_URI;
     static final String DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI = "";
     static final boolean DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED = false;
-    static final boolean DEFAULT_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED = true;
     static final boolean DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED = false;
     static final int DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS = 1000;
     static final boolean DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED = false;
@@ -301,7 +298,6 @@ final class SettingsStore {
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
             KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
-            KEY_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED,
             KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED,
             KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
             KEY_WINDOWMODE_RECENT_INNER_RING_ENABLED,
@@ -571,8 +567,6 @@ final class SettingsStore {
                 return DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED;
             case KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED:
                 return DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED;
-            case KEY_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED:
-                return DEFAULT_WINDOWMODE_APP_LAUNCH_ANIMATION_ENABLED;
             case KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED:
                 return DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED;
             case KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED:
