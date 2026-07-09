@@ -56,7 +56,6 @@ public final class ClockHooks {
         hookClockAndCarrierTextSize(module, loader);
         hookClockPaddingRefresh(module, loader);
         hookLockscreenCanvasClock(module, loader);
-        hookWallpaperBlurBitmapRefresh(module, loader);
     }
 
     public static void refreshTrackedViews() {
@@ -159,43 +158,6 @@ public final class ClockHooks {
                 module, loader, "com.flyme.keyguard.clock.FlymeDigitalClockLockScreen");
         hookLockscreenClockClass(
                 module, loader, "com.flyme.keyguard.clock.DigitalClockAndWeatherForLockScreen");
-    }
-
-    private static void hookWallpaperBlurBitmapRefresh(FlymeStatusBarSizer module, ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(
-                    "com.flyme.systemui.wallpaper.WallpaperBlurDrawableManager",
-                    false,
-                    loader);
-            Method method = clazz.getDeclaredMethod("setWallpaperBitmap", android.graphics.Bitmap.class);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object result = chain.proceed();
-                refreshTrackedLockscreenCanvasClocks();
-                return result;
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logClockWarning("Failed to hook wallpaper blur bitmap refresh", t);
-        }
-    }
-
-    private static void refreshTrackedLockscreenCanvasClocks() {
-        Handler handler = FlymeStatusBarSizer.getMainHandler();
-        if (handler == null) {
-            refreshTrackedLockscreenCanvasClocksNow();
-            return;
-        }
-        handler.post(ClockHooks::refreshTrackedLockscreenCanvasClocksNow);
-    }
-
-    private static void refreshTrackedLockscreenCanvasClocksNow() {
-        ArrayList<View> lockscreenClockViews =
-                new ArrayList<>(TRACKED_LOCKSCREEN_CLOCK_VIEWS.keySet());
-        for (View view : lockscreenClockViews) {
-            if (view != null) {
-                syncLockscreenCanvasClock(view);
-            }
-        }
     }
 
     private static void hookLockscreenClockClass(
