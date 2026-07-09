@@ -107,8 +107,20 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT;
     int launcherStackAppEntryVisualShiftPercent =
             SettingsStore.DEFAULT_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT;
+    int launcherStackDesktopEntryVisibleCount =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT;
+    int launcherStackDesktopEntryAnchorIndex =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX;
     int launcherStackGestureReleaseDurationMs =
             SettingsStore.DEFAULT_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS;
+    int launcherStackStableVisibleRadius =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS;
+    int launcherStackEntryLightRadius =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS;
+    int launcherStackGestureReleaseCoreRadius =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS;
+    int launcherStackAppFlowLightRadius =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS;
     int launcherStackRightBaseSpeedupPercent =
             SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT;
     int launcherStackRightSpeedupPercent =
@@ -543,8 +555,20 @@ final class ModuleConfig {
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT);
             config.launcherStackAppEntryVisualShiftPercent = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT);
+            config.launcherStackDesktopEntryVisibleCount = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT);
+            config.launcherStackDesktopEntryAnchorIndex = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX);
             config.launcherStackGestureReleaseDurationMs = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS);
+            config.launcherStackStableVisibleRadius = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS);
+            config.launcherStackEntryLightRadius = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS);
+            config.launcherStackGestureReleaseCoreRadius = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS);
+            config.launcherStackAppFlowLightRadius = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS);
             config.launcherStackRightBaseSpeedupPercent = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT);
             config.launcherStackRightSpeedupPercent = readLauncherStackParameter(

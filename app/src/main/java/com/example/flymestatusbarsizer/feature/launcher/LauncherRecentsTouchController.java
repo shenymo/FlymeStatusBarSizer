@@ -2556,11 +2556,17 @@ final class LauncherRecentsTouchController {
                 recentsView)
                 && !LauncherRecentsState.isAppToRecentsStackSettled(recentsView)
                 && Math.abs(taskIndex - resolveStackAppFlowAnchorIndex(recentsView))
-                > STACK_APP_FLOW_LIGHT_RADIUS) {
+                > stackAppFlowLightRadius(recentsView)) {
             hideStackAppFlowIfNeeded(taskView);
             return true;
         }
         return pkgName.equals(lastPkg);
+    }
+
+    private static int stackAppFlowLightRadius(View recentsView) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(recentsView);
+        return config == null ? STACK_APP_FLOW_LIGHT_RADIUS : config.stackAppFlowLightRadius;
     }
 
     private static void hideStackAppFlowIfNeeded(View taskView) {

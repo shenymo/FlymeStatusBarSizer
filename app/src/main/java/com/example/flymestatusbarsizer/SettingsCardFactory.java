@@ -377,19 +377,31 @@ final class SettingsCardFactory {
         addStackParam(content, "最大堆叠层数", "参与深度计算的最大层数。",
                 SettingsStore.KEY_LAUNCHER_STACK_MAX_LAYERS, 1, 6, "");
 
-        addStackParamHeader(content, "入场与回弹", "控制从应用进入后台和松手回弹的过渡。");
+        addStackParamHeader(content, "入场与回弹", "控制从应用进入后台、从桌面进入后台和松手回弹的过渡。");
         addStackParam(content, "入场抬升比例", "后台入场时卡片向上抬升的幅度。",
                 SettingsStore.KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT, 0, 20, "%");
         addStackParam(content, "入场初始展开比例", "入场起始阶段卡片的展开程度。",
                 SettingsStore.KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT, 0, 150, "%");
         addStackParam(content, "松手初始展开比例", "手势松开后回弹动画的起始展开程度。",
                 SettingsStore.KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT, 0, 100, "%");
-        addStackParam(content, "应用进入后台视觉偏移", "应用进入后台时当前任务的视觉偏移量。",
+        addStackParam(content, "App 入口视觉偏移", "从应用进入后台时当前任务的视觉偏移量。",
                 SettingsStore.KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT, 0, 120, "%");
+        addStackParam(content, "桌面入口显示数量", "从桌面进入后台时，轻量入场阶段参与显示的卡片数量。",
+                SettingsStore.KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT, 1, 6, "");
+        addStackParam(content, "桌面入口锚点位置", "从桌面进入后台时，轻量入场阶段的起始锚点。",
+                SettingsStore.KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX, 0, 5, "");
         addStackParam(content, "手势松手回弹时长", "上滑进入后台后，堆叠回弹动画时长。",
                 SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS, 120, 700, "ms");
 
         addStackParamHeader(content, "滑动展开", "控制横向滑动时左右堆叠展开速度。");
+        addStackParam(content, "常驻显示半径", "左右滑动稳定后，锚点两侧参与显示的卡片范围。",
+                SettingsStore.KEY_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS, 1, 5, "");
+        addStackParam(content, "入场轻量半径", "进入后台轻量阶段，锚点两侧预先参与显示的卡片范围。",
+                SettingsStore.KEY_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS, 1, 3, "");
+        addStackParam(content, "松手核心半径", "手势松开回弹时，保持完整视觉计算的卡片范围。",
+                SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS, 1, 5, "");
+        addStackParam(content, "AppFlow 轻量半径", "应用进入后台过程中，保留动态 AppFlow 的卡片范围。",
+                SettingsStore.KEY_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS, 1, 5, "");
         addStackParam(content, "右侧基础加速", "右侧卡片展开的基础加速量。",
                 SettingsStore.KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT, 0, 60, "%");
         addStackParam(content, "右侧深度加速", "越靠深层的右侧卡片展开越快。",

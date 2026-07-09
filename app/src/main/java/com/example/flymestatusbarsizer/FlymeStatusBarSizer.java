@@ -7023,7 +7023,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final float stackEntryInitialSpreadRatio;
         public final float stackReleaseInitialSpreadRatio;
         public final float appEntryVisualShift;
+        public final int desktopEntryVisibleCount;
+        public final int desktopEntryAnchorIndex;
         public final long gestureStackReleaseDurationMs;
+        public final int stackStableVisibleRadius;
+        public final int stackEntryLightRadius;
+        public final int stackGestureReleaseCoreRadius;
+        public final int stackAppFlowLightRadius;
         public final float stackRightBaseSpeedupRatio;
         public final float stackRightSpeedupRatio;
         public final float blankTapHomeExitScaleDelta;
@@ -7076,9 +7082,27 @@ public class FlymeStatusBarSizer extends XposedModule {
                     c -> c.launcherStackReleaseInitialSpreadPercent);
             appEntryVisualShift = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT,
                     c -> c.launcherStackAppEntryVisualShiftPercent);
+            desktopEntryVisibleCount = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT
+                    : config.launcherStackDesktopEntryVisibleCount;
+            desktopEntryAnchorIndex = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX
+                    : config.launcherStackDesktopEntryAnchorIndex;
             gestureStackReleaseDurationMs = config == null
                     ? SettingsStore.DEFAULT_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS
                     : config.launcherStackGestureReleaseDurationMs;
+            stackStableVisibleRadius = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS
+                    : config.launcherStackStableVisibleRadius;
+            stackEntryLightRadius = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS
+                    : config.launcherStackEntryLightRadius;
+            stackGestureReleaseCoreRadius = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS
+                    : config.launcherStackGestureReleaseCoreRadius;
+            stackAppFlowLightRadius = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS
+                    : config.launcherStackAppFlowLightRadius;
             stackRightBaseSpeedupRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT,
                     c -> c.launcherStackRightBaseSpeedupPercent);
             stackRightSpeedupRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT,

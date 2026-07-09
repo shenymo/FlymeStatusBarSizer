@@ -106,8 +106,20 @@ final class SettingsStore {
             "launcher_stack_release_initial_spread_percent";
     static final String KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT =
             "launcher_stack_app_entry_visual_shift_percent";
+    static final String KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT =
+            "launcher_stack_desktop_entry_visible_count";
+    static final String KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX =
+            "launcher_stack_desktop_entry_anchor_index";
     static final String KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS =
             "launcher_stack_gesture_release_duration_ms";
+    static final String KEY_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS =
+            "launcher_stack_stable_visible_radius";
+    static final String KEY_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS =
+            "launcher_stack_entry_light_radius";
+    static final String KEY_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS =
+            "launcher_stack_gesture_release_core_radius";
+    static final String KEY_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS =
+            "launcher_stack_app_flow_light_radius";
     static final String KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT =
             "launcher_stack_right_base_speedup_percent";
     static final String KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT =
@@ -272,7 +284,13 @@ final class SettingsStore {
     static final int DEFAULT_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT = 80;
     static final int DEFAULT_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT = 35;
     static final int DEFAULT_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT = 70;
+    static final int DEFAULT_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT = 3;
+    static final int DEFAULT_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX = 0;
     static final int DEFAULT_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS = 320;
+    static final int DEFAULT_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS = 2;
+    static final int DEFAULT_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS = 1;
+    static final int DEFAULT_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS = 2;
+    static final int DEFAULT_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS = 3;
     static final int DEFAULT_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT = 16;
     static final int DEFAULT_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT = 40;
     static final int DEFAULT_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT = 4;
@@ -373,7 +391,13 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT,
             KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT,
             KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT,
+            KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT,
+            KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX,
             KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS,
+            KEY_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS,
+            KEY_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS,
+            KEY_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS,
+            KEY_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS,
             KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT,
             KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT,
             KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT,
@@ -464,7 +488,13 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT,
             KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT,
             KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT,
+            KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT,
+            KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX,
             KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS,
+            KEY_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS,
+            KEY_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS,
+            KEY_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS,
+            KEY_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS,
             KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT,
             KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT,
             KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT,
@@ -694,8 +724,20 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT;
             case KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT;
+            case KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT:
+                return DEFAULT_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT;
+            case KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX:
+                return DEFAULT_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX;
             case KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS:
                 return DEFAULT_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS;
+            case KEY_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS:
+                return DEFAULT_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS;
+            case KEY_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS:
+                return DEFAULT_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS;
+            case KEY_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS:
+                return DEFAULT_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS;
+            case KEY_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS:
+                return DEFAULT_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS;
             case KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT;
             case KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT:
@@ -1109,8 +1151,22 @@ final class SettingsStore {
         if (KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT.equals(key)) {
             return Math.max(0, Math.min(120, value));
         }
+        if (KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT.equals(key)) {
+            return Math.max(1, Math.min(6, value));
+        }
+        if (KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX.equals(key)) {
+            return Math.max(0, Math.min(5, value));
+        }
         if (KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS.equals(key)) {
             return Math.max(120, Math.min(700, value));
+        }
+        if (KEY_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS.equals(key)
+                || KEY_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS.equals(key)
+                || KEY_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS.equals(key)) {
+            return Math.max(1, Math.min(5, value));
+        }
+        if (KEY_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS.equals(key)) {
+            return Math.max(1, Math.min(3, value));
         }
         if (KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT.equals(key)) {
             return Math.max(0, Math.min(60, value));

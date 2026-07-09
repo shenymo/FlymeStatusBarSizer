@@ -1015,11 +1015,12 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        int stableVisibleRadius = stackStableVisibleRadius(recentsView);
         int blankTapAnchorIndex = resolveStackLayoutAnchorIndex(
                 recentsView,
                 -1,
                 taskViewCount,
-                STACK_STABLE_VISIBLE_RADIUS,
+                stableVisibleRadius,
                 false);
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         float anchorVisibleOffset = 0f;
@@ -1029,7 +1030,7 @@ final class LauncherRecentsLayoutEngine {
             if (taskView == null || LauncherRecentsCompat.isDesktopTask(taskView)) {
                 continue;
             }
-            if (shouldHideStackLayoutTask(i, blankTapAnchorIndex, STACK_STABLE_VISIBLE_RADIUS)) {
+            if (shouldHideStackLayoutTask(i, blankTapAnchorIndex, stableVisibleRadius)) {
                 continue;
             }
             int rawOffset = resolveTaskRawOffset(recentsView, i);
@@ -1454,7 +1455,7 @@ final class LauncherRecentsLayoutEngine {
         try {
             return computeStackLayout(
                     recentsView,
-                    STACK_STABLE_VISIBLE_RADIUS,
+                    stackStableVisibleRadius(recentsView),
                     null,
                     targetScroll);
         } finally {
@@ -1474,7 +1475,7 @@ final class LauncherRecentsLayoutEngine {
         try {
             targetVisualStates = computeStackLayout(
                     recentsView,
-                    STACK_ENTRY_LIGHT_RADIUS,
+                    stackEntryLightRadius(recentsView),
                     null,
                     null);
         } finally {
@@ -1509,7 +1510,7 @@ final class LauncherRecentsLayoutEngine {
         return applyStackLayout(
                 recentsView,
                 captureStockState,
-                STACK_STABLE_VISIBLE_RADIUS,
+                stackStableVisibleRadius(recentsView),
                 source);
     }
 
@@ -1526,7 +1527,7 @@ final class LauncherRecentsLayoutEngine {
         applyStackLayout(
                 recentsView,
                 false,
-                Math.max(taskViewCount, STACK_STABLE_VISIBLE_RADIUS),
+                Math.max(taskViewCount, stackStableVisibleRadius(recentsView)),
                 "dismissRelayoutPreCapture");
     }
 
@@ -2272,13 +2273,14 @@ final class LauncherRecentsLayoutEngine {
                         recentsView);
         boolean appEntrySessionActive =
                 LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
-        boolean entryLightWindow = stackLayoutRadius == STACK_ENTRY_LIGHT_RADIUS
+        int entryLightRadius = stackEntryLightRadius(recentsView);
+        boolean entryLightWindow = stackLayoutRadius == entryLightRadius
                 && (gestureStackReleaseActive
                 || overviewStateStackAnimationActive
                 || appEntrySessionActive);
-        boolean appEntryLightWindow = stackLayoutRadius == STACK_ENTRY_LIGHT_RADIUS
+        boolean appEntryLightWindow = stackLayoutRadius == entryLightRadius
                 && (gestureStackReleaseActive || appEntrySessionActive);
-        boolean desktopOverviewEntryWindow = stackLayoutRadius == STACK_ENTRY_LIGHT_RADIUS
+        boolean desktopOverviewEntryWindow = stackLayoutRadius == entryLightRadius
                 && overviewStateStackAnimationActive
                 && !gestureStackReleaseActive
                 && !appEntrySessionActive
@@ -2297,8 +2299,8 @@ final class LauncherRecentsLayoutEngine {
                 entryLightWindow,
                 targetScroll);
         if (desktopOverviewEntryWindow) {
-            fillBoundaryTargetCount = Math.min(taskViewCount, 3);
-            lightAnchorIndex = 0;
+            fillBoundaryTargetCount = Math.min(taskViewCount, desktopEntryVisibleCount(recentsView));
+            lightAnchorIndex = Math.min(taskViewCount - 1, desktopEntryAnchorIndex(recentsView));
         }
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         boolean seascapeEntryWindow = entryLightWindow
@@ -2427,7 +2429,8 @@ final class LauncherRecentsLayoutEngine {
             boolean coreOnly = shouldApplyCoreOnlyDuringGestureRelease(
                     gestureStackReleaseActive,
                     i,
-                    lightAnchorIndex);
+                    lightAnchorIndex,
+                    stackGestureReleaseCoreRadius(recentsView));
             StackTaskInput input = buildStackTaskInput(layoutContext, taskView, i);
             LauncherRecentsTaskVisuals.StackTaskVisualState visualState =
                     buildStackTaskVisualState(
@@ -2457,8 +2460,20 @@ final class LauncherRecentsLayoutEngine {
             boolean gestureStackReleaseActive,
             int index,
             int anchorIndex) {
+        return shouldApplyCoreOnlyDuringGestureRelease(
+                gestureStackReleaseActive,
+                index,
+                anchorIndex,
+                STACK_GESTURE_RELEASE_CORE_RADIUS);
+    }
+
+    private static boolean shouldApplyCoreOnlyDuringGestureRelease(
+            boolean gestureStackReleaseActive,
+            int index,
+            int anchorIndex,
+            int coreRadius) {
         return gestureStackReleaseActive
-                && Math.abs(index - anchorIndex) > STACK_GESTURE_RELEASE_CORE_RADIUS;
+                && Math.abs(index - anchorIndex) > coreRadius;
     }
 
     private static boolean isStackVisualStateVisibleInViewport(
@@ -2586,7 +2601,8 @@ final class LauncherRecentsLayoutEngine {
             return 0;
         }
         if (LauncherRecentsState.isAppToRecentsStackSettled(recentsView)) {
-            return Math.min(taskViewCount, (STACK_STABLE_VISIBLE_RADIUS * 2) + 1);
+            int stableRadius = stackStableVisibleRadius(recentsView);
+            return Math.min(taskViewCount, (stableRadius * 2) + 1);
         }
         if (appEntryLightWindow) {
             return Math.min(taskViewCount, (radius * 2) + 1);
@@ -3224,10 +3240,10 @@ final class LauncherRecentsLayoutEngine {
         }
         LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.put(
                 recentsView,
-                STACK_ENTRY_LIGHT_RADIUS + STACK_LAYOUT_RECOVERY_RADIUS_STEP);
+                stackEntryLightRadius(recentsView) + STACK_LAYOUT_RECOVERY_RADIUS_STEP);
         LauncherRecentsPerf.flow("layout:recovery:schedule",
                 recentsView,
-                "radius=" + (STACK_ENTRY_LIGHT_RADIUS + STACK_LAYOUT_RECOVERY_RADIUS_STEP));
+                "radius=" + (stackEntryLightRadius(recentsView) + STACK_LAYOUT_RECOVERY_RADIUS_STEP));
         recentsView.postOnAnimation(() -> runStackLayoutRecoveryFrame(recentsView));
     }
 
@@ -3267,7 +3283,7 @@ final class LauncherRecentsLayoutEngine {
                     recentsView,
                     "radius=" + radius + " taskCount=" + taskViewCount);
             LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.remove(recentsView);
-            applyStackLayout(recentsView, false, STACK_STABLE_VISIBLE_RADIUS, "recoveryFinal");
+            applyStackLayout(recentsView, false, stackStableVisibleRadius(recentsView), "recoveryFinal");
             return;
         }
         LauncherRecentsPerf.flow("layout:recovery:frame",
@@ -3291,9 +3307,9 @@ final class LauncherRecentsLayoutEngine {
         if (LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(recentsView)
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView)) {
-            return STACK_ENTRY_LIGHT_RADIUS;
+            return stackEntryLightRadius(recentsView);
         }
-        return STACK_STABLE_VISIBLE_RADIUS;
+        return stackStableVisibleRadius(recentsView);
     }
 
     private static int resolveStackLayoutAnchorIndex(
@@ -3338,7 +3354,7 @@ final class LauncherRecentsLayoutEngine {
                 recentsView))) {
             return runningTaskChildIndex;
         }
-        if (!entryWindow && stackLayoutRadius == STACK_STABLE_VISIBLE_RADIUS) {
+        if (!entryWindow && stackLayoutRadius == stackStableVisibleRadius(recentsView)) {
             return resolveNearestStackLayoutPage(recentsView, taskViewCount, targetScroll);
         }
         if (runningTaskChildIndex >= 0) {
@@ -3366,7 +3382,7 @@ final class LauncherRecentsLayoutEngine {
                 ? scrollOverPage
                 : currentPage;
         centerPage = Math.max(0, Math.min(centerPage, Math.max(0, taskViewCount - 1)));
-        int searchRadius = STACK_STABLE_VISIBLE_RADIUS + 2;
+        int searchRadius = stackStableVisibleRadius(recentsView) + 2;
         int nearestPage = resolveNearestStackLayoutPageInRange(
                 recentsView,
                 primaryScroll,
@@ -4216,6 +4232,33 @@ final class LauncherRecentsLayoutEngine {
     static float stackContentBlurStartAlpha(View view) {
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
         return config == null ? STACK_CONTENT_BLUR_START_ALPHA : config.stackContentBlurStartAlpha;
+    }
+
+    static int desktopEntryVisibleCount(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? 3 : config.desktopEntryVisibleCount;
+    }
+
+    static int desktopEntryAnchorIndex(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? 0 : config.desktopEntryAnchorIndex;
+    }
+
+    static int stackStableVisibleRadius(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? STACK_STABLE_VISIBLE_RADIUS : config.stackStableVisibleRadius;
+    }
+
+    static int stackEntryLightRadius(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? STACK_ENTRY_LIGHT_RADIUS : config.stackEntryLightRadius;
+    }
+
+    static int stackGestureReleaseCoreRadius(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null
+                ? STACK_GESTURE_RELEASE_CORE_RADIUS
+                : config.stackGestureReleaseCoreRadius;
     }
 
     static boolean isTaskVisibleInViewport(
