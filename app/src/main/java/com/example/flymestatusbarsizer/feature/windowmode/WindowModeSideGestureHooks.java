@@ -139,7 +139,7 @@ public final class WindowModeSideGestureHooks {
                 FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
                         FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
                 if (config.enabled && config.twoRingLauncherEnabled && config.recentInnerRingEnabled) {
-                    refreshRecentPackagesCache(appWindow, context);
+                    preloadRecentRingData(appWindow);
                 }
                 return chain.proceed();
             });
@@ -403,7 +403,7 @@ public final class WindowModeSideGestureHooks {
 
     private static ArrayList<RecentPackage> readRecentPackages(Object appWindow, Context context) {
         ArrayList<RecentPackage> cached = getCachedRecentPackages();
-        return cached == null ? refreshRecentPackagesCache(appWindow, context) : cached;
+        return cached == null ? new ArrayList<>() : cached;
     }
 
     private static ArrayList<RecentPackage> refreshRecentPackagesCache(Object appWindow, Context context) {
@@ -1012,8 +1012,13 @@ public final class WindowModeSideGestureHooks {
             return;
         }
         handler.post(() -> {
-            refreshRecentPackagesCache(target, context);
-            invokeContextArg(readField(target, "g"), "P", context);
+            try {
+                refreshRecentPackagesCache(target, context);
+            } catch (Throwable t) {
+                FlymeStatusBarSizer.logWindowModeWarning(
+                        "Failed to preload Flyme recent ring cache",
+                        t);
+            }
         });
     }
 
@@ -1279,26 +1284,6 @@ public final class WindowModeSideGestureHooks {
                 Method method = clazz.getDeclaredMethod(name, int.class);
                 method.setAccessible(true);
                 method.invoke(target, value);
-                return true;
-            } catch (NoSuchMethodException ignored) {
-                clazz = clazz.getSuperclass();
-            } catch (Throwable ignored) {
-                return false;
-            }
-        }
-        return false;
-    }
-
-    private static boolean invokeContextArg(Object target, String name, Context context) {
-        if (target == null || name == null || context == null) {
-            return false;
-        }
-        Class<?> clazz = target.getClass();
-        while (clazz != null) {
-            try {
-                Method method = clazz.getDeclaredMethod(name, Context.class);
-                method.setAccessible(true);
-                method.invoke(target, context);
                 return true;
             } catch (NoSuchMethodException ignored) {
                 clazz = clazz.getSuperclass();
