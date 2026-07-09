@@ -1,7 +1,6 @@
 package com.example.flymestatusbarsizer;
 
 import android.graphics.Color;
-import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -227,28 +226,21 @@ final class SettingsCardFactory {
                 "修改 SystemUI 通知卡片的模糊背景前景色。");
         LinearLayout blurOnlyOptions = new LinearLayout(activity);
         Switch[] textColorSwitchHolder = new Switch[1];
-        TextView[] backgroundColorValueHolder = new TextView[1];
-        Switch blurOnlySwitch = activity.addSwitchRow(content, "仅保留系统模糊",
-                "开启后忽略下面的通知背景颜色，移除通知背景，只保留系统动态模糊层。",
+        Switch blurOnlySwitch = activity.addSwitchRow(content, "通知背景",
+                "移除通知原背景，只保留系统动态模糊层。",
                 SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
                 (buttonView, isChecked) -> {
-                    if (isChecked && hasNotificationBackgroundColor()) {
-                        buttonView.setChecked(false);
-                        activity.showToast("通知背景颜色为跟随系统时才能开启");
-                        return;
-                    }
                     if (textColorSwitchHolder[0] != null) {
                         textColorSwitchHolder[0].setEnabled(isChecked);
                     }
                     blurOnlyOptions.setAlpha(isChecked ? 1f : 0.45f);
-                    updateNotificationBackgroundColorEnabled(backgroundColorValueHolder[0], !isChecked);
                 });
         blurOnlyOptions.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams blurOnlyOptionsLp = PageViewUtils.matchWrap();
         blurOnlyOptionsLp.leftMargin = activity.dp(12);
-        activity.addChoiceRow(blurOnlyOptions, "模糊承载层颜色",
-                "仅保留系统模糊时生效；跟随系统会在日间使用淡白色，夜间使用淡黑色。",
+        activity.addChoiceRow(blurOnlyOptions, "通知背景模式",
+                "跟随系统会按系统日间、夜间模式切换承载层颜色。",
                 SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE,
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE,
                 new int[]{
@@ -256,25 +248,33 @@ final class SettingsCardFactory {
                         SettingsStore.NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_LIGHT,
                         SettingsStore.NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_DARK
                 },
-                new String[]{"跟随系统", "淡白色", "淡黑色"});
+                new String[]{"跟随系统", "日间模式", "夜间模式"});
+        activity.addTextSettingRow(blurOnlyOptions, "日间模式",
+                "填写日间承载层颜色，格式为 #AARRGGBB。",
+                SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR,
+                SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR,
+                SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR,
+                SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR,
+                true,
+                "恢复默认",
+                SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR);
+        activity.addTextSettingRow(blurOnlyOptions, "夜间模式",
+                "填写夜间承载层颜色，格式为 #AARRGGBB。",
+                SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR,
+                SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR,
+                SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR,
+                SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR,
+                true,
+                "恢复默认",
+                SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR);
         Switch textColorSwitch = activity.addSwitchRow(blurOnlyOptions, "通知字体跟随状态栏",
-                "通知文字跟随当前状态栏图标颜色，只在仅保留系统模糊时生效。",
+                "通知文字跟随当前状态栏图标颜色，只在通知背景开启时生效。",
                 SettingsStore.KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,
                 SettingsStore.DEFAULT_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED);
         textColorSwitchHolder[0] = textColorSwitch;
         textColorSwitch.setEnabled(blurOnlySwitch.isChecked());
         blurOnlyOptions.setAlpha(blurOnlySwitch.isChecked() ? 1f : 0.45f);
         content.addView(blurOnlyOptions, blurOnlyOptionsLp);
-        activity.addDivider(content);
-        TextView backgroundColorValue = activity.addTextSettingRow(content, "通知背景颜色",
-                "填写 #AARRGGBB。留空跟随系统；可填 #1A000000；上方开关开启时此项不生效。",
-                SettingsStore.KEY_NOTIFICATION_BACKGROUND_COLOR,
-                SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_COLOR,
-                "跟随系统",
-                "#1A000000",
-                true);
-        backgroundColorValueHolder[0] = backgroundColorValue;
-        updateNotificationBackgroundColorEnabled(backgroundColorValue, !blurOnlySwitch.isChecked());
         activity.addDivider(content);
         activity.addActionButtonRow(content, "重启 SystemUI",
                 "通知背景需要重启 SystemUI 后刷新。",
@@ -935,18 +935,4 @@ final class SettingsCardFactory {
                 new String[]{"0 格", "1 格", "2 格", "3 格", "4 格"});
     }
 
-    private boolean hasNotificationBackgroundColor() {
-        String value = activity.readStringSetting(
-                SettingsStore.KEY_NOTIFICATION_BACKGROUND_COLOR,
-                SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_COLOR);
-        return !TextUtils.isEmpty(SettingsStore.normalizeColorString(value));
-    }
-
-    private void updateNotificationBackgroundColorEnabled(TextView valueView, boolean enabled) {
-        if (valueView == null) {
-            return;
-        }
-        valueView.setEnabled(enabled);
-        valueView.setAlpha(enabled ? 1f : 0.45f);
-    }
 }

@@ -6973,10 +6973,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean notificationAppIconEnabled;
         public final int notificationAppIconSizeDp;
         public final int notificationAppIconPaddingDp;
-        public final boolean notificationBackgroundColorEnabled;
-        public final int notificationBackgroundColor;
         public final boolean notificationSystemBlurOnlyEnabled;
         public final int notificationSystemBlurCarrierColorMode;
+        public final int notificationSystemBlurLightColor;
+        public final int notificationSystemBlurDarkColor;
         public final boolean notificationTextFollowStatusBarEnabled;
 
         private NotificationConfigSnapshot(ModuleConfig config) {
@@ -6984,17 +6984,24 @@ public class FlymeStatusBarSizer extends XposedModule {
             notificationAppIconEnabled = config != null && config.notificationAppIconEnabled;
             notificationAppIconSizeDp = config == null ? 0 : config.notificationAppIconSizeDp;
             notificationAppIconPaddingDp = config == null ? 0 : config.notificationAppIconPaddingDp;
-            Integer color = config == null
-                    ? null
-                    : SettingsStore.parseColorString(config.notificationBackgroundColor);
-            notificationBackgroundColorEnabled = enabled && color != null;
-            notificationBackgroundColor = color == null ? 0 : color;
             notificationSystemBlurOnlyEnabled = enabled
                     && config != null
                     && config.notificationSystemBlurOnlyEnabled;
             notificationSystemBlurCarrierColorMode = config == null
                     ? SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE
                     : config.notificationSystemBlurCarrierColorMode;
+            Integer lightColor = config == null
+                    ? null
+                    : SettingsStore.parseColorString(config.notificationSystemBlurLightColor);
+            Integer darkColor = config == null
+                    ? null
+                    : SettingsStore.parseColorString(config.notificationSystemBlurDarkColor);
+            notificationSystemBlurLightColor = lightColor == null
+                    ? SettingsStore.parseColorString(SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR)
+                    : lightColor;
+            notificationSystemBlurDarkColor = darkColor == null
+                    ? SettingsStore.parseColorString(SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR)
+                    : darkColor;
             notificationTextFollowStatusBarEnabled = notificationSystemBlurOnlyEnabled
                     && config.notificationTextFollowStatusBarEnabled;
         }

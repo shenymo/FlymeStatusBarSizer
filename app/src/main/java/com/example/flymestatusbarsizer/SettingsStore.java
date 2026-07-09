@@ -94,6 +94,10 @@ final class SettingsStore {
             "notification_system_blur_only_enabled";
     static final String KEY_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE =
             "notification_system_blur_carrier_color_mode";
+    static final String KEY_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR =
+            "notification_system_blur_light_color";
+    static final String KEY_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR =
+            "notification_system_blur_dark_color";
     static final String KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED =
             "notification_text_follow_status_bar_enabled";
     static final String KEY_MBACK_INSET_SIZE = "mback_inset_size";
@@ -214,6 +218,8 @@ final class SettingsStore {
     static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_DARK = 2;
     static final int DEFAULT_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE =
             NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_FOLLOW_SYSTEM;
+    static final String DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR = "#26FFFFFF";
+    static final String DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR = "#331A1A1A";
     static final boolean DEFAULT_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED = false;
     static final int DEFAULT_MBACK_INSET_SIZE = -1;
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
@@ -338,6 +344,8 @@ final class SettingsStore {
             KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
             KEY_LAUNCHER_FOLDER_BG_COLOR,
             KEY_NOTIFICATION_BACKGROUND_COLOR,
+            KEY_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR,
+            KEY_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR,
             KEY_IME_CONTROL_BAR_BUTTON_SLOTS
     };
 
@@ -645,6 +653,12 @@ final class SettingsStore {
         }
         if (KEY_NOTIFICATION_BACKGROUND_COLOR.equals(key)) {
             return DEFAULT_NOTIFICATION_BACKGROUND_COLOR;
+        }
+        if (KEY_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR.equals(key)) {
+            return DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR;
+        }
+        if (KEY_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR.equals(key)) {
+            return DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR;
         }
         if (KEY_IME_CONTROL_BAR_BUTTON_SLOTS.equals(key)) {
             return DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;

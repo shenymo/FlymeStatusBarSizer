@@ -96,11 +96,14 @@ final class ModuleConfig {
     boolean launcherIosStackRecentsClearAllButtonEnabled =
             SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED;
     String launcherFolderBgColor = SettingsStore.DEFAULT_LAUNCHER_FOLDER_BG_COLOR;
-    String notificationBackgroundColor = SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_COLOR;
     boolean notificationSystemBlurOnlyEnabled =
             SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED;
     int notificationSystemBlurCarrierColorMode =
             SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE;
+    String notificationSystemBlurLightColor =
+            SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR;
+    String notificationSystemBlurDarkColor =
+            SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR;
     boolean notificationTextFollowStatusBarEnabled =
             SettingsStore.DEFAULT_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED;
     boolean mbackHidePill = SettingsStore.DEFAULT_MBACK_HIDE_PILL;
@@ -481,11 +484,6 @@ final class ModuleConfig {
                             prefs,
                             SettingsStore.KEY_LAUNCHER_FOLDER_BG_COLOR,
                             SettingsStore.DEFAULT_LAUNCHER_FOLDER_BG_COLOR));
-            config.notificationBackgroundColor = SettingsStore.normalizeColorString(
-                    SettingsStore.readString(
-                            prefs,
-                            SettingsStore.KEY_NOTIFICATION_BACKGROUND_COLOR,
-                            SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_COLOR));
             config.notificationSystemBlurOnlyEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
@@ -494,6 +492,16 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE,
                     SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE);
+            config.notificationSystemBlurLightColor = SettingsStore.normalizeColorString(
+                    SettingsStore.readString(
+                            prefs,
+                            SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR,
+                            SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR));
+            config.notificationSystemBlurDarkColor = SettingsStore.normalizeColorString(
+                    SettingsStore.readString(
+                            prefs,
+                            SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR,
+                            SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR));
             config.notificationTextFollowStatusBarEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,

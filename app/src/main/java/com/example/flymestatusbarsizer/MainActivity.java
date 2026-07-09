@@ -863,6 +863,13 @@ public class MainActivity extends Activity {
 
     TextView addTextSettingRow(LinearLayout root, String titleText, String subtitleText,
             String key, String defaultValue, String emptyLabel, String inputHint, boolean plainTextInput) {
+        return addTextSettingRow(root, titleText, subtitleText, key, defaultValue, emptyLabel,
+                inputHint, plainTextInput, "清空", "");
+    }
+
+    TextView addTextSettingRow(LinearLayout root, String titleText, String subtitleText,
+            String key, String defaultValue, String emptyLabel, String inputHint, boolean plainTextInput,
+            String neutralButtonText, String neutralValue) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -891,6 +898,8 @@ public class MainActivity extends Activity {
                 subtitleText,
                 inputHint,
                 plainTextInput,
+                neutralButtonText,
+                neutralValue,
                 value -> {
                     putStringSetting(key, value);
                     updateTextSettingLabel(valueView, value, emptyLabel);
@@ -1343,6 +1352,13 @@ public class MainActivity extends Activity {
 
     void showTextInputDialog(String titleText, String currentValue, String message,
             String inputHint, boolean plainTextInput, TextValueConsumer consumer) {
+        showTextInputDialog(titleText, currentValue, message, inputHint, plainTextInput,
+                "清空", "", consumer);
+    }
+
+    void showTextInputDialog(String titleText, String currentValue, String message,
+            String inputHint, boolean plainTextInput, String neutralButtonText,
+            String neutralValue, TextValueConsumer consumer) {
         EditText input = new EditText(this);
         input.setText(currentValue == null ? "" : currentValue);
         input.setSelection(input.getText().length());
@@ -1364,7 +1380,8 @@ public class MainActivity extends Activity {
                 .setTitle(titleText)
                 .setMessage(message)
                 .setView(input)
-                .setNeutralButton("清空", (dialogInterface, which) -> consumer.accept(""))
+                .setNeutralButton(neutralButtonText,
+                        (dialogInterface, which) -> consumer.accept(neutralValue))
                 .setNegativeButton("\u53d6\u6d88", null)
                 .setPositiveButton("\u786e\u5b9a", (dialogInterface, which) ->
                         consumer.accept(input.getText() == null ? "" : input.getText().toString().trim()))

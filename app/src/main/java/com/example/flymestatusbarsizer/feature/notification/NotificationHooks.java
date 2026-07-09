@@ -46,13 +46,11 @@ public final class NotificationHooks {
     private static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
     private static final int DEFAULT_NOTIFICATION_APP_ICON_INSET_DP = 1;
     private static final int MAX_RENDERED_NOTIFICATION_APP_ICON_CACHE_SIZE = 64;
-    private static final int FLYME_LIGHT_NOTIFICATION_BLUR_MASK = 0xB2FFFFFF;
-    private static final int FLYME_DARK_NOTIFICATION_BLUR_MASK = 0xB21A1A1A;
     private static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_FOLLOW_SYSTEM = 0;
     private static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_LIGHT = 1;
     private static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_DARK = 2;
-    private static final int NOTIFICATION_SYSTEM_BLUR_ONLY_LIGHT_COLOR = 0x26FFFFFF;
-    private static final int NOTIFICATION_SYSTEM_BLUR_ONLY_DARK_COLOR = 0x331A1A1A;
+    private static final int DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR = 0x26FFFFFF;
+    private static final int DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR = 0x331A1A1A;
 
     private static volatile Method flymeGetApplicationIconMethod;
     private static volatile Method flymeClearApplicationIconCacheMethod;
@@ -599,33 +597,22 @@ public final class NotificationHooks {
                     return chain.proceed();
                 }
                 Object target = chain.getThisObject();
-                FlymeStatusBarSizer.NotificationConfigSnapshot config =
-                        target instanceof View
-                                ? FlymeStatusBarSizer.loadNotificationConfig(
-                                        ((View) target).getContext())
-                                : FlymeStatusBarSizer.loadNotificationConfig(null);
-                if (!config.enabled
-                        || (!config.notificationSystemBlurOnlyEnabled
-                        && !config.notificationBackgroundColorEnabled)) {
-                    applyNotificationTextFollowStatusBar(target, false);
+                if (!(target instanceof View)) {
                     return chain.proceed();
                 }
-                if (!config.notificationSystemBlurOnlyEnabled
-                        && !shouldReplaceNotificationBackgroundColor((Integer) colorArg)) {
+                FlymeStatusBarSizer.NotificationConfigSnapshot config =
+                        FlymeStatusBarSizer.loadNotificationConfig(((View) target).getContext());
+                if (!config.enabled || !config.notificationSystemBlurOnlyEnabled) {
+                    applyNotificationTextFollowStatusBar(target, false);
                     return chain.proceed();
                 }
                 Object[] args;
                 try {
                     applyNotificationTextFollowStatusBar(
                             target,
-                            config.notificationSystemBlurOnlyEnabled
-                                    && config.notificationTextFollowStatusBarEnabled);
+                            config.notificationTextFollowStatusBarEnabled);
                     args = chain.getArgs().toArray();
-                    if (config.notificationSystemBlurOnlyEnabled) {
-                        args[1] = resolveNotificationSystemBlurOnlyColor((View) target, config);
-                    } else {
-                        args[1] = config.notificationBackgroundColor;
-                    }
+                    args[1] = resolveNotificationSystemBlurOnlyColor((View) target, config);
                 } catch (Throwable t) {
                     FlymeStatusBarSizer.logNotificationWarning(
                             "Failed to apply notification background color",
@@ -922,15 +909,21 @@ public final class NotificationHooks {
         int mode = config == null
                 ? NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_FOLLOW_SYSTEM
                 : config.notificationSystemBlurCarrierColorMode;
+        int lightColor = config == null
+                ? DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR
+                : config.notificationSystemBlurLightColor;
+        int darkColor = config == null
+                ? DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR
+                : config.notificationSystemBlurDarkColor;
         if (mode == NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_LIGHT) {
-            return NOTIFICATION_SYSTEM_BLUR_ONLY_LIGHT_COLOR;
+            return lightColor;
         }
         if (mode == NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_DARK) {
-            return NOTIFICATION_SYSTEM_BLUR_ONLY_DARK_COLOR;
+            return darkColor;
         }
         return isNightMode(view)
-                ? NOTIFICATION_SYSTEM_BLUR_ONLY_DARK_COLOR
-                : NOTIFICATION_SYSTEM_BLUR_ONLY_LIGHT_COLOR;
+                ? darkColor
+                : lightColor;
     }
 
     private static boolean isNightMode(View view) {
@@ -957,18 +950,6 @@ public final class NotificationHooks {
             current = current.getSuperclass();
         }
         return false;
-    }
-
-    private static boolean shouldReplaceNotificationBackgroundColor(int color) {
-        if (color == FLYME_LIGHT_NOTIFICATION_BLUR_MASK
-                || color == FLYME_DARK_NOTIFICATION_BLUR_MASK) {
-            return true;
-        }
-        int alpha = Color.alpha(color);
-        return alpha > 0
-                && Color.red(color) >= 245
-                && Color.green(color) >= 245
-                && Color.blue(color) >= 245;
     }
 
     private static void applyUpdatedNotificationTextFollowStatusBar(Object target) {
