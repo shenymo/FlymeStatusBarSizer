@@ -92,6 +92,8 @@ final class SettingsStore {
     static final String KEY_NOTIFICATION_BACKGROUND_COLOR = "notification_background_color";
     static final String KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED =
             "notification_system_blur_only_enabled";
+    static final String KEY_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE =
+            "notification_system_blur_carrier_color_mode";
     static final String KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED =
             "notification_text_follow_status_bar_enabled";
     static final String KEY_MBACK_INSET_SIZE = "mback_inset_size";
@@ -207,6 +209,11 @@ final class SettingsStore {
     static final String DEFAULT_LAUNCHER_FOLDER_BG_COLOR = "";
     static final String DEFAULT_NOTIFICATION_BACKGROUND_COLOR = "";
     static final boolean DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED = false;
+    static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_FOLLOW_SYSTEM = 0;
+    static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_LIGHT = 1;
+    static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_DARK = 2;
+    static final int DEFAULT_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE =
+            NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_FOLLOW_SYSTEM;
     static final boolean DEFAULT_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED = false;
     static final int DEFAULT_MBACK_INSET_SIZE = -1;
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
@@ -269,6 +276,7 @@ final class SettingsStore {
             KEY_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT,
             KEY_NOTIFICATION_APP_ICON_SIZE_DP,
             KEY_NOTIFICATION_APP_ICON_PADDING_DP,
+            KEY_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE,
             KEY_MBACK_INSET_SIZE,
             KEY_MBACK_NAV_BAR_HEIGHT,
             KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
@@ -507,6 +515,8 @@ final class SettingsStore {
                 return DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
             case KEY_NOTIFICATION_APP_ICON_PADDING_DP:
                 return DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP;
+            case KEY_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE:
+                return DEFAULT_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE;
             case KEY_MBACK_INSET_SIZE:
                 return DEFAULT_MBACK_INSET_SIZE;
             case KEY_MBACK_NAV_BAR_HEIGHT:

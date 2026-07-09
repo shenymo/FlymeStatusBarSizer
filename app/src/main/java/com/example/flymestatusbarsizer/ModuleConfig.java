@@ -99,6 +99,8 @@ final class ModuleConfig {
     String notificationBackgroundColor = SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_COLOR;
     boolean notificationSystemBlurOnlyEnabled =
             SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED;
+    int notificationSystemBlurCarrierColorMode =
+            SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE;
     boolean notificationTextFollowStatusBarEnabled =
             SettingsStore.DEFAULT_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED;
     boolean mbackHidePill = SettingsStore.DEFAULT_MBACK_HIDE_PILL;
@@ -488,6 +490,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
                     SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED);
+            config.notificationSystemBlurCarrierColorMode = SettingsStore.readInt(
+                    prefs,
+                    SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE,
+                    SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE);
             config.notificationTextFollowStatusBarEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,

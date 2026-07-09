@@ -240,6 +240,16 @@ final class SettingsCardFactory {
         blurOnlyOptions.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams blurOnlyOptionsLp = PageViewUtils.matchWrap();
         blurOnlyOptionsLp.leftMargin = activity.dp(12);
+        activity.addChoiceRow(blurOnlyOptions, "模糊承载层颜色",
+                "仅保留系统模糊时生效；跟随系统会在日间使用淡白色，夜间使用淡黑色。",
+                SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE,
+                SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE,
+                new int[]{
+                        SettingsStore.NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_FOLLOW_SYSTEM,
+                        SettingsStore.NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_LIGHT,
+                        SettingsStore.NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_DARK
+                },
+                new String[]{"跟随系统", "淡白色", "淡黑色"});
         Switch textColorSwitch = activity.addSwitchRow(blurOnlyOptions, "通知字体跟随状态栏",
                 "通知文字跟随当前状态栏图标颜色，只在仅保留系统模糊时生效。",
                 SettingsStore.KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,

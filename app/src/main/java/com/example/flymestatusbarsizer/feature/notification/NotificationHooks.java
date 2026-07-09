@@ -48,7 +48,11 @@ public final class NotificationHooks {
     private static final int MAX_RENDERED_NOTIFICATION_APP_ICON_CACHE_SIZE = 64;
     private static final int FLYME_LIGHT_NOTIFICATION_BLUR_MASK = 0xB2FFFFFF;
     private static final int FLYME_DARK_NOTIFICATION_BLUR_MASK = 0xB21A1A1A;
-    private static final int NOTIFICATION_SYSTEM_BLUR_ONLY_COLOR = 0x1AFFFFFF;
+    private static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_FOLLOW_SYSTEM = 0;
+    private static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_LIGHT = 1;
+    private static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_DARK = 2;
+    private static final int NOTIFICATION_SYSTEM_BLUR_ONLY_LIGHT_COLOR = 0x26FFFFFF;
+    private static final int NOTIFICATION_SYSTEM_BLUR_ONLY_DARK_COLOR = 0x331A1A1A;
 
     private static volatile Method flymeGetApplicationIconMethod;
     private static volatile Method flymeClearApplicationIconCacheMethod;
@@ -618,7 +622,7 @@ public final class NotificationHooks {
                                     && config.notificationTextFollowStatusBarEnabled);
                     args = chain.getArgs().toArray();
                     if (config.notificationSystemBlurOnlyEnabled) {
-                        args[1] = NOTIFICATION_SYSTEM_BLUR_ONLY_COLOR;
+                        args[1] = resolveNotificationSystemBlurOnlyColor((View) target, config);
                     } else {
                         args[1] = config.notificationBackgroundColor;
                     }
@@ -670,7 +674,7 @@ public final class NotificationHooks {
                     return chain.proceed();
                 }
                 Object[] args = chain.getArgs().toArray();
-                args[4] = NOTIFICATION_SYSTEM_BLUR_ONLY_COLOR;
+                args[4] = resolveNotificationSystemBlurOnlyColor((View) target);
                 return chain.proceed(args);
             });
         } catch (Throwable t) {
@@ -730,7 +734,7 @@ public final class NotificationHooks {
                 return chain.proceed();
             }
             Object[] args = chain.getArgs().toArray();
-            args[colorArgIndex] = NOTIFICATION_SYSTEM_BLUR_ONLY_COLOR;
+            args[colorArgIndex] = resolveNotificationSystemBlurOnlyColor((View) target);
             return chain.proceed(args);
         });
     }
@@ -905,6 +909,38 @@ public final class NotificationHooks {
         FlymeStatusBarSizer.NotificationConfigSnapshot config =
                 FlymeStatusBarSizer.loadNotificationConfig(view.getContext());
         return config.enabled && config.notificationSystemBlurOnlyEnabled;
+    }
+
+    private static int resolveNotificationSystemBlurOnlyColor(View view) {
+        FlymeStatusBarSizer.NotificationConfigSnapshot config =
+                FlymeStatusBarSizer.loadNotificationConfig(view.getContext());
+        return resolveNotificationSystemBlurOnlyColor(view, config);
+    }
+
+    private static int resolveNotificationSystemBlurOnlyColor(
+            View view, FlymeStatusBarSizer.NotificationConfigSnapshot config) {
+        int mode = config == null
+                ? NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_FOLLOW_SYSTEM
+                : config.notificationSystemBlurCarrierColorMode;
+        if (mode == NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_LIGHT) {
+            return NOTIFICATION_SYSTEM_BLUR_ONLY_LIGHT_COLOR;
+        }
+        if (mode == NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_DARK) {
+            return NOTIFICATION_SYSTEM_BLUR_ONLY_DARK_COLOR;
+        }
+        return isNightMode(view)
+                ? NOTIFICATION_SYSTEM_BLUR_ONLY_DARK_COLOR
+                : NOTIFICATION_SYSTEM_BLUR_ONLY_LIGHT_COLOR;
+    }
+
+    private static boolean isNightMode(View view) {
+        Context context = view == null ? null : view.getContext();
+        if (context == null) {
+            return false;
+        }
+        int nightMode = context.getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK;
+        return nightMode == Configuration.UI_MODE_NIGHT_YES;
     }
 
     private static boolean isNotificationBlurTarget(View view) {

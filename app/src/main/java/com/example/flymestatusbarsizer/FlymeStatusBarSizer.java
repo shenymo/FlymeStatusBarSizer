@@ -6976,6 +6976,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean notificationBackgroundColorEnabled;
         public final int notificationBackgroundColor;
         public final boolean notificationSystemBlurOnlyEnabled;
+        public final int notificationSystemBlurCarrierColorMode;
         public final boolean notificationTextFollowStatusBarEnabled;
 
         private NotificationConfigSnapshot(ModuleConfig config) {
@@ -6991,6 +6992,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             notificationSystemBlurOnlyEnabled = enabled
                     && config != null
                     && config.notificationSystemBlurOnlyEnabled;
+            notificationSystemBlurCarrierColorMode = config == null
+                    ? SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE
+                    : config.notificationSystemBlurCarrierColorMode;
             notificationTextFollowStatusBarEnabled = notificationSystemBlurOnlyEnabled
                     && config.notificationTextFollowStatusBarEnabled;
         }
