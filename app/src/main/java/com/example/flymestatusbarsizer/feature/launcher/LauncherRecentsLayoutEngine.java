@@ -28,8 +28,6 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
     private static final float APP_ENTRY_VISUAL_SHIFT = 0.70f;
     private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
-    private static final float STACK_LEFT_RELEASE_START_PROGRESS = -1.25f;
-    private static final float STACK_LEFT_RELEASE_END_PROGRESS = -2.10f;
     private static final float STACK_MIN_SCALE = 0.92f;
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.04f;
@@ -1185,14 +1183,14 @@ final class LauncherRecentsLayoutEngine {
                 float taskStartPx = taskCenteredPrimaryStartPx + controlVisibleOffset;
                 float exitTravelPx = Math.max(
                         taskStartPx + taskPrimarySize + exitMarginPx,
-                        taskPrimarySize * (1f + BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO));
+                        taskPrimarySize * (1f + blankTapHomeExitExtraTravelRatio(recentsView)));
                 float exitVisibleOffset = controlVisibleOffset - exitTravelPx;
                 desiredVisibleOffset = quadraticBezier(
                         state.startVisibleOffset,
                         controlVisibleOffset,
                         exitVisibleOffset,
                         pathProgress);
-                desiredScale *= 1.0f - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * pathProgress);
+                desiredScale *= 1.0f - (blankTapHomeExitScaleDelta(recentsView) * pathProgress);
                 desiredStableAlpha *= exitAlpha;
                 desiredAttachAlpha *= exitAlpha;
             } else {
@@ -2730,7 +2728,7 @@ final class LauncherRecentsLayoutEngine {
         float layoutProgress =
                 (rawOffset + resolveEdgeScrollCorrection(recentsView)) / pageSpan;
         if (isAppEntryVisualShiftActive(recentsView)) {
-            layoutProgress += APP_ENTRY_VISUAL_SHIFT;
+            layoutProgress += appEntryVisualShift(recentsView);
         }
         return resolveStackVisibleOffset(
                 recentsView,
@@ -2766,7 +2764,7 @@ final class LauncherRecentsLayoutEngine {
                 taskPrimarySize,
                 visibleOffset,
                 primaryScrollHorizontal);
-        return lerp(STACK_MIN_SCALE, 1f, layerProgress);
+        return lerp(stackMinScale(recentsView), 1f, layerProgress);
     }
 
     static int resolveAppEntryAnchorTargetScroll(View recentsView, int anchorPage, int fallback) {
@@ -2784,7 +2782,7 @@ final class LauncherRecentsLayoutEngine {
                 1f,
                 resolvePrimarySize(recentsView, primaryScrollHorizontal)
                         + LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0));
-        return targetScroll - Math.round(APP_ENTRY_VISUAL_SHIFT * pageSpan);
+        return targetScroll - Math.round(appEntryVisualShift(recentsView) * pageSpan);
     }
 
     private static boolean isRunningTaskBetweenTwoTasks(View recentsView, int anchorPage) {
@@ -2918,11 +2916,11 @@ final class LauncherRecentsLayoutEngine {
                     context.overviewStateStackHandoffProgress);
         }
         float stackEntryLiftPx = Math.min(
-                input.taskHeight * STACK_ENTRY_LIFT_RATIO,
+                input.taskHeight * stackEntryLiftRatio(context.recentsView),
                 FlymeStatusBarSizer.dp(context.recentsView.getContext(), 40));
         float visualLayoutProgress = input.layoutProgress;
         if (isAppEntryVisualShiftActive(context)) {
-            visualLayoutProgress += APP_ENTRY_VISUAL_SHIFT;
+            visualLayoutProgress += appEntryVisualShift(context.recentsView);
         }
         float finalVisibleOffset = resolveStackVisibleOffset(
                 context.recentsView,
@@ -2932,6 +2930,7 @@ final class LauncherRecentsLayoutEngine {
                 context.primaryScrollHorizontal);
         float finalTaskOffsetY = stackEntryLiftPx * (1.0f - context.stackVerticalProgress);
         float taskEntryProgress = resolveTaskStackEntryProgress(
+                context.recentsView,
                 context.stackEntryProgress,
                 input.collapsedReferenceProgress);
         float collapsedVisibleOffset = resolveStackVisibleOffset(
@@ -2939,14 +2938,14 @@ final class LauncherRecentsLayoutEngine {
                 input.collapsedReferenceProgress,
                 input.taskPrimarySize,
                 input.taskCenteredPrimaryStartPx,
-                context.primaryScrollHorizontal) * STACK_ENTRY_INITIAL_SPREAD_RATIO;
+                context.primaryScrollHorizontal) * stackEntryInitialSpreadRatio(context.recentsView);
         float desiredVisibleOffset = lerp(
                 collapsedVisibleOffset,
                 finalVisibleOffset,
                 taskEntryProgress);
         if (context.gestureStackReleaseActive) {
             desiredVisibleOffset *= lerp(
-                    STACK_RELEASE_INITIAL_SPREAD_RATIO,
+                    stackReleaseInitialSpreadRatio(context.recentsView),
                     1.0f,
                     smoothStep(context.stackReleaseProgress));
         }
@@ -2956,7 +2955,7 @@ final class LauncherRecentsLayoutEngine {
                 input.taskPrimarySize,
                 desiredVisibleOffset,
                 context.primaryScrollHorizontal);
-        float desiredScale = lerp(STACK_MIN_SCALE, 1.0f, desiredLayerProgress);
+        float desiredScale = lerp(stackMinScale(context.recentsView), 1.0f, desiredLayerProgress);
         float desiredTaskOffsetY = lerp(
                 0f,
                 finalTaskOffsetY,
@@ -3001,14 +3000,14 @@ final class LauncherRecentsLayoutEngine {
                         taskStartPx + input.taskPrimarySize + FlymeStatusBarSizer.dp(
                                 context.recentsView.getContext(),
                                 64),
-                        input.taskPrimarySize * (1f + BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO));
+                        input.taskPrimarySize * (1f + blankTapHomeExitExtraTravelRatio(context.recentsView)));
                 float exitVisibleOffset = controlVisibleOffset - exitTravelPx;
                 desiredVisibleOffset = quadraticBezier(
                         startVisibleOffset,
                         controlVisibleOffset,
                         exitVisibleOffset,
                         pathProgress);
-                desiredScale *= 1.0f - (BLANK_TAP_HOME_EXIT_SCALE_DELTA * pathProgress);
+                desiredScale *= 1.0f - (blankTapHomeExitScaleDelta(context.recentsView) * pathProgress);
                 float exitAlpha = resolveBlankTapExitAlpha(
                         pathProgress,
                         blankTapExitState.centerVisibleOffset);
@@ -3035,6 +3034,7 @@ final class LauncherRecentsLayoutEngine {
         float targetBlurProgress = 0f;
         if (!coreOnly && context.stackContentBlurEnabled) {
             targetBlurProgress = resolveStackContentBlurProgress(
+                    context.recentsView,
                     stackLeftClampAlpha,
                     taskEntryProgress);
             if (blankTapExitTaskActive) {
@@ -3700,11 +3700,12 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static float resolveStackContentBlurProgress(
+            View recentsView,
             float stackLeftClampAlpha,
             float stackEntryProgress) {
         float alphaFadeProgress = remapProgress(
                 1f - stackLeftClampAlpha,
-                1f - STACK_CONTENT_BLUR_START_ALPHA,
+                1f - stackContentBlurStartAlpha(recentsView),
                 1f);
         return clamp(alphaFadeProgress * stackEntryProgress, 0f, 1f);
     }
@@ -3974,7 +3975,7 @@ final class LauncherRecentsLayoutEngine {
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx,
                 primaryScrollHorizontal);
-        return progress >= 0f ? visibleOffset : -(visibleOffset * STACK_LEFT_MOVE_RATIO);
+        return progress >= 0f ? visibleOffset : -(visibleOffset * stackLeftMoveRatio(recentsView));
     }
 
     private static float resolveStackVirtualVisibleOffset(
@@ -3986,7 +3987,7 @@ final class LauncherRecentsLayoutEngine {
         float stackRightOffsetPx = Math.max(
                 0f,
                 resolvePrimarySize(recentsView, primaryScrollHorizontal)
-                        - (taskPrimarySize * STACK_RIGHT_VISIBLE_RATIO)
+                        - (taskPrimarySize * stackRightVisibleRatio(recentsView))
                         - taskCenteredPrimaryStartPx);
         float stackDepth = Math.abs(progress);
         if (stackDepth <= 0.001f) {
@@ -3994,8 +3995,8 @@ final class LauncherRecentsLayoutEngine {
         }
         float stackSpreadProgress = stackDepth;
         if (progress > 0f) {
-            stackSpreadProgress += (STACK_RIGHT_BASE_SPEEDUP_RATIO * stackDepth)
-                    + (STACK_RIGHT_SPEEDUP_RATIO * stackDepth * stackDepth);
+            stackSpreadProgress += (stackRightBaseSpeedupRatio(recentsView) * stackDepth)
+                    + (stackRightSpeedupRatio(recentsView) * stackDepth * stackDepth);
         }
         return stackRightOffsetPx * stackSpreadProgress;
     }
@@ -4004,7 +4005,7 @@ final class LauncherRecentsLayoutEngine {
             View recentsView,
             float taskPrimarySize,
             float taskCenteredPrimaryStartPx) {
-        return -taskCenteredPrimaryStartPx + (taskPrimarySize * STACK_LEFT_REST_INSET_RATIO);
+        return -taskCenteredPrimaryStartPx + (taskPrimarySize * stackLeftRestInsetRatio(recentsView));
     }
 
     private static float resolveStackLeftClampAlpha(
@@ -4091,7 +4092,8 @@ final class LauncherRecentsLayoutEngine {
             return 0f;
         }
         float position = clamp(visibleIndex / (float) (visibleCount - 1), 0f, 1f);
-        return lerp(-MAX_STACK_LAYERS, MAX_STACK_LAYERS, position);
+        float maxStackLayers = maxStackLayers(LauncherRecentsCompat.resolveOwningRecentsView(taskView));
+        return lerp(-maxStackLayers, maxStackLayers, position);
     }
 
     private static boolean sharesRunningTaskIds(View taskView, View runningTaskView) {
@@ -4130,15 +4132,90 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static float resolveTaskStackEntryProgress(
+            View recentsView,
             float stackEntryProgress,
             float pageProgress) {
         if (Math.abs(pageProgress) < 0.5f) {
             return smoothStep(stackEntryProgress);
         }
-        float layerDepth = clamp(Math.abs(pageProgress), 0f, MAX_STACK_LAYERS);
+        float layerDepth = clamp(Math.abs(pageProgress), 0f, maxStackLayers(recentsView));
         float revealStart = Math.min(0.42f, layerDepth * 0.10f);
         float revealEnd = 1.0f - Math.min(0.18f, layerDepth * 0.04f);
         return smoothStep(remapProgress(stackEntryProgress, revealStart, revealEnd));
+    }
+
+    static FlymeStatusBarSizer.LauncherRecentsConfigSnapshot stackConfig(View view) {
+        return view == null ? null : FlymeStatusBarSizer.loadLauncherRecentsConfig(view.getContext());
+    }
+
+    static float stackRightVisibleRatio(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? STACK_RIGHT_VISIBLE_RATIO : config.stackRightVisibleRatio;
+    }
+
+    static float stackLeftMoveRatio(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? STACK_LEFT_MOVE_RATIO : config.stackLeftMoveRatio;
+    }
+
+    static float stackLeftRestInsetRatio(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? STACK_LEFT_REST_INSET_RATIO : config.stackLeftRestInsetRatio;
+    }
+
+    static float stackMinScale(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? STACK_MIN_SCALE : config.stackMinScale;
+    }
+
+    static float maxStackLayers(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? MAX_STACK_LAYERS : config.maxStackLayers;
+    }
+
+    static float stackEntryLiftRatio(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? STACK_ENTRY_LIFT_RATIO : config.stackEntryLiftRatio;
+    }
+
+    static float stackEntryInitialSpreadRatio(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? STACK_ENTRY_INITIAL_SPREAD_RATIO : config.stackEntryInitialSpreadRatio;
+    }
+
+    static float stackReleaseInitialSpreadRatio(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? STACK_RELEASE_INITIAL_SPREAD_RATIO : config.stackReleaseInitialSpreadRatio;
+    }
+
+    static float appEntryVisualShift(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? APP_ENTRY_VISUAL_SHIFT : config.appEntryVisualShift;
+    }
+
+    static float stackRightBaseSpeedupRatio(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? STACK_RIGHT_BASE_SPEEDUP_RATIO : config.stackRightBaseSpeedupRatio;
+    }
+
+    static float stackRightSpeedupRatio(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? STACK_RIGHT_SPEEDUP_RATIO : config.stackRightSpeedupRatio;
+    }
+
+    static float blankTapHomeExitScaleDelta(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? BLANK_TAP_HOME_EXIT_SCALE_DELTA : config.blankTapHomeExitScaleDelta;
+    }
+
+    static float blankTapHomeExitExtraTravelRatio(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO : config.blankTapHomeExitExtraTravelRatio;
+    }
+
+    static float stackContentBlurStartAlpha(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? STACK_CONTENT_BLUR_START_ALPHA : config.stackContentBlurStartAlpha;
     }
 
     static boolean isTaskVisibleInViewport(

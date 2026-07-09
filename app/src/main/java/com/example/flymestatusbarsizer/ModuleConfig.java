@@ -95,6 +95,52 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED;
     boolean launcherIosStackRecentsClearAllButtonEnabled =
             SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED;
+    int launcherStackRightVisiblePercent = SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT;
+    int launcherStackLeftMovePercent = SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_MOVE_PERCENT;
+    int launcherStackLeftRestInsetPercent = SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT;
+    int launcherStackMinScalePercent = SettingsStore.DEFAULT_LAUNCHER_STACK_MIN_SCALE_PERCENT;
+    int launcherStackMaxLayers = SettingsStore.DEFAULT_LAUNCHER_STACK_MAX_LAYERS;
+    int launcherStackEntryLiftPercent = SettingsStore.DEFAULT_LAUNCHER_STACK_ENTRY_LIFT_PERCENT;
+    int launcherStackEntryInitialSpreadPercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT;
+    int launcherStackReleaseInitialSpreadPercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT;
+    int launcherStackAppEntryVisualShiftPercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT;
+    int launcherStackGestureReleaseDurationMs =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS;
+    int launcherStackRightBaseSpeedupPercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT;
+    int launcherStackRightSpeedupPercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT;
+    int launcherStackBlankExitScaleDeltaPercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT;
+    int launcherStackBlankExitExtraTravelPercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_BLANK_EXIT_EXTRA_TRAVEL_PERCENT;
+    int launcherStackTaskLaunchExtraWidthPercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_TASK_LAUNCH_EXTRA_WIDTH_PERCENT;
+    int launcherStackDismissSuccessAnimMs =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_SUCCESS_ANIM_MS;
+    int launcherStackDismissCancelAnimMs =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_CANCEL_ANIM_MS;
+    int launcherStackDismissRelayoutAnimMs =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_RELAYOUT_ANIM_MS;
+    int launcherStackDismissDragRelayoutMaxPercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_DRAG_RELAYOUT_MAX_PERCENT;
+    int launcherStackDismissSecondaryDominancePercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_SECONDARY_DOMINANCE_PERCENT;
+    int launcherStackDismissMinFlingVelocity =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY;
+    int launcherStackContentMaxBlurDp = SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP;
+    int launcherStackContentMediumBlurPercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT;
+    int launcherStackContentBlurStartAlphaPercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT;
+    int launcherStackLeftReleaseAlphaThresholdPercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT;
+    int launcherStackScrollFrameRate = SettingsStore.DEFAULT_LAUNCHER_STACK_SCROLL_FRAME_RATE;
+    int launcherStackFrameRateReleaseDelayMs =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS;
     String launcherFolderBgColor = SettingsStore.DEFAULT_LAUNCHER_FOLDER_BG_COLOR;
     boolean notificationSystemBlurOnlyEnabled =
             SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED;
@@ -479,6 +525,60 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED,
                     SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED);
+            config.launcherStackRightVisiblePercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT);
+            config.launcherStackLeftMovePercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_LEFT_MOVE_PERCENT);
+            config.launcherStackLeftRestInsetPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT);
+            config.launcherStackMinScalePercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT);
+            config.launcherStackMaxLayers = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_MAX_LAYERS);
+            config.launcherStackEntryLiftPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT);
+            config.launcherStackEntryInitialSpreadPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT);
+            config.launcherStackReleaseInitialSpreadPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT);
+            config.launcherStackAppEntryVisualShiftPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT);
+            config.launcherStackGestureReleaseDurationMs = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS);
+            config.launcherStackRightBaseSpeedupPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT);
+            config.launcherStackRightSpeedupPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT);
+            config.launcherStackBlankExitScaleDeltaPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT);
+            config.launcherStackBlankExitExtraTravelPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_BLANK_EXIT_EXTRA_TRAVEL_PERCENT);
+            config.launcherStackTaskLaunchExtraWidthPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_TASK_LAUNCH_EXTRA_WIDTH_PERCENT);
+            config.launcherStackDismissSuccessAnimMs = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_DISMISS_SUCCESS_ANIM_MS);
+            config.launcherStackDismissCancelAnimMs = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_DISMISS_CANCEL_ANIM_MS);
+            config.launcherStackDismissRelayoutAnimMs = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_DISMISS_RELAYOUT_ANIM_MS);
+            config.launcherStackDismissDragRelayoutMaxPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_DISMISS_DRAG_RELAYOUT_MAX_PERCENT);
+            config.launcherStackDismissSecondaryDominancePercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_DISMISS_SECONDARY_DOMINANCE_PERCENT);
+            config.launcherStackDismissMinFlingVelocity = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY);
+            config.launcherStackContentMaxBlurDp = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP);
+            config.launcherStackContentMediumBlurPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT);
+            config.launcherStackContentBlurStartAlphaPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT);
+            config.launcherStackLeftReleaseAlphaThresholdPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT);
+            config.launcherStackScrollFrameRate = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE);
+            config.launcherStackFrameRateReleaseDelayMs = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS);
             config.launcherFolderBgColor = SettingsStore.normalizeColorString(
                     SettingsStore.readString(
                             prefs,
@@ -611,6 +711,12 @@ final class ModuleConfig {
         } catch (Throwable t) {
             Log.w(TAG, "Failed to dispatch config change callback", t);
         }
+    }
+
+    private static int readLauncherStackParameter(SharedPreferences prefs, String key) {
+        return SettingsStore.normalizeLauncherStackParameter(
+                key,
+                SettingsStore.readInt(prefs, key, SettingsStore.defaultInt(key)));
     }
 
     private static void applyRefreshedConfig(SharedPreferences prefs, boolean debounce) {

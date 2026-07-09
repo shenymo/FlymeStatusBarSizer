@@ -76,7 +76,7 @@ final class LauncherRecentsTaskVisuals {
             this.attachAlpha = attachAlpha;
             this.stableAlpha = stableAlpha;
             this.activityTitleAlpha = activityTitleAlpha;
-            this.blurProgress = quantizeStackContentBlurProgress(blurProgress);
+            this.blurProgress = LauncherRecentsLayoutEngine.clamp(blurProgress, 0f, 1f);
             this.fullscreenProgress = fullscreenProgress;
             this.translationZ = translationZ;
             this.stackContentBlurEnabled = stackContentBlurEnabled;
@@ -606,7 +606,7 @@ final class LauncherRecentsTaskVisuals {
             markStackTaskVisualStateDirty(taskView);
             float blurPx = FlymeStatusBarSizer.dp(
                     taskView.getContext(),
-                    STACK_CONTENT_MAX_BLUR_DP) * LauncherRecentsLayoutEngine.clamp(
+                    stackContentMaxBlurDp(taskView)) * LauncherRecentsLayoutEngine.clamp(
                     blurProgress,
                     0f,
                     1f);
@@ -628,7 +628,7 @@ final class LauncherRecentsTaskVisuals {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || taskView == null) {
             return 0f;
         }
-        float maxBlurPx = FlymeStatusBarSizer.dp(taskView.getContext(), STACK_CONTENT_MAX_BLUR_DP);
+        float maxBlurPx = FlymeStatusBarSizer.dp(taskView.getContext(), stackContentMaxBlurDp(taskView));
         if (maxBlurPx <= MODULE_APPLIED_EPSILON) {
             return 0f;
         }
@@ -969,26 +969,17 @@ final class LauncherRecentsTaskVisuals {
         if (blurPx <= MODULE_APPLIED_EPSILON) {
             return 0f;
         }
-        float maxBlurPx = FlymeStatusBarSizer.dp(view.getContext(), STACK_CONTENT_MAX_BLUR_DP);
+        float maxBlurPx = FlymeStatusBarSizer.dp(view.getContext(), stackContentMaxBlurDp(view));
         if (maxBlurPx <= MODULE_APPLIED_EPSILON) {
             return 0f;
         }
-        float mediumBlurPx = maxBlurPx * STACK_CONTENT_MEDIUM_BLUR_RATIO;
+        float mediumBlurPx = maxBlurPx * stackContentMediumBlurRatio(view);
         return blurPx <= mediumBlurPx ? mediumBlurPx : maxBlurPx;
     }
 
-    private static float quantizeStackContentBlurProgress(float blurProgress) {
-        if (blurProgress <= MODULE_APPLIED_EPSILON) {
-            return 0f;
-        }
-        return blurProgress <= STACK_CONTENT_MEDIUM_BLUR_RATIO
-                ? STACK_CONTENT_MEDIUM_BLUR_RATIO
-                : 1f;
-    }
-
     private static RenderEffect resolveStackContentBlurEffect(View view, float blurPx) {
-        float maxBlurPx = FlymeStatusBarSizer.dp(view.getContext(), STACK_CONTENT_MAX_BLUR_DP);
-        float mediumBlurPx = maxBlurPx * STACK_CONTENT_MEDIUM_BLUR_RATIO;
+        float maxBlurPx = FlymeStatusBarSizer.dp(view.getContext(), stackContentMaxBlurDp(view));
+        float mediumBlurPx = maxBlurPx * stackContentMediumBlurRatio(view);
         if (approximatelyEqual(blurPx, mediumBlurPx)) {
             if (stackContentMediumBlurEffect == null
                     || !approximatelyEqual(stackContentMediumBlurPx, blurPx)) {
@@ -1243,5 +1234,17 @@ final class LauncherRecentsTaskVisuals {
         }
         LauncherRecentsCompat.writeField(taskView, "mTaskThumbScaleAnimator", null);
         setNonGridScale(taskView, LauncherRecentsCompat.readFloatField(taskView, "nonGridScale", 1f));
+    }
+
+    private static int stackContentMaxBlurDp(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(view);
+        return config == null ? STACK_CONTENT_MAX_BLUR_DP : config.stackContentMaxBlurDp;
+    }
+
+    private static float stackContentMediumBlurRatio(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(view);
+        return config == null ? STACK_CONTENT_MEDIUM_BLUR_RATIO : config.stackContentMediumBlurRatio;
     }
 }

@@ -306,6 +306,10 @@ final class SettingsCardFactory {
                 "进入独立工具页，微调时钟、电池、信号、Wi-Fi 与输入法控制栏的位置。",
                 "进入", activity::showPositionTuningPage);
         activity.addDivider(content);
+        activity.addActionButtonRow(content, "堆叠后台参数",
+                "进入独立参数页，调整 IOS 式堆叠后台的布局、动画、手势、视觉和性能。",
+                "进入", activity::showLauncherStackParamsPage);
+        activity.addDivider(content);
         activity.addActionButtonRow(content, "Telephony 调试",
                 "进入独立调试页，伪造插卡数量、默认数据卡、网络类型和信号等级。",
                 "进入", activity::showTelephonyDebugPage);
@@ -356,6 +360,116 @@ final class SettingsCardFactory {
                 "性能调试",
                 "只保留和现有模块实现直接相关的性能打点开关。",
                 content);
+    }
+
+    View createLauncherStackParamsSettingsCard() {
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        addStackParamHeader(content, "布局外观", "控制卡片堆叠的可见范围、缩放和层数。");
+        addStackParam(content, "右侧卡片露出比例", "数值越大，右侧卡片露出越多。",
+                SettingsStore.KEY_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT, 50, 100, "%");
+        addStackParam(content, "左侧移动比例", "数值越大，左侧卡片移动距离越大。",
+                SettingsStore.KEY_LAUNCHER_STACK_LEFT_MOVE_PERCENT, 0, 100, "%");
+        addStackParam(content, "左侧静止内缩比例", "负数会让左侧卡片继续缩进屏幕外。",
+                SettingsStore.KEY_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT, -50, 30, "%");
+        addStackParam(content, "最小缩放", "边缘卡片的最小缩放比例。",
+                SettingsStore.KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT, 80, 100, "%");
+        addStackParam(content, "最大堆叠层数", "参与深度计算的最大层数。",
+                SettingsStore.KEY_LAUNCHER_STACK_MAX_LAYERS, 1, 6, "");
+
+        addStackParamHeader(content, "入场与回弹", "控制从应用进入后台和松手回弹的过渡。");
+        addStackParam(content, "入场抬升比例", "后台入场时卡片向上抬升的幅度。",
+                SettingsStore.KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT, 0, 20, "%");
+        addStackParam(content, "入场初始展开比例", "入场起始阶段卡片的展开程度。",
+                SettingsStore.KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT, 0, 150, "%");
+        addStackParam(content, "松手初始展开比例", "手势松开后回弹动画的起始展开程度。",
+                SettingsStore.KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT, 0, 100, "%");
+        addStackParam(content, "应用进入后台视觉偏移", "应用进入后台时当前任务的视觉偏移量。",
+                SettingsStore.KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT, 0, 120, "%");
+        addStackParam(content, "手势松手回弹时长", "上滑进入后台后，堆叠回弹动画时长。",
+                SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS, 120, 700, "ms");
+
+        addStackParamHeader(content, "滑动展开", "控制横向滑动时左右堆叠展开速度。");
+        addStackParam(content, "右侧基础加速", "右侧卡片展开的基础加速量。",
+                SettingsStore.KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT, 0, 60, "%");
+        addStackParam(content, "右侧深度加速", "越靠深层的右侧卡片展开越快。",
+                SettingsStore.KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT, 0, 100, "%");
+        addStackParamHeader(content, "退出与启动", "控制回桌面和点击任务启动时的动画距离。");
+        addStackParam(content, "回桌面缩放量", "点空白回桌面时，卡片额外缩小的比例。",
+                SettingsStore.KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT, 0, 15, "%");
+        addStackParam(content, "回桌面额外位移", "点空白回桌面时，卡片额外滑出的距离。",
+                SettingsStore.KEY_LAUNCHER_STACK_BLANK_EXIT_EXTRA_TRAVEL_PERCENT, 0, 60, "%");
+        addStackParam(content, "启动旁侧退出距离", "点击任务启动时，旁边卡片额外移开的距离。",
+                SettingsStore.KEY_LAUNCHER_STACK_TASK_LAUNCH_EXTRA_WIDTH_PERCENT, 0, 80, "%");
+
+        addStackParamHeader(content, "删除手势", "控制上滑删除任务的判定和动画。");
+        addStackParam(content, "删除成功动画", "任务删除成功时滑出动画时长。",
+                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_SUCCESS_ANIM_MS, 80, 500, "ms");
+        addStackParam(content, "删除取消动画", "删除取消时回弹动画时长。",
+                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_CANCEL_ANIM_MS, 120, 700, "ms");
+        addStackParam(content, "删除重排动画", "删除后剩余卡片重排动画时长。",
+                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_RELAYOUT_ANIM_MS, 120, 700, "ms");
+        addStackParam(content, "拖动重排最大进度", "拖动删除过程中，列表提前重排的最大进度。",
+                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_DRAG_RELAYOUT_MAX_PERCENT, 0, 100, "%");
+        addStackParam(content, "纵向删除判定强度", "数值越大，越要求纵向滑动占主导。",
+                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_SECONDARY_DOMINANCE_PERCENT, 80, 200, "%");
+        addStackParam(content, "快速上滑删除阈值", "数值越低，快速上滑越容易触发删除。",
+                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY, 300, 3000, "");
+
+        addStackParamHeader(content, "视觉效果", "控制边缘卡片的 blur 和隐藏阈值。");
+        addStackParam(content, "blur 最大强度", "边缘卡片截图和图标的最大模糊强度。",
+                SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP, 0, 40, "dp");
+        addStackParam(content, "blur 中档比例", "模糊效果的中档强度比例。",
+                SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT, 10, 90, "%");
+        addStackParam(content, "blur 开始透明度", "卡片透明度低于此值后开始增加 blur。",
+                SettingsStore.KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT, 0, 100, "%");
+        addStackParam(content, "左侧隐藏阈值", "左侧卡片透明度低于此值后不再参与显示。",
+                SettingsStore.KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT, 0, 30, "%");
+
+        addStackParamHeader(content, "性能", "控制后台滑动时请求的帧率和释放延迟。");
+        addStackParam(content, "滑动请求帧率", "后台滑动时向系统请求的刷新率。",
+                SettingsStore.KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE, 60, 144, "Hz");
+        addStackParam(content, "帧率释放延迟", "停止滑动后恢复系统默认帧率的延迟。",
+                SettingsStore.KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS, 500, 10000, "ms");
+
+        activity.addDivider(content);
+        activity.addActionButtonRow(content, "导出参数",
+                "复制当前堆叠后台参数 JSON。",
+                "导出", activity::exportLauncherStackParamsToClipboard);
+        activity.addDivider(content);
+        activity.addActionButtonRow(content, "导入参数",
+                "粘贴堆叠后台参数 JSON 并写入当前设置。",
+                "导入", activity::showImportLauncherStackParamsDialog);
+        activity.addDivider(content);
+        activity.addActionButtonRow(content, "全部恢复默认",
+                "只恢复本页堆叠后台参数，不影响功能开关。",
+                "恢复", activity::resetLauncherStackParams);
+        activity.addDivider(content);
+        activity.addActionButtonRow(content, "重启系统桌面",
+                "参数调整后重启系统桌面可看到完整效果。",
+                "重启", activity::restartLauncher);
+        return activity.buildSectionCard(
+                "堆叠后台参数",
+                "只调整 IOS 式堆叠后台的细节参数，不改变主开关状态。",
+                content);
+    }
+
+    private void addStackParamHeader(LinearLayout content, String title, String subtitle) {
+        activity.addDivider(content);
+        activity.addProfileSectionHeader(content, title, subtitle);
+    }
+
+    private void addStackParam(LinearLayout content, String title, String subtitle,
+            String key, int min, int max, String suffix) {
+        activity.addDefaultableSliderRow(
+                content,
+                title,
+                subtitle,
+                key,
+                SettingsStore.defaultInt(key),
+                min,
+                max,
+                suffix);
     }
 
     View createOneMindPerfControlCard() {

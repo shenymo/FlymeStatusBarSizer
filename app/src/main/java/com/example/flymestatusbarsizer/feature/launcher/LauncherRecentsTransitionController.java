@@ -762,7 +762,7 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsPerf.startSpan("enterRecentsRelease", recentsView);
         markGestureRecentsStackReleaseHandoffPending(recentsView, true);
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
-        animator.setDuration(GESTURE_STACK_RELEASE_DURATION_MS);
+        animator.setDuration(gestureStackReleaseDurationMs(recentsView));
         animator.setInterpolator(GESTURE_STACK_RELEASE_INTERPOLATOR);
         animator.addUpdateListener(animation -> LauncherRecentsPerf.measure(
                 "frameCost:gestureRelease",
@@ -1264,5 +1264,11 @@ final class LauncherRecentsTransitionController {
         if (translationY != null) {
             recentsView.setTranslationY(translationY);
         }
+    }
+
+    private static long gestureStackReleaseDurationMs(View recentsView) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(recentsView);
+        return config == null ? GESTURE_STACK_RELEASE_DURATION_MS : config.gestureStackReleaseDurationMs;
     }
 }

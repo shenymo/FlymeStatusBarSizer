@@ -2,6 +2,9 @@ package com.example.flymestatusbarsizer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
@@ -146,6 +149,7 @@ public class MainActivity extends Activity {
         ABOUT("关于与支持", "项目地址、交流群、版本构建信息和目标作用域说明。", null, false),
         DONATION("捐赠", null, null, false),
         POSITION_TUNING("布局微调", "单独调整时钟、电池、信号、Wi-Fi 与输入法控制栏的细节位置。", null, true),
+        LAUNCHER_STACK_PARAMS("堆叠后台参数", "调整 IOS 式堆叠后台的布局、动画、手势、视觉和性能参数。", null, true),
         TELEPHONY_DEBUG("Telephony 调试", "伪造 Telephony 读数，验证双卡、网络制式与信号等级对图标布局的影响。", null, true);
 
         final String title;
@@ -259,6 +263,8 @@ public class MainActivity extends Activity {
         registerPage(Page.ABOUT, R.layout.page_about, AboutPageController::bind);
         registerPage(Page.DONATION, R.layout.page_donation, null);
         registerPage(Page.POSITION_TUNING, R.layout.page_position_tuning, PositionTuningPageController::bind);
+        registerPage(Page.LAUNCHER_STACK_PARAMS, R.layout.page_launcher_stack_params,
+                LauncherStackParamsPageController::bind);
         registerPage(Page.TELEPHONY_DEBUG, R.layout.page_telephony_debug, TelephonyDebugPageController::bind);
     }
 
@@ -430,6 +436,10 @@ public class MainActivity extends Activity {
 
     void showPositionTuningPage() {
         openPage(Page.POSITION_TUNING);
+    }
+
+    void showLauncherStackParamsPage() {
+        openPage(Page.LAUNCHER_STACK_PARAMS);
     }
 
     void showClockDetailActionGridEditor() {
@@ -856,6 +866,91 @@ public class MainActivity extends Activity {
         addSliderRow(root, titleText, subtitleText, key, initialValue, min, max, suffix);
     }
 
+    void addDefaultableSliderRow(LinearLayout root, String titleText, String subtitleText,
+            String key, int defaultValue, int min, int max, String suffix) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView title = new TextView(this);
+        title.setText(titleText);
+        title.setTextColor(colorText);
+        title.setTextSize(16);
+        header.addView(title, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addHelpButton(header, titleText, subtitleText);
+
+        TextView valueView = new TextView(this);
+        valueView.setTextColor(colorPrimary);
+        valueView.setTextSize(14);
+        valueView.setPadding(dp(12), dp(6), dp(12), dp(6));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 999));
+        int clamped = SettingsStore.normalizeLauncherStackParameter(
+                key,
+                readIntSetting(key, defaultValue));
+        valueView.setText(formatValue(clamped, suffix));
+        header.addView(valueView, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView resetButton = filledButton("默认", colorSurfaceStrong, colorText);
+        LinearLayout.LayoutParams resetLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        resetLp.leftMargin = dp(8);
+        header.addView(resetButton, resetLp);
+
+        SeekBar seekBar = new SeekBar(this);
+        styleSeekBar(seekBar);
+        seekBar.setMax(max - min);
+        seekBar.setProgress(clamped - min);
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int value = min + progress;
+                valueView.setText(formatValue(value, suffix));
+                if (fromUser) {
+                    performSliderHaptic(seekBar);
+                    putIntSetting(key, value);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                putIntSetting(key, min + seekBar.getProgress());
+            }
+        });
+        setTapClickListener(valueView, v -> showIntInputDialog(
+                titleText,
+                min + seekBar.getProgress(),
+                min,
+                max,
+                suffix,
+                value -> {
+                    valueView.setText(formatValue(value, suffix));
+                    seekBar.setProgress(value - min);
+                    putIntSetting(key, value);
+                }));
+        setTapClickListener(resetButton, v -> {
+            int value = SettingsStore.normalizeLauncherStackParameter(key, defaultValue);
+            valueView.setText(formatValue(value, suffix));
+            seekBar.setProgress(value - min);
+            putIntSetting(key, value);
+            showToast(titleText + "已恢复默认");
+        });
+
+        row.addView(header, matchWrap());
+        row.addView(seekBar, matchWrapWithTop(4));
+        root.addView(row, matchWrap());
+    }
+
     void addTextSettingRow(LinearLayout root, String titleText, String subtitleText,
             String key, String defaultValue, String emptyLabel) {
         addTextSettingRow(root, titleText, subtitleText, key, defaultValue, emptyLabel, null, false);
@@ -1076,6 +1171,118 @@ public class MainActivity extends Activity {
         prefs.edit().putString(key, value == null ? "" : value).apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
+    }
+
+    void resetLauncherStackParams() {
+        SharedPreferences.Editor editor = prefs.edit();
+        for (String key : SettingsStore.LAUNCHER_STACK_PARAMETER_KEYS) {
+            editor.putInt(key, SettingsStore.defaultInt(key));
+        }
+        editor.apply();
+        SettingsStore.notifyChanged(this);
+        invalidatePreview();
+        showToast("堆叠后台参数已恢复默认");
+        recreate();
+    }
+
+    void exportLauncherStackParamsToClipboard() {
+        try {
+            JSONObject root = new JSONObject();
+            JSONObject settings = new JSONObject();
+            root.put("schema", "flyme_status_bar_sizer_stack_recents");
+            root.put("version", 1);
+            for (String key : SettingsStore.LAUNCHER_STACK_PARAMETER_KEYS) {
+                settings.put(key, SettingsStore.normalizeLauncherStackParameter(
+                        key,
+                        readIntSetting(key, SettingsStore.defaultInt(key))));
+            }
+            root.put("settings", settings);
+            ClipboardManager clipboard =
+                    (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(ClipData.newPlainText(
+                        "launcher_stack_params",
+                        root.toString(2)));
+            }
+            showTextInputDialog(
+                    "导出堆叠后台参数",
+                    root.toString(2),
+                    "已复制到剪贴板。",
+                    "",
+                    true,
+                    "关闭",
+                    root.toString(2),
+                    value -> {
+                    });
+        } catch (Throwable t) {
+            showToast("导出失败：" + t.getMessage());
+        }
+    }
+
+    void showImportLauncherStackParamsDialog() {
+        showTextInputDialog(
+                "导入堆叠后台参数",
+                readClipboardText(),
+                "粘贴导出的堆叠后台参数 JSON。",
+                "{\"schema\":\"flyme_status_bar_sizer_stack_recents\"...}",
+                true,
+                "清空",
+                "",
+                this::importLauncherStackParams);
+    }
+
+    private void importLauncherStackParams(String text) {
+        try {
+            JSONObject root = new JSONObject(text == null ? "" : text.trim());
+            if (!"flyme_status_bar_sizer_stack_recents".equals(root.optString("schema"))
+                    || root.optInt("version", 0) != 1) {
+                showToast("导入失败：格式不正确");
+                return;
+            }
+            JSONObject settings = root.optJSONObject("settings");
+            if (settings == null) {
+                showToast("导入失败：缺少 settings");
+                return;
+            }
+            int count = 0;
+            SharedPreferences.Editor editor = prefs.edit();
+            for (String key : SettingsStore.LAUNCHER_STACK_PARAMETER_KEYS) {
+                if (!settings.has(key)) {
+                    continue;
+                }
+                editor.putInt(key, SettingsStore.normalizeLauncherStackParameter(
+                        key,
+                        settings.optInt(key, SettingsStore.defaultInt(key))));
+                count++;
+            }
+            if (count <= 0) {
+                showToast("导入失败：没有可用参数");
+                return;
+            }
+            editor.apply();
+            SettingsStore.notifyChanged(this);
+            invalidatePreview();
+            showToast("堆叠后台参数已导入");
+            recreate();
+        } catch (Throwable t) {
+            showToast("导入失败：" + t.getMessage());
+        }
+    }
+
+    private String readClipboardText() {
+        try {
+            ClipboardManager clipboard =
+                    (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard == null || !clipboard.hasPrimaryClip()
+                    || clipboard.getPrimaryClip() == null
+                    || clipboard.getPrimaryClip().getItemCount() <= 0) {
+                return "";
+            }
+            CharSequence text = clipboard.getPrimaryClip().getItemAt(0).coerceToText(this);
+            return text == null ? "" : text.toString();
+        } catch (Throwable ignored) {
+            return "";
+        }
     }
 
     void disableTelephonyDebug() {
@@ -1913,6 +2120,10 @@ public class MainActivity extends Activity {
 
     View createPositionTuningSettingsCard() {
         return settingsCardFactory.createPositionTuningSettingsCard();
+    }
+
+    View createLauncherStackParamsSettingsCard() {
+        return settingsCardFactory.createLauncherStackParamsSettingsCard();
     }
 
     View createTelephonyDebugSettingsCard() {

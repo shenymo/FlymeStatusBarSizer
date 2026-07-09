@@ -7014,6 +7014,33 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean launcherIosStackRecentsClearAllButtonEnabled;
         public final boolean launcherRecentsPerfLoggingEnabled;
         public final boolean launcherRecentsFlowLoggingEnabled;
+        public final float stackRightVisibleRatio;
+        public final float stackLeftMoveRatio;
+        public final float stackLeftRestInsetRatio;
+        public final float stackMinScale;
+        public final float maxStackLayers;
+        public final float stackEntryLiftRatio;
+        public final float stackEntryInitialSpreadRatio;
+        public final float stackReleaseInitialSpreadRatio;
+        public final float appEntryVisualShift;
+        public final long gestureStackReleaseDurationMs;
+        public final float stackRightBaseSpeedupRatio;
+        public final float stackRightSpeedupRatio;
+        public final float blankTapHomeExitScaleDelta;
+        public final float blankTapHomeExitExtraTravelRatio;
+        public final float taskLaunchSiblingExitExtraWidthRatio;
+        public final long stackDismissSuccessAnimMs;
+        public final long stackDismissCancelAnimMs;
+        public final long stackDismissRelayoutAnimMs;
+        public final float stackDismissDragRelayoutMaxProgress;
+        public final float stackDismissSecondaryDominance;
+        public final float stackDismissMinFlingVelocity;
+        public final int stackContentMaxBlurDp;
+        public final float stackContentMediumBlurRatio;
+        public final float stackContentBlurStartAlpha;
+        public final float stackLeftReleaseAlphaThreshold;
+        public final float stackScrollFrameRate;
+        public final long stackFrameRateReleaseDelayMs;
 
         private LauncherRecentsConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
@@ -7030,7 +7057,78 @@ public class FlymeStatusBarSizer extends XposedModule {
             launcherRecentsFlowLoggingEnabled = enabled
                     && config != null
                     && config.launcherRecentsFlowLoggingEnabled;
+            stackRightVisibleRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT,
+                    c -> c.launcherStackRightVisiblePercent);
+            stackLeftMoveRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_MOVE_PERCENT,
+                    c -> c.launcherStackLeftMovePercent);
+            stackLeftRestInsetRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT,
+                    c -> c.launcherStackLeftRestInsetPercent);
+            stackMinScale = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_MIN_SCALE_PERCENT,
+                    c -> c.launcherStackMinScalePercent);
+            maxStackLayers = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_MAX_LAYERS
+                    : config.launcherStackMaxLayers;
+            stackEntryLiftRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_ENTRY_LIFT_PERCENT,
+                    c -> c.launcherStackEntryLiftPercent);
+            stackEntryInitialSpreadRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT,
+                    c -> c.launcherStackEntryInitialSpreadPercent);
+            stackReleaseInitialSpreadRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT,
+                    c -> c.launcherStackReleaseInitialSpreadPercent);
+            appEntryVisualShift = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT,
+                    c -> c.launcherStackAppEntryVisualShiftPercent);
+            gestureStackReleaseDurationMs = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS
+                    : config.launcherStackGestureReleaseDurationMs;
+            stackRightBaseSpeedupRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT,
+                    c -> c.launcherStackRightBaseSpeedupPercent);
+            stackRightSpeedupRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT,
+                    c -> c.launcherStackRightSpeedupPercent);
+            blankTapHomeExitScaleDelta = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT,
+                    c -> c.launcherStackBlankExitScaleDeltaPercent);
+            blankTapHomeExitExtraTravelRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_BLANK_EXIT_EXTRA_TRAVEL_PERCENT,
+                    c -> c.launcherStackBlankExitExtraTravelPercent);
+            taskLaunchSiblingExitExtraWidthRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_TASK_LAUNCH_EXTRA_WIDTH_PERCENT,
+                    c -> c.launcherStackTaskLaunchExtraWidthPercent);
+            stackDismissSuccessAnimMs = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_SUCCESS_ANIM_MS
+                    : config.launcherStackDismissSuccessAnimMs;
+            stackDismissCancelAnimMs = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_CANCEL_ANIM_MS
+                    : config.launcherStackDismissCancelAnimMs;
+            stackDismissRelayoutAnimMs = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_RELAYOUT_ANIM_MS
+                    : config.launcherStackDismissRelayoutAnimMs;
+            stackDismissDragRelayoutMaxProgress = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_DRAG_RELAYOUT_MAX_PERCENT,
+                    c -> c.launcherStackDismissDragRelayoutMaxPercent);
+            stackDismissSecondaryDominance = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_SECONDARY_DOMINANCE_PERCENT,
+                    c -> c.launcherStackDismissSecondaryDominancePercent);
+            stackDismissMinFlingVelocity = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY
+                    : config.launcherStackDismissMinFlingVelocity;
+            stackContentMaxBlurDp = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP
+                    : config.launcherStackContentMaxBlurDp;
+            stackContentMediumBlurRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT,
+                    c -> c.launcherStackContentMediumBlurPercent);
+            stackContentBlurStartAlpha = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT,
+                    c -> c.launcherStackContentBlurStartAlphaPercent);
+            stackLeftReleaseAlphaThreshold = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT,
+                    c -> c.launcherStackLeftReleaseAlphaThresholdPercent);
+            stackScrollFrameRate = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_SCROLL_FRAME_RATE
+                    : config.launcherStackScrollFrameRate;
+            stackFrameRateReleaseDelayMs = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS
+                    : config.launcherStackFrameRateReleaseDelayMs;
         }
+
+        private static float percent(ModuleConfig config, int defaultValue, StackPercentReader reader) {
+            return (config == null ? defaultValue : reader.read(config)) / 100f;
+        }
+    }
+
+    private interface StackPercentReader {
+        int read(ModuleConfig config);
     }
 
     public static final class LauncherAppearanceConfigSnapshot {

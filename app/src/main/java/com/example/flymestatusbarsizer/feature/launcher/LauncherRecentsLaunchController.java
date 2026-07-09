@@ -1171,13 +1171,21 @@ final class LauncherRecentsLaunchController {
         float taskScale = primaryScrollHorizontal ? taskState.scaleX : taskState.scaleY;
         float targetScale = primaryScrollHorizontal ? targetState.scaleX : targetState.scaleY;
         float distance = (primaryScrollHorizontal ? recentsView.getWidth() : recentsView.getHeight())
-                + (taskSize * TASK_LAUNCH_SIBLING_EXIT_EXTRA_WIDTH_RATIO);
+                + (taskSize * taskLaunchSiblingExitExtraWidthRatio(recentsView));
         float taskCenter = (primaryScrollHorizontal ? taskState.x : taskState.y)
                 + (taskSize * taskScale * 0.5f);
         float targetCenter = (primaryScrollHorizontal ? targetState.x : targetState.y)
                 + (targetSize * targetScale * 0.5f);
         float direction = taskCenter < targetCenter ? -1f : 1f;
         return direction * distance * progress;
+    }
+
+    private static float taskLaunchSiblingExitExtraWidthRatio(View recentsView) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(recentsView);
+        return config == null
+                ? TASK_LAUNCH_SIBLING_EXIT_EXTRA_WIDTH_RATIO
+                : config.taskLaunchSiblingExitExtraWidthRatio;
     }
 
     private static LauncherRecentsState.TaskLaunchFrozenTaskState findTargetFrozenTaskLaunchState(

@@ -1,5 +1,7 @@
 package com.example.flymestatusbarsizer.feature.launcher;
 
+import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
+
 import android.os.Build;
 import android.view.MotionEvent;
 import android.view.View;
@@ -50,7 +52,7 @@ final class LauncherRecentsFrameRateController {
         if (pending != null) {
             recentsView.removeCallbacks(pending);
         }
-        recentsView.setRequestedFrameRate(STACK_SCROLL_FRAME_RATE);
+        recentsView.setRequestedFrameRate(stackScrollFrameRate(recentsView));
     }
 
     private static void releaseLater(View recentsView) {
@@ -63,6 +65,18 @@ final class LauncherRecentsFrameRateController {
         }
         Runnable release = () -> releaseNow(recentsView);
         RELEASE_RUNNABLES.put(recentsView, release);
-        recentsView.postDelayed(release, RELEASE_DELAY_MS);
+        recentsView.postDelayed(release, stackFrameRateReleaseDelayMs(recentsView));
+    }
+
+    private static float stackScrollFrameRate(View recentsView) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(recentsView);
+        return config == null ? STACK_SCROLL_FRAME_RATE : config.stackScrollFrameRate;
+    }
+
+    private static long stackFrameRateReleaseDelayMs(View recentsView) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(recentsView);
+        return config == null ? RELEASE_DELAY_MS : config.stackFrameRateReleaseDelayMs;
     }
 }

@@ -1047,7 +1047,7 @@ final class LauncherRecentsTouchController {
         }
         return resolveStackDismissDirectionSign(recentsView) * secondaryDelta > 0f
                 && absSecondary > touchSlop
-                && absSecondary >= absPrimary * STACK_DISMISS_SECONDARY_DOMINANCE;
+                && absSecondary >= absPrimary * stackDismissSecondaryDominance(recentsView);
     }
 
     private static void releasePagedTouchForStackDismiss(View recentsView) {
@@ -1113,7 +1113,7 @@ final class LauncherRecentsTouchController {
         float absSecondary = Math.abs(secondaryDelta);
         return isStackDismissGestureTowardDismiss(state, secondaryDelta)
                 && absSecondary > touchSlop
-                && absSecondary >= absPrimary * STACK_DISMISS_SECONDARY_DOMINANCE;
+                && absSecondary >= absPrimary * stackDismissSecondaryDominance(state.recentsView);
     }
 
     private static boolean isStackDismissPrimaryGesture(
@@ -1281,7 +1281,7 @@ final class LauncherRecentsTouchController {
                 state.dismissDirectionSign * state.currentDismissTranslation
                         >= resolveStackDismissThreshold(state)
                         || state.dismissDirectionSign * velocity
-                        >= -STACK_DISMISS_MIN_FLING_VELOCITY;
+                        >= stackDismissMinFlingVelocity(state.recentsView);
         logStackFlow("dismiss:finish",
                 state.recentsView,
                 null,
@@ -1305,7 +1305,7 @@ final class LauncherRecentsTouchController {
         float startRelayoutProgress = state.relayoutProgress;
         ValueAnimator animator = ValueAnimator.ofFloat(start, end);
         state.animator = animator;
-        animator.setDuration(STACK_DISMISS_SUCCESS_ANIM_MS);
+        animator.setDuration(stackDismissSuccessAnimMs(state.recentsView));
         animator.setInterpolator(new DecelerateInterpolator(1.7f));
         animator.addUpdateListener(animation -> LauncherRecentsPerf.measure(
                 "frameCost:dismissSuccess",
@@ -1358,7 +1358,7 @@ final class LauncherRecentsTouchController {
         float startRelayoutProgress = state.relayoutProgress;
         ValueAnimator animator = ValueAnimator.ofFloat(start, state.startDismissTranslation);
         state.animator = animator;
-        animator.setDuration(STACK_DISMISS_CANCEL_ANIM_MS);
+        animator.setDuration(stackDismissCancelAnimMs(state.recentsView));
         animator.setInterpolator(new OvershootInterpolator(0.85f));
         animator.addUpdateListener(animation -> LauncherRecentsPerf.measure(
                 "frameCost:dismissCancel",
@@ -1487,7 +1487,7 @@ final class LauncherRecentsTouchController {
             return 0f;
         }
         return LauncherRecentsLayoutEngine.clamp(distance / (threshold * 2f), 0f, 1f)
-                * STACK_DISMISS_DRAG_RELAYOUT_MAX_PROGRESS;
+                * stackDismissDragRelayoutMaxProgress(state.recentsView);
     }
 
     private static void applyStackDismissRelayoutProgress(
@@ -1873,7 +1873,7 @@ final class LauncherRecentsTouchController {
                     animationStartStates.get(taskView));
         }
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
-        animator.setDuration(STACK_DISMISS_RELAYOUT_ANIM_MS);
+        animator.setDuration(stackDismissRelayoutAnimMs(recentsView));
         animator.setInterpolator(new DecelerateInterpolator(1.7f));
         animator.addUpdateListener(animation -> {
             float progress = (Float) animation.getAnimatedValue();
@@ -2252,7 +2252,7 @@ final class LauncherRecentsTouchController {
                     && taskView.getHeight() > 0;
         }
         return taskView.getVisibility() == View.VISIBLE
-                && readStackTaskDataAlpha(taskView) > STACK_LEFT_RELEASE_ALPHA_THRESHOLD
+                && readStackTaskDataAlpha(taskView) > stackLeftReleaseAlphaThreshold(recentsView)
                 && taskView.getWidth() > 0
                 && taskView.getHeight() > 0
                 && isStackTaskWithinVisibleDataBounds(recentsView, taskView);
@@ -2607,5 +2607,55 @@ final class LauncherRecentsTouchController {
         }
         LauncherRecentsCompat.setBooleanField(recentsView, "mNeedCheckSnapToDestination", false);
         LauncherRecentsCompat.setIntField(recentsView, "mLastHandleActionUpChildIndex", -1);
+    }
+
+    private static long stackDismissSuccessAnimMs(View recentsView) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(recentsView);
+        return config == null ? STACK_DISMISS_SUCCESS_ANIM_MS : config.stackDismissSuccessAnimMs;
+    }
+
+    private static long stackDismissCancelAnimMs(View recentsView) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(recentsView);
+        return config == null ? STACK_DISMISS_CANCEL_ANIM_MS : config.stackDismissCancelAnimMs;
+    }
+
+    private static long stackDismissRelayoutAnimMs(View recentsView) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(recentsView);
+        return config == null ? STACK_DISMISS_RELAYOUT_ANIM_MS : config.stackDismissRelayoutAnimMs;
+    }
+
+    private static float stackDismissDragRelayoutMaxProgress(View recentsView) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(recentsView);
+        return config == null
+                ? STACK_DISMISS_DRAG_RELAYOUT_MAX_PROGRESS
+                : config.stackDismissDragRelayoutMaxProgress;
+    }
+
+    private static float stackDismissSecondaryDominance(View recentsView) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(recentsView);
+        return config == null
+                ? STACK_DISMISS_SECONDARY_DOMINANCE
+                : config.stackDismissSecondaryDominance;
+    }
+
+    private static float stackDismissMinFlingVelocity(View recentsView) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(recentsView);
+        return config == null
+                ? -STACK_DISMISS_MIN_FLING_VELOCITY
+                : config.stackDismissMinFlingVelocity;
+    }
+
+    private static float stackLeftReleaseAlphaThreshold(View recentsView) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                LauncherRecentsLayoutEngine.stackConfig(recentsView);
+        return config == null
+                ? STACK_LEFT_RELEASE_ALPHA_THRESHOLD
+                : config.stackLeftReleaseAlphaThreshold;
     }
 }
