@@ -38,7 +38,7 @@ public final class WindowModeSideGestureHooks {
     private static final int TWO_RING_APP_LIMIT = 11;
     private static final int TWO_RING_OUTER_COUNT = 7;
     private static final int RECENT_RING_COUNT = 4;
-    private static final int RECENT_TASK_SCAN_LIMIT = 32;
+    private static final int RECENT_TASK_SCAN_LIMIT = 16;
     private static final Map<String, Field> FIELD_CACHE = new java.util.HashMap<>();
     private static final Map<String, Integer> APP_ICON_ID_CACHE = new HashMap<>();
     private static ArrayList<RecentPackage> recentPackagesCache = new ArrayList<>();
@@ -412,9 +412,6 @@ public final class WindowModeSideGestureHooks {
         addSystemRecentPackages(merged, context);
         ArrayList<RecentPackage> result = new ArrayList<>(merged.values());
         Collections.sort(result, (left, right) -> -Long.compare(left.timeMs, right.timeMs));
-        if (result.size() > RECENT_RING_COUNT) {
-            result = new ArrayList<>(result.subList(0, RECENT_RING_COUNT));
-        }
         synchronized (RECENT_PACKAGES_LOCK) {
             recentPackagesCache = new ArrayList<>(result);
             recentPackagesCacheTimeMs = SystemClock.uptimeMillis();
