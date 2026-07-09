@@ -227,15 +227,22 @@ final class SettingsCardFactory {
                 "修改 SystemUI 通知卡片的模糊背景前景色。");
         LinearLayout blurOnlyOptions = new LinearLayout(activity);
         Switch[] textColorSwitchHolder = new Switch[1];
+        TextView[] backgroundColorValueHolder = new TextView[1];
         Switch blurOnlySwitch = activity.addSwitchRow(content, "仅保留系统模糊",
                 "开启后忽略下面的通知背景颜色，移除通知背景，只保留系统动态模糊层。",
                 SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
                 (buttonView, isChecked) -> {
+                    if (isChecked && hasNotificationBackgroundColor()) {
+                        buttonView.setChecked(false);
+                        activity.showToast("通知背景颜色为跟随系统时才能开启");
+                        return;
+                    }
                     if (textColorSwitchHolder[0] != null) {
                         textColorSwitchHolder[0].setEnabled(isChecked);
                     }
                     blurOnlyOptions.setAlpha(isChecked ? 1f : 0.45f);
+                    updateNotificationBackgroundColorEnabled(backgroundColorValueHolder[0], !isChecked);
                 });
         blurOnlyOptions.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams blurOnlyOptionsLp = PageViewUtils.matchWrap();
@@ -259,13 +266,15 @@ final class SettingsCardFactory {
         blurOnlyOptions.setAlpha(blurOnlySwitch.isChecked() ? 1f : 0.45f);
         content.addView(blurOnlyOptions, blurOnlyOptionsLp);
         activity.addDivider(content);
-        activity.addTextSettingRow(content, "通知背景颜色",
+        TextView backgroundColorValue = activity.addTextSettingRow(content, "通知背景颜色",
                 "填写 #AARRGGBB。留空跟随系统；可填 #1A000000；上方开关开启时此项不生效。",
                 SettingsStore.KEY_NOTIFICATION_BACKGROUND_COLOR,
                 SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_COLOR,
                 "跟随系统",
                 "#1A000000",
                 true);
+        backgroundColorValueHolder[0] = backgroundColorValue;
+        updateNotificationBackgroundColorEnabled(backgroundColorValue, !blurOnlySwitch.isChecked());
         activity.addDivider(content);
         activity.addActionButtonRow(content, "重启 SystemUI",
                 "通知背景需要重启 SystemUI 后刷新。",
@@ -924,5 +933,20 @@ final class SettingsCardFactory {
                 defaultSignalValue,
                 new int[]{0, 1, 2, 3, 4},
                 new String[]{"0 格", "1 格", "2 格", "3 格", "4 格"});
+    }
+
+    private boolean hasNotificationBackgroundColor() {
+        String value = activity.readStringSetting(
+                SettingsStore.KEY_NOTIFICATION_BACKGROUND_COLOR,
+                SettingsStore.DEFAULT_NOTIFICATION_BACKGROUND_COLOR);
+        return !TextUtils.isEmpty(SettingsStore.normalizeColorString(value));
+    }
+
+    private void updateNotificationBackgroundColorEnabled(TextView valueView, boolean enabled) {
+        if (valueView == null) {
+            return;
+        }
+        valueView.setEnabled(enabled);
+        valueView.setAlpha(enabled ? 1f : 0.45f);
     }
 }

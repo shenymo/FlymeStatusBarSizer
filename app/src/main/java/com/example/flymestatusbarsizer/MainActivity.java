@@ -861,7 +861,7 @@ public class MainActivity extends Activity {
         addTextSettingRow(root, titleText, subtitleText, key, defaultValue, emptyLabel, null, false);
     }
 
-    void addTextSettingRow(LinearLayout root, String titleText, String subtitleText,
+    TextView addTextSettingRow(LinearLayout root, String titleText, String subtitleText,
             String key, String defaultValue, String emptyLabel, String inputHint, boolean plainTextInput) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -903,6 +903,7 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         root.addView(row, matchWrap());
+        return valueView;
     }
 
     void addChoiceRow(LinearLayout root, String titleText, String subtitleText,
