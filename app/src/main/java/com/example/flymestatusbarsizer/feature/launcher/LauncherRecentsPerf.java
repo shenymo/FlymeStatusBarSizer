@@ -106,6 +106,18 @@ final class LauncherRecentsPerf {
         return end("flowTotal:" + name, startNs);
     }
 
+    static void clearView(View view) {
+        if (view == null) {
+            return;
+        }
+        for (WeakHashMap<View, Long> spans : SPANS.values()) {
+            spans.remove(view);
+        }
+        if (CURRENT_VIEW.get() == view) {
+            CURRENT_VIEW.remove();
+        }
+    }
+
     static void measure(String name, View view, Runnable runnable) {
         long startNs = start(view);
         try {

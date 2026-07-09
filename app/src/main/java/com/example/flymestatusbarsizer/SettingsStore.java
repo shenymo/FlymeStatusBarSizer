@@ -89,7 +89,6 @@ final class SettingsStore {
     static final String KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED =
             "launcher_ios_stack_recents_clear_all_button_enabled";
     static final String KEY_LAUNCHER_FOLDER_BG_COLOR = "launcher_folder_bg_color";
-    static final String KEY_NOTIFICATION_BACKGROUND_COLOR = "notification_background_color";
     static final String KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED =
             "notification_system_blur_only_enabled";
     static final String KEY_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE =
@@ -211,7 +210,6 @@ final class SettingsStore {
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED = true;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED = true;
     static final String DEFAULT_LAUNCHER_FOLDER_BG_COLOR = "";
-    static final String DEFAULT_NOTIFICATION_BACKGROUND_COLOR = "";
     static final boolean DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED = false;
     static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_FOLLOW_SYSTEM = 0;
     static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_LIGHT = 1;
@@ -343,7 +341,6 @@ final class SettingsStore {
             KEY_MBACK_LONG_TOUCH_INTENT_URI,
             KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
             KEY_LAUNCHER_FOLDER_BG_COLOR,
-            KEY_NOTIFICATION_BACKGROUND_COLOR,
             KEY_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR,
             KEY_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR,
             KEY_IME_CONTROL_BAR_BUTTON_SLOTS
@@ -650,9 +647,6 @@ final class SettingsStore {
         }
         if (KEY_LAUNCHER_FOLDER_BG_COLOR.equals(key)) {
             return DEFAULT_LAUNCHER_FOLDER_BG_COLOR;
-        }
-        if (KEY_NOTIFICATION_BACKGROUND_COLOR.equals(key)) {
-            return DEFAULT_NOTIFICATION_BACKGROUND_COLOR;
         }
         if (KEY_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR.equals(key)) {
             return DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR;

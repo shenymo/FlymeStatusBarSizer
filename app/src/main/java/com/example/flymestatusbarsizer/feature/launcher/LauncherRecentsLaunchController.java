@@ -25,6 +25,8 @@ final class LauncherRecentsLaunchController {
         hookRecentsViewOnLayoutForTaskLaunch(module, loader);
         hookRecentsViewWindowVisibilityChanged(module, loader);
         hookRecentsViewDetachedFromWindow(module, loader);
+        hookRecentsViewOnViewRemoved(module, loader);
+        hookTaskViewDetachedFromWindow(module, loader);
         hookPagedViewSetCurrentPageForTaskLaunch(module, loader);
         hookPagedViewUpdateCurrentPageScrollForTaskLaunch(module, loader);
         hookPagedViewSnapToPageForTaskLaunch(module, loader);
@@ -136,14 +138,10 @@ final class LauncherRecentsLaunchController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
-                Object result = chain.proceed();
                 if (thisObject instanceof View) {
-                    View recentsView = (View) thisObject;
-                    LauncherRecentsFrameRateController.releaseNow(recentsView);
-                    if (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
-                        clearTaskLaunchTransitionGeometry(recentsView, false);
-                    }
+                    cleanupRecentsView((View) thisObject);
                 }
+                Object result = chain.proceed();
                 return result;
             });
         } catch (Throwable t) {
@@ -677,6 +675,48 @@ final class LauncherRecentsLaunchController {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook RecentsView.updateScrollSynchronously",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewOnViewRemoved(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("onViewRemoved", View.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object removed = chain.getArg(0);
+                if (removed instanceof View) {
+                    cleanupTaskView((View) removed, true);
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.onViewRemoved",
+                    t);
+        }
+    }
+
+    private static void hookTaskViewDetachedFromWindow(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.TASK_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("onDetachedFromWindow");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (thisObject instanceof View) {
+                    cleanupTaskView((View) thisObject, true);
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook TaskView.onDetachedFromWindow",
                     t);
         }
     }
@@ -1263,6 +1303,44 @@ final class LauncherRecentsLaunchController {
                     "launchClearRestore");
         }
         recentsView.invalidate();
+    }
+
+    private static void cleanupRecentsView(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        LauncherRecentsFrameRateController.releaseNow(recentsView);
+        if (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
+            clearTaskLaunchTransitionGeometry(recentsView, false);
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            cleanupTaskView(LauncherRecentsCompat.getTaskViewAt(recentsView, i), true);
+        }
+        LauncherRecentsPerf.clearView(recentsView);
+        LauncherRecentsState.clearRecentsViewState(recentsView);
+    }
+
+    private static void cleanupTaskView(View taskView, boolean restoreVisuals) {
+        if (!isTaskViewObject(taskView)) {
+            return;
+        }
+        if (restoreVisuals) {
+            LauncherRecentsLayoutEngine.restoreTaskTransform(taskView);
+        }
+        LauncherRecentsPerf.clearView(taskView);
+        LauncherRecentsState.clearTaskViewState(taskView);
+    }
+
+    private static boolean isTaskViewObject(View view) {
+        Class<?> clazz = view != null ? view.getClass() : null;
+        while (clazz != null) {
+            if (LauncherRecentsCompat.TASK_VIEW_CLASS.equals(clazz.getName())) {
+                return true;
+            }
+            clazz = clazz.getSuperclass();
+        }
+        return false;
     }
 
     private static boolean isPrimaryScrollHorizontal(View recentsView) {

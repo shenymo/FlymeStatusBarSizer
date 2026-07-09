@@ -693,6 +693,78 @@ final class LauncherRecentsState {
         }
     }
 
+    static void clearRecentsViewState(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        cancelAndRemove(ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS, recentsView);
+        cancelAndRemove(ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS, recentsView);
+        RECENTS_VIEW_STATES.remove(recentsView);
+        GESTURE_STACK_RELEASE_PROGRESS.remove(recentsView);
+        FORCED_RECENTS_TRANSLATION_XS.remove(recentsView);
+        FORCED_RECENTS_TRANSLATION_YS.remove(recentsView);
+        BLANK_TAP_HOME_EXIT_PROGRESS.remove(recentsView);
+        ACTIVE_BLANK_TAP_HOME_EXITS.remove(recentsView);
+        BLANK_TAP_HOME_EXIT_RECENTS_STATES.remove(recentsView);
+        STACK_LAYOUT_RECOVERY_RADII.remove(recentsView);
+        LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
+        PENDING_STACK_LAYOUT_APPLIES.remove(recentsView);
+        PREPARE_RECENTS_VIEW_STATES.remove(recentsView);
+        LAST_STACK_LAYOUT_ACTIVE_INDICES.remove(recentsView);
+        LAST_STACK_LAYOUT_COMPUTED_PACKAGES.remove(recentsView);
+        LAST_STACK_STOCK_CAPTURE_TASK_COUNTS.remove(recentsView);
+    }
+
+    static void clearTaskViewState(View taskView) {
+        if (taskView == null) {
+            return;
+        }
+        GESTURE_STACK_RELEASE_TASK_STATES.remove(taskView);
+        OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.remove(taskView);
+        BLANK_TAP_HOME_EXIT_TASK_STATES.remove(taskView);
+        LAST_STACK_APP_FLOW_PACKAGES.remove(taskView);
+        BYPASS_TASK_CLICK_INTERCEPTION.remove(taskView);
+        ORIGINAL_NON_GRID_SCALES.remove(taskView);
+        ORIGINAL_BOX_TRANSLATION_YS.remove(taskView);
+        ORIGINAL_TASK_ELEVATIONS.remove(taskView);
+        ORIGINAL_TASK_OUTLINE_PROVIDERS.remove(taskView);
+        LAST_STOCK_TASK_OFFSET_XS.remove(taskView);
+        LAST_STOCK_TASK_OFFSET_YS.remove(taskView);
+        LAST_STOCK_HORIZONTAL_OFFSET_XS.remove(taskView);
+        LAST_STOCK_NON_GRID_SCALES.remove(taskView);
+        LAST_STOCK_BOX_TRANSLATION_YS.remove(taskView);
+        LAST_STOCK_ATTACH_ALPHAS.remove(taskView);
+        LAST_STOCK_STABLE_ALPHAS.remove(taskView);
+        LAST_STOCK_TRANSLATION_ZS.remove(taskView);
+        LAST_STOCK_FULLSCREEN_PROGRESSES.remove(taskView);
+        LAST_APPLIED_TASK_OFFSET_XS.remove(taskView);
+        LAST_APPLIED_TASK_OFFSET_YS.remove(taskView);
+        LAST_APPLIED_HORIZONTAL_OFFSET_XS.remove(taskView);
+        LAST_APPLIED_NON_GRID_SCALES.remove(taskView);
+        LAST_APPLIED_BOX_TRANSLATION_YS.remove(taskView);
+        LAST_APPLIED_ATTACH_ALPHAS.remove(taskView);
+        LAST_APPLIED_STABLE_ALPHAS.remove(taskView);
+        LAST_APPLIED_TRANSLATION_ZS.remove(taskView);
+        LAST_APPLIED_FULLSCREEN_PROGRESSES.remove(taskView);
+        LAST_APPLIED_TASK_SHADOW_ELEVATIONS.remove(taskView);
+        LAST_APPLIED_STACK_CONTENT_BLURS.remove(taskView);
+        LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.remove(taskView);
+        LAST_APPLIED_STACK_TASK_VISUAL_STATES.remove(taskView);
+        STACK_CONTENT_TARGETS.remove(taskView);
+        STACK_ICON_BLUR_STATES.remove(taskView);
+        ORIGINAL_STACK_ICON_OUTLINE_PROVIDERS.remove(taskView);
+        ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES.remove(taskView);
+    }
+
+    private static void cancelAndRemove(
+            WeakHashMap<View, ValueAnimator> animators,
+            View view) {
+        ValueAnimator animator = animators.remove(view);
+        if (animator != null) {
+            animator.cancel();
+        }
+    }
+
     static boolean hasActiveTaskLaunchTransitionGeometry(View recentsView) {
         return getActiveTaskLaunchTransitionGeometry(recentsView) != null;
     }
