@@ -689,7 +689,7 @@ final class LauncherRecentsLaunchController {
             module.intercept(method, chain -> {
                 Object removed = chain.getArg(0);
                 if (removed instanceof View) {
-                    cleanupTaskView((View) removed, true);
+                    cleanupTaskView((View) removed, false);
                 }
                 return chain.proceed();
             });
@@ -710,7 +710,7 @@ final class LauncherRecentsLaunchController {
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
-                    cleanupTaskView((View) thisObject, true);
+                    cleanupTaskView((View) thisObject, false);
                 }
                 return chain.proceed();
             });
