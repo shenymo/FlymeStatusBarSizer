@@ -365,12 +365,12 @@ final class SettingsCardFactory {
     View createLauncherStackParamsSettingsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
-        addStackParamHeader(content, "布局外观", "控制卡片堆叠的可见范围、缩放和层数。");
-        addStackParam(content, "右侧卡片露出比例", "数值越大，右侧卡片露出越多。",
+        addStackParamHeader(content, "布局外观", "屏幕左侧/屏幕右侧均按用户看屏幕的方向理解。");
+        addStackParam(content, "屏幕右侧卡片露出比例", "数值越大，屏幕右侧卡片露出越多。",
                 SettingsStore.KEY_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT, 50, 100, "%");
-        addStackParam(content, "左侧移动比例", "数值越大，左侧卡片移动距离越大。",
+        addStackParam(content, "屏幕左侧移动比例", "数值越大，屏幕左侧卡片移动距离越大。",
                 SettingsStore.KEY_LAUNCHER_STACK_LEFT_MOVE_PERCENT, 0, 100, "%");
-        addStackParam(content, "左侧静止内缩比例", "负数会让左侧卡片继续缩进屏幕外。",
+        addStackParam(content, "屏幕左侧静止内缩比例", "负数会让屏幕左侧卡片继续缩进屏幕外。",
                 SettingsStore.KEY_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT, -50, 30, "%");
         addStackParam(content, "最小缩放", "边缘卡片的最小缩放比例。",
                 SettingsStore.KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT, 80, 100, "%");
@@ -393,7 +393,7 @@ final class SettingsCardFactory {
         addStackParam(content, "手势松手回弹时长", "上滑进入后台后，堆叠回弹动画时长。",
                 SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS, 120, 700, "ms");
 
-        addStackParamHeader(content, "滑动展开", "控制横向滑动时左右堆叠展开速度。");
+        addStackParamHeader(content, "滑动展开", "屏幕左侧是主卡片左边退走的卡片，屏幕右侧是主卡片右边露出的卡片。");
         addStackParam(content, "常驻显示半径", "左右滑动稳定后，锚点两侧参与显示的卡片范围。",
                 SettingsStore.KEY_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS, 1, 5, "");
         addStackParam(content, "入场轻量半径", "进入后台轻量阶段，锚点两侧预先参与显示的卡片范围。",
@@ -402,9 +402,9 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS, 1, 5, "");
         addStackParam(content, "AppFlow 轻量半径", "应用进入后台过程中，保留动态 AppFlow 的卡片范围。",
                 SettingsStore.KEY_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS, 1, 5, "");
-        addStackParam(content, "右侧基础加速", "右侧卡片展开的基础加速量。",
+        addStackParam(content, "屏幕右侧基础加速", "屏幕右侧卡片展开的基础加速量。",
                 SettingsStore.KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT, 0, 60, "%");
-        addStackParam(content, "右侧深度加速", "越靠深层的右侧卡片展开越快。",
+        addStackParam(content, "屏幕右侧深度加速", "越靠深层的屏幕右侧卡片展开越快。",
                 SettingsStore.KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT, 0, 100, "%");
         addStackParamHeader(content, "退出与启动", "控制回桌面和点击任务启动时的动画距离。");
         addStackParam(content, "回桌面缩放量", "点空白回桌面时，卡片额外缩小的比例。",
@@ -435,7 +435,7 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT, 10, 90, "%");
         addStackParam(content, "blur 开始透明度", "卡片透明度低于此值后开始增加 blur。",
                 SettingsStore.KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT, 0, 100, "%");
-        addStackParam(content, "左侧隐藏阈值", "左侧卡片透明度低于此值后不再参与显示。",
+        addStackParam(content, "屏幕左侧隐藏阈值", "屏幕左侧卡片透明度低于此值后不再参与显示。",
                 SettingsStore.KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT, 0, 30, "%");
 
         addStackParamHeader(content, "性能", "控制后台滑动时请求的帧率和释放延迟。");
