@@ -18,6 +18,11 @@ final class SettingsStore {
 
     static final String KEY_ENABLED = "enabled";
     static final String KEY_BATTERY_CODE_DRAW_ENABLED = "battery_code_draw_enabled";
+    static final String KEY_CAMERA_CIRCLE_BATTERY_ENABLED = "camera_circle_battery_enabled";
+    static final String KEY_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT =
+            "camera_circle_battery_radius_percent";
+    static final String KEY_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT =
+            "camera_circle_battery_stroke_percent";
     static final String KEY_SIGNAL_CODE_DRAW_ENABLED = "signal_code_draw_enabled";
     static final String KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED = "signal_mobile_type_badge_enabled";
     static final String KEY_WIFI_CODE_DRAW_ENABLED = "wifi_code_draw_enabled";
@@ -202,6 +207,9 @@ final class SettingsStore {
     static final String KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL = "telephony_debug_slot2_signal_level";
     static final boolean DEFAULT_ENABLED = true;
     static final boolean DEFAULT_BATTERY_CODE_DRAW_ENABLED = true;
+    static final boolean DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED = false;
+    static final int DEFAULT_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT = 100;
+    static final int DEFAULT_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT = 100;
     static final boolean DEFAULT_SIGNAL_CODE_DRAW_ENABLED = true;
     static final boolean DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED = true;
     static final boolean DEFAULT_WIFI_CODE_DRAW_ENABLED = true;
@@ -354,6 +362,8 @@ final class SettingsStore {
             KEY_POSITION_OFFSET_STORAGE_VERSION,
             KEY_BATTERY_ICON_STYLE,
             KEY_BATTERY_TEXT_FONT,
+            KEY_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT,
+            KEY_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT,
             KEY_STATUS_BAR_ICON_SCALE_PERCENT,
             KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
             KEY_BATTERY_ICON_Y_OFFSET_DP,
@@ -429,6 +439,7 @@ final class SettingsStore {
     static final String[] BOOLEAN_KEYS = {
             KEY_ENABLED,
             KEY_BATTERY_CODE_DRAW_ENABLED,
+            KEY_CAMERA_CIRCLE_BATTERY_ENABLED,
             KEY_SIGNAL_CODE_DRAW_ENABLED,
             KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED,
             KEY_WIFI_CODE_DRAW_ENABLED,
@@ -650,6 +661,10 @@ final class SettingsStore {
                 return DEFAULT_BATTERY_ICON_STYLE;
             case KEY_BATTERY_TEXT_FONT:
                 return DEFAULT_BATTERY_TEXT_FONT;
+            case KEY_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT:
+                return DEFAULT_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT;
+            case KEY_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT:
+                return DEFAULT_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT;
             case KEY_STATUS_BAR_ICON_SCALE_PERCENT:
                 return DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
             case KEY_BATTERY_INNER_TEXT_SCALE_PERCENT:
@@ -801,6 +816,8 @@ final class SettingsStore {
                 return DEFAULT_ENABLED;
             case KEY_BATTERY_CODE_DRAW_ENABLED:
                 return DEFAULT_BATTERY_CODE_DRAW_ENABLED;
+            case KEY_CAMERA_CIRCLE_BATTERY_ENABLED:
+                return DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED;
             case KEY_SIGNAL_CODE_DRAW_ENABLED:
                 return DEFAULT_SIGNAL_CODE_DRAW_ENABLED;
             case KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED:

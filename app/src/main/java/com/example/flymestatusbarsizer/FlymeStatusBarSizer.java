@@ -113,6 +113,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final long[] INITIAL_RUNTIME_REFRESH_DELAYS_MS = {1000L, 3000L};
     private static volatile boolean CONFIG_REFRESH_REGISTERED;
     private static volatile boolean DEFAULT_NETWORK_CALLBACK_REGISTERED;
+    private static volatile Object CAMERA_STATE_CONTROLLER;
     private static volatile Object SIGNAL_ACTIVITY_FALSE_FLOW;
     private static Handler MAIN_HANDLER;
     private static volatile int LAST_UI_MODE_NIGHT = -1;
@@ -269,6 +270,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private void installBatteryHooks(ClassLoader loader) {
+        hookCameraCircleBatterySwitch(loader);
         hookConstructors(loader, "com.flyme.statusbar.battery.FlymeBatteryMeterView", view -> {
             ModuleConfig config = ModuleConfig.load(view.getContext());
             if (!config.enabled) {
@@ -297,6 +299,35 @@ public class FlymeStatusBarSizer extends XposedModule {
             ReflectUtils.setIntField(textView, "mLowColor", Color.WHITE);
         });
         hookBatteryDrawable(loader);
+    }
+
+    private void hookCameraCircleBatterySwitch(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.camera.CameraStateController", false, loader);
+            Method method = clazz.getDeclaredMethod("isUserRequestCircleBattery");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                CAMERA_STATE_CONTROLLER = chain.getThisObject();
+                ModuleConfig config = ModuleConfig.load(null);
+                applyCameraCircleBatteryGeometry(CAMERA_STATE_CONTROLLER, config);
+                return isCameraCircleBatteryEnabled(config);
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook CameraStateController.isUserRequestCircleBattery", t);
+        }
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.statusbar.battery.FlymeBatteryMeterView", false, loader);
+            Method method = clazz.getDeclaredMethod("isShowingCircleBattery");
+            method.setAccessible(true);
+            hook(method).intercept(chain ->
+                    isCameraCircleBatteryEnabled(ModuleConfig.load(null)));
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook FlymeBatteryMeterView.isShowingCircleBattery", t);
+        }
     }
 
     public static MBackConfigSnapshot loadMBackConfig(Context context) {
@@ -2808,6 +2839,10 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static boolean isBatteryCodeDrawEnabled(ModuleConfig config) {
         return config != null && config.enabled && config.batteryCodeDrawEnabled;
+    }
+
+    private static boolean isCameraCircleBatteryEnabled(ModuleConfig config) {
+        return config != null && config.enabled && config.cameraCircleBatteryEnabled;
     }
 
     private static boolean isSignalCodeDrawEnabled(ModuleConfig config) {
@@ -6205,6 +6240,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         clearSignalSubSlotIndexCache();
         ConnectionRateHooks.refreshTrackedViews();
         refreshTrackedBatteryViews();
+        refreshCameraCircleBatteryWindow();
         refreshTrackedStatusBarIconViews();
         refreshTrackedStatusIconLayout();
         ClockHooks.refreshTrackedViews();
@@ -6240,6 +6276,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                     continue;
                 }
                 ModuleConfig config = ModuleConfig.load(batteryView.getContext());
+                ReflectUtils.setBooleanField(batteryView, "mShowingCircleBattery",
+                        isCameraCircleBatteryEnabled(config));
                 BatteryViewState state = rememberBatteryViewState(batteryView);
                 boolean wasCodeDrawEnabled = state.codeDrawEnabled;
                 long previousRenderConfigSignature = state.renderConfigSignature;
@@ -6268,6 +6306,54 @@ public class FlymeStatusBarSizer extends XposedModule {
                 }
             }
         });
+    }
+
+    private static void refreshCameraCircleBatteryWindow() {
+        Object controller = CAMERA_STATE_CONTROLLER;
+        if (controller == null) {
+            return;
+        }
+        Runnable refresh = () -> {
+            ModuleConfig config = ModuleConfig.load(null);
+            applyCameraCircleBatteryGeometry(controller, config);
+            ReflectUtils.setBooleanField(controller, "mShowCircleBattery",
+                    isCameraCircleBatteryEnabled(config));
+            ReflectUtils.invokeNoArg(controller, "updateCircleBatteryWindowVisibility");
+        };
+        Handler handler = MAIN_HANDLER;
+        if (handler != null) {
+            handler.post(refresh);
+            return;
+        }
+        Object view = ReflectUtils.getField(controller, "mBlackCircleView");
+        if (view instanceof View) {
+            ((View) view).post(refresh);
+        }
+    }
+
+    private static void applyCameraCircleBatteryGeometry(Object controller, ModuleConfig config) {
+        Object value = ReflectUtils.getField(controller, "mCircleBatteryView");
+        if (!(value instanceof View) || config == null) {
+            return;
+        }
+        View view = (View) value;
+        float radiusScale = config.cameraCircleBatteryRadiusPercent / 100f;
+        view.setScaleX(radiusScale);
+        view.setScaleY(radiusScale);
+        Object strokeValue = ReflectUtils.getField(view, "mStrokeWidth");
+        if (strokeValue instanceof Float) {
+            float strokeWidth = (Float) strokeValue
+                    * config.cameraCircleBatteryStrokePercent / 100f / radiusScale;
+            Object paint = ReflectUtils.getField(view, "mPaint");
+            Object backgroundPaint = ReflectUtils.getField(view, "mBgPaint");
+            if (paint instanceof Paint) {
+                ((Paint) paint).setStrokeWidth(strokeWidth);
+            }
+            if (backgroundPaint instanceof Paint) {
+                ((Paint) backgroundPaint).setStrokeWidth(strokeWidth);
+            }
+        }
+        view.invalidate();
     }
 
     private static void invalidateLinkedSignalViews(View batteryView) {

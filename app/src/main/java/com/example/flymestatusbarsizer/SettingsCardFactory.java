@@ -27,6 +27,23 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_BATTERY_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED);
         activity.addDivider(content);
+        activity.addSwitchRow(content, "摄像头环形电池",
+                "开启后使用 Flyme 原生摄像头孔位环形电池。",
+                SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_ENABLED,
+                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED);
+        activity.addDivider(content);
+        activity.addSliderRow(content, "环形电池半径",
+                "放大后可避开摄像头和周围黑边。",
+                SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT,
+                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT,
+                80, 200, "%");
+        activity.addDivider(content);
+        activity.addSliderRow(content, "环形电池粗细",
+                "单独调整圆环线条粗细，不改变半径。",
+                SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT,
+                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT,
+                50, 300, "%");
+        activity.addDivider(content);
         activity.addChoiceRow(content, "电池图标样式",
                 "当前保留类 IOS、类 One UI 和 IOS 旧版三套代码绘制样式。",
                 SettingsStore.KEY_BATTERY_ICON_STYLE,

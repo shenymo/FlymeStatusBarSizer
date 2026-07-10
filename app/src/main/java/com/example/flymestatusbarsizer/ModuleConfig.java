@@ -25,6 +25,11 @@ final class ModuleConfig {
 
     boolean enabled = SettingsStore.DEFAULT_ENABLED;
     boolean batteryCodeDrawEnabled = SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED;
+    boolean cameraCircleBatteryEnabled = SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED;
+    int cameraCircleBatteryRadiusPercent =
+            SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT;
+    int cameraCircleBatteryStrokePercent =
+            SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT;
     boolean signalCodeDrawEnabled = SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED;
     boolean signalMobileTypeBadgeEnabled = SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED;
     boolean wifiCodeDrawEnabled = SettingsStore.DEFAULT_WIFI_CODE_DRAW_ENABLED;
@@ -291,6 +296,20 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_BATTERY_CODE_DRAW_ENABLED,
                     SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED);
+            config.cameraCircleBatteryEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_ENABLED,
+                    SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED);
+            config.cameraCircleBatteryRadiusPercent = Math.max(80, Math.min(200,
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT,
+                            SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT)));
+            config.cameraCircleBatteryStrokePercent = Math.max(50, Math.min(300,
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT,
+                            SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT)));
             config.signalCodeDrawEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
