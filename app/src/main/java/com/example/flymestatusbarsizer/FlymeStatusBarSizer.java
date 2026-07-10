@@ -277,14 +277,19 @@ public class FlymeStatusBarSizer extends XposedModule {
                 return;
             }
             TRACKED_BATTERY_VIEWS.put(view, Boolean.TRUE);
-            rememberBatteryViewState(view);
+            BatteryViewState state = rememberBatteryViewState(view);
             ensureConfigRefreshObserver(view.getContext());
             if (isBatteryCodeDrawEnabled(config)) {
                 syncBatteryViewLayoutIfNeeded(view, config, true);
             }
+            if (shouldHideBatteryIconForCameraCircle(config)) {
+                state.hiddenByCameraCircle = true;
+                view.setVisibility(View.GONE);
+            }
         });
         hookFlymeBatteryMeterViewDraw(loader);
         hookFlymeBatteryMeterViewMeasure(loader);
+        hookFlymeBatteryMeterViewApply(loader);
         hookFlymeBatteryMeterViewBatteryLevelChanged(loader);
         hookFlymeBatteryMeterViewConfigurationChanged(loader);
         hookFlymeBatteryMeterViewDarkChanged(loader);
@@ -327,6 +332,20 @@ public class FlymeStatusBarSizer extends XposedModule {
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG,
                     "Failed to hook FlymeBatteryMeterView.isShowingCircleBattery", t);
+        }
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.camera.CameraStateController", false, loader);
+            Method method = clazz.getDeclaredMethod("updateBatteryViewVisibility", boolean.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                hideTrackedBatteryIconsIfNeeded(ModuleConfig.load(null));
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook CameraStateController.updateBatteryViewVisibility", t);
         }
     }
 
@@ -1742,6 +1761,28 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private void hookFlymeBatteryMeterViewApply(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.statusbar.battery.FlymeBatteryMeterView", false, loader);
+            Method method = clazz.getDeclaredMethod("apply", boolean.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                ModuleConfig config = ModuleConfig.load(null);
+                if (target instanceof View && shouldHideBatteryIconForCameraCircle(config)) {
+                    View view = (View) target;
+                    rememberBatteryViewState(view).hiddenByCameraCircle = true;
+                    view.setVisibility(View.GONE);
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "Failed to hook FlymeBatteryMeterView.apply", t);
+        }
+    }
+
     private void hookFlymeBatteryMeterViewBatteryLevelChanged(ClassLoader loader) {
         try {
             Class<?> clazz = Class.forName("com.flyme.statusbar.battery.FlymeBatteryMeterView", false, loader);
@@ -2843,6 +2884,11 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static boolean isCameraCircleBatteryEnabled(ModuleConfig config) {
         return config != null && config.enabled && config.cameraCircleBatteryEnabled;
+    }
+
+    private static boolean shouldHideBatteryIconForCameraCircle(ModuleConfig config) {
+        return isCameraCircleBatteryEnabled(config)
+                && config.cameraCircleBatteryHideIconEnabled;
     }
 
     private static boolean isSignalCodeDrawEnabled(ModuleConfig config) {
@@ -6279,6 +6325,14 @@ public class FlymeStatusBarSizer extends XposedModule {
                 ReflectUtils.setBooleanField(batteryView, "mShowingCircleBattery",
                         isCameraCircleBatteryEnabled(config));
                 BatteryViewState state = rememberBatteryViewState(batteryView);
+                boolean hideBatteryIcon = shouldHideBatteryIconForCameraCircle(config);
+                boolean wasHiddenByCameraCircle = state.hiddenByCameraCircle;
+                state.hiddenByCameraCircle = hideBatteryIcon;
+                if (!hideBatteryIcon && wasHiddenByCameraCircle) {
+                    ReflectUtils.invokeMethod(
+                            batteryView, "apply", new Class[]{boolean.class}, true);
+                    batteryView.requestLayout();
+                }
                 boolean wasCodeDrawEnabled = state.codeDrawEnabled;
                 long previousRenderConfigSignature = state.renderConfigSignature;
                 boolean hadRenderConfigSignature = state.hasRenderConfigSignature;
@@ -6294,6 +6348,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                         ReflectUtils.invokeMethod(batteryView, "apply", new Class[]{boolean.class}, true);
                         batteryView.invalidate();
                     }
+                    if (hideBatteryIcon) {
+                        batteryView.setVisibility(View.GONE);
+                    }
                     continue;
                 }
                 long renderConfigSignature = getBatteryRenderConfigSignature(config);
@@ -6304,8 +6361,24 @@ public class FlymeStatusBarSizer extends XposedModule {
                 if (snapshotChanged || layoutChanged || renderConfigChanged || !wasCodeDrawEnabled) {
                     batteryView.invalidate();
                 }
+                if (hideBatteryIcon) {
+                    batteryView.setVisibility(View.GONE);
+                }
             }
         });
+    }
+
+    private static void hideTrackedBatteryIconsIfNeeded(ModuleConfig config) {
+        if (!shouldHideBatteryIconForCameraCircle(config)) {
+            return;
+        }
+        ArrayList<View> batteryViews = new ArrayList<>(TRACKED_BATTERY_VIEWS.keySet());
+        for (View batteryView : batteryViews) {
+            if (batteryView != null) {
+                rememberBatteryViewState(batteryView).hiddenByCameraCircle = true;
+                batteryView.setVisibility(View.GONE);
+            }
+        }
     }
 
     private static void refreshCameraCircleBatteryWindow() {
@@ -6875,6 +6948,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         long renderConfigSignature;
         boolean hasRenderConfigSignature;
         boolean codeDrawEnabled;
+        boolean hiddenByCameraCircle;
         boolean hasRuntimeSnapshot;
         boolean originalLayoutCaptured;
         boolean originalMarginsCaptured;

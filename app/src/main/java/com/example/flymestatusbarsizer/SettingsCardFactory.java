@@ -27,22 +27,38 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_BATTERY_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED);
         activity.addDivider(content);
+        LinearLayout circleBatteryOptions = new LinearLayout(activity);
+        circleBatteryOptions.setOrientation(LinearLayout.VERTICAL);
+        circleBatteryOptions.setVisibility(SettingsStore.readBoolean(
+                activity.prefs(),
+                SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_ENABLED,
+                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED)
+                ? View.VISIBLE : View.GONE);
         activity.addSwitchRow(content, "摄像头环形电池",
                 "开启后使用 Flyme 原生摄像头孔位环形电池。",
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_ENABLED,
-                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED);
-        activity.addDivider(content);
-        activity.addSliderRow(content, "环形电池半径",
+                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED,
+                (buttonView, isChecked) -> circleBatteryOptions.setVisibility(
+                        isChecked ? View.VISIBLE : View.GONE));
+        activity.addSwitchRow(circleBatteryOptions, "隐藏普通电池图标",
+                "同时隐藏代码绘制和系统原生电池图标，并释放原来的占位。",
+                SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED,
+                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED);
+        activity.addDivider(circleBatteryOptions);
+        activity.addSliderRow(circleBatteryOptions, "环形电池半径",
                 "放大后可避开摄像头和周围黑边。",
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT,
                 SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT,
                 80, 200, "%");
-        activity.addDivider(content);
-        activity.addSliderRow(content, "环形电池粗细",
+        activity.addDivider(circleBatteryOptions);
+        activity.addSliderRow(circleBatteryOptions, "环形电池粗细",
                 "单独调整圆环线条粗细，不改变半径。",
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT,
                 SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT,
                 50, 300, "%");
+        LinearLayout.LayoutParams circleBatteryOptionsLp = activity.matchWrapWithTop(10);
+        circleBatteryOptionsLp.leftMargin = activity.dp(12);
+        content.addView(circleBatteryOptions, circleBatteryOptionsLp);
         activity.addDivider(content);
         activity.addChoiceRow(content, "电池图标样式",
                 "当前保留类 IOS、类 One UI 和 IOS 旧版三套代码绘制样式。",

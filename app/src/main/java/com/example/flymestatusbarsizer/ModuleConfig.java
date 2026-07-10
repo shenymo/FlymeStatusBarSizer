@@ -26,6 +26,8 @@ final class ModuleConfig {
     boolean enabled = SettingsStore.DEFAULT_ENABLED;
     boolean batteryCodeDrawEnabled = SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED;
     boolean cameraCircleBatteryEnabled = SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED;
+    boolean cameraCircleBatteryHideIconEnabled =
+            SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED;
     int cameraCircleBatteryRadiusPercent =
             SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT;
     int cameraCircleBatteryStrokePercent =
@@ -300,6 +302,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_ENABLED,
                     SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED);
+            config.cameraCircleBatteryHideIconEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED,
+                    SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED);
             config.cameraCircleBatteryRadiusPercent = Math.max(80, Math.min(200,
                     SettingsStore.readInt(
                             prefs,
