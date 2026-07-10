@@ -13,6 +13,7 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.ViewParent;
+import android.view.ViewTreeObserver;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 
@@ -830,6 +831,12 @@ final class LauncherRecentsTouchController {
                 || isStackDismissRelayoutAnimationActive(recentsView);
     }
 
+    private static boolean shouldHandleStackDismissTouch(View recentsView) {
+        return LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || (LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0) == 1
+                && LauncherRecentsState.isAppToRecentsStackSettled(recentsView));
+    }
+
     private static Boolean handleStackDismissControllerTouch(
             Object controller,
             MotionEvent motionEvent,
@@ -840,7 +847,7 @@ final class LauncherRecentsTouchController {
         }
         logStackFlow("dismissController:" + source, recentsView, motionEvent,
                 controller != null ? controller.getClass().getSimpleName() : null);
-        if (!LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+        if (!shouldHandleStackDismissTouch(recentsView)) {
             logStackFlow("dismissController:" + source + ":notStack",
                     recentsView, motionEvent, null);
             clearStackDismissGesture(recentsView, true);
@@ -1013,7 +1020,7 @@ final class LauncherRecentsTouchController {
         if (recentsView == null
                 || motionEvent == null
                 || motionEvent.getActionMasked() != MotionEvent.ACTION_MOVE
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || !shouldHandleStackDismissTouch(recentsView)
                 || findStackTaskUnderPoint(
                 recentsView,
                 motionEvent.getX(),
@@ -1546,6 +1553,19 @@ final class LauncherRecentsTouchController {
         return -1;
     }
 
+    private static View findRemainingTaskView(View recentsView, View dismissedTaskView) {
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView != null
+                    && taskView != dismissedTaskView
+                    && !LauncherRecentsCompat.isDesktopTask(taskView)) {
+                return taskView;
+            }
+        }
+        return null;
+    }
+
     private static void resetStackDismissVisuals(StackDismissGestureState state) {
         state.cancelAnimator();
         applyStackDismissRelayoutProgress(state, 0f);
@@ -1643,6 +1663,10 @@ final class LauncherRecentsTouchController {
                     recentsView, null, taskDetails(recentsView, taskView));
             return false;
         }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        View singleRemainingTaskView = taskViewCount == 2
+                ? findRemainingTaskView(recentsView, taskView)
+                : null;
         if (state.relayoutPrepared) {
             boolean removedTask = LauncherRecentsCompat.invokeMethodReflectively(
                     recentsView,
@@ -1657,6 +1681,15 @@ final class LauncherRecentsTouchController {
             ((ViewGroup) recentsView).removeViewInLayout(taskView);
             boolean snapToPageAfterRelayout = state.relayoutSnapToPageAfterRelayout;
             clearStackDismissRelayoutProgress(state);
+            if (taskViewCount == 1) {
+                finishEmptyStackDismiss(recentsView);
+                return true;
+            }
+            if (singleRemainingTaskView != null) {
+                finishSingleTaskDismissHandoff(recentsView, singleRemainingTaskView);
+                recentsView.invalidate();
+                return true;
+            }
             finishStackDismissRelayout(
                     recentsView,
                     "dismissRelayoutEnd",
@@ -1670,7 +1703,6 @@ final class LauncherRecentsTouchController {
                 captureStackDismissRelayoutStartStates(recentsView);
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         boolean fillFromAfter = shouldFillStackDismissFromAfter(dismissedIndex, startStates);
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         boolean snapToPageAfterRelayout = !fillFromAfter;
         int startScroll = resolvePrimaryScroll(recentsView);
         int[] targetPageAndScroll = snapToPageAfterRelayout
@@ -1710,6 +1742,15 @@ final class LauncherRecentsTouchController {
             return false;
         }
         ((ViewGroup) recentsView).removeViewInLayout(taskView);
+        if (taskViewCount == 1) {
+            finishEmptyStackDismiss(recentsView);
+            return true;
+        }
+        if (singleRemainingTaskView != null) {
+            finishSingleTaskDismissHandoff(recentsView, singleRemainingTaskView);
+            recentsView.invalidate();
+            return true;
+        }
         LauncherRecentsLayoutEngine.applyStackDismissTargetVisibility(recentsView, targetStates);
         animateStackDismissRelayout(
                 recentsView,
@@ -2093,14 +2134,99 @@ final class LauncherRecentsTouchController {
                 0f,
                 LauncherRecentsTaskVisuals.readOriginalBoxTranslationY(taskView),
                 LauncherRecentsTaskVisuals.readOriginalNonGridScale(taskView),
-                LauncherRecentsTaskVisuals.readLastStockAttachAlpha(taskView),
-                LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView),
+                1f,
+                1f,
                 1f,
                 0f,
                 LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView),
-                LauncherRecentsTaskVisuals.readLastStockTranslationZ(taskView),
+                taskView.getTranslationZ(),
                 false,
                 false);
+    }
+
+    private static void finishSingleTaskDismissHandoff(
+            View recentsView,
+            View remainingTaskView) {
+        ViewTreeObserver.OnPreDrawListener listener = new ViewTreeObserver.OnPreDrawListener() {
+            @Override
+            public boolean onPreDraw() {
+                ViewTreeObserver observer = recentsView.getViewTreeObserver();
+                if (observer.isAlive()) {
+                    observer.removeOnPreDrawListener(this);
+                }
+                applySingleTaskDismissHandoff(recentsView, remainingTaskView);
+                return true;
+            }
+        };
+        recentsView.getViewTreeObserver().addOnPreDrawListener(listener);
+        recentsView.requestLayout();
+    }
+
+    private static void finishEmptyStackDismiss(View recentsView) {
+        LauncherRecentsState.clearAppToRecentsGestureState(recentsView);
+        LauncherRecentsState.setOverviewStateStackSettled(recentsView, false);
+        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
+        LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.remove(recentsView);
+        LauncherRecentsState.LAST_STACK_LAYOUT_COMPUTED_PACKAGES.remove(recentsView);
+        recentsView.requestLayout();
+        recentsView.invalidate();
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "startHome",
+                LauncherRecentsCompat.NO_ARGS);
+    }
+
+    private static void applySingleTaskDismissHandoff(
+            View recentsView,
+            View remainingTaskView) {
+        if (recentsView == null
+                || remainingTaskView == null
+                || LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0) != 1
+                || LauncherRecentsCompat.getTaskViewAt(recentsView, 0) != remainingTaskView) {
+            return;
+        }
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "abortScrollerAnimation",
+                LauncherRecentsCompat.NO_ARGS);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setCurrentPage",
+                LauncherRecentsCompat.INT_ARG,
+                0);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setEnableDrawingLiveTile",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                false);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setRunningTaskViewShowScreenshot",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                true);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "setRunningTaskHidden",
+                LauncherRecentsCompat.BOOLEAN_ARG,
+                false);
+
+        remainingTaskView.setVisibility(View.VISIBLE);
+        LauncherRecentsLayoutEngine.restoreTaskTransform(remainingTaskView);
+        setStackDismissTranslationX(remainingTaskView, 0f);
+        setStackDismissTranslationY(remainingTaskView, 0f);
+        LauncherRecentsTaskVisuals.setAttachAlpha(remainingTaskView, 1f);
+        LauncherRecentsTaskVisuals.setStableAlpha(remainingTaskView, 1f);
+        LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
+        LauncherRecentsTaskVisuals.clearAppliedTaskState(remainingTaskView);
+        LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
+
+        LauncherRecentsState.clearAppToRecentsEntryState(recentsView);
+        LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
+        LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
+        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
+        LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.remove(recentsView);
+        LauncherRecentsState.LAST_STACK_LAYOUT_COMPUTED_PACKAGES.remove(recentsView);
+        recentsView.invalidate();
     }
 
     private static void settleStackDismissLayoutState(View recentsView) {

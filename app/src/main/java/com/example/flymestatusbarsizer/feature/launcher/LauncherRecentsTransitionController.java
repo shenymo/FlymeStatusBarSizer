@@ -233,6 +233,14 @@ final class LauncherRecentsTransitionController {
                         recentsView,
                         "endTarget=" + endTarget
                                 + " shouldPrepareRelease=" + shouldPrepareGestureRelease);
+                boolean shouldClearNonRecentsBeforeNative = recentsView != null
+                        && LauncherRecentsState.isSwipeUpGestureActive(recentsView)
+                        && !isRecentsGestureEndTarget(endTarget);
+                if (shouldClearNonRecentsBeforeNative) {
+                    LauncherRecentsPerf.flow("enter:gestureAnimationEnd:clearBeforeNative",
+                            recentsView);
+                    clearNonRecentsGestureEndState(recentsView);
+                }
                 if (shouldPrepareGestureRelease) {
                     LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
                     markPendingGestureRecentsStackRelease(recentsView, true);
@@ -253,6 +261,9 @@ final class LauncherRecentsTransitionController {
                     result = chain.proceed();
                 } finally {
                     LauncherRecentsPerf.end("native:onGestureAnimationEnd", nativeStartNs);
+                }
+                if (shouldClearNonRecentsBeforeNative) {
+                    return result;
                 }
                 if (thisObject instanceof View) {
                     if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {

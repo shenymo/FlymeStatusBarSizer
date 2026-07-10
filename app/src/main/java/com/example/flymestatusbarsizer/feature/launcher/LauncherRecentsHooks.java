@@ -11,14 +11,13 @@ public final class LauncherRecentsHooks {
             return;
         }
         LauncherRecentsLayoutEngine.installHooks(module, loader);
-        LauncherRecentsSurfaceController.installHooks(module, loader);
         LauncherRecentsAttachController.installHooks(module, loader);
         LauncherRecentsStateAnimationController.installHooks(module, loader);
         LauncherRecentsLaunchController.installHooks(module, loader);
         LauncherRecentsTouchController.installHooks(module, loader);
         LauncherRecentsTransitionController.installHooks(module, loader);
         LauncherRecentsPerf.install("hook:install",
-                "layout surface attach state launch touch transition");
+                "layout attach state launch touch transition");
     }
 
     public static void refreshTrackedViews() {
