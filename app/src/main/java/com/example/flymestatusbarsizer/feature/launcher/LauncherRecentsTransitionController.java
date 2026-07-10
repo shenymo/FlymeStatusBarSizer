@@ -1021,6 +1021,12 @@ final class LauncherRecentsTransitionController {
         return Math.max(0, Math.min(currentPage, pageCount - 1));
     }
 
+    static void normalizeAppToRecentsStackAnchor(View recentsView) {
+        normalizeAppToRecentsStackAnchor(
+                recentsView,
+                resolveAppToRecentsStackAnchorPage(recentsView));
+    }
+
     private static void normalizeAppToRecentsStackAnchor(View recentsView, int anchorPage) {
         if (recentsView == null || anchorPage < 0) {
             return;
