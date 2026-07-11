@@ -1571,6 +1571,19 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsPerf.flow("layout:scrollSync:skipDismiss", recentsView);
             return false;
         }
+        if (!LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false)) {
+            if (shouldCaptureStockTaskStatesForStackApply(recentsView)) {
+                captureStockTaskStatesForStackApply(recentsView);
+            }
+            boolean applied = applyStackLayout(
+                    recentsView,
+                    false,
+                    "onScrollChangedSync");
+            if (applied) {
+                recentsView.invalidate();
+            }
+            return applied;
+        }
         return scheduleStackLayoutBeforeDraw(
                 recentsView,
                 shouldCaptureStockTaskStatesForStackApply(recentsView),
