@@ -339,6 +339,10 @@ final class SettingsCardFactory {
                 "进入独立工具页，微调时钟、电池、信号、Wi-Fi 与输入法控制栏的位置。",
                 "进入", activity::showPositionTuningPage);
         activity.addDivider(content);
+        activity.addActionButtonRow(content, "环形摄像头位置微调",
+                "调整摄像头环形电池相对挖孔中心的位置。",
+                "进入", activity::showCameraCirclePositionPage);
+        activity.addDivider(content);
         activity.addActionButtonRow(content, "堆叠后台参数",
                 "进入独立参数页，调整 IOS 式堆叠后台的布局、动画、手势、视觉和性能。",
                 "进入", activity::showLauncherStackParamsPage);
@@ -621,6 +625,26 @@ final class SettingsCardFactory {
                 "先把这个页面里的待应用微调值都改成 0.0dp；改完后再点上面的应用写入状态栏。",
                 "归零", activity::resetAllPositionOffsets);
         return card;
+    }
+
+    View createCameraCirclePositionCard() {
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        activity.addSliderRow(content, "横向偏移",
+                "正数向右移动，负数向左移动。",
+                SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP,
+                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP,
+                -30, 30, "dp");
+        activity.addDivider(content);
+        activity.addSliderRow(content, "纵向偏移",
+                "正数向下移动，负数向上移动。",
+                SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP,
+                -30, 30, "dp");
+        return activity.buildSectionCard(
+                "位置微调",
+                "偏移量会叠加到系统识别出的摄像头挖孔中心。",
+                content);
     }
 
     View createTelephonyDebugSettingsCard() {

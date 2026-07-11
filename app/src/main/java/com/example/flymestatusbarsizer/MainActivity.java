@@ -149,6 +149,7 @@ public class MainActivity extends Activity {
         ABOUT("关于与支持", "项目地址、交流群、版本构建信息和目标作用域说明。", null, false),
         DONATION("捐赠", null, null, false),
         POSITION_TUNING("布局微调", "单独调整时钟、电池、信号、Wi-Fi 与输入法控制栏的细节位置。", null, true),
+        CAMERA_CIRCLE_POSITION("环形摄像头位置微调", "调整摄像头环形电池相对挖孔中心的位置。", null, true),
         LAUNCHER_STACK_PARAMS("堆叠后台参数", "调整 IOS 式堆叠后台的布局、动画、手势、视觉和性能参数。", null, true),
         TELEPHONY_DEBUG("Telephony 调试", "伪造 Telephony 读数，验证双卡、网络制式与信号等级对图标布局的影响。", null, true);
 
@@ -263,6 +264,9 @@ public class MainActivity extends Activity {
         registerPage(Page.ABOUT, R.layout.page_about, AboutPageController::bind);
         registerPage(Page.DONATION, R.layout.page_donation, null);
         registerPage(Page.POSITION_TUNING, R.layout.page_position_tuning, PositionTuningPageController::bind);
+        registerPage(Page.CAMERA_CIRCLE_POSITION, R.layout.page_position_tuning,
+                (activity, root) -> root.addView(
+                        activity.createCameraCirclePositionCard(), PageViewUtils.matchWrap()));
         registerPage(Page.LAUNCHER_STACK_PARAMS, R.layout.page_launcher_stack_params,
                 LauncherStackParamsPageController::bind);
         registerPage(Page.TELEPHONY_DEBUG, R.layout.page_telephony_debug, TelephonyDebugPageController::bind);
@@ -436,6 +440,10 @@ public class MainActivity extends Activity {
 
     void showPositionTuningPage() {
         openPage(Page.POSITION_TUNING);
+    }
+
+    void showCameraCirclePositionPage() {
+        openPage(Page.CAMERA_CIRCLE_POSITION);
     }
 
     void showLauncherStackParamsPage() {
@@ -2120,6 +2128,10 @@ public class MainActivity extends Activity {
 
     View createPositionTuningSettingsCard() {
         return settingsCardFactory.createPositionTuningSettingsCard();
+    }
+
+    View createCameraCirclePositionCard() {
+        return settingsCardFactory.createCameraCirclePositionCard();
     }
 
     View createLauncherStackParamsSettingsCard() {

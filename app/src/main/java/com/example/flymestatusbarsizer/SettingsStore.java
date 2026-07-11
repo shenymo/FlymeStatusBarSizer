@@ -25,6 +25,10 @@ final class SettingsStore {
             "camera_circle_battery_radius_percent";
     static final String KEY_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT =
             "camera_circle_battery_stroke_percent";
+    static final String KEY_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP =
+            "camera_circle_battery_x_offset_dp";
+    static final String KEY_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP =
+            "camera_circle_battery_y_offset_dp";
     static final String KEY_SIGNAL_CODE_DRAW_ENABLED = "signal_code_draw_enabled";
     static final String KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED = "signal_mobile_type_badge_enabled";
     static final String KEY_WIFI_CODE_DRAW_ENABLED = "wifi_code_draw_enabled";
@@ -213,6 +217,8 @@ final class SettingsStore {
     static final boolean DEFAULT_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED = false;
     static final int DEFAULT_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT = 100;
     static final int DEFAULT_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT = 100;
+    static final int DEFAULT_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP = 0;
+    static final int DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP = 0;
     static final boolean DEFAULT_SIGNAL_CODE_DRAW_ENABLED = true;
     static final boolean DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED = true;
     static final boolean DEFAULT_WIFI_CODE_DRAW_ENABLED = true;
@@ -367,6 +373,8 @@ final class SettingsStore {
             KEY_BATTERY_TEXT_FONT,
             KEY_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT,
             KEY_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT,
+            KEY_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP,
+            KEY_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP,
             KEY_STATUS_BAR_ICON_SCALE_PERCENT,
             KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
             KEY_BATTERY_ICON_Y_OFFSET_DP,
@@ -669,6 +677,10 @@ final class SettingsStore {
                 return DEFAULT_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT;
             case KEY_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT:
                 return DEFAULT_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT;
+            case KEY_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP:
+                return DEFAULT_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP;
+            case KEY_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP:
+                return DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP;
             case KEY_STATUS_BAR_ICON_SCALE_PERCENT:
                 return DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
             case KEY_BATTERY_INNER_TEXT_SCALE_PERCENT:

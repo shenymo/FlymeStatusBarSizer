@@ -25,6 +25,7 @@ import android.graphics.ColorFilter;
 import android.graphics.drawable.Icon;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.os.Looper;
@@ -39,6 +40,8 @@ import android.text.TextUtils;
 import android.graphics.Typeface;
 import android.util.StateSet;
 import android.view.Gravity;
+import android.view.Display;
+import android.view.DisplayCutout;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -307,6 +310,21 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private void hookCameraCircleBatterySwitch(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.camera.CameraStateController", false, loader);
+            Method method = clazz.getDeclaredMethod("initBatteryWindowLp");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                applyCameraCircleBatteryPosition(
+                        chain.getThisObject(), result, ModuleConfig.load(null));
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook CameraStateController.initBatteryWindowLp", t);
+        }
         try {
             Class<?> clazz = Class.forName(
                     "com.flyme.systemui.camera.CameraStateController", false, loader);
@@ -6427,6 +6445,49 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
         }
         view.invalidate();
+        Object lp = ReflectUtils.getField(controller, "mBatteryLpChanged");
+        applyCameraCircleBatteryPosition(controller, lp, config);
+        Object root = ReflectUtils.getField(controller, "mBlackCircleView");
+        Object windowManager = ReflectUtils.getField(controller, "mWindowManager");
+        if (lp instanceof WindowManager.LayoutParams
+                && root instanceof View
+                && windowManager instanceof WindowManager
+                && ((View) root).isAttachedToWindow()
+                && ReflectUtils.getBooleanField(controller, "mBatteryAttachToWindow", false)) {
+            try {
+                ((WindowManager) windowManager).updateViewLayout((View) root,
+                        (WindowManager.LayoutParams) lp);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private static void applyCameraCircleBatteryPosition(
+            Object controller, Object value, ModuleConfig config) {
+        if (!(value instanceof WindowManager.LayoutParams) || config == null) {
+            return;
+        }
+        Object contextValue = ReflectUtils.getField(controller, "mContext");
+        if (!(contextValue instanceof Context)) {
+            return;
+        }
+        Display display = ((Context) contextValue).getDisplay();
+        DisplayCutout cutout = display == null ? null : display.getCutout();
+        if (cutout == null || cutout.getCutoutPath() == null) {
+            return;
+        }
+        RectF bounds = new RectF();
+        cutout.getCutoutPath().computeBounds(bounds, false);
+        if (bounds.width() <= 0f || bounds.height() <= 0f) {
+            return;
+        }
+        WindowManager.LayoutParams lp = (WindowManager.LayoutParams) value;
+        float density = ((Context) contextValue).getResources().getDisplayMetrics().density;
+        lp.gravity = Gravity.TOP | Gravity.START;
+        lp.x = Math.round(bounds.centerX() - lp.width / 2f
+                + config.cameraCircleBatteryXOffsetDp * density);
+        lp.y = Math.round(bounds.centerY() - lp.height / 2f
+                + config.cameraCircleBatteryYOffsetDp * density);
     }
 
     private static void invalidateLinkedSignalViews(View batteryView) {
