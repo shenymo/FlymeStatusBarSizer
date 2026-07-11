@@ -1373,7 +1373,89 @@ final class LauncherRecentsTouchController {
         LauncherRecentsTaskVisuals.setTranslationZ(
                 state.taskView,
                 state.originalTranslationZ);
+        prepareStackMenuReveal(state);
         applyStackDismissProgress(state, state.currentDismissTranslation);
+    }
+
+    private static void prepareStackMenuReveal(StackDismissGestureState state) {
+        int taskIndex = findTaskViewIndex(state.recentsView, state.taskView);
+        if (taskIndex <= 0) {
+            return;
+        }
+        View coverTaskView = LauncherRecentsCompat.getTaskViewAt(
+                state.recentsView,
+                taskIndex - 1);
+        if (!isStackDismissTaskCandidate(state.recentsView, coverTaskView)) {
+            return;
+        }
+        boolean primaryHorizontal = isPrimaryScrollHorizontal(state.recentsView);
+        float coverStart = resolveStackTaskPrimaryStart(
+                state.recentsView,
+                coverTaskView,
+                primaryHorizontal);
+        float coverEnd = resolveStackTaskPrimaryEnd(
+                state.recentsView,
+                coverTaskView,
+                primaryHorizontal);
+        float taskStart = resolveStackTaskPrimaryStart(
+                state.recentsView,
+                state.taskView,
+                primaryHorizontal);
+        float taskEnd = resolveStackTaskPrimaryEnd(
+                state.recentsView,
+                state.taskView,
+                primaryHorizontal);
+        if (coverEnd <= taskStart || coverStart >= taskEnd) {
+            return;
+        }
+        float coverCenter = (coverStart + coverEnd) * 0.5f;
+        float taskCenter = (taskStart + taskEnd) * 0.5f;
+        float gap = FlymeStatusBarSizer.dp(state.recentsView.getContext(), 12);
+        float shift = coverCenter <= taskCenter
+                ? taskStart - coverEnd - gap
+                : taskEnd - coverStart + gap;
+        state.menuCoverPrimaryHorizontal = primaryHorizontal;
+        state.menuCoverShift = shift;
+        state.menuCoverStartOffsets = new HashMap<>();
+        for (int i = 0; i < taskIndex; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(state.recentsView, i);
+            if (!isStackDismissTaskCandidate(state.recentsView, taskView)) {
+                continue;
+            }
+            state.menuCoverStartOffsets.put(
+                    taskView,
+                    LauncherRecentsCompat.readFloatField(
+                            taskView,
+                            primaryHorizontal
+                                    ? "taskOffsetTranslationX"
+                                    : "taskOffsetTranslationY",
+                            0f));
+        }
+    }
+
+    private static float resolveStackTaskPrimaryStart(
+            View recentsView,
+            View taskView,
+            boolean primaryHorizontal) {
+        float scale = Math.max(
+                0.01f,
+                primaryHorizontal ? Math.abs(taskView.getScaleX()) : Math.abs(taskView.getScaleY()));
+        float pivot = primaryHorizontal ? taskView.getPivotX() : taskView.getPivotY();
+        float position = primaryHorizontal ? taskView.getX() : taskView.getY();
+        int scroll = primaryHorizontal ? recentsView.getScrollX() : recentsView.getScrollY();
+        return position - scroll + pivot - (pivot * scale);
+    }
+
+    private static float resolveStackTaskPrimaryEnd(
+            View recentsView,
+            View taskView,
+            boolean primaryHorizontal) {
+        float size = primaryHorizontal ? taskView.getWidth() : taskView.getHeight();
+        float scale = Math.max(
+                0.01f,
+                primaryHorizontal ? Math.abs(taskView.getScaleX()) : Math.abs(taskView.getScaleY()));
+        return resolveStackTaskPrimaryStart(recentsView, taskView, primaryHorizontal)
+                + (size * scale);
     }
 
     private static void settleAppToRecentsForStackDismiss(View recentsView) {
@@ -1478,6 +1560,10 @@ final class LauncherRecentsTouchController {
             state.taskView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
         }
         state.menuThresholdReached = thresholdReached;
+        state.pendingMenuRevealProgress = LauncherRecentsLayoutEngine.clamp(
+                distance / Math.max(1f, threshold),
+                0f,
+                1f);
         scheduleStackDismissDragFrame(state);
     }
 
@@ -1487,15 +1573,15 @@ final class LauncherRecentsTouchController {
         STACK_DISMISS_GESTURES.remove(state.recentsView);
         requestParentDisallowIntercept(state.recentsView, false);
         flushStackDismissDragFrame(state);
+        if (state.menuDragging) {
+            animateStackMenuReturn(state, !canceled && state.menuThresholdReached);
+            state.recycleVelocityTracker();
+            return;
+        }
         if (canceled) {
             logStackFlow("dismiss:finish:canceled",
                     state.recentsView, null, taskDetails(state.recentsView, state.taskView));
             animateStackDismissCancel(state);
-            state.recycleVelocityTracker();
-            return;
-        }
-        if (state.menuDragging) {
-            animateStackMenuReturn(state, state.menuThresholdReached);
             state.recycleVelocityTracker();
             return;
         }
@@ -1530,6 +1616,7 @@ final class LauncherRecentsTouchController {
                     LauncherRecentsCompat.NO_ARGS);
         }
         float start = state.currentDismissTranslation;
+        float startRevealProgress = state.menuRevealProgress;
         ValueAnimator animator = ValueAnimator.ofFloat(start, state.startDismissTranslation);
         state.animator = animator;
         animator.setDuration(stackDismissCancelAnimMs(state.recentsView));
@@ -1538,6 +1625,12 @@ final class LauncherRecentsTouchController {
             float value = (Float) animation.getAnimatedValue();
             state.currentDismissTranslation = value;
             applyStackDismissProgress(state, value);
+            applyStackMenuRevealProgress(
+                    state,
+                    LauncherRecentsLayoutEngine.lerp(
+                            startRevealProgress,
+                            0f,
+                            animation.getAnimatedFraction()));
         });
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
@@ -1684,7 +1777,30 @@ final class LauncherRecentsTouchController {
             return;
         }
         applyStackDismissProgress(state, state.currentDismissTranslation);
+        applyStackMenuRevealProgress(state, state.pendingMenuRevealProgress);
         applyStackDismissRelayoutProgress(state, state.pendingRelayoutProgress);
+    }
+
+    private static void applyStackMenuRevealProgress(
+            StackDismissGestureState state,
+            float progress) {
+        if (state == null
+                || state.menuCoverStartOffsets == null
+                || state.menuCoverStartOffsets.isEmpty()) {
+            return;
+        }
+        float clampedProgress = LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f);
+        state.menuRevealProgress = clampedProgress;
+        for (View taskView : state.menuCoverStartOffsets.keySet()) {
+            float startOffset = state.menuCoverStartOffsets.get(taskView);
+            float offset = startOffset + (state.menuCoverShift * clampedProgress);
+            if (state.menuCoverPrimaryHorizontal) {
+                LauncherRecentsTaskVisuals.setTaskOffsetTranslationX(taskView, offset);
+            } else {
+                LauncherRecentsTaskVisuals.setTaskOffsetTranslationY(taskView, offset);
+            }
+        }
+        state.recentsView.invalidate();
     }
 
     private static void prepareStackDismissRelayoutForDrag(StackDismissGestureState state) {
@@ -1906,6 +2022,7 @@ final class LauncherRecentsTouchController {
         applyStackDismissRelayoutProgress(state, 0f);
         clearStackDismissRelayoutProgress(state);
         clearStackDismissFillTaskPreload(state);
+        applyStackMenuRevealProgress(state, 0f);
         setStackDismissTranslation(state, state.startDismissTranslation);
         LauncherRecentsTaskVisuals.setStableAlpha(state.taskView, state.originalStableAlpha);
         LauncherRecentsTaskVisuals.setTranslationZ(state.taskView, state.originalTranslationZ);
@@ -2690,9 +2807,11 @@ final class LauncherRecentsTouchController {
         HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> relayoutStartVisualStates;
         HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> relayoutTargetStates;
         View preloadedFillTaskView;
+        HashMap<View, Float> menuCoverStartOffsets;
         boolean dragging;
         boolean menuDragging;
         boolean menuThresholdReached;
+        boolean menuCoverPrimaryHorizontal;
         boolean relayoutPrepared;
         boolean relayoutPrimaryScrollHorizontal;
         boolean relayoutSnapToPageAfterRelayout;
@@ -2700,6 +2819,9 @@ final class LauncherRecentsTouchController {
         int relayoutStartScroll;
         int relayoutTargetScroll;
         float currentDismissTranslation;
+        float menuCoverShift;
+        float menuRevealProgress;
+        float pendingMenuRevealProgress;
         float relayoutProgress;
         float pendingRelayoutProgress;
 
