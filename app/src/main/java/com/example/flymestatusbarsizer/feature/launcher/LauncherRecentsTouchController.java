@@ -281,6 +281,7 @@ final class LauncherRecentsTouchController {
                     clearStackHorizontalGestureLockOnTouchEnd(recentsView, motionEvent);
                     keepAppToRecentsEntryHeadsVisibleOnTouchDown(recentsView, motionEvent);
                     ensureClearAllButtonReadyOnTouchDown(recentsView, motionEvent);
+                    stopStackScrollerOnTouchDown(recentsView, motionEvent);
                     if (handleMovingStackBlankTapHomeExit(recentsView, motionEvent)) {
                         logStackFlow("touch:intercept:movingBlankTapHome",
                                 recentsView, motionEvent, null);
@@ -2722,6 +2723,21 @@ final class LauncherRecentsTouchController {
                 "isFinished",
                 LauncherRecentsCompat.NO_ARGS);
         return value instanceof Boolean && !((Boolean) value);
+    }
+
+    private static void stopStackScrollerOnTouchDown(
+            View recentsView,
+            MotionEvent motionEvent) {
+        if (motionEvent == null
+                || motionEvent.getActionMasked() != MotionEvent.ACTION_DOWN
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || !isRecentsScrollerActive(recentsView)) {
+            return;
+        }
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "abortScrollerAnimation",
+                LauncherRecentsCompat.NO_ARGS);
     }
 
     private static boolean shouldSkipBlankTapPagedRelease(
