@@ -1230,7 +1230,7 @@ final class SettingsStore {
             return Math.max(0, Math.min(100, value));
         }
         if (KEY_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(80, value));
+            return Math.max(-50, Math.min(80, value));
         }
         if (KEY_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT.equals(key)) {
             return Math.max(5, Math.min(40, value));

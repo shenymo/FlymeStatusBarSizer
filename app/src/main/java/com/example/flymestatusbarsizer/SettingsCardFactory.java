@@ -444,7 +444,7 @@ final class SettingsCardFactory {
 
         addStackParamHeader(content, "左右滑动手感", "控制手指拖动、翻页判定和松手吸附。默认值保持 Flyme 原有手感。");
         addStackParam(content, "拖动阻力", "数值越大，卡片跟随手指移动得越慢。",
-                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT, 0, 80, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT, -50, 80, "%");
         addStackParam(content, "翻页距离阈值", "数值越大，需要拖动更远才会切换任务。",
                 SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT, 5, 40, "%");
         addStackParam(content, "快滑速度阈值", "数值越低，短促快滑越容易切换任务。",
