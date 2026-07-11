@@ -313,6 +313,30 @@ final class SettingsCardFactory {
                 "通知背景需要重启 SystemUI 后刷新。",
                 "重启", activity::restartSystemUi);
         activity.addDivider(content);
+        activity.addProfileSectionHeader(content, "桌面 Aicy 入口",
+                "强制显示桌面页码位置的 Aicy 入口，并接管显示文字和点击目标。");
+        activity.addSwitchRow(content, "强制显示 Aicy 入口",
+                "忽略桌面原开关和 Aicy 助手安装状态。",
+                SettingsStore.KEY_LAUNCHER_AICY_ENTRY_ENABLED,
+                SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_ENABLED);
+        activity.addTextSettingRow(content, "显示文字",
+                "设置入口文字，建议保持简短；留空仅显示图标。",
+                SettingsStore.KEY_LAUNCHER_AICY_ENTRY_TEXT,
+                SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TEXT,
+                "仅显示图标",
+                "Aicy",
+                true);
+        activity.addTextSettingRow(content, "点击目标",
+                "填写应用包名、URL 或 Intent URI；留空使用原生 Aicy 助手。",
+                SettingsStore.KEY_LAUNCHER_AICY_ENTRY_TARGET,
+                SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TARGET,
+                "原生 Aicy",
+                "com.example.app 或 intent://...",
+                true);
+        activity.addActionButtonRow(content, "测试点击目标",
+                "测试当前填写的应用包名、URL 或 Intent URI。",
+                "立即测试", activity::testLaunchLauncherAicyTarget);
+        activity.addDivider(content);
         activity.addProfileSectionHeader(content, "系统桌面文件夹",
                 "修改 Flyme 桌面文件夹图标的圆角背景颜色。");
         activity.addTextSettingRow(content, "文件夹圆角背景颜色",
@@ -328,7 +352,7 @@ final class SettingsCardFactory {
                 "重启", activity::restartLauncher);
         return activity.buildSectionCard(
                 "系统外观",
-                "修改通知背景和 Flyme 桌面文件夹背景。",
+                "修改通知背景、桌面 Aicy 入口和文件夹背景。",
                 content);
     }
 

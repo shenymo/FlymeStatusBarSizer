@@ -1309,10 +1309,22 @@ public class MainActivity extends Activity {
     void testLaunchWindowModeSideGestureIntent() {
         testLaunchIntentSetting(
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
-                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI);
+                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
+                false);
+    }
+
+    void testLaunchLauncherAicyTarget() {
+        testLaunchIntentSetting(
+                SettingsStore.KEY_LAUNCHER_AICY_ENTRY_TARGET,
+                SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TARGET,
+                true);
     }
 
     private void testLaunchIntentSetting(String key, String defaultValue) {
+        testLaunchIntentSetting(key, defaultValue, false);
+    }
+
+    private void testLaunchIntentSetting(String key, String defaultValue, boolean allowPackageName) {
         String raw = readStringSetting(
                 key,
                 defaultValue);
@@ -1325,6 +1337,19 @@ public class MainActivity extends Activity {
             String trimmed = raw.trim();
             if (trimmed.startsWith("intent:") || trimmed.contains("#Intent;")) {
                 intent = Intent.parseUri(trimmed, Intent.URI_INTENT_SCHEME);
+            } else if (allowPackageName
+                    && trimmed.matches("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    getPackageManager()
+                            .getLaunchIntentSenderForPackage(trimmed)
+                            .sendIntent(this, 0, null, null, null);
+                    showToast("测试启动已发送");
+                    return;
+                }
+                intent = getPackageManager().getLaunchIntentForPackage(trimmed);
+                if (intent == null) {
+                    throw new IllegalArgumentException("该应用没有可启动的主界面");
+                }
             } else {
                 intent = new Intent(Intent.ACTION_VIEW, Uri.parse(trimmed));
             }

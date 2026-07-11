@@ -172,6 +172,9 @@ final class ModuleConfig {
     int launcherStackScrollFrameRate = SettingsStore.DEFAULT_LAUNCHER_STACK_SCROLL_FRAME_RATE;
     int launcherStackFrameRateReleaseDelayMs =
             SettingsStore.DEFAULT_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS;
+    boolean launcherAicyEntryEnabled = SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_ENABLED;
+    String launcherAicyEntryText = SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TEXT;
+    String launcherAicyEntryTarget = SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TARGET;
     String launcherFolderBgColor = SettingsStore.DEFAULT_LAUNCHER_FOLDER_BG_COLOR;
     boolean notificationSystemBlurOnlyEnabled =
             SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED;
@@ -660,6 +663,18 @@ final class ModuleConfig {
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE);
             config.launcherStackFrameRateReleaseDelayMs = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS);
+            config.launcherAicyEntryEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_LAUNCHER_AICY_ENTRY_ENABLED,
+                    SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_ENABLED);
+            config.launcherAicyEntryText = SettingsStore.readString(
+                    prefs,
+                    SettingsStore.KEY_LAUNCHER_AICY_ENTRY_TEXT,
+                    SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TEXT);
+            config.launcherAicyEntryTarget = SettingsStore.readString(
+                    prefs,
+                    SettingsStore.KEY_LAUNCHER_AICY_ENTRY_TARGET,
+                    SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TARGET);
             config.launcherFolderBgColor = SettingsStore.normalizeColorString(
                     SettingsStore.readString(
                             prefs,

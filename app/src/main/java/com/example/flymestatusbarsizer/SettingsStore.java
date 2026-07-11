@@ -175,6 +175,9 @@ final class SettingsStore {
             "launcher_stack_scroll_frame_rate";
     static final String KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS =
             "launcher_stack_frame_rate_release_delay_ms";
+    static final String KEY_LAUNCHER_AICY_ENTRY_ENABLED = "launcher_aicy_entry_enabled";
+    static final String KEY_LAUNCHER_AICY_ENTRY_TEXT = "launcher_aicy_entry_text";
+    static final String KEY_LAUNCHER_AICY_ENTRY_TARGET = "launcher_aicy_entry_target";
     static final String KEY_LAUNCHER_FOLDER_BG_COLOR = "launcher_folder_bg_color";
     static final String KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED =
             "notification_system_blur_only_enabled";
@@ -340,6 +343,9 @@ final class SettingsStore {
     static final int DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT = 5;
     static final int DEFAULT_LAUNCHER_STACK_SCROLL_FRAME_RATE = 120;
     static final int DEFAULT_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS = 5000;
+    static final boolean DEFAULT_LAUNCHER_AICY_ENTRY_ENABLED = false;
+    static final String DEFAULT_LAUNCHER_AICY_ENTRY_TEXT = "Aicy";
+    static final String DEFAULT_LAUNCHER_AICY_ENTRY_TARGET = "";
     static final String DEFAULT_LAUNCHER_FOLDER_BG_COLOR = "";
     static final boolean DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED = false;
     static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_FOLLOW_SYSTEM = 0;
@@ -496,6 +502,7 @@ final class SettingsStore {
             KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED,
+            KEY_LAUNCHER_AICY_ENTRY_ENABLED,
             KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
             KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,
             KEY_MBACK_HIDE_PILL,
@@ -515,6 +522,8 @@ final class SettingsStore {
             KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON,
             KEY_MBACK_LONG_TOUCH_INTENT_URI,
             KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
+            KEY_LAUNCHER_AICY_ENTRY_TEXT,
+            KEY_LAUNCHER_AICY_ENTRY_TARGET,
             KEY_LAUNCHER_FOLDER_BG_COLOR,
             KEY_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR,
             KEY_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR,

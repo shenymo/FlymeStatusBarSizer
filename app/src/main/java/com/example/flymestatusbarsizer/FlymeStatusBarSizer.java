@@ -7408,11 +7408,21 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     public static final class LauncherAppearanceConfigSnapshot {
         public final boolean enabled;
+        public final boolean launcherAicyEntryEnabled;
+        public final String launcherAicyEntryText;
+        public final String launcherAicyEntryTarget;
         public final boolean launcherFolderBgColorEnabled;
         public final int launcherFolderBgColor;
 
         private LauncherAppearanceConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
+            launcherAicyEntryEnabled = enabled && config.launcherAicyEntryEnabled;
+            launcherAicyEntryText = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TEXT
+                    : config.launcherAicyEntryText;
+            launcherAicyEntryTarget = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TARGET
+                    : config.launcherAicyEntryTarget;
             Integer color = config == null ? null : SettingsStore.parseColorString(config.launcherFolderBgColor);
             launcherFolderBgColorEnabled = enabled && color != null;
             launcherFolderBgColor = color == null ? 0 : color;
