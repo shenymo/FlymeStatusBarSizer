@@ -11,6 +11,13 @@ import java.util.ArrayList;
 import java.util.WeakHashMap;
 
 final class LauncherRecentsState {
+    static final int POSITION_OWNER_NONE = 0;
+    static final int POSITION_OWNER_SCROLL = 1;
+    static final int POSITION_OWNER_ENTER = 2;
+    static final int POSITION_OWNER_OVERVIEW = 3;
+    static final int POSITION_OWNER_HOME_EXIT = 4;
+    static final int POSITION_OWNER_DISMISS = 5;
+    static final int POSITION_OWNER_TASK_LAUNCH = 6;
     private static final WeakHashMap<View, RecentsViewState> RECENTS_VIEW_STATES =
             new WeakHashMap<>();
 
@@ -19,37 +26,17 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, ValueAnimator> ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS =
             new WeakHashMap<>();
-    static final WeakHashMap<View, Float> GESTURE_STACK_RELEASE_PROGRESS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Float> FORCED_RECENTS_TRANSLATION_XS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Float> FORCED_RECENTS_TRANSLATION_YS =
-            new WeakHashMap<>();
     static final WeakHashMap<View, GestureReleaseTaskState> GESTURE_STACK_RELEASE_TASK_STATES =
             new WeakHashMap<>();
     static final WeakHashMap<View, GestureReleaseTaskState> OVERVIEW_STATE_STACK_ENTRY_TASK_STATES =
             new WeakHashMap<>();
 
     // Home exit animation.
-    static final WeakHashMap<View, Float> BLANK_TAP_HOME_EXIT_PROGRESS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> ACTIVE_BLANK_TAP_HOME_EXITS =
-            new WeakHashMap<>();
     static final WeakHashMap<View, BlankTapHomeExitTaskState> BLANK_TAP_HOME_EXIT_TASK_STATES =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, BlankTapHomeExitRecentsState> BLANK_TAP_HOME_EXIT_RECENTS_STATES =
             new WeakHashMap<>();
 
     // Stack layout cache.
-    static final WeakHashMap<View, Integer> STACK_LAYOUT_RECOVERY_RADII =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, StackLayoutApplyState> LAST_STACK_LAYOUT_APPLIES =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, PendingStackLayoutApplyState> PENDING_STACK_LAYOUT_APPLIES =
-            new WeakHashMap<>();
     static final WeakHashMap<View, PrepareRecentsViewState> PREPARE_RECENTS_VIEW_STATES =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, ArrayList<Integer>> LAST_STACK_LAYOUT_ACTIVE_INDICES =
             new WeakHashMap<>();
     static final WeakHashMap<View, String> LAST_STACK_LAYOUT_COMPUTED_PACKAGES =
             new WeakHashMap<>();
@@ -133,6 +120,18 @@ final class LauncherRecentsState {
         boolean launcherQuickSwitchStockMode;
         boolean taskLaunchRequestStarted;
         boolean swipeUpGestureActive;
+        boolean blankTapHomeExitActive;
+        boolean stackLayoutFramePosted;
+        int positionOwner;
+        Float gestureStackReleaseProgress;
+        Float forcedRecentsTranslationX;
+        Float forcedRecentsTranslationY;
+        Float blankTapHomeExitProgress;
+        Integer stackLayoutRecoveryRadius;
+        BlankTapHomeExitRecentsState blankTapHomeExitRecentsState;
+        StackLayoutApplyState lastStackLayoutApply;
+        PendingStackLayoutApplyState pendingStackLayoutApply;
+        ArrayList<Integer> lastStackLayoutActiveIndices;
         Float overviewStateStackStartAdjacentOffset;
         LaunchTransitionGeometryState activeTaskLaunchTransitionGeometry;
     }
@@ -222,7 +221,13 @@ final class LauncherRecentsState {
         final float startStackContentBlurProgress;
         final float startFullscreenProgress;
         final float startTranslationZ;
+        final float taskWidth;
+        final float taskHeight;
+        final float taskPrimarySize;
+        final float taskCenteredPrimaryStartPx;
+        final boolean primaryScrollHorizontal;
         float centerVisibleOffset;
+        float exitVisibleOffset;
 
         BlankTapHomeExitTaskState(
                 float startRawOffset,
@@ -238,7 +243,12 @@ final class LauncherRecentsState {
                 float startActivityTitleAlpha,
                 float startStackContentBlurProgress,
                 float startFullscreenProgress,
-                float startTranslationZ) {
+                float startTranslationZ,
+                float taskWidth,
+                float taskHeight,
+                float taskPrimarySize,
+                float taskCenteredPrimaryStartPx,
+                boolean primaryScrollHorizontal) {
             this.startRawOffset = startRawOffset;
             this.startDismissTranslationX = startDismissTranslationX;
             this.startVisibleOffset = startVisibleOffset;
@@ -253,7 +263,13 @@ final class LauncherRecentsState {
             this.startStackContentBlurProgress = startStackContentBlurProgress;
             this.startFullscreenProgress = startFullscreenProgress;
             this.startTranslationZ = startTranslationZ;
+            this.taskWidth = taskWidth;
+            this.taskHeight = taskHeight;
+            this.taskPrimarySize = taskPrimarySize;
+            this.taskCenteredPrimaryStartPx = taskCenteredPrimaryStartPx;
+            this.primaryScrollHorizontal = primaryScrollHorizontal;
             this.centerVisibleOffset = startVisibleOffset;
+            this.exitVisibleOffset = startVisibleOffset;
         }
     }
 
@@ -280,7 +296,6 @@ final class LauncherRecentsState {
     static final class PendingStackLayoutApplyState {
         boolean captureStockState;
         boolean dynamicOnly;
-        boolean preDrawScheduled;
         String source;
 
         PendingStackLayoutApplyState(
@@ -439,6 +454,9 @@ final class LauncherRecentsState {
         }
         state.appToRecentsStackSettled = false;
         state.swipeUpGestureActive = false;
+        if (state.positionOwner == POSITION_OWNER_ENTER) {
+            state.positionOwner = POSITION_OWNER_NONE;
+        }
     }
 
     static void setAppToRecentsEntrySessionActive(View recentsView, boolean active) {
@@ -670,6 +688,193 @@ final class LauncherRecentsState {
         return state != null && state.launcherQuickSwitchStockMode;
     }
 
+    static int getPositionOwner(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null ? state.positionOwner : POSITION_OWNER_NONE;
+    }
+
+    static void setPositionOwner(View recentsView, int owner) {
+        RecentsViewState state = owner != POSITION_OWNER_NONE
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.positionOwner = owner;
+        }
+    }
+
+    static void clearPositionOwner(View recentsView, int owner) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        if (state != null && state.positionOwner == owner) {
+            state.positionOwner = POSITION_OWNER_NONE;
+        }
+    }
+
+    static Float getGestureStackReleaseProgress(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null ? state.gestureStackReleaseProgress : null;
+    }
+
+    static void setGestureStackReleaseProgress(View recentsView, Float progress) {
+        RecentsViewState state = progress != null
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.gestureStackReleaseProgress = progress;
+        }
+    }
+
+    static Float getForcedRecentsTranslationX(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null ? state.forcedRecentsTranslationX : null;
+    }
+
+    static void setForcedRecentsTranslationX(View recentsView, Float translation) {
+        RecentsViewState state = translation != null
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.forcedRecentsTranslationX = translation;
+        }
+    }
+
+    static Float getForcedRecentsTranslationY(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null ? state.forcedRecentsTranslationY : null;
+    }
+
+    static void setForcedRecentsTranslationY(View recentsView, Float translation) {
+        RecentsViewState state = translation != null
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.forcedRecentsTranslationY = translation;
+        }
+    }
+
+    static boolean isBlankTapHomeExitActive(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.blankTapHomeExitActive;
+    }
+
+    static void setBlankTapHomeExitActive(View recentsView, boolean active) {
+        RecentsViewState state = active
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.blankTapHomeExitActive = active;
+        }
+    }
+
+    static Float getBlankTapHomeExitProgress(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null ? state.blankTapHomeExitProgress : null;
+    }
+
+    static void setBlankTapHomeExitProgress(View recentsView, Float progress) {
+        RecentsViewState state = progress != null
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.blankTapHomeExitProgress = progress;
+        }
+    }
+
+    static BlankTapHomeExitRecentsState getBlankTapHomeExitRecentsState(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null ? state.blankTapHomeExitRecentsState : null;
+    }
+
+    static void setBlankTapHomeExitRecentsState(
+            View recentsView,
+            BlankTapHomeExitRecentsState blankTapState) {
+        RecentsViewState state = blankTapState != null
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.blankTapHomeExitRecentsState = blankTapState;
+        }
+    }
+
+    static StackLayoutApplyState getLastStackLayoutApply(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null ? state.lastStackLayoutApply : null;
+    }
+
+    static void setLastStackLayoutApply(View recentsView, StackLayoutApplyState applyState) {
+        RecentsViewState state = applyState != null
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.lastStackLayoutApply = applyState;
+        }
+    }
+
+    static PendingStackLayoutApplyState getPendingStackLayoutApply(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null ? state.pendingStackLayoutApply : null;
+    }
+
+    static void setPendingStackLayoutApply(
+            View recentsView,
+            PendingStackLayoutApplyState pendingState) {
+        RecentsViewState state = pendingState != null
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.pendingStackLayoutApply = pendingState;
+        }
+    }
+
+    static PendingStackLayoutApplyState takePendingStackLayoutApply(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        if (state == null) {
+            return null;
+        }
+        PendingStackLayoutApplyState pendingState = state.pendingStackLayoutApply;
+        state.pendingStackLayoutApply = null;
+        state.stackLayoutFramePosted = false;
+        return pendingState;
+    }
+
+    static boolean markStackLayoutFramePosted(View recentsView) {
+        RecentsViewState state = ensureRecentsViewState(recentsView);
+        if (state == null || state.stackLayoutFramePosted) {
+            return false;
+        }
+        state.stackLayoutFramePosted = true;
+        return true;
+    }
+
+    static ArrayList<Integer> getLastStackLayoutActiveIndices(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null ? state.lastStackLayoutActiveIndices : null;
+    }
+
+    static void setLastStackLayoutActiveIndices(
+            View recentsView,
+            ArrayList<Integer> indices) {
+        RecentsViewState state = indices != null
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.lastStackLayoutActiveIndices = indices;
+        }
+    }
+
+    static Integer getStackLayoutRecoveryRadius(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null ? state.stackLayoutRecoveryRadius : null;
+    }
+
+    static void setStackLayoutRecoveryRadius(View recentsView, Integer radius) {
+        RecentsViewState state = radius != null
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.stackLayoutRecoveryRadius = radius;
+        }
+    }
+
     static LaunchTransitionGeometryState getActiveTaskLaunchTransitionGeometry(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
         return state != null ? state.activeTaskLaunchTransitionGeometry : null;
@@ -700,17 +905,7 @@ final class LauncherRecentsState {
         cancelAndRemove(ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS, recentsView);
         cancelAndRemove(ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS, recentsView);
         RECENTS_VIEW_STATES.remove(recentsView);
-        GESTURE_STACK_RELEASE_PROGRESS.remove(recentsView);
-        FORCED_RECENTS_TRANSLATION_XS.remove(recentsView);
-        FORCED_RECENTS_TRANSLATION_YS.remove(recentsView);
-        BLANK_TAP_HOME_EXIT_PROGRESS.remove(recentsView);
-        ACTIVE_BLANK_TAP_HOME_EXITS.remove(recentsView);
-        BLANK_TAP_HOME_EXIT_RECENTS_STATES.remove(recentsView);
-        STACK_LAYOUT_RECOVERY_RADII.remove(recentsView);
-        LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
-        PENDING_STACK_LAYOUT_APPLIES.remove(recentsView);
         PREPARE_RECENTS_VIEW_STATES.remove(recentsView);
-        LAST_STACK_LAYOUT_ACTIVE_INDICES.remove(recentsView);
         LAST_STACK_LAYOUT_COMPUTED_PACKAGES.remove(recentsView);
         LAST_STACK_STOCK_CAPTURE_TASK_COUNTS.remove(recentsView);
     }

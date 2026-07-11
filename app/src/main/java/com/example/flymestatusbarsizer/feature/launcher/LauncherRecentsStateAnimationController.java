@@ -26,6 +26,8 @@ final class LauncherRecentsStateAnimationController {
             "com.meizu.flyme.launcher.uioverrides.HomeToOverviewTouchController";
     private static final String NO_BUTTON_NAVBAR_TO_OVERVIEW_TOUCH_CONTROLLER_CLASS =
             "com.android.launcher3.uioverrides.touchcontrollers.NoButtonNavbarToOverviewTouchController";
+    private static final String NO_BUTTON_QUICK_SWITCH_TOUCH_CONTROLLER_CLASS =
+            "com.android.launcher3.uioverrides.touchcontrollers.NoButtonQuickSwitchTouchController";
     private static final long OVERVIEW_STATE_STACK_ANIMATION_FALLBACK_CLEAR_DELAY_MS = 350L;
 
     private LauncherRecentsStateAnimationController() {
@@ -51,6 +53,7 @@ final class LauncherRecentsStateAnimationController {
         hookHomeToOverviewGoOverview(module, loader);
         hookNoButtonNavbarOverviewMotionPause(module, loader);
         hookNoButtonNavbarOverviewDragEnd(module, loader);
+        hookNoButtonQuickSwitchDragStart(module, loader);
         hookAdjacentPageHorizontalOffsetProperty(module, loader, "com.android.quickstep.views.RecentsView$4");
         hookAdjacentPageHorizontalOffsetProperty(module, loader, "com.android.quickstep.views.RecentsView$5");
     }
@@ -87,7 +90,7 @@ final class LauncherRecentsStateAnimationController {
     private static boolean shouldFreezePreReleaseAdjacentOffset(View recentsView, float value) {
         if (recentsView == null
                 || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                || isQuickSwitchOffsetWrite()
+                || LauncherRecentsState.isLauncherQuickSwitchStockMode(recentsView)
                 || LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 || LauncherRecentsState.isOverviewStateStackReleaseRequested(recentsView)
                 || LauncherRecentsState.isOverviewStateStackAnimationActive(recentsView)
@@ -107,18 +110,6 @@ final class LauncherRecentsStateAnimationController {
         return current > 0.45f && value < 0.45f;
     }
 
-    private static boolean isQuickSwitchOffsetWrite() {
-        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
-        for (StackTraceElement element : stackTrace) {
-            if (element != null
-                    && element.getClassName() != null
-                    && element.getClassName().contains("QuickSwitchTouchController")) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private static void hookNoButtonNavbarOverviewMotionPause(
             FlymeStatusBarSizer module,
             ClassLoader loader) {
@@ -131,8 +122,11 @@ final class LauncherRecentsStateAnimationController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 View recentsView = resolveNoButtonNavbarRecentsView(chain.getThisObject());
-                if (recentsView == null
-                        || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+                if (recentsView == null) {
+                    return chain.proceed();
+                }
+                LauncherRecentsState.setLauncherQuickSwitchStockMode(recentsView, false);
+                if (!LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
                     return chain.proceed();
                 }
                 LauncherRecentsPerf.flow("state:noButtonOverview:preReleaseStock", recentsView);
@@ -221,6 +215,9 @@ final class LauncherRecentsStateAnimationController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 View recentsView = resolveHomeToOverviewRecentsView(chain.getThisObject());
+                if (recentsView != null) {
+                    LauncherRecentsState.setLauncherQuickSwitchStockMode(recentsView, false);
+                }
                 if (recentsView != null
                         && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
                     LauncherRecentsPerf.flow("state:homeOverview:releaseRequested",
@@ -355,10 +352,15 @@ final class LauncherRecentsStateAnimationController {
                     if (isOverviewStateStackAnimationActive(recentsView)) {
                         LauncherRecentsPerf.flow("state:overview:frame", recentsView);
                         LauncherRecentsPerf.hit("animationFrame:overviewState", recentsView);
-                        if (LauncherRecentsLayoutEngine.applyStackLayout(
-                                recentsView,
-                                false,
-                                "overviewStateFrame")) {
+                        boolean applied = LauncherRecentsLayoutEngine
+                                .applyCachedOverviewStateFrame(recentsView);
+                        if (!applied) {
+                            applied = LauncherRecentsLayoutEngine.applyStackLayout(
+                                    recentsView,
+                                    false,
+                                    "overviewStateFrameFallback");
+                        }
+                        if (applied) {
                             recentsView.invalidate();
                         }
                     }
@@ -455,6 +457,9 @@ final class LauncherRecentsStateAnimationController {
         LauncherRecentsPerf.flow("state:overview:begin",
                 recentsView, "pendingAnimation=" + (pendingAnimation != null));
         LauncherRecentsPerf.startSpan("overviewState", recentsView);
+        LauncherRecentsState.setPositionOwner(
+                recentsView,
+                LauncherRecentsState.POSITION_OWNER_OVERVIEW);
         LauncherRecentsState.setOverviewStateStackReleaseRequested(recentsView, false);
         LauncherRecentsState.setOverviewPreReleaseStockMode(recentsView, false);
         LauncherRecentsLayoutEngine.cancelStackLayoutRecovery(recentsView);
@@ -642,6 +647,9 @@ final class LauncherRecentsStateAnimationController {
         }
         LauncherRecentsPerf.flow("state:overview:touchTakeover", recentsView);
         LauncherRecentsPerf.endSpan("overviewState", recentsView);
+        LauncherRecentsState.clearPositionOwner(
+                recentsView,
+                LauncherRecentsState.POSITION_OWNER_OVERVIEW);
         LauncherRecentsState.clearOverviewStackAnimationState(recentsView, true);
     }
 
@@ -651,12 +659,46 @@ final class LauncherRecentsStateAnimationController {
         }
         LauncherRecentsPerf.flow("state:overview:clear", recentsView);
         LauncherRecentsPerf.endSpan("overviewState", recentsView);
+        LauncherRecentsState.clearPositionOwner(
+                recentsView,
+                LauncherRecentsState.POSITION_OWNER_OVERVIEW);
         LauncherRecentsState.clearOverviewStackAnimationState(recentsView, true);
         LauncherRecentsLayoutEngine.restoreStackLayout(recentsView, "overviewStateClearRestore");
     }
 
+    private static void hookNoButtonQuickSwitchDragStart(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    NO_BUTTON_QUICK_SWITCH_TOUCH_CONTROLLER_CLASS,
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod("onDragStart", boolean.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object recentsObject = LauncherRecentsCompat.getFieldCompat(
+                        chain.getThisObject(),
+                        "mRecentsView");
+                if (recentsObject instanceof View) {
+                    LauncherRecentsState.setLauncherQuickSwitchStockMode(
+                            (View) recentsObject,
+                            true);
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook NoButtonQuickSwitchTouchController.onDragStart",
+                    t);
+        }
+    }
+
     static void clearOverviewEntryState(View recentsView) {
         LauncherRecentsPerf.flow("state:overview:clearEntry", recentsView);
+        LauncherRecentsState.clearPositionOwner(
+                recentsView,
+                LauncherRecentsState.POSITION_OWNER_OVERVIEW);
         LauncherRecentsState.clearOverviewStackAnimationState(recentsView, false);
         LauncherRecentsState.setOverviewPreReleaseStockMode(recentsView, false);
         LauncherRecentsState.setOverviewStateStackReleaseRequested(recentsView, false);

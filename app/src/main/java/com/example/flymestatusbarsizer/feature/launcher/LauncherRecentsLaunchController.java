@@ -483,7 +483,6 @@ final class LauncherRecentsLaunchController {
                         LauncherRecentsState.ACTIVE_TASK_LAUNCH_SCROLL_COMPENSATION_BYPASS.get();
                 LauncherRecentsState.ACTIVE_TASK_LAUNCH_SCROLL_COMPENSATION_BYPASS.set(recentsView);
                 try {
-                    applyFrozenTaskLaunchLayout(recentsView);
                     Object result = chain.proceed();
                     updateTaskLaunchSiblingExitProgress(recentsView, chain.getArg(0));
                     applyFrozenTaskLaunchLayout(recentsView);
@@ -1081,6 +1080,9 @@ final class LauncherRecentsLaunchController {
         }
         captureTaskLaunchTransitionGeometry(recentsView, state);
         state.frozen = true;
+        LauncherRecentsState.setPositionOwner(
+                recentsView,
+                LauncherRecentsState.POSITION_OWNER_TASK_LAUNCH);
         captureFrozenTaskLaunchLayout(recentsView, state);
         applyFrozenTaskLaunchLayout(recentsView);
         recentsView.invalidate();
@@ -1300,6 +1302,9 @@ final class LauncherRecentsLaunchController {
         LauncherRecentsPerf.endSpan("taskLaunch", recentsView);
         LauncherRecentsState.setTaskLaunchRequestStarted(recentsView, false);
         LauncherRecentsState.clearActiveTaskLaunchTransitionGeometry(recentsView);
+        LauncherRecentsState.clearPositionOwner(
+                recentsView,
+                LauncherRecentsState.POSITION_OWNER_TASK_LAUNCH);
         if (!restoreStack || !recentsView.isAttachedToWindow() || !recentsView.isShown()) {
             return;
         }

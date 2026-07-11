@@ -8,7 +8,6 @@ import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
-import android.view.ViewTreeObserver;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -412,9 +411,7 @@ final class LauncherRecentsLayoutEngine {
                     View recentsView = (View) thisObject;
                     LauncherRecentsState.trackRecentsView(recentsView);
                     prepareRecentsView(recentsView);
-                    if (isStackScrollerActive(recentsView)) {
-                        applyOrScheduleDynamicStackLayoutForScroll(recentsView);
-                    }
+                    applyOrScheduleDynamicStackLayoutForScroll(recentsView);
                 }
                 return result;
             });
@@ -1097,7 +1094,12 @@ final class LauncherRecentsLayoutEngine {
                                     taskView,
                                     "fullscreenProgress",
                                     0f),
-                            taskView.getTranslationZ()));
+                            taskView.getTranslationZ(),
+                            taskView.getWidth(),
+                            taskView.getHeight(),
+                            taskPrimarySize,
+                            taskCenteredPrimaryStartPx,
+                            primaryScrollHorizontal));
             if (!hasVisibleAnchor || visibleOffset > anchorVisibleOffset) {
                 anchorVisibleOffset = visibleOffset;
                 hasVisibleAnchor = true;
@@ -1107,16 +1109,23 @@ final class LauncherRecentsLayoutEngine {
             for (LauncherRecentsState.BlankTapHomeExitTaskState state
                     : LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.values()) {
                 state.centerVisibleOffset = state.startVisibleOffset - anchorVisibleOffset;
+                float taskStartPx = state.taskCenteredPrimaryStartPx
+                        + state.centerVisibleOffset;
+                float exitTravelPx = Math.max(
+                        taskStartPx + state.taskPrimarySize
+                                + FlymeStatusBarSizer.dp(recentsView.getContext(), 64),
+                        state.taskPrimarySize
+                                * (1f + blankTapHomeExitExtraTravelRatio(recentsView)));
+                state.exitVisibleOffset = state.centerVisibleOffset - exitTravelPx;
             }
         }
     }
 
     static void captureBlankTapHomeExitRecentsState(View recentsView) {
-        LauncherRecentsState.BLANK_TAP_HOME_EXIT_RECENTS_STATES.clear();
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsState.BLANK_TAP_HOME_EXIT_RECENTS_STATES.put(
+        LauncherRecentsState.setBlankTapHomeExitRecentsState(
                 recentsView,
                 new LauncherRecentsState.BlankTapHomeExitRecentsState(
                         recentsView.getTranslationX(),
@@ -1128,7 +1137,7 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         LauncherRecentsState.BlankTapHomeExitRecentsState state =
-                LauncherRecentsState.BLANK_TAP_HOME_EXIT_RECENTS_STATES.get(recentsView);
+                LauncherRecentsState.getBlankTapHomeExitRecentsState(recentsView);
         if (state == null) {
             return;
         }
@@ -1145,10 +1154,6 @@ final class LauncherRecentsLayoutEngine {
         applyBlankTapHomeExitRecentsFrame(recentsView, clampedProgress);
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         float pathProgress = smoothStep(clampedProgress);
-        float fallbackWidth = Math.max(1f, recentsView.getWidth());
-        float fallbackHeight = Math.max(1f, recentsView.getHeight());
-        float exitMarginPx = FlymeStatusBarSizer.dp(recentsView.getContext(), 64);
-        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         for (int i = 0; i < taskViewCount; i++) {
             View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
             if (taskView == null) {
@@ -1163,33 +1168,16 @@ final class LauncherRecentsLayoutEngine {
                 }
                 continue;
             }
-            float taskWidth = taskView.getWidth() > 0
-                    ? taskView.getWidth()
-                    : fallbackWidth;
-            float taskHeight = taskView.getHeight() > 0
-                    ? taskView.getHeight()
-                    : fallbackHeight;
-            float taskPrimarySize = primaryScrollHorizontal ? taskWidth : taskHeight;
-            float taskCenteredPrimaryStartPx = resolveTaskCenteredPrimaryStartPx(
-                    recentsView,
-                    taskPrimarySize,
-                    primaryScrollHorizontal);
             float desiredVisibleOffset = state.startVisibleOffset;
             float desiredScale = state.startScale;
             float desiredStableAlpha = state.startStableAlpha;
             float desiredAttachAlpha = state.startAttachAlpha;
             float exitAlpha = resolveBlankTapExitAlpha(pathProgress, state.centerVisibleOffset);
             if (state.startStableAlpha > 0f) {
-                float controlVisibleOffset = state.centerVisibleOffset;
-                float taskStartPx = taskCenteredPrimaryStartPx + controlVisibleOffset;
-                float exitTravelPx = Math.max(
-                        taskStartPx + taskPrimarySize + exitMarginPx,
-                        taskPrimarySize * (1f + blankTapHomeExitExtraTravelRatio(recentsView)));
-                float exitVisibleOffset = controlVisibleOffset - exitTravelPx;
                 desiredVisibleOffset = quadraticBezier(
                         state.startVisibleOffset,
-                        controlVisibleOffset,
-                        exitVisibleOffset,
+                        state.centerVisibleOffset,
+                        state.exitVisibleOffset,
                         pathProgress);
                 desiredScale *= 1.0f - (blankTapHomeExitScaleDelta(recentsView) * pathProgress);
                 desiredStableAlpha *= exitAlpha;
@@ -1201,15 +1189,17 @@ final class LauncherRecentsLayoutEngine {
             float taskOffsetPrimary =
                     desiredVisibleOffset - state.startRawOffset - state.startDismissTranslationX;
             float horizontalOffsetX = lerp(state.startHorizontalOffsetX, 0f, pathProgress);
-            float taskOffsetX = primaryScrollHorizontal
+            float taskOffsetX = state.primaryScrollHorizontal
                     ? taskOffsetPrimary - horizontalOffsetX
                     : lerp(state.startTaskOffsetX, 0f, pathProgress);
-            float taskOffsetY = primaryScrollHorizontal ? state.startTaskOffsetY : taskOffsetPrimary;
+            float taskOffsetY = state.primaryScrollHorizontal
+                    ? state.startTaskOffsetY
+                    : taskOffsetPrimary;
             LauncherRecentsTaskVisuals.applyStackTaskVisualState(
                     taskView,
                     new LauncherRecentsTaskVisuals.StackTaskVisualState(
-                            taskWidth * 0.5f,
-                            taskHeight * 0.5f,
+                            state.taskWidth * 0.5f,
+                            state.taskHeight * 0.5f,
                             horizontalOffsetX,
                             taskOffsetX,
                             taskOffsetY,
@@ -1230,8 +1220,8 @@ final class LauncherRecentsLayoutEngine {
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsState.PENDING_STACK_LAYOUT_APPLIES.remove(recentsView);
-        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
+        LauncherRecentsState.setPendingStackLayoutApply(recentsView, null);
+        LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
         recentsView.invalidate();
     }
 
@@ -1321,6 +1311,34 @@ final class LauncherRecentsLayoutEngine {
             }
             ensureStackTaskViewVisible(taskView);
             LauncherRecentsTaskVisuals.applyStackTaskCoreVisualState(
+                    taskView,
+                    state.startVisualState.lerpTo(state.targetVisualState, progress));
+            appliedCount++;
+        }
+        return appliedCount == expectedCount;
+    }
+
+    static boolean applyCachedOverviewStateFrame(View recentsView) {
+        if (recentsView == null
+                || LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.isEmpty()) {
+            return false;
+        }
+        float progress = smoothStep(resolveOverviewPeekToOverviewProgress(recentsView));
+        int expectedCount = LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.size();
+        int appliedCount = 0;
+        for (View taskView
+                : LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.keySet()) {
+            LauncherRecentsState.GestureReleaseTaskState state =
+                    LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.get(taskView);
+            if (taskView == null
+                    || taskView.getParent() == null
+                    || state == null
+                    || state.startVisualState == null
+                    || state.targetVisualState == null) {
+                continue;
+            }
+            ensureStackTaskViewVisible(taskView);
+            LauncherRecentsTaskVisuals.applyStackTaskVisualState(
                     taskView,
                     state.startVisualState.lerpTo(state.targetVisualState, progress));
             appliedCount++;
@@ -1523,7 +1541,7 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         prepareRecentsView(recentsView);
-        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.remove(recentsView);
+        LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
         applyStackLayout(
                 recentsView,
                 false,
@@ -1552,19 +1570,6 @@ final class LauncherRecentsLayoutEngine {
         if (shouldBlockStackDismissLayout(recentsView, "onScrollChangedSync")) {
             LauncherRecentsPerf.flow("layout:scrollSync:skipDismiss", recentsView);
             return false;
-        }
-        if (!LauncherRecentsCompat.invokeBoolean(recentsView, "isHandlingTouch", false)) {
-            if (shouldCaptureStockTaskStatesForStackApply(recentsView)) {
-                captureStockTaskStatesForStackApply(recentsView);
-            }
-            boolean layoutApplied = applyStackLayout(
-                    recentsView,
-                    false,
-                    "onScrollChangedSync");
-            if (layoutApplied) {
-                recentsView.invalidate();
-            }
-            return layoutApplied;
         }
         return scheduleStackLayoutBeforeDraw(
                 recentsView,
@@ -1609,33 +1614,6 @@ final class LauncherRecentsLayoutEngine {
             boolean captureStockState,
             String source,
             boolean dynamicOnly) {
-        return scheduleStackLayout(
-                recentsView,
-                captureStockState,
-                source,
-                dynamicOnly,
-                false);
-    }
-
-    private static boolean scheduleStackLayoutBeforeDraw(
-            View recentsView,
-            boolean captureStockState,
-            String source,
-            boolean dynamicOnly) {
-        return scheduleStackLayout(
-                recentsView,
-                captureStockState,
-                source,
-                dynamicOnly,
-                true);
-    }
-
-    private static boolean scheduleStackLayout(
-            View recentsView,
-            boolean captureStockState,
-            String source,
-            boolean dynamicOnly,
-            boolean beforeDraw) {
         if (recentsView == null) {
             return false;
         }
@@ -1655,15 +1633,11 @@ final class LauncherRecentsLayoutEngine {
             return false;
         }
         LauncherRecentsState.PendingStackLayoutApplyState pendingState =
-                LauncherRecentsState.PENDING_STACK_LAYOUT_APPLIES.get(recentsView);
+                LauncherRecentsState.getPendingStackLayoutApply(recentsView);
         if (pendingState != null) {
             pendingState.captureStockState |= captureStockState;
             pendingState.dynamicOnly &= dynamicOnly;
             pendingState.source = mergeScheduledStackLayoutSource(pendingState.source, source);
-            if (beforeDraw && !pendingState.preDrawScheduled) {
-                pendingState.preDrawScheduled = true;
-                postStackLayoutBeforeDraw(recentsView);
-            }
             LauncherRecentsPerf.flow("layout:schedule:merge",
                     recentsView,
                     "source=" + pendingState.source
@@ -1671,47 +1645,29 @@ final class LauncherRecentsLayoutEngine {
                             + " dynamicOnly=" + pendingState.dynamicOnly);
             return true;
         }
-        LauncherRecentsState.PENDING_STACK_LAYOUT_APPLIES.put(
+        LauncherRecentsState.setPendingStackLayoutApply(
                 recentsView,
                 new LauncherRecentsState.PendingStackLayoutApplyState(
                         captureStockState,
                         dynamicOnly,
                         source));
-        if (beforeDraw) {
-            LauncherRecentsState.PENDING_STACK_LAYOUT_APPLIES.get(recentsView)
-                    .preDrawScheduled = true;
-        }
         LauncherRecentsPerf.flow("layout:schedule",
                 recentsView,
                 "source=" + source
                         + " capture=" + captureStockState
                         + " dynamicOnly=" + dynamicOnly);
-        if (beforeDraw) {
-            postStackLayoutBeforeDraw(recentsView);
-        } else {
+        if (LauncherRecentsState.markStackLayoutFramePosted(recentsView)) {
             recentsView.postOnAnimation(() -> runScheduledStackLayout(recentsView));
         }
         return true;
     }
 
-    private static void postStackLayoutBeforeDraw(View recentsView) {
-        ViewTreeObserver observer = recentsView.getViewTreeObserver();
-        if (!observer.isAlive()) {
-            recentsView.postOnAnimation(() -> runScheduledStackLayout(recentsView));
-            return;
-        }
-        observer.addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
-            @Override
-            public boolean onPreDraw() {
-                ViewTreeObserver currentObserver = recentsView.getViewTreeObserver();
-                if (currentObserver.isAlive()) {
-                    currentObserver.removeOnPreDrawListener(this);
-                }
-                runScheduledStackLayout(recentsView);
-                return true;
-            }
-        });
-        recentsView.invalidate();
+    private static boolean scheduleStackLayoutBeforeDraw(
+            View recentsView,
+            boolean captureStockState,
+            String source,
+            boolean dynamicOnly) {
+        return scheduleStackLayout(recentsView, captureStockState, source, dynamicOnly);
     }
 
     private static void scheduleStackLayoutFromHook(
@@ -1770,7 +1726,9 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static boolean shouldBlockStackDismissLayout(View recentsView, String source) {
-        return LauncherRecentsTouchController.isStackDismissInteractionActive(recentsView)
+        return (LauncherRecentsTouchController.isStackDismissInteractionActive(recentsView)
+                || LauncherRecentsState.getPositionOwner(recentsView)
+                == LauncherRecentsState.POSITION_OWNER_DISMISS)
                 && !isStackDismissOwnedLayoutSource(source);
     }
 
@@ -1784,7 +1742,7 @@ final class LauncherRecentsLayoutEngine {
 
     private static void runScheduledStackLayout(View recentsView) {
         LauncherRecentsState.PendingStackLayoutApplyState pendingState =
-                LauncherRecentsState.PENDING_STACK_LAYOUT_APPLIES.remove(recentsView);
+                LauncherRecentsState.takePendingStackLayoutApply(recentsView);
         if (recentsView == null || pendingState == null) {
             return;
         }
@@ -1804,10 +1762,12 @@ final class LauncherRecentsLayoutEngine {
             return;
         }
         if (shouldDelayScheduledStackLayoutForHomeExit(recentsView, pendingState.source)) {
-            LauncherRecentsState.PENDING_STACK_LAYOUT_APPLIES.put(recentsView, pendingState);
+            LauncherRecentsState.setPendingStackLayoutApply(recentsView, pendingState);
             LauncherRecentsPerf.flow("layout:runScheduled:delayHomeExit",
                     recentsView, "source=" + pendingState.source);
-            recentsView.postDelayed(() -> runScheduledStackLayout(recentsView), 32L);
+            if (LauncherRecentsState.markStackLayoutFramePosted(recentsView)) {
+                recentsView.postDelayed(() -> runScheduledStackLayout(recentsView), 32L);
+            }
             return;
         }
         LauncherRecentsState.trackRecentsView(recentsView);
@@ -1979,7 +1939,7 @@ final class LauncherRecentsLayoutEngine {
         long key = resolveStackLayoutApplyKey(recentsView, taskViewCount, stackLayoutRadius, config);
         long nowNs = System.nanoTime();
         LauncherRecentsState.StackLayoutApplyState lastState =
-                LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.get(recentsView);
+                LauncherRecentsState.getLastStackLayoutApply(recentsView);
         boolean sameLayout = lastState != null && lastState.key == key;
         boolean duplicateInSameFrame = sameLayout
                 && nowNs - lastState.timeNs <= STACK_LAYOUT_DUPLICATE_WINDOW_NS;
@@ -1989,7 +1949,7 @@ final class LauncherRecentsLayoutEngine {
                 && !LauncherRecentsTaskVisuals.hasAppliedTaskScaleMismatch(recentsView)) {
             return true;
         }
-        LauncherRecentsState.LAST_STACK_LAYOUT_APPLIES.put(
+        LauncherRecentsState.setLastStackLayoutApply(
                 recentsView,
                 new LauncherRecentsState.StackLayoutApplyState(
                         key,
@@ -2085,7 +2045,7 @@ final class LauncherRecentsLayoutEngine {
         }
         LauncherRecentsState.LAST_STACK_LAYOUT_COMPUTED_PACKAGES.remove(recentsView);
         if (!shouldUseStackLayout(config, recentsView, taskViewCount)) {
-            LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.remove(recentsView);
+            LauncherRecentsState.setLastStackLayoutActiveIndices(recentsView, null);
             return -1;
         }
         LauncherRecentsState.LaunchTransitionGeometryState launchState =
@@ -2112,7 +2072,7 @@ final class LauncherRecentsLayoutEngine {
                 config,
                 null,
                 null);
-        LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.put(
+        LauncherRecentsState.setLastStackLayoutActiveIndices(
                 recentsView,
                 new ArrayList<>(layout.activeIndices));
 
@@ -2319,7 +2279,7 @@ final class LauncherRecentsLayoutEngine {
         ArrayList<Integer> processIndices = resolveStackLayoutProcessIndices(
                 taskViewCount,
                 activeIndices,
-                LauncherRecentsState.LAST_STACK_LAYOUT_ACTIVE_INDICES.get(recentsView));
+                LauncherRecentsState.getLastStackLayoutActiveIndices(recentsView));
         ComputedStackLayout result = new ComputedStackLayout(
                 activeIndices,
                 processIndices,
@@ -3010,18 +2970,10 @@ final class LauncherRecentsLayoutEngine {
                 float startVisibleOffset = blankTapExitState.startVisibleOffset;
                 float centerVisibleOffset = blankTapExitState.centerVisibleOffset;
                 float pathProgress = smoothStep(context.blankTapExitProgress);
-                float controlVisibleOffset = centerVisibleOffset;
-                float taskStartPx = input.taskCenteredPrimaryStartPx + controlVisibleOffset;
-                float exitTravelPx = Math.max(
-                        taskStartPx + input.taskPrimarySize + FlymeStatusBarSizer.dp(
-                                context.recentsView.getContext(),
-                                64),
-                        input.taskPrimarySize * (1f + blankTapHomeExitExtraTravelRatio(context.recentsView)));
-                float exitVisibleOffset = controlVisibleOffset - exitTravelPx;
                 desiredVisibleOffset = quadraticBezier(
                         startVisibleOffset,
-                        controlVisibleOffset,
-                        exitVisibleOffset,
+                        centerVisibleOffset,
+                        blankTapExitState.exitVisibleOffset,
                         pathProgress);
                 desiredScale *= 1.0f - (blankTapHomeExitScaleDelta(context.recentsView) * pathProgress);
                 float exitAlpha = resolveBlankTapExitAlpha(
@@ -3230,7 +3182,7 @@ final class LauncherRecentsLayoutEngine {
 
     static void cancelStackLayoutRecovery(View recentsView) {
         LauncherRecentsPerf.flow("layout:recovery:cancel", recentsView);
-        LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.remove(recentsView);
+        LauncherRecentsState.setStackLayoutRecoveryRadius(recentsView, null);
     }
 
     static void startStackLayoutRecovery(View recentsView) {
@@ -3238,7 +3190,7 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsPerf.flow("layout:recovery:skipStart", recentsView);
             return;
         }
-        LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.put(
+        LauncherRecentsState.setStackLayoutRecoveryRadius(
                 recentsView,
                 stackEntryLightRadius(recentsView) + STACK_LAYOUT_RECOVERY_RADIUS_STEP);
         LauncherRecentsPerf.flow("layout:recovery:schedule",
@@ -3254,7 +3206,7 @@ final class LauncherRecentsLayoutEngine {
 
     static boolean isStackLayoutRecoveryActive(View recentsView) {
         return recentsView != null
-                && LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.containsKey(recentsView);
+                && LauncherRecentsState.getStackLayoutRecoveryRadius(recentsView) != null;
     }
 
     private static boolean shouldAllowStackLayoutRecovery(View recentsView) {
@@ -3266,7 +3218,7 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static void runStackLayoutRecoveryFrame(View recentsView) {
-        Integer radius = LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.get(recentsView);
+        Integer radius = LauncherRecentsState.getStackLayoutRecoveryRadius(recentsView);
         if (recentsView == null
                 || radius == null
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
@@ -3274,7 +3226,7 @@ final class LauncherRecentsLayoutEngine {
                 || !shouldAllowStackLayoutRecovery(recentsView)) {
             LauncherRecentsPerf.flow("layout:recovery:clear",
                     recentsView, "radius=" + radius);
-            LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.remove(recentsView);
+            LauncherRecentsState.setStackLayoutRecoveryRadius(recentsView, null);
             return;
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
@@ -3282,7 +3234,7 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsPerf.flow("layout:recovery:final",
                     recentsView,
                     "radius=" + radius + " taskCount=" + taskViewCount);
-            LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.remove(recentsView);
+            LauncherRecentsState.setStackLayoutRecoveryRadius(recentsView, null);
             applyStackLayout(recentsView, false, stackStableVisibleRadius(recentsView), "recoveryFinal");
             return;
         }
@@ -3290,7 +3242,7 @@ final class LauncherRecentsLayoutEngine {
                 recentsView,
                 "radius=" + radius + " taskCount=" + taskViewCount);
         applyStackLayout(recentsView, false, radius, "recoveryFrame");
-        LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.put(
+        LauncherRecentsState.setStackLayoutRecoveryRadius(
                 recentsView,
                 radius + STACK_LAYOUT_RECOVERY_RADIUS_STEP);
         LauncherRecentsPerf.flow("layout:recovery:scheduleNext",
@@ -3300,7 +3252,7 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static int resolveStackLayoutRadius(View recentsView) {
-        Integer recoveryRadius = LauncherRecentsState.STACK_LAYOUT_RECOVERY_RADII.get(recentsView);
+        Integer recoveryRadius = LauncherRecentsState.getStackLayoutRecoveryRadius(recentsView);
         if (recoveryRadius != null) {
             return recoveryRadius;
         }
@@ -3793,10 +3745,6 @@ final class LauncherRecentsLayoutEngine {
         if (recentsView == null) {
             return false;
         }
-        if (isLauncherQuickSwitchCall()) {
-            LauncherRecentsState.setLauncherQuickSwitchStockMode(recentsView, true);
-            return true;
-        }
         if (!LauncherRecentsState.isLauncherQuickSwitchStockMode(recentsView)) {
             return false;
         }
@@ -3810,18 +3758,6 @@ final class LauncherRecentsLayoutEngine {
             LauncherRecentsState.setLauncherQuickSwitchStockMode(recentsView, false);
         }
         return keepStock;
-    }
-
-    private static boolean isLauncherQuickSwitchCall() {
-        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
-        for (StackTraceElement element : stackTrace) {
-            if (element != null
-                    && element.getClassName() != null
-                    && element.getClassName().contains("QuickSwitchTouchController")) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static boolean isLauncherHomeOrOverviewPeekState(View recentsView) {

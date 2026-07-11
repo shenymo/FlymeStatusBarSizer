@@ -5,54 +5,32 @@ import android.view.View;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class ReflectUtils {
-    private static final HashMap<String, Field> FIELD_CACHE = new HashMap<>();
-    private static final HashSet<String> FIELD_MISS_CACHE = new HashSet<>();
-    private static final HashMap<String, Method> NO_ARG_METHOD_CACHE = new HashMap<>();
-    private static final HashSet<String> NO_ARG_METHOD_MISS_CACHE = new HashSet<>();
-    private static final HashMap<String, Method> METHOD_CACHE = new HashMap<>();
-    private static final HashSet<String> METHOD_MISS_CACHE = new HashSet<>();
+    private static final ConcurrentHashMap<Class<?>, ConcurrentHashMap<String, CachedField>>
+            FIELD_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Class<?>, ConcurrentHashMap<String, CachedMethod>>
+            NO_ARG_METHOD_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Class<?>, ConcurrentHashMap<String, CachedMethod[]>>
+            METHOD_CACHE = new ConcurrentHashMap<>();
     private static volatile Method SET_MEASURED_DIMENSION_METHOD;
 
     private ReflectUtils() {
     }
 
-    private static String memberCacheKey(Class<?> clazz, String name) {
-        return clazz.getName() + "#" + name;
-    }
-
-    private static String methodCacheKey(Class<?> clazz, String name, Class<?>[] parameterTypes) {
-        StringBuilder builder = new StringBuilder(clazz.getName()).append('#').append(name).append('(');
-        if (parameterTypes != null) {
-            for (Class<?> parameterType : parameterTypes) {
-                builder.append(parameterType == null ? "null" : parameterType.getName()).append(',');
-            }
-        }
-        return builder.append(')').toString();
-    }
-
     private static Field findCachedField(Class<?> targetClass, String name) {
-        String key = memberCacheKey(targetClass, name);
-        synchronized (FIELD_CACHE) {
-            if (FIELD_MISS_CACHE.contains(key)) {
-                return null;
-            }
-            Field cached = FIELD_CACHE.get(key);
-            if (cached != null) {
-                return cached;
-            }
+        ConcurrentHashMap<String, CachedField> fields = FIELD_CACHE.get(targetClass);
+        CachedField cached = fields != null ? fields.get(name) : null;
+        if (cached != null) {
+            return cached.field;
         }
         Class<?> clazz = targetClass;
         while (clazz != null) {
             try {
                 Field field = clazz.getDeclaredField(name);
                 field.setAccessible(true);
-                synchronized (FIELD_CACHE) {
-                    FIELD_CACHE.put(key, field);
-                }
+                cacheField(targetClass, name, field);
                 return field;
             } catch (NoSuchFieldException ignored) {
                 clazz = clazz.getSuperclass();
@@ -60,31 +38,27 @@ final class ReflectUtils {
                 return null;
             }
         }
-        synchronized (FIELD_CACHE) {
-            FIELD_MISS_CACHE.add(key);
-        }
+        cacheField(targetClass, name, null);
         return null;
     }
 
+    private static void cacheField(Class<?> targetClass, String name, Field field) {
+        FIELD_CACHE.computeIfAbsent(targetClass, ignored -> new ConcurrentHashMap<>())
+                .putIfAbsent(name, new CachedField(field));
+    }
+
     private static Method findCachedNoArgMethod(Class<?> targetClass, String name) {
-        String key = memberCacheKey(targetClass, name);
-        synchronized (NO_ARG_METHOD_CACHE) {
-            if (NO_ARG_METHOD_MISS_CACHE.contains(key)) {
-                return null;
-            }
-            Method cached = NO_ARG_METHOD_CACHE.get(key);
-            if (cached != null) {
-                return cached;
-            }
+        ConcurrentHashMap<String, CachedMethod> methods = NO_ARG_METHOD_CACHE.get(targetClass);
+        CachedMethod cached = methods != null ? methods.get(name) : null;
+        if (cached != null) {
+            return cached.method;
         }
         Class<?> clazz = targetClass;
         while (clazz != null) {
             try {
                 Method method = clazz.getDeclaredMethod(name);
                 method.setAccessible(true);
-                synchronized (NO_ARG_METHOD_CACHE) {
-                    NO_ARG_METHOD_CACHE.put(key, method);
-                }
+                cacheNoArgMethod(targetClass, name, method);
                 return method;
             } catch (NoSuchMethodException ignored) {
                 clazz = clazz.getSuperclass();
@@ -92,31 +66,27 @@ final class ReflectUtils {
                 return null;
             }
         }
-        synchronized (NO_ARG_METHOD_CACHE) {
-            NO_ARG_METHOD_MISS_CACHE.add(key);
-        }
+        cacheNoArgMethod(targetClass, name, null);
         return null;
     }
 
+    private static void cacheNoArgMethod(Class<?> targetClass, String name, Method method) {
+        NO_ARG_METHOD_CACHE.computeIfAbsent(targetClass, ignored -> new ConcurrentHashMap<>())
+                .putIfAbsent(name, new CachedMethod(new Class<?>[0], method));
+    }
+
     private static Method findCachedMethod(Class<?> targetClass, String name, Class<?>... parameterTypes) {
-        String key = methodCacheKey(targetClass, name, parameterTypes);
-        synchronized (METHOD_CACHE) {
-            if (METHOD_MISS_CACHE.contains(key)) {
-                return null;
-            }
-            Method cached = METHOD_CACHE.get(key);
-            if (cached != null) {
-                return cached;
-            }
+        Class<?>[] resolvedParameterTypes = parameterTypes == null ? new Class<?>[0] : parameterTypes;
+        CachedMethod cached = findCachedMethodEntry(targetClass, name, resolvedParameterTypes);
+        if (cached != null) {
+            return cached.method;
         }
         Class<?> clazz = targetClass;
         while (clazz != null) {
             try {
-                Method method = clazz.getDeclaredMethod(name, parameterTypes);
+                Method method = clazz.getDeclaredMethod(name, resolvedParameterTypes);
                 method.setAccessible(true);
-                synchronized (METHOD_CACHE) {
-                    METHOD_CACHE.put(key, method);
-                }
+                cacheMethod(targetClass, name, resolvedParameterTypes, method);
                 return method;
             } catch (NoSuchMethodException ignored) {
                 clazz = clazz.getSuperclass();
@@ -124,10 +94,60 @@ final class ReflectUtils {
                 return null;
             }
         }
-        synchronized (METHOD_CACHE) {
-            METHOD_MISS_CACHE.add(key);
+        cacheMethod(targetClass, name, resolvedParameterTypes, null);
+        return null;
+    }
+
+    private static CachedMethod findCachedMethodEntry(
+            Class<?> targetClass,
+            String name,
+            Class<?>[] parameterTypes) {
+        ConcurrentHashMap<String, CachedMethod[]> methods = METHOD_CACHE.get(targetClass);
+        CachedMethod[] entries = methods != null ? methods.get(name) : null;
+        if (entries == null) {
+            return null;
+        }
+        for (CachedMethod entry : entries) {
+            if (sameParameterTypes(entry.parameterTypes, parameterTypes)) {
+                return entry;
+            }
         }
         return null;
+    }
+
+    private static void cacheMethod(
+            Class<?> targetClass,
+            String name,
+            Class<?>[] parameterTypes,
+            Method method) {
+        synchronized (METHOD_CACHE) {
+            if (findCachedMethodEntry(targetClass, name, parameterTypes) != null) {
+                return;
+            }
+            ConcurrentHashMap<String, CachedMethod[]> methods = METHOD_CACHE.computeIfAbsent(
+                    targetClass,
+                    ignored -> new ConcurrentHashMap<>());
+            CachedMethod[] entries = methods.get(name);
+            int count = entries != null ? entries.length : 0;
+            CachedMethod[] updated = new CachedMethod[count + 1];
+            if (count > 0) {
+                System.arraycopy(entries, 0, updated, 0, count);
+            }
+            updated[count] = new CachedMethod(parameterTypes.clone(), method);
+            methods.put(name, updated);
+        }
+    }
+
+    private static boolean sameParameterTypes(Class<?>[] first, Class<?>[] second) {
+        if (first.length != second.length) {
+            return false;
+        }
+        for (int i = 0; i < first.length; i++) {
+            if (first[i] != second[i]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     static Object getField(Object target, String name) {
@@ -279,6 +299,24 @@ final class ReflectUtils {
         Object value = getField(target, name);
         if (value instanceof Paint) {
             ((Paint) value).setColor(color);
+        }
+    }
+
+    private static final class CachedField {
+        final Field field;
+
+        CachedField(Field field) {
+            this.field = field;
+        }
+    }
+
+    private static final class CachedMethod {
+        final Class<?>[] parameterTypes;
+        final Method method;
+
+        CachedMethod(Class<?>[] parameterTypes, Method method) {
+            this.parameterTypes = parameterTypes;
+            this.method = method;
         }
     }
 }

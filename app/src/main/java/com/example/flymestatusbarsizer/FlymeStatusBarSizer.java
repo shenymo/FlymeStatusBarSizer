@@ -74,6 +74,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final String FLYME_SYSTEMUI_TOOLS = "com.flyme.systemuitools";
     private static final String MEIZU_PPS = "com.meizu.pps";
     private static volatile FlymeStatusBarSizer MODULE;
+    private static volatile ModuleConfig launcherRecentsConfigSource;
+    private static volatile LauncherRecentsConfigSnapshot launcherRecentsConfigSnapshot;
 
     private static final WeakHashMap<View, int[]> ORIGINAL_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<View, int[]> ORIGINAL_MARGINS = new WeakHashMap<>();
@@ -394,7 +396,14 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     public static LauncherRecentsConfigSnapshot loadLauncherRecentsConfig(Context context) {
         ModuleConfig config = ModuleConfig.load(context);
-        return new LauncherRecentsConfigSnapshot(config);
+        LauncherRecentsConfigSnapshot snapshot = launcherRecentsConfigSnapshot;
+        if (launcherRecentsConfigSource == config && snapshot != null) {
+            return snapshot;
+        }
+        snapshot = new LauncherRecentsConfigSnapshot(config);
+        launcherRecentsConfigSnapshot = snapshot;
+        launcherRecentsConfigSource = config;
+        return snapshot;
     }
 
     public static LauncherAppearanceConfigSnapshot loadLauncherAppearanceConfig(Context context) {

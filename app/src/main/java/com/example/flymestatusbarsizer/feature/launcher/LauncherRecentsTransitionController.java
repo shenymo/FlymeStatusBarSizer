@@ -604,6 +604,9 @@ final class LauncherRecentsTransitionController {
         }
         LauncherRecentsPerf.flow("leave:blankTap:prepare", recentsView);
         LauncherRecentsPerf.startSpan("returnHome", recentsView);
+        LauncherRecentsState.setPositionOwner(
+                recentsView,
+                LauncherRecentsState.POSITION_OWNER_HOME_EXIT);
         if (isBlankTapHomeExitActive(recentsView)
                 && !LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.isEmpty()) {
             LauncherRecentsPerf.flow("leave:blankTap:prepare:alreadyActive", recentsView);
@@ -642,10 +645,13 @@ final class LauncherRecentsTransitionController {
         }
         LauncherRecentsPerf.flow("leave:blankTap:clear",
                 recentsView, "reapplyLayout=" + reapplyLayout);
-        LauncherRecentsState.BLANK_TAP_HOME_EXIT_PROGRESS.remove(recentsView);
+        LauncherRecentsState.setBlankTapHomeExitProgress(recentsView, null);
         markBlankTapHomeExitActive(recentsView, false);
+        LauncherRecentsState.clearPositionOwner(
+                recentsView,
+                LauncherRecentsState.POSITION_OWNER_HOME_EXIT);
         LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.clear();
-        LauncherRecentsState.BLANK_TAP_HOME_EXIT_RECENTS_STATES.clear();
+        LauncherRecentsState.setBlankTapHomeExitRecentsState(recentsView, null);
         setPageAnimOffScreenStart(recentsView, false);
         clearEntryStateForBlankTapHomeExit(recentsView, false);
         if (reapplyLayout) {
@@ -662,7 +668,7 @@ final class LauncherRecentsTransitionController {
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsState.BLANK_TAP_HOME_EXIT_PROGRESS.put(
+        LauncherRecentsState.setBlankTapHomeExitProgress(
                 recentsView,
                 LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f));
     }
@@ -672,29 +678,25 @@ final class LauncherRecentsTransitionController {
     }
 
     static float readBlankTapHomeExitProgress(View recentsView) {
-        Float value = LauncherRecentsState.BLANK_TAP_HOME_EXIT_PROGRESS.get(recentsView);
+        Float value = LauncherRecentsState.getBlankTapHomeExitProgress(recentsView);
         return value != null ? value : 0f;
     }
 
     static boolean isBlankTapHomeExitActive(View recentsView) {
         return recentsView != null
-                && LauncherRecentsState.ACTIVE_BLANK_TAP_HOME_EXITS.containsKey(recentsView);
+                && LauncherRecentsState.isBlankTapHomeExitActive(recentsView);
     }
 
     private static void markBlankTapHomeExitActive(View recentsView, boolean active) {
         if (recentsView == null) {
             return;
         }
-        if (active) {
-            LauncherRecentsState.ACTIVE_BLANK_TAP_HOME_EXITS.put(recentsView, Boolean.TRUE);
-        } else {
-            LauncherRecentsState.ACTIVE_BLANK_TAP_HOME_EXITS.remove(recentsView);
-        }
+        LauncherRecentsState.setBlankTapHomeExitActive(recentsView, active);
     }
 
     static boolean hasGestureRecentsStackReleaseProgress(View recentsView) {
         return recentsView != null
-                && LauncherRecentsState.GESTURE_STACK_RELEASE_PROGRESS.containsKey(recentsView);
+                && LauncherRecentsState.getGestureStackReleaseProgress(recentsView) != null;
     }
 
     static boolean isGestureRecentsStackReleaseAnimationActive(View recentsView) {
@@ -714,7 +716,7 @@ final class LauncherRecentsTransitionController {
     }
 
     static float readGestureRecentsStackReleaseProgress(View recentsView) {
-        Float value = LauncherRecentsState.GESTURE_STACK_RELEASE_PROGRESS.get(recentsView);
+        Float value = LauncherRecentsState.getGestureStackReleaseProgress(recentsView);
         return value != null ? value : 1f;
     }
 
@@ -728,6 +730,9 @@ final class LauncherRecentsTransitionController {
         }
         markGestureRecentsStackReleaseHandoffPending(recentsView, false);
         if (clearProgress) {
+            LauncherRecentsState.clearPositionOwner(
+                    recentsView,
+                    LauncherRecentsState.POSITION_OWNER_ENTER);
             LauncherRecentsState.setAppToRecentsStackSettled(recentsView, false);
             clearGestureRecentsStackReleaseProgress(recentsView);
             clearForcedRecentsTranslationX(recentsView);
@@ -772,6 +777,9 @@ final class LauncherRecentsTransitionController {
                         + " targetScroll=" + stackAnchorTargetScroll
                         + " ensureScreenshot=" + ensureRunningTaskScreenshot);
         LauncherRecentsPerf.startSpan("enterRecentsRelease", recentsView);
+        LauncherRecentsState.setPositionOwner(
+                recentsView,
+                LauncherRecentsState.POSITION_OWNER_ENTER);
         markGestureRecentsStackReleaseHandoffPending(recentsView, true);
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(gestureStackReleaseDurationMs(recentsView));
@@ -844,6 +852,9 @@ final class LauncherRecentsTransitionController {
                     clearForcedRecentsTranslationX(recentsView);
                     clearForcedRecentsTranslationY(recentsView);
                     LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
+                    LauncherRecentsState.clearPositionOwner(
+                            recentsView,
+                            LauncherRecentsState.POSITION_OWNER_ENTER);
                     LauncherRecentsPerf.endSpan("enterRecentsRelease", recentsView);
                     LauncherRecentsPerf.endSpan("enterRecents", recentsView);
                     return;
@@ -877,6 +888,9 @@ final class LauncherRecentsTransitionController {
                         "gestureReleaseEndSync");
                 clearGestureRecentsStackReleaseProgress(recentsView);
                 LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
+                LauncherRecentsState.clearPositionOwner(
+                        recentsView,
+                        LauncherRecentsState.POSITION_OWNER_ENTER);
                 recentsView.invalidate();
                 LauncherRecentsPerf.flow("enter:gestureRelease:end", recentsView);
                 LauncherRecentsPerf.endSpan("enterRecentsRelease", recentsView);
@@ -1217,7 +1231,7 @@ final class LauncherRecentsTransitionController {
         }
         LauncherRecentsPerf.flow("enter:gestureRelease:setProgress",
                 recentsView, "progress=" + progress);
-        LauncherRecentsState.GESTURE_STACK_RELEASE_PROGRESS.put(
+        LauncherRecentsState.setGestureStackReleaseProgress(
                 recentsView,
                 LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f));
     }
@@ -1227,14 +1241,14 @@ final class LauncherRecentsTransitionController {
             return;
         }
         LauncherRecentsPerf.flow("enter:gestureRelease:clearProgress", recentsView);
-        LauncherRecentsState.GESTURE_STACK_RELEASE_PROGRESS.remove(recentsView);
+        LauncherRecentsState.setGestureStackReleaseProgress(recentsView, null);
     }
 
     private static void setForcedRecentsTranslationY(View recentsView, float translationY) {
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsState.FORCED_RECENTS_TRANSLATION_YS.put(recentsView, translationY);
+        LauncherRecentsState.setForcedRecentsTranslationY(recentsView, translationY);
         recentsView.setTranslationY(translationY);
     }
 
@@ -1242,7 +1256,7 @@ final class LauncherRecentsTransitionController {
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsState.FORCED_RECENTS_TRANSLATION_XS.put(recentsView, translationX);
+        LauncherRecentsState.setForcedRecentsTranslationX(recentsView, translationX);
         recentsView.setTranslationX(translationX);
     }
 
@@ -1250,35 +1264,35 @@ final class LauncherRecentsTransitionController {
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsState.FORCED_RECENTS_TRANSLATION_YS.remove(recentsView);
+        LauncherRecentsState.setForcedRecentsTranslationY(recentsView, null);
     }
 
     private static void clearForcedRecentsTranslationX(View recentsView) {
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsState.FORCED_RECENTS_TRANSLATION_XS.remove(recentsView);
+        LauncherRecentsState.setForcedRecentsTranslationX(recentsView, null);
     }
 
     static void forceRecentsTranslationZero(View recentsView) {
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsState.FORCED_RECENTS_TRANSLATION_XS.put(recentsView, 0f);
-        LauncherRecentsState.FORCED_RECENTS_TRANSLATION_YS.put(recentsView, 0f);
+        LauncherRecentsState.setForcedRecentsTranslationX(recentsView, 0f);
+        LauncherRecentsState.setForcedRecentsTranslationY(recentsView, 0f);
         recentsView.setTranslationX(0f);
         recentsView.setTranslationY(0f);
     }
 
     private static void applyForcedRecentsTranslation(View recentsView) {
         Float translationX = recentsView != null
-                ? LauncherRecentsState.FORCED_RECENTS_TRANSLATION_XS.get(recentsView)
+                ? LauncherRecentsState.getForcedRecentsTranslationX(recentsView)
                 : null;
         if (translationX != null) {
             recentsView.setTranslationX(translationX);
         }
         Float translationY = recentsView != null
-                ? LauncherRecentsState.FORCED_RECENTS_TRANSLATION_YS.get(recentsView)
+                ? LauncherRecentsState.getForcedRecentsTranslationY(recentsView)
                 : null;
         if (translationY != null) {
             recentsView.setTranslationY(translationY);

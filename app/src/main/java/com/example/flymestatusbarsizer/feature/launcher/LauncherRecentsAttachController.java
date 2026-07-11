@@ -56,6 +56,9 @@ final class LauncherRecentsAttachController {
                 LauncherRecentsLayoutEngine.hideStackClearAllButton(recentsView);
                 LauncherRecentsState.clearAppToRecentsGestureState(recentsView);
                 LauncherRecentsState.setSwipeUpGestureActive(recentsView, true);
+                LauncherRecentsState.setPositionOwner(
+                        recentsView,
+                        LauncherRecentsState.POSITION_OWNER_ENTER);
                 LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                 LauncherRecentsState.trackRecentsView(recentsView);
                 long nativeStartNs = LauncherRecentsPerf.start(recentsView);
