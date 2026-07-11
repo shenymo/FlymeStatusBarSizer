@@ -474,6 +474,10 @@ final class SettingsCardFactory {
         addStackParam(content, "快速上滑删除阈值", "数值越低，快速上滑越容易触发删除。",
                 SettingsStore.KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY, 300, 3000, "");
 
+        addStackParamHeader(content, "下拉菜单", "控制任务卡片下拉打开系统菜单的触发距离。");
+        addStackParam(content, "菜单触发距离", "数值越大，需要下拉更远才会弹出任务菜单。",
+                SettingsStore.KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP, 40, 200, "dp");
+
         addStackParamHeader(content, "视觉效果", "控制边缘卡片的 blur 和隐藏阈值。");
         addStackParam(content, "blur 最大强度", "边缘卡片截图和图标的最大模糊强度。",
                 SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP, 0, 40, "dp");

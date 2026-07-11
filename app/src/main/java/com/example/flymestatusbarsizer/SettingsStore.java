@@ -159,6 +159,8 @@ final class SettingsStore {
             "launcher_stack_dismiss_secondary_dominance_percent";
     static final String KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY =
             "launcher_stack_dismiss_min_fling_velocity";
+    static final String KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP =
+            "launcher_stack_menu_pull_threshold_dp";
     static final String KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP =
             "launcher_stack_content_max_blur_dp";
     static final String KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT =
@@ -330,6 +332,7 @@ final class SettingsStore {
     static final int DEFAULT_LAUNCHER_STACK_DISMISS_DRAG_RELAYOUT_MAX_PERCENT = 50;
     static final int DEFAULT_LAUNCHER_STACK_DISMISS_SECONDARY_DOMINANCE_PERCENT = 120;
     static final int DEFAULT_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY = 1200;
+    static final int DEFAULT_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP = 100;
     static final int DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP = 18;
     static final int DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT = 50;
     static final int DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT = 85;
@@ -445,6 +448,7 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_DISMISS_DRAG_RELAYOUT_MAX_PERCENT,
             KEY_LAUNCHER_STACK_DISMISS_SECONDARY_DOMINANCE_PERCENT,
             KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY,
+            KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP,
             KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP,
             KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT,
             KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT,
@@ -544,6 +548,7 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_DISMISS_DRAG_RELAYOUT_MAX_PERCENT,
             KEY_LAUNCHER_STACK_DISMISS_SECONDARY_DOMINANCE_PERCENT,
             KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY,
+            KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP,
             KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP,
             KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT,
             KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT,
@@ -812,6 +817,8 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_STACK_DISMISS_SECONDARY_DOMINANCE_PERCENT;
             case KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY:
                 return DEFAULT_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY;
+            case KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP:
+                return DEFAULT_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP;
             case KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP:
                 return DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP;
             case KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT:
@@ -1265,6 +1272,9 @@ final class SettingsStore {
         }
         if (KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY.equals(key)) {
             return Math.max(300, Math.min(3000, value));
+        }
+        if (KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP.equals(key)) {
+            return Math.max(40, Math.min(200, value));
         }
         if (KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP.equals(key)) {
             return Math.max(0, Math.min(40, value));

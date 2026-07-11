@@ -7274,6 +7274,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final float stackDismissDragRelayoutMaxProgress;
         public final float stackDismissSecondaryDominance;
         public final float stackDismissMinFlingVelocity;
+        public final int stackMenuPullThresholdDp;
         public final int stackContentMaxBlurDp;
         public final float stackContentMediumBlurRatio;
         public final float stackContentBlurStartAlpha;
@@ -7373,6 +7374,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             stackDismissMinFlingVelocity = config == null
                     ? SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY
                     : config.launcherStackDismissMinFlingVelocity;
+            stackMenuPullThresholdDp = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP
+                    : config.launcherStackMenuPullThresholdDp;
             stackContentMaxBlurDp = config == null
                     ? SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP
                     : config.launcherStackContentMaxBlurDp;

@@ -158,6 +158,8 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_SECONDARY_DOMINANCE_PERCENT;
     int launcherStackDismissMinFlingVelocity =
             SettingsStore.DEFAULT_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY;
+    int launcherStackMenuPullThresholdDp =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP;
     int launcherStackContentMaxBlurDp = SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP;
     int launcherStackContentMediumBlurPercent =
             SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT;
@@ -642,6 +644,8 @@ final class ModuleConfig {
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_DISMISS_SECONDARY_DOMINANCE_PERCENT);
             config.launcherStackDismissMinFlingVelocity = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY);
+            config.launcherStackMenuPullThresholdDp = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP);
             config.launcherStackContentMaxBlurDp = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP);
             config.launcherStackContentMediumBlurPercent = readLauncherStackParameter(
