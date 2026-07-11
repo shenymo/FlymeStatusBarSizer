@@ -7252,7 +7252,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final float stackEntryLiftRatio;
         public final float stackEntryInitialSpreadRatio;
         public final float stackReleaseInitialSpreadRatio;
-        public final float appEntryVisualShift;
         public final int desktopEntryVisibleCount;
         public final int desktopEntryAnchorIndex;
         public final long gestureStackReleaseDurationMs;
@@ -7262,6 +7261,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final int stackAppFlowLightRadius;
         public final float stackRightBaseSpeedupRatio;
         public final float stackRightSpeedupRatio;
+        public final float stackHorizontalDragResistance;
+        public final float stackHorizontalPageThreshold;
+        public final int stackHorizontalFlingVelocityDp;
+        public final int stackHorizontalSnapDurationMs;
         public final float blankTapHomeExitScaleDelta;
         public final float blankTapHomeExitExtraTravelRatio;
         public final float taskLaunchSiblingExitExtraWidthRatio;
@@ -7274,6 +7277,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final int stackContentMaxBlurDp;
         public final float stackContentMediumBlurRatio;
         public final float stackContentBlurStartAlpha;
+        public final float stackLeftFadeDistanceRatio;
         public final float stackLeftReleaseAlphaThreshold;
         public final float stackScrollFrameRate;
         public final long stackFrameRateReleaseDelayMs;
@@ -7310,8 +7314,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     c -> c.launcherStackEntryInitialSpreadPercent);
             stackReleaseInitialSpreadRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT,
                     c -> c.launcherStackReleaseInitialSpreadPercent);
-            appEntryVisualShift = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT,
-                    c -> c.launcherStackAppEntryVisualShiftPercent);
             desktopEntryVisibleCount = config == null
                     ? SettingsStore.DEFAULT_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT
                     : config.launcherStackDesktopEntryVisibleCount;
@@ -7337,6 +7339,18 @@ public class FlymeStatusBarSizer extends XposedModule {
                     c -> c.launcherStackRightBaseSpeedupPercent);
             stackRightSpeedupRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT,
                     c -> c.launcherStackRightSpeedupPercent);
+            stackHorizontalDragResistance = percent(config,
+                    SettingsStore.DEFAULT_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT,
+                    c -> c.launcherStackHorizontalDragResistancePercent);
+            stackHorizontalPageThreshold = percent(config,
+                    SettingsStore.DEFAULT_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT,
+                    c -> c.launcherStackHorizontalPageThresholdPercent);
+            stackHorizontalFlingVelocityDp = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_HORIZONTAL_FLING_VELOCITY_DP
+                    : config.launcherStackHorizontalFlingVelocityDp;
+            stackHorizontalSnapDurationMs = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS
+                    : config.launcherStackHorizontalSnapDurationMs;
             blankTapHomeExitScaleDelta = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT,
                     c -> c.launcherStackBlankExitScaleDeltaPercent);
             blankTapHomeExitExtraTravelRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_BLANK_EXIT_EXTRA_TRAVEL_PERCENT,
@@ -7366,6 +7380,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                     c -> c.launcherStackContentMediumBlurPercent);
             stackContentBlurStartAlpha = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT,
                     c -> c.launcherStackContentBlurStartAlphaPercent);
+            stackLeftFadeDistanceRatio = percent(config,
+                    SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT,
+                    c -> c.launcherStackLeftFadeDistancePercent);
             stackLeftReleaseAlphaThreshold = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT,
                     c -> c.launcherStackLeftReleaseAlphaThresholdPercent);
             stackScrollFrameRate = config == null

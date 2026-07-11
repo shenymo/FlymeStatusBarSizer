@@ -115,8 +115,6 @@ final class SettingsStore {
             "launcher_stack_entry_initial_spread_percent";
     static final String KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT =
             "launcher_stack_release_initial_spread_percent";
-    static final String KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT =
-            "launcher_stack_app_entry_visual_shift_percent";
     static final String KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT =
             "launcher_stack_desktop_entry_visible_count";
     static final String KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX =
@@ -135,6 +133,14 @@ final class SettingsStore {
             "launcher_stack_right_base_speedup_percent";
     static final String KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT =
             "launcher_stack_right_speedup_percent";
+    static final String KEY_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT =
+            "launcher_stack_horizontal_drag_resistance_percent";
+    static final String KEY_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT =
+            "launcher_stack_horizontal_page_threshold_percent";
+    static final String KEY_LAUNCHER_STACK_HORIZONTAL_FLING_VELOCITY_DP =
+            "launcher_stack_horizontal_fling_velocity_dp";
+    static final String KEY_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS =
+            "launcher_stack_horizontal_snap_duration_ms";
     static final String KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT =
             "launcher_stack_blank_exit_scale_delta_percent";
     static final String KEY_LAUNCHER_STACK_BLANK_EXIT_EXTRA_TRAVEL_PERCENT =
@@ -159,6 +165,8 @@ final class SettingsStore {
             "launcher_stack_content_medium_blur_percent";
     static final String KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT =
             "launcher_stack_content_blur_start_alpha_percent";
+    static final String KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT =
+            "launcher_stack_left_fade_distance_percent";
     static final String KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT =
             "launcher_stack_left_release_alpha_threshold_percent";
     static final String KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE =
@@ -300,7 +308,6 @@ final class SettingsStore {
     static final int DEFAULT_LAUNCHER_STACK_ENTRY_LIFT_PERCENT = 5;
     static final int DEFAULT_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT = 80;
     static final int DEFAULT_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT = 35;
-    static final int DEFAULT_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT = 70;
     static final int DEFAULT_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT = 3;
     static final int DEFAULT_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX = 0;
     static final int DEFAULT_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS = 320;
@@ -310,6 +317,10 @@ final class SettingsStore {
     static final int DEFAULT_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS = 3;
     static final int DEFAULT_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT = 16;
     static final int DEFAULT_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT = 40;
+    static final int DEFAULT_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT = 0;
+    static final int DEFAULT_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT = 14;
+    static final int DEFAULT_LAUNCHER_STACK_HORIZONTAL_FLING_VELOCITY_DP = 500;
+    static final int DEFAULT_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS = 750;
     static final int DEFAULT_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT = 4;
     static final int DEFAULT_LAUNCHER_STACK_BLANK_EXIT_EXTRA_TRAVEL_PERCENT = 18;
     static final int DEFAULT_LAUNCHER_STACK_TASK_LAUNCH_EXTRA_WIDTH_PERCENT = 25;
@@ -322,6 +333,7 @@ final class SettingsStore {
     static final int DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP = 18;
     static final int DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT = 50;
     static final int DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT = 85;
+    static final int DEFAULT_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT = 24;
     static final int DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT = 5;
     static final int DEFAULT_LAUNCHER_STACK_SCROLL_FRAME_RATE = 120;
     static final int DEFAULT_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS = 5000;
@@ -411,7 +423,6 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT,
             KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT,
             KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT,
-            KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT,
             KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT,
             KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX,
             KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS,
@@ -421,6 +432,10 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS,
             KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT,
             KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT,
+            KEY_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT,
+            KEY_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT,
+            KEY_LAUNCHER_STACK_HORIZONTAL_FLING_VELOCITY_DP,
+            KEY_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS,
             KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT,
             KEY_LAUNCHER_STACK_BLANK_EXIT_EXTRA_TRAVEL_PERCENT,
             KEY_LAUNCHER_STACK_TASK_LAUNCH_EXTRA_WIDTH_PERCENT,
@@ -433,6 +448,7 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP,
             KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT,
             KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT,
+            KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT,
             KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE,
             KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS,
@@ -510,7 +526,6 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT,
             KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT,
             KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT,
-            KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT,
             KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT,
             KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX,
             KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS,
@@ -753,8 +768,6 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT;
             case KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT;
-            case KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT:
-                return DEFAULT_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT;
             case KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT:
                 return DEFAULT_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT;
             case KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX:
@@ -773,6 +786,14 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT;
             case KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT;
+            case KEY_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT:
+                return DEFAULT_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT;
+            case KEY_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT:
+                return DEFAULT_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT;
+            case KEY_LAUNCHER_STACK_HORIZONTAL_FLING_VELOCITY_DP:
+                return DEFAULT_LAUNCHER_STACK_HORIZONTAL_FLING_VELOCITY_DP;
+            case KEY_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS:
+                return DEFAULT_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS;
             case KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT;
             case KEY_LAUNCHER_STACK_BLANK_EXIT_EXTRA_TRAVEL_PERCENT:
@@ -797,6 +818,8 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT;
             case KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT;
+            case KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT:
+                return DEFAULT_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT;
             case KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT;
             case KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE:
@@ -1183,9 +1206,6 @@ final class SettingsStore {
         if (KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT.equals(key)) {
             return Math.max(0, Math.min(100, value));
         }
-        if (KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(120, value));
-        }
         if (KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT.equals(key)) {
             return Math.max(1, Math.min(6, value));
         }
@@ -1208,6 +1228,18 @@ final class SettingsStore {
         }
         if (KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT.equals(key)) {
             return Math.max(0, Math.min(100, value));
+        }
+        if (KEY_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT.equals(key)) {
+            return Math.max(0, Math.min(80, value));
+        }
+        if (KEY_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT.equals(key)) {
+            return Math.max(5, Math.min(40, value));
+        }
+        if (KEY_LAUNCHER_STACK_HORIZONTAL_FLING_VELOCITY_DP.equals(key)) {
+            return Math.max(100, Math.min(1500, value));
+        }
+        if (KEY_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS.equals(key)) {
+            return Math.max(150, Math.min(1200, value));
         }
         if (KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT.equals(key)) {
             return Math.max(0, Math.min(15, value));
@@ -1242,6 +1274,9 @@ final class SettingsStore {
         }
         if (KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT.equals(key)) {
             return Math.max(0, Math.min(100, value));
+        }
+        if (KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT.equals(key)) {
+            return Math.max(5, Math.min(60, value));
         }
         if (KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT.equals(key)) {
             return Math.max(0, Math.min(30, value));

@@ -114,8 +114,6 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT;
     int launcherStackReleaseInitialSpreadPercent =
             SettingsStore.DEFAULT_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT;
-    int launcherStackAppEntryVisualShiftPercent =
-            SettingsStore.DEFAULT_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT;
     int launcherStackDesktopEntryVisibleCount =
             SettingsStore.DEFAULT_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT;
     int launcherStackDesktopEntryAnchorIndex =
@@ -134,6 +132,14 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT;
     int launcherStackRightSpeedupPercent =
             SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT;
+    int launcherStackHorizontalDragResistancePercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT;
+    int launcherStackHorizontalPageThresholdPercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT;
+    int launcherStackHorizontalFlingVelocityDp =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_HORIZONTAL_FLING_VELOCITY_DP;
+    int launcherStackHorizontalSnapDurationMs =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS;
     int launcherStackBlankExitScaleDeltaPercent =
             SettingsStore.DEFAULT_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT;
     int launcherStackBlankExitExtraTravelPercent =
@@ -157,6 +163,8 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT;
     int launcherStackContentBlurStartAlphaPercent =
             SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT;
+    int launcherStackLeftFadeDistancePercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT;
     int launcherStackLeftReleaseAlphaThresholdPercent =
             SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT;
     int launcherStackScrollFrameRate = SettingsStore.DEFAULT_LAUNCHER_STACK_SCROLL_FRAME_RATE;
@@ -590,8 +598,6 @@ final class ModuleConfig {
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT);
             config.launcherStackReleaseInitialSpreadPercent = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT);
-            config.launcherStackAppEntryVisualShiftPercent = readLauncherStackParameter(
-                    prefs, SettingsStore.KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT);
             config.launcherStackDesktopEntryVisibleCount = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT);
             config.launcherStackDesktopEntryAnchorIndex = readLauncherStackParameter(
@@ -610,6 +616,14 @@ final class ModuleConfig {
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT);
             config.launcherStackRightSpeedupPercent = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT);
+            config.launcherStackHorizontalDragResistancePercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT);
+            config.launcherStackHorizontalPageThresholdPercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT);
+            config.launcherStackHorizontalFlingVelocityDp = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_FLING_VELOCITY_DP);
+            config.launcherStackHorizontalSnapDurationMs = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS);
             config.launcherStackBlankExitScaleDeltaPercent = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT);
             config.launcherStackBlankExitExtraTravelPercent = readLauncherStackParameter(
@@ -634,6 +648,8 @@ final class ModuleConfig {
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT);
             config.launcherStackContentBlurStartAlphaPercent = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT);
+            config.launcherStackLeftFadeDistancePercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT);
             config.launcherStackLeftReleaseAlphaThresholdPercent = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT);
             config.launcherStackScrollFrameRate = readLauncherStackParameter(

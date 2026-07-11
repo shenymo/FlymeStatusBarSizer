@@ -56,6 +56,8 @@ final class LauncherRecentsTouchController {
         }
         hookPagedViewOnInterceptTouchEvent(module, loader);
         hookPagedViewOnTouchEvent(module, loader);
+        hookRecentsViewGetFinalDelta(module, loader);
+        hookPagedViewGetSnapAnimationDuration(module, loader);
         hookRecentsViewNotifyHandleActionUp(module, loader);
         hookLauncherRecentsViewOverviewStateForStack(module, loader);
         hookRecentsViewFreeScrollSettling(module, loader);
@@ -368,10 +370,57 @@ final class LauncherRecentsTouchController {
                         return true;
                     }
                     long nativeStartNs = LauncherRecentsPerf.start(recentsView);
+                    boolean tuneHorizontalRelease = motionEvent.getActionMasked()
+                            == MotionEvent.ACTION_UP
+                            && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView);
+                    FlymeStatusBarSizer.LauncherRecentsConfigSnapshot stackConfig =
+                            tuneHorizontalRelease
+                                    ? FlymeStatusBarSizer.loadLauncherRecentsConfig(
+                                    recentsView.getContext())
+                                    : null;
+                    float originalDownMotionPrimary = 0f;
+                    int originalFlingThresholdVelocity = 0;
+                    if (stackConfig != null) {
+                        float currentPrimary = isPrimaryScrollHorizontal(recentsView)
+                                ? motionEvent.getX()
+                                : motionEvent.getY();
+                        originalDownMotionPrimary = LauncherRecentsCompat.readFloatField(
+                                recentsView,
+                                "mDownMotionPrimary",
+                                currentPrimary);
+                        float thresholdScale = 0.14f
+                                / Math.max(0.01f, stackConfig.stackHorizontalPageThreshold);
+                        LauncherRecentsCompat.writeField(
+                                recentsView,
+                                "mDownMotionPrimary",
+                                currentPrimary
+                                        - ((currentPrimary - originalDownMotionPrimary)
+                                        * thresholdScale));
+                        originalFlingThresholdVelocity = LauncherRecentsCompat.readIntField(
+                                recentsView,
+                                "mFlingThresholdVelocity",
+                                FlymeStatusBarSizer.dp(recentsView.getContext(), 500));
+                        LauncherRecentsCompat.setIntField(
+                                recentsView,
+                                "mFlingThresholdVelocity",
+                                FlymeStatusBarSizer.dp(
+                                        recentsView.getContext(),
+                                        stackConfig.stackHorizontalFlingVelocityDp));
+                    }
                     Object result;
                     try {
                         result = chain.proceed();
                     } finally {
+                        if (stackConfig != null) {
+                            LauncherRecentsCompat.writeField(
+                                    recentsView,
+                                    "mDownMotionPrimary",
+                                    originalDownMotionPrimary);
+                            LauncherRecentsCompat.setIntField(
+                                    recentsView,
+                                    "mFlingThresholdVelocity",
+                                    originalFlingThresholdVelocity);
+                        }
                         LauncherRecentsPerf.end("native:onTouchEvent", nativeStartNs);
                     }
                     applyStackLayoutAfterPagedMove(recentsView, motionEvent);
@@ -388,6 +437,62 @@ final class LauncherRecentsTouchController {
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook PagedView.onTouchEvent",
+                    t);
+        }
+    }
+
+    private static void hookRecentsViewGetFinalDelta(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("getFinalDelta", int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object thisObject = chain.getThisObject();
+                if (!(result instanceof Number)
+                        || !(thisObject instanceof View)
+                        || !LauncherRecentsLayoutEngine.shouldUseStackLayout((View) thisObject)) {
+                    return result;
+                }
+                View recentsView = (View) thisObject;
+                FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                        FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
+                return config == null
+                        ? result
+                        : Math.round(((Number) result).intValue()
+                        * (1f - config.stackHorizontalDragResistance));
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.getFinalDelta",
+                    t);
+        }
+    }
+
+    private static void hookPagedViewGetSnapAnimationDuration(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.PAGED_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("getSnapAnimationDuration");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object thisObject = chain.getThisObject();
+                if (!(thisObject instanceof View)
+                        || !LauncherRecentsCompat.isRecentsViewObject(thisObject)
+                        || !LauncherRecentsLayoutEngine.shouldUseStackLayout((View) thisObject)) {
+                    return chain.proceed();
+                }
+                View recentsView = (View) thisObject;
+                FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                        FlymeStatusBarSizer.loadLauncherRecentsConfig(recentsView.getContext());
+                return config == null ? chain.proceed() : config.stackHorizontalSnapDurationMs;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook PagedView.getSnapAnimationDuration",
                     t);
         }
     }

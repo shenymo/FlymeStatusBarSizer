@@ -25,13 +25,13 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_RIGHT_BASE_SPEEDUP_RATIO = 0.16f;
     private static final float STACK_RIGHT_SPEEDUP_RATIO = 0.40f;
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
-    private static final float APP_ENTRY_VISUAL_SHIFT = 0.70f;
     private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
     private static final float STACK_MIN_SCALE = 0.92f;
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.04f;
     private static final float BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO = 0.18f;
     private static final float STACK_CONTENT_BLUR_START_ALPHA = 0.85f;
+    private static final float STACK_LEFT_FADE_DISTANCE_RATIO = 0.24f;
     private static final int STACK_ENTRY_LIGHT_RADIUS = 1;
     private static final int STACK_STABLE_VISIBLE_RADIUS = 2;
     private static final int STACK_GESTURE_RELEASE_CORE_RADIUS = 2;
@@ -2716,9 +2716,6 @@ final class LauncherRecentsLayoutEngine {
                 - targetScroll;
         float layoutProgress =
                 (rawOffset + resolveEdgeScrollCorrection(recentsView)) / pageSpan;
-        if (isAppEntryVisualShiftActive(recentsView)) {
-            layoutProgress += appEntryVisualShift(recentsView);
-        }
         return resolveStackVisibleOffset(
                 recentsView,
                 layoutProgress,
@@ -2757,48 +2754,12 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static int resolveAppEntryAnchorTargetScroll(View recentsView, int anchorPage, int fallback) {
-        int targetScroll = LauncherRecentsCompat.invokeInt(
+        return LauncherRecentsCompat.invokeInt(
                 recentsView,
                 "getScrollForPage",
                 LauncherRecentsCompat.INT_ARG,
                 fallback,
                 anchorPage);
-        if (!isRunningTaskBetweenTwoTasks(recentsView, anchorPage)) {
-            return targetScroll;
-        }
-        boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
-        float pageSpan = Math.max(
-                1f,
-                resolvePrimarySize(recentsView, primaryScrollHorizontal)
-                        + LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0));
-        return targetScroll - Math.round(appEntryVisualShift(recentsView) * pageSpan);
-    }
-
-    private static boolean isRunningTaskBetweenTwoTasks(View recentsView, int anchorPage) {
-        int runningTaskPage = resolveRunningTaskPage(recentsView);
-        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
-        return anchorPage == runningTaskPage - 1
-                && runningTaskPage > 0
-                && runningTaskPage < pageCount - 1;
-    }
-
-    private static boolean shouldPlaceRunningTaskInNextSlot(View recentsView) {
-        int runningTaskPage = resolveRunningTaskPage(recentsView);
-        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
-        return runningTaskPage > 0 && runningTaskPage < pageCount - 1;
-    }
-
-    private static int resolveRunningTaskPage(View recentsView) {
-        if (!(recentsView instanceof ViewGroup)) {
-            return -1;
-        }
-        Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "getRunningTaskView");
-        if (!(runningTaskObject instanceof View)) {
-            return -1;
-        }
-        return ((ViewGroup) recentsView).indexOfChild((View) runningTaskObject);
     }
 
     private static StackTaskInput buildStackTaskInput(
@@ -2872,19 +2833,6 @@ final class LauncherRecentsLayoutEngine {
         return LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.get(taskView);
     }
 
-    private static boolean isAppEntryVisualShiftActive(StackLayoutContext context) {
-        return context != null
-                && !shouldPlaceRunningTaskInNextSlot(context.recentsView)
-                && (context.gestureStackReleaseActive
-                || isAppEntryVisualShiftActive(context.recentsView));
-    }
-
-    private static boolean isAppEntryVisualShiftActive(View recentsView) {
-        return recentsView != null
-                && LauncherRecentsState.isAppToRecentsStackSettled(recentsView)
-                && !shouldPlaceRunningTaskInNextSlot(recentsView);
-    }
-
     private static LauncherRecentsTaskVisuals.StackTaskVisualState buildStackTaskVisualState(
             StackLayoutContext context,
             StackTaskInput input,
@@ -2908,9 +2856,6 @@ final class LauncherRecentsLayoutEngine {
                 input.taskHeight * stackEntryLiftRatio(context.recentsView),
                 FlymeStatusBarSizer.dp(context.recentsView.getContext(), 40));
         float visualLayoutProgress = input.layoutProgress;
-        if (isAppEntryVisualShiftActive(context)) {
-            visualLayoutProgress += appEntryVisualShift(context.recentsView);
-        }
         float finalVisibleOffset = resolveStackVisibleOffset(
                 context.recentsView,
                 visualLayoutProgress,
@@ -4000,7 +3945,7 @@ final class LauncherRecentsLayoutEngine {
         float distancePx = Math.abs(frontOffset - currentOffset);
         float opaqueDistancePx = Math.max(
                 1f,
-                taskPrimarySize * 0.24f);
+                taskPrimarySize * stackLeftFadeDistanceRatio(recentsView));
         return smoothStep(remapProgress(distancePx, 0f, opaqueDistancePx));
     }
 
@@ -4153,11 +4098,6 @@ final class LauncherRecentsLayoutEngine {
         return config == null ? STACK_RELEASE_INITIAL_SPREAD_RATIO : config.stackReleaseInitialSpreadRatio;
     }
 
-    static float appEntryVisualShift(View view) {
-        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
-        return config == null ? APP_ENTRY_VISUAL_SHIFT : config.appEntryVisualShift;
-    }
-
     static float stackRightBaseSpeedupRatio(View view) {
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
         return config == null ? STACK_RIGHT_BASE_SPEEDUP_RATIO : config.stackRightBaseSpeedupRatio;
@@ -4181,6 +4121,11 @@ final class LauncherRecentsLayoutEngine {
     static float stackContentBlurStartAlpha(View view) {
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
         return config == null ? STACK_CONTENT_BLUR_START_ALPHA : config.stackContentBlurStartAlpha;
+    }
+
+    static float stackLeftFadeDistanceRatio(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null ? STACK_LEFT_FADE_DISTANCE_RATIO : config.stackLeftFadeDistanceRatio;
     }
 
     static int desktopEntryVisibleCount(View view) {

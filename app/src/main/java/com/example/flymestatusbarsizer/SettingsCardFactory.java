@@ -421,8 +421,6 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT, 0, 150, "%");
         addStackParam(content, "松手初始展开比例", "手势松开后回弹动画的起始展开程度。",
                 SettingsStore.KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT, 0, 100, "%");
-        addStackParam(content, "App 入口视觉偏移", "从应用进入后台时当前任务的视觉偏移量。",
-                SettingsStore.KEY_LAUNCHER_STACK_APP_ENTRY_VISUAL_SHIFT_PERCENT, 0, 120, "%");
         addStackParam(content, "桌面入口显示数量", "从桌面进入后台时，轻量入场阶段参与显示的卡片数量。",
                 SettingsStore.KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT, 1, 6, "");
         addStackParam(content, "桌面入口锚点位置", "从桌面进入后台时，轻量入场阶段的起始锚点。",
@@ -443,6 +441,17 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT, 0, 60, "%");
         addStackParam(content, "屏幕右侧深度加速", "越靠深层的屏幕右侧卡片展开越快。",
                 SettingsStore.KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT, 0, 100, "%");
+
+        addStackParamHeader(content, "左右滑动手感", "控制手指拖动、翻页判定和松手吸附。默认值保持 Flyme 原有手感。");
+        addStackParam(content, "拖动阻力", "数值越大，卡片跟随手指移动得越慢。",
+                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT, 0, 80, "%");
+        addStackParam(content, "翻页距离阈值", "数值越大，需要拖动更远才会切换任务。",
+                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT, 5, 40, "%");
+        addStackParam(content, "快滑速度阈值", "数值越低，短促快滑越容易切换任务。",
+                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_FLING_VELOCITY_DP, 100, 1500, "dp/s");
+        addStackParam(content, "松手吸附时长", "数值越大，卡片吸附到目标位置越慢。",
+                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS, 150, 1200, "ms");
+
         addStackParamHeader(content, "退出与启动", "控制回桌面和点击任务启动时的动画距离。");
         addStackParam(content, "回桌面缩放量", "点空白回桌面时，卡片额外缩小的比例。",
                 SettingsStore.KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT, 0, 15, "%");
@@ -472,6 +481,8 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT, 10, 90, "%");
         addStackParam(content, "blur 开始透明度", "卡片透明度低于此值后开始增加 blur。",
                 SettingsStore.KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT, 0, 100, "%");
+        addStackParam(content, "屏幕左侧淡出距离", "数值越大，屏幕左侧卡片会在更长距离内逐渐淡出。",
+                SettingsStore.KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT, 5, 60, "%");
         addStackParam(content, "屏幕左侧隐藏阈值", "屏幕左侧卡片透明度低于此值后不再参与显示。",
                 SettingsStore.KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT, 0, 30, "%");
 
