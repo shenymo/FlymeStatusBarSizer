@@ -7089,9 +7089,12 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean hoverFullscreenEnabled;
         public final int hoverFullscreenTimeoutMs;
         public final boolean twoRingLauncherEnabled;
+        public final int twoRingOuterAppCount;
+        public final int twoRingInnerAppCount;
         public final int twoRingInnerIconScalePercent;
         public final int twoRingInnerRadiusPercent;
         public final boolean recentInnerRingEnabled;
+        public final int recentInnerRingAppCount;
         public final int recentInnerRingIconScalePercent;
         public final int recentInnerRingRadiusPercent;
 
@@ -7111,6 +7114,12 @@ public class FlymeStatusBarSizer extends XposedModule {
                     : config.windowModeHoverFullscreenTimeoutMs;
             twoRingLauncherEnabled = config != null
                     && config.windowModeTwoRingLauncherEnabled;
+            twoRingOuterAppCount = config == null
+                    ? SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_OUTER_APP_COUNT
+                    : config.windowModeTwoRingOuterAppCount;
+            twoRingInnerAppCount = config == null
+                    ? SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_APP_COUNT
+                    : config.windowModeTwoRingInnerAppCount;
             twoRingInnerIconScalePercent = config == null
                     ? SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT
                     : config.windowModeTwoRingInnerIconScalePercent;
@@ -7119,6 +7128,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                     : config.windowModeTwoRingInnerRadiusPercent;
             recentInnerRingEnabled = config != null
                     && config.windowModeRecentInnerRingEnabled;
+            recentInnerRingAppCount = config == null
+                    ? SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_APP_COUNT
+                    : config.windowModeRecentInnerRingAppCount;
             recentInnerRingIconScalePercent = config == null
                     ? SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT
                     : config.windowModeRecentInnerRingIconScalePercent;

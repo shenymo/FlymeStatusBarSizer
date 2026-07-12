@@ -35,9 +35,6 @@ public final class WindowModeSideGestureHooks {
     private static final Map<Object, RecentRingState> RECENT_RING_STATES = new WeakHashMap<>();
     private static final Object RECENT_PACKAGES_LOCK = new Object();
     private static final Object BACKGROUND_LOCK = new Object();
-    private static final int TWO_RING_APP_LIMIT = 11;
-    private static final int TWO_RING_OUTER_COUNT = 7;
-    private static final int RECENT_RING_COUNT = 4;
     private static final int RECENT_TASK_SCAN_LIMIT = 16;
     private static final Map<String, Field> FIELD_CACHE = new java.util.HashMap<>();
     private static final Map<String, Integer> APP_ICON_ID_CACHE = new HashMap<>();
@@ -292,7 +289,9 @@ public final class WindowModeSideGestureHooks {
                     List<?> originalList = (List<?>) original;
                     ArrayList<Object> result = new ArrayList<>();
                     HashSet<String> shownPackages = new HashSet<>();
-                    int count = Math.min(TWO_RING_APP_LIMIT, sourceList.size());
+                    int count = Math.min(
+                            config.twoRingOuterAppCount + config.twoRingInnerAppCount,
+                            sourceList.size());
                     for (int i = 0; i < count; i++) {
                         Object item = sourceList.get(i);
                         if (itemClass.isInstance(item)) {
@@ -310,7 +309,8 @@ public final class WindowModeSideGestureHooks {
                                 sourceList,
                                 itemClass,
                                 constructor,
-                                shownPackages));
+                                shownPackages,
+                                config.recentInnerRingAppCount));
                     }
                     updateRecentRingState(appWindow, recentStart, result.size() - recentStart);
                     return result.isEmpty() ? original : result;
@@ -334,7 +334,11 @@ public final class WindowModeSideGestureHooks {
             List<?> sourceList,
             Class<?> itemClass,
             Constructor<?> constructor,
-            HashSet<String> shownPackages) throws Exception {
+            HashSet<String> shownPackages,
+            int recentCountLimit) throws Exception {
+        if (recentCountLimit <= 0) {
+            return new ArrayList<>();
+        }
         Context context = resolveAppLauncherContext(appWindow);
         ArrayList<RecentPackage> recentPackages = readRecentPackages(appWindow, context);
         if (recentPackages.isEmpty()) {
@@ -359,7 +363,7 @@ public final class WindowModeSideGestureHooks {
             }
             result.add(constructor.newInstance(appWindow, item));
             shownPackages.add(packageName);
-            if (result.size() >= RECENT_RING_COUNT) {
+            if (result.size() >= recentCountLimit) {
                 break;
             }
         }
@@ -571,6 +575,7 @@ public final class WindowModeSideGestureHooks {
             }
             FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
                     FlymeStatusBarSizer.loadWindowModeSideGestureConfig(launcher.getContext());
+            int outerCount = config.twoRingOuterAppCount;
             float innerRadiusRatio = config.twoRingInnerRadiusPercent / 100f;
             float innerIconScale = config.twoRingInnerIconScalePercent / 100f;
             float recentRadiusRatio = config.recentInnerRingRadiusPercent / 100f;
@@ -583,16 +588,18 @@ public final class WindowModeSideGestureHooks {
                     continue;
                 }
                 child.setVisibility(View.VISIBLE);
-                applyTwoRingInnerIconScale(child, i, innerIconScale, recentState, recentIconScale);
+                applyTwoRingInnerIconScale(
+                        child, i, outerCount, innerIconScale, recentState, recentIconScale);
                 float radius = resolveTwoRingRadius(
                         i,
                         fixedCount,
+                        outerCount,
                         outerRadius,
                         innerRadiusRatio,
                         recentRadiusRatio,
                         recentState);
-                int ringIndex = resolveTwoRingIndex(i, recentState);
-                int ringCount = resolveTwoRingCount(i, fixedCount, recentState);
+                int ringIndex = resolveTwoRingIndex(i, outerCount, recentState);
+                int ringCount = resolveTwoRingCount(i, fixedCount, outerCount, recentState);
                 float angle = resolveTwoRingAngle(ringIndex, ringCount, safeDegrees);
                 Object layoutParams = child.getLayoutParams();
                 writeField(layoutParams, "a", angle);
@@ -641,6 +648,9 @@ public final class WindowModeSideGestureHooks {
             float centerY = readFloatField(target, "f", -1f);
             float distance = resolveTwoRingPointerDistance(target, launcher, x, y, centerY);
             double angle = resolveTwoRingPointerAngle(x, y, centerY, distance);
+            FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
+                    FlymeStatusBarSizer.loadWindowModeSideGestureConfig(launcher.getContext());
+            int outerCount = config.twoRingOuterAppCount;
             RecentRingState recentState = getRecentRingState(target, childCount);
             int fixedCount = resolveFixedChildCount(childCount, recentState);
             int selected = -1;
@@ -654,6 +664,7 @@ public final class WindowModeSideGestureHooks {
                 float halfRange = resolveTwoRingHitAngleRange(
                         i,
                         fixedCount,
+                        outerCount,
                         target,
                         recentState) * 0.5f;
                 float minRadius = readFloatField(layoutParams, "b", -1f);
@@ -718,28 +729,31 @@ public final class WindowModeSideGestureHooks {
 
     private static int resolveTwoRingIndex(
             int childIndex,
+            int outerCount,
             RecentRingState recentState) {
         if (isRecentRingChild(childIndex, recentState)) {
             return childIndex - recentState.recentStart;
         }
-        return childIndex < TWO_RING_OUTER_COUNT ? childIndex : childIndex - TWO_RING_OUTER_COUNT;
+        return childIndex < outerCount ? childIndex : childIndex - outerCount;
     }
 
     private static int resolveTwoRingCount(
             int childIndex,
             int fixedCount,
+            int outerCount,
             RecentRingState recentState) {
         if (isRecentRingChild(childIndex, recentState)) {
             return Math.max(1, recentState.recentCount);
         }
-        return childIndex < TWO_RING_OUTER_COUNT
-                ? Math.min(fixedCount, TWO_RING_OUTER_COUNT)
-                : Math.max(1, fixedCount - TWO_RING_OUTER_COUNT);
+        return childIndex < outerCount
+                ? Math.min(fixedCount, outerCount)
+                : Math.max(1, fixedCount - outerCount);
     }
 
     private static float resolveTwoRingRadius(
             int childIndex,
             int fixedCount,
+            int outerCount,
             float outerRadius,
             float innerRadiusRatio,
             float recentRadiusRatio,
@@ -747,7 +761,7 @@ public final class WindowModeSideGestureHooks {
         if (isRecentRingChild(childIndex, recentState)) {
             return outerRadius * recentRadiusRatio;
         }
-        return childIndex < TWO_RING_OUTER_COUNT
+        return childIndex < outerCount
                 ? outerRadius
                 : outerRadius * innerRadiusRatio;
     }
@@ -755,6 +769,7 @@ public final class WindowModeSideGestureHooks {
     private static void applyTwoRingInnerIconScale(
             View child,
             int childIndex,
+            int outerCount,
             float innerIconScale,
             RecentRingState recentState,
             float recentIconScale) {
@@ -764,7 +779,7 @@ public final class WindowModeSideGestureHooks {
         }
         float scale = isRecentRingChild(childIndex, recentState)
                 ? recentIconScale
-                : childIndex < TWO_RING_OUTER_COUNT ? 1f : innerIconScale;
+                : childIndex < outerCount ? 1f : innerIconScale;
         if (icon.getScaleX() == scale && icon.getScaleY() == scale) {
             return;
         }
@@ -808,10 +823,11 @@ public final class WindowModeSideGestureHooks {
     private static float resolveTwoRingHitAngleRange(
             int childIndex,
             int fixedCount,
+            int outerCount,
             Object target,
             RecentRingState recentState) {
         int safeDegrees = readIntField(target, "v", 0);
-        int ringCount = resolveTwoRingCount(childIndex, fixedCount, recentState);
+        int ringCount = resolveTwoRingCount(childIndex, fixedCount, outerCount, recentState);
         float range = safeDegrees == 0 ? 90f : 90f - (safeDegrees * 2f);
         return range / Math.max(1, ringCount);
     }

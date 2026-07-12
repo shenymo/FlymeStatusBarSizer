@@ -84,12 +84,18 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS;
     boolean windowModeTwoRingLauncherEnabled =
             SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED;
+    int windowModeTwoRingOuterAppCount =
+            SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_OUTER_APP_COUNT;
+    int windowModeTwoRingInnerAppCount =
+            SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_APP_COUNT;
     int windowModeTwoRingInnerIconScalePercent =
             SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT;
     int windowModeTwoRingInnerRadiusPercent =
             SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT;
     boolean windowModeRecentInnerRingEnabled =
             SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_ENABLED;
+    int windowModeRecentInnerRingAppCount =
+            SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_APP_COUNT;
     int windowModeRecentInnerRingIconScalePercent =
             SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT;
     int windowModeRecentInnerRingRadiusPercent =
@@ -527,6 +533,18 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
                     SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED);
+            config.windowModeTwoRingOuterAppCount =
+                    SettingsStore.normalizeWindowModeTwoRingOuterAppCount(
+                            SettingsStore.readInt(
+                                    prefs,
+                                    SettingsStore.KEY_WINDOWMODE_TWO_RING_OUTER_APP_COUNT,
+                                    SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_OUTER_APP_COUNT));
+            config.windowModeTwoRingInnerAppCount =
+                    SettingsStore.normalizeWindowModeTwoRingInnerAppCount(
+                            SettingsStore.readInt(
+                                    prefs,
+                                    SettingsStore.KEY_WINDOWMODE_TWO_RING_INNER_APP_COUNT,
+                                    SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_APP_COUNT));
             config.windowModeTwoRingInnerIconScalePercent =
                     SettingsStore.normalizeWindowModeTwoRingInnerIconScalePercent(
                             SettingsStore.readInt(
@@ -543,6 +561,12 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_RECENT_INNER_RING_ENABLED,
                     SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_ENABLED);
+            config.windowModeRecentInnerRingAppCount =
+                    SettingsStore.normalizeWindowModeRecentInnerRingAppCount(
+                            SettingsStore.readInt(
+                                    prefs,
+                                    SettingsStore.KEY_WINDOWMODE_RECENT_INNER_RING_APP_COUNT,
+                                    SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_APP_COUNT));
             config.windowModeRecentInnerRingIconScalePercent =
                     SettingsStore.normalizeWindowModeRecentInnerRingIconScalePercent(
                             SettingsStore.readInt(

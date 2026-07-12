@@ -82,12 +82,18 @@ final class SettingsStore {
             "windowmode_hover_fullscreen_timeout_ms";
     static final String KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED =
             "windowmode_two_ring_launcher_enabled";
+    static final String KEY_WINDOWMODE_TWO_RING_OUTER_APP_COUNT =
+            "windowmode_two_ring_outer_app_count";
+    static final String KEY_WINDOWMODE_TWO_RING_INNER_APP_COUNT =
+            "windowmode_two_ring_inner_app_count";
     static final String KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT =
             "windowmode_two_ring_inner_icon_scale_percent";
     static final String KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT =
             "windowmode_two_ring_inner_radius_percent";
     static final String KEY_WINDOWMODE_RECENT_INNER_RING_ENABLED =
             "windowmode_recent_inner_ring_enabled";
+    static final String KEY_WINDOWMODE_RECENT_INNER_RING_APP_COUNT =
+            "windowmode_recent_inner_ring_app_count";
     static final String KEY_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT =
             "windowmode_recent_inner_ring_icon_scale_percent";
     static final String KEY_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT =
@@ -296,9 +302,12 @@ final class SettingsStore {
     static final boolean DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED = false;
     static final int DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS = 1000;
     static final boolean DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED = false;
+    static final int DEFAULT_WINDOWMODE_TWO_RING_OUTER_APP_COUNT = 7;
+    static final int DEFAULT_WINDOWMODE_TWO_RING_INNER_APP_COUNT = 4;
     static final int DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT = 100;
     static final int DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT = 62;
     static final boolean DEFAULT_WINDOWMODE_RECENT_INNER_RING_ENABLED = false;
+    static final int DEFAULT_WINDOWMODE_RECENT_INNER_RING_APP_COUNT = 4;
     static final int DEFAULT_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT = 100;
     static final int DEFAULT_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT = 38;
     static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
@@ -418,8 +427,11 @@ final class SettingsStore {
             KEY_MBACK_LONG_TOUCH_ACTION,
             KEY_WINDOWMODE_SIDE_GESTURE_ACTION,
             KEY_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS,
+            KEY_WINDOWMODE_TWO_RING_OUTER_APP_COUNT,
+            KEY_WINDOWMODE_TWO_RING_INNER_APP_COUNT,
             KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT,
             KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT,
+            KEY_WINDOWMODE_RECENT_INNER_RING_APP_COUNT,
             KEY_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT,
             KEY_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT,
             KEY_NOTIFICATION_APP_ICON_SIZE_DP,
@@ -753,10 +765,16 @@ final class SettingsStore {
                 return DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION;
             case KEY_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS:
                 return DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS;
+            case KEY_WINDOWMODE_TWO_RING_OUTER_APP_COUNT:
+                return DEFAULT_WINDOWMODE_TWO_RING_OUTER_APP_COUNT;
+            case KEY_WINDOWMODE_TWO_RING_INNER_APP_COUNT:
+                return DEFAULT_WINDOWMODE_TWO_RING_INNER_APP_COUNT;
             case KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT:
                 return DEFAULT_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT;
             case KEY_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT:
                 return DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT;
+            case KEY_WINDOWMODE_RECENT_INNER_RING_APP_COUNT:
+                return DEFAULT_WINDOWMODE_RECENT_INNER_RING_APP_COUNT;
             case KEY_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT:
                 return DEFAULT_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT;
             case KEY_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT:
@@ -1015,6 +1033,14 @@ final class SettingsStore {
         return Math.max(300, Math.min(2000, value));
     }
 
+    static int normalizeWindowModeTwoRingOuterAppCount(int value) {
+        return Math.max(0, Math.min(DEFAULT_WINDOWMODE_TWO_RING_OUTER_APP_COUNT, value));
+    }
+
+    static int normalizeWindowModeTwoRingInnerAppCount(int value) {
+        return Math.max(0, Math.min(DEFAULT_WINDOWMODE_TWO_RING_INNER_APP_COUNT, value));
+    }
+
     static int normalizeWindowModeTwoRingInnerIconScalePercent(int value) {
         return Math.max(10, Math.min(100, value));
     }
@@ -1025,6 +1051,10 @@ final class SettingsStore {
 
     static int normalizeWindowModeRecentInnerRingIconScalePercent(int value) {
         return Math.max(10, Math.min(100, value));
+    }
+
+    static int normalizeWindowModeRecentInnerRingAppCount(int value) {
+        return Math.max(0, Math.min(DEFAULT_WINDOWMODE_RECENT_INNER_RING_APP_COUNT, value));
     }
 
     static int normalizeWindowModeRecentInnerRingRadiusPercent(int value) {

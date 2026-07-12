@@ -925,6 +925,18 @@ final class SettingsCardFactory {
         card.addView(title, activity.matchWrap());
 
         activity.addDivider(card);
+        activity.addApplySliderRow(card, "外环应用数量",
+                "最外环显示的应用数量，默认 7。",
+                SettingsStore.KEY_WINDOWMODE_TWO_RING_OUTER_APP_COUNT,
+                SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_OUTER_APP_COUNT,
+                0, SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_OUTER_APP_COUNT, " 个");
+        activity.addDivider(card);
+        activity.addApplySliderRow(card, "内环应用数量",
+                "内环显示的普通应用数量，默认 4。",
+                SettingsStore.KEY_WINDOWMODE_TWO_RING_INNER_APP_COUNT,
+                SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_APP_COUNT,
+                0, SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_APP_COUNT, " 个");
+        activity.addDivider(card);
         activity.addApplySliderRow(card, "内环图标大小",
                 "只改小窗环数扩展内环的应用图标大小，默认 100%。",
                 SettingsStore.KEY_WINDOWMODE_TWO_RING_INNER_ICON_SCALE_PERCENT,
@@ -950,6 +962,12 @@ final class SettingsCardFactory {
                 SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_ENABLED,
                 (buttonView, isChecked) -> recentOptions.setVisibility(
                         isChecked ? View.VISIBLE : View.GONE));
+        activity.addDivider(recentOptions);
+        activity.addApplySliderRow(recentOptions, "最内环应用数量",
+                "最近使用应用这一环显示的应用数量，默认 4。",
+                SettingsStore.KEY_WINDOWMODE_RECENT_INNER_RING_APP_COUNT,
+                SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_APP_COUNT,
+                0, SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_APP_COUNT, " 个");
         activity.addDivider(recentOptions);
         activity.addApplySliderRow(recentOptions, "最内环图标大小",
                 "只改最近使用应用这一环的图标大小，默认 100%。",
