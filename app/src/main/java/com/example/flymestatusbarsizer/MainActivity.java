@@ -515,6 +515,17 @@ public class MainActivity extends Activity {
 
     void addSliderRow(LinearLayout root, String titleText, String subtitleText, String key,
             int defaultValue, int min, int max, String suffix) {
+        addSliderRow(root, titleText, subtitleText, key, defaultValue, min, max, suffix, false);
+    }
+
+    void addTenthDpSliderRow(LinearLayout root, String titleText, String subtitleText, String key,
+            int defaultValueTenthDp, int minTenthDp, int maxTenthDp) {
+        addSliderRow(root, titleText, subtitleText, key, defaultValueTenthDp,
+                minTenthDp, maxTenthDp, "dp", true);
+    }
+
+    private void addSliderRow(LinearLayout root, String titleText, String subtitleText, String key,
+            int defaultValue, int min, int max, String suffix, boolean tenthDp) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
 
@@ -536,7 +547,7 @@ public class MainActivity extends Activity {
         valueView.setPadding(dp(12), 0, 0, 0);
         int current = readIntSetting(key, defaultValue);
         int clamped = Math.max(min, Math.min(max, current));
-        valueView.setText(formatValue(clamped, suffix));
+        valueView.setText(tenthDp ? formatOffsetValue(clamped) : formatValue(clamped, suffix));
         valueView.setPadding(dp(12), dp(6), dp(12), dp(6));
         valueView.setBackground(roundRect(colorSurfaceSoft, 999));
         header.addView(valueView, new LinearLayout.LayoutParams(
@@ -551,7 +562,7 @@ public class MainActivity extends Activity {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 int value = min + progress;
-                valueView.setText(formatValue(value, suffix));
+                valueView.setText(tenthDp ? formatOffsetValue(value) : formatValue(value, suffix));
                 if (fromUser) {
                     performSliderHaptic(seekBar);
                     putIntSetting(key, value);
@@ -567,17 +578,30 @@ public class MainActivity extends Activity {
                 putIntSetting(key, min + seekBar.getProgress());
             }
         });
-        setTapClickListener(valueView, v -> showIntInputDialog(
-                titleText,
-                min + seekBar.getProgress(),
-                min,
-                max,
-                suffix,
-                value -> {
-                    valueView.setText(formatValue(value, suffix));
-                    seekBar.setProgress(value - min);
-                    putIntSetting(key, value);
-                }));
+        if (tenthDp) {
+            setTapClickListener(valueView, v -> showDecimalInputDialog(
+                    titleText,
+                    min + seekBar.getProgress(),
+                    min,
+                    max,
+                    value -> {
+                        valueView.setText(formatOffsetValue(value));
+                        seekBar.setProgress(value - min);
+                        putIntSetting(key, value);
+                    }));
+        } else {
+            setTapClickListener(valueView, v -> showIntInputDialog(
+                    titleText,
+                    min + seekBar.getProgress(),
+                    min,
+                    max,
+                    suffix,
+                    value -> {
+                        valueView.setText(formatValue(value, suffix));
+                        seekBar.setProgress(value - min);
+                        putIntSetting(key, value);
+                    }));
+        }
 
         row.addView(header, matchWrap());
         row.addView(seekBar, matchWrapWithTop(4));
@@ -1377,8 +1401,7 @@ public class MainActivity extends Activity {
     }
 
     String formatOffsetValue(int valueTenthDp) {
-        int normalized = SettingsStore.normalizeIconYOffsetTenthDp(valueTenthDp);
-        float offsetDp = SettingsStore.positionOffsetTenthDpToDp(normalized);
+        float offsetDp = SettingsStore.positionOffsetTenthDpToDp(valueTenthDp);
         return String.format(Locale.US, "%s%.1fdp", offsetDp > 0f ? "+" : "", offsetDp);
     }
 
@@ -1424,7 +1447,7 @@ public class MainActivity extends Activity {
             JSONObject root = new JSONObject();
             JSONObject settings = new JSONObject();
             root.put("schema", "flyme_status_bar_sizer");
-            root.put("version", 3);
+            root.put("version", 4);
             for (String key : SettingsStore.BOOLEAN_KEYS) {
                 if (SettingsStore.includeInBackup(key)) {
                     settings.put(key, SettingsStore.readBoolean(
@@ -1465,8 +1488,8 @@ public class MainActivity extends Activity {
             }
             int version = root.optInt("version", 0);
             if (!"flyme_status_bar_sizer".equals(root.optString("schema"))
-                    || (version != 2 && version != 3)) {
-                showToast("\u5bfc\u5165\u5931\u8d25\uff1a\u53ea\u652f\u6301 v2 / v3 \u914d\u7f6e\u6587\u4ef6");
+                    || (version != 2 && version != 3 && version != 4)) {
+                showToast("\u5bfc\u5165\u5931\u8d25\uff1a\u53ea\u652f\u6301 v2 / v3 / v4 \u914d\u7f6e\u6587\u4ef6");
                 return;
             }
             SharedPreferences.Editor editor = prefs.edit().clear();
@@ -1481,8 +1504,9 @@ public class MainActivity extends Activity {
                     continue;
                 }
                 int value = settings.optInt(key, SettingsStore.defaultInt(key));
-                if (version < 3 && SettingsStore.isPositionOffsetKey(key)) {
-                    value = SettingsStore.normalizeIconYOffsetTenthDp(value * 10);
+                if ((version < 3 && SettingsStore.isPositionOffsetKey(key))
+                        || (version < 4 && SettingsStore.isCameraCircleBatteryOffsetKey(key))) {
+                    value = SettingsStore.normalizePositionOffsetTenthDp(key, value * 10);
                 }
                 editor.putInt(key, value);
             }
@@ -1707,7 +1731,7 @@ public class MainActivity extends Activity {
         }
         BigDecimal value = new BigDecimal(normalized);
         BigDecimal scaled = value.multiply(BigDecimal.TEN).setScale(0, RoundingMode.HALF_UP);
-        return SettingsStore.normalizeIconYOffsetTenthDp(scaled.intValueExact());
+        return scaled.intValueExact();
     }
 
     private String formatSliderDisplayValue(int value, String suffix, boolean insetValue) {

@@ -13,8 +13,11 @@ final class SettingsStore {
     static final String KEY_POSITION_OFFSET_STORAGE_VERSION = "__position_offset_storage_version";
     static final int POSITION_OFFSET_STORAGE_VERSION_LEGACY_DP = 0;
     static final int POSITION_OFFSET_STORAGE_VERSION_TENTH_DP = 1;
+    static final int POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP = 2;
     static final int POSITION_OFFSET_MIN_TENTH_DP = -240;
     static final int POSITION_OFFSET_MAX_TENTH_DP = 240;
+    static final int CAMERA_CIRCLE_BATTERY_OFFSET_MIN_TENTH_DP = -300;
+    static final int CAMERA_CIRCLE_BATTERY_OFFSET_MAX_TENTH_DP = 300;
 
     static final String KEY_ENABLED = "enabled";
     static final String KEY_BATTERY_CODE_DRAW_ENABLED = "battery_code_draw_enabled";
@@ -579,6 +582,8 @@ final class SettingsStore {
     }
 
     static final String[] POSITION_OFFSET_KEYS = {
+            KEY_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP,
+            KEY_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP,
             KEY_BATTERY_ICON_Y_OFFSET_DP,
             KEY_BATTERY_TEXT_Y_OFFSET_DP,
             KEY_BATTERY_BOLT_Y_OFFSET_DP,
@@ -697,7 +702,7 @@ final class SettingsStore {
     static int defaultInt(String key) {
         switch (key) {
             case KEY_POSITION_OFFSET_STORAGE_VERSION:
-                return POSITION_OFFSET_STORAGE_VERSION_TENTH_DP;
+                return POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP;
             case KEY_BATTERY_ICON_STYLE:
                 return DEFAULT_BATTERY_ICON_STYLE;
             case KEY_BATTERY_TEXT_FONT:
@@ -1059,7 +1064,7 @@ final class SettingsStore {
     }
 
     static float positionOffsetTenthDpToDp(int value) {
-        return normalizeIconYOffsetTenthDp(value) / 10f;
+        return value / 10f;
     }
 
     static float positionOffsetTenthDpToPx(Context context, int value) {
@@ -1082,12 +1087,25 @@ final class SettingsStore {
         return false;
     }
 
+    static boolean isCameraCircleBatteryOffsetKey(String key) {
+        return KEY_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP.equals(key)
+                || KEY_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP.equals(key);
+    }
+
+    static int normalizePositionOffsetTenthDp(String key, int value) {
+        if (isCameraCircleBatteryOffsetKey(key)) {
+            return Math.max(CAMERA_CIRCLE_BATTERY_OFFSET_MIN_TENTH_DP,
+                    Math.min(CAMERA_CIRCLE_BATTERY_OFFSET_MAX_TENTH_DP, value));
+        }
+        return normalizeIconYOffsetTenthDp(value);
+    }
+
     static int readPositionOffsetStorageVersion(SharedPreferences prefs) {
         return readInt(prefs, KEY_POSITION_OFFSET_STORAGE_VERSION, POSITION_OFFSET_STORAGE_VERSION_LEGACY_DP);
     }
 
     static int readPositionOffsetTenthDp(SharedPreferences prefs, String key, int defaultValue) {
-        int normalizedDefault = normalizeIconYOffsetTenthDp(defaultValue);
+        int normalizedDefault = normalizePositionOffsetTenthDp(key, defaultValue);
         if (prefs == null || key == null) {
             return normalizedDefault;
         }
@@ -1107,17 +1125,21 @@ final class SettingsStore {
         } else {
             return normalizedDefault;
         }
-        if (readPositionOffsetStorageVersion(prefs) >= POSITION_OFFSET_STORAGE_VERSION_TENTH_DP) {
-            return normalizeIconYOffsetTenthDp(rawValue);
+        int storageVersion = readPositionOffsetStorageVersion(prefs);
+        if (storageVersion >= POSITION_OFFSET_STORAGE_VERSION_TENTH_DP
+                && (!isCameraCircleBatteryOffsetKey(key)
+                || storageVersion >= POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP)) {
+            return normalizePositionOffsetTenthDp(key, rawValue);
         }
-        return normalizeIconYOffsetTenthDp(rawValue * 10);
+        return normalizePositionOffsetTenthDp(key, rawValue * 10);
     }
 
     static void markPositionOffsetStorageVersion(SharedPreferences.Editor editor) {
         if (editor == null) {
             return;
         }
-        editor.putInt(KEY_POSITION_OFFSET_STORAGE_VERSION, POSITION_OFFSET_STORAGE_VERSION_TENTH_DP);
+        editor.putInt(KEY_POSITION_OFFSET_STORAGE_VERSION,
+                POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP);
     }
 
     static void migratePositionOffsetStorageIfNeeded(Context context) {
@@ -1125,7 +1147,8 @@ final class SettingsStore {
         if (prefs == null) {
             return;
         }
-        if (readPositionOffsetStorageVersion(prefs) >= POSITION_OFFSET_STORAGE_VERSION_TENTH_DP) {
+        int storageVersion = readPositionOffsetStorageVersion(prefs);
+        if (storageVersion >= POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP) {
             return;
         }
         SharedPreferences.Editor editor = prefs.edit();
@@ -1134,8 +1157,13 @@ final class SettingsStore {
             if (all == null || !all.containsKey(key)) {
                 continue;
             }
-            int legacyValueDp = readInt(prefs, key, defaultInt(key));
-            editor.putInt(key, normalizeIconYOffsetTenthDp(legacyValueDp * 10));
+            boolean needsMigration = storageVersion < POSITION_OFFSET_STORAGE_VERSION_TENTH_DP
+                    || (isCameraCircleBatteryOffsetKey(key)
+                    && storageVersion < POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP);
+            if (needsMigration) {
+                int legacyValueDp = readInt(prefs, key, defaultInt(key));
+                editor.putInt(key, normalizePositionOffsetTenthDp(key, legacyValueDp * 10));
+            }
         }
         markPositionOffsetStorageVersion(editor);
         editor.apply();

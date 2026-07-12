@@ -6494,9 +6494,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         float density = ((Context) contextValue).getResources().getDisplayMetrics().density;
         lp.gravity = Gravity.TOP | Gravity.START;
         lp.x = Math.round(bounds.centerX() - lp.width / 2f
-                + config.cameraCircleBatteryXOffsetDp * density);
+                + config.cameraCircleBatteryXOffsetTenthDp / 10f * density);
         lp.y = Math.round(bounds.centerY() - lp.height / 2f
-                + config.cameraCircleBatteryYOffsetDp * density);
+                + config.cameraCircleBatteryYOffsetTenthDp / 10f * density);
     }
 
     private static void invalidateLinkedSignalViews(View batteryView) {

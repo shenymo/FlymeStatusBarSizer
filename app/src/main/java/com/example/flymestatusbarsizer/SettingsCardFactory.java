@@ -669,17 +669,19 @@ final class SettingsCardFactory {
     View createCameraCirclePositionCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
-        activity.addSliderRow(content, "横向偏移",
-                "正数向右移动，负数向左移动。",
+        activity.addTenthDpSliderRow(content, "横向偏移",
+                "正数向右移动，负数向左移动，最小单位 0.1dp。",
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP,
-                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP,
-                -30, 30, "dp");
+                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP * 10,
+                SettingsStore.CAMERA_CIRCLE_BATTERY_OFFSET_MIN_TENTH_DP,
+                SettingsStore.CAMERA_CIRCLE_BATTERY_OFFSET_MAX_TENTH_DP);
         activity.addDivider(content);
-        activity.addSliderRow(content, "纵向偏移",
-                "正数向下移动，负数向上移动。",
+        activity.addTenthDpSliderRow(content, "纵向偏移",
+                "正数向下移动，负数向上移动，最小单位 0.1dp。",
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP,
-                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP,
-                -30, 30, "dp");
+                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP * 10,
+                SettingsStore.CAMERA_CIRCLE_BATTERY_OFFSET_MIN_TENTH_DP,
+                SettingsStore.CAMERA_CIRCLE_BATTERY_OFFSET_MAX_TENTH_DP);
         return activity.buildSectionCard(
                 "位置微调",
                 "偏移量会叠加到系统识别出的摄像头挖孔中心。",
