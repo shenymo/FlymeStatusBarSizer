@@ -526,6 +526,7 @@ public class MainActivity extends Activity {
 
     private void addSliderRow(LinearLayout root, String titleText, String subtitleText, String key,
             int defaultValue, int min, int max, String suffix, boolean tenthDp) {
+        int decimalScale = SettingsStore.isCameraCircleBatteryOffsetKey(key) ? 100 : 10;
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
 
@@ -547,7 +548,7 @@ public class MainActivity extends Activity {
         valueView.setPadding(dp(12), 0, 0, 0);
         int current = readIntSetting(key, defaultValue);
         int clamped = Math.max(min, Math.min(max, current));
-        valueView.setText(tenthDp ? formatOffsetValue(clamped) : formatValue(clamped, suffix));
+        valueView.setText(tenthDp ? formatDpValue(clamped, decimalScale) : formatValue(clamped, suffix));
         valueView.setPadding(dp(12), dp(6), dp(12), dp(6));
         valueView.setBackground(roundRect(colorSurfaceSoft, 999));
         header.addView(valueView, new LinearLayout.LayoutParams(
@@ -562,7 +563,7 @@ public class MainActivity extends Activity {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 int value = min + progress;
-                valueView.setText(tenthDp ? formatOffsetValue(value) : formatValue(value, suffix));
+                valueView.setText(tenthDp ? formatDpValue(value, decimalScale) : formatValue(value, suffix));
                 if (fromUser) {
                     performSliderHaptic(seekBar);
                     putIntSetting(key, value);
@@ -584,8 +585,9 @@ public class MainActivity extends Activity {
                     min + seekBar.getProgress(),
                     min,
                     max,
+                    decimalScale,
                     value -> {
-                        valueView.setText(formatOffsetValue(value));
+                        valueView.setText(formatDpValue(value, decimalScale));
                         seekBar.setProgress(value - min);
                         putIntSetting(key, value);
                     }));
@@ -1405,6 +1407,12 @@ public class MainActivity extends Activity {
         return String.format(Locale.US, "%s%.1fdp", offsetDp > 0f ? "+" : "", offsetDp);
     }
 
+    String formatDpValue(int value, int scale) {
+        float offsetDp = value / (float) scale;
+        return String.format(Locale.US, scale == 100 ? "%s%.2fdp" : "%s%.1fdp",
+                offsetDp > 0f ? "+" : "", offsetDp);
+    }
+
     int getPositionOffsetMinTenthDp(String key) {
         if (SettingsStore.KEY_CLOCK_RIGHT_PADDING_OFFSET_DP.equals(key)) {
             return SettingsStore.CLOCK_RIGHT_PADDING_OFFSET_MIN_TENTH_DP;
@@ -1575,24 +1583,30 @@ public class MainActivity extends Activity {
 
     void showDecimalInputDialog(String titleText, int currentValueTenthDp,
             int minTenthDp, int maxTenthDp, IntValueConsumer consumer) {
+        showDecimalInputDialog(titleText, currentValueTenthDp, minTenthDp, maxTenthDp, 10, consumer);
+    }
+
+    void showDecimalInputDialog(String titleText, int currentValue,
+            int min, int max, int scale, IntValueConsumer consumer) {
         EditText input = new EditText(this);
-        input.setText(String.format(Locale.US, "%.1f",
-                SettingsStore.positionOffsetTenthDpToDp(currentValueTenthDp)));
+        input.setText(String.format(Locale.US, scale == 100 ? "%.2f" : "%.1f",
+                currentValue / (float) scale));
         input.setSelection(input.getText().length());
-        input.setInputType((minTenthDp < 0
+        input.setInputType((min < 0
                 ? InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED
                 : InputType.TYPE_CLASS_NUMBER)
                 | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        input.setHint(formatOffsetInputRangeHint(minTenthDp, maxTenthDp));
+        input.setHint(String.format(Locale.US, scale == 100 ? "%.2f ~ %.2f" : "%.1f ~ %.1f",
+                min / (float) scale, max / (float) scale));
         int padding = dp(20);
         input.setPadding(padding, padding, padding, padding);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(titleText)
                 .setMessage("\u8f93\u5165\u8303\u56f4 "
-                        + formatOffsetValue(minTenthDp)
+                        + formatDpValue(min, scale)
                         + " ~ "
-                        + formatOffsetValue(maxTenthDp))
+                        + formatDpValue(max, scale))
                 .setView(input)
                 .setNegativeButton("\u53d6\u6d88", null)
                 .setPositiveButton("\u786e\u5b9a", (dialogInterface, which) -> {
@@ -1602,11 +1616,11 @@ public class MainActivity extends Activity {
                         return;
                     }
                     try {
-                        int value = parseOffsetInputToTenthDp(text);
-                        int clamped = Math.max(minTenthDp, Math.min(maxTenthDp, value));
+                        int value = parseOffsetInput(text, scale);
+                        int clamped = Math.max(min, Math.min(max, value));
                         consumer.accept(clamped);
                     } catch (NumberFormatException ignored) {
-                        showToast("\u8bf7\u8f93\u5165 0.1dp \u7cbe\u5ea6\u7684\u6570\u503c");
+                        showToast(scale == 100 ? "请输入 0.01dp 精度的数值" : "请输入 0.1dp 精度的数值");
                     }
                 })
                 .show();
@@ -1725,12 +1739,16 @@ public class MainActivity extends Activity {
     }
 
     int parseOffsetInputToTenthDp(String text) {
+        return parseOffsetInput(text, 10);
+    }
+
+    int parseOffsetInput(String text, int scale) {
         String normalized = text == null ? "" : text.trim().replace(',', '.');
         if (normalized.length() == 0) {
             throw new NumberFormatException("empty");
         }
         BigDecimal value = new BigDecimal(normalized);
-        BigDecimal scaled = value.multiply(BigDecimal.TEN).setScale(0, RoundingMode.HALF_UP);
+        BigDecimal scaled = value.multiply(BigDecimal.valueOf(scale)).setScale(0, RoundingMode.HALF_UP);
         return scaled.intValueExact();
     }
 

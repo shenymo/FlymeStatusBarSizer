@@ -86,6 +86,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, BatteryViewState> BATTERY_VIEW_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_BATTERY_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_STATUS_BAR_ICON_VIEWS = new WeakHashMap<>();
+    private static final WeakHashMap<Object, int[]> CAMERA_CIRCLE_WINDOW_SIZES = new WeakHashMap<>();
     private static final WeakHashMap<ViewGroup, Boolean> TRACKED_STATUS_ICON_CONTAINERS =
             new WeakHashMap<>();
     private static final WeakHashMap<ImageView, Boolean> TRACKED_WIFI_SIGNAL_VIEWS =
@@ -6455,8 +6456,31 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         view.invalidate();
         Object lp = ReflectUtils.getField(controller, "mBatteryLpChanged");
-        applyCameraCircleBatteryPosition(controller, lp, config);
         Object root = ReflectUtils.getField(controller, "mBlackCircleView");
+        if (lp instanceof WindowManager.LayoutParams) {
+            WindowManager.LayoutParams params = (WindowManager.LayoutParams) lp;
+            int[] originalSize;
+            synchronized (CAMERA_CIRCLE_WINDOW_SIZES) {
+                originalSize = CAMERA_CIRCLE_WINDOW_SIZES.get(controller);
+                if (originalSize == null && params.width > 0 && params.height > 0) {
+                    originalSize = new int[]{params.width, params.height};
+                    CAMERA_CIRCLE_WINDOW_SIZES.put(controller, originalSize);
+                }
+            }
+            if (originalSize != null) {
+                float windowScale = Math.max(1f, radiusScale)
+                        + 0.15f * config.cameraCircleBatteryStrokePercent / 100f;
+                params.width = Math.max(originalSize[0], Math.round(originalSize[0] * windowScale));
+                params.height = Math.max(originalSize[1], Math.round(originalSize[1] * windowScale));
+                view.setTranslationX((params.width - originalSize[0]) / 2f);
+                view.setTranslationY((params.height - originalSize[1]) / 2f);
+            }
+        }
+        if (root instanceof ViewGroup) {
+            ((ViewGroup) root).setClipChildren(false);
+            ((ViewGroup) root).setClipToPadding(false);
+        }
+        applyCameraCircleBatteryPosition(controller, lp, config);
         Object windowManager = ReflectUtils.getField(controller, "mWindowManager");
         if (lp instanceof WindowManager.LayoutParams
                 && root instanceof View
@@ -6494,9 +6518,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         float density = ((Context) contextValue).getResources().getDisplayMetrics().density;
         lp.gravity = Gravity.TOP | Gravity.START;
         lp.x = Math.round(bounds.centerX() - lp.width / 2f
-                + config.cameraCircleBatteryXOffsetTenthDp / 10f * density);
+                + config.cameraCircleBatteryXOffsetTenthDp / 100f * density);
         lp.y = Math.round(bounds.centerY() - lp.height / 2f
-                + config.cameraCircleBatteryYOffsetTenthDp / 10f * density);
+                + config.cameraCircleBatteryYOffsetTenthDp / 100f * density);
     }
 
     private static void invalidateLinkedSignalViews(View batteryView) {

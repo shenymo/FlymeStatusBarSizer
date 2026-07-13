@@ -32,8 +32,8 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT;
     int cameraCircleBatteryStrokePercent =
             SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT;
-    int cameraCircleBatteryXOffsetTenthDp = SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP * 10;
-    int cameraCircleBatteryYOffsetTenthDp = SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP * 10;
+    int cameraCircleBatteryXOffsetTenthDp = SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP * 100;
+    int cameraCircleBatteryYOffsetTenthDp = SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP * 100;
     boolean signalCodeDrawEnabled = SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED;
     boolean signalMobileTypeBadgeEnabled = SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED;
     boolean wifiCodeDrawEnabled = SettingsStore.DEFAULT_WIFI_CODE_DRAW_ENABLED;
@@ -342,11 +342,11 @@ final class ModuleConfig {
             config.cameraCircleBatteryXOffsetTenthDp = SettingsStore.readPositionOffsetTenthDp(
                     prefs,
                     SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP,
-                    SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP * 10);
+                    SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP * 100);
             config.cameraCircleBatteryYOffsetTenthDp = SettingsStore.readPositionOffsetTenthDp(
                     prefs,
                     SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP,
-                    SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP * 10);
+                    SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP * 100);
             config.signalCodeDrawEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,

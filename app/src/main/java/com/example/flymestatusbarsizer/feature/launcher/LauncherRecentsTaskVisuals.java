@@ -18,10 +18,8 @@ final class LauncherRecentsTaskVisuals {
     private static final float STACK_CONTENT_MEDIUM_BLUR_RATIO = 0.5f;
     private static final String ACTIVITY_TITLE_FIELD = "mActivityTitle";
     private static final String TASK_HEAD_FIELD = "mTaskHead";
-    private static RenderEffect stackContentMediumBlurEffect;
-    private static RenderEffect stackContentStrongBlurEffect;
-    private static float stackContentMediumBlurPx = -1f;
-    private static float stackContentStrongBlurPx = -1f;
+    private static final RenderEffect[] stackContentBlurEffects = new RenderEffect[3];
+    private static final float[] stackContentBlurEffectPxs = {-1f, -1f, -1f};
     private static final ViewOutlineProvider STACK_TASK_NO_SHADOW_OUTLINE_PROVIDER =
             new ViewOutlineProvider() {
                 @Override
@@ -182,6 +180,19 @@ final class LauncherRecentsTaskVisuals {
         setAttachAlpha(taskView, state.attachAlpha);
         setStableAlpha(taskView, state.stableAlpha);
         setTranslationZ(taskView, state.translationZ);
+        LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.put(taskView, state);
+    }
+
+    static void applyStackTaskEntryVisualState(View taskView, StackTaskVisualState state) {
+        applyStackTaskCoreVisualState(taskView, state);
+        if (taskView == null || state == null) {
+            return;
+        }
+        if (state.stackContentBlurEnabled) {
+            setStackContentBlurProgress(taskView, state.blurProgress);
+        } else {
+            clearStackContentBlurIfApplied(taskView);
+        }
         LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.put(taskView, state);
     }
 
@@ -624,6 +635,22 @@ final class LauncherRecentsTaskVisuals {
         });
     }
 
+    static void prepareStackContentBlurEffects(View view) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || view == null) {
+            return;
+        }
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                FlymeStatusBarSizer.loadLauncherRecentsConfig(view.getContext());
+        if (config == null || !config.launcherIosStackRecentsBlurEnabled) {
+            return;
+        }
+        float maxBlurPx = FlymeStatusBarSizer.dp(view.getContext(), config.stackContentMaxBlurDp);
+        float mediumBlurPx = maxBlurPx * config.stackContentMediumBlurRatio;
+        cacheStackContentBlurEffect(0, mediumBlurPx * 2f / 3f);
+        cacheStackContentBlurEffect(1, Math.min(maxBlurPx, mediumBlurPx * 4f / 3f));
+        cacheStackContentBlurEffect(2, maxBlurPx);
+    }
+
     static float readStackContentBlurProgress(View taskView) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || taskView == null) {
             return 0f;
@@ -966,40 +993,41 @@ final class LauncherRecentsTaskVisuals {
     }
 
     private static float quantizeStackContentBlurPx(View view, float blurPx) {
-        if (blurPx <= MODULE_APPLIED_EPSILON) {
-            return 0f;
-        }
         float maxBlurPx = FlymeStatusBarSizer.dp(view.getContext(), stackContentMaxBlurDp(view));
-        if (maxBlurPx <= MODULE_APPLIED_EPSILON) {
+        if (blurPx <= MODULE_APPLIED_EPSILON || maxBlurPx <= MODULE_APPLIED_EPSILON) {
             return 0f;
         }
         float mediumBlurPx = maxBlurPx * stackContentMediumBlurRatio(view);
-        return blurPx <= mediumBlurPx ? mediumBlurPx : maxBlurPx;
+        float lowBlurPx = mediumBlurPx * 2f / 3f;
+        float highBlurPx = Math.min(maxBlurPx, mediumBlurPx * 4f / 3f);
+        if (blurPx <= lowBlurPx) {
+            return lowBlurPx;
+        }
+        return blurPx <= highBlurPx ? highBlurPx : maxBlurPx;
     }
 
     private static RenderEffect resolveStackContentBlurEffect(View view, float blurPx) {
         float maxBlurPx = FlymeStatusBarSizer.dp(view.getContext(), stackContentMaxBlurDp(view));
         float mediumBlurPx = maxBlurPx * stackContentMediumBlurRatio(view);
-        if (approximatelyEqual(blurPx, mediumBlurPx)) {
-            if (stackContentMediumBlurEffect == null
-                    || !approximatelyEqual(stackContentMediumBlurPx, blurPx)) {
-                stackContentMediumBlurPx = blurPx;
-                stackContentMediumBlurEffect = RenderEffect.createBlurEffect(
-                        blurPx,
-                        blurPx,
-                        Shader.TileMode.CLAMP);
-            }
-            return stackContentMediumBlurEffect;
+        float lowBlurPx = mediumBlurPx * 2f / 3f;
+        float highBlurPx = Math.min(maxBlurPx, mediumBlurPx * 4f / 3f);
+        int levelIndex = approximatelyEqual(blurPx, lowBlurPx)
+                ? 0
+                : approximatelyEqual(blurPx, highBlurPx) ? 1 : 2;
+        return cacheStackContentBlurEffect(levelIndex, blurPx);
+    }
+
+    private static RenderEffect cacheStackContentBlurEffect(int levelIndex, float blurPx) {
+        if (blurPx <= MODULE_APPLIED_EPSILON) {
+            return null;
         }
-        if (stackContentStrongBlurEffect == null
-                || !approximatelyEqual(stackContentStrongBlurPx, blurPx)) {
-            stackContentStrongBlurPx = blurPx;
-            stackContentStrongBlurEffect = RenderEffect.createBlurEffect(
-                    blurPx,
-                    blurPx,
-                    Shader.TileMode.CLAMP);
+        if (stackContentBlurEffects[levelIndex] == null
+                || !approximatelyEqual(stackContentBlurEffectPxs[levelIndex], blurPx)) {
+            stackContentBlurEffectPxs[levelIndex] = blurPx;
+            stackContentBlurEffects[levelIndex] = RenderEffect.createBlurEffect(
+                    blurPx, blurPx, Shader.TileMode.CLAMP);
         }
-        return stackContentStrongBlurEffect;
+        return stackContentBlurEffects[levelIndex];
     }
 
     private static float readAppliedStackContentBlurPx(View view) {

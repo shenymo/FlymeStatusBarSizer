@@ -14,10 +14,11 @@ final class SettingsStore {
     static final int POSITION_OFFSET_STORAGE_VERSION_LEGACY_DP = 0;
     static final int POSITION_OFFSET_STORAGE_VERSION_TENTH_DP = 1;
     static final int POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP = 2;
+    static final int POSITION_OFFSET_STORAGE_VERSION_CAMERA_HUNDREDTH_DP = 3;
     static final int POSITION_OFFSET_MIN_TENTH_DP = -240;
     static final int POSITION_OFFSET_MAX_TENTH_DP = 240;
-    static final int CAMERA_CIRCLE_BATTERY_OFFSET_MIN_TENTH_DP = -300;
-    static final int CAMERA_CIRCLE_BATTERY_OFFSET_MAX_TENTH_DP = 300;
+    static final int CAMERA_CIRCLE_BATTERY_OFFSET_MIN_TENTH_DP = -3000;
+    static final int CAMERA_CIRCLE_BATTERY_OFFSET_MAX_TENTH_DP = 3000;
 
     static final String KEY_ENABLED = "enabled";
     static final String KEY_BATTERY_CODE_DRAW_ENABLED = "battery_code_draw_enabled";
@@ -718,7 +719,7 @@ final class SettingsStore {
     static int defaultInt(String key) {
         switch (key) {
             case KEY_POSITION_OFFSET_STORAGE_VERSION:
-                return POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP;
+                return POSITION_OFFSET_STORAGE_VERSION_CAMERA_HUNDREDTH_DP;
             case KEY_BATTERY_ICON_STYLE:
                 return DEFAULT_BATTERY_ICON_STYLE;
             case KEY_BATTERY_TEXT_FONT:
@@ -1162,9 +1163,14 @@ final class SettingsStore {
             return normalizedDefault;
         }
         int storageVersion = readPositionOffsetStorageVersion(prefs);
-        if (storageVersion >= POSITION_OFFSET_STORAGE_VERSION_TENTH_DP
-                && (!isCameraCircleBatteryOffsetKey(key)
-                || storageVersion >= POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP)) {
+        if (isCameraCircleBatteryOffsetKey(key)) {
+            if (storageVersion >= POSITION_OFFSET_STORAGE_VERSION_CAMERA_HUNDREDTH_DP) {
+                return normalizePositionOffsetTenthDp(key, rawValue);
+            }
+            if (storageVersion >= POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP) {
+                return normalizePositionOffsetTenthDp(key, rawValue * 10);
+            }
+        } else if (storageVersion >= POSITION_OFFSET_STORAGE_VERSION_TENTH_DP) {
             return normalizePositionOffsetTenthDp(key, rawValue);
         }
         return normalizePositionOffsetTenthDp(key, rawValue * 10);
@@ -1175,7 +1181,7 @@ final class SettingsStore {
             return;
         }
         editor.putInt(KEY_POSITION_OFFSET_STORAGE_VERSION,
-                POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP);
+                POSITION_OFFSET_STORAGE_VERSION_CAMERA_HUNDREDTH_DP);
     }
 
     static void migratePositionOffsetStorageIfNeeded(Context context) {
@@ -1184,7 +1190,7 @@ final class SettingsStore {
             return;
         }
         int storageVersion = readPositionOffsetStorageVersion(prefs);
-        if (storageVersion >= POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP) {
+        if (storageVersion >= POSITION_OFFSET_STORAGE_VERSION_CAMERA_HUNDREDTH_DP) {
             return;
         }
         SharedPreferences.Editor editor = prefs.edit();
@@ -1193,12 +1199,16 @@ final class SettingsStore {
             if (all == null || !all.containsKey(key)) {
                 continue;
             }
+            boolean cameraOffset = isCameraCircleBatteryOffsetKey(key);
             boolean needsMigration = storageVersion < POSITION_OFFSET_STORAGE_VERSION_TENTH_DP
-                    || (isCameraCircleBatteryOffsetKey(key)
-                    && storageVersion < POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP);
+                    || (cameraOffset
+                    && storageVersion < POSITION_OFFSET_STORAGE_VERSION_CAMERA_HUNDREDTH_DP);
             if (needsMigration) {
                 int legacyValueDp = readInt(prefs, key, defaultInt(key));
-                editor.putInt(key, normalizePositionOffsetTenthDp(key, legacyValueDp * 10));
+                int multiplier = cameraOffset
+                        ? (storageVersion >= POSITION_OFFSET_STORAGE_VERSION_CAMERA_TENTH_DP ? 10 : 100)
+                        : 10;
+                editor.putInt(key, normalizePositionOffsetTenthDp(key, legacyValueDp * multiplier));
             }
         }
         markPositionOffsetStorageVersion(editor);

@@ -675,16 +675,16 @@ final class SettingsCardFactory {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         activity.addTenthDpSliderRow(content, "横向偏移",
-                "正数向右移动，负数向左移动，最小单位 0.1dp。",
+                "正数向右移动，负数向左移动，最小单位 0.01dp。",
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP,
-                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP * 10,
+                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP * 100,
                 SettingsStore.CAMERA_CIRCLE_BATTERY_OFFSET_MIN_TENTH_DP,
                 SettingsStore.CAMERA_CIRCLE_BATTERY_OFFSET_MAX_TENTH_DP);
         activity.addDivider(content);
         activity.addTenthDpSliderRow(content, "纵向偏移",
-                "正数向下移动，负数向上移动，最小单位 0.1dp。",
+                "正数向下移动，负数向上移动，最小单位 0.01dp。",
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP,
-                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP * 10,
+                SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP * 100,
                 SettingsStore.CAMERA_CIRCLE_BATTERY_OFFSET_MIN_TENTH_DP,
                 SettingsStore.CAMERA_CIRCLE_BATTERY_OFFSET_MAX_TENTH_DP);
         return activity.buildSectionCard(

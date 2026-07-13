@@ -1310,7 +1310,7 @@ final class LauncherRecentsLayoutEngine {
                 continue;
             }
             ensureStackTaskViewVisible(taskView);
-            LauncherRecentsTaskVisuals.applyStackTaskCoreVisualState(
+            LauncherRecentsTaskVisuals.applyStackTaskEntryVisualState(
                     taskView,
                     state.startVisualState.lerpTo(state.targetVisualState, progress));
             appliedCount++;

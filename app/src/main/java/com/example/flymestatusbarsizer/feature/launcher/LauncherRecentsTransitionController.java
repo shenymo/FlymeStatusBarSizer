@@ -407,6 +407,8 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
         markPendingGestureRecentsStackRelease(recentsView, false);
         LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
+        LauncherRecentsTaskVisuals.clearRecentsStackContentBlur(recentsView);
+        LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
         LauncherRecentsLayoutEngine.applyStableStackLayout(
                 recentsView,
                 false,
@@ -781,6 +783,7 @@ final class LauncherRecentsTransitionController {
                 recentsView,
                 LauncherRecentsState.POSITION_OWNER_ENTER);
         markGestureRecentsStackReleaseHandoffPending(recentsView, true);
+        LauncherRecentsTaskVisuals.prepareStackContentBlurEffects(recentsView);
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(gestureStackReleaseDurationMs(recentsView));
         animator.setInterpolator(GESTURE_STACK_RELEASE_INTERPOLATOR);
@@ -881,13 +884,13 @@ final class LauncherRecentsTransitionController {
                         stackAnchorPage,
                         stackAnchorTargetScroll);
                 LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
+                clearGestureRecentsStackReleaseProgress(recentsView);
+                LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
                 LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
                 LauncherRecentsLayoutEngine.applyStableStackLayout(
                         recentsView,
                         false,
                         "gestureReleaseEndSync");
-                clearGestureRecentsStackReleaseProgress(recentsView);
-                LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
                 LauncherRecentsState.clearPositionOwner(
                         recentsView,
                         LauncherRecentsState.POSITION_OWNER_ENTER);
