@@ -1824,7 +1824,7 @@ final class LauncherRecentsTouchController {
                 state.recentsView,
                 "getTaskViewCount",
                 0);
-        boolean snapToPageAfterRelayout = !fillFromAfter;
+        boolean snapToPageAfterRelayout = taskViewCount == 2 || !fillFromAfter;
         int startScroll = resolvePrimaryScroll(state.recentsView);
         int[] targetPageAndScroll = snapToPageAfterRelayout
                 ? resolveNearestStackDismissPageAndScroll(
@@ -2168,7 +2168,7 @@ final class LauncherRecentsTouchController {
                 captureStackDismissRelayoutStartStates(recentsView);
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
         boolean fillFromAfter = shouldFillStackDismissFromAfter(dismissedIndex, startStates);
-        boolean snapToPageAfterRelayout = !fillFromAfter;
+        boolean snapToPageAfterRelayout = taskViewCount == 2 || !fillFromAfter;
         int startScroll = resolvePrimaryScroll(recentsView);
         int[] targetPageAndScroll = snapToPageAfterRelayout
                 ? resolveNearestStackDismissPageAndScroll(
