@@ -6332,6 +6332,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         refreshTrackedStatusBarIconViews();
         refreshTrackedStatusIconLayout();
         ClockHooks.refreshTrackedViews();
+        MBackHooks.refreshTrackedView();
         refreshTrackedInputMethodViews();
         LauncherRecentsHooks.refreshTrackedViews();
     }
@@ -7070,6 +7071,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean mbackHidePill;
         public final int mbackInsetSize;
         public final int mbackNavBarHeight;
+        public final int mbackPillLength;
+        public final int mbackPillThickness;
 
         private MBackConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
@@ -7082,6 +7085,8 @@ public class FlymeStatusBarSizer extends XposedModule {
             mbackHidePill = config != null && config.mbackHidePill;
             mbackInsetSize = config == null ? -1 : config.mbackInsetSize;
             mbackNavBarHeight = config == null ? -1 : config.mbackNavBarHeight;
+            mbackPillLength = config == null ? -1 : config.mbackPillLength;
+            mbackPillThickness = config == null ? -1 : config.mbackPillThickness;
         }
     }
 

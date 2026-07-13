@@ -214,7 +214,7 @@ final class SettingsCardFactory {
         content.addView(buildMBackHeightPage(), activity.matchWrapWithTop(8));
         return activity.buildSectionCard(
                 "导航栏沉浸与高度",
-                "透明背景、隐藏小白条、Inset 抬高和导航栏高度在同一页平铺展示。",
+                "透明背景、小白条显隐与尺寸、Inset 抬高和导航栏高度在同一页平铺展示。",
                 content);
     }
 
@@ -1056,6 +1056,16 @@ final class SettingsCardFactory {
                 "只隐藏 mBack 自己画出来的那条胶囊，不直接改长触逻辑和 inset。适合配合透明背景和背景抬高一起调。",
                 SettingsStore.KEY_MBACK_HIDE_PILL,
                 SettingsStore.DEFAULT_MBACK_HIDE_PILL);
+        activity.addDivider(page);
+        activity.addApplyInsetSliderRow(page, "小白条长度",
+                "调整白条长度。-1 表示保持系统默认。",
+                SettingsStore.KEY_MBACK_PILL_LENGTH,
+                SettingsStore.DEFAULT_MBACK_PILL_LENGTH, -1, 200);
+        activity.addDivider(page);
+        activity.addApplyInsetSliderRow(page, "小白条粗细",
+                "只调整白条的显示粗细，不改变导航栏高度。-1 表示保持系统默认。",
+                SettingsStore.KEY_MBACK_PILL_THICKNESS,
+                SettingsStore.DEFAULT_MBACK_PILL_THICKNESS, -1, 12);
         activity.addDivider(page);
         activity.addApplyInsetSliderRow(page, "mBack inset 大小",
                 "这里的 inset 指 mBack 背景抬高。-1 表示保持系统默认，0 表示不额外抬高，其他数值按 dp 处理；同时也会影响应用感知到的底部区域。",

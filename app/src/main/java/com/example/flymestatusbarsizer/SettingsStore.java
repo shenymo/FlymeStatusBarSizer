@@ -212,6 +212,8 @@ final class SettingsStore {
     static final String KEY_MBACK_INSET_SIZE = "mback_inset_size";
     static final String KEY_MBACK_NAV_BAR_HEIGHT = "mback_nav_bar_height";
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
+    static final String KEY_MBACK_PILL_LENGTH = "mback_pill_length";
+    static final String KEY_MBACK_PILL_THICKNESS = "mback_pill_thickness";
     static final String KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR = "ime_force_stock_control_bar";
     static final String KEY_IME_CONTROL_BAR_BUTTON_SLOTS = "ime_control_bar_button_slots";
     static final String KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT = "ime_control_bar_icon_scale_percent";
@@ -387,6 +389,8 @@ final class SettingsStore {
     static final int DEFAULT_MBACK_INSET_SIZE = -1;
     static final int DEFAULT_MBACK_NAV_BAR_HEIGHT = -1;
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
+    static final int DEFAULT_MBACK_PILL_LENGTH = -1;
+    static final int DEFAULT_MBACK_PILL_THICKNESS = -1;
     static final boolean DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR = false;
     static final String DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS =
             "paste,undo,delete,select_all,copy,switch_ime,stock_back";
@@ -457,6 +461,8 @@ final class SettingsStore {
             KEY_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE,
             KEY_MBACK_INSET_SIZE,
             KEY_MBACK_NAV_BAR_HEIGHT,
+            KEY_MBACK_PILL_LENGTH,
+            KEY_MBACK_PILL_THICKNESS,
             KEY_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_MOVE_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT,
@@ -814,6 +820,10 @@ final class SettingsStore {
                 return DEFAULT_MBACK_INSET_SIZE;
             case KEY_MBACK_NAV_BAR_HEIGHT:
                 return DEFAULT_MBACK_NAV_BAR_HEIGHT;
+            case KEY_MBACK_PILL_LENGTH:
+                return DEFAULT_MBACK_PILL_LENGTH;
+            case KEY_MBACK_PILL_THICKNESS:
+                return DEFAULT_MBACK_PILL_THICKNESS;
             case KEY_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT;
             case KEY_LAUNCHER_STACK_LEFT_MOVE_PERCENT:

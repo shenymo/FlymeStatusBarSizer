@@ -5,13 +5,16 @@ import com.example.flymestatusbarsizer.feature.clock.ClockDetailPopupBridge;
 
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Canvas;
 import android.graphics.Insets;
+import android.graphics.Paint;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Handler;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 
 import java.lang.ref.WeakReference;
@@ -82,6 +85,16 @@ public final class MBackHooks {
         return view != null && view.isAttachedToWindow() ? view : null;
     }
 
+    public static void refreshTrackedView() {
+        View view = resolveMBackButtonAnchor();
+        if (view != null) {
+            applyConfiguredPillLength(
+                    view,
+                    FlymeStatusBarSizer.loadMBackConfig(view.getContext()));
+            view.invalidate();
+        }
+    }
+
     public static boolean launchConfiguredIntent(Context context, String intentUri) {
         if (context == null || intentUri == null) {
             return false;
@@ -122,21 +135,71 @@ public final class MBackHooks {
         return intent;
     }
 
-    public static boolean shouldHidePill(View view) {
-        if (view == null) {
-            return false;
-        }
-        FlymeStatusBarSizer.MBackConfigSnapshot config =
-                FlymeStatusBarSizer.loadMBackConfig(view.getContext());
-        return config.enabled && config.mbackHidePill;
-    }
-
     public static void hidePillView(View view) {
         if (view == null) {
             return;
         }
         view.setAlpha(0f);
         view.invalidate();
+    }
+
+    private static boolean drawConfiguredPill(
+            View view,
+            Canvas canvas,
+            FlymeStatusBarSizer.MBackConfigSnapshot config) {
+        if (view == null
+                || canvas == null
+                || config == null
+                || !config.enabled
+                || (config.mbackPillLength < 0 && config.mbackPillThickness < 0)) {
+            return false;
+        }
+        Object paintObject = readField(view, "mPaint");
+        if (!(paintObject instanceof Paint)) {
+            return false;
+        }
+        float width = config.mbackPillLength < 0
+                ? view.getWidth() - view.getPaddingStart() - view.getPaddingEnd()
+                : dp(view.getContext(), config.mbackPillLength);
+        Object radiusObject = readField(view, "mRadius");
+        float height = config.mbackPillThickness >= 0
+                ? dp(view.getContext(), config.mbackPillThickness)
+                : radiusObject instanceof Number
+                        ? ((Number) radiusObject).floatValue() * 2f
+                        : dp(view.getContext(), 3);
+        width = Math.max(0f, Math.min(view.getWidth(), width));
+        height = Math.max(0f, Math.min(view.getHeight(), height));
+        float left = (view.getWidth() - width) / 2f;
+        float top = (view.getHeight() - height) / 2f;
+        canvas.drawRoundRect(left, top, left + width, top + height,
+                height / 2f, height / 2f, (Paint) paintObject);
+        return true;
+    }
+
+    private static void applyConfiguredPillLength(
+            View view,
+            FlymeStatusBarSizer.MBackConfigSnapshot config) {
+        if (view == null || config == null || view.getLayoutParams() == null) {
+            return;
+        }
+        int width;
+        if (config.enabled && config.mbackPillLength >= 0) {
+            width = Math.max(1, dp(view.getContext(), config.mbackPillLength));
+        } else {
+            int id = view.getResources().getIdentifier(
+                    "navigation_key_mback_width",
+                    "dimen",
+                    view.getContext().getPackageName());
+            if (id == 0) {
+                return;
+            }
+            width = view.getResources().getDimensionPixelSize(id);
+        }
+        ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
+        if (layoutParams.width != width) {
+            layoutParams.width = width;
+            view.setLayoutParams(layoutParams);
+        }
     }
 
     public static void applyNavBarTransparency(Object transitions) {
@@ -516,14 +579,22 @@ public final class MBackHooks {
                     }
                     View view = (View) thisObject;
                     rememberMBackButton(view);
-                    if (!shouldHidePill(view)) {
-                        return chain.proceed();
-                    }
+                    FlymeStatusBarSizer.MBackConfigSnapshot config =
+                            FlymeStatusBarSizer.loadMBackConfig(view.getContext());
                     if ("onDraw".equals(name)) {
-                        return null;
+                        if (config.enabled && config.mbackHidePill) {
+                            return null;
+                        }
+                        Canvas canvas = chain.getArg(0) instanceof Canvas
+                                ? (Canvas) chain.getArg(0)
+                                : null;
+                        return drawConfiguredPill(view, canvas, config) ? null : chain.proceed();
                     }
                     Object result = chain.proceed();
-                    hidePillView(view);
+                    applyConfiguredPillLength(view, config);
+                    if (config.enabled && config.mbackHidePill) {
+                        hidePillView(view);
+                    }
                     return result;
                 });
             }
