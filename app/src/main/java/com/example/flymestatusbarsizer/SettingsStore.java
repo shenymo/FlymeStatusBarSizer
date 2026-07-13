@@ -108,6 +108,8 @@ final class SettingsStore {
             "launcher_ios_stack_recents_blur_enabled";
     static final String KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED =
             "launcher_ios_stack_recents_clear_all_button_enabled";
+    static final String KEY_LAUNCHER_STACK_CURRENT_APP_CENTERED =
+            "launcher_stack_current_app_centered";
     static final String KEY_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT =
             "launcher_stack_right_visible_percent";
     static final String KEY_LAUNCHER_STACK_LEFT_MOVE_PERCENT =
@@ -317,6 +319,7 @@ final class SettingsStore {
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED = false;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED = true;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED = true;
+    static final boolean DEFAULT_LAUNCHER_STACK_CURRENT_APP_CENTERED = false;
     static final int DEFAULT_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT = 80;
     static final int DEFAULT_LAUNCHER_STACK_LEFT_MOVE_PERCENT = 45;
     static final int DEFAULT_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT = -15;
@@ -517,6 +520,7 @@ final class SettingsStore {
             KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED,
+            KEY_LAUNCHER_STACK_CURRENT_APP_CENTERED,
             KEY_LAUNCHER_AICY_ENTRY_ENABLED,
             KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
             KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,
@@ -946,6 +950,8 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED;
             case KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED:
                 return DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED;
+            case KEY_LAUNCHER_STACK_CURRENT_APP_CENTERED:
+                return DEFAULT_LAUNCHER_STACK_CURRENT_APP_CENTERED;
             case KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED:
                 return DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED;
             case KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED:

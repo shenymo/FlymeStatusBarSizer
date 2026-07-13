@@ -3244,6 +3244,16 @@ final class LauncherRecentsLayoutEngine {
             int stackLayoutRadius,
             boolean entryWindow,
             Integer targetScroll) {
+        if (runningTaskChildIndex >= 0
+                && currentAppCenteredOnEntry(recentsView)
+                && (entryWindow
+                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
+                recentsView)
+                || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
+                recentsView)
+                || LauncherRecentsState.isAppToRecentsStackSettled(recentsView))) {
+            return runningTaskChildIndex;
+        }
         if (runningTaskChildIndex > 0
                 && runningTaskChildIndex < taskViewCount - 1
                 && (entryWindow
@@ -4136,6 +4146,11 @@ final class LauncherRecentsLayoutEngine {
     static int desktopEntryAnchorIndex(View view) {
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
         return config == null ? 0 : config.desktopEntryAnchorIndex;
+    }
+
+    static boolean currentAppCenteredOnEntry(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config != null && config.launcherStackCurrentAppCentered;
     }
 
     static int stackStableVisibleRadius(View view) {

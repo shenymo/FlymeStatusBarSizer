@@ -1025,6 +1025,9 @@ final class LauncherRecentsTransitionController {
         if (runningTaskObject instanceof View && recentsView instanceof ViewGroup) {
             int runningTaskPage = ((ViewGroup) recentsView).indexOfChild((View) runningTaskObject);
             if (runningTaskPage >= 0) {
+                if (LauncherRecentsLayoutEngine.currentAppCenteredOnEntry(recentsView)) {
+                    return Math.min(runningTaskPage, pageCount - 1);
+                }
                 if (runningTaskPage == 0 && pageCount > 1) {
                     return 1;
                 }

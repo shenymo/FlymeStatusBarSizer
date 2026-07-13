@@ -439,6 +439,11 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_STACK_MAX_LAYERS, 1, 6, "");
 
         addStackParamHeader(content, "入场与回弹", "控制从应用进入后台、从桌面进入后台和松手回弹的过渡。");
+        activity.addSwitchRow(content, "当前应用卡片居中",
+                "开启后从应用进入堆叠后台时，始终让当前应用卡片居中；关闭时保持下一张卡片居中。",
+                SettingsStore.KEY_LAUNCHER_STACK_CURRENT_APP_CENTERED,
+                SettingsStore.DEFAULT_LAUNCHER_STACK_CURRENT_APP_CENTERED);
+        activity.addDivider(content);
         addStackParam(content, "入场抬升比例", "后台入场时卡片向上抬升的幅度。",
                 SettingsStore.KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT, 0, 20, "%");
         addStackParam(content, "入场初始展开比例", "入场起始阶段卡片的展开程度。",

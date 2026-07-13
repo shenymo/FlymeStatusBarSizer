@@ -110,6 +110,8 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED;
     boolean launcherIosStackRecentsClearAllButtonEnabled =
             SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED;
+    boolean launcherStackCurrentAppCentered =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_CURRENT_APP_CENTERED;
     int launcherStackRightVisiblePercent = SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT;
     int launcherStackLeftMovePercent = SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_MOVE_PERCENT;
     int launcherStackLeftRestInsetPercent = SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT;
@@ -609,6 +611,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED,
                     SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED);
+            config.launcherStackCurrentAppCentered = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_LAUNCHER_STACK_CURRENT_APP_CENTERED,
+                    SettingsStore.DEFAULT_LAUNCHER_STACK_CURRENT_APP_CENTERED);
             config.launcherStackRightVisiblePercent = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT);
             config.launcherStackLeftMovePercent = readLauncherStackParameter(
