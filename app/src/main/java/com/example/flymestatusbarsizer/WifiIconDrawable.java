@@ -253,14 +253,9 @@ final class WifiIconDrawable extends Drawable {
     }
 
     private boolean updateDrawColor(int[] state) {
-        int fallbackColor = tintList == null
+        int resolvedColor = tintList == null
                 ? Color.WHITE
                 : tintList.getColorForState(state == null ? StateSet.NOTHING : state, tintList.getDefaultColor());
-        int resolvedColor = FlymeStatusBarSizer.resolveSignalLinkedTintColor(
-                ownerViewRef.get(),
-                tintList,
-                state,
-                fallbackColor);
         if (drawColor == resolvedColor) {
             return false;
         }

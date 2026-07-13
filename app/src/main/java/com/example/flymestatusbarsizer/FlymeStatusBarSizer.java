@@ -38,7 +38,6 @@ import android.telephony.TelephonyDisplayInfo;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.graphics.Typeface;
-import android.util.StateSet;
 import android.view.Gravity;
 import android.view.Display;
 import android.view.DisplayCutout;
@@ -98,7 +97,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             new WeakHashMap<>();
     private static final WeakHashMap<Drawable, View> SIGNAL_DRAWABLE_OWNERS = new WeakHashMap<>();
     private static final WeakHashMap<View, SignalViewState> SIGNAL_VIEW_STATES = new WeakHashMap<>();
-    private static final WeakHashMap<View, WeakReference<View>> SIGNAL_TINT_SOURCE_CACHE =
+    private static final WeakHashMap<View, WeakReference<View>> BATTERY_TINT_SOURCE_CACHE =
             new WeakHashMap<>();
     private static final WeakHashMap<View, Integer> ORIGINAL_SIGNAL_ACTIVITY_VISIBILITIES =
             new WeakHashMap<>();
@@ -757,6 +756,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                     if (target instanceof ImageView) {
                         ImageView view = (ImageView) target;
                         syncSignalTintToCustomDrawable(view);
+                        String idName = getSystemUiIdName(view);
+                        if ("mobile_signal".equals(idName) || "wifi_signal".equals(idName)) {
+                            NotificationHooks.refreshNotificationTextFollowStatusBarForTintChange(view);
+                        }
                     }
                     return result;
                 });
@@ -1866,7 +1869,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     if (refreshBatteryViewRuntimeSnapshot(batteryView, state)) {
                         batteryView.invalidate();
                     }
-                    invalidateLinkedSignalViews(batteryView);
                     NotificationHooks.refreshNotificationTextFollowStatusBarForTintChange(
                             batteryView);
                 }
@@ -1999,7 +2001,15 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     public static Integer resolveStatusBarIconTintColorCompat(View anchor) {
-        Integer color = readBatteryTintColor(findBestBatteryTintSource(anchor));
+        Integer color = findTrackedStatusBarImageTintColor(anchor, "mobile_signal");
+        if (color != null) {
+            return color;
+        }
+        color = findTrackedStatusBarImageTintColor(anchor, "wifi_signal");
+        if (color != null) {
+            return color;
+        }
+        color = readBatteryTintColor(findBestBatteryTintSource(anchor));
         if (color != null) {
             return color;
         }
@@ -2015,6 +2025,36 @@ public class FlymeStatusBarSizer extends XposedModule {
             }
         }
         return null;
+    }
+
+    private static Integer findTrackedStatusBarImageTintColor(View anchor, String idName) {
+        View anchorRoot = anchor == null ? null : anchor.getRootView();
+        Integer fallback = null;
+        ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
+        for (View view : views) {
+            if (!(view instanceof ImageView)
+                    || !idName.equals(getSystemUiIdName(view))
+                    || view.getVisibility() != View.VISIBLE
+                    || !view.isShown()
+                    || view.getWindowToken() == null) {
+                continue;
+            }
+            ColorStateList tintList = ((ImageView) view).getImageTintList();
+            if (tintList == null) {
+                continue;
+            }
+            int color = tintList.getColorForState(view.getDrawableState(), tintList.getDefaultColor());
+            if (Color.alpha(color) == 0) {
+                continue;
+            }
+            if (anchorRoot != null && view.getRootView() == anchorRoot) {
+                return color;
+            }
+            if (fallback == null) {
+                fallback = color;
+            }
+        }
+        return fallback;
     }
 
     private static int resolveBatteryTintColor(Object target, int fallback) {
@@ -2040,15 +2080,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             return color;
         }
         return null;
-    }
-
-    static int resolveSignalLinkedTintColor(View signalView, ColorStateList tintList, int[] state, int fallbackColor) {
-        int fallback = normalizeIconColor(resolveTintListColor(tintList, state, fallbackColor));
-        View batteryTintSource = findBestBatteryTintSource(signalView);
-        if (batteryTintSource == null) {
-            return fallback;
-        }
-        return resolveBatteryTintColor(batteryTintSource, fallback);
     }
 
     static int resolveSignalMobileTypeBadgeFontWeight() {
@@ -2680,13 +2711,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         return hasMeaningfulMobileTypeSubState(merged) ? merged : null;
     }
 
-    private static int resolveTintListColor(ColorStateList tintList, int[] state, int fallbackColor) {
-        if (tintList == null) {
-            return fallbackColor;
-        }
-        return tintList.getColorForState(state == null ? StateSet.NOTHING : state, tintList.getDefaultColor());
-    }
-
     private static View findBestBatteryTintSource(View anchor) {
         if (anchor == null) {
             return null;
@@ -2695,7 +2719,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (anchorRoot == null) {
             return null;
         }
-        View cached = resolveCachedSignalTintSource(anchor, anchorRoot);
+        View cached = resolveCachedBatteryTintSource(anchor, anchorRoot);
         if (cached != null) {
             return cached;
         }
@@ -2713,7 +2737,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 bestScore = score;
             }
         }
-        rememberSignalTintSource(anchor, best);
+        rememberBatteryTintSource(anchor, best);
         return best;
     }
 
@@ -2749,50 +2773,43 @@ public class FlymeStatusBarSizer extends XposedModule {
         return location;
     }
 
-    private static View resolveCachedSignalTintSource(View anchor, View anchorRoot) {
+    private static View resolveCachedBatteryTintSource(View anchor, View anchorRoot) {
         if (anchor == null || anchorRoot == null) {
             return null;
         }
-        WeakReference<View> reference = SIGNAL_TINT_SOURCE_CACHE.get(anchor);
+        WeakReference<View> reference = BATTERY_TINT_SOURCE_CACHE.get(anchor);
         View cached = reference == null ? null : reference.get();
         if (!isBatteryTintSourceCandidate(anchor, anchorRoot, cached)) {
-            SIGNAL_TINT_SOURCE_CACHE.remove(anchor);
+            BATTERY_TINT_SOURCE_CACHE.remove(anchor);
             return null;
         }
         return cached;
     }
 
-    private static void rememberSignalTintSource(View anchor, View batteryView) {
+    private static void rememberBatteryTintSource(View anchor, View batteryView) {
         if (anchor == null) {
             return;
         }
         if (batteryView == null) {
-            SIGNAL_TINT_SOURCE_CACHE.remove(anchor);
+            BATTERY_TINT_SOURCE_CACHE.remove(anchor);
             return;
         }
-        SIGNAL_TINT_SOURCE_CACHE.put(anchor, new WeakReference<>(batteryView));
+        BATTERY_TINT_SOURCE_CACHE.put(anchor, new WeakReference<>(batteryView));
     }
 
-    private static void clearSignalTintSourceCache() {
-        SIGNAL_TINT_SOURCE_CACHE.clear();
+    private static void clearBatteryTintSourceCache() {
+        BATTERY_TINT_SOURCE_CACHE.clear();
     }
 
-    private static void clearSignalTintSourceCacheForView(View view) {
-        if (view == null) {
-            return;
-        }
-        SIGNAL_TINT_SOURCE_CACHE.remove(view);
-    }
-
-    private static void clearSignalTintSourceCacheForRoot(View rootView) {
+    private static void clearBatteryTintSourceCacheForRoot(View rootView) {
         if (rootView == null) {
-            clearSignalTintSourceCache();
+            clearBatteryTintSourceCache();
             return;
         }
-        ArrayList<View> signalViews = new ArrayList<>(SIGNAL_TINT_SOURCE_CACHE.keySet());
-        for (View signalView : signalViews) {
-            if (signalView == null || signalView.getRootView() == rootView) {
-                SIGNAL_TINT_SOURCE_CACHE.remove(signalView);
+        ArrayList<View> anchors = new ArrayList<>(BATTERY_TINT_SOURCE_CACHE.keySet());
+        for (View anchor : anchors) {
+            if (anchor == null || anchor.getRootView() == rootView) {
+                BATTERY_TINT_SOURCE_CACHE.remove(anchor);
             }
         }
     }
@@ -2866,7 +2883,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         ModuleConfig config = ModuleConfig.load(batteryView.getContext());
-        clearSignalTintSourceCacheForRoot(batteryView.getRootView());
+        clearBatteryTintSourceCacheForRoot(batteryView.getRootView());
         if (isBatteryCodeDrawEnabled(config)) {
             refreshBatteryViewRuntimeSnapshot(batteryView, rememberBatteryViewState(batteryView));
             syncBatteryViewLayoutIfNeeded(batteryView, config, true);
@@ -3721,9 +3738,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         trackStatusBarIconView(view);
         trackWifiRefreshTarget(view);
         String idName = getSystemUiIdName(view);
-        if ("mobile_signal".equals(idName) || "wifi_signal".equals(idName)) {
-            clearSignalTintSourceCacheForView(view);
-        }
         if ("wifi_signal".equals(idName) && view instanceof ImageView) {
             ModuleConfig config = ModuleConfig.load(view.getContext());
             if (isWifiCodeDrawEnabled(config)) {
@@ -6310,7 +6324,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void refreshTrackedRuntimeViews(boolean forceSignalRequery) {
-        clearSignalTintSourceCache();
+        clearBatteryTintSourceCache();
         clearSignalSubSlotIndexCache();
         ConnectionRateHooks.refreshTrackedViews();
         refreshTrackedBatteryViews();
@@ -6521,39 +6535,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                 + config.cameraCircleBatteryXOffsetTenthDp / 100f * density);
         lp.y = Math.round(bounds.centerY() - lp.height / 2f
                 + config.cameraCircleBatteryYOffsetTenthDp / 100f * density);
-    }
-
-    private static void invalidateLinkedSignalViews(View batteryView) {
-        if (batteryView == null) {
-            return;
-        }
-        View batteryRoot = batteryView.getRootView();
-        if (batteryRoot == null) {
-            return;
-        }
-        clearSignalTintSourceCacheForRoot(batteryRoot);
-        ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
-        for (View view : views) {
-            if (!(view instanceof ImageView)) {
-                continue;
-            }
-            String idName = getSystemUiIdName(view);
-            if (!"mobile_signal".equals(idName) && !"wifi_signal".equals(idName)) {
-                continue;
-            }
-            if (view.getRootView() != batteryRoot) {
-                continue;
-            }
-            Drawable drawable = ((ImageView) view).getDrawable();
-            if ("mobile_signal".equals(idName) && drawable instanceof SignalIconDrawable) {
-                drawable.invalidateSelf();
-                view.invalidate();
-            }
-            if ("wifi_signal".equals(idName) && drawable instanceof WifiIconDrawable) {
-                drawable.invalidateSelf();
-                view.invalidate();
-            }
-        }
     }
 
     private static void scheduleTrackedSignalIconRefresh() {
