@@ -255,6 +255,44 @@ final class SettingsCardFactory {
     View createSystemAppearanceSettingsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
+        activity.addProfileSectionHeader(content, "卡片圆角",
+                "分别调整通知卡片和最近任务卡片的圆角大小。");
+        LinearLayout notificationCornerOptions = new LinearLayout(activity);
+        notificationCornerOptions.setOrientation(LinearLayout.VERTICAL);
+        Switch notificationCornerSwitch = activity.addSwitchRow(content, "通知卡片圆角",
+                "开启后使用下面的圆角大小，关闭时保持系统默认。",
+                SettingsStore.KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED,
+                SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED,
+                (buttonView, isChecked) -> notificationCornerOptions.setAlpha(
+                        isChecked ? 1f : 0.45f));
+        LinearLayout.LayoutParams cornerOptionsLp = PageViewUtils.matchWrap();
+        cornerOptionsLp.leftMargin = activity.dp(12);
+        activity.addSliderRow(notificationCornerOptions, "圆角大小",
+                "0dp 为直角，Flyme 当前主通知卡片默认约为 14dp。",
+                SettingsStore.KEY_NOTIFICATION_CARD_CORNER_RADIUS_DP,
+                SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_DP,
+                0, 40, "dp");
+        notificationCornerOptions.setAlpha(notificationCornerSwitch.isChecked() ? 1f : 0.45f);
+        content.addView(notificationCornerOptions, cornerOptionsLp);
+        activity.addDivider(content);
+        LinearLayout recentsCornerOptions = new LinearLayout(activity);
+        recentsCornerOptions.setOrientation(LinearLayout.VERTICAL);
+        Switch recentsCornerSwitch = activity.addSwitchRow(content, "后台应用卡片圆角",
+                "调整最近任务中的应用预览卡片，关闭时保持系统默认。",
+                SettingsStore.KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED,
+                SettingsStore.DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED,
+                (buttonView, isChecked) -> recentsCornerOptions.setAlpha(
+                        isChecked ? 1f : 0.45f));
+        LinearLayout.LayoutParams recentsCornerOptionsLp = PageViewUtils.matchWrap();
+        recentsCornerOptionsLp.leftMargin = activity.dp(12);
+        activity.addSliderRow(recentsCornerOptions, "圆角大小",
+                "0dp 为直角，普通机型的 Flyme 默认值约为 24dp。",
+                SettingsStore.KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP,
+                SettingsStore.DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP,
+                0, 40, "dp");
+        recentsCornerOptions.setAlpha(recentsCornerSwitch.isChecked() ? 1f : 0.45f);
+        content.addView(recentsCornerOptions, recentsCornerOptionsLp);
+        activity.addDivider(content);
         activity.addProfileSectionHeader(content, "系统通知",
                 "修改 SystemUI 通知卡片的模糊背景前景色。");
         LinearLayout blurOnlyOptions = new LinearLayout(activity);
@@ -352,7 +390,7 @@ final class SettingsCardFactory {
                 "重启", activity::restartLauncher);
         return activity.buildSectionCard(
                 "系统外观",
-                "修改通知背景、桌面 Aicy 入口和文件夹背景。",
+                "修改卡片圆角、通知背景、桌面 Aicy 入口和文件夹背景。",
                 content);
     }
 

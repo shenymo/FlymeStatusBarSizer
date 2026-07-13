@@ -104,6 +104,14 @@ final class ModuleConfig {
     boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
     int notificationAppIconSizeDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
     int notificationAppIconPaddingDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP;
+    boolean notificationCardCornerRadiusEnabled =
+            SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED;
+    int notificationCardCornerRadiusDp =
+            SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_DP;
+    boolean launcherRecentsCardCornerRadiusEnabled =
+            SettingsStore.DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED;
+    int launcherRecentsCardCornerRadiusDp =
+            SettingsStore.DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP;
     boolean launcherIosStackRecentsEnabled =
             SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED;
     boolean launcherIosStackRecentsBlurEnabled =
@@ -599,6 +607,24 @@ final class ModuleConfig {
                             prefs,
                             SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP,
                             SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP));
+            config.notificationCardCornerRadiusEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED,
+                    SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED);
+            config.notificationCardCornerRadiusDp = SettingsStore.normalizeCardCornerRadiusDp(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_NOTIFICATION_CARD_CORNER_RADIUS_DP,
+                            SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_DP));
+            config.launcherRecentsCardCornerRadiusEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED,
+                    SettingsStore.DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED);
+            config.launcherRecentsCardCornerRadiusDp = SettingsStore.normalizeCardCornerRadiusDp(
+                    SettingsStore.readInt(
+                            prefs,
+                            SettingsStore.KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP,
+                            SettingsStore.DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP));
             config.launcherIosStackRecentsEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,

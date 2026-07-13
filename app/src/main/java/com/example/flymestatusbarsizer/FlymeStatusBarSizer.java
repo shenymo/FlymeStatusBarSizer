@@ -7220,6 +7220,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean notificationAppIconEnabled;
         public final int notificationAppIconSizeDp;
         public final int notificationAppIconPaddingDp;
+        public final boolean notificationCardCornerRadiusEnabled;
+        public final int notificationCardCornerRadiusDp;
         public final boolean notificationSystemBlurOnlyEnabled;
         public final int notificationSystemBlurCarrierColorMode;
         public final int notificationSystemBlurLightColor;
@@ -7231,6 +7233,12 @@ public class FlymeStatusBarSizer extends XposedModule {
             notificationAppIconEnabled = config != null && config.notificationAppIconEnabled;
             notificationAppIconSizeDp = config == null ? 0 : config.notificationAppIconSizeDp;
             notificationAppIconPaddingDp = config == null ? 0 : config.notificationAppIconPaddingDp;
+            notificationCardCornerRadiusEnabled = enabled
+                    && config != null
+                    && config.notificationCardCornerRadiusEnabled;
+            notificationCardCornerRadiusDp = config == null
+                    ? SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_DP
+                    : config.notificationCardCornerRadiusDp;
             notificationSystemBlurOnlyEnabled = enabled
                     && config != null
                     && config.notificationSystemBlurOnlyEnabled;
@@ -7259,6 +7267,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean launcherIosStackRecentsEnabled;
         public final boolean launcherIosStackRecentsBlurEnabled;
         public final boolean launcherIosStackRecentsClearAllButtonEnabled;
+        public final boolean launcherRecentsCardCornerRadiusEnabled;
+        public final int launcherRecentsCardCornerRadiusDp;
         public final boolean launcherStackCurrentAppCentered;
         public final boolean launcherRecentsPerfLoggingEnabled;
         public final boolean launcherRecentsFlowLoggingEnabled;
@@ -7310,6 +7320,12 @@ public class FlymeStatusBarSizer extends XposedModule {
                     && config.launcherIosStackRecentsBlurEnabled;
             launcherIosStackRecentsClearAllButtonEnabled = launcherIosStackRecentsEnabled
                     && config.launcherIosStackRecentsClearAllButtonEnabled;
+            launcherRecentsCardCornerRadiusEnabled = enabled
+                    && config != null
+                    && config.launcherRecentsCardCornerRadiusEnabled;
+            launcherRecentsCardCornerRadiusDp = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP
+                    : config.launcherRecentsCardCornerRadiusDp;
             launcherStackCurrentAppCentered = launcherIosStackRecentsEnabled
                     && config.launcherStackCurrentAppCentered;
             launcherRecentsPerfLoggingEnabled = enabled

@@ -27,6 +27,7 @@ import android.widget.ImageView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,6 +42,14 @@ public final class NotificationHooks {
             "com.flyme.systemui.statusbar.policy.FlymeStatusBarIconUtils";
     private static final String MEDIA_CAROUSE_TRANSITION_LAYOUT =
             "com.flyme.systemui.media.controls.ui.view.MediaCarouseTransitionLayout";
+    private static final String ACTIVATABLE_NOTIFICATION_VIEW =
+            "com.android.systemui.statusbar.notification.row.ActivatableNotificationView";
+    private static final String NOTIFICATION_CONTENT_VIEW =
+            "com.android.systemui.statusbar.notification.row.NotificationContentView";
+    private static final String NOTIFICATION_GROUP_COLLAPSE_CONTAINER =
+            "com.flyme.notification.view.NotificationGroupCollapseContainer";
+    private static final String LANDSCAPE_HEADS_UP_NOTIFICATION_VIEW =
+            "com.flyme.notification.view.LandscapeHeadsUpNotificationView";
     private static final String EXTRA_NOTIFICATION_APP_ICON_REPLACED =
             "flyme_status_bar_sizer_notification_app_icon_replaced";
     private static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
@@ -112,6 +121,7 @@ public final class NotificationHooks {
         hookNotificationContentUpdateTextTint(module, loader);
         hookLiveNotificationTextTint(module, loader);
         hookLandscapeHeadsUpNotificationTextTint(module, loader);
+        hookNotificationCardCornerRadius(module, loader);
         hookNotificationBlurMask(module, loader);
         hookNotificationSystemBlurOnly(module, loader);
         hookNotificationAppIcons(module, loader);
@@ -592,40 +602,135 @@ public final class NotificationHooks {
                     int.class);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                Object colorArg = chain.getArg(1);
-                if (!(colorArg instanceof Integer)) {
-                    return chain.proceed();
-                }
                 Object target = chain.getThisObject();
                 if (!(target instanceof View)) {
                     return chain.proceed();
                 }
+                View view = (View) target;
                 FlymeStatusBarSizer.NotificationConfigSnapshot config =
-                        FlymeStatusBarSizer.loadNotificationConfig(((View) target).getContext());
-                if (!config.enabled || !config.notificationSystemBlurOnlyEnabled) {
+                        FlymeStatusBarSizer.loadNotificationConfig(view.getContext());
+                if (!config.notificationSystemBlurOnlyEnabled
+                        && !config.notificationCardCornerRadiusEnabled) {
                     applyNotificationTextFollowStatusBar(target, false);
                     return chain.proceed();
                 }
-                Object[] args;
                 try {
-                    applyNotificationTextFollowStatusBar(
-                            target,
-                            config.notificationTextFollowStatusBarEnabled);
-                    args = chain.getArgs().toArray();
-                    args[1] = resolveNotificationSystemBlurOnlyColor((View) target, config);
+                    Object[] args = chain.getArgs().toArray();
+                    if (config.notificationSystemBlurOnlyEnabled) {
+                        applyNotificationTextFollowStatusBar(
+                                target,
+                                config.notificationTextFollowStatusBarEnabled);
+                        args[1] = resolveNotificationSystemBlurOnlyColor(view, config);
+                    } else {
+                        applyNotificationTextFollowStatusBar(target, false);
+                    }
+                    if (config.notificationCardCornerRadiusEnabled) {
+                        args[2] = notificationCornerRadiusPx(view.getContext(), config);
+                    }
+                    return chain.proceed(args);
                 } catch (Throwable t) {
                     FlymeStatusBarSizer.logNotificationWarning(
-                            "Failed to apply notification background color",
+                            "Failed to apply notification background appearance",
                             t);
                     return chain.proceed();
                 }
-                return chain.proceed(args);
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logNotificationWarning(
                     "Failed to hook notification blur mask",
                     t);
         }
+    }
+
+    private static void hookNotificationCardCornerRadius(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        hookNotificationCornerClass(module, loader, ACTIVATABLE_NOTIFICATION_VIEW);
+        hookNotificationCornerClass(module, loader, NOTIFICATION_CONTENT_VIEW);
+        hookNotificationCornerClass(module, loader, NOTIFICATION_GROUP_COLLAPSE_CONTAINER);
+        hookNotificationCornerClass(module, loader, LANDSCAPE_HEADS_UP_NOTIFICATION_VIEW);
+    }
+
+    private static void hookNotificationCornerClass(
+            FlymeStatusBarSizer module, ClassLoader loader, String className) {
+        try {
+            Class<?> clazz = Class.forName(className, false, loader);
+            for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
+                constructor.setAccessible(true);
+                module.intercept(constructor, chain -> {
+                    Object result = chain.proceed();
+                    Object target = chain.getThisObject();
+                    if (target instanceof View) {
+                        View view = (View) target;
+                        view.post(() -> applyNotificationCardCornerRadius(view, className));
+                    }
+                    return result;
+                });
+            }
+            try {
+                Method method = clazz.getDeclaredMethod(
+                        "onConfigurationChanged",
+                        Configuration.class);
+                method.setAccessible(true);
+                module.intercept(method, chain -> {
+                    Object result = chain.proceed();
+                    Object target = chain.getThisObject();
+                    if (target instanceof View) {
+                        applyNotificationCardCornerRadius((View) target, className);
+                    }
+                    return result;
+                });
+            } catch (NoSuchMethodException ignored) {
+            }
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook notification corner radius for " + className,
+                    t);
+        }
+    }
+
+    private static void applyNotificationCardCornerRadius(View view, String className) {
+        if (view == null) {
+            return;
+        }
+        FlymeStatusBarSizer.NotificationConfigSnapshot config =
+                FlymeStatusBarSizer.loadNotificationConfig(view.getContext());
+        if (!config.notificationCardCornerRadiusEnabled) {
+            return;
+        }
+        int radiusPx = notificationCornerRadiusPx(view.getContext(), config);
+        if (ACTIVATABLE_NOTIFICATION_VIEW.equals(className)) {
+            FlymeStatusBarSizer.setFieldCompat(view, "mClipCornerRadius", radiusPx);
+            Object roundableState = FlymeStatusBarSizer.invokeMethodCompat(
+                    view,
+                    "getRoundableState",
+                    new Class<?>[0]);
+            FlymeStatusBarSizer.invokeMethodCompat(
+                    roundableState,
+                    "setMaxRadius",
+                    new Class<?>[]{float.class},
+                    (float) radiusPx);
+            FlymeStatusBarSizer.invokeMethodCompat(
+                    view,
+                    "applyRoundnessAndInvalidate",
+                    new Class<?>[0]);
+            FlymeStatusBarSizer.invokeMethodCompat(view, "setBackground", new Class<?>[0]);
+        } else if (NOTIFICATION_CONTENT_VIEW.equals(className)) {
+            FlymeStatusBarSizer.setFieldCompat(view, "mCustomRemoteViewRadius", radiusPx);
+        } else if (NOTIFICATION_GROUP_COLLAPSE_CONTAINER.equals(className)) {
+            FlymeStatusBarSizer.setFieldCompat(view, "mClipCornerRadius", radiusPx);
+            FlymeStatusBarSizer.invokeMethodCompat(view, "setBackground", new Class<?>[0]);
+        } else if (LANDSCAPE_HEADS_UP_NOTIFICATION_VIEW.equals(className)) {
+            FlymeStatusBarSizer.setFieldCompat(view, "mClipCornerRadius", (float) radiusPx);
+            FlymeStatusBarSizer.invokeMethodCompat(view, "setBackground", new Class<?>[0]);
+        }
+        view.invalidateOutline();
+        view.invalidate();
+    }
+
+    private static int notificationCornerRadiusPx(
+            Context context, FlymeStatusBarSizer.NotificationConfigSnapshot config) {
+        return Math.round(config.notificationCardCornerRadiusDp
+                * context.getResources().getDisplayMetrics().density);
     }
 
     private static void hookNotificationSystemBlurOnly(

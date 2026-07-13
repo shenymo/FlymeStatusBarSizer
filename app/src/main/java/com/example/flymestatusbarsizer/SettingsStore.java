@@ -103,6 +103,14 @@ final class SettingsStore {
     static final String KEY_NOTIFICATION_APP_ICON_ENABLED = "notification_app_icon_enabled";
     static final String KEY_NOTIFICATION_APP_ICON_SIZE_DP = "notification_app_icon_size_dp";
     static final String KEY_NOTIFICATION_APP_ICON_PADDING_DP = "notification_app_icon_padding_dp";
+    static final String KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED =
+            "notification_card_corner_radius_enabled";
+    static final String KEY_NOTIFICATION_CARD_CORNER_RADIUS_DP =
+            "notification_card_corner_radius_dp";
+    static final String KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED =
+            "launcher_recents_card_corner_radius_enabled";
+    static final String KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP =
+            "launcher_recents_card_corner_radius_dp";
     static final String KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED =
             "launcher_ios_stack_recents_enabled";
     static final String KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED =
@@ -317,6 +325,10 @@ final class SettingsStore {
     static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
     static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
     static final int DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP = 0;
+    static final boolean DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED = false;
+    static final int DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_DP = 14;
+    static final boolean DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED = false;
+    static final int DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP = 24;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED = false;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED = true;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED = true;
@@ -440,6 +452,8 @@ final class SettingsStore {
             KEY_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT,
             KEY_NOTIFICATION_APP_ICON_SIZE_DP,
             KEY_NOTIFICATION_APP_ICON_PADDING_DP,
+            KEY_NOTIFICATION_CARD_CORNER_RADIUS_DP,
+            KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP,
             KEY_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE,
             KEY_MBACK_INSET_SIZE,
             KEY_MBACK_NAV_BAR_HEIGHT,
@@ -518,6 +532,8 @@ final class SettingsStore {
             KEY_WINDOWMODE_RECENT_INNER_RING_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
+            KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED,
+            KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED,
@@ -788,6 +804,10 @@ final class SettingsStore {
                 return DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
             case KEY_NOTIFICATION_APP_ICON_PADDING_DP:
                 return DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP;
+            case KEY_NOTIFICATION_CARD_CORNER_RADIUS_DP:
+                return DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_DP;
+            case KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP:
+                return DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP;
             case KEY_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE:
                 return DEFAULT_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE;
             case KEY_MBACK_INSET_SIZE:
@@ -945,6 +965,10 @@ final class SettingsStore {
                 return DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
             case KEY_NOTIFICATION_APP_ICON_ENABLED:
                 return DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
+            case KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED:
+                return DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED;
+            case KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED:
+                return DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED;
             case KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED:
                 return DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED;
             case KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED:
@@ -1221,6 +1245,10 @@ final class SettingsStore {
 
     static int normalizeNotificationAppIconPaddingDp(int value) {
         return Math.max(0, Math.min(8, value));
+    }
+
+    static int normalizeCardCornerRadiusDp(int value) {
+        return Math.max(0, Math.min(40, value));
     }
 
     static String normalizeColorString(String value) {
