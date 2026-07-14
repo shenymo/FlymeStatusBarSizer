@@ -214,6 +214,8 @@ final class SettingsStore {
     static final String KEY_MBACK_HIDE_PILL = "mback_hide_pill";
     static final String KEY_MBACK_PILL_LENGTH = "mback_pill_length";
     static final String KEY_MBACK_PILL_THICKNESS = "mback_pill_thickness";
+    static final String KEY_MBACK_PILL_INTERACTION_SYNC_ENABLED =
+            "mback_pill_interaction_sync_enabled";
     static final String KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR = "ime_force_stock_control_bar";
     static final String KEY_IME_CONTROL_BAR_BUTTON_SLOTS = "ime_control_bar_button_slots";
     static final String KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT = "ime_control_bar_icon_scale_percent";
@@ -391,6 +393,7 @@ final class SettingsStore {
     static final boolean DEFAULT_MBACK_HIDE_PILL = false;
     static final int DEFAULT_MBACK_PILL_LENGTH = -1;
     static final int DEFAULT_MBACK_PILL_THICKNESS = -1;
+    static final boolean DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED = false;
     static final boolean DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR = false;
     static final String DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS =
             "paste,undo,delete,select_all,copy,switch_ime,stock_back";
@@ -548,6 +551,7 @@ final class SettingsStore {
             KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
             KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,
             KEY_MBACK_HIDE_PILL,
+            KEY_MBACK_PILL_INTERACTION_SYNC_ENABLED,
             KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
             KEY_TELEPHONY_DEBUG_ENABLED,
             KEY_WIFI_PERF_LOGGING_ENABLED,
@@ -993,6 +997,8 @@ final class SettingsStore {
                 return DEFAULT_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED;
             case KEY_MBACK_HIDE_PILL:
                 return DEFAULT_MBACK_HIDE_PILL;
+            case KEY_MBACK_PILL_INTERACTION_SYNC_ENABLED:
+                return DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED;
             case KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR:
                 return DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR;
             case KEY_TELEPHONY_DEBUG_ENABLED:

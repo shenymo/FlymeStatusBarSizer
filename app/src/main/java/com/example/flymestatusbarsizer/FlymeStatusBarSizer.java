@@ -7073,6 +7073,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final int mbackNavBarHeight;
         public final int mbackPillLength;
         public final int mbackPillThickness;
+        public final boolean mbackPillInteractionSyncEnabled;
 
         private MBackConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
@@ -7087,6 +7088,8 @@ public class FlymeStatusBarSizer extends XposedModule {
             mbackNavBarHeight = config == null ? -1 : config.mbackNavBarHeight;
             mbackPillLength = config == null ? -1 : config.mbackPillLength;
             mbackPillThickness = config == null ? -1 : config.mbackPillThickness;
+            mbackPillInteractionSyncEnabled = config != null
+                    && config.mbackPillInteractionSyncEnabled;
         }
     }
 

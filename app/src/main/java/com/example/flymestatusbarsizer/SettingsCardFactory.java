@@ -1063,9 +1063,14 @@ final class SettingsCardFactory {
                 SettingsStore.DEFAULT_MBACK_PILL_LENGTH, -1, 200);
         activity.addDivider(page);
         activity.addApplyInsetSliderRow(page, "小白条粗细",
-                "只调整白条的显示粗细，不改变导航栏高度。-1 表示保持系统默认。",
+                "调整白条粗细，不改变导航栏高度。-1 表示保持系统默认。",
                 SettingsStore.KEY_MBACK_PILL_THICKNESS,
                 SettingsStore.DEFAULT_MBACK_PILL_THICKNESS, -1, 12);
+        activity.addDivider(page);
+        activity.addSwitchRow(page, "触发区域与动画跟随",
+                "保留系统外围容错范围，让触发区域和点击动画随小白条尺寸同步增减。",
+                SettingsStore.KEY_MBACK_PILL_INTERACTION_SYNC_ENABLED,
+                SettingsStore.DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED);
         activity.addDivider(page);
         activity.addApplyInsetSliderRow(page, "mBack inset 大小",
                 "这里的 inset 指 mBack 背景抬高。-1 表示保持系统默认，0 表示不额外抬高，其他数值按 dp 处理；同时也会影响应用感知到的底部区域。",

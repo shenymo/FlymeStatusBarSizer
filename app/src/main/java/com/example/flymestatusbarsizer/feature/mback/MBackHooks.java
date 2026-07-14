@@ -39,6 +39,7 @@ public final class MBackHooks {
         hookLongTouchIntent(module, loader);
         hookMBackControllerTouch(module, loader);
         hookMBackMotionEvents(module, loader);
+        hookMBackTouchArea(module, loader);
         hookNavBarPressureEvents(module, loader);
         hookNavBarExperiments(module, loader);
         hookPillVisibility(module, loader);
@@ -88,7 +89,7 @@ public final class MBackHooks {
     public static void refreshTrackedView() {
         View view = resolveMBackButtonAnchor();
         if (view != null) {
-            applyConfiguredPillLength(
+            applyConfiguredPillSize(
                     view,
                     FlymeStatusBarSizer.loadMBackConfig(view.getContext()));
             view.invalidate();
@@ -176,30 +177,67 @@ public final class MBackHooks {
         return true;
     }
 
-    private static void applyConfiguredPillLength(
+    private static void applyConfiguredPillSize(
             View view,
             FlymeStatusBarSizer.MBackConfigSnapshot config) {
         if (view == null || config == null || view.getLayoutParams() == null) {
             return;
         }
-        int width;
+        int width = getDimension(view.getContext(), "navigation_key_mback_width", -1);
         if (config.enabled && config.mbackPillLength >= 0) {
-            width = Math.max(1, dp(view.getContext(), config.mbackPillLength));
-        } else {
-            int id = view.getResources().getIdentifier(
-                    "navigation_key_mback_width",
-                    "dimen",
-                    view.getContext().getPackageName());
-            if (id == 0) {
-                return;
+            width = Math.max(0, dp(view.getContext(), config.mbackPillLength));
+            if (config.mbackPillInteractionSyncEnabled) {
+                width += getDimension(view.getContext(), "navigation_key_mback_padding", 0) * 2;
             }
-            width = view.getResources().getDimensionPixelSize(id);
         }
+        int height = config.enabled
+                && config.mbackPillInteractionSyncEnabled
+                && config.mbackPillThickness >= 0
+                ? Math.max(0,
+                        getDimension(view.getContext(), "navigation_key_mback_height", 0)
+                                + dp(view.getContext(), config.mbackPillThickness)
+                                - getSystemPillThickness(view))
+                : ViewGroup.LayoutParams.MATCH_PARENT;
         ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
-        if (layoutParams.width != width) {
+        boolean changed = false;
+        if (width >= 0 && layoutParams.width != width) {
             layoutParams.width = width;
+            changed = true;
+        }
+        if (layoutParams.height != height) {
+            layoutParams.height = height;
+            changed = true;
+        }
+        if (changed) {
             view.setLayoutParams(layoutParams);
         }
+        Object ripple = readField(view, "mRipple");
+        int rippleWidth = config.enabled
+                && config.mbackPillInteractionSyncEnabled
+                && config.mbackPillLength >= 0
+                ? width
+                : getDimension(view.getContext(), "key_button_ripple_max_width", -1);
+        if (rippleWidth >= 0) {
+            writeField(ripple, "mMaxWidth", rippleWidth);
+        }
+    }
+
+    private static int getDimension(Context context, String name, int fallback) {
+        if (context == null) {
+            return fallback;
+        }
+        int id = context.getResources().getIdentifier(
+                name,
+                "dimen",
+                context.getPackageName());
+        return id == 0 ? fallback : context.getResources().getDimensionPixelSize(id);
+    }
+
+    private static int getSystemPillThickness(View view) {
+        Object radius = readField(view, "mRadius");
+        return radius instanceof Number
+                ? Math.round(((Number) radius).floatValue() * 2f)
+                : dp(view.getContext(), 3);
     }
 
     public static void applyNavBarTransparency(Object transitions) {
@@ -471,6 +509,60 @@ public final class MBackHooks {
         }
     }
 
+    private static void hookMBackTouchArea(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.navigationbar.NavBarExt",
+                    false,
+                    loader);
+            Method method = clazz.getDeclaredMethod(
+                    "isEventInMBackBtnAreaAndAllowed",
+                    MotionEvent.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object target = chain.getThisObject();
+                Context context = asContext(readField(target, "mContext"));
+                if (context == null) {
+                    return chain.proceed();
+                }
+                FlymeStatusBarSizer.MBackConfigSnapshot config =
+                        FlymeStatusBarSizer.loadMBackConfig(context);
+                if (!config.enabled || !config.mbackPillInteractionSyncEnabled
+                        || (config.mbackPillLength < 0 && config.mbackPillThickness < 0)) {
+                    return chain.proceed();
+                }
+                MotionEvent event = chain.getArg(0) instanceof MotionEvent
+                        ? (MotionEvent) chain.getArg(0)
+                        : null;
+                View view = resolveMBackButtonAnchor();
+                if (event == null || view == null) {
+                    return chain.proceed();
+                }
+                Object oldWidth = readField(target, "mMBackBtnWidth");
+                Object oldHeight = readField(target, "mMBackBtnHeight");
+                if (config.mbackPillLength >= 0) {
+                    writeField(target, "mMBackBtnWidth",
+                            (float) (dp(context, config.mbackPillLength)
+                                    + getDimension(context, "navigation_key_mback_padding", 0) * 2));
+                }
+                if (config.mbackPillThickness >= 0 && oldHeight instanceof Number) {
+                    writeField(target, "mMBackBtnHeight",
+                            ((Number) oldHeight).floatValue()
+                                    + dp(context, config.mbackPillThickness)
+                                    - getSystemPillThickness(view));
+                }
+                try {
+                    return chain.proceed();
+                } finally {
+                    writeField(target, "mMBackBtnWidth", oldWidth);
+                    writeField(target, "mMBackBtnHeight", oldHeight);
+                }
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logMBackWarning("Failed to hook mBack touch area", t);
+        }
+    }
+
     private static void hookNavBarPressureEvents(FlymeStatusBarSizer module, ClassLoader loader) {
         try {
             Class<?> clazz = Class.forName(
@@ -591,7 +683,7 @@ public final class MBackHooks {
                         return drawConfiguredPill(view, canvas, config) ? null : chain.proceed();
                     }
                     Object result = chain.proceed();
-                    applyConfiguredPillLength(view, config);
+                    applyConfiguredPillSize(view, config);
                     if (config.enabled && config.mbackHidePill) {
                         hidePillView(view);
                     }

@@ -207,6 +207,8 @@ final class ModuleConfig {
     int mbackNavBarHeight = SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT;
     int mbackPillLength = SettingsStore.DEFAULT_MBACK_PILL_LENGTH;
     int mbackPillThickness = SettingsStore.DEFAULT_MBACK_PILL_THICKNESS;
+    boolean mbackPillInteractionSyncEnabled =
+            SettingsStore.DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED;
     boolean imeReplaceOriginalControlBar = SettingsStore.DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR;
     String imeControlBarButtonSlots = SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;
     int imeControlBarIconScalePercent = SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT;
@@ -778,6 +780,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_MBACK_PILL_THICKNESS,
                     SettingsStore.DEFAULT_MBACK_PILL_THICKNESS);
+            config.mbackPillInteractionSyncEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_MBACK_PILL_INTERACTION_SYNC_ENABLED,
+                    SettingsStore.DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED);
             config.imeReplaceOriginalControlBar = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
