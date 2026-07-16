@@ -272,6 +272,10 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_NOTIFICATION_CARD_CORNER_RADIUS_DP,
                 SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_DP,
                 0, 40, "dp");
+        activity.addSwitchRow(notificationCornerOptions, "G3 圆角",
+                "打开后使用 G3 曲线，关闭时使用普通圆角。",
+                SettingsStore.KEY_NOTIFICATION_CARD_G3_CORNER_ENABLED,
+                SettingsStore.DEFAULT_NOTIFICATION_CARD_G3_CORNER_ENABLED);
         notificationCornerOptions.setAlpha(notificationCornerSwitch.isChecked() ? 1f : 0.45f);
         content.addView(notificationCornerOptions, cornerOptionsLp);
         activity.addDivider(content);

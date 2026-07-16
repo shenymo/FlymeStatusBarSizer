@@ -7235,6 +7235,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final int notificationAppIconSizeDp;
         public final int notificationAppIconPaddingDp;
         public final boolean notificationCardCornerRadiusEnabled;
+        public final boolean notificationCardG3CornerEnabled;
         public final int notificationCardCornerRadiusDp;
         public final boolean notificationSystemBlurOnlyEnabled;
         public final int notificationSystemBlurCarrierColorMode;
@@ -7250,6 +7251,8 @@ public class FlymeStatusBarSizer extends XposedModule {
             notificationCardCornerRadiusEnabled = enabled
                     && config != null
                     && config.notificationCardCornerRadiusEnabled;
+            notificationCardG3CornerEnabled = notificationCardCornerRadiusEnabled
+                    && config.notificationCardG3CornerEnabled;
             notificationCardCornerRadiusDp = config == null
                     ? SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_DP
                     : config.notificationCardCornerRadiusDp;

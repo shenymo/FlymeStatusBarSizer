@@ -105,6 +105,8 @@ final class SettingsStore {
     static final String KEY_NOTIFICATION_APP_ICON_PADDING_DP = "notification_app_icon_padding_dp";
     static final String KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED =
             "notification_card_corner_radius_enabled";
+    static final String KEY_NOTIFICATION_CARD_G3_CORNER_ENABLED =
+            "notification_card_g3_corner_enabled";
     static final String KEY_NOTIFICATION_CARD_CORNER_RADIUS_DP =
             "notification_card_corner_radius_dp";
     static final String KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED =
@@ -333,6 +335,7 @@ final class SettingsStore {
     static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
     static final int DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP = 0;
     static final boolean DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED = false;
+    static final boolean DEFAULT_NOTIFICATION_CARD_G3_CORNER_ENABLED = false;
     static final int DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_DP = 14;
     static final boolean DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED = false;
     static final int DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP = 24;
@@ -547,6 +550,7 @@ final class SettingsStore {
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
             KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED,
+            KEY_NOTIFICATION_CARD_G3_CORNER_ENABLED,
             KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED,
@@ -988,6 +992,8 @@ final class SettingsStore {
                 return DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
             case KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED:
                 return DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED;
+            case KEY_NOTIFICATION_CARD_G3_CORNER_ENABLED:
+                return DEFAULT_NOTIFICATION_CARD_G3_CORNER_ENABLED;
             case KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED:
                 return DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED;
             case KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED:

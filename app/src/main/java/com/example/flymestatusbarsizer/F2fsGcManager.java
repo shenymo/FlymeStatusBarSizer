@@ -111,9 +111,14 @@ final class F2fsGcManager {
 
     private static String findNode() {
         try {
-            String output = execRoot("for d in /sys/fs/f2fs/*; do "
-                    + "if [ -f \"$d/gc_urgent\" ] && [ -r \"$d/free_segments\" ]; then "
-                    + "echo \"$d\"; exit 0; fi; done; exit 1").trim();
+            String output = execRoot(
+                    "src=$(awk '$2==\"/data\" && $3==\"f2fs\" {print $1; exit}' /proc/mounts); "
+                    + "[ -n \"$src\" ] || exit 1; "
+                    + "real=$(readlink -f \"$src\" 2>/dev/null); "
+                    + "[ -n \"$real\" ] || real=\"$src\"; "
+                    + "name=${real##*/}; node=\"/sys/fs/f2fs/$name\"; "
+                    + "[ -f \"$node/gc_urgent\" ] && [ -r \"$node/free_segments\" ] || exit 1; "
+                    + "echo \"$node\"").trim();
             return output.startsWith("/sys/fs/f2fs/") ? output : null;
         } catch (Throwable ignored) {
             return null;
