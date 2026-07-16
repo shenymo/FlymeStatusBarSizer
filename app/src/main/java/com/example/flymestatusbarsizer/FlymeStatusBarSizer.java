@@ -21,7 +21,6 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.ColorFilter;
 import android.graphics.drawable.Icon;
 import android.graphics.Paint;
 import android.graphics.Rect;
@@ -255,7 +254,6 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private void installSignalHooks(ClassLoader loader) {
         hookSignalImageAssignments();
-        hookSignalTintUpdates();
         hookSignalTintDispatcher(loader);
         hookSignalDrawableLevelChanges(loader);
         hookFlymeWifiViewPerf(loader);
@@ -744,44 +742,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             });
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setImageDrawable", t);
-        }
-    }
-
-    private void hookSignalTintUpdates() {
-        try {
-            Method setImageTintList = ImageView.class.getDeclaredMethod("setImageTintList", ColorStateList.class);
-            setImageTintList.setAccessible(true);
-            hook(setImageTintList).intercept(chain -> {
-                Object result = chain.proceed();
-                    Object target = chain.getThisObject();
-                    if (target instanceof ImageView) {
-                        ImageView view = (ImageView) target;
-                        syncSignalTintToCustomDrawable(view);
-                        String idName = getSystemUiIdName(view);
-                        if ("mobile_signal".equals(idName) || "wifi_signal".equals(idName)) {
-                            NotificationHooks.refreshNotificationTextFollowStatusBarForTintChange(view);
-                        }
-                    }
-                    return result;
-                });
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setImageTintList", t);
-        }
-        try {
-            Method setColorFilter = ImageView.class.getDeclaredMethod("setColorFilter", ColorFilter.class);
-            setColorFilter.setAccessible(true);
-            hook(setColorFilter).intercept(chain -> {
-                Object result = chain.proceed();
-                    Object target = chain.getThisObject();
-                    if (target instanceof ImageView) {
-                        ImageView view = (ImageView) target;
-                        syncSignalColorFilterToCustomDrawable(view,
-                                chain.getArg(0) instanceof ColorFilter ? (ColorFilter) chain.getArg(0) : null);
-                    }
-                    return result;
-                });
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setColorFilter(ColorFilter)", t);
         }
     }
 
@@ -3856,38 +3816,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         if (!isSignalCodeDrawEnabled(config)) {
             LAST_SIGNAL_LEVEL = normalizeSignalLevel(rawLevel);
-        }
-    }
-
-    private static void syncSignalTintToCustomDrawable(ImageView view) {
-        if (view == null) {
-            return;
-        }
-        String idName = getSystemUiIdName(view);
-        Drawable drawable = view.getDrawable();
-        if ("mobile_signal".equals(idName) && drawable instanceof SignalIconDrawable) {
-            drawable.setTintList(view.getImageTintList());
-            drawable.setState(view.getDrawableState());
-            return;
-        }
-        if ("wifi_signal".equals(idName) && drawable instanceof WifiIconDrawable) {
-            drawable.setTintList(view.getImageTintList());
-            drawable.setState(view.getDrawableState());
-        }
-    }
-
-    private static void syncSignalColorFilterToCustomDrawable(ImageView view, ColorFilter colorFilter) {
-        if (view == null) {
-            return;
-        }
-        String idName = getSystemUiIdName(view);
-        Drawable drawable = view.getDrawable();
-        if ("mobile_signal".equals(idName) && drawable instanceof SignalIconDrawable) {
-            drawable.setColorFilter(colorFilter);
-            return;
-        }
-        if ("wifi_signal".equals(idName) && drawable instanceof WifiIconDrawable) {
-            drawable.setColorFilter(colorFilter);
         }
     }
 
