@@ -14,7 +14,6 @@ import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Outline;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
@@ -49,8 +48,6 @@ public final class NotificationHooks {
             "com.android.systemui.statusbar.notification.row.ActivatableNotificationView";
     private static final String NOTIFICATION_CONTENT_VIEW =
             "com.android.systemui.statusbar.notification.row.NotificationContentView";
-    private static final String NOTIFICATION_BACKGROUND_VIEW =
-            "com.android.systemui.statusbar.notification.row.NotificationBackgroundView";
     private static final String NOTIFICATION_GROUP_COLLAPSE_CONTAINER =
             "com.flyme.notification.view.NotificationGroupCollapseContainer";
     private static final String LANDSCAPE_HEADS_UP_NOTIFICATION_VIEW =
@@ -65,11 +62,9 @@ public final class NotificationHooks {
     private static final int NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_DARK = 2;
     private static final int DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR = 0x26FFFFFF;
     private static final int DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR = 0x331A1A1A;
-    private static final float NOTIFICATION_G3_CORNER_SMOOTHNESS = 0.72f;
 
     private static volatile Method flymeGetApplicationIconMethod;
     private static volatile Method flymeClearApplicationIconCacheMethod;
-    private static volatile Method smoothCornerPathMethod;
     private static volatile int LAST_NOTIFICATION_APP_ICON_VIEW_REFRESH_NIGHT = -1;
     private static volatile int LAST_STATUS_BAR_ICON_TINT = 0;
     private static volatile int LAST_KEYGUARD_STATUS_BAR_ICON_TINT = 0;
@@ -656,47 +651,6 @@ public final class NotificationHooks {
         hookNotificationCornerClass(module, loader, NOTIFICATION_GROUP_COLLAPSE_CONTAINER);
         hookNotificationCornerClass(module, loader, LANDSCAPE_HEADS_UP_NOTIFICATION_VIEW);
         hookNotificationCornerClass(module, loader, MEDIA_CAROUSE_TRANSITION_LAYOUT);
-        hookNotificationBackgroundG3Clip(module, loader);
-    }
-
-    private static void hookNotificationBackgroundG3Clip(
-            FlymeStatusBarSizer module, ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(NOTIFICATION_BACKGROUND_VIEW, false, loader);
-            Method method = clazz.getDeclaredMethod("onDraw", Canvas.class);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object target = chain.getThisObject();
-                Object canvasArg = chain.getArg(0);
-                if (!(target instanceof View) || !(canvasArg instanceof Canvas)) {
-                    return chain.proceed();
-                }
-                View view = (View) target;
-                FlymeStatusBarSizer.NotificationConfigSnapshot config =
-                        FlymeStatusBarSizer.loadNotificationConfig(view.getContext());
-                if (!config.notificationCardG3CornerEnabled) {
-                    return chain.proceed();
-                }
-                Path clipPath = buildNotificationG3BackgroundClipPath(
-                        view,
-                        notificationCornerRadiusPx(view.getContext(), config));
-                if (clipPath == null) {
-                    return chain.proceed();
-                }
-                Canvas canvas = (Canvas) canvasArg;
-                int saveCount = canvas.save();
-                try {
-                    canvas.clipPath(clipPath);
-                    return chain.proceed();
-                } finally {
-                    canvas.restoreToCount(saveCount);
-                }
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logNotificationWarning(
-                    "Failed to hook notification background G3 clip",
-                    t);
-        }
     }
 
     private static void hookNotificationCornerClass(
@@ -763,155 +717,33 @@ public final class NotificationHooks {
                     "applyRoundnessAndInvalidate",
                     new Class<?>[0]);
             FlymeStatusBarSizer.invokeMethodCompat(view, "setBackground", new Class<?>[0]);
-            applyNotificationOutline(view, radiusPx, config.notificationCardG3CornerEnabled);
+            applyNotificationOutline(view, radiusPx);
         } else if (NOTIFICATION_CONTENT_VIEW.equals(className)) {
             FlymeStatusBarSizer.setFieldCompat(view, "mCustomRemoteViewRadius", radiusPx);
         } else if (NOTIFICATION_GROUP_COLLAPSE_CONTAINER.equals(className)) {
             FlymeStatusBarSizer.setFieldCompat(view, "mClipCornerRadius", radiusPx);
             FlymeStatusBarSizer.invokeMethodCompat(view, "setBackground", new Class<?>[0]);
-            applyNotificationOutline(view, radiusPx, config.notificationCardG3CornerEnabled);
+            applyNotificationOutline(view, radiusPx);
         } else if (LANDSCAPE_HEADS_UP_NOTIFICATION_VIEW.equals(className)) {
             FlymeStatusBarSizer.setFieldCompat(view, "mClipCornerRadius", (float) radiusPx);
             FlymeStatusBarSizer.invokeMethodCompat(view, "setBackground", new Class<?>[0]);
-            applyNotificationOutline(view, radiusPx, config.notificationCardG3CornerEnabled);
+            applyNotificationOutline(view, radiusPx);
         } else if (MEDIA_CAROUSE_TRANSITION_LAYOUT.equals(className)) {
-            applyNotificationOutline(view, radiusPx, config.notificationCardG3CornerEnabled);
+            applyNotificationOutline(view, radiusPx);
         }
         view.invalidateOutline();
         view.invalidate();
     }
 
-    private static void applyNotificationOutline(View view, int radiusPx, boolean g3Enabled) {
+    private static void applyNotificationOutline(View view, int radiusPx) {
         view.setClipToOutline(true);
         view.setOutlineProvider(new ViewOutlineProvider() {
             @Override
             public void getOutline(View outlineView, Outline outline) {
-                if (g3Enabled) {
-                    outline.setConvexPath(buildG3RoundRectPath(
-                            outlineView,
-                            0,
-                            0,
-                            outlineView.getWidth(),
-                            outlineView.getHeight(),
-                            radiusPx));
-                    return;
-                }
                 outline.setRoundRect(0, 0, outlineView.getWidth(), outlineView.getHeight(),
                         radiusPx);
             }
         });
-    }
-
-    private static Path buildNotificationG3BackgroundClipPath(View view, int radiusPx) {
-        if (view == null || radiusPx <= 0) {
-            return null;
-        }
-        Rect bounds = null;
-        Object result = FlymeStatusBarSizer.invokeMethodCompat(
-                view,
-                "calculateBackgroundBounds",
-                new Class<?>[0]);
-        if (result instanceof Rect) {
-            bounds = (Rect) result;
-        }
-        if (bounds == null) {
-            bounds = new Rect(0, 0, view.getWidth(), view.getHeight());
-        }
-        if (bounds.width() <= 0 || bounds.height() <= 0) {
-            return null;
-        }
-        return buildG3RoundRectPath(
-                view,
-                bounds.left,
-                bounds.top,
-                bounds.right,
-                bounds.bottom,
-                radiusPx);
-    }
-
-    private static Path buildG3RoundRectPath(
-            View view, float left, float top, float right, float bottom, int radiusPx) {
-        Path systemPath = buildSystemSmoothCornerPath(view, left, top, right, bottom, radiusPx);
-        if (systemPath != null) {
-            return systemPath;
-        }
-        return buildFallbackG3RoundRectPath(left, top, right, bottom, radiusPx);
-    }
-
-    private static Path buildSystemSmoothCornerPath(
-            View view, float left, float top, float right, float bottom, int radiusPx) {
-        try {
-            Method method = smoothCornerPathMethod;
-            if (method == null) {
-                Class<?> clazz = Class.forName(
-                        "com.meizu.common.util.SmoothCornerPathGenerator",
-                        false,
-                        view.getClass().getClassLoader());
-                method = clazz.getDeclaredMethod(
-                        "genSmoothCornerPath",
-                        float.class,
-                        float.class,
-                        float.class,
-                        float.class,
-                        float.class,
-                        float.class,
-                        boolean.class);
-                method.setAccessible(true);
-                smoothCornerPathMethod = method;
-            }
-            Object result = method.invoke(
-                    null,
-                    left,
-                    top,
-                    right,
-                    bottom,
-                    NOTIFICATION_G3_CORNER_SMOOTHNESS,
-                    (float) radiusPx,
-                    false);
-            return result instanceof Path ? (Path) result : null;
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private static Path buildFallbackG3RoundRectPath(
-            float left, float top, float right, float bottom, int radiusPx) {
-        Path path = new Path();
-        int width = Math.round(right - left);
-        int height = Math.round(bottom - top);
-        if (width <= 0 || height <= 0) {
-            return path;
-        }
-        float radius = Math.min(radiusPx, Math.min(width, height) / 2f);
-        if (radius <= 0f) {
-            path.addRect(left, top, right, bottom, Path.Direction.CW);
-            return path;
-        }
-        path.moveTo(left + radius, top);
-        path.lineTo(right - radius, top);
-        addG3Corner(path, right - radius, top + radius, radius, -90, 0);
-        path.lineTo(right, bottom - radius);
-        addG3Corner(path, right - radius, bottom - radius, radius, 0, 90);
-        path.lineTo(left + radius, bottom);
-        addG3Corner(path, left + radius, bottom - radius, radius, 90, 180);
-        path.lineTo(left, top + radius);
-        addG3Corner(path, left + radius, top + radius, radius, 180, 270);
-        path.close();
-        return path;
-    }
-
-    private static void addG3Corner(
-            Path path, float centerX, float centerY, float radius, int start, int end) {
-        for (int i = 1; i <= 8; i++) {
-            double angle = Math.toRadians(start + (end - start) * i / 8f);
-            double cos = Math.cos(angle);
-            double sin = Math.sin(angle);
-            float x = centerX + (float) (Math.signum(cos)
-                    * Math.pow(Math.abs(cos), 2d / 3d) * radius);
-            float y = centerY + (float) (Math.signum(sin)
-                    * Math.pow(Math.abs(sin), 2d / 3d) * radius);
-            path.lineTo(x, y);
-        }
     }
 
     private static int notificationCornerRadiusPx(

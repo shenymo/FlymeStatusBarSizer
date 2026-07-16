@@ -106,8 +106,6 @@ final class ModuleConfig {
     int notificationAppIconPaddingDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP;
     boolean notificationCardCornerRadiusEnabled =
             SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED;
-    boolean notificationCardG3CornerEnabled =
-            SettingsStore.DEFAULT_NOTIFICATION_CARD_G3_CORNER_ENABLED;
     int notificationCardCornerRadiusDp =
             SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_DP;
     boolean launcherRecentsCardCornerRadiusEnabled =
@@ -619,10 +617,6 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED,
                     SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED);
-            config.notificationCardG3CornerEnabled = SettingsStore.readBoolean(
-                    prefs,
-                    SettingsStore.KEY_NOTIFICATION_CARD_G3_CORNER_ENABLED,
-                    SettingsStore.DEFAULT_NOTIFICATION_CARD_G3_CORNER_ENABLED);
             config.notificationCardCornerRadiusDp = SettingsStore.normalizeCardCornerRadiusDp(
                     SettingsStore.readInt(
                             prefs,
