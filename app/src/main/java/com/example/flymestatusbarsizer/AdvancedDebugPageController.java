@@ -11,5 +11,7 @@ final class AdvancedDebugPageController {
         root.addView(activity.createConfigManagementCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createPerformanceDebugCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createOneMindPerfControlCard(), PageViewUtils.matchWrapWithTop(activity, 8));
+        root.addView(activity.createMzSafeOptimizationCard(), PageViewUtils.matchWrapWithTop(activity, 8));
+        root.addView(activity.createF2fsGcCard(), PageViewUtils.matchWrapWithTop(activity, 8));
     }
 }

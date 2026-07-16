@@ -1,6 +1,7 @@
 android
 com.android.systemui
 com.meizu.pps
+com.meizu.safe
 com.meizu.flyme.launcher
 com.flyme.systemuitools
 com.android.inputmethod.latin

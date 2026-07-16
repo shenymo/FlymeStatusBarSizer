@@ -221,6 +221,8 @@ final class ModuleConfig {
     boolean launcherRecentsFlowLoggingEnabled =
             SettingsStore.DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED;
     boolean oneMindPerfDisableEnabled = SettingsStore.DEFAULT_ONEMIND_PERF_DISABLE_ENABLED;
+    boolean mzSafeBackgroundOptimizationEnabled =
+            SettingsStore.DEFAULT_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED;
     boolean oneMindLogcatEnabled = SettingsStore.DEFAULT_ONEMIND_LOGCAT_ENABLED;
     int telephonyDebugSimCount = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
     int telephonyDebugDefaultDataSlot = SettingsStore.DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT;
@@ -826,6 +828,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_ONEMIND_PERF_DISABLE_ENABLED,
                     SettingsStore.DEFAULT_ONEMIND_PERF_DISABLE_ENABLED);
+            config.mzSafeBackgroundOptimizationEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED,
+                    SettingsStore.DEFAULT_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED);
             config.oneMindLogcatEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_ONEMIND_LOGCAT_ENABLED,

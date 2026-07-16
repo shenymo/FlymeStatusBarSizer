@@ -232,6 +232,9 @@ final class SettingsStore {
             "launcher_recents_flow_logging_enabled";
     static final String KEY_ONEMIND_PERF_DISABLE_ENABLED =
             "onemind_perf_disable_enabled";
+    static final String KEY_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED =
+            "mz_safe_background_optimization_enabled";
+    static final String KEY_F2FS_GC_ENABLED = "f2fs_gc_enabled";
     static final String KEY_ONEMIND_LOGCAT_ENABLED =
             "onemind_logcat_enabled";
     static final String KEY_ONEMIND_HOOK_INSTALLED_UPTIME_MS =
@@ -405,6 +408,8 @@ final class SettingsStore {
     static final boolean DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED = false;
     static final boolean DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED = false;
     static final boolean DEFAULT_ONEMIND_PERF_DISABLE_ENABLED = false;
+    static final boolean DEFAULT_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED = false;
+    static final boolean DEFAULT_F2FS_GC_ENABLED = false;
     static final boolean DEFAULT_ONEMIND_LOGCAT_ENABLED = false;
     static final int DEFAULT_TELEPHONY_DEBUG_SIM_COUNT = 2;
     static final int TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_NONE = -1;
@@ -558,6 +563,8 @@ final class SettingsStore {
             KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED,
             KEY_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED,
             KEY_ONEMIND_PERF_DISABLE_ENABLED,
+            KEY_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED,
+            KEY_F2FS_GC_ENABLED,
             KEY_ONEMIND_LOGCAT_ENABLED
     };
 
@@ -1011,6 +1018,10 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED;
             case KEY_ONEMIND_PERF_DISABLE_ENABLED:
                 return DEFAULT_ONEMIND_PERF_DISABLE_ENABLED;
+            case KEY_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED:
+                return DEFAULT_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED;
+            case KEY_F2FS_GC_ENABLED:
+                return DEFAULT_F2FS_GC_ENABLED;
             default:
                 return false;
         }

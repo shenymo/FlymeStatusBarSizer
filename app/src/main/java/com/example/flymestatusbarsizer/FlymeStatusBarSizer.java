@@ -7,6 +7,7 @@ import com.example.flymestatusbarsizer.feature.launcher.LauncherRecentsHooks;
 import com.example.flymestatusbarsizer.feature.mback.MBackHooks;
 import com.example.flymestatusbarsizer.feature.notification.NotificationHooks;
 import com.example.flymestatusbarsizer.feature.onemind.OneMindPerfHooks;
+import com.example.flymestatusbarsizer.feature.mzsafe.MzSafeOptimizationHooks;
 import com.example.flymestatusbarsizer.feature.windowmode.WindowModeSideGestureHooks;
 
 import android.content.ComponentCallbacks;
@@ -228,6 +229,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                     + ", pid=" + android.os.Process.myPid()
                     + ", loader=" + loader.getClass().getName());
             OneMindPerfHooks.install(this, loader);
+        }
+        if ("com.meizu.safe".equals(packageName)) {
+            MzSafeOptimizationHooks.install(this, loader);
         }
         ImeHooks.install(this, loader, packageName);
     }
@@ -472,6 +476,11 @@ public class FlymeStatusBarSizer extends XposedModule {
     public static boolean isOneMindPerfDisableEnabled() {
         ModuleConfig config = ModuleConfig.load(null);
         return config != null && config.enabled && config.oneMindPerfDisableEnabled;
+    }
+
+    public static boolean isMzSafeBackgroundOptimizationEnabled() {
+        ModuleConfig config = ModuleConfig.load(null);
+        return config != null && config.enabled && config.mzSafeBackgroundOptimizationEnabled;
     }
 
     public static boolean isOneMindLogcatEnabled() {

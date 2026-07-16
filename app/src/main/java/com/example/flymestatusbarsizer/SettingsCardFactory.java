@@ -635,6 +635,49 @@ final class SettingsCardFactory {
                 content);
     }
 
+    View createMzSafeOptimizationCard() {
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        activity.addSwitchRow(content, "手机管家后台优化",
+                "阻止安装处置周期任务和自动垃圾扫描；保留存储碎片优化，但关闭统计上传和失败重试。",
+                SettingsStore.KEY_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED,
+                SettingsStore.DEFAULT_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED);
+        return activity.buildSectionCard(
+                "手机管家优化",
+                "电话短信拦截和流量统计不受影响。",
+                content);
+    }
+
+    View createF2fsGcCard() {
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        TextView status = new TextView(activity);
+        status.setText("正在检测…");
+        status.setTextColor(activity.subtextColor());
+        status.setTextSize(13);
+        activity.addSwitchRow(content, "自动 F2FS GC",
+                "每天检查一次；仅在充电、锁屏、设备空闲且距离上次回收超过 24 小时时执行。",
+                SettingsStore.KEY_F2FS_GC_ENABLED,
+                SettingsStore.DEFAULT_F2FS_GC_ENABLED,
+                (buttonView, isChecked) -> F2fsGcJobService.syncSchedule(activity));
+        activity.addDivider(content);
+        content.addView(status, activity.matchWrap());
+        activity.addDivider(content);
+        activity.addActionButtonRow(content, "刷新状态",
+                "重新检查 Root、F2FS 节点、充电、锁屏和设备空闲状态。",
+                "刷新", () -> F2fsGcManager.refreshStatus(activity, status));
+        activity.addDivider(content);
+        activity.addActionButtonRow(content, "强制回收",
+                "忽略充电、锁屏和空闲条件，使用 Root 执行 60 秒紧急 GC。",
+                "执行", () -> F2fsGcManager.run(activity, true,
+                        () -> F2fsGcManager.refreshStatus(activity, status)));
+        F2fsGcManager.refreshStatus(activity, status);
+        return activity.buildSectionCard(
+                "F2FS GC 回收",
+                "回收量按释放的 F2FS 段统计，每段约 2MiB。",
+                content);
+    }
+
     View createPositionTuningSettingsCard() {
         activity.positionTuningSliderBindings().clear();
 

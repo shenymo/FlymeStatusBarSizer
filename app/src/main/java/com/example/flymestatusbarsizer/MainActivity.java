@@ -175,6 +175,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         prefs = SettingsStore.prefs(this);
         SettingsStore.prepareRemoteSync(this);
+        F2fsGcJobService.syncSchedule(this);
         initPalette();
         configureSystemBars();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -2191,6 +2192,14 @@ public class MainActivity extends Activity {
 
     View createOneMindPerfControlCard() {
         return settingsCardFactory.createOneMindPerfControlCard();
+    }
+
+    View createMzSafeOptimizationCard() {
+        return settingsCardFactory.createMzSafeOptimizationCard();
+    }
+
+    View createF2fsGcCard() {
+        return settingsCardFactory.createF2fsGcCard();
     }
 
     View createPositionTuningSettingsCard() {
