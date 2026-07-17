@@ -47,12 +47,13 @@ final class LauncherRecentsAttachController {
                     return chain.proceed();
                 }
                 LauncherRecentsPerf.flow("attach:gestureAnimationStart", recentsView);
-                LauncherRecentsPerf.startSpan("enterRecents", recentsView);
+                LauncherRecentsPerf.finishSession("enterRecents", recentsView, "abort");
                 LauncherRecentsLaunchController.clearTaskLaunchFrozenForNewGesture(recentsView);
                 LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
                         recentsView,
                         true);
                 LauncherRecentsStateAnimationController.clearOverviewEntryState(recentsView);
+                LauncherRecentsPerf.beginSession("enterRecents", recentsView);
                 LauncherRecentsLayoutEngine.hideStackClearAllButton(recentsView);
                 LauncherRecentsState.clearAppToRecentsGestureState(recentsView);
                 LauncherRecentsState.setSwipeUpGestureActive(recentsView, true);
@@ -65,7 +66,10 @@ final class LauncherRecentsAttachController {
                 try {
                     return chain.proceed();
                 } finally {
-                    LauncherRecentsPerf.end("native:onGestureAnimationStart", nativeStartNs);
+                    LauncherRecentsPerf.end(
+                            "native:onGestureAnimationStart",
+                            recentsView,
+                            nativeStartNs);
                 }
             });
         } catch (Throwable t) {
@@ -89,15 +93,18 @@ final class LauncherRecentsAttachController {
                 View recentsView = chain.getThisObject() instanceof View
                         ? (View) chain.getThisObject()
                         : null;
-                long nativeStartNs = LauncherRecentsPerf.start(recentsView);
+                boolean stackLayout = recentsView != null
+                        && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView);
+                long nativeStartNs = stackLayout
+                        ? LauncherRecentsPerf.start(recentsView)
+                        : 0L;
                 Object result;
                 try {
                     result = chain.proceed();
                 } finally {
-                    LauncherRecentsPerf.end("native:applyLoadPlan", nativeStartNs);
+                    LauncherRecentsPerf.end("native:applyLoadPlan", recentsView, nativeStartNs);
                 }
-                if (recentsView != null
-                        && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+                if (stackLayout) {
                     LauncherRecentsPerf.flow("attach:applyLoadPlan",
                             recentsView,
                             "deferred=" + LauncherRecentsState
@@ -252,6 +259,7 @@ final class LauncherRecentsAttachController {
         }
         LauncherRecentsPerf.flow("attach:entrySession:clear",
                 recentsView, "keepExpanded=" + keepExpanded);
+        LauncherRecentsPerf.finishSession("enterRecents", recentsView, "abort");
         LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
                 recentsView,
                 true);

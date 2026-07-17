@@ -447,12 +447,12 @@ final class SettingsCardFactory {
                 SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED);
         activity.addDivider(content);
         activity.addSwitchRow(content, "启用后台堆叠性能打点",
-                "打开后输出 IOS 式堆叠后台的布局、状态准备、动画帧、手势和跳过次数日志。",
+                "打开后输出 IOS 式堆叠后台每次交互的真实帧耗时、卡顿率和慢调用。",
                 SettingsStore.KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED);
         activity.addDivider(content);
         activity.addSwitchRow(content, "IOS 堆叠后台日志",
-                "打开后输出滑动触发的触摸、分页释放、滑动删除、布局和动画流程。",
+                "打开后输出关键触摸、分页、删除和动画节点，不输出逐帧日志。",
                 SettingsStore.KEY_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED);
         return activity.buildSectionCard(

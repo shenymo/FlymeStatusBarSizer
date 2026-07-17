@@ -149,14 +149,17 @@ final class LauncherRecentsTouchController {
             Class<?> pendingAnimationClass,
             Class<?> taskViewClass,
             long durationMs) {
+        LauncherRecentsPerf.beginSession("clearAll", recentsView);
         Object pendingAnimation = LauncherRecentsCompat.createPendingAnimationInstance(
                 pendingAnimationConstructor,
                 durationMs);
         if (pendingAnimation == null) {
+            LauncherRecentsPerf.finishSession("clearAll", recentsView, "abort");
             return false;
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         if (taskViewCount <= 0) {
+            LauncherRecentsPerf.finishSession("clearAll", recentsView, "abort");
             return false;
         }
         Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
@@ -183,6 +186,7 @@ final class LauncherRecentsTouchController {
             }
         }
         if (visibleTasks.isEmpty()) {
+            LauncherRecentsPerf.finishSession("clearAll", recentsView, "abort");
             return false;
         }
 
@@ -204,6 +208,7 @@ final class LauncherRecentsTouchController {
                     pendingAnimation,
                     visibleTaskIndices.get(i) * 30L,
                     isRunningTask)) {
+                LauncherRecentsPerf.finishSession("clearAll", recentsView, "abort");
                 return false;
             }
         }
@@ -220,10 +225,12 @@ final class LauncherRecentsTouchController {
                 "addEndListener",
                 new Class<?>[]{Consumer.class},
                 endListener)) {
+            LauncherRecentsPerf.finishSession("clearAll", recentsView, "abort");
             return false;
         }
         Object animation = LauncherRecentsCompat.invokeCompat(pendingAnimation, "buildAnim");
         if (!(animation instanceof Animator)) {
+            LauncherRecentsPerf.finishSession("clearAll", recentsView, "abort");
             return false;
         }
         for (int i = 0; i < hiddenTasks.size(); i++) {
@@ -232,6 +239,22 @@ final class LauncherRecentsTouchController {
         LauncherRecentsCompat.writeField(recentsView, "mPendingAnimation", pendingAnimation);
         AnimatorSet animatorSet = new AnimatorSet();
         animatorSet.play((Animator) animation);
+        animatorSet.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                LauncherRecentsPerf.finishSession(
+                        "clearAll",
+                        recentsView,
+                        cancelled ? "cancel" : "success");
+            }
+        });
         animatorSet.start();
         return true;
     }
@@ -284,8 +307,6 @@ final class LauncherRecentsTouchController {
                     ensureClearAllButtonReadyOnTouchDown(recentsView, motionEvent);
                     stopStackScrollerOnTouchDown(recentsView, motionEvent);
                     if (handleMovingStackBlankTapHomeExit(recentsView, motionEvent)) {
-                        logStackFlow("touch:intercept:movingBlankTapHome",
-                                recentsView, motionEvent, null);
                         return true;
                     }
                     if (shouldKeepStackDismissGestureAwayFromPagedView(
@@ -296,11 +317,18 @@ final class LauncherRecentsTouchController {
                         releasePagedTouchForStackDismiss(recentsView);
                         return false;
                     }
-                    long nativeStartNs = LauncherRecentsPerf.start(recentsView);
+                    boolean stackLayout = LauncherRecentsLayoutEngine.shouldUseStackLayout(
+                            recentsView);
+                    long nativeStartNs = stackLayout
+                            ? LauncherRecentsPerf.start(recentsView)
+                            : 0L;
                     try {
                         return chain.proceed();
                     } finally {
-                        LauncherRecentsPerf.end("native:onInterceptTouchEvent", nativeStartNs);
+                        LauncherRecentsPerf.end(
+                                "native:onInterceptTouchEvent",
+                                recentsView,
+                                nativeStartNs);
                     }
                 }
                 return chain.proceed();
@@ -337,8 +365,6 @@ final class LauncherRecentsTouchController {
                             && takeOverOverviewStateOnHorizontalMove(recentsView, motionEvent);
                     clearGestureReleaseTaskStatesOnUserMove(recentsView, motionEvent);
                     if (handleMovingStackBlankTapHomeExit(recentsView, motionEvent)) {
-                        logStackFlow("touch:event:movingBlankTapHome",
-                                recentsView, motionEvent, null);
                         return true;
                     }
                     if (shouldKeepStackDismissGestureAwayFromPagedView(
@@ -371,10 +397,14 @@ final class LauncherRecentsTouchController {
                                 LauncherRecentsCompat.NO_ARGS);
                         return true;
                     }
-                    long nativeStartNs = LauncherRecentsPerf.start(recentsView);
+                    boolean stackLayout = LauncherRecentsLayoutEngine.shouldUseStackLayout(
+                            recentsView);
+                    long nativeStartNs = stackLayout
+                            ? LauncherRecentsPerf.start(recentsView)
+                            : 0L;
                     boolean tuneHorizontalRelease = motionEvent.getActionMasked()
                             == MotionEvent.ACTION_UP
-                            && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView);
+                            && stackLayout;
                     FlymeStatusBarSizer.LauncherRecentsConfigSnapshot stackConfig =
                             tuneHorizontalRelease
                                     ? FlymeStatusBarSizer.loadLauncherRecentsConfig(
@@ -423,7 +453,10 @@ final class LauncherRecentsTouchController {
                                     "mFlingThresholdVelocity",
                                     originalFlingThresholdVelocity);
                         }
-                        LauncherRecentsPerf.end("native:onTouchEvent", nativeStartNs);
+                        LauncherRecentsPerf.end(
+                                "native:onTouchEvent",
+                                recentsView,
+                                nativeStartNs);
                     }
                     applyStackLayoutAfterPagedMove(recentsView, motionEvent);
                     if (entryTakeover) {
@@ -955,8 +988,6 @@ final class LauncherRecentsTouchController {
         if (recentsView == null || motionEvent == null) {
             return null;
         }
-        logStackFlow("dismissController:" + source, recentsView, motionEvent,
-                controller != null ? controller.getClass().getSimpleName() : null);
         if (!shouldHandleStackDismissTouch(recentsView)) {
             logStackFlow("dismissController:" + source + ":notStack",
                     recentsView, motionEvent, null);
@@ -1019,7 +1050,6 @@ final class LauncherRecentsTouchController {
             StackDismissGestureState state =
                     new StackDismissGestureState(recentsView, taskView, motionEvent);
             STACK_DISMISS_GESTURES.put(recentsView, state);
-            LauncherRecentsPerf.startSpan("dismissTask", recentsView);
             return false;
         }
 
@@ -1031,7 +1061,6 @@ final class LauncherRecentsTouchController {
             logStackFlow("dismiss:clearInvalidTask",
                     recentsView, motionEvent, taskDetails(recentsView, state.taskView));
             clearStackDismissGesture(recentsView, true);
-            LauncherRecentsPerf.endSpan("dismissTask", recentsView);
             return null;
         }
         state.addMovement(motionEvent);
@@ -1051,7 +1080,6 @@ final class LauncherRecentsTouchController {
                             motionEvent,
                             "dx=" + Math.round(dx) + " dy=" + Math.round(dy));
                     clearStackDismissGesture(recentsView, true);
-                    LauncherRecentsPerf.endSpan("dismissTask", recentsView);
                     return null;
                 } else {
                     return false;
@@ -1073,7 +1101,6 @@ final class LauncherRecentsTouchController {
             logStackFlow("dismiss:end:notDragging",
                     recentsView, motionEvent, taskDetails(recentsView, state.taskView));
             clearStackDismissGesture(recentsView, false);
-            LauncherRecentsPerf.endSpan("dismissTask", recentsView);
             return false;
         }
 
@@ -1309,6 +1336,7 @@ final class LauncherRecentsTouchController {
                 state.recentsView,
                 motionEvent,
                 taskDetails(state.recentsView, state.taskView));
+        LauncherRecentsPerf.beginSession("dismissTask", state.recentsView);
         state.dragging = true;
         LauncherRecentsState.setPositionOwner(
                 state.recentsView,
@@ -1346,6 +1374,7 @@ final class LauncherRecentsTouchController {
                 state.recentsView,
                 motionEvent,
                 taskDetails(state.recentsView, state.taskView));
+        LauncherRecentsPerf.beginSession("dismissTask", state.recentsView);
         state.dragging = true;
         state.menuDragging = true;
         LauncherRecentsState.setPositionOwner(
@@ -1637,7 +1666,10 @@ final class LauncherRecentsTouchController {
             public void onAnimationEnd(Animator animation) {
                 state.animator = null;
                 resetStackDismissVisuals(state);
-                LauncherRecentsPerf.endSpan("dismissTask", state.recentsView);
+                LauncherRecentsPerf.finishSession(
+                        "dismissTask",
+                        state.recentsView,
+                        showMenu ? "success" : "cancel");
             }
         });
         animator.start();
@@ -1653,13 +1685,9 @@ final class LauncherRecentsTouchController {
         state.animator = animator;
         animator.setDuration(stackDismissSuccessAnimMs(state.recentsView));
         animator.setInterpolator(new DecelerateInterpolator(1.7f));
-        animator.addUpdateListener(animation -> LauncherRecentsPerf.measure(
-                "frameCost:dismissSuccess",
-                state.recentsView,
-                () -> {
+        animator.addUpdateListener(animation -> {
             float value = (Float) animation.getAnimatedValue();
             state.currentDismissTranslation = value;
-            LauncherRecentsPerf.hit("animationFrame:dismissSuccess", state.recentsView);
             applyStackDismissProgress(state, value);
             applyStackDismissRelayoutProgress(
                     state,
@@ -1670,7 +1698,7 @@ final class LauncherRecentsTouchController {
                                     animation.getAnimatedFraction(),
                                     0f,
                                     1f)));
-        }));
+        });
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
@@ -1691,7 +1719,10 @@ final class LauncherRecentsTouchController {
                 state.recentsView,
                 null,
                 "dismissed=" + dismissed + " " + taskDetails(state.recentsView, state.taskView));
-        LauncherRecentsPerf.endSpan("dismissTask", state.recentsView);
+        LauncherRecentsPerf.finishSession(
+                "dismissTask",
+                state.recentsView,
+                dismissed ? "success" : "abort");
         if (!dismissed) {
             resetStackDismissVisuals(state);
         }
@@ -1706,13 +1737,9 @@ final class LauncherRecentsTouchController {
         state.animator = animator;
         animator.setDuration(stackDismissCancelAnimMs(state.recentsView));
         animator.setInterpolator(new OvershootInterpolator(0.85f));
-        animator.addUpdateListener(animation -> LauncherRecentsPerf.measure(
-                "frameCost:dismissCancel",
-                state.recentsView,
-                () -> {
+        animator.addUpdateListener(animation -> {
             float value = (Float) animation.getAnimatedValue();
             state.currentDismissTranslation = value;
-            LauncherRecentsPerf.hit("animationFrame:dismissCancel", state.recentsView);
             applyStackDismissProgress(state, value);
             applyStackDismissRelayoutProgress(
                     state,
@@ -1723,7 +1750,7 @@ final class LauncherRecentsTouchController {
                                     animation.getAnimatedFraction(),
                                     0f,
                                     1f)));
-        }));
+        });
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
@@ -1732,7 +1759,7 @@ final class LauncherRecentsTouchController {
                         state.recentsView, null, taskDetails(state.recentsView, state.taskView));
                 applyStackDismissRelayoutProgress(state, 0f);
                 resetStackDismissVisuals(state);
-                LauncherRecentsPerf.endSpan("dismissTask", state.recentsView);
+                LauncherRecentsPerf.finishSession("dismissTask", state.recentsView, "cancel");
             }
         });
         animator.start();
@@ -2036,6 +2063,9 @@ final class LauncherRecentsTouchController {
         StackDismissGestureState state = STACK_DISMISS_GESTURES.remove(recentsView);
         if (state == null) {
             return;
+        }
+        if (state.dragging) {
+            LauncherRecentsPerf.finishSession("dismissTask", recentsView, "abort");
         }
         requestParentDisallowIntercept(recentsView, false);
         state.recycleVelocityTracker();
@@ -2680,7 +2710,6 @@ final class LauncherRecentsTouchController {
         LauncherRecentsState.setOverviewStateStackSettled(recentsView, false);
         LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
         LauncherRecentsState.setLastStackLayoutActiveIndices(recentsView, null);
-        LauncherRecentsState.LAST_STACK_LAYOUT_COMPUTED_PACKAGES.remove(recentsView);
         recentsView.requestLayout();
         recentsView.invalidate();
         LauncherRecentsCompat.invokeCompat(
@@ -2741,7 +2770,6 @@ final class LauncherRecentsTouchController {
         LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
         LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
         LauncherRecentsState.setLastStackLayoutActiveIndices(recentsView, null);
-        LauncherRecentsState.LAST_STACK_LAYOUT_COMPUTED_PACKAGES.remove(recentsView);
         recentsView.invalidate();
     }
 

@@ -117,7 +117,7 @@ final class LauncherRecentsLaunchController {
                     }
                     if (visibility != View.VISIBLE
                             && LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
-                        clearTaskLaunchTransitionGeometry(recentsView, false);
+                        clearTaskLaunchTransitionGeometry(recentsView, false, "success");
                     }
                 }
                 return result;
@@ -274,20 +274,25 @@ final class LauncherRecentsLaunchController {
                             recentsView,
                             taskLaunchDetails(recentsView, taskView, preparedTransitionGeometry));
                     if (preparedTransitionGeometry) {
-                        LauncherRecentsPerf.startSpan("taskLaunch", recentsView);
+                        LauncherRecentsPerf.beginSession("taskLaunch", recentsView);
                         prepareTaskLaunchTransitionGeometry(recentsView, taskView);
                     }
-                    long nativeStartNs = LauncherRecentsPerf.start(recentsView);
+                    long nativeStartNs = preparedTransitionGeometry
+                            ? LauncherRecentsPerf.start(recentsView)
+                            : 0L;
                     Object result;
                     try {
                         result = chain.proceed();
                     } finally {
-                        LauncherRecentsPerf.end("native:taskClick", nativeStartNs);
+                        LauncherRecentsPerf.end(
+                                "native:taskClick",
+                                recentsView,
+                                nativeStartNs);
                     }
                     if (preparedTransitionGeometry
                             && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
                         LauncherRecentsPerf.flow("launch:click:clearUnfrozen", recentsView);
-                        clearTaskLaunchTransitionGeometry(recentsView, false);
+                        clearTaskLaunchTransitionGeometry(recentsView, false, "abort");
                     }
                     return result;
                 }
@@ -310,10 +315,11 @@ final class LauncherRecentsLaunchController {
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
                 View recentsView = null;
+                boolean stackLaunch = false;
                 if (thisObject instanceof View) {
                     View taskView = (View) thisObject;
                     recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
-                    boolean stackLaunch = LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                    stackLaunch = LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
                             && !LauncherRecentsCompat.isDesktopTask(taskView);
                     LauncherRecentsPerf.flow("launch:withAnimation:start",
                             recentsView,
@@ -322,18 +328,23 @@ final class LauncherRecentsLaunchController {
                                     taskView,
                                     stackLaunch));
                     if (stackLaunch) {
-                        LauncherRecentsPerf.startSpan("taskLaunch", recentsView);
+                        LauncherRecentsPerf.beginSession("taskLaunch", recentsView);
                         LauncherRecentsState.setTaskLaunchRequestStarted(recentsView, true);
                         prepareTaskLaunchTransitionGeometry(recentsView, taskView);
                         freezeTaskLaunchTransitionGeometryIfNeeded(recentsView, taskView);
                     }
                 }
-                long nativeStartNs = LauncherRecentsPerf.start(recentsView);
+                long nativeStartNs = stackLaunch
+                        ? LauncherRecentsPerf.start(recentsView)
+                        : 0L;
                 Object result;
                 try {
                     result = chain.proceed();
                 } finally {
-                    LauncherRecentsPerf.end("native:launchWithAnimation", nativeStartNs);
+                    LauncherRecentsPerf.end(
+                            "native:launchWithAnimation",
+                            recentsView,
+                            nativeStartNs);
                 }
                 if (recentsView != null
                         && LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
@@ -1271,7 +1282,10 @@ final class LauncherRecentsLaunchController {
     }
 
     private static void attachTaskLaunchCleanup(View recentsView, Object launchResult) {
-        Runnable cleanup = () -> clearTaskLaunchTransitionGeometry(recentsView, true);
+        Runnable cleanup = () -> clearTaskLaunchTransitionGeometry(
+                recentsView,
+                true,
+                "success");
         if (launchResult == null) {
             cleanup.run();
             return;
@@ -1287,11 +1301,14 @@ final class LauncherRecentsLaunchController {
 
     static void clearTaskLaunchFrozenForNewGesture(View recentsView) {
         if (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
-            clearTaskLaunchTransitionGeometry(recentsView, false);
+            clearTaskLaunchTransitionGeometry(recentsView, false, "abort");
         }
     }
 
-    static void clearTaskLaunchTransitionGeometry(View recentsView, boolean restoreStack) {
+    static void clearTaskLaunchTransitionGeometry(
+            View recentsView,
+            boolean restoreStack,
+            String result) {
         if (recentsView == null) {
             return;
         }
@@ -1299,7 +1316,7 @@ final class LauncherRecentsLaunchController {
                 recentsView,
                 "restoreStack=" + restoreStack
                         + " frozen=" + LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView));
-        LauncherRecentsPerf.endSpan("taskLaunch", recentsView);
+        LauncherRecentsPerf.finishSession("taskLaunch", recentsView, result);
         LauncherRecentsState.setTaskLaunchRequestStarted(recentsView, false);
         LauncherRecentsState.clearActiveTaskLaunchTransitionGeometry(recentsView);
         LauncherRecentsState.clearPositionOwner(
@@ -1324,7 +1341,7 @@ final class LauncherRecentsLaunchController {
         }
         LauncherRecentsFrameRateController.releaseNow(recentsView);
         if (LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {
-            clearTaskLaunchTransitionGeometry(recentsView, false);
+            clearTaskLaunchTransitionGeometry(recentsView, false, "abort");
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         for (int i = 0; i < taskViewCount; i++) {

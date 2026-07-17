@@ -977,17 +977,10 @@ final class LauncherRecentsTaskVisuals {
                 && Math.abs(lastAppliedBlurPx - appliedBlurPx) < MODULE_APPLIED_EPSILON) {
             return;
         }
-        long renderStartNs = LauncherRecentsPerf.start(view);
-        try {
-            if (appliedBlurPx == 0f) {
-                view.setRenderEffect(null);
-            } else {
-                view.setRenderEffect(resolveStackContentBlurEffect(view, appliedBlurPx));
-            }
-        } finally {
-            LauncherRecentsPerf.end(
-                    appliedBlurPx == 0f ? "blur:clearRenderEffect" : "blur:setRenderEffect",
-                    renderStartNs);
+        if (appliedBlurPx == 0f) {
+            view.setRenderEffect(null);
+        } else {
+            view.setRenderEffect(resolveStackContentBlurEffect(view, appliedBlurPx));
         }
         LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.put(view, appliedBlurPx);
     }

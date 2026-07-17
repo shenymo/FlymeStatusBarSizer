@@ -2,28 +2,42 @@ package com.example.flymestatusbarsizer.feature.launcher;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
+import android.app.Activity;
+import android.content.Context;
+import android.content.ContextWrapper;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
+import android.view.Display;
+import android.view.FrameMetrics;
 import android.view.View;
+import android.view.Window;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.WeakHashMap;
 
 final class LauncherRecentsPerf {
     private static final String TAG = "FSBS-RecentsPerf";
     private static final String FLOW_TAG = "FSBS-RecentsFlow";
-    private static final long REPORT_WINDOW_NS = 1_000_000_000L;
     private static final long SLOW_CALL_NS = 4_000_000L;
+    private static final long FINISH_TIMEOUT_MS = 100L;
 
-    private static final HashMap<String, Stats> STATS = new HashMap<>();
-    private static final HashMap<String, WeakHashMap<View, Long>> SPANS = new HashMap<>();
-    private static final ThreadLocal<View> CURRENT_VIEW = new ThreadLocal<>();
+    private static final WeakHashMap<View, ViewState> VIEW_STATES = new WeakHashMap<>();
 
     private LauncherRecentsPerf() {
     }
 
     static boolean enabled(View view) {
-        return FlymeStatusBarSizer.isLauncherRecentsPerfLoggingEnabled(
-                view != null ? view.getContext() : null);
+        if (view == null) {
+            return false;
+        }
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
+                FlymeStatusBarSizer.loadLauncherRecentsConfig(view.getContext());
+        return config != null
+                && config.launcherIosStackRecentsEnabled
+                && config.launcherRecentsPerfLoggingEnabled;
     }
 
     static boolean flowEnabled(View view) {
@@ -31,91 +45,102 @@ final class LauncherRecentsPerf {
                 view != null ? view.getContext() : null);
     }
 
-    static long start(View view) {
-        if (!enabled(view)) {
-            return 0L;
+    static void beginSession(String name, View view) {
+        View recentsView = resolveRecentsView(view);
+        if (!enabled(recentsView)
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+            return;
         }
-        CURRENT_VIEW.set(view);
-        return System.nanoTime();
+        ViewState state = VIEW_STATES.get(recentsView);
+        if (state == null) {
+            state = new ViewState(recentsView);
+            VIEW_STATES.put(recentsView, state);
+        }
+        Session old = state.sessions.get(name);
+        if (old != null && !old.ending) {
+            return;
+        }
+        old = state.sessions.remove(name);
+        if (old != null) {
+            cancelCallbacks(recentsView, old);
+            reportSession(state, old, old.result != null ? old.result : "abort");
+        }
+        Session session = new Session(name, recentsView);
+        state.sessions.put(name, session);
+        ensureFrameMetrics(state);
     }
 
-    static long end(String name, long startNs) {
+    static void finishSession(String name, View view, String result) {
+        View recentsView = resolveRecentsView(view);
+        ViewState state = VIEW_STATES.get(recentsView);
+        Session session = state != null ? state.sessions.get(name) : null;
+        if (session == null || session.ending) {
+            return;
+        }
+        session.ending = true;
+        session.result = result;
+        session.endNs = System.nanoTime();
+        if (state.window == null) {
+            finishSessionNow(state, name);
+            return;
+        }
+        session.finishFallback = () -> finishSessionNow(state, name);
+        if (!recentsView.postDelayed(session.finishFallback, FINISH_TIMEOUT_MS)) {
+            finishSessionNow(state, name);
+        }
+    }
+
+    static void pulseSession(String name, View view, long idleMs) {
+        View recentsView = resolveRecentsView(view);
+        if (!enabled(recentsView)
+                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+            return;
+        }
+        ViewState state = VIEW_STATES.get(recentsView);
+        Session session = state != null ? state.sessions.get(name) : null;
+        if (session == null || session.ending) {
+            beginSession(name, recentsView);
+            state = VIEW_STATES.get(recentsView);
+            session = state != null ? state.sessions.get(name) : null;
+        }
+        if (session == null) {
+            return;
+        }
+        if (session.pulseFinish != null) {
+            recentsView.removeCallbacks(session.pulseFinish);
+        }
+        Session current = session;
+        current.pulseFinish = () -> finishSession(name, recentsView, "success");
+        if (!recentsView.postDelayed(current.pulseFinish, idleMs)) {
+            finishSession(name, recentsView, "success");
+        }
+    }
+
+    static long start(View view) {
+        View recentsView = resolveRecentsView(view);
+        if (!enabled(recentsView)) {
+            return 0L;
+        }
+        return VIEW_STATES.containsKey(recentsView)
+                || LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                ? System.nanoTime()
+                : 0L;
+    }
+
+    static long end(String name, View view, long startNs) {
         if (startNs == 0L) {
             return 0L;
         }
-        long nowNs = System.nanoTime();
-        long costNs = nowNs - startNs;
-        Stats stats = STATS.get(name);
-        if (stats == null) {
-            stats = new Stats(nowNs);
-            STATS.put(name, stats);
-        }
-        stats.count++;
-        stats.totalNs += costNs;
-        stats.maxNs = Math.max(stats.maxNs, costNs);
+        long costNs = System.nanoTime() - startNs;
+        View recentsView = resolveRecentsView(view);
+        recordCall(recentsView, name, costNs);
         if (costNs > SLOW_CALL_NS) {
-            stats.slowCount++;
+            Log.i(TAG, "slow name=" + name
+                    + stateSuffix(recentsView)
+                    + " taskCount=" + taskCount(recentsView)
+                    + " costMs=" + ms(costNs));
         }
-        if (nowNs - stats.windowStartNs < REPORT_WINDOW_NS || stats.count == 0) {
-            return costNs;
-        }
-        View view = CURRENT_VIEW.get();
-        Log.i(TAG, name
-                + stateSuffix(view)
-                + " taskCount=" + taskCount(view)
-                + " count=" + stats.count
-                + " avgMs=" + (stats.totalNs / stats.count / 1_000_000f)
-                + " maxMs=" + (stats.maxNs / 1_000_000f)
-                + " slow4ms=" + stats.slowCount);
-        stats.windowStartNs = nowNs;
-        stats.totalNs = 0L;
-        stats.maxNs = 0L;
-        stats.count = 0;
-        stats.slowCount = 0;
         return costNs;
-    }
-
-    static void startSpan(String name, View view) {
-        if (!enabled(view) || view == null) {
-            return;
-        }
-        WeakHashMap<View, Long> spans = SPANS.get(name);
-        if (spans == null) {
-            spans = new WeakHashMap<>();
-            SPANS.put(name, spans);
-        }
-        CURRENT_VIEW.set(view);
-        if (!spans.containsKey(view)) {
-            spans.put(view, System.nanoTime());
-        }
-    }
-
-    static long endSpan(String name, View view) {
-        if (!enabled(view) || view == null) {
-            return 0L;
-        }
-        WeakHashMap<View, Long> spans = SPANS.get(name);
-        if (spans == null) {
-            return 0L;
-        }
-        Long startNs = spans.remove(view);
-        if (startNs == null) {
-            return 0L;
-        }
-        CURRENT_VIEW.set(view);
-        return end("flowTotal:" + name, startNs);
-    }
-
-    static void clearView(View view) {
-        if (view == null) {
-            return;
-        }
-        for (WeakHashMap<View, Long> spans : SPANS.values()) {
-            spans.remove(view);
-        }
-        if (CURRENT_VIEW.get() == view) {
-            CURRENT_VIEW.remove();
-        }
     }
 
     static void measure(String name, View view, Runnable runnable) {
@@ -123,55 +148,25 @@ final class LauncherRecentsPerf {
         try {
             runnable.run();
         } finally {
-            end(name, startNs);
+            end(name, view, startNs);
         }
     }
 
-    static boolean isSlowCall(long costNs) {
-        return costNs > SLOW_CALL_NS;
-    }
-
-    static void logSlowCall(String name, View view, long costNs, String details) {
-        if (!enabled(view) || !isSlowCall(costNs)) {
+    static void clearView(View view) {
+        ViewState state = VIEW_STATES.remove(view);
+        if (state == null) {
             return;
         }
-        Log.i(TAG, name
-                + stateSuffix(view)
-                + " taskCount=" + taskCount(view)
-                + " costMs=" + (costNs / 1_000_000f)
-                + (details != null && !details.isEmpty() ? " " + details : ""));
-    }
-
-    static void logLayoutComputeDetail(
-            String name,
-            View view,
-            long costNs,
-            int computedTaskCount,
-            boolean applied) {
-        if (costNs == 0L || !enabled(view)) {
-            return;
+        ArrayList<Session> sessions = new ArrayList<>(state.sessions.values());
+        state.sessions.clear();
+        for (Session session : sessions) {
+            cancelCallbacks(state.view, session);
+            reportSession(
+                    state,
+                    session,
+                    session.result != null ? session.result : "abort");
         }
-        String computedPackages = LauncherRecentsState.LAST_STACK_LAYOUT_COMPUTED_PACKAGES.get(view);
-        Log.i(TAG, name
-                + stateSuffix(view)
-                + " taskCount=" + taskCount(view)
-                + " costMs=" + (costNs / 1_000_000f)
-                + " computedTaskCount=" + computedTaskCount
-                + " applied=" + applied
-                + (computedPackages != null ? " computedPackages=" + computedPackages : ""));
-    }
-
-    static void hit(String name) {
-        long startNs = System.nanoTime();
-        end(name, startNs);
-    }
-
-    static void hit(String name, View view) {
-        if (!enabled(view)) {
-            return;
-        }
-        long startNs = start(view);
-        end(name, startNs);
+        removeFrameMetrics(state);
     }
 
     static void flow(String name, View view) {
@@ -179,7 +174,10 @@ final class LauncherRecentsPerf {
     }
 
     static void flow(String name, View view, String details) {
-        if (!flowEnabled(view)) {
+        if (name.startsWith("layout:")
+                || name.endsWith(":frame")
+                || name.contains("movingBlankTapHome")
+                || !flowEnabled(view)) {
             return;
         }
         Log.i(FLOW_TAG, name
@@ -199,6 +197,192 @@ final class LauncherRecentsPerf {
                 + (details != null && !details.isEmpty() ? " " + details : ""));
     }
 
+    private static void ensureFrameMetrics(ViewState state) {
+        if (state.window != null) {
+            return;
+        }
+        Window window = resolveWindow(state.view);
+        if (window == null) {
+            return;
+        }
+        Handler handler = new Handler(Looper.getMainLooper());
+        Window.OnFrameMetricsAvailableListener listener =
+                (target, metrics, dropped) -> recordFrame(state, metrics);
+        try {
+            window.addOnFrameMetricsAvailableListener(listener, handler);
+            state.window = window;
+            state.frameListener = listener;
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void recordFrame(ViewState state, FrameMetrics metrics) {
+        long totalNs = metrics.getMetric(FrameMetrics.TOTAL_DURATION);
+        if (totalNs <= 0L) {
+            return;
+        }
+        float refreshRate = refreshRate(state.view);
+        long budgetNs = Math.max(1L, Math.round(1_000_000_000d / refreshRate));
+        ArrayList<String> finished = new ArrayList<>();
+        for (Map.Entry<String, Session> entry : state.sessions.entrySet()) {
+            Session session = entry.getValue();
+            session.frameMetricsAvailable = true;
+            session.refreshRate = refreshRate;
+            session.frameCount++;
+            session.totalFrameNs += totalNs;
+            session.maxFrameNs = Math.max(session.maxFrameNs, totalNs);
+            if (totalNs > budgetNs * 1.5d) {
+                session.jankFrames++;
+            }
+            if (totalNs > budgetNs * 3d) {
+                session.severeJankFrames++;
+            }
+            if (session.ending) {
+                finished.add(entry.getKey());
+            }
+        }
+        for (String name : finished) {
+            finishSessionNow(state, name);
+        }
+    }
+
+    private static void finishSessionNow(ViewState state, String name) {
+        if (state == null) {
+            return;
+        }
+        Session session = state.sessions.remove(name);
+        if (session == null) {
+            return;
+        }
+        cancelCallbacks(state.view, session);
+        reportSession(state, session, session.result != null ? session.result : "success");
+        if (state.sessions.isEmpty()) {
+            removeFrameMetrics(state);
+            VIEW_STATES.remove(state.view);
+        }
+    }
+
+    private static void reportSession(ViewState state, Session session, String result) {
+        long endNs = session.endNs != 0L ? session.endNs : System.nanoTime();
+        float avgFrameMs = session.frameCount > 0
+                ? ms(session.totalFrameNs / session.frameCount)
+                : 0f;
+        float jankRate = session.frameCount > 0
+                ? session.jankFrames * 100f / session.frameCount
+                : 0f;
+        Log.i(TAG, "session=" + session.name
+                + " result=" + result
+                + " durationMs=" + ms(endNs - session.startNs)
+                + " refreshHz=" + session.refreshRate
+                + " frames=" + session.frameCount
+                + " jank=" + session.jankFrames
+                + " severe=" + session.severeJankFrames
+                + " jankRate=" + jankRate
+                + " avgFrameMs=" + avgFrameMs
+                + " maxFrameMs=" + ms(session.maxFrameNs)
+                + " frameMetrics=" + (session.frameMetricsAvailable ? "available" : "unavailable")
+                + formatCalls(" layout", session.layout)
+                + formatCalls(" blur", session.blur)
+                + formatCalls(" native", session.nativeCalls)
+                + formatCalls(" module", session.module)
+                + " taskCountStart=" + session.taskCountStart
+                + " taskCountEnd=" + taskCount(state.view));
+    }
+
+    private static String formatCalls(String prefix, CallStats stats) {
+        if (stats.count == 0) {
+            return prefix + "Count=0";
+        }
+        return prefix + "Count=" + stats.count
+                + prefix + "AvgMs=" + ms(stats.totalNs / stats.count)
+                + prefix + "MaxMs=" + ms(stats.maxNs);
+    }
+
+    private static void recordCall(View recentsView, String name, long costNs) {
+        ViewState state = VIEW_STATES.get(recentsView);
+        if (state == null) {
+            return;
+        }
+        for (Session session : state.sessions.values()) {
+            CallStats stats = callStats(session, name);
+            stats.count++;
+            stats.totalNs += costNs;
+            stats.maxNs = Math.max(stats.maxNs, costNs);
+        }
+    }
+
+    private static CallStats callStats(Session session, String name) {
+        if (name.startsWith("layout") || name.startsWith("applyStackLayout")) {
+            return session.layout;
+        }
+        if (name.startsWith("blur")) {
+            return session.blur;
+        }
+        if (name.startsWith("native")) {
+            return session.nativeCalls;
+        }
+        return session.module;
+    }
+
+    private static void cancelCallbacks(View view, Session session) {
+        if (session.finishFallback != null) {
+            view.removeCallbacks(session.finishFallback);
+        }
+        if (session.pulseFinish != null) {
+            view.removeCallbacks(session.pulseFinish);
+        }
+    }
+
+    private static void removeFrameMetrics(ViewState state) {
+        if (state.window == null || state.frameListener == null) {
+            return;
+        }
+        try {
+            state.window.removeOnFrameMetricsAvailableListener(state.frameListener);
+        } catch (Throwable ignored) {
+        }
+        state.window = null;
+        state.frameListener = null;
+    }
+
+    private static Window resolveWindow(View view) {
+        Context context = view != null ? view.getContext() : null;
+        while (context instanceof ContextWrapper) {
+            if (context instanceof Activity) {
+                return ((Activity) context).getWindow();
+            }
+            Context base = ((ContextWrapper) context).getBaseContext();
+            if (base == context) {
+                break;
+            }
+            context = base;
+        }
+        Object container = LauncherRecentsCompat.getFieldCompat(view, "mContainer");
+        if (container instanceof Activity) {
+            return ((Activity) container).getWindow();
+        }
+        Object window = LauncherRecentsCompat.invokeCompat(container, "getWindow");
+        return window instanceof Window ? (Window) window : null;
+    }
+
+    private static View resolveRecentsView(View view) {
+        if (view == null) {
+            return null;
+        }
+        View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(view);
+        return recentsView != null ? recentsView : view;
+    }
+
+    private static float refreshRate(View view) {
+        Display display = view != null ? view.getDisplay() : null;
+        float refreshRate = display != null ? display.getRefreshRate() : 60f;
+        return refreshRate > 0f ? refreshRate : 60f;
+    }
+
+    private static float ms(long valueNs) {
+        return valueNs / 1_000_000f;
+    }
+
     private static String stateSuffix(View view) {
         return " phase=" + phase(view) + " launcherState=" + launcherState(view);
     }
@@ -212,14 +396,7 @@ final class LauncherRecentsPerf {
     }
 
     private static int taskCount(View view) {
-        int count = LauncherRecentsCompat.invokeInt(view, "getTaskViewCount", 0);
-        if (count > 0) {
-            return count;
-        }
-        View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(view);
-        return recentsView != view
-                ? LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0)
-                : count;
+        return LauncherRecentsCompat.invokeInt(resolveRecentsView(view), "getTaskViewCount", 0);
     }
 
     private static int primaryScroll(View view) {
@@ -233,10 +410,7 @@ final class LauncherRecentsPerf {
                 "getPrimaryScroll",
                 new Class<?>[]{View.class},
                 view);
-        if (value instanceof Integer) {
-            return (Integer) value;
-        }
-        return view.getScrollX();
+        return value instanceof Integer ? (Integer) value : view.getScrollX();
     }
 
     private static String phase(View view) {
@@ -267,10 +441,7 @@ final class LauncherRecentsPerf {
                 || LauncherRecentsStateAnimationController.isOverviewPeekStockAnimationActive(view)) {
             return "stackStateAnim";
         }
-        if (view.isShown()) {
-            return "stackIdle";
-        }
-        return "normal";
+        return view.isShown() ? "stackIdle" : "normal";
     }
 
     private static String launcherState(View view) {
@@ -279,15 +450,48 @@ final class LauncherRecentsPerf {
         return state != null ? String.valueOf(state) : "unknown";
     }
 
-    private static final class Stats {
-        long windowStartNs;
+    private static final class ViewState {
+        final View view;
+        final HashMap<String, Session> sessions = new HashMap<>();
+        Window window;
+        Window.OnFrameMetricsAvailableListener frameListener;
+
+        ViewState(View view) {
+            this.view = view;
+        }
+    }
+
+    private static final class Session {
+        final String name;
+        final long startNs = System.nanoTime();
+        final int taskCountStart;
+        final CallStats layout = new CallStats();
+        final CallStats blur = new CallStats();
+        final CallStats nativeCalls = new CallStats();
+        final CallStats module = new CallStats();
+        long endNs;
+        long totalFrameNs;
+        long maxFrameNs;
+        int frameCount;
+        int jankFrames;
+        int severeJankFrames;
+        float refreshRate;
+        boolean frameMetricsAvailable;
+        boolean ending;
+        String result;
+        Runnable finishFallback;
+        Runnable pulseFinish;
+
+        Session(String name, View view) {
+            this.name = name;
+            taskCountStart = taskCount(view);
+            refreshRate = LauncherRecentsPerf.refreshRate(view);
+        }
+    }
+
+    private static final class CallStats {
         long totalNs;
         long maxNs;
         int count;
-        int slowCount;
-
-        Stats(long windowStartNs) {
-            this.windowStartNs = windowStartNs;
-        }
     }
 }

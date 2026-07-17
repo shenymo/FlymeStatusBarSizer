@@ -38,8 +38,6 @@ final class LauncherRecentsState {
     // Stack layout cache.
     static final WeakHashMap<View, PrepareRecentsViewState> PREPARE_RECENTS_VIEW_STATES =
             new WeakHashMap<>();
-    static final WeakHashMap<View, String> LAST_STACK_LAYOUT_COMPUTED_PACKAGES =
-            new WeakHashMap<>();
     static final WeakHashMap<View, Integer> LAST_STACK_STOCK_CAPTURE_TASK_COUNTS =
             new WeakHashMap<>();
 
@@ -906,7 +904,6 @@ final class LauncherRecentsState {
         cancelAndRemove(ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS, recentsView);
         RECENTS_VIEW_STATES.remove(recentsView);
         PREPARE_RECENTS_VIEW_STATES.remove(recentsView);
-        LAST_STACK_LAYOUT_COMPUTED_PACKAGES.remove(recentsView);
         LAST_STACK_STOCK_CAPTURE_TASK_COUNTS.remove(recentsView);
     }
 
