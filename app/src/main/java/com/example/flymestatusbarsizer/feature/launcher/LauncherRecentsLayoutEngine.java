@@ -1586,7 +1586,7 @@ final class LauncherRecentsLayoutEngine {
             }
             return applied;
         }
-        return scheduleStackLayoutBeforeDraw(
+        return scheduleStackLayout(
                 recentsView,
                 shouldCaptureStockTaskStatesForStackApply(recentsView),
                 "onScrollChangedSync",
@@ -1648,14 +1648,6 @@ final class LauncherRecentsLayoutEngine {
             recentsView.postOnAnimation(() -> runScheduledStackLayout(recentsView));
         }
         return true;
-    }
-
-    private static boolean scheduleStackLayoutBeforeDraw(
-            View recentsView,
-            boolean captureStockState,
-            String source,
-            boolean dynamicOnly) {
-        return scheduleStackLayout(recentsView, captureStockState, source, dynamicOnly);
     }
 
     private static void scheduleStackLayoutFromHook(

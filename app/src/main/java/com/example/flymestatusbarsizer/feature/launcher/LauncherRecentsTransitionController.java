@@ -185,10 +185,13 @@ final class LauncherRecentsTransitionController {
                             recentsView,
                             nativeStartNs);
                 }
-                if (thisObject instanceof View) {
+                if (stackLayout) {
                     LauncherRecentsPerf.flow("enter:switchToScreenshot", recentsView);
                     LauncherRecentsState.trackRecentsView(recentsView);
-                    LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+                    LauncherRecentsLayoutEngine.requestStackLayout(
+                            recentsView,
+                            "switchToScreenshot",
+                            true);
                 }
                 return result;
             });
