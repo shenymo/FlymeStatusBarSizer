@@ -13,6 +13,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 
 final class LauncherRecentsLayoutEngine {
     private static final String LAUNCHER_STATE_CLASS = "com.android.launcher3.LauncherState";
@@ -1122,6 +1123,17 @@ final class LauncherRecentsLayoutEngine {
                 state.exitVisibleOffset = state.centerVisibleOffset - exitTravelPx;
             }
         }
+        for (int i = 0; i < taskViewCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null
+                    || LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.containsKey(taskView)) {
+                continue;
+            }
+            hideLightStackTask(taskView);
+            if (LauncherRecentsState.STACK_CONTENT_TARGETS.containsKey(taskView)) {
+                LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
+            }
+        }
     }
 
     static void captureBlankTapHomeExitRecentsState(View recentsView) {
@@ -1155,20 +1167,12 @@ final class LauncherRecentsLayoutEngine {
         }
         float clampedProgress = clamp(progress, 0f, 1f);
         applyBlankTapHomeExitRecentsFrame(recentsView, clampedProgress);
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         float pathProgress = smoothStep(clampedProgress);
-        for (int i = 0; i < taskViewCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView == null) {
-                continue;
-            }
-            LauncherRecentsState.BlankTapHomeExitTaskState state =
-                    LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.get(taskView);
-            if (state == null) {
-                hideLightStackTask(taskView);
-                if (LauncherRecentsState.STACK_CONTENT_TARGETS.containsKey(taskView)) {
-                    LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
-                }
+        for (Map.Entry<View, LauncherRecentsState.BlankTapHomeExitTaskState> entry
+                : LauncherRecentsState.BLANK_TAP_HOME_EXIT_TASK_STATES.entrySet()) {
+            View taskView = entry.getKey();
+            LauncherRecentsState.BlankTapHomeExitTaskState state = entry.getValue();
+            if (taskView == null || state == null || taskView.getParent() == null) {
                 continue;
             }
             float desiredVisibleOffset = state.startVisibleOffset;
@@ -1198,24 +1202,15 @@ final class LauncherRecentsLayoutEngine {
             float taskOffsetY = state.primaryScrollHorizontal
                     ? state.startTaskOffsetY
                     : taskOffsetPrimary;
-            LauncherRecentsTaskVisuals.applyStackTaskVisualState(
+            LauncherRecentsTaskVisuals.applyStackTaskExitAnimationFrame(
                     taskView,
-                    new LauncherRecentsTaskVisuals.StackTaskVisualState(
-                            state.taskWidth * 0.5f,
-                            state.taskHeight * 0.5f,
-                            horizontalOffsetX,
-                            taskOffsetX,
-                            taskOffsetY,
-                            state.startBoxTranslationY,
-                            desiredScale,
-                            desiredAttachAlpha,
-                            desiredStableAlpha,
-                            state.startActivityTitleAlpha * exitAlpha,
-                            state.startStackContentBlurProgress,
-                            state.startFullscreenProgress,
-                            state.startTranslationZ,
-                            true,
-                            false));
+                    horizontalOffsetX,
+                    taskOffsetX,
+                    taskOffsetY,
+                    desiredScale,
+                    desiredAttachAlpha,
+                    desiredStableAlpha,
+                    state.startActivityTitleAlpha * exitAlpha);
         }
     }
 
@@ -1313,9 +1308,11 @@ final class LauncherRecentsLayoutEngine {
                 continue;
             }
             ensureStackTaskViewVisible(taskView);
-            LauncherRecentsTaskVisuals.applyStackTaskEntryVisualState(
+            LauncherRecentsTaskVisuals.applyStackTaskEntryAnimationFrame(
                     taskView,
-                    state.startVisualState.lerpTo(state.targetVisualState, progress));
+                    state.startVisualState,
+                    state.targetVisualState,
+                    progress);
             appliedCount++;
         }
         return appliedCount == expectedCount;

@@ -196,6 +196,69 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.put(taskView, state);
     }
 
+    static void applyStackTaskEntryAnimationFrame(
+            View taskView,
+            StackTaskVisualState start,
+            StackTaskVisualState target,
+            float progress) {
+        if (taskView == null || start == null || target == null) {
+            return;
+        }
+        float value = LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f);
+        if (!approximatelyEqual(taskView.getPivotX(), target.pivotX)) {
+            taskView.setPivotX(target.pivotX);
+        }
+        if (!approximatelyEqual(taskView.getPivotY(), target.pivotY)) {
+            taskView.setPivotY(target.pivotY);
+        }
+        setHorizontalOffsetTranslationX(taskView, LauncherRecentsLayoutEngine.lerp(
+                start.horizontalOffsetX, target.horizontalOffsetX, value));
+        setTaskOffsetTranslationX(taskView, LauncherRecentsLayoutEngine.lerp(
+                start.taskOffsetX, target.taskOffsetX, value));
+        setTaskOffsetTranslationY(taskView, LauncherRecentsLayoutEngine.lerp(
+                start.taskOffsetY, target.taskOffsetY, value));
+        setBoxTranslationY(taskView, LauncherRecentsLayoutEngine.lerp(
+                start.boxTranslationY, target.boxTranslationY, value));
+        setNonGridScale(taskView, LauncherRecentsLayoutEngine.lerp(
+                start.scale, target.scale, value));
+        setAttachAlpha(taskView, LauncherRecentsLayoutEngine.lerp(
+                start.attachAlpha, target.attachAlpha, value));
+        setStableAlpha(taskView, LauncherRecentsLayoutEngine.lerp(
+                start.stableAlpha, target.stableAlpha, value));
+        setTranslationZ(taskView, LauncherRecentsLayoutEngine.lerp(
+                start.translationZ, target.translationZ, value));
+        if (target.stackContentBlurEnabled) {
+            setStackContentBlurProgress(taskView, LauncherRecentsLayoutEngine.lerp(
+                    start.blurProgress, target.blurProgress, value));
+        } else {
+            clearStackContentBlurIfApplied(taskView);
+        }
+        if (value >= 1f) {
+            LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.put(taskView, target);
+        }
+    }
+
+    static void applyStackTaskExitAnimationFrame(
+            View taskView,
+            float horizontalOffsetX,
+            float taskOffsetX,
+            float taskOffsetY,
+            float scale,
+            float attachAlpha,
+            float stableAlpha,
+            float activityTitleAlpha) {
+        if (taskView == null) {
+            return;
+        }
+        setHorizontalOffsetTranslationX(taskView, horizontalOffsetX);
+        setTaskOffsetTranslationX(taskView, taskOffsetX);
+        setTaskOffsetTranslationY(taskView, taskOffsetY);
+        setNonGridScale(taskView, scale);
+        setAttachAlpha(taskView, attachAlpha);
+        setStableAlpha(taskView, stableAlpha);
+        setTaskHeadContentAlpha(taskView, activityTitleAlpha);
+    }
+
     private static boolean isCurrentStackTaskVisualStateApplied(
             View taskView,
             StackTaskVisualState state) {
