@@ -2095,19 +2095,12 @@ final class LauncherRecentsLayoutEngine {
             lightAnchorIndex = Math.min(taskViewCount - 1, desktopEntryAnchorIndex(recentsView));
         }
         boolean primaryScrollHorizontal = isPrimaryScrollHorizontal(recentsView);
-        boolean seascapeEntryWindow = entryLightWindow
-                && !stableFillWindow
-                && fillBoundaryTargetCount > 0
-                && runningTaskChildIndex >= 0
-                && !primaryScrollHorizontal
-                && isSeascapeOrientation(recentsView);
         ArrayList<Integer> activeIndices = resolveStackLayoutActiveIndices(
                 taskViewCount,
                 lightAnchorIndex,
                 stackLayoutRadius,
                 fillBoundaryTargetCount,
-                stableFillWindow,
-                seascapeEntryWindow);
+                stableFillWindow);
         ArrayList<Integer> processIndices = resolveStackLayoutProcessIndices(
                 taskViewCount,
                 activeIndices,
@@ -2328,8 +2321,7 @@ final class LauncherRecentsLayoutEngine {
             int anchorIndex,
             int radius,
             int fillBoundaryTargetCount,
-            boolean stableFillWindow,
-            boolean seascapeEntryWindow) {
+            boolean stableFillWindow) {
         ArrayList<Integer> indices = new ArrayList<>();
         if (taskViewCount <= 0 || radius < 0) {
             return indices;
@@ -2337,12 +2329,6 @@ final class LauncherRecentsLayoutEngine {
         anchorIndex = Math.max(0, Math.min(anchorIndex, taskViewCount - 1));
         if (fillBoundaryTargetCount > 0) {
             int targetCount = Math.min(taskViewCount, fillBoundaryTargetCount);
-            if (seascapeEntryWindow) {
-                for (int i = targetCount - 1; i >= 0; i--) {
-                    appendStackLayoutIndex(indices, anchorIndex + i, taskViewCount);
-                }
-                return indices;
-            }
             if (stableFillWindow) {
                 appendStableStackLayoutIndices(indices, anchorIndex, taskViewCount, targetCount);
                 return indices;

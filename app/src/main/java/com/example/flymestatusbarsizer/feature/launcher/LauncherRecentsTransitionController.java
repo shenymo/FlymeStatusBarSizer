@@ -1093,7 +1093,7 @@ final class LauncherRecentsTransitionController {
         if (recentsView == null || anchorPage < 0) {
             return;
         }
-        int currentPage = resolveAppToRecentsNormalizedCurrentPage(recentsView, anchorPage);
+        int currentPage = anchorPage;
         int pageScroll = resolveScrollForPage(recentsView, currentPage, targetScroll);
         LauncherRecentsCompat.setIntField(recentsView, "mCurrentPage", currentPage);
         LauncherRecentsCompat.setIntField(recentsView, "mCurrentScrollOverPage", currentPage);
@@ -1102,23 +1102,6 @@ final class LauncherRecentsTransitionController {
                 recentsView,
                 "mCurrentPageScrollDiff",
                 targetScroll - pageScroll);
-    }
-
-    private static int resolveAppToRecentsNormalizedCurrentPage(
-            View recentsView,
-            int anchorPage) {
-        if (!isSeascapeOrientation(recentsView)
-                || !(recentsView instanceof ViewGroup)) {
-            return anchorPage;
-        }
-        Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "getRunningTaskView");
-        if (!(runningTaskObject instanceof View)) {
-            return anchorPage;
-        }
-        int runningTaskPage = ((ViewGroup) recentsView).indexOfChild((View) runningTaskObject);
-        return runningTaskPage >= 0 ? runningTaskPage : anchorPage;
     }
 
     private static int resolveScrollForPage(View recentsView, int page, int fallback) {
@@ -1168,16 +1151,6 @@ final class LauncherRecentsTransitionController {
                 1,
                 0);
         return !(value instanceof Integer) || (Integer) value == 1;
-    }
-
-    private static boolean isSeascapeOrientation(View recentsView) {
-        Object orientationHandler =
-                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
-        Object value = LauncherRecentsCompat.invokeCompat(
-                orientationHandler,
-                "getRotation",
-                LauncherRecentsCompat.NO_ARGS);
-        return value instanceof Integer && (Integer) value == 3;
     }
 
     static void finishRunningTaskRecentsAnimation(View recentsView) {
