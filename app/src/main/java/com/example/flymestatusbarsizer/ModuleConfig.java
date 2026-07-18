@@ -191,6 +191,8 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT;
     int launcherStackLeftFadeDistancePercent =
             SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT;
+    int launcherStackTitleFadeDistancePercent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT;
     int launcherStackLeftReleaseAlphaThresholdPercent =
             SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT;
     int launcherStackScrollFrameRate = SettingsStore.DEFAULT_LAUNCHER_STACK_SCROLL_FRAME_RATE;
@@ -733,6 +735,8 @@ final class ModuleConfig {
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT);
             config.launcherStackLeftFadeDistancePercent = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT);
+            config.launcherStackTitleFadeDistancePercent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT);
             config.launcherStackLeftReleaseAlphaThresholdPercent = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT);
             config.launcherStackScrollFrameRate = readLauncherStackParameter(

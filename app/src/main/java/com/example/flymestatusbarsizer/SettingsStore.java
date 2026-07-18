@@ -197,6 +197,8 @@ final class SettingsStore {
             "launcher_stack_content_blur_start_alpha_percent";
     static final String KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT =
             "launcher_stack_left_fade_distance_percent";
+    static final String KEY_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT =
+            "launcher_stack_title_fade_distance_percent";
     static final String KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT =
             "launcher_stack_left_release_alpha_threshold_percent";
     static final String KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE =
@@ -387,6 +389,7 @@ final class SettingsStore {
     static final int DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT = 50;
     static final int DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT = 85;
     static final int DEFAULT_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT = 24;
+    static final int DEFAULT_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT = 160;
     static final int DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT = 5;
     static final int DEFAULT_LAUNCHER_STACK_SCROLL_FRAME_RATE = 120;
     static final int DEFAULT_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS = 5000;
@@ -522,6 +525,7 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT,
             KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT,
+            KEY_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT,
             KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE,
             KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS,
@@ -634,6 +638,8 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP,
             KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT,
             KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT,
+            KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT,
+            KEY_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT,
             KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE,
             KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS
@@ -933,6 +939,8 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT;
             case KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT;
+            case KEY_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT:
+                return DEFAULT_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT;
             case KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT;
             case KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE:
@@ -1459,6 +1467,9 @@ final class SettingsStore {
         }
         if (KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT.equals(key)) {
             return Math.max(1, Math.min(150, value));
+        }
+        if (KEY_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT.equals(key)) {
+            return Math.max(100, Math.min(300, value));
         }
         if (KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT.equals(key)) {
             return Math.max(0, Math.min(100, value));

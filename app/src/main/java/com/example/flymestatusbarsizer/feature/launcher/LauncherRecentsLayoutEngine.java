@@ -2790,7 +2790,8 @@ final class LauncherRecentsLayoutEngine {
                     input.taskCenteredPrimaryStartPx,
                     context.primaryScrollHorizontal,
                     stackLeftFadeDistanceRatio,
-                    stackLeftFadeDistanceRatio * STACK_TITLE_FADE_DISTANCE_MULTIPLIER)
+                    stackLeftFadeDistanceRatio
+                            * stackTitleFadeDistanceMultiplier(context.recentsView))
                     : 0f;
         }
 
@@ -3985,6 +3986,13 @@ final class LauncherRecentsLayoutEngine {
     static float stackLeftFadeDistanceRatio(View view) {
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
         return config == null ? STACK_LEFT_FADE_DISTANCE_RATIO : config.stackLeftFadeDistanceRatio;
+    }
+
+    static float stackTitleFadeDistanceMultiplier(View view) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        return config == null
+                ? STACK_TITLE_FADE_DISTANCE_MULTIPLIER
+                : config.stackTitleFadeDistanceMultiplier;
     }
 
     static int desktopEntryVisibleCount(View view) {

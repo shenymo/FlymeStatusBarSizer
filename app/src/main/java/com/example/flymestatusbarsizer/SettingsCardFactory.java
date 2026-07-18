@@ -558,6 +558,8 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT, 0, 100, "%");
         addStackParam(content, "屏幕左侧淡出距离", "数值越大，屏幕左侧卡片会在更长距离内逐渐淡出。",
                 SettingsStore.KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT, 1, 150, "%");
+        addStackParam(content, "标题提前淡出距离", "数值越大，任务标题越早开始渐变，并在卡片开始淡出前消失。",
+                SettingsStore.KEY_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT, 100, 300, "%");
         addStackParam(content, "屏幕左侧隐藏阈值", "屏幕左侧卡片透明度低于此值后不再参与显示。",
                 SettingsStore.KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT, 0, 100, "%");
 
