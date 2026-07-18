@@ -466,19 +466,19 @@ final class SettingsCardFactory {
         content.setOrientation(LinearLayout.VERTICAL);
         addStackParamHeader(content, "布局外观", "屏幕左侧/屏幕右侧均按用户看屏幕的方向理解。");
         addStackParam(content, "屏幕右侧卡片露出比例", "数值越大，屏幕右侧卡片露出越多。",
-                SettingsStore.KEY_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT, 50, 100, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT, 20, 120, "%");
         addStackParam(content, "屏幕左侧移动比例", "数值越大，屏幕左侧卡片移动距离越大。",
-                SettingsStore.KEY_LAUNCHER_STACK_LEFT_MOVE_PERCENT, 0, 100, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_LEFT_MOVE_PERCENT, 0, 200, "%");
         addStackParam(content, "屏幕左侧静止内缩比例", "负数会让屏幕左侧卡片继续缩进屏幕外。",
-                SettingsStore.KEY_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT, -50, 30, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT, -100, 60, "%");
         addStackParam(content, "最小缩放", "边缘卡片的最小缩放比例。",
-                SettingsStore.KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT, 80, 100, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT, 60, 110, "%");
         addStackParamHeader(content, "缩放曲线", "拖动两个控制点，直接调整卡片从最小到最大缩放的变化走势。");
         content.addView(
                 new LauncherStackScaleCurveView(activity),
                 activity.matchWrapWithTop(8));
         addStackParam(content, "最大堆叠层数", "参与深度计算的最大层数。",
-                SettingsStore.KEY_LAUNCHER_STACK_MAX_LAYERS, 1, 6, "");
+                SettingsStore.KEY_LAUNCHER_STACK_MAX_LAYERS, 1, 10, "");
 
         addStackParamHeader(content, "入场与回弹", "控制从应用进入后台、从桌面进入后台和松手回弹的过渡。");
         activity.addSwitchRow(content, "当前应用卡片居中",
@@ -487,85 +487,85 @@ final class SettingsCardFactory {
                 SettingsStore.DEFAULT_LAUNCHER_STACK_CURRENT_APP_CENTERED);
         activity.addDivider(content);
         addStackParam(content, "入场抬升比例", "后台入场时卡片向上抬升的幅度。",
-                SettingsStore.KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT, 0, 20, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT, 0, 50, "%");
         addStackParam(content, "入场初始展开比例", "入场起始阶段卡片的展开程度。",
-                SettingsStore.KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT, 0, 150, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT, 0, 250, "%");
         addStackParam(content, "松手初始展开比例", "手势松开后回弹动画的起始展开程度。",
-                SettingsStore.KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT, 0, 100, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT, 0, 200, "%");
         addStackParam(content, "桌面入口显示数量", "从桌面进入后台时，轻量入场阶段参与显示的卡片数量。",
-                SettingsStore.KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT, 1, 6, "");
+                SettingsStore.KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT, 1, 10, "");
         addStackParam(content, "桌面入口锚点位置", "从桌面进入后台时，轻量入场阶段的起始锚点。",
-                SettingsStore.KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX, 0, 5, "");
+                SettingsStore.KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX, 0, 9, "");
         addStackParam(content, "手势松手回弹时长", "上滑进入后台后，堆叠回弹动画时长。",
-                SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS, 120, 700, "ms");
+                SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS, 60, 1500, "ms");
 
         addStackParamHeader(content, "滑动展开", "屏幕左侧是主卡片左边退走的卡片，屏幕右侧是主卡片右边露出的卡片。");
         addStackParam(content, "常驻显示半径", "左右滑动稳定后，锚点两侧参与显示的卡片范围。",
-                SettingsStore.KEY_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS, 1, 5, "");
+                SettingsStore.KEY_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS, 1, 8, "");
         addStackParam(content, "入场轻量半径", "进入后台轻量阶段，锚点两侧预先参与显示的卡片范围。",
-                SettingsStore.KEY_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS, 1, 3, "");
+                SettingsStore.KEY_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS, 1, 6, "");
         addStackParam(content, "松手核心半径", "手势松开回弹时，保持完整视觉计算的卡片范围。",
-                SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS, 1, 5, "");
+                SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS, 1, 8, "");
         addStackParam(content, "AppFlow 轻量半径", "应用进入后台过程中，保留动态 AppFlow 的卡片范围。",
-                SettingsStore.KEY_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS, 1, 5, "");
+                SettingsStore.KEY_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS, 1, 8, "");
         addStackParam(content, "屏幕右侧基础加速", "屏幕右侧卡片展开的基础加速量。",
-                SettingsStore.KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT, 0, 60, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT, 0, 120, "%");
         addStackParam(content, "屏幕右侧深度加速", "越靠深层的屏幕右侧卡片展开越快。",
-                SettingsStore.KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT, 0, 100, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT, 0, 200, "%");
 
         addStackParamHeader(content, "左右滑动手感", "控制手指拖动、翻页判定和松手吸附。默认值保持 Flyme 原有手感。");
         addStackParam(content, "拖动阻力", "数值越大，卡片跟随手指移动得越慢。",
-                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT, -50, 80, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT, -100, 95, "%");
         addStackParam(content, "翻页距离阈值", "数值越大，需要拖动更远才会切换任务。",
-                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT, 5, 40, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT, 1, 80, "%");
         addStackParam(content, "快滑速度阈值", "数值越低，短促快滑越容易切换任务。",
-                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_FLING_VELOCITY_DP, 100, 1500, "dp/s");
+                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_FLING_VELOCITY_DP, 50, 3000, "dp/s");
         addStackParam(content, "松手吸附时长", "数值越大，卡片吸附到目标位置越慢。",
-                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS, 150, 1200, "ms");
+                SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS, 50, 2500, "ms");
 
         addStackParamHeader(content, "退出与启动", "控制回桌面和点击任务启动时的动画距离。");
         addStackParam(content, "回桌面缩放量", "点空白回桌面时，卡片额外缩小的比例。",
-                SettingsStore.KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT, 0, 15, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT, 0, 50, "%");
         addStackParam(content, "回桌面额外位移", "点空白回桌面时，卡片额外滑出的距离。",
-                SettingsStore.KEY_LAUNCHER_STACK_BLANK_EXIT_EXTRA_TRAVEL_PERCENT, 0, 60, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_BLANK_EXIT_EXTRA_TRAVEL_PERCENT, 0, 150, "%");
         addStackParam(content, "启动旁侧退出距离", "点击任务启动时，旁边卡片额外移开的距离。",
-                SettingsStore.KEY_LAUNCHER_STACK_TASK_LAUNCH_EXTRA_WIDTH_PERCENT, 0, 80, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_TASK_LAUNCH_EXTRA_WIDTH_PERCENT, 0, 200, "%");
 
         addStackParamHeader(content, "删除手势", "控制上滑删除任务的判定和动画。");
         addStackParam(content, "删除成功动画", "任务删除成功时滑出动画时长。",
-                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_SUCCESS_ANIM_MS, 80, 500, "ms");
+                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_SUCCESS_ANIM_MS, 30, 1000, "ms");
         addStackParam(content, "删除取消动画", "删除取消时回弹动画时长。",
-                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_CANCEL_ANIM_MS, 120, 700, "ms");
+                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_CANCEL_ANIM_MS, 50, 1500, "ms");
         addStackParam(content, "删除重排动画", "删除后剩余卡片重排动画时长。",
-                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_RELAYOUT_ANIM_MS, 120, 700, "ms");
+                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_RELAYOUT_ANIM_MS, 50, 1500, "ms");
         addStackParam(content, "拖动重排最大进度", "拖动删除过程中，列表提前重排的最大进度。",
                 SettingsStore.KEY_LAUNCHER_STACK_DISMISS_DRAG_RELAYOUT_MAX_PERCENT, 0, 100, "%");
         addStackParam(content, "纵向删除判定强度", "数值越大，越要求纵向滑动占主导。",
-                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_SECONDARY_DOMINANCE_PERCENT, 80, 200, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_SECONDARY_DOMINANCE_PERCENT, 20, 400, "%");
         addStackParam(content, "快速上滑删除阈值", "数值越低，快速上滑越容易触发删除。",
-                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY, 300, 3000, "");
+                SettingsStore.KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY, 100, 6000, "");
 
         addStackParamHeader(content, "下拉菜单", "控制任务卡片下拉打开系统菜单的触发距离。");
         addStackParam(content, "菜单触发距离", "数值越大，需要下拉更远才会弹出任务菜单。",
-                SettingsStore.KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP, 40, 200, "dp");
+                SettingsStore.KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP, 10, 400, "dp");
 
         addStackParamHeader(content, "视觉效果", "控制边缘卡片的 blur 和隐藏阈值。");
         addStackParam(content, "blur 最大强度", "边缘卡片截图和图标的最大模糊强度。",
-                SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP, 0, 40, "dp");
+                SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP, 0, 80, "dp");
         addStackParam(content, "blur 中档比例", "模糊效果的中档强度比例。",
-                SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT, 10, 90, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT, 0, 100, "%");
         addStackParam(content, "blur 开始透明度", "卡片透明度低于此值后开始增加 blur。",
                 SettingsStore.KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT, 0, 100, "%");
         addStackParam(content, "屏幕左侧淡出距离", "数值越大，屏幕左侧卡片会在更长距离内逐渐淡出。",
-                SettingsStore.KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT, 5, 60, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT, 1, 150, "%");
         addStackParam(content, "屏幕左侧隐藏阈值", "屏幕左侧卡片透明度低于此值后不再参与显示。",
-                SettingsStore.KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT, 0, 30, "%");
+                SettingsStore.KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT, 0, 100, "%");
 
         addStackParamHeader(content, "性能", "控制后台滑动时请求的帧率和释放延迟。");
         addStackParam(content, "滑动请求帧率", "后台滑动时向系统请求的刷新率。",
-                SettingsStore.KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE, 60, 144, "Hz");
+                SettingsStore.KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE, 30, 240, "Hz");
         addStackParam(content, "帧率释放延迟", "停止滑动后恢复系统默认帧率的延迟。",
-                SettingsStore.KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS, 500, 10000, "ms");
+                SettingsStore.KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS, 0, 30000, "ms");
 
         activity.addDivider(content);
         activity.addActionButtonRow(content, "导出参数",

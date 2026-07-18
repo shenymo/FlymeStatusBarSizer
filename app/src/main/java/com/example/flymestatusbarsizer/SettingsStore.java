@@ -1356,16 +1356,16 @@ final class SettingsStore {
 
     static int normalizeLauncherStackParameter(String key, int value) {
         if (KEY_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT.equals(key)) {
-            return Math.max(50, Math.min(100, value));
+            return Math.max(20, Math.min(120, value));
         }
         if (KEY_LAUNCHER_STACK_LEFT_MOVE_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(100, value));
+            return Math.max(0, Math.min(200, value));
         }
         if (KEY_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT.equals(key)) {
-            return Math.max(-50, Math.min(30, value));
+            return Math.max(-100, Math.min(60, value));
         }
         if (KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT.equals(key)) {
-            return Math.max(80, Math.min(100, value));
+            return Math.max(60, Math.min(110, value));
         }
         if (KEY_LAUNCHER_STACK_SCALE_CURVE_X1_PERCENT.equals(key)
                 || KEY_LAUNCHER_STACK_SCALE_CURVE_Y1_PERCENT.equals(key)
@@ -1374,100 +1374,100 @@ final class SettingsStore {
             return Math.max(0, Math.min(100, value));
         }
         if (KEY_LAUNCHER_STACK_MAX_LAYERS.equals(key)) {
-            return Math.max(1, Math.min(6, value));
+            return Math.max(1, Math.min(10, value));
         }
         if (KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(20, value));
+            return Math.max(0, Math.min(50, value));
         }
         if (KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(150, value));
+            return Math.max(0, Math.min(250, value));
         }
         if (KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(100, value));
+            return Math.max(0, Math.min(200, value));
         }
         if (KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT.equals(key)) {
-            return Math.max(1, Math.min(6, value));
+            return Math.max(1, Math.min(10, value));
         }
         if (KEY_LAUNCHER_STACK_DESKTOP_ENTRY_ANCHOR_INDEX.equals(key)) {
-            return Math.max(0, Math.min(5, value));
+            return Math.max(0, Math.min(9, value));
         }
         if (KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS.equals(key)) {
-            return Math.max(120, Math.min(700, value));
+            return Math.max(60, Math.min(1500, value));
         }
         if (KEY_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS.equals(key)
                 || KEY_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS.equals(key)
                 || KEY_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS.equals(key)) {
-            return Math.max(1, Math.min(5, value));
+            return Math.max(1, Math.min(8, value));
         }
         if (KEY_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS.equals(key)) {
-            return Math.max(1, Math.min(3, value));
+            return Math.max(1, Math.min(6, value));
         }
         if (KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(60, value));
+            return Math.max(0, Math.min(120, value));
         }
         if (KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(100, value));
+            return Math.max(0, Math.min(200, value));
         }
         if (KEY_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT.equals(key)) {
-            return Math.max(-50, Math.min(80, value));
+            return Math.max(-100, Math.min(95, value));
         }
         if (KEY_LAUNCHER_STACK_HORIZONTAL_PAGE_THRESHOLD_PERCENT.equals(key)) {
-            return Math.max(5, Math.min(40, value));
+            return Math.max(1, Math.min(80, value));
         }
         if (KEY_LAUNCHER_STACK_HORIZONTAL_FLING_VELOCITY_DP.equals(key)) {
-            return Math.max(100, Math.min(1500, value));
+            return Math.max(50, Math.min(3000, value));
         }
         if (KEY_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS.equals(key)) {
-            return Math.max(150, Math.min(1200, value));
+            return Math.max(50, Math.min(2500, value));
         }
         if (KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(15, value));
+            return Math.max(0, Math.min(50, value));
         }
         if (KEY_LAUNCHER_STACK_BLANK_EXIT_EXTRA_TRAVEL_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(60, value));
+            return Math.max(0, Math.min(150, value));
         }
         if (KEY_LAUNCHER_STACK_TASK_LAUNCH_EXTRA_WIDTH_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(80, value));
+            return Math.max(0, Math.min(200, value));
         }
         if (KEY_LAUNCHER_STACK_DISMISS_SUCCESS_ANIM_MS.equals(key)) {
-            return Math.max(80, Math.min(500, value));
+            return Math.max(30, Math.min(1000, value));
         }
         if (KEY_LAUNCHER_STACK_DISMISS_CANCEL_ANIM_MS.equals(key)
                 || KEY_LAUNCHER_STACK_DISMISS_RELAYOUT_ANIM_MS.equals(key)) {
-            return Math.max(120, Math.min(700, value));
+            return Math.max(50, Math.min(1500, value));
         }
         if (KEY_LAUNCHER_STACK_DISMISS_DRAG_RELAYOUT_MAX_PERCENT.equals(key)) {
             return Math.max(0, Math.min(100, value));
         }
         if (KEY_LAUNCHER_STACK_DISMISS_SECONDARY_DOMINANCE_PERCENT.equals(key)) {
-            return Math.max(80, Math.min(200, value));
+            return Math.max(20, Math.min(400, value));
         }
         if (KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY.equals(key)) {
-            return Math.max(300, Math.min(3000, value));
+            return Math.max(100, Math.min(6000, value));
         }
         if (KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP.equals(key)) {
-            return Math.max(40, Math.min(200, value));
+            return Math.max(10, Math.min(400, value));
         }
         if (KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP.equals(key)) {
-            return Math.max(0, Math.min(40, value));
+            return Math.max(0, Math.min(80, value));
         }
         if (KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT.equals(key)) {
-            return Math.max(10, Math.min(90, value));
+            return Math.max(0, Math.min(100, value));
         }
         if (KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT.equals(key)) {
             return Math.max(0, Math.min(100, value));
         }
         if (KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT.equals(key)) {
-            return Math.max(5, Math.min(60, value));
+            return Math.max(1, Math.min(150, value));
         }
         if (KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(30, value));
+            return Math.max(0, Math.min(100, value));
         }
         if (KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE.equals(key)) {
-            return Math.max(60, Math.min(144, value));
+            return Math.max(30, Math.min(240, value));
         }
         if (KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS.equals(key)) {
-            return Math.max(500, Math.min(10000, value));
+            return Math.max(0, Math.min(30000, value));
         }
         return value;
     }
