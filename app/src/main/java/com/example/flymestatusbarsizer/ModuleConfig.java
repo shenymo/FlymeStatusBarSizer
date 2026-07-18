@@ -124,6 +124,14 @@ final class ModuleConfig {
     int launcherStackLeftMovePercent = SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_MOVE_PERCENT;
     int launcherStackLeftRestInsetPercent = SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT;
     int launcherStackMinScalePercent = SettingsStore.DEFAULT_LAUNCHER_STACK_MIN_SCALE_PERCENT;
+    int launcherStackScaleCurveX1Percent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_SCALE_CURVE_X1_PERCENT;
+    int launcherStackScaleCurveY1Percent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_SCALE_CURVE_Y1_PERCENT;
+    int launcherStackScaleCurveX2Percent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_SCALE_CURVE_X2_PERCENT;
+    int launcherStackScaleCurveY2Percent =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_SCALE_CURVE_Y2_PERCENT;
     int launcherStackMaxLayers = SettingsStore.DEFAULT_LAUNCHER_STACK_MAX_LAYERS;
     int launcherStackEntryLiftPercent = SettingsStore.DEFAULT_LAUNCHER_STACK_ENTRY_LIFT_PERCENT;
     int launcherStackEntryInitialSpreadPercent =
@@ -655,6 +663,14 @@ final class ModuleConfig {
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT);
             config.launcherStackMinScalePercent = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT);
+            config.launcherStackScaleCurveX1Percent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_SCALE_CURVE_X1_PERCENT);
+            config.launcherStackScaleCurveY1Percent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_SCALE_CURVE_Y1_PERCENT);
+            config.launcherStackScaleCurveX2Percent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_SCALE_CURVE_X2_PERCENT);
+            config.launcherStackScaleCurveY2Percent = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_SCALE_CURVE_Y2_PERCENT);
             config.launcherStackMaxLayers = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_MAX_LAYERS);
             config.launcherStackEntryLiftPercent = readLauncherStackParameter(

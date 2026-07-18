@@ -7290,6 +7290,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final float stackLeftMoveRatio;
         public final float stackLeftRestInsetRatio;
         public final float stackMinScale;
+        public final float stackScaleCurveX1;
+        public final float stackScaleCurveY1;
+        public final float stackScaleCurveX2;
+        public final float stackScaleCurveY2;
         public final float maxStackLayers;
         public final float stackEntryLiftRatio;
         public final float stackEntryInitialSpreadRatio;
@@ -7356,6 +7360,18 @@ public class FlymeStatusBarSizer extends XposedModule {
                     c -> c.launcherStackLeftRestInsetPercent);
             stackMinScale = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_MIN_SCALE_PERCENT,
                     c -> c.launcherStackMinScalePercent);
+            stackScaleCurveX1 = percent(config,
+                    SettingsStore.DEFAULT_LAUNCHER_STACK_SCALE_CURVE_X1_PERCENT,
+                    c -> c.launcherStackScaleCurveX1Percent);
+            stackScaleCurveY1 = percent(config,
+                    SettingsStore.DEFAULT_LAUNCHER_STACK_SCALE_CURVE_Y1_PERCENT,
+                    c -> c.launcherStackScaleCurveY1Percent);
+            stackScaleCurveX2 = percent(config,
+                    SettingsStore.DEFAULT_LAUNCHER_STACK_SCALE_CURVE_X2_PERCENT,
+                    c -> c.launcherStackScaleCurveX2Percent);
+            stackScaleCurveY2 = percent(config,
+                    SettingsStore.DEFAULT_LAUNCHER_STACK_SCALE_CURVE_Y2_PERCENT,
+                    c -> c.launcherStackScaleCurveY2Percent);
             maxStackLayers = config == null
                     ? SettingsStore.DEFAULT_LAUNCHER_STACK_MAX_LAYERS
                     : config.launcherStackMaxLayers;

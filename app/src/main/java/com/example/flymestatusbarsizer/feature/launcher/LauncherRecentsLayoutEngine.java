@@ -28,6 +28,10 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_RELEASE_INITIAL_SPREAD_RATIO = 0.35f;
     private static final float STACK_LEFT_REST_INSET_RATIO = -0.15f;
     private static final float STACK_MIN_SCALE = 0.92f;
+    private static final float STACK_SCALE_CURVE_X1 = 0.33f;
+    private static final float STACK_SCALE_CURVE_Y1 = 0f;
+    private static final float STACK_SCALE_CURVE_X2 = 0.67f;
+    private static final float STACK_SCALE_CURVE_Y2 = 1f;
     private static final float MAX_STACK_LAYERS = 3.0f;
     private static final float BLANK_TAP_HOME_EXIT_SCALE_DELTA = 0.04f;
     private static final float BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO = 0.18f;
@@ -2564,7 +2568,10 @@ final class LauncherRecentsLayoutEngine {
                 taskPrimarySize,
                 visibleOffset,
                 primaryScrollHorizontal);
-        return lerp(stackMinScale(recentsView), 1f, layerProgress);
+        return lerp(
+                stackMinScale(recentsView),
+                1f,
+                resolveStackScaleProgress(recentsView, layerProgress));
     }
 
     static int resolveAppEntryAnchorTargetScroll(View recentsView, int anchorPage, int fallback) {
@@ -2703,7 +2710,10 @@ final class LauncherRecentsLayoutEngine {
                 input.taskPrimarySize,
                 desiredVisibleOffset,
                 context.primaryScrollHorizontal);
-        float desiredScale = lerp(stackMinScale(context.recentsView), 1.0f, desiredLayerProgress);
+        float desiredScale = lerp(
+                stackMinScale(context.recentsView),
+                1.0f,
+                resolveStackScaleProgress(context.recentsView, desiredLayerProgress));
         float desiredTaskOffsetY = lerp(
                 0f,
                 finalTaskOffsetY,
@@ -3886,6 +3896,29 @@ final class LauncherRecentsLayoutEngine {
         return config == null ? STACK_MIN_SCALE : config.stackMinScale;
     }
 
+    private static float resolveStackScaleProgress(View view, float progress) {
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
+        float x1 = config == null ? STACK_SCALE_CURVE_X1 : config.stackScaleCurveX1;
+        float y1 = config == null ? STACK_SCALE_CURVE_Y1 : config.stackScaleCurveY1;
+        float x2 = config == null ? STACK_SCALE_CURVE_X2 : config.stackScaleCurveX2;
+        float y2 = config == null ? STACK_SCALE_CURVE_Y2 : config.stackScaleCurveY2;
+        float targetX = clamp(progress, 0f, 1f);
+        if (targetX <= 0f || targetX >= 1f) {
+            return targetX;
+        }
+        float low = 0f;
+        float high = 1f;
+        for (int i = 0; i < 10; i++) {
+            float t = (low + high) * 0.5f;
+            if (cubicBezier(0f, x1, x2, 1f, t) < targetX) {
+                low = t;
+            } else {
+                high = t;
+            }
+        }
+        return cubicBezier(0f, y1, y2, 1f, (low + high) * 0.5f);
+    }
+
     static float maxStackLayers(View view) {
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
         return config == null ? MAX_STACK_LAYERS : config.maxStackLayers;
@@ -3994,6 +4027,20 @@ final class LauncherRecentsLayoutEngine {
         return (oneMinusP * oneMinusP * start)
                 + (2f * oneMinusP * p * control)
                 + (p * p * end);
+    }
+
+    private static float cubicBezier(
+            float start,
+            float control1,
+            float control2,
+            float end,
+            float progress) {
+        float p = clamp(progress, 0f, 1f);
+        float oneMinusP = 1f - p;
+        return (oneMinusP * oneMinusP * oneMinusP * start)
+                + (3f * oneMinusP * oneMinusP * p * control1)
+                + (3f * oneMinusP * p * p * control2)
+                + (p * p * p * end);
     }
 
     static float remapProgress(float value, float start, float end) {

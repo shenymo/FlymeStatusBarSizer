@@ -473,6 +473,10 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT, -50, 30, "%");
         addStackParam(content, "最小缩放", "边缘卡片的最小缩放比例。",
                 SettingsStore.KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT, 80, 100, "%");
+        addStackParamHeader(content, "缩放曲线", "拖动两个控制点，直接调整卡片从最小到最大缩放的变化走势。");
+        content.addView(
+                new LauncherStackScaleCurveView(activity),
+                activity.matchWrapWithTop(8));
         addStackParam(content, "最大堆叠层数", "参与深度计算的最大层数。",
                 SettingsStore.KEY_LAUNCHER_STACK_MAX_LAYERS, 1, 6, "");
 

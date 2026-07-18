@@ -127,6 +127,14 @@ final class SettingsStore {
             "launcher_stack_left_rest_inset_percent";
     static final String KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT =
             "launcher_stack_min_scale_percent";
+    static final String KEY_LAUNCHER_STACK_SCALE_CURVE_X1_PERCENT =
+            "launcher_stack_scale_curve_x1_percent";
+    static final String KEY_LAUNCHER_STACK_SCALE_CURVE_Y1_PERCENT =
+            "launcher_stack_scale_curve_y1_percent";
+    static final String KEY_LAUNCHER_STACK_SCALE_CURVE_X2_PERCENT =
+            "launcher_stack_scale_curve_x2_percent";
+    static final String KEY_LAUNCHER_STACK_SCALE_CURVE_Y2_PERCENT =
+            "launcher_stack_scale_curve_y2_percent";
     static final String KEY_LAUNCHER_STACK_MAX_LAYERS =
             "launcher_stack_max_layers";
     static final String KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT =
@@ -344,6 +352,10 @@ final class SettingsStore {
     static final int DEFAULT_LAUNCHER_STACK_LEFT_MOVE_PERCENT = 45;
     static final int DEFAULT_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT = -15;
     static final int DEFAULT_LAUNCHER_STACK_MIN_SCALE_PERCENT = 92;
+    static final int DEFAULT_LAUNCHER_STACK_SCALE_CURVE_X1_PERCENT = 33;
+    static final int DEFAULT_LAUNCHER_STACK_SCALE_CURVE_Y1_PERCENT = 0;
+    static final int DEFAULT_LAUNCHER_STACK_SCALE_CURVE_X2_PERCENT = 67;
+    static final int DEFAULT_LAUNCHER_STACK_SCALE_CURVE_Y2_PERCENT = 100;
     static final int DEFAULT_LAUNCHER_STACK_MAX_LAYERS = 3;
     static final int DEFAULT_LAUNCHER_STACK_ENTRY_LIFT_PERCENT = 5;
     static final int DEFAULT_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT = 80;
@@ -475,6 +487,10 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_LEFT_MOVE_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT,
             KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT,
+            KEY_LAUNCHER_STACK_SCALE_CURVE_X1_PERCENT,
+            KEY_LAUNCHER_STACK_SCALE_CURVE_Y1_PERCENT,
+            KEY_LAUNCHER_STACK_SCALE_CURVE_X2_PERCENT,
+            KEY_LAUNCHER_STACK_SCALE_CURVE_Y2_PERCENT,
             KEY_LAUNCHER_STACK_MAX_LAYERS,
             KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT,
             KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT,
@@ -588,6 +604,10 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_LEFT_MOVE_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT,
             KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT,
+            KEY_LAUNCHER_STACK_SCALE_CURVE_X1_PERCENT,
+            KEY_LAUNCHER_STACK_SCALE_CURVE_Y1_PERCENT,
+            KEY_LAUNCHER_STACK_SCALE_CURVE_X2_PERCENT,
+            KEY_LAUNCHER_STACK_SCALE_CURVE_Y2_PERCENT,
             KEY_LAUNCHER_STACK_MAX_LAYERS,
             KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT,
             KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT,
@@ -843,6 +863,14 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT;
             case KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_MIN_SCALE_PERCENT;
+            case KEY_LAUNCHER_STACK_SCALE_CURVE_X1_PERCENT:
+                return DEFAULT_LAUNCHER_STACK_SCALE_CURVE_X1_PERCENT;
+            case KEY_LAUNCHER_STACK_SCALE_CURVE_Y1_PERCENT:
+                return DEFAULT_LAUNCHER_STACK_SCALE_CURVE_Y1_PERCENT;
+            case KEY_LAUNCHER_STACK_SCALE_CURVE_X2_PERCENT:
+                return DEFAULT_LAUNCHER_STACK_SCALE_CURVE_X2_PERCENT;
+            case KEY_LAUNCHER_STACK_SCALE_CURVE_Y2_PERCENT:
+                return DEFAULT_LAUNCHER_STACK_SCALE_CURVE_Y2_PERCENT;
             case KEY_LAUNCHER_STACK_MAX_LAYERS:
                 return DEFAULT_LAUNCHER_STACK_MAX_LAYERS;
             case KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT:
@@ -1338,6 +1366,12 @@ final class SettingsStore {
         }
         if (KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT.equals(key)) {
             return Math.max(80, Math.min(100, value));
+        }
+        if (KEY_LAUNCHER_STACK_SCALE_CURVE_X1_PERCENT.equals(key)
+                || KEY_LAUNCHER_STACK_SCALE_CURVE_Y1_PERCENT.equals(key)
+                || KEY_LAUNCHER_STACK_SCALE_CURVE_X2_PERCENT.equals(key)
+                || KEY_LAUNCHER_STACK_SCALE_CURVE_Y2_PERCENT.equals(key)) {
+            return Math.max(0, Math.min(100, value));
         }
         if (KEY_LAUNCHER_STACK_MAX_LAYERS.equals(key)) {
             return Math.max(1, Math.min(6, value));
