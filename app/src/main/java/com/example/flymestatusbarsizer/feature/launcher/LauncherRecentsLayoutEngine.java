@@ -37,6 +37,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float BLANK_TAP_HOME_EXIT_EXTRA_TRAVEL_RATIO = 0.18f;
     private static final float STACK_CONTENT_BLUR_START_ALPHA = 0.85f;
     private static final float STACK_LEFT_FADE_DISTANCE_RATIO = 0.24f;
+    private static final float STACK_TITLE_FADE_DISTANCE_MULTIPLIER = 1.6f;
     private static final int STACK_ENTRY_LIGHT_RADIUS = 1;
     private static final int STACK_STABLE_VISIBLE_RADIUS = 2;
     private static final int STACK_GESTURE_RELEASE_CORE_RADIUS = 2;
@@ -2770,15 +2771,27 @@ final class LauncherRecentsLayoutEngine {
                 activityTitleAlpha = 0f;
             }
         }
+        float stackLeftFadeDistanceRatio = stackLeftFadeDistanceRatio(context.recentsView);
         float stackLeftClampAlpha = resolveStackLeftClampAlpha(
                 context.recentsView,
                 input.layoutProgress,
                 input.taskPrimarySize,
                 input.taskCenteredPrimaryStartPx,
-                context.primaryScrollHorizontal);
+                context.primaryScrollHorizontal,
+                0f,
+                stackLeftFadeDistanceRatio);
         if (!blankTapExitTaskActive) {
             desiredStableAlpha *= stackLeftClampAlpha;
-            activityTitleAlpha = desiredStableAlpha > 0.001f ? stackLeftClampAlpha : 0f;
+            activityTitleAlpha = desiredStableAlpha > 0.001f
+                    ? resolveStackLeftClampAlpha(
+                    context.recentsView,
+                    input.layoutProgress,
+                    input.taskPrimarySize,
+                    input.taskCenteredPrimaryStartPx,
+                    context.primaryScrollHorizontal,
+                    stackLeftFadeDistanceRatio,
+                    stackLeftFadeDistanceRatio * STACK_TITLE_FADE_DISTANCE_MULTIPLIER)
+                    : 0f;
         }
 
         float targetBlurProgress = 0f;
@@ -3270,8 +3283,7 @@ final class LauncherRecentsLayoutEngine {
     private static boolean isLightStackTaskHidden(View taskView) {
         return isAppliedZero(LauncherRecentsState.LAST_APPLIED_ATTACH_ALPHAS.get(taskView))
                 && isAppliedZero(LauncherRecentsState.LAST_APPLIED_STABLE_ALPHAS.get(taskView))
-                && isAppliedZero(
-                LauncherRecentsState.LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.get(taskView))
+                && isAppliedZero(LauncherRecentsState.LAST_APPLIED_TASK_HEAD_ALPHAS.get(taskView))
                 && isAppliedZero(LauncherRecentsState.LAST_APPLIED_TRANSLATION_ZS.get(taskView));
     }
 
@@ -3431,7 +3443,7 @@ final class LauncherRecentsLayoutEngine {
         LauncherRecentsTaskVisuals.setStableAlpha(
                 taskView,
                 LauncherRecentsTaskVisuals.readLastStockStableAlpha(taskView));
-        LauncherRecentsTaskVisuals.setTaskHeadContentAlpha(taskView, 1f);
+        LauncherRecentsTaskVisuals.forceTaskHeadVisible(taskView);
         LauncherRecentsTaskVisuals.clearStackContentBlurIfApplied(taskView);
         LauncherRecentsTaskVisuals.setFullscreenProgress(
                 taskView,
@@ -3741,7 +3753,9 @@ final class LauncherRecentsLayoutEngine {
             float progress,
             float taskPrimarySize,
             float taskCenteredPrimaryStartPx,
-            boolean primaryScrollHorizontal) {
+            boolean primaryScrollHorizontal,
+            float fadeEndDistanceRatio,
+            float fadeStartDistanceRatio) {
         int primaryAxisSign = resolveStackPrimaryAxisSign(recentsView, primaryScrollHorizontal);
         float visualProgress = progress * primaryAxisSign;
         if (visualProgress >= 0f) {
@@ -3761,10 +3775,14 @@ final class LauncherRecentsLayoutEngine {
                 taskCenteredPrimaryStartPx,
                 primaryScrollHorizontal);
         float distancePx = Math.abs(frontOffset - currentOffset);
-        float opaqueDistancePx = Math.max(
-                1f,
-                taskPrimarySize * stackLeftFadeDistanceRatio(recentsView));
-        return smoothStep(remapProgress(distancePx, 0f, opaqueDistancePx));
+        float fadeEndDistancePx = taskPrimarySize * fadeEndDistanceRatio;
+        float fadeStartDistancePx = Math.max(
+                fadeEndDistancePx + 1f,
+                taskPrimarySize * fadeStartDistanceRatio);
+        return smoothStep(remapProgress(
+                distancePx,
+                fadeEndDistancePx,
+                fadeStartDistancePx));
     }
 
     private static float resolveStackLayerProgress(

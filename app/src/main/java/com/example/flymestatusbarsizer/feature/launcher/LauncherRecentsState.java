@@ -83,6 +83,7 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> LAST_APPLIED_ACTIVITY_TITLE_ALPHAS =
             new WeakHashMap<>();
+    static final WeakHashMap<View, Float> LAST_APPLIED_TASK_HEAD_ALPHAS = new WeakHashMap<>();
     static final WeakHashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState>
             LAST_APPLIED_STACK_TASK_VISUAL_STATES = new WeakHashMap<>();
     static final WeakHashMap<View, StackContentTargets> STACK_CONTENT_TARGETS =
@@ -941,6 +942,7 @@ final class LauncherRecentsState {
         LAST_APPLIED_TASK_SHADOW_ELEVATIONS.remove(taskView);
         LAST_APPLIED_STACK_CONTENT_BLURS.remove(taskView);
         LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.remove(taskView);
+        LAST_APPLIED_TASK_HEAD_ALPHAS.remove(taskView);
         LAST_APPLIED_STACK_TASK_VISUAL_STATES.remove(taskView);
         STACK_CONTENT_TARGETS.remove(taskView);
         STACK_ICON_BLUR_STATES.remove(taskView);

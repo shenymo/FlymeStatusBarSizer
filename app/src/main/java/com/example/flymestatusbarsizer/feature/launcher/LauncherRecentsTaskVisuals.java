@@ -148,7 +148,8 @@ final class LauncherRecentsTaskVisuals {
         setNonGridScale(taskView, state.scale);
         setAttachAlpha(taskView, state.attachAlpha);
         setStableAlpha(taskView, state.stableAlpha);
-        setTaskHeadContentAlpha(taskView, state.activityTitleAlpha);
+        setTaskHeadContentAlpha(taskView, 1f);
+        setActivityTitleAlpha(taskView, state.activityTitleAlpha);
         if (state.stackContentBlurEnabled) {
             setStackContentBlurProgress(taskView, state.blurProgress);
         } else {
@@ -256,7 +257,8 @@ final class LauncherRecentsTaskVisuals {
         setNonGridScale(taskView, scale);
         setAttachAlpha(taskView, attachAlpha);
         setStableAlpha(taskView, stableAlpha);
-        setTaskHeadContentAlpha(taskView, activityTitleAlpha);
+        setTaskHeadContentAlpha(taskView, 1f);
+        setActivityTitleAlpha(taskView, activityTitleAlpha);
     }
 
     private static boolean isCurrentStackTaskVisualStateApplied(
@@ -288,7 +290,10 @@ final class LauncherRecentsTaskVisuals {
                 && isTaskViewScaleApplied(taskView, state.scale)
                 && approximatelyEqual(readAttachAlpha(taskView), state.attachAlpha)
                 && approximatelyEqual(readStableAlpha(taskView), state.stableAlpha)
-                && isTaskHeadContentAlphaApplied(taskView, state.activityTitleAlpha)
+                && isTaskHeadAlphaApplied(taskView, 1f)
+                && approximatelyEqual(
+                readActivityTitleAlpha(taskView),
+                state.activityTitleAlpha)
                 && approximatelyEqual(
                 LauncherRecentsCompat.readFloatField(taskView, "fullscreenProgress", 0f),
                 state.fullscreenProgress)
@@ -586,6 +591,7 @@ final class LauncherRecentsTaskVisuals {
 
     static void forceTaskHeadVisible(View taskView) {
         setTaskHeadContentAlpha(taskView, 1f);
+        setActivityTitleAlpha(taskView, 1f);
     }
 
     static void setTaskHeadContentAlpha(View taskView, float value) {
@@ -595,9 +601,9 @@ final class LauncherRecentsTaskVisuals {
         markStackTaskVisualStateDirty(taskView);
         float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
         Float lastAppliedValue =
-                LauncherRecentsState.LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.get(taskView);
+                LauncherRecentsState.LAST_APPLIED_TASK_HEAD_ALPHAS.get(taskView);
         if (shouldSkipAppliedFloat(lastAppliedValue, clampedValue)
-                && isTaskHeadContentAlphaApplied(taskView, clampedValue)) {
+                && isTaskHeadAlphaApplied(taskView, clampedValue)) {
             return;
         }
         LauncherRecentsCompat.invokeCompat(
@@ -639,6 +645,7 @@ final class LauncherRecentsTaskVisuals {
             }
         }
         LauncherRecentsState.LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.put(taskView, clampedValue);
+        LauncherRecentsState.LAST_APPLIED_TASK_HEAD_ALPHAS.put(taskView, clampedValue);
     }
 
     static void forceRecentsTaskHeadsVisible(View recentsView) {
@@ -936,8 +943,13 @@ final class LauncherRecentsTaskVisuals {
 
     private static boolean isTaskHeadContentAlphaApplied(View taskView, float value) {
         float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
-        if (!approximatelyEqual(readActivityTitleAlpha(taskView), clampedValue)
-                || !approximatelyEqual(readTaskHeadAlpha(taskView), clampedValue)) {
+        return approximatelyEqual(readActivityTitleAlpha(taskView), clampedValue)
+                && isTaskHeadAlphaApplied(taskView, clampedValue);
+    }
+
+    private static boolean isTaskHeadAlphaApplied(View taskView, float value) {
+        float clampedValue = LauncherRecentsLayoutEngine.clamp(value, 0f, 1f);
+        if (!approximatelyEqual(readTaskHeadAlpha(taskView), clampedValue)) {
             return false;
         }
         LauncherRecentsState.StackContentTargets targets =
@@ -988,6 +1000,7 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.remove(taskView);
+        LauncherRecentsState.LAST_APPLIED_TASK_HEAD_ALPHAS.remove(taskView);
         LauncherRecentsState.STACK_CONTENT_TARGETS.remove(taskView);
     }
 
