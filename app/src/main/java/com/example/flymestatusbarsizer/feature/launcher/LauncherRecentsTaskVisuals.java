@@ -1047,6 +1047,10 @@ final class LauncherRecentsTaskVisuals {
         if (view == null) {
             return;
         }
+        if (LauncherRecentsCompat.invokeBoolean(view, "getSecretive", false)) {
+            LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.remove(view);
+            return;
+        }
         float appliedBlurPx = quantizeStackContentBlurPx(view, blurPx);
         Float lastAppliedBlurPx = LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.get(view);
         if (lastAppliedBlurPx != null
