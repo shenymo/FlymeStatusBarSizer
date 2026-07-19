@@ -433,7 +433,6 @@ final class LauncherRecentsPerf {
         }
         if (LauncherRecentsState.isSwipeUpGestureActive(view)
                 || LauncherRecentsState.isAppToRecentsEntrySessionActive(view)
-                || LauncherRecentsState.isAppToRecentsStackLayoutDeferred(view)
                 || LauncherRecentsState.isAppToRecentsGestureReleased(view)) {
             return "enterRecents";
         }

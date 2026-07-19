@@ -39,7 +39,6 @@ final class LauncherRecentsTouchController {
     private static final float STACK_DISMISS_SECONDARY_DOMINANCE = 1.2f;
     private static final float STACK_DISMISS_MIN_FLING_VELOCITY = -1200f;
     private static final float STACK_LEFT_RELEASE_ALPHA_THRESHOLD = 0.05f;
-    private static final int STACK_APP_FLOW_LIGHT_RADIUS = 3;
     private static final String STACK_APP_FLOW_HIDDEN = "<stack-hidden>";
     private static final ThreadLocal<Boolean> TASK_DISMISS_VISIBILITY_BYPASS =
             new ThreadLocal<>();
@@ -122,7 +121,7 @@ final class LauncherRecentsTouchController {
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
                 if (!(thisObject instanceof View)
-                        || !LauncherRecentsLayoutEngine.shouldUseStackLayout((View) thisObject)) {
+                        || !LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout((View) thisObject)) {
                     return chain.proceed();
                 }
                 long durationMs = chain.getArg(0) instanceof Long
@@ -302,6 +301,9 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsCompat.isRecentsViewObject(thisObject)
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    if (LauncherRecentsState.isLandscapeStackMorphing(recentsView)) {
+                        return true;
+                    }
                     LauncherRecentsFrameRateController.onTouch(recentsView, motionEvent);
                     updateStackScrollPositionOwner(recentsView, motionEvent);
                     clearStackHorizontalGestureLockOnTouchEnd(recentsView, motionEvent);
@@ -319,7 +321,7 @@ final class LauncherRecentsTouchController {
                         releasePagedTouchForStackDismiss(recentsView);
                         return false;
                     }
-                    boolean stackLayout = LauncherRecentsLayoutEngine.shouldUseStackLayout(
+                    boolean stackLayout = LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(
                             recentsView);
                     long nativeStartNs = stackLayout
                             ? LauncherRecentsPerf.start(recentsView)
@@ -356,6 +358,9 @@ final class LauncherRecentsTouchController {
                         && thisObject instanceof View
                         && motionEvent != null) {
                     View recentsView = (View) thisObject;
+                    if (LauncherRecentsState.isLandscapeStackMorphing(recentsView)) {
+                        return true;
+                    }
                     LauncherRecentsFrameRateController.onTouch(recentsView, motionEvent);
                     updateStackScrollPositionOwner(recentsView, motionEvent);
                     clearStackHorizontalGestureLockOnTouchEnd(recentsView, motionEvent);
@@ -399,7 +404,7 @@ final class LauncherRecentsTouchController {
                                 LauncherRecentsCompat.NO_ARGS);
                         return true;
                     }
-                    boolean stackLayout = LauncherRecentsLayoutEngine.shouldUseStackLayout(
+                    boolean stackLayout = LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(
                             recentsView);
                     long nativeStartNs = stackLayout
                             ? LauncherRecentsPerf.start(recentsView)
@@ -490,7 +495,7 @@ final class LauncherRecentsTouchController {
                 Object thisObject = chain.getThisObject();
                 if (!(result instanceof Number)
                         || !(thisObject instanceof View)
-                        || !LauncherRecentsLayoutEngine.shouldUseStackLayout((View) thisObject)) {
+                        || !LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout((View) thisObject)) {
                     return result;
                 }
                 View recentsView = (View) thisObject;
@@ -519,7 +524,7 @@ final class LauncherRecentsTouchController {
                 Object thisObject = chain.getThisObject();
                 if (!(thisObject instanceof View)
                         || !LauncherRecentsCompat.isRecentsViewObject(thisObject)
-                        || !LauncherRecentsLayoutEngine.shouldUseStackLayout((View) thisObject)) {
+                        || !LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout((View) thisObject)) {
                     return chain.proceed();
                 }
                 View recentsView = (View) thisObject;
@@ -689,7 +694,7 @@ final class LauncherRecentsTouchController {
         if (recentsView == null
                 || motionEvent == null
                 || motionEvent.getActionMasked() != MotionEvent.ACTION_DOWN
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || !LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(recentsView)
                 || !isAppToRecentsEntryTouchTakeoverNeeded(recentsView)) {
             return;
         }
@@ -726,7 +731,7 @@ final class LauncherRecentsTouchController {
         if (recentsView == null
                 || motionEvent == null
                 || motionEvent.getActionMasked() != MotionEvent.ACTION_MOVE
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || !LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(recentsView)
                 || !isAppToRecentsEntryTouchTakeoverNeeded(recentsView)) {
             return false;
         }
@@ -838,7 +843,7 @@ final class LauncherRecentsTouchController {
         if (recentsView == null
                 || motionEvent == null
                 || motionEvent.getActionMasked() != MotionEvent.ACTION_MOVE
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || !LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(recentsView)
                 || !LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                 recentsView)) {
             return false;
@@ -887,8 +892,7 @@ final class LauncherRecentsTouchController {
     }
 
     private static boolean isAppToRecentsEntryTouchTakeoverNeeded(View recentsView) {
-        return LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+        return LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                 || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
                 || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
@@ -978,7 +982,7 @@ final class LauncherRecentsTouchController {
     }
 
     private static boolean shouldHandleStackDismissTouch(View recentsView) {
-        return LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+        return LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(recentsView)
                 || (LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0) == 1
                 && LauncherRecentsState.isAppToRecentsStackSettled(recentsView));
     }
@@ -2576,7 +2580,7 @@ final class LauncherRecentsTouchController {
         syncStackDismissPageFields(recentsView, snapToPage);
         LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
         LauncherRecentsLayoutEngine.applyStackLayout(recentsView, false, source);
-        if (LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+        if (LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(recentsView)) {
             hideUnmanagedStackDismissTasks(recentsView);
         }
         recentsView.requestLayout();
@@ -3012,7 +3016,7 @@ final class LauncherRecentsTouchController {
         if (recentsView == null
                 || taskView == null
                 || LauncherRecentsCompat.isDesktopTask(taskView)
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+                || !LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(recentsView)) {
             return false;
         }
         if (!knownChild
@@ -3092,7 +3096,7 @@ final class LauncherRecentsTouchController {
             MotionEvent motionEvent) {
         if (motionEvent == null
                 || motionEvent.getActionMasked() != MotionEvent.ACTION_DOWN
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                || !LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(recentsView)
                 || !isRecentsScrollerActive(recentsView)) {
             return;
         }
@@ -3110,7 +3114,7 @@ final class LauncherRecentsTouchController {
         }
         int action = motionEvent.getActionMasked();
         if ((action != MotionEvent.ACTION_UP && action != MotionEvent.ACTION_CANCEL)
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+                || !LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(recentsView)) {
             return false;
         }
         if (LauncherRecentsCompat.readBooleanField(
@@ -3149,7 +3153,7 @@ final class LauncherRecentsTouchController {
             finishMovingStackBlankTapTouch(recentsView, motionEvent);
             return true;
         }
-        if (!LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+        if (!LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(recentsView)
                 || LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 || LauncherRecentsCompat.invokeBoolean(recentsView, "isScrollerFinished", true)
                 || findStackTaskUnderPoint(recentsView, motionEvent.getX(), motionEvent.getY())
@@ -3325,7 +3329,7 @@ final class LauncherRecentsTouchController {
     private static boolean shouldThrottleStackAppFlow(View taskView, String pkgName) {
         View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
         if (recentsView == null
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
+                || !LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(recentsView)) {
             return false;
         }
         int taskIndex = findTaskViewIndex(recentsView, taskView);
@@ -3342,23 +3346,7 @@ final class LauncherRecentsTouchController {
             hideStackAppFlowIfNeeded(taskView);
             return true;
         }
-        if (LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                && !LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
-                && !LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
-                recentsView)
-                && !LauncherRecentsState.isAppToRecentsStackSettled(recentsView)
-                && Math.abs(taskIndex - resolveStackAppFlowAnchorIndex(recentsView))
-                > stackAppFlowLightRadius(recentsView)) {
-            hideStackAppFlowIfNeeded(taskView);
-            return true;
-        }
         return pkgName.equals(lastPkg);
-    }
-
-    private static int stackAppFlowLightRadius(View recentsView) {
-        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config =
-                LauncherRecentsLayoutEngine.stackConfig(recentsView);
-        return config == null ? STACK_APP_FLOW_LIGHT_RADIUS : config.stackAppFlowLightRadius;
     }
 
     private static void hideStackAppFlowIfNeeded(View taskView) {
@@ -3368,20 +3356,6 @@ final class LauncherRecentsTouchController {
         }
         LauncherRecentsCompat.invokeCompat(taskView, "hideFlowViews");
         LauncherRecentsState.LAST_STACK_APP_FLOW_PACKAGES.put(taskView, STACK_APP_FLOW_HIDDEN);
-    }
-
-    private static int resolveStackAppFlowAnchorIndex(View recentsView) {
-        Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "getRunningTaskView");
-        if (runningTaskObject instanceof View) {
-            int runningIndex = findTaskViewIndex(recentsView, (View) runningTaskObject);
-            if (runningIndex >= 0) {
-                return runningIndex;
-            }
-        }
-        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        return Math.max(0, taskViewCount - 1);
     }
 
     static void clearRecentsDeferredSnap(View recentsView) {

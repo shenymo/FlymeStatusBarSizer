@@ -18,11 +18,16 @@ final class LauncherRecentsState {
     static final int POSITION_OWNER_HOME_EXIT = 4;
     static final int POSITION_OWNER_DISMISS = 5;
     static final int POSITION_OWNER_TASK_LAUNCH = 6;
+    static final int LANDSCAPE_STACK_NATIVE = 0;
+    static final int LANDSCAPE_STACK_MORPHING = 1;
+    static final int LANDSCAPE_STACK_SETTLED = 2;
     private static final WeakHashMap<View, RecentsViewState> RECENTS_VIEW_STATES =
             new WeakHashMap<>();
 
     // App-to-recents entry animation.
     static final WeakHashMap<View, ValueAnimator> ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, ValueAnimator> ACTIVE_LANDSCAPE_STACK_ANIMATORS =
             new WeakHashMap<>();
     static final WeakHashMap<View, ValueAnimator> ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS =
             new WeakHashMap<>();
@@ -105,7 +110,6 @@ final class LauncherRecentsState {
 
     static final class RecentsViewState {
         boolean appToRecentsEntrySessionActive;
-        boolean appToRecentsStackLayoutDeferred;
         boolean appToRecentsGestureReleased;
         boolean appToRecentsStackSettled;
         boolean pendingGestureRecentsStackRelease;
@@ -122,6 +126,7 @@ final class LauncherRecentsState {
         boolean blankTapHomeExitActive;
         boolean stackLayoutFramePosted;
         int positionOwner;
+        int landscapeStackState;
         Float gestureStackReleaseProgress;
         Float forcedRecentsTranslationX;
         Float forcedRecentsTranslationY;
@@ -439,7 +444,6 @@ final class LauncherRecentsState {
             return;
         }
         state.appToRecentsEntrySessionActive = false;
-        state.appToRecentsStackLayoutDeferred = false;
         state.appToRecentsGestureReleased = false;
         state.pendingGestureRecentsStackRelease = false;
         state.pendingGestureRecentsStackReleaseHandoff = false;
@@ -470,20 +474,6 @@ final class LauncherRecentsState {
     static boolean isAppToRecentsEntrySessionActive(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
         return state != null && state.appToRecentsEntrySessionActive;
-    }
-
-    static void setAppToRecentsStackLayoutDeferred(View recentsView, boolean deferred) {
-        RecentsViewState state = deferred
-                ? ensureRecentsViewState(recentsView)
-                : findRecentsViewState(recentsView);
-        if (state != null) {
-            state.appToRecentsStackLayoutDeferred = deferred;
-        }
-    }
-
-    static boolean isAppToRecentsStackLayoutDeferred(View recentsView) {
-        RecentsViewState state = findRecentsViewState(recentsView);
-        return state != null && state.appToRecentsStackLayoutDeferred;
     }
 
     static void setAppToRecentsGestureReleased(View recentsView, boolean released) {
@@ -554,6 +544,28 @@ final class LauncherRecentsState {
     static boolean isSwipeUpGestureActive(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
         return state != null && state.swipeUpGestureActive;
+    }
+
+    static void setLandscapeStackState(View recentsView, int value) {
+        RecentsViewState state = value != LANDSCAPE_STACK_NATIVE
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.landscapeStackState = value;
+        }
+    }
+
+    static int getLandscapeStackState(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null ? state.landscapeStackState : LANDSCAPE_STACK_NATIVE;
+    }
+
+    static boolean isLandscapeStackMorphing(View recentsView) {
+        return getLandscapeStackState(recentsView) == LANDSCAPE_STACK_MORPHING;
+    }
+
+    static boolean isLandscapeStackSettled(View recentsView) {
+        return getLandscapeStackState(recentsView) == LANDSCAPE_STACK_SETTLED;
     }
 
     static void clearOverviewStackAnimationState(View recentsView, boolean settled) {
@@ -902,6 +914,7 @@ final class LauncherRecentsState {
             return;
         }
         cancelAndRemove(ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS, recentsView);
+        cancelAndRemove(ACTIVE_LANDSCAPE_STACK_ANIMATORS, recentsView);
         cancelAndRemove(ACTIVE_STACK_DISMISS_RELAYOUT_ANIMATORS, recentsView);
         RECENTS_VIEW_STATES.remove(recentsView);
         PREPARE_RECENTS_VIEW_STATES.remove(recentsView);

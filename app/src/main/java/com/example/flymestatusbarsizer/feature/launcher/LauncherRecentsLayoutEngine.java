@@ -606,7 +606,9 @@ final class LauncherRecentsLayoutEngine {
     }
 
     static void prepareRecentsView(View recentsView) {
-        if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
+        if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)
+                || (isLandscapeRecents(recentsView)
+                && !isLandscapeStackOwned(recentsView))) {
             return;
         }
         long perfStartNs = LauncherRecentsPerf.start(recentsView);
@@ -1442,6 +1444,83 @@ final class LauncherRecentsLayoutEngine {
         return states;
     }
 
+    static boolean isLandscapeRecents(View recentsView) {
+        int rotation = resolveTouchRotation(recentsView);
+        return rotation == 1 || rotation == 3;
+    }
+
+    static int resolveTouchRotation(View recentsView) {
+        Object orientationState = LauncherRecentsCompat.getFieldCompat(
+                recentsView,
+                "mOrientationState");
+        return LauncherRecentsCompat.invokeInt(orientationState, "getTouchRotation", 0);
+    }
+
+    static boolean isLandscapeStackOwned(View recentsView) {
+        return LauncherRecentsState.isLandscapeStackMorphing(recentsView)
+                || LauncherRecentsState.isLandscapeStackSettled(recentsView);
+    }
+
+    static boolean shouldUseInteractiveStackLayout(View recentsView) {
+        return shouldUseStackLayout(recentsView)
+                && (!isLandscapeRecents(recentsView)
+                || LauncherRecentsState.isLandscapeStackSettled(recentsView));
+    }
+
+    static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState>
+            computeLandscapeStackLayout(View recentsView) {
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> states = new HashMap<>();
+        if (recentsView == null || !isLandscapeRecents(recentsView)) {
+            return states;
+        }
+        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(recentsView);
+        int taskCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        if (!shouldUseStackLayout(config, recentsView, taskCount)) {
+            return states;
+        }
+        boolean wasSettled = LauncherRecentsState.isAppToRecentsStackSettled(recentsView);
+        LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
+        COMPUTING_OVERVIEW_STATE_STACK_TARGET.set(Boolean.TRUE);
+        try {
+            ComputedStackLayout layout = computeStackLayoutInternal(
+                    recentsView,
+                    taskCount,
+                    stackStableVisibleRadius(recentsView),
+                    config,
+                    null,
+                    null);
+            LauncherRecentsState.setLastStackLayoutActiveIndices(
+                    recentsView,
+                    new ArrayList<>(layout.activeIndices));
+            return layout.visualStates;
+        } finally {
+            COMPUTING_OVERVIEW_STATE_STACK_TARGET.remove();
+            LauncherRecentsState.setAppToRecentsStackSettled(recentsView, wasSettled);
+        }
+    }
+
+    static boolean applyLandscapeStackLayout(View recentsView) {
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> states =
+                computeLandscapeStackLayout(recentsView);
+        if (states.isEmpty()) {
+            return false;
+        }
+        int taskCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        for (int i = 0; i < taskCount; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView == null) {
+                continue;
+            }
+            LauncherRecentsTaskVisuals.StackTaskVisualState state = states.get(taskView);
+            if (state == null) {
+                hideLightStackTask(taskView);
+            } else {
+                LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, state);
+            }
+        }
+        return true;
+    }
+
     private static LauncherRecentsTaskVisuals.StackTaskVisualState
             captureCurrentStackTaskVisualState(View taskView) {
         if (taskView == null) {
@@ -1627,6 +1706,10 @@ final class LauncherRecentsLayoutEngine {
             return false;
         }
         if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
+            return false;
+        }
+        if (isLandscapeRecents(recentsView)
+                && !LauncherRecentsState.isLandscapeStackSettled(recentsView)) {
             return false;
         }
         if (LauncherRecentsState.isOverviewPreReleaseStockMode(recentsView)) {
@@ -1901,7 +1984,7 @@ final class LauncherRecentsLayoutEngine {
                         recentsView) ? 1 : 0);
         key = mixStackLayoutApplyKey(
                 key,
-                LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView) ? 1 : 0);
+                LauncherRecentsState.getLandscapeStackState(recentsView));
         key = mixStackLayoutApplyKey(
                 key,
                 LauncherRecentsState.isAppToRecentsStackSettled(recentsView) ? 1 : 0);
@@ -1934,6 +2017,12 @@ final class LauncherRecentsLayoutEngine {
         if (!shouldUseStackLayout(config, recentsView, taskViewCount)) {
             LauncherRecentsState.setLastStackLayoutActiveIndices(recentsView, null);
             return -1;
+        }
+        if (isLandscapeRecents(recentsView)) {
+            return LauncherRecentsState.isLandscapeStackSettled(recentsView)
+                    && applyLandscapeStackLayout(recentsView)
+                    ? taskViewCount
+                    : -1;
         }
         LauncherRecentsState.LaunchTransitionGeometryState launchState =
                 LauncherRecentsState.getActiveTaskLaunchTransitionGeometry(recentsView);
@@ -3283,6 +3372,7 @@ final class LauncherRecentsLayoutEngine {
             View recentsView) {
         return "updatePageOffsetsForFlyme".equals(methodName)
                 && shouldUseStackLayout(recentsView)
+                && canOwnStackVisuals(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && (isStackScrollerActive(recentsView)
                 || shouldSuppressStockPageOffsetUpdateForTransition(recentsView));
@@ -3293,6 +3383,7 @@ final class LauncherRecentsLayoutEngine {
             View recentsView) {
         return "updateHorizontalOffset".equals(methodName)
                 && shouldUseStackLayout(recentsView)
+                && canOwnStackVisuals(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && (isStackScrollerActive(recentsView)
                 || shouldSuppressStockPageOffsetUpdateForTransition(recentsView));
@@ -3316,19 +3407,11 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static boolean shouldSuppressStockPageOffsetUpdateForTransition(View recentsView) {
-        return (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
-                || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
-                        recentsView)
-                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
-                        recentsView)
-                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
-                        recentsView))
-                && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
+        return !LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
                         recentsView)
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                         recentsView)
-                || isStackLayoutRecoveryActive(recentsView));
+                || isStackLayoutRecoveryActive(recentsView);
     }
 
     private static boolean shouldSuppressStockPageScaleUpdate(
@@ -3336,6 +3419,7 @@ final class LauncherRecentsLayoutEngine {
             View recentsView) {
         return "updatePageScales".equals(methodName)
                 && shouldUseStackLayout(recentsView)
+                && canOwnStackVisuals(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
@@ -3346,15 +3430,6 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                 || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
                 || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
-                || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
-                recentsView)
-                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
-                recentsView))
-                && (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
-                // handoff 开始后 deferred 已清零但 progress 尚未建立，此帧也需压制。
-                || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
-                recentsView)
                 || LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(
                 recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
@@ -3392,6 +3467,7 @@ final class LauncherRecentsLayoutEngine {
     private static boolean shouldOwnStackTaskAlpha(View recentsView) {
         return recentsView != null
                 && shouldUseStackLayout(recentsView)
+                && canOwnStackVisuals(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
@@ -3402,6 +3478,10 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                 recentsView)
                 || isStackLayoutRecoveryActive(recentsView));
+    }
+
+    private static boolean canOwnStackVisuals(View recentsView) {
+        return !isLandscapeRecents(recentsView) || isLandscapeStackOwned(recentsView);
     }
 
     static void restoreTaskTransforms(View recentsView, int taskViewCount) {
@@ -3498,6 +3578,8 @@ final class LauncherRecentsLayoutEngine {
 
     static boolean shouldApplyDynamicStackLayout(View recentsView) {
         return shouldUseStackLayout(recentsView)
+                && (!isLandscapeRecents(recentsView)
+                || LauncherRecentsState.isLandscapeStackSettled(recentsView))
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isOverviewPreReleaseStockMode(recentsView)
                 && !LauncherRecentsState.hasActiveTaskLaunchTransitionGeometry(recentsView)
@@ -3591,22 +3673,19 @@ final class LauncherRecentsLayoutEngine {
 
     /**
      * 判断当前是否处于 app→recents 入场流程的任意阶段：
-     * - 手势上滑进行中（layoutDeferred=true），mAdjacentPageHorizontalOffset 尚未从 1 收敛到 0
      * - 手势已松手但 release 动画仍在运行
      * 上述阶段读取系统 mAdjacentPageHorizontalOffset/mContentAlpha 会得到未收敛值，
      * 导致 stackEntryProgress 偏低，进而拉低名称/图标透明度。
      */
     private static boolean isAppToRecentsEntryInProgress(View recentsView) {
-        return LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+        return LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                 || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
                 recentsView);
     }
 
     private static boolean shouldBlockAppToRecentsStackApply(View recentsView) {
-        return (LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+        return (LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                 || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
                 || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView))
                 && !LauncherRecentsTransitionController.hasGestureRecentsStackReleaseProgress(

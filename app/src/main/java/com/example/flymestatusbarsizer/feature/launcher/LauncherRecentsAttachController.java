@@ -8,8 +8,6 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 final class LauncherRecentsAttachController {
-    private static final String ABS_SWIPE_UP_HANDLER_CLASS =
-            "com.android.quickstep.AbsSwipeUpHandler";
     private static final String DEFAULT_ANIMATION_FACTORY_CLASS =
             "com.android.quickstep.BaseActivityInterface$DefaultAnimationFactory";
     private static final String LAUNCHER_STATE_CLASS = "com.android.launcher3.LauncherState";
@@ -25,7 +23,6 @@ final class LauncherRecentsAttachController {
         }
         hookRecentsViewGestureAnimationStart(module, loader);
         hookLauncherRecentsViewApplyLoadPlan(module, loader);
-        hookAbsSwipeUpHandlerInitialRecentsAttach(module, loader);
         hookFlymeRecentsAttach(module, loader);
     }
 
@@ -45,6 +42,11 @@ final class LauncherRecentsAttachController {
                 if (recentsView == null
                         || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
                     return chain.proceed();
+                }
+                if (LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)) {
+                    LauncherRecentsTransitionController.cancelLandscapeStackTransition(
+                            recentsView,
+                            true);
                 }
                 LauncherRecentsPerf.flow("attach:gestureAnimationStart", recentsView);
                 LauncherRecentsPerf.finishSession("enterRecents", recentsView, "abort");
@@ -105,60 +107,20 @@ final class LauncherRecentsAttachController {
                     LauncherRecentsPerf.end("native:applyLoadPlan", recentsView, nativeStartNs);
                 }
                 if (stackLayout) {
-                    LauncherRecentsPerf.flow("attach:applyLoadPlan",
-                            recentsView,
-                            "deferred=" + LauncherRecentsState
-                                    .isAppToRecentsStackLayoutDeferred(recentsView));
+                    LauncherRecentsPerf.flow("attach:applyLoadPlan", recentsView);
                     LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                     LauncherRecentsState.trackRecentsView(recentsView);
-                    if (!LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)) {
-                        LauncherRecentsPerf.flow("attach:applyLoadPlan:applyDynamic",
-                                recentsView);
-                        LauncherRecentsLayoutEngine.requestStackLayout(
-                                recentsView,
-                                "applyLoadPlan",
-                                true);
-                    }
+                    LauncherRecentsPerf.flow("attach:applyLoadPlan:applyDynamic", recentsView);
+                    LauncherRecentsLayoutEngine.requestStackLayout(
+                            recentsView,
+                            "applyLoadPlan",
+                            true);
                 }
                 return result;
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
                     "Failed to hook LauncherRecentsView.applyLoadPlan",
-                    t);
-        }
-    }
-
-    private static void hookAbsSwipeUpHandlerInitialRecentsAttach(
-            FlymeStatusBarSizer module,
-            ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(ABS_SWIPE_UP_HANDLER_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod(
-                    "maybeUpdateRecentsAttachedState",
-                    boolean.class,
-                    boolean.class,
-                    boolean.class);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object thisObject = chain.getThisObject();
-                View recentsView = resolveHandlerRecentsView(thisObject);
-                if (recentsView != null
-                        && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                        && LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)) {
-                    LauncherRecentsPerf.flow("attach:maybeUpdateAttachedState",
-                            recentsView,
-                            "arg0=" + chain.getArg(0)
-                                    + " arg1=" + chain.getArg(1)
-                                    + " arg2=" + chain.getArg(2));
-                    LauncherRecentsState.trackRecentsView(recentsView);
-                    LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-                }
-                return chain.proceed();
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook AbsSwipeUpHandler.maybeUpdateRecentsAttachedState",
                     t);
         }
     }
@@ -188,8 +150,7 @@ final class LauncherRecentsAttachController {
                     }
                     // Release 结束后系统还会 detach，需保留 stable 状态避免下一帧读到未收敛偏移。
                     boolean shouldKeepDeferred =
-                            LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)
-                                    || LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+                            LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                                     || LauncherRecentsTransitionController
                                     .isGestureRecentsStackReleaseAnimationActive(recentsView)
                                     || LauncherRecentsState.isAppToRecentsStackSettled(recentsView);
@@ -221,12 +182,6 @@ final class LauncherRecentsAttachController {
                     LauncherRecentsCompat.writeField(thisObject, "mIsAttachedToWindow", true);
                     LauncherRecentsCompat.writeField(thisObject, "mHasEverAttachedToWindow", true);
                     return null;
-                }
-                if (LauncherRecentsState.isAppToRecentsStackLayoutDeferred(recentsView)) {
-                    LauncherRecentsPerf.flow("attach:setRecentsAttached:prepareDeferred",
-                            recentsView);
-                    LauncherRecentsState.trackRecentsView(recentsView);
-                    LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                 }
                 return chain.proceed();
             });
