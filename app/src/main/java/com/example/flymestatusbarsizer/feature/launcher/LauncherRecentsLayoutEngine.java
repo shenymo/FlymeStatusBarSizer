@@ -607,8 +607,7 @@ final class LauncherRecentsLayoutEngine {
 
     static void prepareRecentsView(View recentsView) {
         if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)
-                || (isLandscapeRecents(recentsView)
-                && !isLandscapeStackOwned(recentsView))) {
+                || isLandscapeRecents(recentsView)) {
             return;
         }
         long perfStartNs = LauncherRecentsPerf.start(recentsView);
@@ -1456,69 +1455,8 @@ final class LauncherRecentsLayoutEngine {
         return LauncherRecentsCompat.invokeInt(orientationState, "getTouchRotation", 0);
     }
 
-    static boolean isLandscapeStackOwned(View recentsView) {
-        return LauncherRecentsState.isLandscapeStackMorphing(recentsView)
-                || LauncherRecentsState.isLandscapeStackSettled(recentsView);
-    }
-
     static boolean shouldUseInteractiveStackLayout(View recentsView) {
-        return shouldUseStackLayout(recentsView)
-                && (!isLandscapeRecents(recentsView)
-                || LauncherRecentsState.isLandscapeStackSettled(recentsView));
-    }
-
-    static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState>
-            computeLandscapeStackLayout(View recentsView) {
-        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> states = new HashMap<>();
-        if (recentsView == null || !isLandscapeRecents(recentsView)) {
-            return states;
-        }
-        FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(recentsView);
-        int taskCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        if (!shouldUseStackLayout(config, recentsView, taskCount)) {
-            return states;
-        }
-        boolean wasSettled = LauncherRecentsState.isAppToRecentsStackSettled(recentsView);
-        LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
-        COMPUTING_OVERVIEW_STATE_STACK_TARGET.set(Boolean.TRUE);
-        try {
-            ComputedStackLayout layout = computeStackLayoutInternal(
-                    recentsView,
-                    taskCount,
-                    stackStableVisibleRadius(recentsView),
-                    config,
-                    null,
-                    null);
-            LauncherRecentsState.setLastStackLayoutActiveIndices(
-                    recentsView,
-                    new ArrayList<>(layout.activeIndices));
-            return layout.visualStates;
-        } finally {
-            COMPUTING_OVERVIEW_STATE_STACK_TARGET.remove();
-            LauncherRecentsState.setAppToRecentsStackSettled(recentsView, wasSettled);
-        }
-    }
-
-    static boolean applyLandscapeStackLayout(View recentsView) {
-        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> states =
-                computeLandscapeStackLayout(recentsView);
-        if (states.isEmpty()) {
-            return false;
-        }
-        int taskCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-        for (int i = 0; i < taskCount; i++) {
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
-            if (taskView == null) {
-                continue;
-            }
-            LauncherRecentsTaskVisuals.StackTaskVisualState state = states.get(taskView);
-            if (state == null) {
-                hideLightStackTask(taskView);
-            } else {
-                LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, state);
-            }
-        }
-        return true;
+        return shouldUseStackLayout(recentsView);
     }
 
     private static LauncherRecentsTaskVisuals.StackTaskVisualState
@@ -1706,10 +1644,6 @@ final class LauncherRecentsLayoutEngine {
             return false;
         }
         if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
-            return false;
-        }
-        if (isLandscapeRecents(recentsView)
-                && !LauncherRecentsState.isLandscapeStackSettled(recentsView)) {
             return false;
         }
         if (LauncherRecentsState.isOverviewPreReleaseStockMode(recentsView)) {
@@ -1984,9 +1918,6 @@ final class LauncherRecentsLayoutEngine {
                         recentsView) ? 1 : 0);
         key = mixStackLayoutApplyKey(
                 key,
-                LauncherRecentsState.getLandscapeStackState(recentsView));
-        key = mixStackLayoutApplyKey(
-                key,
                 LauncherRecentsState.isAppToRecentsStackSettled(recentsView) ? 1 : 0);
         key = mixStackLayoutApplyKey(
                 key,
@@ -2017,12 +1948,6 @@ final class LauncherRecentsLayoutEngine {
         if (!shouldUseStackLayout(config, recentsView, taskViewCount)) {
             LauncherRecentsState.setLastStackLayoutActiveIndices(recentsView, null);
             return -1;
-        }
-        if (isLandscapeRecents(recentsView)) {
-            return LauncherRecentsState.isLandscapeStackSettled(recentsView)
-                    && applyLandscapeStackLayout(recentsView)
-                    ? taskViewCount
-                    : -1;
         }
         LauncherRecentsState.LaunchTransitionGeometryState launchState =
                 LauncherRecentsState.getActiveTaskLaunchTransitionGeometry(recentsView);
@@ -3481,7 +3406,7 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static boolean canOwnStackVisuals(View recentsView) {
-        return !isLandscapeRecents(recentsView) || isLandscapeStackOwned(recentsView);
+        return !isLandscapeRecents(recentsView);
     }
 
     static void restoreTaskTransforms(View recentsView, int taskViewCount) {
@@ -3568,6 +3493,7 @@ final class LauncherRecentsLayoutEngine {
                 && config.enabled
                 && config.launcherIosStackRecentsEnabled
                 && taskViewCount > 1
+                && !isLandscapeRecents(recentsView)
                 && !shouldKeepLauncherQuickSwitchStockLayout(recentsView)
                 && !LauncherRecentsCompat.invokeBoolean(recentsView, "showAsGrid", false)
                 && !LauncherRecentsCompat.invokeBoolean(
@@ -3578,8 +3504,6 @@ final class LauncherRecentsLayoutEngine {
 
     static boolean shouldApplyDynamicStackLayout(View recentsView) {
         return shouldUseStackLayout(recentsView)
-                && (!isLandscapeRecents(recentsView)
-                || LauncherRecentsState.isLandscapeStackSettled(recentsView))
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isOverviewPreReleaseStockMode(recentsView)
                 && !LauncherRecentsState.hasActiveTaskLaunchTransitionGeometry(recentsView)

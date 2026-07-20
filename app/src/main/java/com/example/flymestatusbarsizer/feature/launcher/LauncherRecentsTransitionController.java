@@ -9,7 +9,6 @@ import android.animation.ValueAnimator;
 import android.graphics.PointF;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewTreeObserver;
 import android.view.animation.DecelerateInterpolator;
 
 import java.lang.reflect.Method;
@@ -38,7 +37,6 @@ final class LauncherRecentsTransitionController {
         hookAbsSwipeUpHandlerGestureEnded(module, loader);
         hookAbsSwipeUpHandlerCalculateEndTarget(module, loader);
         hookAbsSwipeUpHandlerLauncherTransitionProgress(module, loader);
-        hookRecentsViewSetLayoutRotation(module, loader);
     }
 
     private static void hookRecentsViewStartHome(
@@ -55,8 +53,6 @@ final class LauncherRecentsTransitionController {
                     LauncherRecentsPerf.flow("leave:startHome", recentsView,
                             "animated=" + chain.getArg(0));
                     if (LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)) {
-                        cancelLandscapeStackTransition(recentsView, true);
-                        LauncherRecentsState.setAppToRecentsStackSettled(recentsView, false);
                         return chain.proceed();
                     }
                     if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
@@ -203,9 +199,7 @@ final class LauncherRecentsTransitionController {
                             recentsView,
                             nativeStartNs);
                 }
-                if (stackLayout
-                        && (!LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)
-                        || LauncherRecentsLayoutEngine.isLandscapeStackOwned(recentsView))) {
+                if (stackLayout) {
                     LauncherRecentsPerf.flow("enter:switchToScreenshot", recentsView);
                     LauncherRecentsState.trackRecentsView(recentsView);
                     LauncherRecentsLayoutEngine.requestStackLayout(
@@ -275,19 +269,7 @@ final class LauncherRecentsTransitionController {
                                 recentsView,
                                 nativeStartNs);
                     }
-                    LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
-                    LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
-                    LauncherRecentsState.setPendingGestureRecentsStackRelease(recentsView, false);
-                    LauncherRecentsState.setPendingGestureRecentsStackReleaseHandoff(
-                            recentsView,
-                            false);
-                    if (isRecentsGestureEndTarget(endTarget)
-                            && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
-                        recentsView.postOnAnimation(
-                                () -> startSettledLandscapeStackTransition(recentsView));
-                    } else {
-                        cancelLandscapeStackTransition(recentsView, true);
-                    }
+                    LauncherRecentsState.clearAppToRecentsGestureState(recentsView);
                     return result;
                 }
                 boolean shouldPrepareGestureRelease =
@@ -481,191 +463,6 @@ final class LauncherRecentsTransitionController {
         LauncherRecentsPerf.finishSession("enterRecents", recentsView, "success");
     }
 
-    static void startSettledLandscapeStackTransition(View recentsView) {
-        if (recentsView == null
-                || !recentsView.isAttachedToWindow()
-                || !recentsView.isShown()
-                || !LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
-            return;
-        }
-        if (LauncherRecentsState.isLandscapeStackMorphing(recentsView)
-                || LauncherRecentsState.isLandscapeStackSettled(recentsView)) {
-            return;
-        }
-        if (recentsView.isLayoutRequested()) {
-            ViewTreeObserver observer = recentsView.getViewTreeObserver();
-            observer.addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
-                @Override
-                public boolean onPreDraw() {
-                    ViewTreeObserver currentObserver = recentsView.getViewTreeObserver();
-                    if (currentObserver.isAlive()) {
-                        currentObserver.removeOnPreDrawListener(this);
-                    }
-                    recentsView.postOnAnimation(
-                            () -> startSettledLandscapeStackTransition(recentsView));
-                    return true;
-                }
-            });
-            return;
-        }
-        if (LauncherRecentsCompat.readBooleanField(
-                recentsView,
-                "mEnableDrawingLiveTile",
-                false)) {
-            Runnable screenshotReady = () -> {
-                LauncherRecentsCompat.invokeCompat(
-                        recentsView,
-                        "setEnableDrawingLiveTile",
-                        LauncherRecentsCompat.BOOLEAN_ARG,
-                        false);
-                recentsView.postOnAnimation(
-                        () -> startSettledLandscapeStackTransition(recentsView));
-            };
-            if (LauncherRecentsCompat.invokeMethodReflectively(
-                    recentsView,
-                    "switchToScreenshot",
-                    new Class<?>[]{Runnable.class},
-                    screenshotReady)) {
-                return;
-            }
-            LauncherRecentsCompat.invokeCompat(
-                    recentsView,
-                    "setEnableDrawingLiveTile",
-                    LauncherRecentsCompat.BOOLEAN_ARG,
-                    false);
-        }
-        cancelLandscapeStackTransition(recentsView, false);
-        LauncherRecentsState.setLandscapeStackState(
-                recentsView,
-                LauncherRecentsState.LANDSCAPE_STACK_MORPHING);
-        LauncherRecentsState.setAppToRecentsStackSettled(recentsView, false);
-        LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
-        LauncherRecentsState.setPositionOwner(
-                recentsView,
-                LauncherRecentsState.POSITION_OWNER_ENTER);
-        LauncherRecentsState.trackRecentsView(recentsView);
-        LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-        LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
-        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> startStates =
-                LauncherRecentsLayoutEngine.captureCurrentStackTaskVisualStates(recentsView);
-        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> targetStates =
-                LauncherRecentsLayoutEngine.computeLandscapeStackLayout(recentsView);
-        if (targetStates.isEmpty()) {
-            cancelLandscapeStackTransition(recentsView, true);
-            return;
-        }
-
-        LauncherRecentsTaskVisuals.prepareStackContentBlurEffects(recentsView);
-        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
-        animator.setDuration(GESTURE_STACK_RELEASE_DURATION_MS);
-        animator.setInterpolator(GESTURE_STACK_RELEASE_INTERPOLATOR);
-        animator.addUpdateListener(animation -> {
-            float progress = animation.getAnimatedValue() instanceof Float
-                    ? (Float) animation.getAnimatedValue()
-                    : animation.getAnimatedFraction();
-            for (View taskView : targetStates.keySet()) {
-                LauncherRecentsTaskVisuals.StackTaskVisualState start = startStates.get(taskView);
-                LauncherRecentsTaskVisuals.StackTaskVisualState target = targetStates.get(taskView);
-                if (start != null && target != null) {
-                    LauncherRecentsTaskVisuals.applyStackTaskVisualState(
-                            taskView,
-                            start.lerpTo(target, progress));
-                }
-            }
-            recentsView.invalidate();
-        });
-        animator.addListener(new AnimatorListenerAdapter() {
-            private boolean cancelled;
-
-            @Override
-            public void onAnimationCancel(Animator animation) {
-                cancelled = true;
-            }
-
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                LauncherRecentsState.ACTIVE_LANDSCAPE_STACK_ANIMATORS.remove(recentsView);
-                if (cancelled
-                        || !LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)) {
-                    return;
-                }
-                LauncherRecentsState.setLandscapeStackState(
-                        recentsView,
-                        LauncherRecentsState.LANDSCAPE_STACK_SETTLED);
-                LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
-                LauncherRecentsState.clearPositionOwner(
-                        recentsView,
-                        LauncherRecentsState.POSITION_OWNER_ENTER);
-                LauncherRecentsLayoutEngine.applyLandscapeStackLayout(recentsView);
-                LauncherRecentsLayoutEngine.ensureStackClearAllButtonReady(recentsView);
-                recentsView.invalidate();
-            }
-        });
-        LauncherRecentsState.ACTIVE_LANDSCAPE_STACK_ANIMATORS.put(recentsView, animator);
-        animator.start();
-    }
-
-    static void cancelLandscapeStackTransition(View recentsView, boolean restoreVisuals) {
-        if (recentsView == null) {
-            return;
-        }
-        ValueAnimator animator =
-                LauncherRecentsState.ACTIVE_LANDSCAPE_STACK_ANIMATORS.remove(recentsView);
-        if (animator != null) {
-            animator.cancel();
-        }
-        LauncherRecentsState.setLandscapeStackState(
-                recentsView,
-                LauncherRecentsState.LANDSCAPE_STACK_NATIVE);
-        LauncherRecentsState.setAppToRecentsStackSettled(recentsView, false);
-        if (restoreVisuals) {
-            int taskCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
-            LauncherRecentsLayoutEngine.restoreTaskTransforms(recentsView, taskCount);
-            LauncherRecentsTaskVisuals.clearRecentsStackContentBlur(recentsView);
-            recentsView.invalidate();
-        }
-    }
-
-    private static void hookRecentsViewSetLayoutRotation(
-            FlymeStatusBarSizer module,
-            ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
-            Method method = clazz.getDeclaredMethod("setLayoutRotation", int.class, int.class);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                View recentsView = chain.getThisObject() instanceof View
-                        ? (View) chain.getThisObject()
-                        : null;
-                boolean owned = LauncherRecentsLayoutEngine.isLandscapeStackOwned(recentsView);
-                if (owned) {
-                    cancelLandscapeStackTransition(recentsView, true);
-                }
-                Object result = chain.proceed();
-                if (owned
-                        && recentsView != null
-                        && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
-                    recentsView.postOnAnimation(() -> {
-                        if (LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)) {
-                            startSettledLandscapeStackTransition(recentsView);
-                        } else {
-                            LauncherRecentsLayoutEngine.requestStackLayout(
-                                    recentsView,
-                                    "layoutRotationPortrait",
-                                    true);
-                        }
-                    });
-                }
-                return result;
-            });
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logLauncherWarning(
-                    "Failed to hook RecentsView.setLayoutRotation",
-                    t);
-        }
-    }
-
     private static void hookAbsSwipeUpHandlerGestureEnded(
             FlymeStatusBarSizer module,
             ClassLoader loader) {
@@ -688,10 +485,8 @@ final class LauncherRecentsTransitionController {
                         && isRecentsGestureEndTarget(endTarget)) {
                     LauncherRecentsPerf.flow("enter:absGestureEnded",
                             recentsView, "endTarget=" + endTarget);
-                    if (!LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)) {
-                        LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
-                        LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, true);
-                    }
+                    LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
+                    LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, true);
                 }
                 return result;
             });
@@ -743,7 +538,6 @@ final class LauncherRecentsTransitionController {
 
     private static int resolveStackQuickSwitchTargetPage(View recentsView) {
         if (recentsView == null
-                || LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)
                 || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
             return -1;
         }
@@ -1407,7 +1201,6 @@ final class LauncherRecentsTransitionController {
             Object endTarget) {
         return recentsView != null
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                && !LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)
                 && (isRecentsGestureEndTarget(endTarget)
                 || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView));
     }
@@ -1419,7 +1212,6 @@ final class LauncherRecentsTransitionController {
     private static boolean shouldSuppressLiveTileForStack(View recentsView) {
         return recentsView != null
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
-                && !LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)
                 && !LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
     }
 

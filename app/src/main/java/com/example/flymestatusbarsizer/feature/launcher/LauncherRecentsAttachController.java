@@ -43,11 +43,6 @@ final class LauncherRecentsAttachController {
                         || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
                     return chain.proceed();
                 }
-                if (LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)) {
-                    LauncherRecentsTransitionController.cancelLandscapeStackTransition(
-                            recentsView,
-                            true);
-                }
                 LauncherRecentsPerf.flow("attach:gestureAnimationStart", recentsView);
                 LauncherRecentsPerf.finishSession("enterRecents", recentsView, "abort");
                 LauncherRecentsLaunchController.clearTaskLaunchFrozenForNewGesture(recentsView);

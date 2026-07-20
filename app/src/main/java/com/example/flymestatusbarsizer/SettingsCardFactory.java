@@ -229,7 +229,7 @@ final class SettingsCardFactory {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         activity.addSwitchRow(content, "IOS 式堆叠后台",
-                "Hook Flyme launcher 的 Recent，把原来的 PagedView 卡片压成重叠 stack carousel，并去掉原有自动横向推开和居中修正。",
+                "仅在竖屏生效，把 Flyme launcher 的 Recent 卡片压成重叠 stack carousel；横屏保持系统原生后台。",
                 SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED);
         activity.addDivider(content);

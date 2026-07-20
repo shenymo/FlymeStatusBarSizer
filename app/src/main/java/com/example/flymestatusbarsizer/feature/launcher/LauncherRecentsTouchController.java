@@ -301,9 +301,6 @@ final class LauncherRecentsTouchController {
                 if (LauncherRecentsCompat.isRecentsViewObject(thisObject)
                         && thisObject instanceof View) {
                     View recentsView = (View) thisObject;
-                    if (LauncherRecentsState.isLandscapeStackMorphing(recentsView)) {
-                        return true;
-                    }
                     LauncherRecentsFrameRateController.onTouch(recentsView, motionEvent);
                     updateStackScrollPositionOwner(recentsView, motionEvent);
                     clearStackHorizontalGestureLockOnTouchEnd(recentsView, motionEvent);
@@ -358,9 +355,6 @@ final class LauncherRecentsTouchController {
                         && thisObject instanceof View
                         && motionEvent != null) {
                     View recentsView = (View) thisObject;
-                    if (LauncherRecentsState.isLandscapeStackMorphing(recentsView)) {
-                        return true;
-                    }
                     LauncherRecentsFrameRateController.onTouch(recentsView, motionEvent);
                     updateStackScrollPositionOwner(recentsView, motionEvent);
                     clearStackHorizontalGestureLockOnTouchEnd(recentsView, motionEvent);

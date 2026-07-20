@@ -114,11 +114,6 @@ final class LauncherRecentsLaunchController {
                     int visibility = chain.getArg(0) instanceof Integer ? (Integer) chain.getArg(0) : 0;
                     if (visibility != View.VISIBLE) {
                         LauncherRecentsFrameRateController.releaseNow(recentsView);
-                        if (LauncherRecentsLayoutEngine.isLandscapeStackOwned(recentsView)) {
-                            LauncherRecentsTransitionController.cancelLandscapeStackTransition(
-                                    recentsView,
-                                    true);
-                        }
                     }
                     if (visibility != View.VISIBLE
                             && LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)) {

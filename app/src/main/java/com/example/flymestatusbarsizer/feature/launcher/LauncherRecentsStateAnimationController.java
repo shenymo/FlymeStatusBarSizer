@@ -281,32 +281,20 @@ final class LauncherRecentsStateAnimationController {
             Object toState = chain.getArg(0);
             Object pendingAnimation = chain.getArg(2);
             View recentsView = resolveControllerRecentsView(thisObject);
-            boolean landscapeOverview = shouldStartLandscapeStackAfterNativeState(
-                    recentsView,
-                    toState,
-                    loader);
             boolean shouldTakeOver =
-                    !landscapeOverview
-                            && shouldTakeOverOverviewPeekToOverview(recentsView, toState, loader);
+                    shouldTakeOverOverviewPeekToOverview(recentsView, toState, loader);
             LauncherRecentsPerf.flow(flowTag,
                     recentsView,
                     "toState=" + toState
                             + " takeOver=" + shouldTakeOver
                             + " pendingAnimation=" + (pendingAnimation != null));
-            if (landscapeOverview) {
-                LauncherRecentsState.setLandscapeStackState(
-                        recentsView,
-                        LauncherRecentsState.LANDSCAPE_STACK_NATIVE);
-            } else if (shouldTakeOver) {
+            if (shouldTakeOver) {
                 beginOverviewStateStackAnimation(recentsView, pendingAnimation);
             } else {
                 updateOverviewPeekStockAnimation(recentsView, toState, loader);
             }
             prepareHomeExitFromRecentsIfNeeded(recentsView, toState, pendingAnimation, loader);
             Object result = chain.proceed();
-            if (landscapeOverview) {
-                attachLandscapeStackAfterNativeState(recentsView, pendingAnimation);
-            }
             if (shouldAttachBlankTapHomeExitToSystemAnimation(recentsView, toState, loader)) {
                 LauncherRecentsPerf.flow(flowTag + ":attachBlankTapSystem",
                         recentsView, "toState=" + toState);
@@ -328,34 +316,18 @@ final class LauncherRecentsStateAnimationController {
                 Object thisObject = chain.getThisObject();
                 Object toState = chain.getArg(0);
                 View recentsView = resolveControllerRecentsView(thisObject);
-                boolean landscapeOverview = shouldStartLandscapeStackAfterNativeState(
-                        recentsView,
-                        toState,
-                        loader);
                 boolean shouldTakeOver =
-                        !landscapeOverview
-                                && shouldTakeOverOverviewPeekToOverview(recentsView, toState, loader);
+                        shouldTakeOverOverviewPeekToOverview(recentsView, toState, loader);
                 LauncherRecentsPerf.flow("state:setImmediate",
                         recentsView,
                         "toState=" + toState + " takeOver=" + shouldTakeOver);
-                if (landscapeOverview) {
-                    LauncherRecentsState.setLandscapeStackState(
-                            recentsView,
-                            LauncherRecentsState.LANDSCAPE_STACK_NATIVE);
-                } else if (shouldTakeOver) {
+                if (shouldTakeOver) {
                     beginOverviewStateStackAnimation(recentsView, null);
                 } else {
                     updateOverviewPeekStockAnimation(recentsView, toState, loader);
                 }
                 Object result = chain.proceed();
-                if (landscapeOverview) {
-                    LauncherRecentsState.setLandscapeStackState(
-                            recentsView,
-                            LauncherRecentsState.LANDSCAPE_STACK_NATIVE);
-                    recentsView.postOnAnimation(
-                            () -> LauncherRecentsTransitionController
-                                    .startSettledLandscapeStackTransition(recentsView));
-                } else if (shouldTakeOver) {
+                if (shouldTakeOver) {
                     LauncherRecentsPerf.flow("state:setImmediate:applyAndClear",
                             recentsView);
                     LauncherRecentsLayoutEngine.applyStackLayout(
@@ -371,58 +343,6 @@ final class LauncherRecentsStateAnimationController {
                     "Failed to hook RecentsViewStateController.setState",
                     t);
         }
-    }
-
-    private static boolean shouldStartLandscapeStackAfterNativeState(
-            View recentsView,
-            Object toState,
-            ClassLoader loader) {
-        if (recentsView == null
-                || !LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)
-                || LauncherRecentsState.isSwipeUpGestureActive(recentsView)
-                || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
-            return false;
-        }
-        Object overviewState = LauncherRecentsCompat.readStaticFieldCompat(
-                LAUNCHER_STATE_CLASS,
-                "OVERVIEW",
-                loader);
-        return toState == overviewState;
-    }
-
-    private static void attachLandscapeStackAfterNativeState(
-            View recentsView,
-            Object pendingAnimation) {
-        if (recentsView == null) {
-            return;
-        }
-        if (pendingAnimation == null) {
-            recentsView.postOnAnimation(
-                    () -> LauncherRecentsTransitionController
-                            .startSettledLandscapeStackTransition(recentsView));
-            return;
-        }
-        LauncherRecentsCompat.invokeMethodReflectively(
-                pendingAnimation,
-                "addListener",
-                new Class<?>[]{Animator.AnimatorListener.class},
-                new AnimatorListenerAdapter() {
-                    private boolean cancelled;
-
-                    @Override
-                    public void onAnimationCancel(Animator animation) {
-                        cancelled = true;
-                    }
-
-                    @Override
-                    public void onAnimationEnd(Animator animation) {
-                        if (!cancelled) {
-                            recentsView.postOnAnimation(
-                                    () -> LauncherRecentsTransitionController
-                                            .startSettledLandscapeStackTransition(recentsView));
-                        }
-                    }
-                });
     }
 
     private static void attachOverviewStateAnimationCallbacks(View recentsView, Object pendingAnimation) {
