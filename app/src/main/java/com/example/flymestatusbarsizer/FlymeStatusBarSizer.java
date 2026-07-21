@@ -258,7 +258,6 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private void installSignalHooks(ClassLoader loader) {
         hookSignalImageAssignments();
-        hookSignalTintDispatcher(loader);
         hookSignalDrawableLevelChanges(loader);
         hookFlymeWifiViewPerf(loader);
         hookWifiSignalControllerState(loader);
@@ -752,74 +751,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG, "Failed to hook ImageView.setImageDrawable", t);
         }
-    }
-
-    private void hookSignalTintDispatcher(ClassLoader loader) {
-        try {
-            Class<?> clazz = Class.forName(
-                    "com.android.systemui.statusbar.phone.DarkIconDispatcherImpl",
-                    false,
-                    loader);
-            Method method = clazz.getDeclaredMethod("applyIconTint");
-            method.setAccessible(true);
-            hook(method).intercept(chain -> {
-                Object result = chain.proceed();
-                syncTrackedSignalTintFromDispatcher(chain.getThisObject());
-                return result;
-            });
-        } catch (Throwable t) {
-            log(android.util.Log.WARN, TAG, "Failed to hook DarkIconDispatcherImpl.applyIconTint", t);
-        }
-    }
-
-    private static void syncTrackedSignalTintFromDispatcher(Object dispatcher) {
-        Object tintAreas = ReflectUtils.getField(dispatcher, "mTintAreas");
-        int iconTint = ReflectUtils.getIntField(dispatcher, "mIconTint", Color.WHITE);
-        ArrayList<View> views = new ArrayList<>(TRACKED_STATUS_BAR_ICON_VIEWS.keySet());
-        for (View trackedView : views) {
-            if (!(trackedView instanceof ImageView)) {
-                continue;
-            }
-            ImageView view = (ImageView) trackedView;
-            Drawable drawable = view.getDrawable();
-            if (!(drawable instanceof SignalIconDrawable)
-                    && !(drawable instanceof WifiIconDrawable)) {
-                continue;
-            }
-            int tint = resolveStatusBarTintForView(tintAreas, view, iconTint);
-            view.clearColorFilter();
-            view.setImageTintList(ColorStateList.valueOf(tint));
-        }
-    }
-
-    private static int resolveStatusBarTintForView(Object tintAreas, View view, int iconTint) {
-        if (!(tintAreas instanceof Iterable<?>) || view == null) {
-            return iconTint;
-        }
-        int width = view.getWidth();
-        if (width <= 0) {
-            return iconTint;
-        }
-        boolean hasArea = false;
-        int[] location = new int[2];
-        view.getLocationOnScreen(location);
-        int left = location[0];
-        for (Object value : (Iterable<?>) tintAreas) {
-            if (!(value instanceof Rect)) {
-                continue;
-            }
-            hasArea = true;
-            Rect area = (Rect) value;
-            if (area.isEmpty()) {
-                return iconTint;
-            }
-            int overlap = Math.max(0,
-                    Math.min(left + width, area.right) - Math.max(left, area.left));
-            if (area.top <= 0 && overlap * 2 > width) {
-                return iconTint;
-            }
-        }
-        return hasArea ? Color.WHITE : iconTint;
     }
 
     private void hookStatusIconContainerTranslations(ClassLoader loader) {
