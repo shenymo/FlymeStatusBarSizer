@@ -2448,8 +2448,9 @@ final class LauncherRecentsTouchController {
                 state.blurProgress,
                 state.fullscreenProgress,
                 state.translationZ,
+                state.shadowElevationDp,
                 state.stackContentBlurEnabled,
-                state.clearShadow);
+                state.shadowEnabled);
     }
 
     private static void compensateStackDismissTargetsForFrozenScroll(
@@ -2723,6 +2724,7 @@ final class LauncherRecentsTouchController {
                 blurProgress,
                 LauncherRecentsCompat.readFloatField(taskView, "fullscreenProgress", 0f),
                 taskView.getTranslationZ(),
+                0,
                 blurProgress > 0.001f,
                 false);
     }
@@ -2759,6 +2761,7 @@ final class LauncherRecentsTouchController {
                 0f,
                 LauncherRecentsTaskVisuals.readLastStockFullscreenProgress(taskView),
                 taskView.getTranslationZ(),
+                0,
                 false,
                 false);
     }

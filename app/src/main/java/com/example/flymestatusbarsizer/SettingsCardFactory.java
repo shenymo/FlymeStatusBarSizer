@@ -238,6 +238,11 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED);
         activity.addDivider(content);
+        activity.addSwitchRow(content, "卡片阴影",
+                "给后台卡片添加与下拉菜单相同的系统阴影，关闭后便于对比。",
+                SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED,
+                SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED);
+        activity.addDivider(content);
         activity.addSwitchRow(content, "显示清除全部按钮",
                 "只在 IOS 式堆叠后台开启时生效。",
                 SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED,
@@ -550,6 +555,8 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP, 10, 400, "dp");
 
         addStackParamHeader(content, "视觉效果", "控制边缘卡片的 blur 和隐藏阈值。");
+        addStackParam(content, "阴影强度", "数值越大，卡片周围的系统阴影越明显。",
+                SettingsStore.KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP, 0, 16, "dp");
         addStackParam(content, "blur 最大强度", "边缘卡片截图和图标的最大模糊强度。",
                 SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP, 0, 80, "dp");
         addStackParam(content, "blur 中档比例", "模糊效果的中档强度比例。",

@@ -20,14 +20,6 @@ final class LauncherRecentsTaskVisuals {
     private static final String TASK_HEAD_FIELD = "mTaskHead";
     private static final RenderEffect[] stackContentBlurEffects = new RenderEffect[3];
     private static final float[] stackContentBlurEffectPxs = {-1f, -1f, -1f};
-    private static final ViewOutlineProvider STACK_TASK_NO_SHADOW_OUTLINE_PROVIDER =
-            new ViewOutlineProvider() {
-                @Override
-                public void getOutline(View view, Outline outline) {
-                    outline.setEmpty();
-                }
-            };
-
     private LauncherRecentsTaskVisuals() {
     }
 
@@ -45,8 +37,9 @@ final class LauncherRecentsTaskVisuals {
         final float blurProgress;
         final float fullscreenProgress;
         final float translationZ;
+        final int shadowElevationDp;
         final boolean stackContentBlurEnabled;
-        final boolean clearShadow;
+        final boolean shadowEnabled;
 
         StackTaskVisualState(
                 float pivotX,
@@ -62,8 +55,9 @@ final class LauncherRecentsTaskVisuals {
                 float blurProgress,
                 float fullscreenProgress,
                 float translationZ,
+                int shadowElevationDp,
                 boolean stackContentBlurEnabled,
-                boolean clearShadow) {
+                boolean shadowEnabled) {
             this.pivotX = pivotX;
             this.pivotY = pivotY;
             this.horizontalOffsetX = horizontalOffsetX;
@@ -77,8 +71,9 @@ final class LauncherRecentsTaskVisuals {
             this.blurProgress = LauncherRecentsLayoutEngine.clamp(blurProgress, 0f, 1f);
             this.fullscreenProgress = fullscreenProgress;
             this.translationZ = translationZ;
+            this.shadowElevationDp = shadowElevationDp;
             this.stackContentBlurEnabled = stackContentBlurEnabled;
-            this.clearShadow = clearShadow;
+            this.shadowEnabled = shadowEnabled;
         }
 
         boolean approximatelyEquals(StackTaskVisualState other) {
@@ -96,8 +91,9 @@ final class LauncherRecentsTaskVisuals {
                     && approximatelyEqual(blurProgress, other.blurProgress)
                     && approximatelyEqual(fullscreenProgress, other.fullscreenProgress)
                     && approximatelyEqual(translationZ, other.translationZ)
+                    && shadowElevationDp == other.shadowElevationDp
                     && stackContentBlurEnabled == other.stackContentBlurEnabled
-                    && clearShadow == other.clearShadow;
+                    && shadowEnabled == other.shadowEnabled;
         }
 
         StackTaskVisualState lerpTo(StackTaskVisualState target, float progress) {
@@ -119,8 +115,9 @@ final class LauncherRecentsTaskVisuals {
                     LauncherRecentsLayoutEngine.lerp(blurProgress, target.blurProgress, clampedProgress),
                     LauncherRecentsLayoutEngine.lerp(fullscreenProgress, target.fullscreenProgress, clampedProgress),
                     LauncherRecentsLayoutEngine.lerp(translationZ, target.translationZ, clampedProgress),
+                    target.shadowElevationDp,
                     target.stackContentBlurEnabled,
-                    target.clearShadow);
+                    target.shadowEnabled);
         }
     }
 
@@ -156,8 +153,10 @@ final class LauncherRecentsTaskVisuals {
             clearStackContentBlurIfApplied(taskView);
         }
         setFullscreenProgress(taskView, state.fullscreenProgress);
-        if (state.clearShadow) {
-            clearStackShadow(taskView);
+        if (state.shadowEnabled) {
+            applyStackShadow(taskView, state.shadowElevationDp);
+        } else {
+            restoreStackShadow(taskView);
         }
         setTranslationZ(taskView, state.translationZ);
         LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.put(taskView, state);
@@ -300,13 +299,28 @@ final class LauncherRecentsTaskVisuals {
                 && (!state.stackContentBlurEnabled
                 || approximatelyEqual(readStackContentBlurProgress(taskView), state.blurProgress))
                 && approximatelyEqual(taskView.getTranslationZ(), state.translationZ)
-                && (!state.clearShadow || isStackShadowCleared(taskView));
+                && (!state.shadowEnabled
+                || isStackShadowApplied(taskView, state.shadowElevationDp));
     }
 
-    private static boolean isStackShadowCleared(View taskView) {
-        return taskView != null
-                && taskView.getOutlineProvider() == STACK_TASK_NO_SHADOW_OUTLINE_PROVIDER
-                && approximatelyEqual(taskView.getElevation(), 0f);
+    private static boolean isStackShadowApplied(View taskView, int elevationDp) {
+        LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
+        if (targets == null || targets.snapshotViews.length == 0) {
+            return false;
+        }
+        float elevation = FlymeStatusBarSizer.dp(
+                taskView.getContext(), elevationDp);
+        boolean foundSnapshot = false;
+        for (View snapshotView : targets.snapshotViews) {
+            if (snapshotView == null) {
+                continue;
+            }
+            foundSnapshot = true;
+            if (!approximatelyEqual(snapshotView.getElevation(), elevation)) {
+                return false;
+            }
+        }
+        return foundSnapshot;
     }
 
     private static void markStackTaskVisualStateDirty(View taskView) {
@@ -819,24 +833,30 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_APPLIED_TRANSLATION_ZS.put(taskView, value);
     }
 
-    static void clearStackShadow(View taskView) {
+    static void applyStackShadow(View taskView, int elevationDp) {
         if (taskView == null) {
             return;
         }
         markStackTaskVisualStateDirty(taskView);
-        Float lastAppliedElevation =
-                LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.get(taskView);
-        if (lastAppliedElevation != null
-                && approximatelyEqual(lastAppliedElevation, 0f)
-                && taskView.getOutlineProvider() == STACK_TASK_NO_SHADOW_OUTLINE_PROVIDER
-                && approximatelyEqual(taskView.getElevation(), 0f)) {
+        LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
+        if (targets == null) {
             return;
         }
-        rememberOriginalTaskState(taskView);
-        taskView.setOutlineProvider(STACK_TASK_NO_SHADOW_OUTLINE_PROVIDER);
-        taskView.setElevation(0f);
-        taskView.invalidateOutline();
-        LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.put(taskView, 0f);
+        float elevation = FlymeStatusBarSizer.dp(
+                taskView.getContext(), elevationDp);
+        for (View snapshotView : targets.snapshotViews) {
+            if (snapshotView == null) {
+                continue;
+            }
+            if (!LauncherRecentsState.ORIGINAL_STACK_SHADOW_ELEVATIONS.containsKey(snapshotView)) {
+                LauncherRecentsState.ORIGINAL_STACK_SHADOW_ELEVATIONS.put(
+                        snapshotView, snapshotView.getElevation());
+            }
+            if (!approximatelyEqual(snapshotView.getElevation(), elevation)) {
+                snapshotView.setElevation(elevation);
+                snapshotView.invalidateOutline();
+            }
+        }
     }
 
     static void rememberOriginalTaskState(View taskView) {
@@ -997,7 +1017,6 @@ final class LauncherRecentsTaskVisuals {
         LauncherRecentsState.LAST_APPLIED_STABLE_ALPHAS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_TRANSLATION_ZS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_FULLSCREEN_PROGRESSES.remove(taskView);
-        LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.remove(taskView);
         LauncherRecentsState.LAST_APPLIED_TASK_HEAD_ALPHAS.remove(taskView);
@@ -1223,14 +1242,29 @@ final class LauncherRecentsTaskVisuals {
             return;
         }
         markStackTaskVisualStateDirty(taskView);
-        if (!LauncherRecentsState.ORIGINAL_TASK_ELEVATIONS.containsKey(taskView)) {
+        if (LauncherRecentsState.ORIGINAL_TASK_ELEVATIONS.containsKey(taskView)) {
+            taskView.setElevation(readOriginalTaskElevation(taskView));
+            taskView.setOutlineProvider(LauncherRecentsState.ORIGINAL_TASK_OUTLINE_PROVIDERS.get(
+                    taskView));
+            taskView.invalidateOutline();
+        }
+        restoreStackShadow(taskView);
+    }
+
+    private static void restoreStackShadow(View taskView) {
+        LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
+        if (targets == null) {
             return;
         }
-        taskView.setElevation(readOriginalTaskElevation(taskView));
-        taskView.setOutlineProvider(LauncherRecentsState.ORIGINAL_TASK_OUTLINE_PROVIDERS.get(
-                taskView));
-        taskView.invalidateOutline();
-        LauncherRecentsState.LAST_APPLIED_TASK_SHADOW_ELEVATIONS.remove(taskView);
+        for (View snapshotView : targets.snapshotViews) {
+            Float elevation = snapshotView == null
+                    ? null
+                    : LauncherRecentsState.ORIGINAL_STACK_SHADOW_ELEVATIONS.remove(snapshotView);
+            if (elevation != null) {
+                snapshotView.setElevation(elevation);
+                snapshotView.invalidateOutline();
+            }
+        }
     }
 
     private static boolean isCurrentTaskStateModuleApplied(View taskView) {

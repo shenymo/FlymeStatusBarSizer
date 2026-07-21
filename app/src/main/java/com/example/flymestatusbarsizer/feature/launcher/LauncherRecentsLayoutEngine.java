@@ -75,6 +75,8 @@ final class LauncherRecentsLayoutEngine {
         final float zStepPx;
         final boolean blankTapExitActive;
         final boolean stackContentBlurEnabled;
+        final boolean stackShadowEnabled;
+        final int stackShadowElevationDp;
 
         StackLayoutContext(
                 View recentsView,
@@ -100,7 +102,9 @@ final class LauncherRecentsLayoutEngine {
                 float maxTranslationZ,
                 float zStepPx,
                 boolean blankTapExitActive,
-                boolean stackContentBlurEnabled) {
+                boolean stackContentBlurEnabled,
+                boolean stackShadowEnabled,
+                int stackShadowElevationDp) {
             this.recentsView = recentsView;
             this.taskViewCount = taskViewCount;
             this.runningTaskView = runningTaskView;
@@ -125,6 +129,8 @@ final class LauncherRecentsLayoutEngine {
             this.zStepPx = zStepPx;
             this.blankTapExitActive = blankTapExitActive;
             this.stackContentBlurEnabled = stackContentBlurEnabled;
+            this.stackShadowEnabled = stackShadowEnabled;
+            this.stackShadowElevationDp = stackShadowElevationDp;
         }
     }
 
@@ -1390,8 +1396,9 @@ final class LauncherRecentsLayoutEngine {
                 state.blurProgress,
                 state.fullscreenProgress,
                 state.translationZ,
+                state.shadowElevationDp,
                 state.stackContentBlurEnabled,
-                state.clearShadow);
+                state.shadowEnabled);
     }
 
     private static LauncherRecentsTaskVisuals.StackTaskVisualState
@@ -1415,8 +1422,9 @@ final class LauncherRecentsLayoutEngine {
                 startState.blurProgress,
                 startState.fullscreenProgress,
                 startState.translationZ,
+                startState.shadowElevationDp,
                 startState.stackContentBlurEnabled,
-                startState.clearShadow);
+                startState.shadowEnabled);
     }
 
     static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState>
@@ -1454,6 +1462,8 @@ final class LauncherRecentsLayoutEngine {
         if (taskView == null) {
             return null;
         }
+        int shadowElevationDp = FlymeStatusBarSizer.loadLauncherRecentsConfig(
+                taskView.getContext()).stackShadowElevationDp;
         return new LauncherRecentsTaskVisuals.StackTaskVisualState(
                 taskView.getPivotX(),
                 taskView.getPivotY(),
@@ -1474,6 +1484,7 @@ final class LauncherRecentsLayoutEngine {
                 LauncherRecentsTaskVisuals.readStackContentBlurProgress(taskView),
                 LauncherRecentsCompat.readFloatField(taskView, "fullscreenProgress", 0f),
                 taskView.getTranslationZ(),
+                shadowElevationDp,
                 true,
                 true);
     }
@@ -2203,7 +2214,9 @@ final class LauncherRecentsLayoutEngine {
                 FlymeStatusBarSizer.dp(recentsView.getContext(), 24),
                 FlymeStatusBarSizer.dp(recentsView.getContext(), 8),
                 LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView),
-                config.launcherIosStackRecentsBlurEnabled);
+                config.launcherIosStackRecentsBlurEnabled,
+                config.launcherIosStackRecentsShadowEnabled,
+                config.stackShadowElevationDp);
 
         for (int index = 0; index < processIndices.size(); index++) {
             int i = processIndices.get(index);
@@ -2962,8 +2975,9 @@ final class LauncherRecentsLayoutEngine {
                 appliedBlurProgress,
                 appliedFullscreenProgress,
                 appliedTranslationZ,
+                context.stackShadowElevationDp,
                 context.stackContentBlurEnabled,
-                true);
+                context.stackShadowEnabled);
     }
 
     static void cancelStackLayoutRecovery(View recentsView) {

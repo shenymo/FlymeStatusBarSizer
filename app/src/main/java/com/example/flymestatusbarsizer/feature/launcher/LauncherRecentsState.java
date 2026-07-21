@@ -53,6 +53,8 @@ final class LauncherRecentsState {
     static final WeakHashMap<View, Float> ORIGINAL_TASK_ELEVATIONS = new WeakHashMap<>();
     static final WeakHashMap<View, ViewOutlineProvider> ORIGINAL_TASK_OUTLINE_PROVIDERS =
             new WeakHashMap<>();
+    static final WeakHashMap<View, Float> ORIGINAL_STACK_SHADOW_ELEVATIONS =
+            new WeakHashMap<>();
     static final WeakHashMap<View, Float> LAST_STOCK_TASK_OFFSET_XS = new WeakHashMap<>();
     static final WeakHashMap<View, Float> LAST_STOCK_TASK_OFFSET_YS = new WeakHashMap<>();
     static final WeakHashMap<View, Float> LAST_STOCK_HORIZONTAL_OFFSET_XS =
@@ -76,8 +78,6 @@ final class LauncherRecentsState {
     static final WeakHashMap<View, Float> LAST_APPLIED_STABLE_ALPHAS = new WeakHashMap<>();
     static final WeakHashMap<View, Float> LAST_APPLIED_TRANSLATION_ZS = new WeakHashMap<>();
     static final WeakHashMap<View, Float> LAST_APPLIED_FULLSCREEN_PROGRESSES =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Float> LAST_APPLIED_TASK_SHADOW_ELEVATIONS =
             new WeakHashMap<>();
     static final WeakHashMap<View, Float> LAST_APPLIED_STACK_CONTENT_BLURS =
             new WeakHashMap<>();
@@ -923,7 +923,6 @@ final class LauncherRecentsState {
         LAST_APPLIED_STABLE_ALPHAS.remove(taskView);
         LAST_APPLIED_TRANSLATION_ZS.remove(taskView);
         LAST_APPLIED_FULLSCREEN_PROGRESSES.remove(taskView);
-        LAST_APPLIED_TASK_SHADOW_ELEVATIONS.remove(taskView);
         LAST_APPLIED_STACK_CONTENT_BLURS.remove(taskView);
         LAST_APPLIED_ACTIVITY_TITLE_ALPHAS.remove(taskView);
         LAST_APPLIED_TASK_HEAD_ALPHAS.remove(taskView);

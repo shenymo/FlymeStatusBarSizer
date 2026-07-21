@@ -115,6 +115,8 @@ final class SettingsStore {
             "launcher_ios_stack_recents_enabled";
     static final String KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED =
             "launcher_ios_stack_recents_blur_enabled";
+    static final String KEY_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED =
+            "launcher_ios_stack_recents_shadow_enabled";
     static final String KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED =
             "launcher_ios_stack_recents_clear_all_button_enabled";
     static final String KEY_LAUNCHER_STACK_CURRENT_APP_CENTERED =
@@ -191,6 +193,8 @@ final class SettingsStore {
             "launcher_stack_menu_pull_threshold_dp";
     static final String KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP =
             "launcher_stack_content_max_blur_dp";
+    static final String KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP =
+            "launcher_stack_shadow_elevation_dp";
     static final String KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT =
             "launcher_stack_content_medium_blur_percent";
     static final String KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT =
@@ -348,6 +352,7 @@ final class SettingsStore {
     static final int DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP = 24;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED = false;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED = true;
+    static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED = true;
     static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED = true;
     static final boolean DEFAULT_LAUNCHER_STACK_CURRENT_APP_CENTERED = false;
     static final int DEFAULT_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT = 80;
@@ -386,6 +391,7 @@ final class SettingsStore {
     static final int DEFAULT_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY = 1200;
     static final int DEFAULT_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP = 100;
     static final int DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP = 18;
+    static final int DEFAULT_LAUNCHER_STACK_SHADOW_ELEVATION_DP = 4;
     static final int DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT = 50;
     static final int DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT = 85;
     static final int DEFAULT_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT = 24;
@@ -522,6 +528,7 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY,
             KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP,
             KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP,
+            KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP,
             KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT,
             KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT,
@@ -570,6 +577,7 @@ final class SettingsStore {
             KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED,
+            KEY_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED,
             KEY_LAUNCHER_STACK_CURRENT_APP_CENTERED,
             KEY_LAUNCHER_AICY_ENTRY_ENABLED,
@@ -636,6 +644,7 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY,
             KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP,
             KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP,
+            KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP,
             KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT,
             KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT,
@@ -933,6 +942,8 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP;
             case KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP:
                 return DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP;
+            case KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP:
+                return DEFAULT_LAUNCHER_STACK_SHADOW_ELEVATION_DP;
             case KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT;
             case KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT:
@@ -1030,6 +1041,8 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED;
             case KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED:
                 return DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED;
+            case KEY_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED:
+                return DEFAULT_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED;
             case KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED:
                 return DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED;
             case KEY_LAUNCHER_STACK_CURRENT_APP_CENTERED:
@@ -1458,6 +1471,9 @@ final class SettingsStore {
         }
         if (KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP.equals(key)) {
             return Math.max(0, Math.min(80, value));
+        }
+        if (KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP.equals(key)) {
+            return Math.max(0, Math.min(16, value));
         }
         if (KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT.equals(key)) {
             return Math.max(0, Math.min(100, value));

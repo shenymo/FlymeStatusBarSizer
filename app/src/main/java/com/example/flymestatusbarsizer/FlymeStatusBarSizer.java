@@ -7280,6 +7280,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean enabled;
         public final boolean launcherIosStackRecentsEnabled;
         public final boolean launcherIosStackRecentsBlurEnabled;
+        public final boolean launcherIosStackRecentsShadowEnabled;
         public final boolean launcherIosStackRecentsClearAllButtonEnabled;
         public final boolean launcherRecentsCardCornerRadiusEnabled;
         public final int launcherRecentsCardCornerRadiusDp;
@@ -7322,6 +7323,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final float stackDismissMinFlingVelocity;
         public final int stackMenuPullThresholdDp;
         public final int stackContentMaxBlurDp;
+        public final int stackShadowElevationDp;
         public final float stackContentMediumBlurRatio;
         public final float stackContentBlurStartAlpha;
         public final float stackLeftFadeDistanceRatio;
@@ -7337,6 +7339,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                     && config.launcherIosStackRecentsEnabled;
             launcherIosStackRecentsBlurEnabled = launcherIosStackRecentsEnabled
                     && config.launcherIosStackRecentsBlurEnabled;
+            launcherIosStackRecentsShadowEnabled = launcherIosStackRecentsEnabled
+                    && config.launcherIosStackRecentsShadowEnabled;
             launcherIosStackRecentsClearAllButtonEnabled = launcherIosStackRecentsEnabled
                     && config.launcherIosStackRecentsClearAllButtonEnabled;
             launcherRecentsCardCornerRadiusEnabled = enabled
@@ -7447,6 +7451,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             stackContentMaxBlurDp = config == null
                     ? SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP
                     : config.launcherStackContentMaxBlurDp;
+            stackShadowElevationDp = config == null
+                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_SHADOW_ELEVATION_DP
+                    : config.launcherStackShadowElevationDp;
             stackContentMediumBlurRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT,
                     c -> c.launcherStackContentMediumBlurPercent);
             stackContentBlurStartAlpha = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT,

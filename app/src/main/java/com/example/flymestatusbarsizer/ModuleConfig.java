@@ -116,6 +116,8 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED;
     boolean launcherIosStackRecentsBlurEnabled =
             SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED;
+    boolean launcherIosStackRecentsShadowEnabled =
+            SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED;
     boolean launcherIosStackRecentsClearAllButtonEnabled =
             SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED;
     boolean launcherStackCurrentAppCentered =
@@ -185,6 +187,8 @@ final class ModuleConfig {
     int launcherStackMenuPullThresholdDp =
             SettingsStore.DEFAULT_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP;
     int launcherStackContentMaxBlurDp = SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP;
+    int launcherStackShadowElevationDp =
+            SettingsStore.DEFAULT_LAUNCHER_STACK_SHADOW_ELEVATION_DP;
     int launcherStackContentMediumBlurPercent =
             SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT;
     int launcherStackContentBlurStartAlphaPercent =
@@ -649,6 +653,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED,
                     SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED);
+            config.launcherIosStackRecentsShadowEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED,
+                    SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED);
             config.launcherIosStackRecentsClearAllButtonEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED,
@@ -729,6 +737,8 @@ final class ModuleConfig {
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP);
             config.launcherStackContentMaxBlurDp = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP);
+            config.launcherStackShadowElevationDp = readLauncherStackParameter(
+                    prefs, SettingsStore.KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP);
             config.launcherStackContentMediumBlurPercent = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT);
             config.launcherStackContentBlurStartAlphaPercent = readLauncherStackParameter(
