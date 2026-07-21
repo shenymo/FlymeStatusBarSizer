@@ -124,9 +124,6 @@ final class LauncherRecentsStateAnimationController {
                 if (recentsView == null) {
                     return chain.proceed();
                 }
-                if (LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)) {
-                    return chain.proceed();
-                }
                 LauncherRecentsState.setLauncherQuickSwitchStockMode(recentsView, false);
                 if (!LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
                     return chain.proceed();
@@ -164,9 +161,6 @@ final class LauncherRecentsStateAnimationController {
             method.setAccessible(true);
             module.intercept(method, chain -> {
                 View recentsView = resolveNoButtonNavbarRecentsView(chain.getThisObject());
-                if (LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)) {
-                    return chain.proceed();
-                }
                 if (recentsView == null
                         || !LauncherRecentsState.isOverviewPreReleaseStockMode(recentsView)) {
                     return chain.proceed();
@@ -222,9 +216,6 @@ final class LauncherRecentsStateAnimationController {
                 View recentsView = resolveHomeToOverviewRecentsView(chain.getThisObject());
                 if (recentsView != null) {
                     LauncherRecentsState.setLauncherQuickSwitchStockMode(recentsView, false);
-                }
-                if (LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)) {
-                    return chain.proceed();
                 }
                 if (recentsView != null
                         && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {

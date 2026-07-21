@@ -52,9 +52,6 @@ final class LauncherRecentsTransitionController {
                     View recentsView = (View) thisObject;
                     LauncherRecentsPerf.flow("leave:startHome", recentsView,
                             "animated=" + chain.getArg(0));
-                    if (LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)) {
-                        return chain.proceed();
-                    }
                     if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
                         LauncherRecentsPerf.flow("leave:startHome:skipSwipeUp", recentsView);
                         return chain.proceed();
@@ -110,17 +107,6 @@ final class LauncherRecentsTransitionController {
                         ? (View) chain.getThisObject()
                         : null;
                 Object endTarget = chain.getArg(1);
-                if (LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)) {
-                    long nativeStartNs = LauncherRecentsPerf.start(recentsView);
-                    try {
-                        return chain.proceed();
-                    } finally {
-                        LauncherRecentsPerf.end(
-                                "native:onPrepareGestureEndAnimation:landscape",
-                                recentsView,
-                                nativeStartNs);
-                    }
-                }
                 boolean shouldPrepareGestureRelease =
                         shouldUsePendingGestureRecentsStackRelease(recentsView, endTarget);
                 LauncherRecentsPerf.flow("enter:prepareGestureEnd",
@@ -258,20 +244,6 @@ final class LauncherRecentsTransitionController {
                 Object endTarget = LauncherRecentsCompat.getFieldCompat(
                         thisObject,
                         "mCurrentGestureEndTarget");
-                if (LauncherRecentsLayoutEngine.isLandscapeRecents(recentsView)) {
-                    long nativeStartNs = LauncherRecentsPerf.start(recentsView);
-                    Object result;
-                    try {
-                        result = chain.proceed();
-                    } finally {
-                        LauncherRecentsPerf.end(
-                                "native:onGestureAnimationEnd:landscape",
-                                recentsView,
-                                nativeStartNs);
-                    }
-                    LauncherRecentsState.clearAppToRecentsGestureState(recentsView);
-                    return result;
-                }
                 boolean shouldPrepareGestureRelease =
                         shouldUsePendingGestureRecentsStackRelease(recentsView, endTarget);
                 LauncherRecentsPerf.flow("enter:gestureAnimationEnd",

@@ -911,16 +911,6 @@ final class LauncherRecentsLayoutEngine {
                 : recentsView.getScrollY();
     }
 
-    private static boolean isSeascapeOrientation(View recentsView) {
-        Object orientationHandler =
-                LauncherRecentsCompat.getFieldCompat(recentsView, "mOrientationHandler");
-        Object value = LauncherRecentsCompat.invokeCompat(
-                orientationHandler,
-                "getRotation",
-                LauncherRecentsCompat.NO_ARGS);
-        return value instanceof Integer && (Integer) value == 3;
-    }
-
     private static float resolvePrimarySize(View view, boolean primaryScrollHorizontal) {
         return primaryScrollHorizontal ? view.getWidth() : view.getHeight();
     }
@@ -3297,7 +3287,6 @@ final class LauncherRecentsLayoutEngine {
             View recentsView) {
         return "updatePageOffsetsForFlyme".equals(methodName)
                 && shouldUseStackLayout(recentsView)
-                && canOwnStackVisuals(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && (isStackScrollerActive(recentsView)
                 || shouldSuppressStockPageOffsetUpdateForTransition(recentsView));
@@ -3308,7 +3297,6 @@ final class LauncherRecentsLayoutEngine {
             View recentsView) {
         return "updateHorizontalOffset".equals(methodName)
                 && shouldUseStackLayout(recentsView)
-                && canOwnStackVisuals(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && (isStackScrollerActive(recentsView)
                 || shouldSuppressStockPageOffsetUpdateForTransition(recentsView));
@@ -3344,7 +3332,6 @@ final class LauncherRecentsLayoutEngine {
             View recentsView) {
         return "updatePageScales".equals(methodName)
                 && shouldUseStackLayout(recentsView)
-                && canOwnStackVisuals(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && (!LauncherRecentsStateAnimationController.shouldKeepOverviewPeekStockLayout(
@@ -3392,7 +3379,6 @@ final class LauncherRecentsLayoutEngine {
     private static boolean shouldOwnStackTaskAlpha(View recentsView) {
         return recentsView != null
                 && shouldUseStackLayout(recentsView)
-                && canOwnStackVisuals(recentsView)
                 && !LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isTaskLaunchLayoutFrozen(recentsView)
                 && !LauncherRecentsTransitionController.isBlankTapHomeExitActive(recentsView)
@@ -3403,10 +3389,6 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
                 recentsView)
                 || isStackLayoutRecoveryActive(recentsView));
-    }
-
-    private static boolean canOwnStackVisuals(View recentsView) {
-        return !isLandscapeRecents(recentsView);
     }
 
     static void restoreTaskTransforms(View recentsView, int taskViewCount) {
@@ -3671,26 +3653,17 @@ final class LauncherRecentsLayoutEngine {
             float taskPrimarySize,
             float taskCenteredPrimaryStartPx,
             boolean primaryScrollHorizontal) {
-        int primaryAxisSign = resolveStackPrimaryAxisSign(recentsView, primaryScrollHorizontal);
-        float visualProgress = progress * primaryAxisSign;
         float leftBoundOffsetPx = resolveStackLeftBoundOffset(
                 recentsView,
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx);
         float visibleOffset = resolveStackUnclampedVisibleOffset(
                 recentsView,
-                visualProgress,
+                progress,
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx,
                 primaryScrollHorizontal);
-        float offset = Math.max(leftBoundOffsetPx, visibleOffset);
-        return offset * primaryAxisSign;
-    }
-
-    private static int resolveStackPrimaryAxisSign(
-            View recentsView,
-            boolean primaryScrollHorizontal) {
-        return !primaryScrollHorizontal && isSeascapeOrientation(recentsView) ? -1 : 1;
+        return Math.max(leftBoundOffsetPx, visibleOffset);
     }
 
     private static float resolveStackUnclampedVisibleOffset(
@@ -3746,9 +3719,7 @@ final class LauncherRecentsLayoutEngine {
             boolean primaryScrollHorizontal,
             float fadeEndDistanceRatio,
             float fadeStartDistanceRatio) {
-        int primaryAxisSign = resolveStackPrimaryAxisSign(recentsView, primaryScrollHorizontal);
-        float visualProgress = progress * primaryAxisSign;
-        if (visualProgress >= 0f) {
+        if (progress >= 0f) {
             return 1f;
         }
         float currentOffset = resolveStackVisibleOffset(
@@ -3757,7 +3728,7 @@ final class LauncherRecentsLayoutEngine {
                 taskPrimarySize,
                 taskCenteredPrimaryStartPx,
                 primaryScrollHorizontal);
-        float frontProgress = (visualProgress + 1f) * primaryAxisSign;
+        float frontProgress = progress + 1f;
         float frontOffset = resolveStackVisibleOffset(
                 recentsView,
                 frontProgress,
@@ -3784,9 +3755,6 @@ final class LauncherRecentsLayoutEngine {
         float taskCenterPrimary =
                 taskCenteredPrimaryStartPx + visibleOffset + (taskPrimarySize * 0.5f);
         float primarySize = resolvePrimarySize(recentsView, primaryScrollHorizontal);
-        if (resolveStackPrimaryAxisSign(recentsView, primaryScrollHorizontal) < 0) {
-            taskCenterPrimary = primarySize - taskCenterPrimary;
-        }
         return remapProgress(
                 taskCenterPrimary,
                 0f,
