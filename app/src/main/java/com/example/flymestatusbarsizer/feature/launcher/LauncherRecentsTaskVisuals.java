@@ -719,16 +719,24 @@ final class LauncherRecentsTaskVisuals {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || taskView == null) {
             return;
         }
+        float clampedProgress = LauncherRecentsLayoutEngine.clamp(blurProgress, 0f, 1f);
+        Float lastProgress = LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLUR_PROGRESS
+                .get(taskView);
+        if (lastProgress != null
+                && Math.abs(lastProgress - clampedProgress) < MODULE_APPLIED_EPSILON) {
+            return;
+        }
+        LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLUR_PROGRESS.put(
+                taskView,
+                clampedProgress);
         LauncherRecentsPerf.measure("blur:applyProgress", taskView, () -> {
             markStackTaskVisualStateDirty(taskView);
             float blurPx = FlymeStatusBarSizer.dp(
                     taskView.getContext(),
-                    stackContentMaxBlurDp(taskView)) * LauncherRecentsLayoutEngine.clamp(
-                    blurProgress,
-                    0f,
-                    1f);
+                    stackContentMaxBlurDp(taskView)) * clampedProgress;
             LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
             if (targets == null) {
+                LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLUR_PROGRESS.remove(taskView);
                 return;
             }
             for (int i = 0; i < targets.snapshotViews.length; i++) {
@@ -785,6 +793,7 @@ final class LauncherRecentsTaskVisuals {
             LauncherRecentsState.StackContentTargets targets =
                     LauncherRecentsState.STACK_CONTENT_TARGETS.get(taskView);
             if (targets == null) {
+                LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLUR_PROGRESS.remove(taskView);
                 return;
             }
             for (int i = 0; i < targets.snapshotViews.length; i++) {
@@ -792,6 +801,7 @@ final class LauncherRecentsTaskVisuals {
                 clearStackIconBlurIfApplied(targets.iconAsViews[i]);
             }
             LauncherRecentsState.STACK_CONTENT_TARGETS.remove(taskView);
+            LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLUR_PROGRESS.remove(taskView);
         });
     }
 
