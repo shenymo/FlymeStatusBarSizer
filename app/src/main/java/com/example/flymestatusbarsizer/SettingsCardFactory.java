@@ -206,6 +206,23 @@ final class SettingsCardFactory {
                 buildWindowModeSideGesturePage());
     }
 
+    View createCarLinkSettingsCard() {
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        activity.addSwitchRow(content, "扩展可流转应用",
+                "把有桌面入口的第三方应用加入 CarLink 原生应用管理页。切换后重启 CarLink 生效。",
+                SettingsStore.KEY_CARLINK_EXPAND_APPS_ENABLED,
+                SettingsStore.DEFAULT_CARLINK_EXPAND_APPS_ENABLED);
+        activity.addDivider(content);
+        activity.addActionButtonRow(content, "CarLink 应用管理",
+                "使用 CarLink 原生页面选择、移除和排序车机应用。",
+                "打开", activity::openCarLinkAppManagement);
+        return activity.buildSectionCard(
+                "CarLink 应用流转",
+                "只扩展候选应用，车机仍然只显示你在 CarLink 中选中的应用。",
+                content);
+    }
+
     View createMBackNavigationSettingsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);

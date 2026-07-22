@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer;
 
 import com.example.flymestatusbarsizer.feature.clock.ClockHooks;
+import com.example.flymestatusbarsizer.feature.carlink.CarLinkHooks;
 import com.example.flymestatusbarsizer.feature.ime.ImeHooks;
 import com.example.flymestatusbarsizer.feature.launcher.LauncherAppearanceHooks;
 import com.example.flymestatusbarsizer.feature.launcher.LauncherRecentsHooks;
@@ -72,6 +73,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final String FLYME_LAUNCHER = "com.meizu.flyme.launcher";
     private static final String FLYME_SYSTEMUI_TOOLS = "com.flyme.systemuitools";
     private static final String MEIZU_PPS = "com.meizu.pps";
+    private static final String CARLINK = "com.upuphone.carlink";
     private static volatile FlymeStatusBarSizer MODULE;
     private static volatile ModuleConfig launcherRecentsConfigSource;
     private static volatile LauncherRecentsConfigSnapshot launcherRecentsConfigSnapshot;
@@ -229,6 +231,9 @@ public class FlymeStatusBarSizer extends XposedModule {
                     + ", pid=" + android.os.Process.myPid()
                     + ", loader=" + loader.getClass().getName());
             OneMindPerfHooks.install(this, loader);
+        }
+        if (CARLINK.equals(packageName)) {
+            CarLinkHooks.install(this, loader);
         }
         if ("com.meizu.safe".equals(packageName)) {
             MzSafeOptimizationHooks.install(this, loader);
@@ -421,6 +426,18 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     public static void logWindowModeWarning(String message, Throwable throwable) {
+        FlymeStatusBarSizer module = MODULE;
+        if (module != null) {
+            module.log(android.util.Log.WARN, TAG, message, throwable);
+        }
+    }
+
+    public static boolean isCarLinkExpandAppsEnabled() {
+        ModuleConfig config = ModuleConfig.load(null);
+        return config != null && config.enabled && config.carLinkExpandAppsEnabled;
+    }
+
+    public static void logCarLinkWarning(String message, Throwable throwable) {
         FlymeStatusBarSizer module = MODULE;
         if (module != null) {
             module.log(android.util.Log.WARN, TAG, message, throwable);

@@ -64,6 +64,9 @@ public class MainActivity extends Activity {
     private static final String PACKAGE_FLYME_LAUNCHER = "com.meizu.flyme.launcher";
     private static final String PACKAGE_FLYME_SYSTEMUI_TOOLS = "com.flyme.systemuitools";
     private static final String PACKAGE_MEIZU_PPS = "com.meizu.pps";
+    private static final String PACKAGE_CARLINK = "com.upuphone.carlink";
+    private static final String CARLINK_APP_MANAGER =
+            "com.upuphone.carlink.settings.activity.AppManaActivity";
     private static final long SYSTEM_UI_RESTART_DELAY_MS = 600L;
     private static final String GITHUB_URL = "https://github.com/shenymo/FlymeStatusBarSizer";
     private static final String QQ_GROUP_URL = "https://qun.qq.com/universal-share/share?ac=1&authKey=WuaHYIEHdI6Y%2Fvn7SvcFMtyuUX%2Bwp%2FMedY0eMgPLq9Bbrz%2FPMRsiIgDttNOMbPWW&busi_data=eyJncm91cENvZGUiOiIxMTAyMTM4MzgxIiwidG9rZW4iOiJIb1hmV2xvaVUxWFk2YjAyOXl5MmIwelljU3A5bFRYejQrb3JtUlJwOXRMK1BLU3pnWWRaSG9VdHZ4M3Fld2xqIiwidWluIjoiMjI4OTU3MTk5MCJ9&data=O3ClX619ry0x93elARpxRoHiwSavPU_N00zhT1jj5d_rR0feICi-g7gudqIpU6sbrKtr1_CCPBpNQ-APojGliw&svctype=4&tempid=h5_group_info";
@@ -1340,6 +1343,18 @@ public class MainActivity extends Activity {
                 false);
     }
 
+    void openCarLinkAppManagement() {
+        try {
+            Intent intent = new Intent();
+            intent.setClassName(PACKAGE_CARLINK, CARLINK_APP_MANAGER);
+            intent.setData(Uri.parse("carlink://com.upuphone.carlink/linksettings"));
+            intent.putExtra("carId", "");
+            startActivity(intent);
+        } catch (Throwable t) {
+            showToast("无法打开 CarLink 应用管理");
+        }
+    }
+
     void testLaunchLauncherAicyTarget() {
         testLaunchIntentSetting(
                 SettingsStore.KEY_LAUNCHER_AICY_ENTRY_TARGET,
@@ -2160,6 +2175,10 @@ public class MainActivity extends Activity {
 
     View createWindowModeSideGestureSettingsCard() {
         return settingsCardFactory.createWindowModeSideGestureSettingsCard();
+    }
+
+    View createCarLinkSettingsCard() {
+        return settingsCardFactory.createCarLinkSettingsCard();
     }
 
     View createMBackNavigationSettingsCard() {
