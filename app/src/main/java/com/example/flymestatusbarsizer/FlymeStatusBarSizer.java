@@ -4502,6 +4502,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             SignalIconDrawable signalDrawable = (SignalIconDrawable) current;
             if (signalDrawable.matchesGeometry(
                     mergedDual, intrinsicWidth, intrinsicHeight, mobileTypeBadge)) {
+                signalDrawable.setTintList(view.getImageTintList());
                 signalDrawable.setSignalLevels(signalLevel, secondarySignalLevel);
                 return;
             }
@@ -6501,6 +6502,10 @@ public class FlymeStatusBarSizer extends XposedModule {
         handler.removeCallbacks(PRIMARY_SIGNAL_ICON_REFRESH_RUNNABLE);
         handler.removeCallbacks(SIGNAL_ICON_REFRESH_RUNNABLE);
         handler.post(SIGNAL_ICON_REFRESH_RUNNABLE);
+    }
+
+    public static void refreshSignalIconsForClockColorCompat() {
+        scheduleTrackedSignalIconRefresh();
     }
 
     private static void scheduleTrackedSignalIconRefreshForSignalSubId(int subId) {

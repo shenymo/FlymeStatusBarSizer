@@ -3,6 +3,8 @@ package com.example.flymestatusbarsizer.feature.clock;
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import android.content.res.Configuration;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.os.Handler;
@@ -54,6 +56,7 @@ public final class ClockHooks {
         }
         hookClockWeekday(module, loader);
         hookClockAndCarrierTextSize(module, loader);
+        hookClockTextColor(module);
         hookClockPaddingRefresh(module, loader);
         hookLockscreenCanvasClock(module, loader);
     }
@@ -131,6 +134,28 @@ public final class ClockHooks {
                 applyClockAndCarrierTextSize(textView);
             }
         });
+    }
+
+    private static void hookClockTextColor(FlymeStatusBarSizer module) {
+        hookClockTextColor(module, int.class);
+        hookClockTextColor(module, ColorStateList.class);
+    }
+
+    private static void hookClockTextColor(FlymeStatusBarSizer module, Class<?> parameterType) {
+        try {
+            Method method = TextView.class.getDeclaredMethod("setTextColor", parameterType);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof TextView && isPrimaryStatusBarClockView((TextView) target)) {
+                    FlymeStatusBarSizer.refreshSignalIconsForClockColorCompat();
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logClockWarning("Failed to hook clock text color", t);
+        }
     }
 
     private static void hookClockPaddingRefresh(FlymeStatusBarSizer module, ClassLoader loader) {
@@ -714,6 +739,15 @@ public final class ClockHooks {
     static TextView resolvePrimaryStatusBarClockView() {
         TextView view = latestPrimaryStatusBarClockRef.get();
         return isPrimaryStatusBarClockView(view) && view.isAttachedToWindow() ? view : null;
+    }
+
+    public static Integer resolvePrimaryStatusBarClockTextColor() {
+        TextView view = resolvePrimaryStatusBarClockView();
+        if (view == null) {
+            return null;
+        }
+        int color = view.getCurrentTextColor();
+        return Color.alpha(color) == 0 ? null : color;
     }
 
     private static void rememberPrimaryStatusBarClockView(TextView view) {
