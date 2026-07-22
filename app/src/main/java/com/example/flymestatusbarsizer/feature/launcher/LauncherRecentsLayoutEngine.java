@@ -1280,6 +1280,11 @@ final class LauncherRecentsLayoutEngine {
                             targetVisualState);
                 }
                 if (startVisualState != null && targetVisualState != null) {
+                    startVisualState = startVisualState.withActivityTitleAlpha(
+                            targetVisualState.activityTitleAlpha);
+                    LauncherRecentsTaskVisuals.setActivityTitleAlpha(
+                            taskView,
+                            targetVisualState.activityTitleAlpha);
                     LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.put(
                             taskView,
                             new LauncherRecentsState.GestureReleaseTaskState(
@@ -1530,6 +1535,10 @@ final class LauncherRecentsLayoutEngine {
             if (startState == null || targetState == null) {
                 continue;
             }
+            startState = startState.withActivityTitleAlpha(targetState.activityTitleAlpha);
+            LauncherRecentsTaskVisuals.setActivityTitleAlpha(
+                    taskView,
+                    targetState.activityTitleAlpha);
             LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.put(
                     taskView,
                     new LauncherRecentsState.GestureReleaseTaskState(startState, targetState));

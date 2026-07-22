@@ -119,6 +119,26 @@ final class LauncherRecentsTaskVisuals {
                     target.stackContentBlurEnabled,
                     target.shadowEnabled);
         }
+
+        StackTaskVisualState withActivityTitleAlpha(float value) {
+            return new StackTaskVisualState(
+                    pivotX,
+                    pivotY,
+                    horizontalOffsetX,
+                    taskOffsetX,
+                    taskOffsetY,
+                    boxTranslationY,
+                    scale,
+                    attachAlpha,
+                    stableAlpha,
+                    value,
+                    blurProgress,
+                    fullscreenProgress,
+                    translationZ,
+                    shadowElevationDp,
+                    stackContentBlurEnabled,
+                    shadowEnabled);
+        }
     }
 
     static void applyStackTaskVisualState(View taskView, StackTaskVisualState state) {
@@ -225,6 +245,8 @@ final class LauncherRecentsTaskVisuals {
                 start.attachAlpha, target.attachAlpha, value));
         setStableAlpha(taskView, LauncherRecentsLayoutEngine.lerp(
                 start.stableAlpha, target.stableAlpha, value));
+        setTaskHeadContentAlpha(taskView, 1f);
+        setActivityTitleAlpha(taskView, target.activityTitleAlpha);
         setTranslationZ(taskView, LauncherRecentsLayoutEngine.lerp(
                 start.translationZ, target.translationZ, value));
         if (target.stackContentBlurEnabled) {
@@ -689,7 +711,7 @@ final class LauncherRecentsTaskVisuals {
             }
             setAttachAlpha(taskView, 1f);
             setStableAlpha(taskView, 1f);
-            forceTaskHeadVisible(taskView);
+            setTaskHeadContentAlpha(taskView, 1f);
         }
     }
 
