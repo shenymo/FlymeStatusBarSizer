@@ -35,6 +35,10 @@ final class SettingsStore {
             "camera_circle_battery_y_offset_dp";
     static final String KEY_SIGNAL_CODE_DRAW_ENABLED = "signal_code_draw_enabled";
     static final String KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED = "signal_mobile_type_badge_enabled";
+    static final String KEY_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT = "signal_mobile_type_badge_5g_text";
+    static final String KEY_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT = "signal_mobile_type_badge_5ga_text";
+    static final String KEY_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT =
+            "signal_mobile_type_badge_non_5g_text";
     static final String KEY_WIFI_CODE_DRAW_ENABLED = "wifi_code_draw_enabled";
     static final String KEY_SIGNAL_WIFI_SWAP_ENABLED = "signal_wifi_swap_enabled";
     static final String KEY_BATTERY_ICON_STYLE = "battery_icon_style";
@@ -276,6 +280,9 @@ final class SettingsStore {
     static final int DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP = 0;
     static final boolean DEFAULT_SIGNAL_CODE_DRAW_ENABLED = true;
     static final boolean DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED = true;
+    static final String DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT = "5G";
+    static final String DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT = "5GA";
+    static final String DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT = "";
     static final boolean DEFAULT_WIFI_CODE_DRAW_ENABLED = true;
     static final boolean DEFAULT_SIGNAL_WIFI_SWAP_ENABLED = false;
     static final int BATTERY_STYLE_IOS = 0;
@@ -600,6 +607,9 @@ final class SettingsStore {
     };
 
     static final String[] STRING_KEYS = {
+            KEY_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT,
+            KEY_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT,
+            KEY_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT,
             KEY_CLOCK_CUSTOM_FORMAT,
             KEY_CLOCK_EXPRESSION_TOKEN_ORDER,
             KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON,
@@ -1082,6 +1092,15 @@ final class SettingsStore {
     }
 
     static String defaultString(String key) {
+        if (KEY_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT.equals(key)) {
+            return DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT;
+        }
+        if (KEY_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT.equals(key)) {
+            return DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT;
+        }
+        if (KEY_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT.equals(key)) {
+            return DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT;
+        }
         if (KEY_CLOCK_CUSTOM_FORMAT.equals(key)) {
             return DEFAULT_CLOCK_CUSTOM_FORMAT;
         }

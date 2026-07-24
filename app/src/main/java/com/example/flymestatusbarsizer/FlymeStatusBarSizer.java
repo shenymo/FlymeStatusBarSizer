@@ -2081,7 +2081,35 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (config == null || !config.signalMobileTypeBadgeEnabled) {
             return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
         }
-        return resolveSignalMobileTypeBadgeForActiveDataSubscription(context);
+        int badge = resolveSignalMobileTypeBadgeForActiveDataSubscription(context);
+        if (badge == Integer.MIN_VALUE) {
+            return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
+        }
+        if (badge == SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE) {
+            badge = SignalPreviewPainter.MOBILE_TYPE_BADGE_CUSTOM;
+        }
+        return TextUtils.isEmpty(resolveSignalMobileTypeBadgeText(config, badge))
+                ? SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE
+                : badge;
+    }
+
+    static String resolveSignalMobileTypeBadgeText(ModuleConfig config, int mobileTypeBadge) {
+        if (config == null) {
+            return "";
+        }
+        String value;
+        if (mobileTypeBadge == SignalPreviewPainter.MOBILE_TYPE_BADGE_5GA) {
+            value = config.signalMobileTypeBadge5gaText;
+        } else if (mobileTypeBadge == SignalPreviewPainter.MOBILE_TYPE_BADGE_CUSTOM) {
+            value = config.signalMobileTypeBadgeNon5gText;
+        } else {
+            value = config.signalMobileTypeBadge5gText;
+        }
+        if (TextUtils.isEmpty(value)) {
+            return "";
+        }
+        value = value.trim().replace('\n', ' ').replace('\r', ' ');
+        return TextUtils.isEmpty(value) ? "" : value;
     }
 
     private static int resolveSignalMobileTypeBadgeFromText(String value) {
@@ -2169,17 +2197,14 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static int resolveSignalMobileTypeBadgeForActiveDataSubscription(Context context) {
         if (context == null || isUsingWifiOnlyInternet(context)) {
-            return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
+            return Integer.MIN_VALUE;
         }
         int subId = resolveDefaultDataSubscriptionId();
         if (!SubscriptionManager.isValidSubscriptionId(subId)) {
-            return SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
+            return Integer.MIN_VALUE;
         }
         MobileTypeSubState state = snapshotResolvedMobileTypeSubState(subId);
-        int badge = resolveSignalMobileTypeBadgeFromSubState(state);
-        return badge != Integer.MIN_VALUE
-                ? badge
-                : SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE;
+        return resolveSignalMobileTypeBadgeFromSubState(state);
     }
 
     private static int resolveSignalMobileTypeBadgeFromSubState(MobileTypeSubState state) {
@@ -4216,6 +4241,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                 return "5G";
             case SignalPreviewPainter.MOBILE_TYPE_BADGE_5GA:
                 return "5GA";
+            case SignalPreviewPainter.MOBILE_TYPE_BADGE_CUSTOM:
+                return "NON_5G";
             default:
                 return "UNKNOWN(" + badge + ")";
         }
@@ -4483,6 +4510,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         alignSignalIconVertically(view);
         bindSignalViewState(view);
         int mobileTypeBadge = resolveSignalMobileTypeBadge(config, context);
+        String mobileTypeBadgeText = mobileTypeBadge == SignalPreviewPainter.MOBILE_TYPE_BADGE_NONE
+                ? null
+                : resolveSignalMobileTypeBadgeText(config, mobileTypeBadge);
         MergedSignalLevels mergedSignalLevels = mergedDual
                 ? resolveMergedSignalLevels(view, mobileGroup)
                 : null;
@@ -4493,15 +4523,17 @@ public class FlymeStatusBarSizer extends XposedModule {
                 ? mergedSignalLevels.secondaryLevel
                 : signalLevel;
         int targetHeight = resolveTargetSignalIconBoxSize(view);
-        resizeSignalIconView(view, mobileTypeBadge);
+        resizeSignalIconView(view, mobileTypeBadge, mobileTypeBadgeText);
         disableAncestorClipping(view, 6);
         int intrinsicHeight = SignalPreviewPainter.resolveIntrinsicHeight(targetHeight);
-        int intrinsicWidth = SignalPreviewPainter.resolveIntrinsicWidth(intrinsicHeight, mobileTypeBadge);
+        int intrinsicWidth = SignalPreviewPainter.resolveIntrinsicWidth(
+                intrinsicHeight, mobileTypeBadge, mobileTypeBadgeText);
         Drawable current = view.getDrawable();
         if (current instanceof SignalIconDrawable) {
             SignalIconDrawable signalDrawable = (SignalIconDrawable) current;
             if (signalDrawable.matchesGeometry(
-                    mergedDual, intrinsicWidth, intrinsicHeight, mobileTypeBadge)) {
+                    mergedDual, intrinsicWidth, intrinsicHeight, mobileTypeBadge,
+                    mobileTypeBadgeText)) {
                 signalDrawable.setTintList(view.getImageTintList());
                 signalDrawable.setSignalLevels(signalLevel, secondarySignalLevel);
                 return;
@@ -4509,7 +4541,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         SignalIconDrawable drawable = new SignalIconDrawable(
                 view, mergedDual, intrinsicWidth, intrinsicHeight, mobileTypeBadge,
-                signalLevel, secondarySignalLevel);
+                signalLevel, secondarySignalLevel, mobileTypeBadgeText);
         drawable.setAlpha(view.getImageAlpha());
         drawable.setState(view.getDrawableState());
         drawable.setTintList(view.getImageTintList());
@@ -5476,7 +5508,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private static void resizeSignalIconView(ImageView view, int mobileTypeBadge) {
+    private static void resizeSignalIconView(ImageView view, int mobileTypeBadge,
+                                             String mobileTypeBadgeText) {
         if (view == null) {
             return;
         }
@@ -5485,7 +5518,8 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         int targetHeight = resolveTargetSignalIconBoxSize(view);
-        int targetWidth = SignalPreviewPainter.resolveIntrinsicWidth(targetHeight, mobileTypeBadge);
+        int targetWidth = SignalPreviewPainter.resolveIntrinsicWidth(
+                targetHeight, mobileTypeBadge, mobileTypeBadgeText);
         boolean changed = false;
         if (lp.width != targetWidth) {
             lp.width = targetWidth;

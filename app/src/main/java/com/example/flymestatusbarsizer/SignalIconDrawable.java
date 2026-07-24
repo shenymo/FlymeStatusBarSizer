@@ -22,6 +22,7 @@ final class SignalIconDrawable extends Drawable {
     private final int intrinsicWidth;
     private final int intrinsicHeight;
     private final int mobileTypeBadge;
+    private final String mobileTypeBadgeText;
     private int primarySignalLevel;
     private int secondarySignalLevel;
     private ColorStateList tintList;
@@ -31,12 +32,13 @@ final class SignalIconDrawable extends Drawable {
 
     SignalIconDrawable(android.view.View ownerView, boolean mergedDual, int intrinsicWidth,
                        int intrinsicHeight, int mobileTypeBadge, int primarySignalLevel,
-                       int secondarySignalLevel) {
+                       int secondarySignalLevel, String mobileTypeBadgeText) {
         this.ownerViewRef = new WeakReference<>(ownerView);
         this.mergedDual = mergedDual;
         this.intrinsicWidth = Math.max(1, intrinsicWidth);
         this.intrinsicHeight = Math.max(1, intrinsicHeight);
         this.mobileTypeBadge = mobileTypeBadge;
+        this.mobileTypeBadgeText = mobileTypeBadgeText;
         this.primarySignalLevel = sanitizeSignalLevel(primarySignalLevel);
         this.secondarySignalLevel = sanitizeSignalLevel(secondarySignalLevel);
     }
@@ -46,11 +48,14 @@ final class SignalIconDrawable extends Drawable {
     }
 
     boolean matchesGeometry(boolean mergedDual, int intrinsicWidth, int intrinsicHeight,
-                            int mobileTypeBadge) {
+                            int mobileTypeBadge, String mobileTypeBadgeText) {
         return this.mergedDual == mergedDual
                 && this.intrinsicWidth == Math.max(1, intrinsicWidth)
                 && this.intrinsicHeight == Math.max(1, intrinsicHeight)
-                && this.mobileTypeBadge == mobileTypeBadge;
+                && this.mobileTypeBadge == mobileTypeBadge
+                && (this.mobileTypeBadgeText == null
+                ? mobileTypeBadgeText == null
+                : this.mobileTypeBadgeText.equals(mobileTypeBadgeText));
     }
 
     boolean setSignalLevel(int signalLevel) {
@@ -91,11 +96,12 @@ final class SignalIconDrawable extends Drawable {
         if (mergedDual) {
             SignalPreviewPainter.drawMergedDualSim(
                     canvas, drawBounds, color, colorFilter, mobileTypeBadge,
-                    primarySignalLevel, secondarySignalLevel, signalYOffsetPx, badgeYOffsetPx);
+                    primarySignalLevel, secondarySignalLevel, signalYOffsetPx, badgeYOffsetPx,
+                    mobileTypeBadgeText);
         } else {
             SignalPreviewPainter.drawSingleSim(
                     canvas, drawBounds, color, colorFilter, mobileTypeBadge, primarySignalLevel,
-                    signalYOffsetPx, badgeYOffsetPx);
+                    signalYOffsetPx, badgeYOffsetPx, mobileTypeBadgeText);
         }
     }
 

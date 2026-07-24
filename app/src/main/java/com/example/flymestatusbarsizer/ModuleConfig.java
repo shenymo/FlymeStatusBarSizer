@@ -36,6 +36,10 @@ final class ModuleConfig {
     int cameraCircleBatteryYOffsetTenthDp = SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP * 100;
     boolean signalCodeDrawEnabled = SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED;
     boolean signalMobileTypeBadgeEnabled = SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED;
+    String signalMobileTypeBadge5gText = SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT;
+    String signalMobileTypeBadge5gaText = SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT;
+    String signalMobileTypeBadgeNon5gText =
+            SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT;
     boolean wifiCodeDrawEnabled = SettingsStore.DEFAULT_WIFI_CODE_DRAW_ENABLED;
     boolean signalWifiSwapEnabled = SettingsStore.DEFAULT_SIGNAL_WIFI_SWAP_ENABLED;
     int batteryIconStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
@@ -384,6 +388,18 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED,
                     SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED);
+            config.signalMobileTypeBadge5gText = SettingsStore.readString(
+                    prefs,
+                    SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT,
+                    SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT);
+            config.signalMobileTypeBadge5gaText = SettingsStore.readString(
+                    prefs,
+                    SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT,
+                    SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT);
+            config.signalMobileTypeBadgeNon5gText = SettingsStore.readString(
+                    prefs,
+                    SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT,
+                    SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT);
             config.wifiCodeDrawEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_WIFI_CODE_DRAW_ENABLED,

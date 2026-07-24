@@ -13,6 +13,7 @@ final class SignalPreviewPainter {
     static final int MOBILE_TYPE_BADGE_NONE = 0;
     static final int MOBILE_TYPE_BADGE_5G = 1;
     static final int MOBILE_TYPE_BADGE_5GA = 2;
+    static final int MOBILE_TYPE_BADGE_CUSTOM = 3;
     private static final int DEFAULT_SIGNAL_LEVEL = 4;
     private static final int SIGNAL_DRAW_ALPHA = 224;
     private static final float INACTIVE_SIGNAL_ALPHA_RATIO = 0.3f;
@@ -67,8 +68,16 @@ final class SignalPreviewPainter {
     static void drawSingleSim(Canvas canvas, Rect bounds, int color, ColorFilter colorFilter,
                               int mobileTypeBadge, int signalLevel, float signalYOffsetPx,
                               float badgeYOffsetPx) {
+        drawSingleSim(canvas, bounds, color, colorFilter, mobileTypeBadge, signalLevel,
+                signalYOffsetPx, badgeYOffsetPx, null);
+    }
+
+    static void drawSingleSim(Canvas canvas, Rect bounds, int color, ColorFilter colorFilter,
+                              int mobileTypeBadge, int signalLevel, float signalYOffsetPx,
+                              float badgeYOffsetPx, String mobileTypeBadgeText) {
         drawSignal(canvas, bounds, false, color, colorFilter, mobileTypeBadge,
-                signalLevel, signalLevel, signalYOffsetPx, badgeYOffsetPx);
+                signalLevel, signalLevel, signalYOffsetPx, badgeYOffsetPx,
+                mobileTypeBadgeText);
     }
 
     static void drawMergedDualSim(Canvas canvas, Rect bounds, int color) {
@@ -107,8 +116,17 @@ final class SignalPreviewPainter {
                                   int mobileTypeBadge, int primarySignalLevel,
                                   int secondarySignalLevel, float signalYOffsetPx,
                                   float badgeYOffsetPx) {
+        drawMergedDualSim(canvas, bounds, color, colorFilter, mobileTypeBadge,
+                primarySignalLevel, secondarySignalLevel, signalYOffsetPx, badgeYOffsetPx, null);
+    }
+
+    static void drawMergedDualSim(Canvas canvas, Rect bounds, int color, ColorFilter colorFilter,
+                                  int mobileTypeBadge, int primarySignalLevel,
+                                  int secondarySignalLevel, float signalYOffsetPx,
+                                  float badgeYOffsetPx, String mobileTypeBadgeText) {
         drawSignal(canvas, bounds, true, color, colorFilter, mobileTypeBadge,
-                primarySignalLevel, secondarySignalLevel, signalYOffsetPx, badgeYOffsetPx);
+                primarySignalLevel, secondarySignalLevel, signalYOffsetPx, badgeYOffsetPx,
+                mobileTypeBadgeText);
     }
 
     static int resolveIntrinsicWidth(int heightPx) {
@@ -116,6 +134,11 @@ final class SignalPreviewPainter {
     }
 
     static int resolveIntrinsicWidth(int heightPx, int mobileTypeBadge) {
+        return resolveIntrinsicWidth(heightPx, mobileTypeBadge, null);
+    }
+
+    static int resolveIntrinsicWidth(int heightPx, int mobileTypeBadge,
+                                     String mobileTypeBadgeText) {
         int boxSize = Math.max(1, heightPx);
         if (mobileTypeBadge == MOBILE_TYPE_BADGE_NONE) {
             return boxSize;
@@ -124,7 +147,8 @@ final class SignalPreviewPainter {
                 boxSize,
                 mobileTypeBadge,
                 0,
-                null);
+                null,
+                mobileTypeBadgeText);
         float totalWidth = boxSize + boxSize * MOBILE_TYPE_GAP_RATIO + layout.badgeWidth;
         return Math.max(1, Math.round(totalWidth));
     }
@@ -159,7 +183,8 @@ final class SignalPreviewPainter {
     private static void drawSignal(Canvas canvas, Rect bounds, boolean mergedDual, int color,
                                    ColorFilter colorFilter, int mobileTypeBadge,
                                    int primarySignalLevel, int secondarySignalLevel,
-                                   float signalYOffsetPx, float badgeYOffsetPx) {
+                                   float signalYOffsetPx, float badgeYOffsetPx,
+                                   String mobileTypeBadgeText) {
         int drawColor = modulateColorAlpha(color, SIGNAL_DRAW_ALPHA);
         int inactiveColor = scaleAlpha(drawColor, INACTIVE_SIGNAL_ALPHA_RATIO);
         if (mobileTypeBadge == MOBILE_TYPE_BADGE_NONE) {
@@ -180,7 +205,8 @@ final class SignalPreviewPainter {
                 boxSize,
                 mobileTypeBadge,
                 drawColor,
-                colorFilter);
+                colorFilter,
+                mobileTypeBadgeText);
         float contentWidth = boxSize + boxSize * MOBILE_TYPE_GAP_RATIO + layout.badgeWidth;
         float left = bounds.left + (bounds.width() - contentWidth) / 2f;
         float signalTop = applyVerticalOffset(bounds.top + (bounds.height() - boxSize) / 2f,
@@ -260,7 +286,12 @@ final class SignalPreviewPainter {
         if (badgeBounds.isEmpty() || layout == null || layout.badgeType == MOBILE_TYPE_BADGE_NONE) {
             return;
         }
-        if (layout.badgeType == MOBILE_TYPE_BADGE_5GA) {
+        if (layout.customText != null) {
+            float baseline = resolveMobileTypeMainBaseline(badgeBounds);
+            canvas.drawText(layout.customText, badgeBounds.left + layout.sidePadding,
+                    baseline, BADGE_TEXT_PAINT);
+            BADGE_TEXT_PAINT.setColorFilter(null);
+        } else if (layout.badgeType == MOBILE_TYPE_BADGE_5GA) {
             drawMobileType5gaText(canvas, badgeBounds, layout);
         } else {
             drawMobileType5gText(canvas, badgeBounds, layout);
@@ -293,11 +324,8 @@ final class SignalPreviewPainter {
         return signalBoxSize * 0.04f;
     }
 
-    private static float configureMobileTypeMainPaint(float signalBoxSize, int color,
-                                                      ColorFilter colorFilter) {
-        MobileTypeTextLayoutMetrics metrics = resolveMobileTypeTextLayoutMetrics(
-                signalBoxSize,
-                MOBILE_TYPE_BADGE_5G);
+    private static float configureMobileTypeMainPaint(MobileTypeTextLayoutMetrics metrics,
+                                                      int color, ColorFilter colorFilter) {
         BADGE_TEXT_PAINT.setColor(color);
         BADGE_TEXT_PAINT.setColorFilter(colorFilter);
         BADGE_TEXT_PAINT.setTextSize(metrics.mainTextSize);
@@ -310,12 +338,8 @@ final class SignalPreviewPainter {
         return metrics.mainWidth;
     }
 
-    private static float configureMobileTypeSubPaint(int mainHeight, int color,
-                                                     ColorFilter colorFilter) {
-        float signalBoxSize = BADGE_TEXT_PAINT.getTextSize() / 0.60f;
-        MobileTypeTextLayoutMetrics metrics = resolveMobileTypeTextLayoutMetrics(
-                signalBoxSize,
-                MOBILE_TYPE_BADGE_5GA);
+    private static float configureMobileTypeSubPaint(MobileTypeTextLayoutMetrics metrics,
+                                                     int color, ColorFilter colorFilter) {
         BADGE_SUBSCRIPT_TEXT_PAINT.setColor(color);
         BADGE_SUBSCRIPT_TEXT_PAINT.setColorFilter(colorFilter);
         BADGE_SUBSCRIPT_TEXT_PAINT.setTextSize(metrics.subTextSize);
@@ -336,27 +360,25 @@ final class SignalPreviewPainter {
     private static MobileTypeTextLayout createMobileTypeTextLayout(float signalBoxSize,
                                                                    int badgeType,
                                                                    int color,
-                                                                   ColorFilter colorFilter) {
+                                                                   ColorFilter colorFilter,
+                                                                   String badgeText) {
         MobileTypeTextLayout layout = new MobileTypeTextLayout();
         MobileTypeTextLayoutMetrics metrics = resolveMobileTypeTextLayoutMetrics(
                 signalBoxSize,
-                badgeType);
+                badgeType,
+                badgeText);
         layout.badgeType = badgeType;
+        layout.customText = metrics.customText;
         layout.textGap = metrics.textGap;
-        layout.mainWidth = configureMobileTypeMainPaint(signalBoxSize, color, colorFilter);
+        layout.mainWidth = configureMobileTypeMainPaint(metrics, color, colorFilter);
         layout.mainHeight = metrics.mainHeight;
-        layout.subWidth = badgeType == MOBILE_TYPE_BADGE_5GA
-                ? configureMobileTypeSubPaint(layout.mainHeight, color, colorFilter)
+        layout.subWidth = badgeType == MOBILE_TYPE_BADGE_5GA && layout.customText == null
+                ? configureMobileTypeSubPaint(metrics, color, colorFilter)
                 : metrics.subWidth;
         layout.mainBoundsBottom = metrics.mainBoundsBottom;
         layout.subBoundsBottom = metrics.subBoundsBottom;
-        float contentWidthFor5ga = layout.mainWidth + layout.textGap + layout.subWidth;
         layout.sidePadding = metrics.sidePadding;
-        if (badgeType == MOBILE_TYPE_BADGE_5GA) {
-            layout.badgeWidth = metrics.badgeWidth;
-        } else {
-            layout.badgeWidth = metrics.badgeWidth;
-        }
+        layout.badgeWidth = metrics.badgeWidth;
         return layout;
     }
 
@@ -396,12 +418,17 @@ final class SignalPreviewPainter {
     }
 
     private static MobileTypeTextLayoutMetrics resolveMobileTypeTextLayoutMetrics(
-            float signalBoxSize, int badgeType) {
+            float signalBoxSize, int badgeType, String badgeText) {
         int boxSize = Math.max(1, Math.round(signalBoxSize));
         int fontWeight = FlymeStatusBarSizer.resolveSignalMobileTypeBadgeFontWeight();
+        String defaultText = badgeType == MOBILE_TYPE_BADGE_5GA ? "5GA" : "5G";
+        String displayText = badgeText == null || badgeText.length() == 0
+                ? defaultText
+                : badgeText;
         long key = (((long) boxSize) << 32)
                 | (((long) badgeType & 0xffffL) << 16)
                 | (fontWeight & 0xffffL);
+        key = key * 31L + displayText.hashCode();
         MobileTypeTextLayoutMetrics cached = MOBILE_TYPE_LAYOUT_CACHE.get(key);
         if (cached != null) {
             return cached;
@@ -409,15 +436,17 @@ final class SignalPreviewPainter {
         MobileTypeTextLayoutMetrics metrics = buildMobileTypeTextLayoutMetrics(
                 boxSize,
                 badgeType,
-                fontWeight);
+                fontWeight,
+                displayText.equals(defaultText) ? null : displayText);
         MOBILE_TYPE_LAYOUT_CACHE.put(key, metrics);
         return metrics;
     }
 
     private static MobileTypeTextLayoutMetrics buildMobileTypeTextLayoutMetrics(
-            int boxSize, int badgeType, int fontWeight) {
+            int boxSize, int badgeType, int fontWeight, String customText) {
         MobileTypeTextLayoutMetrics metrics = new MobileTypeTextLayoutMetrics();
         metrics.fontWeight = fontWeight;
+        metrics.customText = customText;
         metrics.textGap = resolveMobileTypeTextGap(boxSize);
 
         Rect mainBounds = new Rect();
@@ -426,14 +455,21 @@ final class SignalPreviewPainter {
         float mainTextSize = boxSize * 0.60f;
         BADGE_TEXT_PAINT.setTextSize(mainTextSize);
         applyMobileTypeTextPaintWeight(BADGE_TEXT_PAINT, fontWeight);
-        BADGE_TEXT_PAINT.getTextBounds("5G", 0, 2, mainBounds);
+        String mainText = customText == null ? "5G" : customText;
+        BADGE_TEXT_PAINT.getTextBounds(mainText, 0, mainText.length(), mainBounds);
         metrics.mainTextSize = mainTextSize;
-        metrics.mainWidth = BADGE_TEXT_PAINT.measureText("5G");
+        metrics.mainWidth = BADGE_TEXT_PAINT.measureText(mainText);
         metrics.mainHeight = Math.max(1, mainBounds.height());
         metrics.mainBoundsLeft = mainBounds.left;
         metrics.mainBoundsTop = mainBounds.top;
         metrics.mainBoundsRight = mainBounds.right;
         metrics.mainBoundsBottom = mainBounds.bottom;
+
+        if (customText != null) {
+            metrics.sidePadding = Math.max(0f, (boxSize - metrics.mainWidth) / 2f);
+            metrics.badgeWidth = metrics.mainWidth + metrics.sidePadding * 2f;
+            return metrics;
+        }
 
         float subTextSize = mainTextSize * 0.5f;
         BADGE_SUBSCRIPT_TEXT_PAINT.setTextSize(subTextSize);
@@ -514,6 +550,7 @@ final class SignalPreviewPainter {
 
     private static final class MobileTypeTextLayout {
         int badgeType;
+        String customText;
         int mainHeight;
         float mainWidth;
         float subWidth;
@@ -526,6 +563,7 @@ final class SignalPreviewPainter {
 
     private static final class MobileTypeTextLayoutMetrics {
         int fontWeight;
+        String customText;
         int mainHeight;
         int mainBoundsLeft;
         int mainBoundsTop;

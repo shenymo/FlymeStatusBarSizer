@@ -141,10 +141,46 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED);
         activity.addDivider(content);
-        activity.addSwitchRow(content, "显示 5G/5GA 标识",
-                "关闭后只保留移动信号图标，不显示右侧移动网络类型标识。",
+        LinearLayout badgeTextOptions = new LinearLayout(activity);
+        badgeTextOptions.setOrientation(LinearLayout.VERTICAL);
+        boolean badgeEnabled = SettingsStore.readBoolean(
+                activity.prefs(),
                 SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED,
                 SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED);
+        badgeTextOptions.setVisibility(badgeEnabled ? View.VISIBLE : View.GONE);
+        activity.addSwitchRow(content, "显示网络类型标识",
+                "关闭后只保留移动信号图标，不显示右侧自定义文字。",
+                SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED,
+                SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED,
+                (buttonView, isChecked) -> badgeTextOptions.setVisibility(
+                        isChecked ? View.VISIBLE : View.GONE));
+        activity.addDivider(badgeTextOptions);
+        activity.addTextSettingRow(badgeTextOptions, "5G 显示内容",
+                "检测到 5G 时显示；留空则不显示，也不占用位置。",
+                SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT,
+                SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT,
+                "不显示",
+                "例如 5G",
+                true);
+        activity.addDivider(badgeTextOptions);
+        activity.addTextSettingRow(badgeTextOptions, "5GA 显示内容",
+                "检测到 5GA 时显示；留空则不显示，也不占用位置。",
+                SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT,
+                SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT,
+                "不显示",
+                "例如 5GA",
+                true);
+        activity.addDivider(badgeTextOptions);
+        activity.addTextSettingRow(badgeTextOptions, "非 5G 显示内容",
+                "检测到其他移动网络类型时显示；留空则不显示，也不占用位置。",
+                SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT,
+                SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT,
+                "不显示",
+                "例如 4G",
+                true);
+        LinearLayout.LayoutParams badgeTextOptionsLp = PageViewUtils.matchWrap();
+        badgeTextOptionsLp.leftMargin = activity.dp(12);
+        content.addView(badgeTextOptions, badgeTextOptionsLp);
         activity.addDivider(content);
         activity.addSwitchRow(content, "重绘 Wi-Fi 图标",
                 "在信号总开关开启时，单独控制是否继续接管 Wi-Fi 图标。",
@@ -157,7 +193,7 @@ final class SettingsCardFactory {
                 SettingsStore.DEFAULT_SIGNAL_WIFI_SWAP_ENABLED);
         activity.addDivider(content);
         activity.addProfileSectionHeader(content, "说明",
-                "5G/5GA 标识开启时跟随系统真实网络状态或 Telephony 调试结果。");
+                "显示内容跟随系统真实网络状态或 Telephony 调试结果。");
         return activity.buildSectionCard(
                 "信号与 Wi-Fi",
                 "移动网络图标统一由模块接管，同时保留 Wi-Fi 的独立开关。",
