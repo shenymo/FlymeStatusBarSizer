@@ -1,7 +1,5 @@
 package com.example.flymestatusbarsizer;
 
-import com.example.flymestatusbarsizer.feature.clock.ClockHooks;
-
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -154,12 +152,18 @@ final class SignalIconDrawable extends Drawable {
     }
 
     private boolean updateDrawColor(int[] state) {
-        Integer clockColor = ClockHooks.resolvePrimaryStatusBarClockTextColor();
-        int resolvedColor = clockColor != null
-                ? clockColor
-                : tintList == null
-                ? Color.WHITE
-                : tintList.getColorForState(state == null ? StateSet.NOTHING : state, tintList.getDefaultColor());
+        int resolvedColor;
+        if (tintList == null) {
+            Integer statusBarTint = FlymeStatusBarSizer.resolveStatusBarIconTintColorCompat(
+                    ownerViewRef.get());
+            if (statusBarTint == null) {
+                return false;
+            }
+            resolvedColor = statusBarTint;
+        } else {
+            resolvedColor = tintList.getColorForState(
+                    state == null ? StateSet.NOTHING : state, tintList.getDefaultColor());
+        }
         if (drawColor == resolvedColor) {
             return false;
         }
