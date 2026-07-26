@@ -105,6 +105,8 @@ final class ModuleConfig {
     int windowModeRecentInnerRingRadiusPercent =
             SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT;
     boolean carLinkExpandAppsEnabled = SettingsStore.DEFAULT_CARLINK_EXPAND_APPS_ENABLED;
+    boolean carLinkNeteaseColdStartFixEnabled =
+            SettingsStore.DEFAULT_CARLINK_NETEASE_COLD_START_FIX_ENABLED;
     boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
     boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
     int notificationAppIconSizeDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
@@ -630,6 +632,10 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_CARLINK_EXPAND_APPS_ENABLED,
                     SettingsStore.DEFAULT_CARLINK_EXPAND_APPS_ENABLED);
+            config.carLinkNeteaseColdStartFixEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_CARLINK_NETEASE_COLD_START_FIX_ENABLED,
+                    SettingsStore.DEFAULT_CARLINK_NETEASE_COLD_START_FIX_ENABLED);
             config.mbackNavBarTransparent = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,

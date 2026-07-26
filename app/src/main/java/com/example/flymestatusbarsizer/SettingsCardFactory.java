@@ -253,9 +253,14 @@ final class SettingsCardFactory {
         activity.addActionButtonRow(content, "CarLink 应用管理",
                 "使用 CarLink 原生页面选择、移除和排序车机应用。",
                 "打开", activity::openCarLinkAppManagement);
+        activity.addDivider(content);
+        activity.addSwitchRow(content, "修复网易云首次加载",
+                "禁止 CarLink 连接超时时强停网易云，首次等待10秒并只重试一次。切换后重启 CarLink 生效。",
+                SettingsStore.KEY_CARLINK_NETEASE_COLD_START_FIX_ENABLED,
+                SettingsStore.DEFAULT_CARLINK_NETEASE_COLD_START_FIX_ENABLED);
         return activity.buildSectionCard(
-                "CarLink 应用流转",
-                "只扩展候选应用，车机仍然只显示你在 CarLink 中选中的应用。",
+                "CarLink",
+                "管理应用流转和原生音乐兼容处理。",
                 content);
     }
 

@@ -437,6 +437,11 @@ public class FlymeStatusBarSizer extends XposedModule {
         return config != null && config.enabled && config.carLinkExpandAppsEnabled;
     }
 
+    public static boolean isCarLinkNeteaseColdStartFixEnabled() {
+        ModuleConfig config = ModuleConfig.load(null);
+        return config != null && config.enabled && config.carLinkNeteaseColdStartFixEnabled;
+    }
+
     public static void logCarLinkWarning(String message, Throwable throwable) {
         FlymeStatusBarSizer module = MODULE;
         if (module != null) {

@@ -104,6 +104,8 @@ final class SettingsStore {
     static final String KEY_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT =
             "windowmode_recent_inner_ring_radius_percent";
     static final String KEY_CARLINK_EXPAND_APPS_ENABLED = "carlink_expand_apps_enabled";
+    static final String KEY_CARLINK_NETEASE_COLD_START_FIX_ENABLED =
+            "carlink_netease_cold_start_fix_enabled";
     static final String KEY_MBACK_NAV_BAR_TRANSPARENT = "mback_nav_bar_transparent";
     static final String KEY_NOTIFICATION_APP_ICON_ENABLED = "notification_app_icon_enabled";
     static final String KEY_NOTIFICATION_APP_ICON_SIZE_DP = "notification_app_icon_size_dp";
@@ -351,6 +353,7 @@ final class SettingsStore {
     static final int DEFAULT_WINDOWMODE_RECENT_INNER_RING_ICON_SCALE_PERCENT = 100;
     static final int DEFAULT_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT = 38;
     static final boolean DEFAULT_CARLINK_EXPAND_APPS_ENABLED = false;
+    static final boolean DEFAULT_CARLINK_NETEASE_COLD_START_FIX_ENABLED = false;
     static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
     static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
     static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
@@ -581,6 +584,7 @@ final class SettingsStore {
             KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
             KEY_WINDOWMODE_RECENT_INNER_RING_ENABLED,
             KEY_CARLINK_EXPAND_APPS_ENABLED,
+            KEY_CARLINK_NETEASE_COLD_START_FIX_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
             KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED,
@@ -1044,6 +1048,8 @@ final class SettingsStore {
                 return DEFAULT_WINDOWMODE_RECENT_INNER_RING_ENABLED;
             case KEY_CARLINK_EXPAND_APPS_ENABLED:
                 return DEFAULT_CARLINK_EXPAND_APPS_ENABLED;
+            case KEY_CARLINK_NETEASE_COLD_START_FIX_ENABLED:
+                return DEFAULT_CARLINK_NETEASE_COLD_START_FIX_ENABLED;
             case KEY_MBACK_NAV_BAR_TRANSPARENT:
                 return DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
             case KEY_NOTIFICATION_APP_ICON_ENABLED:
