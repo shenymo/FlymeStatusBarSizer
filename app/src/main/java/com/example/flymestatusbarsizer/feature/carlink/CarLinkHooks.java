@@ -28,6 +28,7 @@ public final class CarLinkHooks {
     private static final String CARLINK_PACKAGE = "com.upuphone.carlink";
     private static final String MODULE_PACKAGE = "com.fiyme.statusbarsizer";
     private static final String NETEASE_PACKAGE = "com.netease.cloudmusic";
+    private static final long NETEASE_LOAD_TIMEOUT_MS = 20_000L;
     private static final String DATA_IMAGE_PREFIX = "data:image";
     private static final String RESOURCE_URI_PREFIX = "android.resource://";
     private static final Set<String> EXPANDED_PACKAGES = new LinkedHashSet<>();
@@ -195,25 +196,47 @@ public final class CarLinkHooks {
         try {
             Class<?> musicManagerClass = Class.forName(
                     "com.upuphone.carlink.music.MusicManager", false, loader);
+            Class<?> musicViewModelClass = Class.forName(
+                    "com.upuphone.carlink.music.vm.MusicViewModel", false, loader);
             Class<?> systemExtClass = Class.forName(
                     "com.upuphone.carlink.utils.SystemExtKt", false, loader);
             Method bindMediaComponent = musicManagerClass.getDeclaredMethod("bindMediaComponent");
             Method retryBind = musicManagerClass.getDeclaredMethod("retryBind");
+            Method requestRoot = musicViewModelClass.getDeclaredMethod("requestRoot", Context.class);
+            Method refreshRoot = musicViewModelClass.getDeclaredMethod("refreshRoot", boolean.class);
             Method killSpecifiedApp = systemExtClass.getDeclaredMethod(
                     "killSpecifiedApp", String.class);
             Field handlerField = musicManagerClass.getDeclaredField("mHandler");
             Field initStateField = musicManagerClass.getDeclaredField("initState");
             Field retryCountField = musicManagerClass.getDeclaredField("retryCount");
             Field currentComponentField = musicManagerClass.getDeclaredField("currentComponent");
+            Field mediaBrowserField = musicManagerClass.getDeclaredField("mMediaBrowser");
+            Field viewModelHandlerField = musicViewModelClass.getDeclaredField("mHandler");
+            Field currentRootStateField = musicViewModelClass.getDeclaredField("currentRootState");
             bindMediaComponent.setAccessible(true);
             retryBind.setAccessible(true);
+            requestRoot.setAccessible(true);
+            refreshRoot.setAccessible(true);
             killSpecifiedApp.setAccessible(true);
             handlerField.setAccessible(true);
             initStateField.setAccessible(true);
             retryCountField.setAccessible(true);
             currentComponentField.setAccessible(true);
+            mediaBrowserField.setAccessible(true);
+            viewModelHandlerField.setAccessible(true);
+            currentRootStateField.setAccessible(true);
 
             module.intercept(bindMediaComponent, chain -> {
+                if (FlymeStatusBarSizer.isCarLinkNeteaseColdStartFixEnabled()
+                        && isCurrentNetease(currentComponentField)
+                        && initStateField.getInt(null) == 0
+                        && mediaBrowserField.get(null) == null) {
+                    Object handler = handlerField.get(null);
+                    if (handler instanceof Handler) {
+                        ((Handler) handler).removeMessages(1);
+                    }
+                    initStateField.setInt(null, -1);
+                }
                 Object result = chain.proceed();
                 if (FlymeStatusBarSizer.isCarLinkNeteaseColdStartFixEnabled()
                         && isCurrentNetease(currentComponentField)
@@ -221,15 +244,44 @@ public final class CarLinkHooks {
                     Object handler = handlerField.get(null);
                     if (handler instanceof Handler) {
                         ((Handler) handler).removeMessages(1);
-                        ((Handler) handler).sendEmptyMessageDelayed(1, 10_000L);
+                        ((Handler) handler).sendEmptyMessageDelayed(1, NETEASE_LOAD_TIMEOUT_MS);
+                    }
+                }
+                return result;
+            });
+            module.intercept(requestRoot, chain -> {
+                Object result = chain.proceed();
+                if (FlymeStatusBarSizer.isCarLinkNeteaseColdStartFixEnabled()
+                        && isCurrentNetease(currentComponentField)
+                        && currentRootStateField.getInt(chain.getThisObject()) == 0) {
+                    Object handler = viewModelHandlerField.get(chain.getThisObject());
+                    if (handler instanceof Handler) {
+                        ((Handler) handler).removeMessages(3);
+                        ((Handler) handler).sendEmptyMessageDelayed(
+                                3, NETEASE_LOAD_TIMEOUT_MS);
+                    }
+                }
+                return result;
+            });
+            module.intercept(refreshRoot, chain -> {
+                Object result = chain.proceed();
+                if (FlymeStatusBarSizer.isCarLinkNeteaseColdStartFixEnabled()
+                        && isCurrentNetease(currentComponentField)
+                        && currentRootStateField.getInt(chain.getThisObject()) == 0) {
+                    Object handler = viewModelHandlerField.get(chain.getThisObject());
+                    if (handler instanceof Handler) {
+                        ((Handler) handler).removeMessages(3);
+                        ((Handler) handler).sendEmptyMessageDelayed(
+                                3, NETEASE_LOAD_TIMEOUT_MS);
                     }
                 }
                 return result;
             });
             module.intercept(retryBind, chain -> {
+                int originalRetryCount = retryCountField.getInt(null);
                 if (FlymeStatusBarSizer.isCarLinkNeteaseColdStartFixEnabled()
                         && isCurrentNetease(currentComponentField)
-                        && retryCountField.getInt(null) > 1) {
+                        && originalRetryCount > 1) {
                     retryCountField.setInt(null, 1);
                 }
                 return chain.proceed();
