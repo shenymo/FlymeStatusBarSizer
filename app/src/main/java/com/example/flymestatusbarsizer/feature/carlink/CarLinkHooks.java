@@ -40,6 +40,7 @@ public final class CarLinkHooks {
     }
 
     public static void install(FlymeStatusBarSizer module, ClassLoader loader) {
+        installStabilityFixes(module, loader);
         installNeteaseColdStartFix(module, loader);
         try {
             Class<?> appListClass = Class.forName(
@@ -186,6 +187,142 @@ public final class CarLinkHooks {
             FlymeStatusBarSizer.logCarLinkWarning(
                     "Failed to hook CarLink app list", t);
         }
+    }
+
+    private static void installStabilityFixes(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        installDayNightIsolation(module, loader);
+        installPeriodicRedrawSuppression(module, loader);
+        installTouchLogFilter(module, loader);
+        installFusionTaskListenerCleanup(module, loader);
+    }
+
+    private static void installDayNightIsolation(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        if (!FlymeStatusBarSizer.isCarLinkDayNightIsolationEnabled()) {
+            return;
+        }
+        try {
+            Class<?> connectionManagerClass = Class.forName(
+                    "com.upuphone.carlink.application.ICCOAConnectManager", false, loader);
+            Method handleMessage = connectionManagerClass.getDeclaredMethod(
+                    "handleMessage", byte[].class, byte[].class, int.class);
+            handleMessage.setAccessible(true);
+            module.intercept(handleMessage, chain -> {
+                if (isDayNightCommand(chain.getArg(0))) {
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logCarLinkWarning(
+                    "Failed to hook CarLink day/night command", t);
+        }
+    }
+
+    private static void installPeriodicRedrawSuppression(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        if (!FlymeStatusBarSizer.isCarLinkPeriodicRedrawDisabled()) {
+            return;
+        }
+        try {
+            Class<?> mainActivityClass = Class.forName(
+                    "com.upuphone.carlink.MainActivity", false, loader);
+            Class<?> carActionEventClass = Class.forName(
+                    "com.upuphone.carlink.application.CarActionEvent", false, loader);
+            Method onCarActionEvent = mainActivityClass.getDeclaredMethod(
+                    "onCarActionEvent", carActionEventClass);
+            onCarActionEvent.setAccessible(true);
+            module.intercept(onCarActionEvent, chain -> null);
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logCarLinkWarning(
+                    "Failed to suppress CarLink periodic redraw", t);
+        }
+    }
+
+    private static void installTouchLogFilter(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        if (!FlymeStatusBarSizer.isCarLinkTouchLogFilterEnabled()) {
+            return;
+        }
+        try {
+            Class<?> logClass = Class.forName("s3.a", false, loader);
+            Method debugLog = logClass.getDeclaredMethod("b", String.class, String.class);
+            debugLog.setAccessible(true);
+            module.intercept(debugLog, chain -> {
+                Object message = chain.getArg(1);
+                if (message instanceof String && isTouchDebugMessage((String) message)) {
+                    return null;
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logCarLinkWarning(
+                    "Failed to filter CarLink touch logs", t);
+        }
+    }
+
+    private static void installFusionTaskListenerCleanup(
+            FlymeStatusBarSizer module, ClassLoader loader) {
+        if (!FlymeStatusBarSizer.isCarLinkTaskListenerCleanupEnabled()) {
+            return;
+        }
+        try {
+            Class<?> fusionActivityClass = Class.forName(
+                    "com.upuphone.carlink.FusionMainActivity", false, loader);
+            Method onDestroy = fusionActivityClass.getDeclaredMethod("onDestroy");
+            Method getListener = fusionActivityClass.getDeclaredMethod("getListener");
+            onDestroy.setAccessible(true);
+            getListener.setAccessible(true);
+            module.intercept(onDestroy, chain -> {
+                Object result = chain.proceed();
+                unregisterFusionTaskListener(loader, getListener, chain.getThisObject());
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logCarLinkWarning(
+                    "Failed to hook FusionMainActivity cleanup", t);
+        }
+    }
+
+    private static void unregisterFusionTaskListener(
+            ClassLoader loader, Method getListener, Object activity) {
+        try {
+            Object listener = getListener.invoke(activity);
+            if (listener == null) {
+                return;
+            }
+            Class<?> taskManagerClass = Class.forName(
+                    "android.app.ActivityTaskManager", false, loader);
+            Method getService = taskManagerClass.getDeclaredMethod("getService");
+            getService.setAccessible(true);
+            Object service = getService.invoke(null);
+            Method unregister = service.getClass().getMethod(
+                    "unregisterTaskStackListener", Class.forName(
+                            "android.app.TaskStackListener", false, loader));
+            unregister.setAccessible(true);
+            unregister.invoke(service, listener);
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logCarLinkWarning(
+                    "Failed to unregister Fusion task listener", t);
+        }
+    }
+
+    private static boolean isTouchDebugMessage(String message) {
+        return message.startsWith("event.x=")
+                || message.startsWith("touch mAppContainerWidth=");
+    }
+
+    private static boolean isDayNightCommand(Object rawHeader) {
+        if (!(rawHeader instanceof byte[])) {
+            return false;
+        }
+        byte[] header = (byte[]) rawHeader;
+        if (header.length < 20) {
+            return false;
+        }
+        int command = ((header[14] & 255) << 8) | (header[15] & 255);
+        return command == 15;
     }
 
     private static void installNeteaseColdStartFix(

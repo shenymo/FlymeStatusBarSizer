@@ -258,6 +258,26 @@ final class SettingsCardFactory {
                 "禁止 CarLink 连接超时时强停网易云，首次加载等待20秒并只重试一次。切换后重启 CarLink 生效。",
                 SettingsStore.KEY_CARLINK_NETEASE_COLD_START_FIX_ENABLED,
                 SettingsStore.DEFAULT_CARLINK_NETEASE_COLD_START_FIX_ENABLED);
+        activity.addDivider(content);
+        activity.addSwitchRow(content, "隔离车机昼夜样式",
+                "忽略车机发送的昼夜切换指令。切换后重启 CarLink 生效。",
+                SettingsStore.KEY_CARLINK_DAY_NIGHT_ISOLATION_ENABLED,
+                SettingsStore.DEFAULT_CARLINK_DAY_NIGHT_ISOLATION_ENABLED);
+        activity.addDivider(content);
+        activity.addSwitchRow(content, "停止周期界面重绘",
+                "连接状态变化后，不再每秒强制重绘主界面。切换后重启 CarLink 生效。",
+                SettingsStore.KEY_CARLINK_PERIODIC_REDRAW_DISABLED,
+                SettingsStore.DEFAULT_CARLINK_PERIODIC_REDRAW_DISABLED);
+        activity.addDivider(content);
+        activity.addSwitchRow(content, "过滤触摸调试日志",
+                "停止记录高频触摸坐标和界面尺寸日志。切换后重启 CarLink 生效。",
+                SettingsStore.KEY_CARLINK_TOUCH_LOG_FILTER_ENABLED,
+                SettingsStore.DEFAULT_CARLINK_TOUCH_LOG_FILTER_ENABLED);
+        activity.addDivider(content);
+        activity.addSwitchRow(content, "注销任务监听器",
+                "CarLink 投屏界面关闭时注销任务监听器。切换后重启 CarLink 生效。",
+                SettingsStore.KEY_CARLINK_TASK_LISTENER_CLEANUP_ENABLED,
+                SettingsStore.DEFAULT_CARLINK_TASK_LISTENER_CLEANUP_ENABLED);
         return activity.buildSectionCard(
                 "CarLink",
                 "管理应用流转和原生音乐兼容处理。",

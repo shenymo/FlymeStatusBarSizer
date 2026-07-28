@@ -442,6 +442,26 @@ public class FlymeStatusBarSizer extends XposedModule {
         return config != null && config.enabled && config.carLinkNeteaseColdStartFixEnabled;
     }
 
+    public static boolean isCarLinkDayNightIsolationEnabled() {
+        ModuleConfig config = ModuleConfig.load(null);
+        return config != null && config.enabled && config.carLinkDayNightIsolationEnabled;
+    }
+
+    public static boolean isCarLinkPeriodicRedrawDisabled() {
+        ModuleConfig config = ModuleConfig.load(null);
+        return config != null && config.enabled && config.carLinkPeriodicRedrawDisabled;
+    }
+
+    public static boolean isCarLinkTouchLogFilterEnabled() {
+        ModuleConfig config = ModuleConfig.load(null);
+        return config != null && config.enabled && config.carLinkTouchLogFilterEnabled;
+    }
+
+    public static boolean isCarLinkTaskListenerCleanupEnabled() {
+        ModuleConfig config = ModuleConfig.load(null);
+        return config != null && config.enabled && config.carLinkTaskListenerCleanupEnabled;
+    }
+
     public static void logCarLinkWarning(String message, Throwable throwable) {
         FlymeStatusBarSizer module = MODULE;
         if (module != null) {

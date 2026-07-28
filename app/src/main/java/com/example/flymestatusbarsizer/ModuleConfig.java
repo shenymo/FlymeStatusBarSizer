@@ -107,6 +107,14 @@ final class ModuleConfig {
     boolean carLinkExpandAppsEnabled = SettingsStore.DEFAULT_CARLINK_EXPAND_APPS_ENABLED;
     boolean carLinkNeteaseColdStartFixEnabled =
             SettingsStore.DEFAULT_CARLINK_NETEASE_COLD_START_FIX_ENABLED;
+    boolean carLinkDayNightIsolationEnabled =
+            SettingsStore.DEFAULT_CARLINK_DAY_NIGHT_ISOLATION_ENABLED;
+    boolean carLinkPeriodicRedrawDisabled =
+            SettingsStore.DEFAULT_CARLINK_PERIODIC_REDRAW_DISABLED;
+    boolean carLinkTouchLogFilterEnabled =
+            SettingsStore.DEFAULT_CARLINK_TOUCH_LOG_FILTER_ENABLED;
+    boolean carLinkTaskListenerCleanupEnabled =
+            SettingsStore.DEFAULT_CARLINK_TASK_LISTENER_CLEANUP_ENABLED;
     boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
     boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
     int notificationAppIconSizeDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
@@ -636,6 +644,22 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_CARLINK_NETEASE_COLD_START_FIX_ENABLED,
                     SettingsStore.DEFAULT_CARLINK_NETEASE_COLD_START_FIX_ENABLED);
+            config.carLinkDayNightIsolationEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_CARLINK_DAY_NIGHT_ISOLATION_ENABLED,
+                    SettingsStore.DEFAULT_CARLINK_DAY_NIGHT_ISOLATION_ENABLED);
+            config.carLinkPeriodicRedrawDisabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_CARLINK_PERIODIC_REDRAW_DISABLED,
+                    SettingsStore.DEFAULT_CARLINK_PERIODIC_REDRAW_DISABLED);
+            config.carLinkTouchLogFilterEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_CARLINK_TOUCH_LOG_FILTER_ENABLED,
+                    SettingsStore.DEFAULT_CARLINK_TOUCH_LOG_FILTER_ENABLED);
+            config.carLinkTaskListenerCleanupEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_CARLINK_TASK_LISTENER_CLEANUP_ENABLED,
+                    SettingsStore.DEFAULT_CARLINK_TASK_LISTENER_CLEANUP_ENABLED);
             config.mbackNavBarTransparent = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,
