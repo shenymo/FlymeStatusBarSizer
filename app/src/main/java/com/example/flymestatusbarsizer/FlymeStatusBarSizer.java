@@ -7336,7 +7336,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final int stackMenuPullThresholdDp;
         public final int stackContentMaxBlurDp;
         public final int stackShadowElevationDp;
-        public final float stackContentMediumBlurRatio;
         public final float stackContentBlurStartAlpha;
         public final float stackLeftFadeDistanceRatio;
         public final float stackTitleFadeDistanceMultiplier;
@@ -7466,8 +7465,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             stackShadowElevationDp = config == null
                     ? SettingsStore.DEFAULT_LAUNCHER_STACK_SHADOW_ELEVATION_DP
                     : config.launcherStackShadowElevationDp;
-            stackContentMediumBlurRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT,
-                    c -> c.launcherStackContentMediumBlurPercent);
             stackContentBlurStartAlpha = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT,
                     c -> c.launcherStackContentBlurStartAlphaPercent);
             stackLeftFadeDistanceRatio = percent(config,

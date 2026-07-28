@@ -210,8 +210,6 @@ final class SettingsStore {
             "launcher_stack_content_max_blur_dp";
     static final String KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP =
             "launcher_stack_shadow_elevation_dp";
-    static final String KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT =
-            "launcher_stack_content_medium_blur_percent";
     static final String KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT =
             "launcher_stack_content_blur_start_alpha_percent";
     static final String KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT =
@@ -416,7 +414,6 @@ final class SettingsStore {
     static final int DEFAULT_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP = 100;
     static final int DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP = 18;
     static final int DEFAULT_LAUNCHER_STACK_SHADOW_ELEVATION_DP = 4;
-    static final int DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT = 50;
     static final int DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT = 85;
     static final int DEFAULT_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT = 24;
     static final int DEFAULT_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT = 160;
@@ -553,7 +550,6 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP,
             KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP,
             KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP,
-            KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT,
             KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT,
             KEY_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT,
@@ -678,7 +674,6 @@ final class SettingsStore {
             KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP,
             KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP,
             KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP,
-            KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT,
             KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT,
             KEY_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT,
@@ -977,8 +972,6 @@ final class SettingsStore {
                 return DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP;
             case KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP:
                 return DEFAULT_LAUNCHER_STACK_SHADOW_ELEVATION_DP;
-            case KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT:
-                return DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT;
             case KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT;
             case KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT:
@@ -1528,9 +1521,6 @@ final class SettingsStore {
         }
         if (KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP.equals(key)) {
             return Math.max(0, Math.min(16, value));
-        }
-        if (KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(100, value));
         }
         if (KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT.equals(key)) {
             return Math.max(0, Math.min(100, value));

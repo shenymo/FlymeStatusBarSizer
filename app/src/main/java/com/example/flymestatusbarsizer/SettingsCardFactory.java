@@ -637,8 +637,6 @@ final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP, 0, 16, "dp");
         addStackParam(content, "blur 最大强度", "边缘卡片截图和图标的最大模糊强度。",
                 SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP, 0, 80, "dp");
-        addStackParam(content, "blur 中档比例", "模糊效果的中档强度比例。",
-                SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT, 0, 100, "%");
         addStackParam(content, "blur 开始透明度", "卡片透明度低于此值后开始增加 blur。",
                 SettingsStore.KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT, 0, 100, "%");
         addStackParam(content, "屏幕左侧淡出距离", "数值越大，屏幕左侧卡片会在更长距离内逐渐淡出。",

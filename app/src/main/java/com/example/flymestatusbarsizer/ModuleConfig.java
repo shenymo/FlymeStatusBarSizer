@@ -204,8 +204,6 @@ final class ModuleConfig {
     int launcherStackContentMaxBlurDp = SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP;
     int launcherStackShadowElevationDp =
             SettingsStore.DEFAULT_LAUNCHER_STACK_SHADOW_ELEVATION_DP;
-    int launcherStackContentMediumBlurPercent =
-            SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT;
     int launcherStackContentBlurStartAlphaPercent =
             SettingsStore.DEFAULT_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT;
     int launcherStackLeftFadeDistancePercent =
@@ -790,8 +788,6 @@ final class ModuleConfig {
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP);
             config.launcherStackShadowElevationDp = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP);
-            config.launcherStackContentMediumBlurPercent = readLauncherStackParameter(
-                    prefs, SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MEDIUM_BLUR_PERCENT);
             config.launcherStackContentBlurStartAlphaPercent = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT);
             config.launcherStackLeftFadeDistancePercent = readLauncherStackParameter(

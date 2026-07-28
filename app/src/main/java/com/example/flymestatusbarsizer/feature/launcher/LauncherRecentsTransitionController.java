@@ -800,7 +800,6 @@ final class LauncherRecentsTransitionController {
                 recentsView,
                 LauncherRecentsState.POSITION_OWNER_ENTER);
         markGestureRecentsStackReleaseHandoffPending(recentsView, true);
-        LauncherRecentsTaskVisuals.prepareStackContentBlurEffects(recentsView);
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(gestureStackReleaseDurationMs(recentsView));
         animator.setInterpolator(GESTURE_STACK_RELEASE_INTERPOLATOR);
