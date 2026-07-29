@@ -38,7 +38,7 @@ final class LauncherRecentsLayoutEngine {
     private static final float STACK_CONTENT_BLUR_START_ALPHA = 0.85f;
     private static final float STACK_LEFT_FADE_DISTANCE_RATIO = 0.24f;
     private static final float STACK_TITLE_FADE_DISTANCE_MULTIPLIER = 1.6f;
-    private static final int STACK_ENTRY_LIGHT_RADIUS = 1;
+    private static final int STACK_ENTRY_LIGHT_RADIUS = 2;
     private static final int STACK_STABLE_VISIBLE_RADIUS = 2;
     private static final int STACK_GESTURE_RELEASE_CORE_RADIUS = 2;
     private static final int STACK_LAYOUT_RECOVERY_RADIUS_STEP = 4;
