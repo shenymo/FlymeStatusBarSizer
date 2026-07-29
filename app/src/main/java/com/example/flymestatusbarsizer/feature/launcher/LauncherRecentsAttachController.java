@@ -2,9 +2,11 @@ package com.example.flymestatusbarsizer.feature.launcher;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
+import android.util.SparseBooleanArray;
 import android.view.View;
 
 import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.List;
 
 final class LauncherRecentsAttachController {
@@ -22,8 +24,81 @@ final class LauncherRecentsAttachController {
             return;
         }
         hookRecentsViewGestureAnimationStart(module, loader);
+        hookRecentsViewLoadVisibleTaskData(module, loader);
         hookLauncherRecentsViewApplyLoadPlan(module, loader);
         hookFlymeRecentsAttach(module, loader);
+    }
+
+    private static void hookRecentsViewLoadVisibleTaskData(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(LauncherRecentsCompat.RECENTS_VIEW_CLASS, false, loader);
+            Method method = clazz.getDeclaredMethod("loadVisibleTaskData", int.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                View recentsView = chain.getThisObject() instanceof View
+                        ? (View) chain.getThisObject()
+                        : null;
+                int changes = chain.getArg(0) instanceof Integer ? (Integer) chain.getArg(0) : 15;
+                preloadStackEntryTaskData(recentsView, changes);
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logLauncherWarning(
+                    "Failed to hook RecentsView.loadVisibleTaskData",
+                    t);
+        }
+    }
+
+    private static void preloadStackEntryTaskData(View recentsView, int changes) {
+        if (recentsView == null
+                || (!LauncherRecentsState.isSwipeUpGestureActive(recentsView)
+                && !LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
+                && !LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
+                && !LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
+                && !LauncherRecentsTransitionController
+                .isGestureRecentsStackReleaseAnimationActive(recentsView))) {
+            return;
+        }
+        Object trackedData = LauncherRecentsCompat.getFieldCompat(
+                recentsView,
+                "mHasVisibleTaskData");
+        if (!(trackedData instanceof SparseBooleanArray)) {
+            return;
+        }
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> entryTasks =
+                LauncherRecentsLayoutEngine.computeStackLayout(
+                        recentsView,
+                        LauncherRecentsLayoutEngine.stackEntryLightRadius(recentsView),
+                        null,
+                        null);
+        SparseBooleanArray loadedTaskIds = (SparseBooleanArray) trackedData;
+        for (View taskView : entryTasks.keySet()) {
+            Object taskIds = LauncherRecentsCompat.invokeCompat(taskView, "getTaskIds");
+            if (!(taskIds instanceof int[])) {
+                continue;
+            }
+            boolean needsLoad = false;
+            for (int taskId : (int[]) taskIds) {
+                needsLoad |= taskId >= 0 && !loadedTaskIds.get(taskId);
+            }
+            if (!needsLoad) {
+                continue;
+            }
+            LauncherRecentsCompat.invokeCompat(
+                    taskView,
+                    "onTaskListVisibilityChanged",
+                    LauncherRecentsCompat.BOOLEAN_INT_ARG,
+                    true,
+                    changes);
+            for (int taskId : (int[]) taskIds) {
+                if (taskId >= 0) {
+                    loadedTaskIds.put(taskId, true);
+                }
+            }
+        }
     }
 
     private static void hookRecentsViewGestureAnimationStart(

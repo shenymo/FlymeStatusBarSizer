@@ -2089,13 +2089,15 @@ final class LauncherRecentsLayoutEngine {
                         recentsView);
         boolean appEntrySessionActive =
                 LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView);
+        boolean swipeUpGestureActive = LauncherRecentsState.isSwipeUpGestureActive(recentsView);
         int entryLightRadius = stackEntryLightRadius(recentsView);
         boolean entryLightWindow = stackLayoutRadius == entryLightRadius
                 && (gestureStackReleaseActive
                 || overviewStateStackAnimationActive
-                || appEntrySessionActive);
+                || appEntrySessionActive
+                || swipeUpGestureActive);
         boolean appEntryLightWindow = stackLayoutRadius == entryLightRadius
-                && (gestureStackReleaseActive || appEntrySessionActive);
+                && (gestureStackReleaseActive || appEntrySessionActive || swipeUpGestureActive);
         boolean desktopOverviewEntryWindow = stackLayoutRadius == entryLightRadius
                 && overviewStateStackAnimationActive
                 && !gestureStackReleaseActive

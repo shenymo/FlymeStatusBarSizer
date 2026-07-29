@@ -90,10 +90,6 @@ final class LauncherRecentsState {
             new WeakHashMap<>();
     static final WeakHashMap<View, StackIconBlurState> STACK_ICON_BLUR_STATES =
             new WeakHashMap<>();
-    static final WeakHashMap<View, ViewOutlineProvider> ORIGINAL_STACK_ICON_OUTLINE_PROVIDERS =
-            new WeakHashMap<>();
-    static final WeakHashMap<View, Boolean> ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES =
-            new WeakHashMap<>();
 
     // Task launch transition.
     static final ThreadLocal<TaskLaunchTransitionGeometryContext>
@@ -362,19 +358,22 @@ final class LauncherRecentsState {
         final int iconHeight;
         final int viewWidth;
         final int viewHeight;
-        final ViewOutlineProvider outlineProvider;
+        final Object drawable;
+        final Object maskEffect;
 
         StackIconBlurState(
                 int iconWidth,
                 int iconHeight,
                 int viewWidth,
                 int viewHeight,
-                ViewOutlineProvider outlineProvider) {
+                Object drawable,
+                Object maskEffect) {
             this.iconWidth = iconWidth;
             this.iconHeight = iconHeight;
             this.viewWidth = viewWidth;
             this.viewHeight = viewHeight;
-            this.outlineProvider = outlineProvider;
+            this.drawable = drawable;
+            this.maskEffect = maskEffect;
         }
     }
 
@@ -929,8 +928,6 @@ final class LauncherRecentsState {
         LAST_APPLIED_STACK_TASK_VISUAL_STATES.remove(taskView);
         STACK_CONTENT_TARGETS.remove(taskView);
         STACK_ICON_BLUR_STATES.remove(taskView);
-        ORIGINAL_STACK_ICON_OUTLINE_PROVIDERS.remove(taskView);
-        ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES.remove(taskView);
     }
 
     private static void cancelAndRemove(

@@ -3,12 +3,17 @@ package com.example.flymestatusbarsizer.feature.launcher;
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import android.animation.Animator;
-import android.graphics.Outline;
+import android.graphics.Bitmap;
+import android.graphics.BitmapShader;
+import android.graphics.BlendMode;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.RenderEffect;
 import android.graphics.Shader;
+import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.view.View;
-import android.view.ViewOutlineProvider;
 
 import java.util.List;
 
@@ -1102,11 +1107,13 @@ final class LauncherRecentsTaskVisuals {
     }
 
     private static void clearStackIconBlurIfApplied(View view) {
-        if (view == null || readAppliedStackContentBlurPx(view) <= MODULE_APPLIED_EPSILON) {
+        if (view == null) {
             return;
         }
-        restoreStackIconClip(view);
-        applyStackContentBlur(view, 0f);
+        LauncherRecentsState.STACK_ICON_BLUR_STATES.remove(view);
+        if (readAppliedStackContentBlurPx(view) > MODULE_APPLIED_EPSILON) {
+            applyStackContentBlur(view, 0f);
+        }
     }
 
     private static void applyStackIconBlur(Object iconView, View view, float blurPx) {
@@ -1115,85 +1122,95 @@ final class LauncherRecentsTaskVisuals {
         }
         float appliedBlurPx = blurPx > MODULE_APPLIED_EPSILON ? blurPx : 0f;
         if (appliedBlurPx == 0f) {
-            restoreStackIconClip(view);
+            LauncherRecentsState.STACK_ICON_BLUR_STATES.remove(view);
             applyStackContentBlur(view, 0f);
             return;
         }
-        rememberStackIconClip(view);
         int iconWidth = readIconSize(iconView, "getDrawableWidth", view.getWidth());
         int iconHeight = readIconSize(iconView, "getDrawableHeight", view.getHeight());
+        Object drawableObject = LauncherRecentsCompat.invokeCompat(iconView, "getDrawable");
         LauncherRecentsState.StackIconBlurState state =
                 LauncherRecentsState.STACK_ICON_BLUR_STATES.get(view);
         if (state == null
                 || state.iconWidth != iconWidth
                 || state.iconHeight != iconHeight
                 || state.viewWidth != view.getWidth()
-                || state.viewHeight != view.getHeight()) {
-            ViewOutlineProvider outlineProvider =
-                    createStackIconBlurOutlineProvider(iconWidth, iconHeight);
-            view.setOutlineProvider(outlineProvider);
-            view.setClipToOutline(true);
-            view.invalidateOutline();
-            LauncherRecentsState.STACK_ICON_BLUR_STATES.put(
-                    view,
-                    new LauncherRecentsState.StackIconBlurState(
-                            iconWidth,
-                            iconHeight,
-                            view.getWidth(),
-                            view.getHeight(),
-                            outlineProvider));
-        } else if (view.getOutlineProvider() != state.outlineProvider || !view.getClipToOutline()) {
-            view.setOutlineProvider(state.outlineProvider);
-            view.setClipToOutline(true);
-            view.invalidateOutline();
+                || state.viewHeight != view.getHeight()
+                || state.drawable != drawableObject) {
+            RenderEffect maskEffect = createStackIconMaskEffect(
+                    drawableObject instanceof Drawable ? (Drawable) drawableObject : null,
+                    iconWidth,
+                    iconHeight,
+                    view.getWidth(),
+                    view.getHeight());
+            if (maskEffect == null) {
+                LauncherRecentsState.STACK_ICON_BLUR_STATES.remove(view);
+                applyStackContentBlur(view, 0f);
+                return;
+            }
+            state = new LauncherRecentsState.StackIconBlurState(
+                    iconWidth,
+                    iconHeight,
+                    view.getWidth(),
+                    view.getHeight(),
+                    drawableObject,
+                    maskEffect);
+            LauncherRecentsState.STACK_ICON_BLUR_STATES.put(view, state);
+            LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.remove(view);
         }
-        applyStackContentBlur(view, appliedBlurPx);
+        applyStackMaskedBlur(view, appliedBlurPx, (RenderEffect) state.maskEffect);
     }
 
-    private static void rememberStackIconClip(View view) {
-        if (!LauncherRecentsState.ORIGINAL_STACK_ICON_OUTLINE_PROVIDERS.containsKey(view)) {
-            LauncherRecentsState.ORIGINAL_STACK_ICON_OUTLINE_PROVIDERS.put(
-                    view,
-                    view.getOutlineProvider());
-        }
-        if (!LauncherRecentsState.ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES.containsKey(view)) {
-            LauncherRecentsState.ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES.put(
-                    view,
-                    view.getClipToOutline());
-        }
-    }
-
-    private static void restoreStackIconClip(View view) {
-        if (!LauncherRecentsState.ORIGINAL_STACK_ICON_OUTLINE_PROVIDERS.containsKey(view)) {
+    private static void applyStackMaskedBlur(
+            View view,
+            float blurPx,
+            RenderEffect maskEffect) {
+        Float lastAppliedBlurPx = LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.get(view);
+        if (lastAppliedBlurPx != null
+                && Math.abs(lastAppliedBlurPx - blurPx) < MODULE_APPLIED_EPSILON) {
             return;
         }
-        view.setOutlineProvider(LauncherRecentsState.ORIGINAL_STACK_ICON_OUTLINE_PROVIDERS.remove(
-                view));
-        Boolean clipToOutline =
-                LauncherRecentsState.ORIGINAL_STACK_ICON_CLIP_TO_OUTLINES.remove(view);
-        view.setClipToOutline(clipToOutline != null && clipToOutline);
-        view.invalidateOutline();
-        LauncherRecentsState.STACK_ICON_BLUR_STATES.remove(view);
+        RenderEffect blurEffect = RenderEffect.createBlurEffect(
+                blurPx, blurPx, Shader.TileMode.CLAMP);
+        view.setRenderEffect(RenderEffect.createBlendModeEffect(
+                blurEffect, maskEffect, BlendMode.DST_IN));
+        LauncherRecentsState.LAST_APPLIED_STACK_CONTENT_BLURS.put(view, blurPx);
     }
 
-    private static ViewOutlineProvider createStackIconBlurOutlineProvider(
+    private static RenderEffect createStackIconMaskEffect(
+            Drawable drawable,
             int iconWidth,
-            int iconHeight) {
-        return new ViewOutlineProvider() {
-            @Override
-            public void getOutline(View view, Outline outline) {
-                int width = iconWidth > 0 ? Math.min(iconWidth, view.getWidth()) : view.getWidth();
-                int height = iconHeight > 0 ? Math.min(iconHeight, view.getHeight()) : view.getHeight();
-                if (width <= 0 || height <= 0) {
-                    outline.setEmpty();
-                    return;
-                }
-                int left = Math.max(0, (view.getWidth() - width) / 2);
-                int top = Math.max(0, (view.getHeight() - height) / 2);
-                float radius = Math.min(width, height) * 0.22f;
-                outline.setRoundRect(left, top, left + width, top + height, radius);
-            }
-        };
+            int iconHeight,
+            int viewWidth,
+            int viewHeight) {
+        if (viewWidth <= 0 || viewHeight <= 0) {
+            return null;
+        }
+        int width = iconWidth > 0 ? Math.min(iconWidth, viewWidth) : viewWidth;
+        int height = iconHeight > 0 ? Math.min(iconHeight, viewHeight) : viewHeight;
+        int left = Math.max(0, (viewWidth - width) / 2);
+        int top = Math.max(0, (viewHeight - height) / 2);
+        Bitmap maskBitmap = Bitmap.createBitmap(viewWidth, viewHeight, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(maskBitmap);
+        if (drawable != null && !drawable.getBounds().isEmpty()) {
+            drawable.draw(canvas);
+        } else {
+            Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            paint.setColor(Color.WHITE);
+            float radius = Math.min(width, height) * 0.22f;
+            canvas.drawRoundRect(
+                    left,
+                    top,
+                    left + width,
+                    top + height,
+                    radius,
+                    radius,
+                    paint);
+        }
+        return RenderEffect.createShaderEffect(new BitmapShader(
+                maskBitmap,
+                Shader.TileMode.CLAMP,
+                Shader.TileMode.CLAMP));
     }
 
     private static int readIconSize(Object iconView, String methodName, int fallback) {
