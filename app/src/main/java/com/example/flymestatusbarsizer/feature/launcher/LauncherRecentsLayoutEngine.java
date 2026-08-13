@@ -13,6 +13,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 
 final class LauncherRecentsLayoutEngine {
@@ -184,19 +185,30 @@ final class LauncherRecentsLayoutEngine {
         final int[] runningTaskIds;
         final HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> visualStates =
                 new HashMap<>();
-        final ArrayList<View> coreOnlyTaskViews = new ArrayList<>();
+        final HashSet<View> coreOnlyTaskViews = new HashSet<>();
+        final View[] projectedTaskViews;
+        final boolean[] activeIndexFlags;
 
         ComputedStackLayout(
                 ArrayList<Integer> activeIndices,
                 ArrayList<Integer> processIndices,
                 View runningTaskView,
                 boolean appEntrySessionActive,
-                int[] runningTaskIds) {
+                int[] runningTaskIds,
+                View[] projectedTaskViews) {
             this.activeIndices = activeIndices;
             this.processIndices = processIndices;
             this.runningTaskView = runningTaskView;
             this.appEntrySessionActive = appEntrySessionActive;
             this.runningTaskIds = runningTaskIds;
+            this.projectedTaskViews = projectedTaskViews;
+            this.activeIndexFlags = new boolean[projectedTaskViews.length];
+            for (int i = 0; i < activeIndices.size(); i++) {
+                int index = activeIndices.get(i);
+                if (index >= 0 && index < activeIndexFlags.length) {
+                    activeIndexFlags[index] = true;
+                }
+            }
         }
     }
 
@@ -2069,6 +2081,10 @@ final class LauncherRecentsLayoutEngine {
             FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config,
             View excludedTaskView,
             Integer targetScroll) {
+        View[] projectedTaskViews = snapshotProjectedTaskViews(
+                recentsView,
+                taskViewCount,
+                excludedTaskView);
         float pageSpacing = LauncherRecentsCompat.readIntField(recentsView, "mPageSpacing", 0);
         Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
                 recentsView,
@@ -2136,7 +2152,8 @@ final class LauncherRecentsLayoutEngine {
                 processIndices,
                 runningTaskView,
                 appEntrySessionActive,
-                resolveTaskIds(runningTaskView));
+                resolveTaskIds(runningTaskView),
+                projectedTaskViews);
         int primaryScroll = targetScroll != null ? targetScroll : resolvePrimaryScroll(recentsView);
         float referenceWidth = 0f;
         float referenceHeight = 0f;
@@ -2144,10 +2161,7 @@ final class LauncherRecentsLayoutEngine {
         float pageSpan = 0f;
 
         for (int index = 0; index < activeIndices.size(); index++) {
-            View taskView = getProjectedTaskViewAt(
-                    recentsView,
-                    activeIndices.get(index),
-                    excludedTaskView);
+            View taskView = projectedTaskViews[activeIndices.get(index)];
             if (taskView == null) {
                 continue;
             }
@@ -2231,12 +2245,16 @@ final class LauncherRecentsLayoutEngine {
 
         for (int index = 0; index < processIndices.size(); index++) {
             int i = processIndices.get(index);
-            View taskView = getProjectedTaskViewAt(recentsView, i, excludedTaskView);
+            View taskView = i >= 0 && i < projectedTaskViews.length
+                    ? projectedTaskViews[i]
+                    : null;
             if (taskView == null
                     || LauncherRecentsCompat.isDesktopTask(taskView)
                     || (taskView != runningTaskView
                     && sharesTaskIds(taskView, result.runningTaskIds))
-                    || !activeIndices.contains(i)) {
+                    || i < 0
+                    || i >= result.activeIndexFlags.length
+                    || !result.activeIndexFlags[i]) {
                 continue;
             }
             boolean coreOnly = shouldApplyCoreOnlyDuringGestureRelease(
@@ -2254,11 +2272,17 @@ final class LauncherRecentsLayoutEngine {
                     && isStableStackEdgeIndex(i, activeIndices)
                     && !isStackVisualStateVisibleInViewport(layoutContext, input, visualState)) {
                 hideLightStackTask(taskView);
-                replaceStableStackEdgeIndex(
+                int replacement = replaceStableStackEdgeIndex(
                         i,
                         activeIndices,
                         processIndices,
                         taskViewCount);
+                if (i >= 0 && i < result.activeIndexFlags.length) {
+                    result.activeIndexFlags[i] = false;
+                }
+                if (replacement >= 0 && replacement < result.activeIndexFlags.length) {
+                    result.activeIndexFlags[replacement] = true;
+                }
                 continue;
             }
             if (coreOnly) {
@@ -2323,13 +2347,13 @@ final class LauncherRecentsLayoutEngine {
         return index == minIndex || index == maxIndex;
     }
 
-    private static void replaceStableStackEdgeIndex(
+    private static int replaceStableStackEdgeIndex(
             int index,
             ArrayList<Integer> activeIndices,
             ArrayList<Integer> processIndices,
             int taskViewCount) {
         if (activeIndices == null || activeIndices.size() <= 1) {
-            return;
+            return -1;
         }
         int minIndex = Integer.MAX_VALUE;
         int maxIndex = Integer.MIN_VALUE;
@@ -2342,6 +2366,7 @@ final class LauncherRecentsLayoutEngine {
         int replacement = index == minIndex ? maxIndex + 1 : minIndex - 1;
         appendStackLayoutIndex(activeIndices, replacement, taskViewCount);
         appendStackLayoutIndex(processIndices, replacement, taskViewCount);
+        return replacement;
     }
 
     private static ArrayList<Integer> resolveStackLayoutActiveIndices(
@@ -2484,6 +2509,25 @@ final class LauncherRecentsLayoutEngine {
             projected++;
         }
         return null;
+    }
+
+    private static View[] snapshotProjectedTaskViews(
+            View recentsView,
+            int projectedTaskViewCount,
+            View excludedTaskView) {
+        View[] taskViews = new View[Math.max(0, projectedTaskViewCount)];
+        if (recentsView == null || taskViews.length == 0) {
+            return taskViews;
+        }
+        int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
+        int projectedIndex = 0;
+        for (int i = 0; i < taskViewCount && projectedIndex < taskViews.length; i++) {
+            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            if (taskView != excludedTaskView) {
+                taskViews[projectedIndex++] = taskView;
+            }
+        }
+        return taskViews;
     }
 
     private static int findProjectedTaskIndex(

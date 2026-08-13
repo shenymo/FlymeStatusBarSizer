@@ -12,6 +12,7 @@ final class LauncherRecentsFrameRateController {
     private static final float STACK_SCROLL_FRAME_RATE = 120f;
     private static final long RELEASE_DELAY_MS = 5000L;
     private static final WeakHashMap<View, Runnable> RELEASE_RUNNABLES = new WeakHashMap<>();
+    private static final WeakHashMap<View, Float> REQUESTED_FRAME_RATES = new WeakHashMap<>();
 
     private LauncherRecentsFrameRateController() {
     }
@@ -41,6 +42,7 @@ final class LauncherRecentsFrameRateController {
         if (pending != null) {
             recentsView.removeCallbacks(pending);
         }
+        REQUESTED_FRAME_RATES.remove(recentsView);
         recentsView.setRequestedFrameRate(View.REQUESTED_FRAME_RATE_CATEGORY_DEFAULT);
     }
 
@@ -52,7 +54,13 @@ final class LauncherRecentsFrameRateController {
         if (pending != null) {
             recentsView.removeCallbacks(pending);
         }
-        recentsView.setRequestedFrameRate(stackScrollFrameRate(recentsView));
+        float frameRate = stackScrollFrameRate(recentsView);
+        Float previous = REQUESTED_FRAME_RATES.get(recentsView);
+        if (previous != null && Float.compare(previous, frameRate) == 0) {
+            return;
+        }
+        REQUESTED_FRAME_RATES.put(recentsView, frameRate);
+        recentsView.setRequestedFrameRate(frameRate);
     }
 
     private static void releaseLater(View recentsView) {
