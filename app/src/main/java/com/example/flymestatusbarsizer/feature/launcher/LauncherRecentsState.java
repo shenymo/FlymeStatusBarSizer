@@ -111,6 +111,7 @@ final class LauncherRecentsState {
         boolean overviewStateStackSettled;
         boolean overviewPreReleaseStockMode;
         boolean overviewStateStackReleaseRequested;
+        boolean appToRecentsTouchTakeoverActive;
         boolean launcherQuickSwitchStockMode;
         boolean taskLaunchRequestStarted;
         boolean swipeUpGestureActive;
@@ -440,6 +441,7 @@ final class LauncherRecentsState {
         state.appToRecentsGestureReleased = false;
         state.pendingGestureRecentsStackRelease = false;
         state.pendingGestureRecentsStackReleaseHandoff = false;
+        state.appToRecentsTouchTakeoverActive = false;
     }
 
     static void clearAppToRecentsGestureState(View recentsView) {
@@ -928,6 +930,20 @@ final class LauncherRecentsState {
         LAST_APPLIED_STACK_TASK_VISUAL_STATES.remove(taskView);
         STACK_CONTENT_TARGETS.remove(taskView);
         STACK_ICON_BLUR_STATES.remove(taskView);
+    }
+
+    static void setAppToRecentsTouchTakeoverActive(View recentsView, boolean active) {
+        RecentsViewState state = active
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.appToRecentsTouchTakeoverActive = active;
+        }
+    }
+
+    static boolean isAppToRecentsTouchTakeoverActive(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.appToRecentsTouchTakeoverActive;
     }
 
     private static void cancelAndRemove(

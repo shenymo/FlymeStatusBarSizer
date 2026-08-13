@@ -307,6 +307,10 @@ final class LauncherRecentsTouchController {
                     keepAppToRecentsEntryHeadsVisibleOnTouchDown(recentsView, motionEvent);
                     ensureClearAllButtonReadyOnTouchDown(recentsView, motionEvent);
                     stopStackScrollerOnTouchDown(recentsView, motionEvent);
+                    if (takeOverAppToRecentsEntryOnHorizontalMove(recentsView, motionEvent)) {
+                        resetPagedTouchBaseline(recentsView, motionEvent);
+                        return true;
+                    }
                     if (handleMovingStackBlankTapHomeExit(recentsView, motionEvent)) {
                         return true;
                     }
@@ -362,8 +366,14 @@ final class LauncherRecentsTouchController {
                     ensureClearAllButtonReadyOnTouchDown(recentsView, motionEvent);
                     boolean entryTakeover =
                             takeOverAppToRecentsEntryOnHorizontalMove(recentsView, motionEvent);
+                    if (entryTakeover) {
+                        resetPagedTouchBaseline(recentsView, motionEvent);
+                    }
                     boolean overviewTakeover = !entryTakeover
                             && takeOverOverviewStateOnHorizontalMove(recentsView, motionEvent);
+                    if (overviewTakeover) {
+                        resetPagedTouchBaseline(recentsView, motionEvent);
+                    }
                     clearGestureReleaseTaskStatesOnUserMove(recentsView, motionEvent);
                     if (handleMovingStackBlankTapHomeExit(recentsView, motionEvent)) {
                         return true;
@@ -460,8 +470,16 @@ final class LauncherRecentsTouchController {
                                 nativeStartNs);
                     }
                     applyStackLayoutAfterPagedMove(recentsView, motionEvent);
-                    if (entryTakeover) {
+                    if (entryTakeover
+                            || (LauncherRecentsState.isAppToRecentsTouchTakeoverActive(recentsView)
+                            && (motionEvent.getActionMasked() == MotionEvent.ACTION_UP
+                            || motionEvent.getActionMasked() == MotionEvent.ACTION_CANCEL))) {
                         keepAppToRecentsEntryTakeoverDataReady(recentsView);
+                        if (motionEvent.getActionMasked() == MotionEvent.ACTION_UP
+                                || motionEvent.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                            recentsView.postOnAnimation(
+                                    () -> finishAppToRecentsEntryTouchTakeover(recentsView));
+                        }
                     }
                     if (overviewTakeover) {
                         keepOverviewStateTakeoverLayoutReady(recentsView);
@@ -726,6 +744,7 @@ final class LauncherRecentsTouchController {
                 || motionEvent == null
                 || motionEvent.getActionMasked() != MotionEvent.ACTION_MOVE
                 || !LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(recentsView)
+                || LauncherRecentsState.isAppToRecentsTouchTakeoverActive(recentsView)
                 || !isAppToRecentsEntryTouchTakeoverNeeded(recentsView)) {
             return false;
         }
@@ -748,23 +767,28 @@ final class LauncherRecentsTouchController {
                 motionEvent,
                 "dx=" + Math.round(dx) + " dy=" + Math.round(dy));
         LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
-        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> startVisualStates =
-                LauncherRecentsLayoutEngine.captureCurrentStackTaskVisualStates(recentsView);
-        int currentScroll = resolvePrimaryScroll(recentsView);
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> takeoverVisualStates =
+                captureTakeoverVisualStates(recentsView);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "abortScrollerAnimation",
+                LauncherRecentsCompat.NO_ARGS);
+        LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "forceFinishScroller",
+                LauncherRecentsCompat.NO_ARGS);
         LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
                 recentsView,
                 true);
         LauncherRecentsTransitionController.forceRecentsTranslationZero(recentsView);
         LauncherRecentsAttachController.endAppToRecentsEntrySessionWithoutLayout(recentsView);
-        LauncherRecentsState.setAppToRecentsStackSettled(recentsView, false);
-        LauncherRecentsLayoutEngine.captureGestureStackReleaseTaskStates(
+        LauncherRecentsTransitionController.clearGestureRecentsStackReleaseProgress(recentsView);
+        LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
+        LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
+        LauncherRecentsState.setAppToRecentsTouchTakeoverActive(recentsView, true);
+        LauncherRecentsState.setPositionOwner(
                 recentsView,
-                currentScroll,
-                currentScroll,
-                startVisualStates);
-        LauncherRecentsTransitionController.setGestureRecentsStackReleaseProgress(
-                recentsView,
-                0f);
+                LauncherRecentsState.POSITION_OWNER_SCROLL);
         LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
         LauncherRecentsCompat.invokeCompat(
                 recentsView,
@@ -783,14 +807,75 @@ final class LauncherRecentsTouchController {
                 false);
         LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
         LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-        LauncherRecentsLayoutEngine.requestStackLayout(
+        LauncherRecentsLayoutEngine.applyStableStackLayout(
                 recentsView,
-                "overviewTouchTakeover",
-                false);
+                false,
+                "overviewTouchTakeover");
+        applyTakeoverVisualStates(takeoverVisualStates);
         LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
         recentsView.invalidate();
-        recentsView.postOnAnimation(() -> finishAppToRecentsEntryTouchTakeover(recentsView));
         return true;
+    }
+
+    private static HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState>
+            captureTakeoverVisualStates(View recentsView) {
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> source =
+                LauncherRecentsLayoutEngine.captureCurrentStackTaskVisualStates(recentsView);
+        float translationX = recentsView.getTranslationX();
+        float translationY = recentsView.getTranslationY();
+        if (Math.abs(translationX) <= 0.01f && Math.abs(translationY) <= 0.01f) {
+            return source;
+        }
+        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> result = new HashMap<>();
+        boolean horizontal = isPrimaryScrollHorizontal(recentsView);
+        for (View taskView : source.keySet()) {
+            LauncherRecentsTaskVisuals.StackTaskVisualState state = source.get(taskView);
+            if (state == null) {
+                continue;
+            }
+            result.put(taskView, new LauncherRecentsTaskVisuals.StackTaskVisualState(
+                    state.pivotX,
+                    state.pivotY,
+                    state.horizontalOffsetX,
+                    horizontal ? state.taskOffsetX + translationX : state.taskOffsetX,
+                    horizontal ? state.taskOffsetY : state.taskOffsetY + translationY,
+                    state.boxTranslationY,
+                    state.scale,
+                    state.attachAlpha,
+                    state.stableAlpha,
+                    state.activityTitleAlpha,
+                    state.blurProgress,
+                    state.fullscreenProgress,
+                    state.translationZ,
+                    state.shadowElevationDp,
+                    state.stackContentBlurEnabled,
+                    state.shadowEnabled));
+        }
+        return result;
+    }
+
+    private static void applyTakeoverVisualStates(
+            HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> states) {
+        if (states == null) {
+            return;
+        }
+        for (View taskView : states.keySet()) {
+            LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, states.get(taskView));
+        }
+    }
+
+    private static void resetPagedTouchBaseline(View recentsView, MotionEvent motionEvent) {
+        if (recentsView == null || motionEvent == null) {
+            return;
+        }
+        float x = motionEvent.getX();
+        float y = motionEvent.getY();
+        float primary = isPrimaryScrollHorizontal(recentsView) ? x : y;
+        LauncherRecentsCompat.writeField(recentsView, "mDownMotionX", x);
+        LauncherRecentsCompat.writeField(recentsView, "mDownMotionY", y);
+        LauncherRecentsCompat.writeField(recentsView, "mDownMotionPrimary", primary);
+        LauncherRecentsCompat.setIntField(recentsView, "mLastMotion", Math.round(primary));
+        LauncherRecentsCompat.writeField(recentsView, "mTotalMotion", 0f);
     }
 
     private static void keepAppToRecentsEntryTakeoverDataReady(View recentsView) {
@@ -803,31 +888,21 @@ final class LauncherRecentsTouchController {
             return;
         }
         LauncherRecentsTransitionController.forceRecentsTranslationZero(recentsView);
-        LauncherRecentsTransitionController.setGestureRecentsStackReleaseProgress(
-                recentsView,
-                1f);
-        LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
-        LauncherRecentsLayoutEngine.requestStackLayout(
-                recentsView,
-                "overviewTakeoverReady",
-                false);
-        recentsView.invalidate();
-        recentsView.postDelayed(() -> clearAppToRecentsEntryTouchTakeover(recentsView), 80L);
-    }
-
-    private static void clearAppToRecentsEntryTouchTakeover(View recentsView) {
-        if (recentsView == null) {
+        if (!LauncherRecentsCompat.invokeBoolean(recentsView, "isScrollerFinished", true)) {
+            recentsView.postDelayed(() -> finishAppToRecentsEntryTouchTakeover(recentsView), 16L);
             return;
         }
-        LauncherRecentsTransitionController.forceRecentsTranslationZero(recentsView);
-        LauncherRecentsTransitionController.clearGestureRecentsStackReleaseProgress(recentsView);
-        LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
-        LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
+        LauncherRecentsTransitionController.normalizeAppToRecentsStackAnchorForCurrentScroll(
+                recentsView);
         LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
-        LauncherRecentsLayoutEngine.requestStackLayout(
+        LauncherRecentsLayoutEngine.applyStableStackLayout(
                 recentsView,
-                "entryTouchTakeoverClear",
-                false);
+                false,
+                "overviewTakeoverEnd");
+        LauncherRecentsState.setAppToRecentsTouchTakeoverActive(recentsView, false);
+        LauncherRecentsState.clearPositionOwner(
+                recentsView,
+                LauncherRecentsState.POSITION_OWNER_ENTER);
         recentsView.invalidate();
     }
 
@@ -863,6 +938,8 @@ final class LauncherRecentsTouchController {
         LauncherRecentsTransitionController.forceRecentsTranslationZero(recentsView);
         LauncherRecentsStateAnimationController.finishOverviewStateStackAnimationForTouchTakeover(
                 recentsView);
+        LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
+        LauncherRecentsState.setAppToRecentsTouchTakeoverActive(recentsView, true);
         LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
         LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
         LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
@@ -889,6 +966,8 @@ final class LauncherRecentsTouchController {
         return LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                 || LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
                 || LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
+                || LauncherRecentsState.getPositionOwner(recentsView)
+                == LauncherRecentsState.POSITION_OWNER_ENTER
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseHandoffPending(
                 recentsView)
                 || LauncherRecentsTransitionController.isGestureRecentsStackReleaseAnimationActive(
@@ -2680,11 +2759,17 @@ final class LauncherRecentsTouchController {
     private static void applyStackLayoutAfterPagedMove(View recentsView, MotionEvent motionEvent) {
         if (recentsView == null
                 || motionEvent == null
-                || motionEvent.getActionMasked() != MotionEvent.ACTION_MOVE
-                || !LauncherRecentsState.isAppToRecentsStackSettled(recentsView)) {
+                || motionEvent.getActionMasked() != MotionEvent.ACTION_MOVE) {
             return;
         }
         cancelStackDismissRelayoutAnimation(recentsView);
+        if (LauncherRecentsState.isAppToRecentsTouchTakeoverActive(recentsView)) {
+            LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
+            LauncherRecentsLayoutEngine.applyStableStackLayout(
+                    recentsView,
+                    false,
+                    "entryTouchMove");
+        }
     }
 
     private static void cancelStackDismissRelayoutAnimation(View recentsView) {

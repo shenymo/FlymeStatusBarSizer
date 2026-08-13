@@ -502,6 +502,10 @@ final class LauncherRecentsLayoutEngine {
                             true)) {
                         LauncherRecentsPerf.pulseSession("scroll", recentsView, 100L);
                         LauncherRecentsFrameRateController.onActiveScroll(recentsView);
+                        if (LauncherRecentsState.isAppToRecentsTouchTakeoverActive(recentsView)) {
+                            LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
+                            applyStableStackLayout(recentsView, false, "entryTouchScroll");
+                        }
                         return result;
                     }
                     requestStackLayout(recentsView, "dispatchScrollChanged", false);

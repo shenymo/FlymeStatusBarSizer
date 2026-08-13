@@ -1077,6 +1077,29 @@ final class LauncherRecentsTransitionController {
         normalizeAppToRecentsStackAnchorPage(recentsView, anchorPage, targetScroll);
     }
 
+    static void normalizeAppToRecentsStackAnchorForCurrentScroll(View recentsView) {
+        if (recentsView == null) {
+            return;
+        }
+        int pageCount = LauncherRecentsCompat.invokeInt(recentsView, "getPageCount", 0);
+        if (pageCount <= 0) {
+            return;
+        }
+        int currentScroll = resolvePrimaryScroll(recentsView);
+        int nearestPage = 0;
+        int nearestDistance = Integer.MAX_VALUE;
+        for (int page = 0; page < pageCount; page++) {
+            int pageScroll = resolveScrollForPage(recentsView, page, currentScroll);
+            int distance = Math.abs(pageScroll - currentScroll);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestPage = page;
+            }
+        }
+        int targetScroll = resolveScrollForPage(recentsView, nearestPage, currentScroll);
+        normalizeAppToRecentsStackAnchor(recentsView, nearestPage, targetScroll);
+    }
+
     private static void normalizeAppToRecentsStackAnchorPage(
             View recentsView,
             int anchorPage,
