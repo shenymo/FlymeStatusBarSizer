@@ -439,11 +439,18 @@ final class ClockDetailMediaProvider {
     }
 
     private void publishControllerSnapshot() {
-        publishSnapshot(buildSnapshotFromController(
+        ClockDetailMediaSnapshot snapshot = buildSnapshotFromController(
                 activeController,
                 null,
                 INVALID_PLAYBACK_STATE,
-                null));
+                null);
+        if (!snapshot.active) {
+            SnapshotQueryResult notificationResult = queryNotificationMediaManagerSnapshot();
+            if (notificationResult.snapshot.active) {
+                snapshot = notificationResult.snapshot;
+            }
+        }
+        publishSnapshot(snapshot);
     }
 
     private void publishSnapshot(ClockDetailMediaSnapshot snapshot) {
