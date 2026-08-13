@@ -326,8 +326,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             method.setAccessible(true);
             hook(method).intercept(chain -> {
                 Object result = chain.proceed();
-                applyCameraCircleBatteryPosition(
-                        chain.getThisObject(), result, ModuleConfig.load(null));
+                Object controller = chain.getThisObject();
+                applyCameraCircleBatteryPosition(controller, result, ModuleConfig.load(null));
+                scheduleCameraCircleBatteryRefresh(controller);
                 return result;
             });
         } catch (Throwable t) {
@@ -343,6 +344,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 CAMERA_STATE_CONTROLLER = chain.getThisObject();
                 ModuleConfig config = ModuleConfig.load(null);
                 applyCameraCircleBatteryGeometry(CAMERA_STATE_CONTROLLER, config);
+                scheduleCameraCircleBatteryRefresh(CAMERA_STATE_CONTROLLER);
                 return isCameraCircleBatteryEnabled(config);
             });
         } catch (Throwable t) {
@@ -6461,6 +6463,26 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private static void scheduleCameraCircleBatteryRefresh(Object controller) {
+        if (controller == null) {
+            return;
+        }
+        Runnable refresh = () -> {
+            CAMERA_STATE_CONTROLLER = controller;
+            applyCameraCircleBatteryGeometry(controller, ModuleConfig.load(null));
+        };
+        Handler handler = MAIN_HANDLER;
+        if (handler != null) {
+            handler.postDelayed(refresh, 120L);
+            handler.postDelayed(refresh, 800L);
+            return;
+        }
+        Object root = ReflectUtils.getField(controller, "mBlackCircleView");
+        if (root instanceof View) {
+            ((View) root).postDelayed(refresh, 120L);
+        }
+    }
+
     private static void applyCameraCircleBatteryGeometry(Object controller, ModuleConfig config) {
         Object value = ReflectUtils.getField(controller, "mCircleBatteryView");
         if (!(value instanceof View) || config == null) {
@@ -6497,10 +6519,13 @@ public class FlymeStatusBarSizer extends XposedModule {
                 }
             }
             if (originalSize != null) {
-                float windowScale = Math.max(1f, radiusScale)
-                        + 0.15f * config.cameraCircleBatteryStrokePercent / 100f;
-                params.width = Math.max(originalSize[0], Math.round(originalSize[0] * windowScale));
-                params.height = Math.max(originalSize[1], Math.round(originalSize[1] * windowScale));
+                float baseStroke = strokeValue instanceof Float ? (Float) strokeValue : 0f;
+                float scaledWidth = originalSize[0] * radiusScale + baseStroke
+                        * config.cameraCircleBatteryStrokePercent / 100f * 2f;
+                float scaledHeight = originalSize[1] * radiusScale + baseStroke
+                        * config.cameraCircleBatteryStrokePercent / 100f * 2f;
+                params.width = Math.max(originalSize[0], Math.round(scaledWidth));
+                params.height = Math.max(originalSize[1], Math.round(scaledHeight));
                 view.setTranslationX((params.width - originalSize[0]) / 2f);
                 view.setTranslationY((params.height - originalSize[1]) / 2f);
             }
@@ -6508,6 +6533,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (root instanceof ViewGroup) {
             ((ViewGroup) root).setClipChildren(false);
             ((ViewGroup) root).setClipToPadding(false);
+        }
+        if (root instanceof View) {
+            ViewParent parent = ((View) root).getParent();
+            while (parent instanceof ViewGroup) {
+                ViewGroup group = (ViewGroup) parent;
+                group.setClipChildren(false);
+                group.setClipToPadding(false);
+                parent = group.getParent();
+            }
         }
         applyCameraCircleBatteryPosition(controller, lp, config);
         Object windowManager = ReflectUtils.getField(controller, "mWindowManager");
