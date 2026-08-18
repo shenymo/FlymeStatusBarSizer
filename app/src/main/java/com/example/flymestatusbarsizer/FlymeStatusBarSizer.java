@@ -149,6 +149,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final int SIGNAL_IMAGE_ASSIGNMENT_RESOURCE = 1;
     private static final int SIGNAL_IMAGE_ASSIGNMENT_ICON = 2;
     private static final int SIGNAL_IMAGE_ASSIGNMENT_DRAWABLE = 3;
+    private static final int CAMERA_CIRCLE_BATTERY_RENDER_ALPHA = 224;
     private static final int TELEPHONY_DEBUG_SUB_ID_CARD1 = 910001;
     private static final int TELEPHONY_DEBUG_SUB_ID_CARD2 = 910002;
     private static final String WIFI_SLOT_PRIMARY = "wifi";
@@ -377,6 +378,63 @@ public class FlymeStatusBarSizer extends XposedModule {
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG,
                     "Failed to hook FlymeBatteryMeterView.isShowingCircleBattery", t);
+        }
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.statusbar.battery.CircleBatteryLottieAnimationView", false, loader);
+            Method method = clazz.getDeclaredMethod("apply");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                applyCameraCircleBatteryTint(chain.getThisObject(), ModuleConfig.load(null));
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook CircleBatteryLottieAnimationView.apply", t);
+        }
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.statusbar.battery.CircleBatteryLottieAnimationView", false, loader);
+            Method method = clazz.getDeclaredMethod("onDarkChanged", ArrayList.class, float.class,
+                    int.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                applyCameraCircleBatteryTint(chain.getThisObject(), ModuleConfig.load(null));
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook CircleBatteryLottieAnimationView.onDarkChanged", t);
+        }
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.statusbar.battery.CircleBatteryLottieAnimationView", false, loader);
+            Method method = clazz.getDeclaredMethod("onLockWallpaperColorChanged");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                applyCameraCircleBatteryTint(chain.getThisObject(), ModuleConfig.load(null));
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook CircleBatteryLottieAnimationView.onLockWallpaperColorChanged", t);
+        }
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.statusbar.battery.CircleBatteryLottieAnimationView", false, loader);
+            Method method = clazz.getDeclaredMethod("onKeyguardVisibilityChanged", boolean.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                applyCameraCircleBatteryTint(chain.getThisObject(), ModuleConfig.load(null));
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook CircleBatteryLottieAnimationView.onKeyguardVisibilityChanged", t);
         }
         try {
             Class<?> clazz = Class.forName(
@@ -6514,6 +6572,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         View view = (View) value;
+        applyCameraCircleBatteryTint(view, config);
         float radiusScale = config.cameraCircleBatteryRadiusPercent / 100f;
         view.setScaleX(radiusScale);
         view.setScaleY(radiusScale);
@@ -6581,6 +6640,44 @@ public class FlymeStatusBarSizer extends XposedModule {
             } catch (Throwable ignored) {
             }
         }
+    }
+
+    private static void applyCameraCircleBatteryTint(Object view, ModuleConfig config) {
+        if (view == null || config == null) {
+            return;
+        }
+        Object paintValue = ReflectUtils.getField(view, "mPaint");
+        if (!(paintValue instanceof Paint)) {
+            return;
+        }
+        Paint paint = (Paint) paintValue;
+        paint.setAlpha(CAMERA_CIRCLE_BATTERY_RENDER_ALPHA);
+        if (!config.cameraCircleBatteryTintEnabled
+                || ReflectUtils.getBooleanField(view, "mCharging", false)
+                || ReflectUtils.getBooleanField(view, "mLowPowerMode", false)) {
+            int normalColor = ReflectUtils.getIntField(view, "mPaintColor", 0);
+            if (normalColor != 0) {
+                paint.setColor(normalColor);
+            }
+            return;
+        }
+        Object levelValue = ReflectUtils.getField(view, "mLevel");
+        if (levelValue instanceof Number && ((Number) levelValue).floatValue() < 10f) {
+            int criticalColor = ReflectUtils.getIntField(view, "mPaintColor", 0);
+            if (criticalColor != 0) {
+                paint.setColor(criticalColor);
+            }
+            return;
+        }
+        boolean keyguardShowing = ReflectUtils.getBooleanField(view, "mKeyguardShowing", false);
+        int tint = keyguardShowing
+                ? ReflectUtils.getIntField(view, "mKeyguardColor", 0)
+                : ReflectUtils.getIntField(view, "mSystemColor", 0);
+        if (tint == 0) {
+            return;
+        }
+        paint.setColor(tint);
+        ((View) view).invalidate();
     }
 
     private static void applyCameraCircleBatteryPosition(

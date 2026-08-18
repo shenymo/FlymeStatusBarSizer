@@ -25,6 +25,8 @@ final class SettingsStore {
     static final String KEY_CAMERA_CIRCLE_BATTERY_ENABLED = "camera_circle_battery_enabled";
     static final String KEY_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED =
             "camera_circle_battery_hide_icon_enabled";
+    static final String KEY_CAMERA_CIRCLE_BATTERY_TINT_ENABLED =
+            "camera_circle_battery_tint_enabled";
     static final String KEY_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT =
             "camera_circle_battery_radius_percent";
     static final String KEY_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT =
@@ -282,6 +284,7 @@ final class SettingsStore {
     static final boolean DEFAULT_BATTERY_CODE_DRAW_ENABLED = true;
     static final boolean DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED = false;
     static final boolean DEFAULT_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED = false;
+    static final boolean DEFAULT_CAMERA_CIRCLE_BATTERY_TINT_ENABLED = false;
     static final int DEFAULT_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT = 100;
     static final int DEFAULT_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT = 100;
     static final int DEFAULT_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP = 0;
@@ -572,6 +575,7 @@ final class SettingsStore {
             KEY_BATTERY_CODE_DRAW_ENABLED,
             KEY_CAMERA_CIRCLE_BATTERY_ENABLED,
             KEY_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED,
+            KEY_CAMERA_CIRCLE_BATTERY_TINT_ENABLED,
             KEY_SIGNAL_CODE_DRAW_ENABLED,
             KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED,
             KEY_WIFI_CODE_DRAW_ENABLED,
@@ -1017,6 +1021,8 @@ final class SettingsStore {
                 return DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED;
             case KEY_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED:
                 return DEFAULT_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED;
+            case KEY_CAMERA_CIRCLE_BATTERY_TINT_ENABLED:
+                return DEFAULT_CAMERA_CIRCLE_BATTERY_TINT_ENABLED;
             case KEY_SIGNAL_CODE_DRAW_ENABLED:
                 return DEFAULT_SIGNAL_CODE_DRAW_ENABLED;
             case KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED:
