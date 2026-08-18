@@ -322,11 +322,27 @@ public class FlymeStatusBarSizer extends XposedModule {
         try {
             Class<?> clazz = Class.forName(
                     "com.flyme.systemui.camera.CameraStateController", false, loader);
+            Method method = clazz.getDeclaredMethod("initBlackWindowLp");
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                resetCameraCircleWindowSize(chain.getThisObject());
+                scheduleCameraCircleBatteryRefresh(chain.getThisObject());
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook CameraStateController.initBlackWindowLp", t);
+        }
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.camera.CameraStateController", false, loader);
             Method method = clazz.getDeclaredMethod("initBatteryWindowLp");
             method.setAccessible(true);
             hook(method).intercept(chain -> {
                 Object result = chain.proceed();
                 Object controller = chain.getThisObject();
+                resetCameraCircleWindowSize(controller);
                 applyCameraCircleBatteryPosition(controller, result, ModuleConfig.load(null));
                 scheduleCameraCircleBatteryRefresh(controller);
                 return result;
@@ -6483,6 +6499,15 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
+    private static void resetCameraCircleWindowSize(Object controller) {
+        if (controller == null) {
+            return;
+        }
+        synchronized (CAMERA_CIRCLE_WINDOW_SIZES) {
+            CAMERA_CIRCLE_WINDOW_SIZES.remove(controller);
+        }
+    }
+
     private static void applyCameraCircleBatteryGeometry(Object controller, ModuleConfig config) {
         Object value = ReflectUtils.getField(controller, "mCircleBatteryView");
         if (!(value instanceof View) || config == null) {
@@ -6567,7 +6592,33 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!(contextValue instanceof Context)) {
             return;
         }
+        WindowManager.LayoutParams lp = (WindowManager.LayoutParams) value;
+        WindowManager.LayoutParams blackLp = (WindowManager.LayoutParams)
+                ReflectUtils.getField(controller, "mBlackLpChanged");
         Display display = ((Context) contextValue).getDisplay();
+        if (blackLp != null && blackLp.width > 0 && blackLp.height > 0 && display != null) {
+            int displayWidth = display.getWidth();
+            int absoluteGravity = Gravity.getAbsoluteGravity(
+                    blackLp.gravity,
+                    ((Context) contextValue).getResources().getConfiguration().getLayoutDirection());
+            int horizontalGravity = absoluteGravity & Gravity.HORIZONTAL_GRAVITY_MASK;
+            float centerX;
+            if (horizontalGravity == Gravity.RIGHT) {
+                centerX = displayWidth - blackLp.x - blackLp.width / 2f;
+            } else if (horizontalGravity == Gravity.CENTER_HORIZONTAL) {
+                centerX = displayWidth / 2f + blackLp.x;
+            } else {
+                centerX = blackLp.x + blackLp.width / 2f;
+            }
+            float centerY = blackLp.y + blackLp.height / 2f;
+            float density = ((Context) contextValue).getResources().getDisplayMetrics().density;
+            lp.gravity = Gravity.TOP | Gravity.START;
+            lp.x = Math.round(centerX - lp.width / 2f
+                    + config.cameraCircleBatteryXOffsetTenthDp / 100f * density);
+            lp.y = Math.round(centerY - lp.height / 2f
+                    + config.cameraCircleBatteryYOffsetTenthDp / 100f * density);
+            return;
+        }
         DisplayCutout cutout = display == null ? null : display.getCutout();
         if (cutout == null || cutout.getCutoutPath() == null) {
             return;
@@ -6577,7 +6628,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (bounds.width() <= 0f || bounds.height() <= 0f) {
             return;
         }
-        WindowManager.LayoutParams lp = (WindowManager.LayoutParams) value;
         float density = ((Context) contextValue).getResources().getDisplayMetrics().density;
         lp.gravity = Gravity.TOP | Gravity.START;
         lp.x = Math.round(bounds.centerX() - lp.width / 2f
