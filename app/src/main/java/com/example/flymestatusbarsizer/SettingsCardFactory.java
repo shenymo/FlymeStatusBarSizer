@@ -44,8 +44,8 @@ final class SettingsCardFactory {
                 "同时隐藏代码绘制和系统原生电池图标，并释放原来的占位。",
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED,
                 SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED);
-        activity.addSwitchRow(circleBatteryOptions, "tint着色",
-                "让环形电池普通状态跟随状态栏图标颜色。",
+        activity.addSwitchRow(circleBatteryOptions, "彩虹色",
+                "让环形电池普通电量显示动态彩虹渐变。",
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_TINT_ENABLED,
                 SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_TINT_ENABLED);
         activity.addDivider(circleBatteryOptions);

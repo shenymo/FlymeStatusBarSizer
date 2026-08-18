@@ -27,6 +27,9 @@ import android.graphics.drawable.Icon;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Matrix;
+import android.graphics.Shader;
+import android.graphics.SweepGradient;
 import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.os.Looper;
@@ -151,6 +154,13 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final int SIGNAL_IMAGE_ASSIGNMENT_ICON = 2;
     private static final int SIGNAL_IMAGE_ASSIGNMENT_DRAWABLE = 3;
     private static final int CAMERA_CIRCLE_BATTERY_RENDER_ALPHA = 224;
+    private static final long CAMERA_CIRCLE_RAINBOW_REFRESH_MS = 100L;
+    private static final int[] CAMERA_CIRCLE_RAINBOW_COLORS = {
+            Color.RED, 0xFFFF9800, Color.YELLOW, Color.GREEN,
+            Color.CYAN, Color.BLUE, 0xFF9C27B0, Color.RED
+    };
+    private static final WeakHashMap<View, RainbowBatteryState> CAMERA_CIRCLE_RAINBOW_STATES =
+            new WeakHashMap<>();
     private static final int TELEPHONY_DEBUG_SUB_ID_CARD1 = 910001;
     private static final int TELEPHONY_DEBUG_SUB_ID_CARD2 = 910002;
     private static final String WIFI_SLOT_PRIMARY = "wifi";
@@ -6695,6 +6705,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!config.cameraCircleBatteryTintEnabled
                 || ReflectUtils.getBooleanField(view, "mCharging", false)
                 || ReflectUtils.getBooleanField(view, "mLowPowerMode", false)) {
+            stopCameraCircleRainbow((View) view, paint);
             int normalColor = ReflectUtils.getIntField(view, "mPaintColor", 0);
             if (normalColor != 0) {
                 paint.setColor(normalColor);
@@ -6703,21 +6714,71 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         Object levelValue = ReflectUtils.getField(view, "mLevel");
         if (levelValue instanceof Number && ((Number) levelValue).floatValue() < 10f) {
+            stopCameraCircleRainbow((View) view, paint);
             int criticalColor = ReflectUtils.getIntField(view, "mPaintColor", 0);
             if (criticalColor != 0) {
                 paint.setColor(criticalColor);
             }
             return;
         }
-        boolean keyguardShowing = ReflectUtils.getBooleanField(view, "mKeyguardShowing", false);
-        int tint = keyguardShowing
-                ? ReflectUtils.getIntField(view, "mKeyguardColor", 0)
-                : ReflectUtils.getIntField(view, "mSystemColor", 0);
-        if (tint == 0) {
-            return;
+        applyCameraCircleRainbow((View) view, paint);
+    }
+
+    private static void applyCameraCircleRainbow(View view, Paint paint) {
+        RainbowBatteryState state = CAMERA_CIRCLE_RAINBOW_STATES.get(view);
+        if (state == null) {
+            state = new RainbowBatteryState(view);
+            CAMERA_CIRCLE_RAINBOW_STATES.put(view, state);
         }
-        paint.setColor(tint);
-        ((View) view).invalidate();
+        int width = view.getWidth();
+        int height = view.getHeight();
+        if (state.shader == null || state.width != width || state.height != height) {
+            state.width = width;
+            state.height = height;
+            state.shader = new SweepGradient(width / 2f, height / 2f,
+                    CAMERA_CIRCLE_RAINBOW_COLORS, null);
+        }
+        state.matrix.setRotate(state.angle, width / 2f, height / 2f);
+        state.shader.setLocalMatrix(state.matrix);
+        paint.setShader(state.shader);
+        paint.setColor(Color.WHITE);
+        view.invalidate();
+        if (!state.scheduled) {
+            state.scheduled = true;
+            view.postDelayed(state.refresh, CAMERA_CIRCLE_RAINBOW_REFRESH_MS);
+        }
+    }
+
+    private static void stopCameraCircleRainbow(View view, Paint paint) {
+        RainbowBatteryState state = CAMERA_CIRCLE_RAINBOW_STATES.remove(view);
+        if (state != null) {
+            view.removeCallbacks(state.refresh);
+        }
+        paint.setShader(null);
+    }
+
+    private static final class RainbowBatteryState {
+        final WeakReference<View> view;
+        final Matrix matrix = new Matrix();
+        final Runnable refresh;
+        Shader shader;
+        int width;
+        int height;
+        float angle;
+        boolean scheduled;
+
+        RainbowBatteryState(View view) {
+            this.view = new WeakReference<>(view);
+            this.refresh = () -> {
+                View target = this.view.get();
+                scheduled = false;
+                if (target == null || target.getVisibility() != View.VISIBLE) {
+                    return;
+                }
+                angle = (angle + 12f) % 360f;
+                applyCameraCircleBatteryTint(target, ModuleConfig.load(null));
+            };
+        }
     }
 
     private static void applyCameraCircleBatteryPosition(
