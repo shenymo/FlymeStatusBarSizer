@@ -88,6 +88,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final WeakHashMap<View, Boolean> TRACKED_BATTERY_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<View, Boolean> TRACKED_STATUS_BAR_ICON_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<Object, int[]> CAMERA_CIRCLE_WINDOW_SIZES = new WeakHashMap<>();
+    private static volatile boolean STATUS_BAR_WINDOW_SHOWING = true;
     private static final WeakHashMap<ViewGroup, Boolean> TRACKED_STATUS_ICON_CONTAINERS =
             new WeakHashMap<>();
     private static final WeakHashMap<ImageView, Boolean> TRACKED_WIFI_SIGNAL_VIEWS =
@@ -284,6 +285,7 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private void installBatteryHooks(ClassLoader loader) {
         hookCameraCircleBatterySwitch(loader);
+        hookStatusBarWindowState(loader);
         hookConstructors(loader, "com.flyme.statusbar.battery.FlymeBatteryMeterView", view -> {
             ModuleConfig config = ModuleConfig.load(view.getContext());
             if (!config.enabled) {
@@ -439,6 +441,19 @@ public class FlymeStatusBarSizer extends XposedModule {
         try {
             Class<?> clazz = Class.forName(
                     "com.flyme.systemui.camera.CameraStateController", false, loader);
+            Method method = clazz.getDeclaredMethod("shouldShowCircleBatteryView", boolean.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                return STATUS_BAR_WINDOW_SHOWING && Boolean.TRUE.equals(result);
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook CameraStateController.shouldShowCircleBatteryView", t);
+        }
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.flyme.systemui.camera.CameraStateController", false, loader);
             Method method = clazz.getDeclaredMethod("updateBatteryViewVisibility", boolean.class);
             method.setAccessible(true);
             hook(method).intercept(chain -> {
@@ -449,6 +464,31 @@ public class FlymeStatusBarSizer extends XposedModule {
         } catch (Throwable t) {
             log(android.util.Log.WARN, TAG,
                     "Failed to hook CameraStateController.updateBatteryViewVisibility", t);
+        }
+    }
+
+    private void hookStatusBarWindowState(ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.android.systemui.statusbar.window.StatusBarWindowStateController",
+                    false, loader);
+            Method method = clazz.getDeclaredMethod("setWindowState", int.class, int.class,
+                    int.class);
+            method.setAccessible(true);
+            hook(method).intercept(chain -> {
+                Object result = chain.proceed();
+                Object windowType = chain.getArg(1);
+                Object windowState = chain.getArg(2);
+                if (windowType instanceof Integer && windowState instanceof Integer
+                        && ((Integer) windowType) == 1) {
+                    STATUS_BAR_WINDOW_SHOWING = ((Integer) windowState) == 0;
+                    refreshCameraCircleBatteryWindow();
+                }
+                return result;
+            });
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG,
+                    "Failed to hook StatusBarWindowStateController.setWindowState", t);
         }
     }
 
@@ -6523,7 +6563,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             ModuleConfig config = ModuleConfig.load(null);
             applyCameraCircleBatteryGeometry(controller, config);
             ReflectUtils.setBooleanField(controller, "mShowCircleBattery",
-                    isCameraCircleBatteryEnabled(config));
+                    STATUS_BAR_WINDOW_SHOWING && isCameraCircleBatteryEnabled(config));
             ReflectUtils.invokeNoArg(controller, "updateCircleBatteryWindowVisibility");
         };
         Handler handler = MAIN_HANDLER;
