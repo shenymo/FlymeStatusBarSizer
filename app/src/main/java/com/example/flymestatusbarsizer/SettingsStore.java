@@ -50,6 +50,10 @@ final class SettingsStore {
     static final String KEY_BATTERY_TEXT_FONT = "battery_text_font";
     static final String KEY_STATUS_BAR_ICON_SCALE_PERCENT = "status_bar_icon_scale_percent";
     static final String KEY_BATTERY_INNER_TEXT_SCALE_PERCENT = "battery_inner_text_scale_percent";
+    static final String KEY_BATTERY_BODY_WIDTH_PERCENT = "battery_body_width_percent";
+    static final String KEY_BATTERY_BODY_HEIGHT_PERCENT = "battery_body_height_percent";
+    static final String KEY_BATTERY_CORNER_RADIUS_PERCENT = "battery_corner_radius_percent";
+    static final String KEY_BATTERY_CAP_WIDTH_PERCENT = "battery_cap_width_percent";
     static final String KEY_BATTERY_ICON_Y_OFFSET_DP = "battery_icon_y_offset_dp";
     static final String KEY_BATTERY_TEXT_Y_OFFSET_DP = "battery_text_y_offset_dp";
     static final String KEY_BATTERY_BOLT_Y_OFFSET_DP = "battery_bolt_y_offset_dp";
@@ -313,6 +317,10 @@ final class SettingsStore {
     static final int DEFAULT_BATTERY_TEXT_FONT = BATTERY_TEXT_FONT_SYSTEM_DEFAULT;
     static final int DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT = 100;
     static final int DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT = 100;
+    static final int DEFAULT_BATTERY_BODY_WIDTH_PERCENT = 100;
+    static final int DEFAULT_BATTERY_BODY_HEIGHT_PERCENT = 100;
+    static final int DEFAULT_BATTERY_CORNER_RADIUS_PERCENT = 100;
+    static final int DEFAULT_BATTERY_CAP_WIDTH_PERCENT = 100;
     static final int DEFAULT_BATTERY_ICON_Y_OFFSET_DP = 0;
     static final int DEFAULT_BATTERY_TEXT_Y_OFFSET_DP = 0;
     static final int DEFAULT_BATTERY_BOLT_Y_OFFSET_DP = 0;
@@ -483,6 +491,10 @@ final class SettingsStore {
             KEY_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP,
             KEY_STATUS_BAR_ICON_SCALE_PERCENT,
             KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
+            KEY_BATTERY_BODY_WIDTH_PERCENT,
+            KEY_BATTERY_BODY_HEIGHT_PERCENT,
+            KEY_BATTERY_CORNER_RADIUS_PERCENT,
+            KEY_BATTERY_CAP_WIDTH_PERCENT,
             KEY_BATTERY_ICON_Y_OFFSET_DP,
             KEY_BATTERY_TEXT_Y_OFFSET_DP,
             KEY_BATTERY_BOLT_Y_OFFSET_DP,
@@ -836,6 +848,14 @@ final class SettingsStore {
                 return DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
             case KEY_BATTERY_INNER_TEXT_SCALE_PERCENT:
                 return DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
+            case KEY_BATTERY_BODY_WIDTH_PERCENT:
+                return DEFAULT_BATTERY_BODY_WIDTH_PERCENT;
+            case KEY_BATTERY_BODY_HEIGHT_PERCENT:
+                return DEFAULT_BATTERY_BODY_HEIGHT_PERCENT;
+            case KEY_BATTERY_CORNER_RADIUS_PERCENT:
+                return DEFAULT_BATTERY_CORNER_RADIUS_PERCENT;
+            case KEY_BATTERY_CAP_WIDTH_PERCENT:
+                return DEFAULT_BATTERY_CAP_WIDTH_PERCENT;
             case KEY_BATTERY_ICON_Y_OFFSET_DP:
                 return DEFAULT_BATTERY_ICON_Y_OFFSET_DP;
             case KEY_BATTERY_TEXT_Y_OFFSET_DP:
@@ -1237,6 +1257,13 @@ final class SettingsStore {
 
     static int normalizeScalePercent(int value) {
         return Math.max(50, Math.min(200, value));
+    }
+
+    static int normalizeBatteryGeometryPercent(String key, int value) {
+        if (KEY_BATTERY_CORNER_RADIUS_PERCENT.equals(key)) {
+            return Math.max(0, Math.min(200, value));
+        }
+        return Math.max(50, Math.min(150, value));
     }
 
     static int normalizeIconYOffsetDp(int value) {

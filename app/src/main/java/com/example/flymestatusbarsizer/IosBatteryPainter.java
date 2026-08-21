@@ -41,28 +41,31 @@ final class IosBatteryPainter {
     private IosBatteryPainter() {
     }
 
-    static int getRequiredWidth(int squareSize, boolean showBolt) {
+    static int getRequiredWidth(int squareSize, boolean showBolt, int bodyWidthPercent,
+            int capWidthPercent) {
         if (squareSize <= 0) {
             return 0;
         }
-        if (!showBolt) {
-            return squareSize;
-        }
         float side = squareSize;
-        float capWidth = Math.max(1.2f, side * 0.08f);
+        float visualWidth = side * bodyWidthPercent / 100f;
+        if (!showBolt) {
+            return Math.round(Math.max(side, visualWidth));
+        }
+        float capWidth = Math.max(1.2f, side * 0.08f * capWidthPercent / 100f);
         float gap = Math.max(0.8f, side * 0.025f);
-        float bodyWidth = side - capWidth - gap;
+        float bodyWidth = Math.max(1f, visualWidth - capWidth - gap);
         float boltGap = Math.max(1f, side * BOLT_GAP_RATIO);
         float boltWidth = Math.max(1f, bodyWidth * BOLT_WIDTH_RATIO);
         float trailingPadding = Math.max(1f, side * BOLT_TRAILING_PADDING_RATIO);
-        return Math.round(side + boltGap + boltWidth + trailingPadding);
+        return Math.round(visualWidth + boltGap + boltWidth + trailingPadding);
     }
 
     static void draw(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
             boolean quickCharging,
             int fillColor, int textColor, boolean showLevelText, float textScale, Typeface typeface,
             float bodyYOffsetPx, float textYOffsetPx, float boltYOffsetPx,
-            boolean hollow, boolean hollowFillFollowsLevel) {
+            boolean hollow, boolean hollowFillFollowsLevel, int bodyWidthPercent,
+            int bodyHeightPercent, int cornerRadiusPercent, int capWidthPercent) {
         if (bounds.width() <= 0 || bounds.height() <= 0) {
             return;
         }
@@ -76,14 +79,14 @@ final class IosBatteryPainter {
         RectF visualBounds = VISUAL_CANVAS.rect;
         float visualWidth = visualBounds.width();
         float visualHeight = visualBounds.height();
-        float capWidth = Math.max(1.2f, visualWidth * 0.08f);
+        float capWidth = Math.max(1.2f, visualWidth * 0.08f * capWidthPercent / 100f);
         float gap = Math.max(0.8f, visualWidth * 0.025f);
-        float bodyWidth = visualWidth - capWidth - gap;
-        float bodyHeight = visualHeight;
+        float bodyWidth = Math.max(1f, visualWidth * bodyWidthPercent / 100f - capWidth - gap);
+        float bodyHeight = visualHeight * bodyHeightPercent / 100f;
         float left = visualBounds.left;
-        float top = visualBounds.top;
-        float bottom = VISUAL_CANVAS.baselineY;
-        float radius = bodyHeight * 0.28f;
+        float top = visualBounds.centerY() - bodyHeight / 2f;
+        float bottom = top + bodyHeight;
+        float radius = Math.min(bodyHeight / 2f, bodyHeight * 0.28f * cornerRadiusPercent / 100f);
         float capRadius = capWidth * 0.45f;
 
         BODY.set(left, top, left + bodyWidth, bottom);

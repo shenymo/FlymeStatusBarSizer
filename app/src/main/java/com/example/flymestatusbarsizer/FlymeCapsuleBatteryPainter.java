@@ -45,13 +45,14 @@ final class FlymeCapsuleBatteryPainter {
     private FlymeCapsuleBatteryPainter() {
     }
 
-    static int getRequiredWidth(int squareSize, boolean showBolt) {
+    static int getRequiredWidth(int squareSize, boolean showBolt, int bodyWidthPercent,
+            int capWidthPercent) {
         if (squareSize <= 0) {
             return 0;
         }
-        float visualWidth = squareSize * VISUAL_ASPECT_RATIO / 1.8f;
+        float visualWidth = squareSize * VISUAL_ASPECT_RATIO / 1.8f * bodyWidthPercent / 100f;
         if (!showBolt) {
-            return Math.round(visualWidth);
+            return Math.round(Math.max(squareSize, visualWidth));
         }
         float boltGap = Math.max(1f, squareSize * BOLT_GAP_RATIO);
         float boltWidth = Math.max(1f, squareSize * BOLT_WIDTH_RATIO);
@@ -63,7 +64,8 @@ final class FlymeCapsuleBatteryPainter {
             boolean quickCharging,
             int fillColor, int textColor, boolean showLevelText, float textScale, Typeface typeface,
             float bodyYOffsetPx, float textYOffsetPx, float boltYOffsetPx,
-            boolean hollow, boolean hollowFillFollowsLevel) {
+            boolean hollow, boolean hollowFillFollowsLevel, int bodyWidthPercent,
+            int bodyHeightPercent, int cornerRadiusPercent, int capWidthPercent) {
         if (bounds.width() <= 0 || bounds.height() <= 0) {
             return;
         }
@@ -74,14 +76,15 @@ final class FlymeCapsuleBatteryPainter {
             return;
         }
         RectF visualBounds = VISUAL_CANVAS.rect;
-        float height = visualBounds.height();
-        float capWidth = Math.max(1f, height * 0.15f);
+        float height = visualBounds.height() * bodyHeightPercent / 100f;
+        float capWidth = Math.max(1f, height * 0.15f * capWidthPercent / 100f);
         float gap = Math.max(1f, visualBounds.width() * 0.055f);
         float strokeWidth = Math.max(1f, height * 0.13f);
-        float bodyWidth = visualBounds.width() - capWidth - gap;
+        float bodyWidth = Math.max(1f, visualBounds.width() * bodyWidthPercent / 100f
+                - capWidth - gap);
 
-        BODY.set(visualBounds.left, visualBounds.top, visualBounds.left + bodyWidth,
-                VISUAL_CANVAS.baselineY);
+        float top = visualBounds.centerY() - height / 2f;
+        BODY.set(visualBounds.left, top, visualBounds.left + bodyWidth, top + height);
         CAP.set(BODY.right + gap, BODY.top + BODY.height() * 0.35f,
                 BODY.right + gap + capWidth, BODY.bottom - BODY.height() * 0.35f);
         INNER.set(BODY);
@@ -102,7 +105,8 @@ final class FlymeCapsuleBatteryPainter {
         int shellColor = withFixedAlpha(fillColor, SHELL_ALPHA);
         int batteryFillColor = withFixedAlpha(resolveLevelFillColor(clampedLevel, charging, fillColor),
                 FILL_ALPHA);
-        float radius = BODY.height() * 0.38f;
+        float radius = Math.min(BODY.height() / 2f,
+                BODY.height() * 0.38f * cornerRadiusPercent / 100f);
         boolean cutoutText = hollow && showLevelText;
         float fillPercent = cutoutText && !hollowFillFollowsLevel ? 100f : clampedLevel;
         float normalizedTextScale = normalizeTextScale(textScale);

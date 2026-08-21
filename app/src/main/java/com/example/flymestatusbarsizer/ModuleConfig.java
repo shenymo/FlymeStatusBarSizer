@@ -51,6 +51,10 @@ final class ModuleConfig {
     int batteryTextFont = SettingsStore.DEFAULT_BATTERY_TEXT_FONT;
     int statusBarIconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
     int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
+    int batteryBodyWidthPercent = SettingsStore.DEFAULT_BATTERY_BODY_WIDTH_PERCENT;
+    int batteryBodyHeightPercent = SettingsStore.DEFAULT_BATTERY_BODY_HEIGHT_PERCENT;
+    int batteryCornerRadiusPercent = SettingsStore.DEFAULT_BATTERY_CORNER_RADIUS_PERCENT;
+    int batteryCapWidthPercent = SettingsStore.DEFAULT_BATTERY_CAP_WIDTH_PERCENT;
     int batteryIconYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10;
     int batteryTextYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP * 10;
     int batteryBoltYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10;
@@ -454,6 +458,22 @@ final class ModuleConfig {
                             prefs,
                             SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
                             SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT));
+            config.batteryBodyWidthPercent = SettingsStore.normalizeBatteryGeometryPercent(
+                    SettingsStore.KEY_BATTERY_BODY_WIDTH_PERCENT,
+                    SettingsStore.readInt(prefs, SettingsStore.KEY_BATTERY_BODY_WIDTH_PERCENT,
+                            SettingsStore.DEFAULT_BATTERY_BODY_WIDTH_PERCENT));
+            config.batteryBodyHeightPercent = SettingsStore.normalizeBatteryGeometryPercent(
+                    SettingsStore.KEY_BATTERY_BODY_HEIGHT_PERCENT,
+                    SettingsStore.readInt(prefs, SettingsStore.KEY_BATTERY_BODY_HEIGHT_PERCENT,
+                            SettingsStore.DEFAULT_BATTERY_BODY_HEIGHT_PERCENT));
+            config.batteryCornerRadiusPercent = SettingsStore.normalizeBatteryGeometryPercent(
+                    SettingsStore.KEY_BATTERY_CORNER_RADIUS_PERCENT,
+                    SettingsStore.readInt(prefs, SettingsStore.KEY_BATTERY_CORNER_RADIUS_PERCENT,
+                            SettingsStore.DEFAULT_BATTERY_CORNER_RADIUS_PERCENT));
+            config.batteryCapWidthPercent = SettingsStore.normalizeBatteryGeometryPercent(
+                    SettingsStore.KEY_BATTERY_CAP_WIDTH_PERCENT,
+                    SettingsStore.readInt(prefs, SettingsStore.KEY_BATTERY_CAP_WIDTH_PERCENT,
+                            SettingsStore.DEFAULT_BATTERY_CAP_WIDTH_PERCENT));
             config.batteryIconYOffsetTenthDp = SettingsStore.readPositionOffsetTenthDp(
                     prefs,
                     SettingsStore.KEY_BATTERY_ICON_Y_OFFSET_DP,

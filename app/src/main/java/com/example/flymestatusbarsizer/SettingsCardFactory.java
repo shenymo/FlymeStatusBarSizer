@@ -971,6 +971,23 @@ final class SettingsCardFactory {
                 "只改电池图标内部的电量数字。默认 100%。",
                 SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
                 SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT, 50, 200, "%");
+        activity.addDivider(card);
+        activity.addApplySliderRow(card, "电池主体宽度",
+                "默认 100%。One UI 和两种带电池帽样式都生效。",
+                SettingsStore.KEY_BATTERY_BODY_WIDTH_PERCENT,
+                SettingsStore.DEFAULT_BATTERY_BODY_WIDTH_PERCENT, 50, 150, "%");
+        activity.addApplySliderRow(card, "电池主体高度",
+                "默认 100%。调整主体高度，不改变状态栏图标占用大小。",
+                SettingsStore.KEY_BATTERY_BODY_HEIGHT_PERCENT,
+                SettingsStore.DEFAULT_BATTERY_BODY_HEIGHT_PERCENT, 50, 150, "%");
+        activity.addApplySliderRow(card, "电池圆角",
+                "默认值保持当前样式外观；0% 为直角，200% 为最大圆角。",
+                SettingsStore.KEY_BATTERY_CORNER_RADIUS_PERCENT,
+                SettingsStore.DEFAULT_BATTERY_CORNER_RADIUS_PERCENT, 0, 200, "%");
+        activity.addApplySliderRow(card, "电池帽宽度",
+                "默认 100%。仅类 IOS 和 IOS 旧版样式生效。",
+                SettingsStore.KEY_BATTERY_CAP_WIDTH_PERCENT,
+                SettingsStore.DEFAULT_BATTERY_CAP_WIDTH_PERCENT, 50, 150, "%");
         return card;
     }
 

@@ -37,6 +37,10 @@ public final class RightIconGroupPreviewView extends View {
     private int batteryTextFont = SettingsStore.DEFAULT_BATTERY_TEXT_FONT;
     private int iconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
     private int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
+    private int batteryBodyWidthPercent = SettingsStore.DEFAULT_BATTERY_BODY_WIDTH_PERCENT;
+    private int batteryBodyHeightPercent = SettingsStore.DEFAULT_BATTERY_BODY_HEIGHT_PERCENT;
+    private int batteryCornerRadiusPercent = SettingsStore.DEFAULT_BATTERY_CORNER_RADIUS_PERCENT;
+    private int batteryCapWidthPercent = SettingsStore.DEFAULT_BATTERY_CAP_WIDTH_PERCENT;
     private int batteryIconYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10;
     private int batteryTextYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP * 10;
     private int batteryBoltYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10;
@@ -134,6 +138,30 @@ public final class RightIconGroupPreviewView extends View {
             return;
         }
         batteryInnerTextScalePercent = normalized;
+        invalidate();
+    }
+
+    public void setBatteryBodyWidthPercent(int percent) {
+        batteryBodyWidthPercent = SettingsStore.normalizeBatteryGeometryPercent(
+                SettingsStore.KEY_BATTERY_BODY_WIDTH_PERCENT, percent);
+        invalidate();
+    }
+
+    public void setBatteryBodyHeightPercent(int percent) {
+        batteryBodyHeightPercent = SettingsStore.normalizeBatteryGeometryPercent(
+                SettingsStore.KEY_BATTERY_BODY_HEIGHT_PERCENT, percent);
+        invalidate();
+    }
+
+    public void setBatteryCornerRadiusPercent(int percent) {
+        batteryCornerRadiusPercent = SettingsStore.normalizeBatteryGeometryPercent(
+                SettingsStore.KEY_BATTERY_CORNER_RADIUS_PERCENT, percent);
+        invalidate();
+    }
+
+    public void setBatteryCapWidthPercent(int percent) {
+        batteryCapWidthPercent = SettingsStore.normalizeBatteryGeometryPercent(
+                SettingsStore.KEY_BATTERY_CAP_WIDTH_PERCENT, percent);
         invalidate();
     }
 
@@ -315,7 +343,8 @@ public final class RightIconGroupPreviewView extends View {
                     fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
                     offsetPx(batteryIconYOffsetTenthDp), offsetPx(batteryTextYOffsetTenthDp),
                     offsetPx(batteryBoltYOffsetTenthDp),
-                    batteryHollowEnabled, batteryHollowFillFollowsLevel);
+                    batteryHollowEnabled, batteryHollowFillFollowsLevel, batteryBodyWidthPercent,
+                    batteryBodyHeightPercent, batteryCornerRadiusPercent, batteryCapWidthPercent);
             return;
         }
         if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
@@ -323,14 +352,16 @@ public final class RightIconGroupPreviewView extends View {
                     fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
                     offsetPx(batteryIconYOffsetTenthDp), offsetPx(batteryTextYOffsetTenthDp),
                     offsetPx(batteryBoltYOffsetTenthDp),
-                    batteryHollowEnabled, batteryHollowFillFollowsLevel);
+                    batteryHollowEnabled, batteryHollowFillFollowsLevel, batteryBodyWidthPercent,
+                    batteryBodyHeightPercent, batteryCornerRadiusPercent);
             return;
         }
         IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, false,
                 fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
                 offsetPx(batteryIconYOffsetTenthDp), offsetPx(batteryTextYOffsetTenthDp),
                 offsetPx(batteryBoltYOffsetTenthDp),
-                batteryHollowEnabled, batteryHollowFillFollowsLevel);
+                batteryHollowEnabled, batteryHollowFillFollowsLevel, batteryBodyWidthPercent,
+                batteryBodyHeightPercent, batteryCornerRadiusPercent, batteryCapWidthPercent);
     }
 
     private int dp(int value) {

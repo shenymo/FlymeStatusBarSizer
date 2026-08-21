@@ -38,14 +38,14 @@ final class OneUiBatteryPainter {
     private OneUiBatteryPainter() {
     }
 
-    static int getRequiredWidth(int squareSize, boolean showBolt) {
+    static int getRequiredWidth(int squareSize, boolean showBolt, int bodyWidthPercent) {
         if (squareSize <= 0) {
             return 0;
         }
+        float side = squareSize * bodyWidthPercent / 100f;
         if (!showBolt) {
-            return squareSize;
+            return Math.round(Math.max(squareSize, side));
         }
-        float side = squareSize;
         float boltGap = Math.max(1f, side * BOLT_GAP_RATIO);
         float boltWidth = Math.max(1f, side * BOLT_WIDTH_RATIO);
         float trailingPadding = Math.max(1f, side * BOLT_TRAILING_PADDING_RATIO);
@@ -56,7 +56,8 @@ final class OneUiBatteryPainter {
             boolean quickCharging,
             int fillColor, int textColor, boolean showLevelText, float textScale, Typeface typeface,
             float bodyYOffsetPx, float textYOffsetPx, float boltYOffsetPx,
-            boolean hollow, boolean hollowFillFollowsLevel) {
+            boolean hollow, boolean hollowFillFollowsLevel, int bodyWidthPercent,
+            int bodyHeightPercent, int cornerRadiusPercent) {
         if (bounds.width() <= 0 || bounds.height() <= 0) {
             return;
         }
@@ -68,12 +69,13 @@ final class OneUiBatteryPainter {
             return;
         }
         RectF visualBounds = VISUAL_CANVAS.rect;
-        float visualWidth = visualBounds.width();
-        float visualHeight = visualBounds.height();
-        float left = visualBounds.left;
-        float top = visualBounds.top;
-        float bottom = VISUAL_CANVAS.baselineY;
-        float radius = visualHeight * 0.5f;
+        float visualWidth = visualBounds.width() * bodyWidthPercent / 100f;
+        float visualHeight = visualBounds.height() * bodyHeightPercent / 100f;
+        float left = visualBounds.centerX() - visualWidth / 2f;
+        float top = visualBounds.centerY() - visualHeight / 2f;
+        float bottom = top + visualHeight;
+        float radius = Math.min(visualHeight / 2f,
+                visualHeight * 0.5f * cornerRadiusPercent / 100f);
 
         BODY.set(left, top, left + visualWidth, bottom);
         BOLT.setEmpty();
