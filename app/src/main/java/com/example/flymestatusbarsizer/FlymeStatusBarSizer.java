@@ -128,6 +128,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static volatile Object SIGNAL_ACTIVITY_FALSE_FLOW;
     private static Handler MAIN_HANDLER;
     private static volatile int LAST_UI_MODE_NIGHT = -1;
+    private static volatile int LAST_ORIENTATION = Configuration.ORIENTATION_UNDEFINED;
     private static volatile int LAST_BATTERY_RENDER_HEIGHT = -1;
     private static final Runnable SIGNAL_ICON_REFRESH_RUNNABLE = FlymeStatusBarSizer::refreshTrackedSignalIconViewsNow;
     private static final Runnable PRIMARY_SIGNAL_ICON_REFRESH_RUNNABLE =
@@ -6389,13 +6390,23 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static void registerConfigurationCallbacks(Context context) {
         Context appContext = context.getApplicationContext() != null
                 ? context.getApplicationContext() : context;
-        LAST_UI_MODE_NIGHT = readNightModeMask(appContext.getResources().getConfiguration());
+        Configuration initialConfiguration = appContext.getResources().getConfiguration();
+        LAST_UI_MODE_NIGHT = readNightModeMask(initialConfiguration);
+        LAST_ORIENTATION = initialConfiguration.orientation;
         ComponentCallbacks callbacks = new ComponentCallbacks() {
             @Override
             public void onConfigurationChanged(Configuration newConfig) {
                 int newNightMode = readNightModeMask(newConfig);
                 int oldNightMode = LAST_UI_MODE_NIGHT;
+                int oldOrientation = LAST_ORIENTATION;
                 LAST_UI_MODE_NIGHT = newNightMode;
+                LAST_ORIENTATION = newConfig.orientation;
+                if (oldOrientation != Configuration.ORIENTATION_UNDEFINED
+                        && oldOrientation != newConfig.orientation) {
+                    Object controller = CAMERA_STATE_CONTROLLER;
+                    resetCameraCircleWindowSize(controller);
+                    scheduleCameraCircleBatteryRefresh(controller);
+                }
                 if (oldNightMode == -1 || oldNightMode == newNightMode) {
                     return;
                 }
