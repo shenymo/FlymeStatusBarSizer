@@ -6700,14 +6700,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                         * config.cameraCircleBatteryStrokePercent / 100f * 2f;
                 params.width = Math.max(originalSize[0], Math.round(scaledWidth));
                 params.height = Math.max(originalSize[1], Math.round(scaledHeight));
-
-                // ==================== 最终推荐：右边安全空间 6dp ====================
-                int safePadding = dp(6);
-                params.width += safePadding;
-                view.setTranslationX((params.width - originalSize[0]) / 2f + safePadding / 2f);
-                // =================================================================
-                view.setTranslationX((params.width - originalSize[0]) / 2f);
-                view.setTranslationY((params.height - originalSize[1]) / 2f);
             }
         }
         if (root instanceof ViewGroup) {
