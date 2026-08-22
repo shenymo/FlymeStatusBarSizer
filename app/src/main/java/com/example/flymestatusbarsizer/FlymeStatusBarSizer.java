@@ -6423,6 +6423,18 @@ public class FlymeStatusBarSizer extends XposedModule {
                     Object controller = CAMERA_STATE_CONTROLLER;
                     resetCameraCircleWindowSize(controller);
                     scheduleCameraCircleBatteryRefresh(controller);
+
+                    // ==================== 关键新增：横竖屏切换时强制刷新布局 ====================
+                    Handler handler = MAIN_HANDLER;
+                    if (handler != null) {
+                        handler.post(() -> refreshCameraCircleBatteryWindow());
+                    } else {
+                        refreshCameraCircleBatteryWindow();
+                    }
+                    // =========================================================================
+                }
+                if (oldNightMode == -1 || oldNightMode == newNightMode) {
+                    return;
                 }
                 if (oldNightMode == -1 || oldNightMode == newNightMode) {
                     return;
@@ -6688,6 +6700,12 @@ public class FlymeStatusBarSizer extends XposedModule {
                         * config.cameraCircleBatteryStrokePercent / 100f * 2f;
                 params.width = Math.max(originalSize[0], Math.round(scaledWidth));
                 params.height = Math.max(originalSize[1], Math.round(scaledHeight));
+
+                // ==================== 最终推荐：右边安全空间 6dp ====================
+                int safePadding = dp(6);
+                params.width += safePadding;
+                view.setTranslationX((params.width - originalSize[0]) / 2f + safePadding / 2f);
+                // =================================================================
                 view.setTranslationX((params.width - originalSize[0]) / 2f);
                 view.setTranslationY((params.height - originalSize[1]) / 2f);
             }
