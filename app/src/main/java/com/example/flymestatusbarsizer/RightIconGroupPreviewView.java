@@ -47,6 +47,11 @@ public final class RightIconGroupPreviewView extends View {
     private int signalSingleYOffsetTenthDp = SettingsStore.DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP * 10;
     private int signalBadgeYOffsetTenthDp = SettingsStore.DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP * 10;
     private int signalDualYOffsetTenthDp = SettingsStore.DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP * 10;
+    private int signalBar1HeightPercent = SettingsStore.DEFAULT_SIGNAL_BAR1_HEIGHT_PERCENT;
+    private int signalBar2HeightPercent = SettingsStore.DEFAULT_SIGNAL_BAR2_HEIGHT_PERCENT;
+    private int signalBar3HeightPercent = SettingsStore.DEFAULT_SIGNAL_BAR3_HEIGHT_PERCENT;
+    private int signalBarCornerRadiusPercent = SettingsStore.DEFAULT_SIGNAL_BAR_CORNER_RADIUS_PERCENT;
+    private int signalDotCornerRadiusPercent = SettingsStore.DEFAULT_SIGNAL_DOT_CORNER_RADIUS_PERCENT;
     private int wifiYOffsetTenthDp = SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP * 10;
 
     public RightIconGroupPreviewView(Context context) {
@@ -219,6 +224,15 @@ public final class RightIconGroupPreviewView extends View {
         invalidate();
     }
 
+    public void setSignalStyle(int bar1, int bar2, int bar3, int barCorner, int dotCorner) {
+        signalBar1HeightPercent = Math.max(0, Math.min(100, bar1));
+        signalBar2HeightPercent = Math.max(0, Math.min(100, bar2));
+        signalBar3HeightPercent = Math.max(0, Math.min(100, bar3));
+        signalBarCornerRadiusPercent = Math.max(0, Math.min(100, barCorner));
+        signalDotCornerRadiusPercent = Math.max(0, Math.min(100, dotCorner));
+        invalidate();
+    }
+
     public void setWifiYOffsetTenthDp(int offsetTenthDp) {
         int normalized = SettingsStore.normalizeIconYOffsetTenthDp(offsetTenthDp);
         if (wifiYOffsetTenthDp == normalized) {
@@ -274,6 +288,13 @@ public final class RightIconGroupPreviewView extends View {
     }
 
     private void drawRightIconGroup(Canvas canvas, RectF stripRect, boolean mergedDual) {
+        ModuleConfig style = new ModuleConfig();
+        style.signalBar1HeightPercent = signalBar1HeightPercent;
+        style.signalBar2HeightPercent = signalBar2HeightPercent;
+        style.signalBar3HeightPercent = signalBar3HeightPercent;
+        style.signalBarCornerRadiusPercent = signalBarCornerRadiusPercent;
+        style.signalDotCornerRadiusPercent = signalDotCornerRadiusPercent;
+        SignalPreviewPainter.configureStyle(style);
         int iconSize = scalePx(dp(24));
         float centerY = stripRect.centerY();
         float anchorRight = stripRect.right - dp(14);

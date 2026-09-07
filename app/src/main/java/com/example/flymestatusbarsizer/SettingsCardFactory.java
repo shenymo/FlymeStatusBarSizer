@@ -144,6 +144,11 @@ final class SettingsCardFactory {
                 "关闭后恢复系统原来的移动信号和 Wi-Fi 图标，不再替换相关槽位和尺寸。",
                 SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED);
+        activity.addSliderRow(content, "第一根信号柱高度", "相对最高柱高度百分比。", SettingsStore.KEY_SIGNAL_BAR1_HEIGHT_PERCENT, SettingsStore.DEFAULT_SIGNAL_BAR1_HEIGHT_PERCENT, 0, 100, "%");
+        activity.addSliderRow(content, "第二根信号柱高度", "相对最高柱高度百分比。", SettingsStore.KEY_SIGNAL_BAR2_HEIGHT_PERCENT, SettingsStore.DEFAULT_SIGNAL_BAR2_HEIGHT_PERCENT, 0, 100, "%");
+        activity.addSliderRow(content, "第三根信号柱高度", "相对最高柱高度百分比。", SettingsStore.KEY_SIGNAL_BAR3_HEIGHT_PERCENT, SettingsStore.DEFAULT_SIGNAL_BAR3_HEIGHT_PERCENT, 0, 100, "%");
+        activity.addSliderRow(content, "信号柱圆角", "信号柱圆角比例。", SettingsStore.KEY_SIGNAL_BAR_CORNER_RADIUS_PERCENT, SettingsStore.DEFAULT_SIGNAL_BAR_CORNER_RADIUS_PERCENT, 0, 100, "%");
+        activity.addSliderRow(content, "双卡圆点圆角", "双卡合一圆点的圆角比例。", SettingsStore.KEY_SIGNAL_DOT_CORNER_RADIUS_PERCENT, SettingsStore.DEFAULT_SIGNAL_DOT_CORNER_RADIUS_PERCENT, 0, 100, "%");
         activity.addDivider(content);
         LinearLayout badgeTextOptions = new LinearLayout(activity);
         badgeTextOptions.setOrientation(LinearLayout.VERTICAL);

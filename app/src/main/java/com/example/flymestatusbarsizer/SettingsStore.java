@@ -43,6 +43,11 @@ final class SettingsStore {
             "signal_mobile_type_badge_non_5g_text";
     static final String KEY_WIFI_CODE_DRAW_ENABLED = "wifi_code_draw_enabled";
     static final String KEY_SIGNAL_WIFI_SWAP_ENABLED = "signal_wifi_swap_enabled";
+    static final String KEY_SIGNAL_BAR1_HEIGHT_PERCENT = "signal_bar1_height_percent";
+    static final String KEY_SIGNAL_BAR2_HEIGHT_PERCENT = "signal_bar2_height_percent";
+    static final String KEY_SIGNAL_BAR3_HEIGHT_PERCENT = "signal_bar3_height_percent";
+    static final String KEY_SIGNAL_BAR_CORNER_RADIUS_PERCENT = "signal_bar_corner_radius_percent";
+    static final String KEY_SIGNAL_DOT_CORNER_RADIUS_PERCENT = "signal_dot_corner_radius_percent";
     static final String KEY_BATTERY_ICON_STYLE = "battery_icon_style";
     static final String KEY_BATTERY_LEVEL_TEXT_ENABLED = "battery_level_text_enabled";
     static final String KEY_BATTERY_HOLLOW_ENABLED = "battery_hollow_enabled";
@@ -327,6 +332,11 @@ final class SettingsStore {
     static final int DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP = 0;
     static final int DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP = 0;
     static final int DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP = 0;
+    static final int DEFAULT_SIGNAL_BAR1_HEIGHT_PERCENT = 38;
+    static final int DEFAULT_SIGNAL_BAR2_HEIGHT_PERCENT = 58;
+    static final int DEFAULT_SIGNAL_BAR3_HEIGHT_PERCENT = 79;
+    static final int DEFAULT_SIGNAL_BAR_CORNER_RADIUS_PERCENT = 100;
+    static final int DEFAULT_SIGNAL_DOT_CORNER_RADIUS_PERCENT = 100;
     static final int DEFAULT_WIFI_Y_OFFSET_DP = 0;
     static final int DEFAULT_CLOCK_RIGHT_PADDING_OFFSET_DP = 0;
     static final boolean DEFAULT_LOCKSCREEN_CANVAS_CLOCK_ENABLED = false;
@@ -501,6 +511,11 @@ final class SettingsStore {
             KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
             KEY_SIGNAL_BADGE_Y_OFFSET_DP,
             KEY_SIGNAL_DUAL_Y_OFFSET_DP,
+            KEY_SIGNAL_BAR1_HEIGHT_PERCENT,
+            KEY_SIGNAL_BAR2_HEIGHT_PERCENT,
+            KEY_SIGNAL_BAR3_HEIGHT_PERCENT,
+            KEY_SIGNAL_BAR_CORNER_RADIUS_PERCENT,
+            KEY_SIGNAL_DOT_CORNER_RADIUS_PERCENT,
             KEY_WIFI_Y_OFFSET_DP,
             KEY_CLOCK_RIGHT_PADDING_OFFSET_DP,
             KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB,
@@ -868,6 +883,11 @@ final class SettingsStore {
                 return DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP;
             case KEY_SIGNAL_DUAL_Y_OFFSET_DP:
                 return DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP;
+            case KEY_SIGNAL_BAR1_HEIGHT_PERCENT: return DEFAULT_SIGNAL_BAR1_HEIGHT_PERCENT;
+            case KEY_SIGNAL_BAR2_HEIGHT_PERCENT: return DEFAULT_SIGNAL_BAR2_HEIGHT_PERCENT;
+            case KEY_SIGNAL_BAR3_HEIGHT_PERCENT: return DEFAULT_SIGNAL_BAR3_HEIGHT_PERCENT;
+            case KEY_SIGNAL_BAR_CORNER_RADIUS_PERCENT: return DEFAULT_SIGNAL_BAR_CORNER_RADIUS_PERCENT;
+            case KEY_SIGNAL_DOT_CORNER_RADIUS_PERCENT: return DEFAULT_SIGNAL_DOT_CORNER_RADIUS_PERCENT;
             case KEY_WIFI_Y_OFFSET_DP:
                 return DEFAULT_WIFI_Y_OFFSET_DP;
             case KEY_CLOCK_RIGHT_PADDING_OFFSET_DP:

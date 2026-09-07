@@ -89,6 +89,7 @@ final class SignalIconDrawable extends Drawable {
         ModuleConfig config = ModuleConfig.load(ownerView == null
                 ? ModuleConfig.getSystemUiContext()
                 : ownerView.getContext());
+        SignalPreviewPainter.configureStyle(config);
         float signalYOffsetPx = resolveSignalYOffsetPx(config, ownerView, mergedDual);
         float badgeYOffsetPx = resolveSignalBadgeYOffsetPx(config, ownerView);
         if (mergedDual) {

@@ -44,6 +44,11 @@ final class ModuleConfig {
             SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT;
     boolean wifiCodeDrawEnabled = SettingsStore.DEFAULT_WIFI_CODE_DRAW_ENABLED;
     boolean signalWifiSwapEnabled = SettingsStore.DEFAULT_SIGNAL_WIFI_SWAP_ENABLED;
+    int signalBar1HeightPercent = SettingsStore.DEFAULT_SIGNAL_BAR1_HEIGHT_PERCENT;
+    int signalBar2HeightPercent = SettingsStore.DEFAULT_SIGNAL_BAR2_HEIGHT_PERCENT;
+    int signalBar3HeightPercent = SettingsStore.DEFAULT_SIGNAL_BAR3_HEIGHT_PERCENT;
+    int signalBarCornerRadiusPercent = SettingsStore.DEFAULT_SIGNAL_BAR_CORNER_RADIUS_PERCENT;
+    int signalDotCornerRadiusPercent = SettingsStore.DEFAULT_SIGNAL_DOT_CORNER_RADIUS_PERCENT;
     int batteryIconStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
     boolean batteryLevelTextEnabled = SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED;
     boolean batteryHollowEnabled = SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED;
@@ -498,6 +503,11 @@ final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_SIGNAL_DUAL_Y_OFFSET_DP,
                     SettingsStore.DEFAULT_SIGNAL_DUAL_Y_OFFSET_DP * 10);
+            config.signalBar1HeightPercent = Math.max(0, Math.min(100, SettingsStore.readInt(prefs, SettingsStore.KEY_SIGNAL_BAR1_HEIGHT_PERCENT, SettingsStore.DEFAULT_SIGNAL_BAR1_HEIGHT_PERCENT)));
+            config.signalBar2HeightPercent = Math.max(0, Math.min(100, SettingsStore.readInt(prefs, SettingsStore.KEY_SIGNAL_BAR2_HEIGHT_PERCENT, SettingsStore.DEFAULT_SIGNAL_BAR2_HEIGHT_PERCENT)));
+            config.signalBar3HeightPercent = Math.max(0, Math.min(100, SettingsStore.readInt(prefs, SettingsStore.KEY_SIGNAL_BAR3_HEIGHT_PERCENT, SettingsStore.DEFAULT_SIGNAL_BAR3_HEIGHT_PERCENT)));
+            config.signalBarCornerRadiusPercent = Math.max(0, Math.min(100, SettingsStore.readInt(prefs, SettingsStore.KEY_SIGNAL_BAR_CORNER_RADIUS_PERCENT, SettingsStore.DEFAULT_SIGNAL_BAR_CORNER_RADIUS_PERCENT)));
+            config.signalDotCornerRadiusPercent = Math.max(0, Math.min(100, SettingsStore.readInt(prefs, SettingsStore.KEY_SIGNAL_DOT_CORNER_RADIUS_PERCENT, SettingsStore.DEFAULT_SIGNAL_DOT_CORNER_RADIUS_PERCENT)));
             config.wifiYOffsetTenthDp = SettingsStore.readPositionOffsetTenthDp(
                     prefs,
                     SettingsStore.KEY_WIFI_Y_OFFSET_DP,
