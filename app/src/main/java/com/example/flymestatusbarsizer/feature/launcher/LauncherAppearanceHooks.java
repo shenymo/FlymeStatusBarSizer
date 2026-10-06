@@ -30,6 +30,7 @@ public final class LauncherAppearanceHooks {
         hookFolderBackgroundColor(module, loader);
         hookAicyEntryEnabled(module, loader);
         hookAicyEntryClick(module, loader);
+        LauncherPageIndicatorHooks.install(module, loader);
     }
 
     private static void hookFolderBackgroundColor(FlymeStatusBarSizer module, ClassLoader loader) {

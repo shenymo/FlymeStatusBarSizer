@@ -307,6 +307,8 @@ public final class SettingsStore {
             "launcher_stack_scroll_frame_rate";
     public static final String KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS =
             "launcher_stack_frame_rate_release_delay_ms";
+    public static final String KEY_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED =
+            "launcher_page_indicator_swipe_enabled";
     public static final String KEY_LAUNCHER_AICY_ENTRY_ENABLED = "launcher_aicy_entry_enabled";
     public static final String KEY_LAUNCHER_AICY_ENTRY_TEXT = "launcher_aicy_entry_text";
     public static final String KEY_LAUNCHER_AICY_ENTRY_TARGET = "launcher_aicy_entry_target";
@@ -539,6 +541,7 @@ public final class SettingsStore {
     public static final int DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT = 5;
     public static final int DEFAULT_LAUNCHER_STACK_SCROLL_FRAME_RATE = 120;
     public static final int DEFAULT_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS = 5000;
+    public static final boolean DEFAULT_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED = false;
     public static final boolean DEFAULT_LAUNCHER_AICY_ENTRY_ENABLED = false;
     public static final String DEFAULT_LAUNCHER_AICY_ENTRY_TEXT = "Aicy";
     public static final String DEFAULT_LAUNCHER_AICY_ENTRY_TARGET = "";
@@ -774,6 +777,7 @@ public final class SettingsStore {
             KEY_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED,
             KEY_LAUNCHER_STACK_CURRENT_APP_CENTERED,
+            KEY_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED,
             KEY_LAUNCHER_AICY_ENTRY_ENABLED,
             KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
             KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,
@@ -1312,6 +1316,8 @@ public final class SettingsStore {
                 return DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED;
             case KEY_LAUNCHER_STACK_CURRENT_APP_CENTERED:
                 return DEFAULT_LAUNCHER_STACK_CURRENT_APP_CENTERED;
+            case KEY_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED:
+                return DEFAULT_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED;
             case KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED:
                 return DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED;
             case KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED:

@@ -280,6 +280,8 @@ public final class ModuleConfig {
     public int launcherStackScrollFrameRate = SettingsStore.DEFAULT_LAUNCHER_STACK_SCROLL_FRAME_RATE;
     public int launcherStackFrameRateReleaseDelayMs =
             SettingsStore.DEFAULT_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS;
+    public boolean launcherPageIndicatorSwipeEnabled =
+            SettingsStore.DEFAULT_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED;
     public boolean launcherAicyEntryEnabled = SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_ENABLED;
     public String launcherAicyEntryText = SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TEXT;
     public String launcherAicyEntryTarget = SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TARGET;
@@ -967,6 +969,10 @@ public final class ModuleConfig {
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE);
             config.launcherStackFrameRateReleaseDelayMs = readLauncherStackParameter(
                     prefs, SettingsStore.KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS);
+            config.launcherPageIndicatorSwipeEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED,
+                    SettingsStore.DEFAULT_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED);
             config.launcherAicyEntryEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_LAUNCHER_AICY_ENTRY_ENABLED,

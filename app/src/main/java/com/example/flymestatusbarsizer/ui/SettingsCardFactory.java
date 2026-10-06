@@ -618,6 +618,11 @@ public final class SettingsCardFactory {
         textColorSwitch.setEnabled(blurOnlySwitch.isChecked());
         blurOnlyOptions.setAlpha(blurOnlySwitch.isChecked() ? 1f : 0.45f);
         content.addView(blurOnlyOptions, blurOnlyOptionsLp);
+        content = addSection(root, "桌面分页", "在底部分页圆点区域左右拖动，快速切换桌面页面。");
+        activity.addSwitchRow(content, "滑动分页指示器切页",
+                "支持一次拖动跨越多页；显示搜索入口时也可滑动，点击仍打开搜索。更新模块后需重启系统桌面。",
+                SettingsStore.KEY_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED,
+                SettingsStore.DEFAULT_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED);
         content = addSection(root, "桌面 Aicy 入口", "强制显示桌面页码位置的 Aicy 入口，并接管显示文字和点击目标。");
         activity.addSwitchRow(content, "强制显示 Aicy 入口",
                 "忽略桌面原开关和 Aicy 助手安装状态。",

@@ -7802,6 +7802,7 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     public static final class LauncherAppearanceConfigSnapshot {
         public final boolean enabled;
+        public final boolean launcherPageIndicatorSwipeEnabled;
         public final boolean launcherAicyEntryEnabled;
         public final String launcherAicyEntryText;
         public final String launcherAicyEntryTarget;
@@ -7810,6 +7811,7 @@ public class FlymeStatusBarSizer extends XposedModule {
 
         private LauncherAppearanceConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
+            launcherPageIndicatorSwipeEnabled = enabled && config.launcherPageIndicatorSwipeEnabled;
             launcherAicyEntryEnabled = enabled && config.launcherAicyEntryEnabled;
             launcherAicyEntryText = config == null
                     ? SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TEXT
