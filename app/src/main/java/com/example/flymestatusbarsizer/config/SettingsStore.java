@@ -180,6 +180,22 @@ public final class SettingsStore {
             "carlink_task_listener_cleanup_enabled";
     public static final String KEY_MBACK_NAV_BAR_TRANSPARENT = "mback_nav_bar_transparent";
     public static final String KEY_NOTIFICATION_APP_ICON_ENABLED = "notification_app_icon_enabled";
+    public static final String KEY_ANIP_ICON_ENABLED = "anip_icon_enabled";
+    public static final String KEY_ANIP_ICON_MODE = "anip_icon_mode";
+    public static final String KEY_ANIP_SOURCE_TYPE = "anip_source_type";
+    public static final String KEY_ANIP_REPOSITORY = "anip_repository";
+    public static final String KEY_ANIP_BASE_URL = "anip_base_url";
+    /**
+     * Colour used to paint the monochrome ANIP artwork.
+     *
+     * <p>Automatic detection depends on status bar callbacks that are not reliable across vendor
+     * builds, so the colour can be pinned instead.
+     */
+    public static final String KEY_ANIP_ICON_COLOR_MODE = "anip_icon_color_mode";
+    /** Tag of the bundle downloaded at runtime; absent means the APK assets are used. */
+    public static final String KEY_ANIP_INSTALLED_TAG = "anip_installed_tag";
+    /** Publish timestamp of the downloaded bundle, used to detect a newer release. */
+    public static final String KEY_ANIP_INSTALLED_TIMESTAMP = "anip_installed_timestamp";
     public static final String KEY_NOTIFICATION_APP_ICON_SIZE_DP = "notification_app_icon_size_dp";
     public static final String KEY_NOTIFICATION_APP_ICON_PADDING_DP = "notification_app_icon_padding_dp";
     public static final String KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED =
@@ -451,6 +467,18 @@ public final class SettingsStore {
     public static final boolean DEFAULT_CARLINK_TASK_LISTENER_CLEANUP_ENABLED = false;
     public static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
     public static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
+    /**
+     * Off by default: enabling it replaces the desktop-icon fallback with ANIP artwork for covered
+     * applications, which changes what existing users already see.
+     */
+    public static final boolean DEFAULT_ANIP_ICON_ENABLED = false;
+    public static final String DEFAULT_ANIP_ICON_MODE = "{}";
+    /** Public mirror by default: the canonical GitHub Releases host is often unreachable in China. */
+    public static final int DEFAULT_ANIP_SOURCE_TYPE = 1;
+    public static final String DEFAULT_ANIP_REPOSITORY = "BetterAndroid/android-notification-icon-project";
+    public static final String DEFAULT_ANIP_BASE_URL = "";
+    /** 0 = follow the status bar, 1 = always white, 2 = always black. */
+    public static final int DEFAULT_ANIP_ICON_COLOR_MODE = 0;
     public static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
     public static final int DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP = 0;
     public static final boolean DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED = false;
@@ -729,6 +757,9 @@ public final class SettingsStore {
             KEY_CARLINK_TASK_LISTENER_CLEANUP_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
+            KEY_ANIP_ICON_ENABLED,
+            KEY_ANIP_SOURCE_TYPE,
+            KEY_ANIP_ICON_COLOR_MODE,
             KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED,
             KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED,
             KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
@@ -756,6 +787,9 @@ public final class SettingsStore {
             KEY_SHARE_TARGET_ORDER,
             KEY_SHARE_HIDDEN_TARGETS,
             KEY_COLOR_PICKER_PALETTE,
+            KEY_ANIP_ICON_MODE,
+            KEY_ANIP_REPOSITORY,
+            KEY_ANIP_BASE_URL,
             KEY_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT,
             KEY_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT,
             KEY_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT,
@@ -949,6 +983,8 @@ public final class SettingsStore {
     public static int defaultInt(String key) {
         if (CircleBatteryAnimationConfig.isKey(key)) return CircleBatteryAnimationConfig.defaultInt(key);
         switch (key) {
+            case KEY_ANIP_SOURCE_TYPE: return DEFAULT_ANIP_SOURCE_TYPE;
+            case KEY_ANIP_ICON_COLOR_MODE: return DEFAULT_ANIP_ICON_COLOR_MODE;
             case KEY_ASSISTANT_GESTURE_SCENES: return DEFAULT_ASSISTANT_GESTURE_SCENES;
             case KEY_ASSISTANT_GESTURE_SIDE: return DEFAULT_ASSISTANT_GESTURE_SIDE;
             case KEY_ASSISTANT_GESTURE_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
@@ -1250,6 +1286,8 @@ public final class SettingsStore {
                 return DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
             case KEY_NOTIFICATION_APP_ICON_ENABLED:
                 return DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
+            case KEY_ANIP_ICON_ENABLED:
+                return DEFAULT_ANIP_ICON_ENABLED;
             case KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED:
                 return DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED;
             case KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED:
@@ -1294,6 +1332,15 @@ public final class SettingsStore {
     public static String defaultString(String key) {
         if (KEY_COLOR_PICKER_PALETTE.equals(key)) {
             return "{}";
+        }
+        if (KEY_ANIP_ICON_MODE.equals(key)) {
+            return DEFAULT_ANIP_ICON_MODE;
+        }
+        if (KEY_ANIP_REPOSITORY.equals(key)) {
+            return DEFAULT_ANIP_REPOSITORY;
+        }
+        if (KEY_ANIP_BASE_URL.equals(key)) {
+            return DEFAULT_ANIP_BASE_URL;
         }
         if (KEY_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT.equals(key)) {
             return DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT;

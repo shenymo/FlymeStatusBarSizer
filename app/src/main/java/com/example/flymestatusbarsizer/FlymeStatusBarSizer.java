@@ -6533,6 +6533,10 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void scheduleConfigChangedRefresh() {
         NotificationHooks.clearRenderedNotificationAppIconCache();
+        // The artwork for a package can switch between ANIP and the desktop icon, so the icons already
+        // on screen have to be rebuilt. Clearing the cache alone is not enough: a view keeps the
+        // drawable it was given until something re-resolves it.
+        NotificationHooks.forceRefreshTrackedNotificationIcons();
         Handler handler = MAIN_HANDLER;
         if (handler == null) {
             refreshTrackedRuntimeViews();
@@ -6544,8 +6548,7 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void refreshTrackedRuntimeViews(boolean forceSignalRequery) {
         AssistantHooks.refresh();
-        StatusBarTintHooks.refresh();
-        StatusBarIconVisibilityHooks.refresh();
+        StatusBarTintHooks.refresh();        StatusBarIconVisibilityHooks.refresh();
         clearBatteryTintSourceCache();
         clearSignalSubSlotIndexCache();
         ConnectionRateHooks.refreshTrackedViews();
@@ -7528,6 +7531,9 @@ public class FlymeStatusBarSizer extends XposedModule {
     public static final class NotificationConfigSnapshot {
         public final boolean enabled;
         public final boolean notificationAppIconEnabled;
+        public final boolean anipIconEnabled;
+        public final String anipIconMode;
+        public final int anipIconColorMode;
         public final int notificationAppIconSizeDp;
         public final int notificationAppIconPaddingDp;
         public final boolean notificationCardCornerRadiusEnabled;
@@ -7541,6 +7547,18 @@ public class FlymeStatusBarSizer extends XposedModule {
         private NotificationConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
             notificationAppIconEnabled = config != null && config.notificationAppIconEnabled;
+            // ANIP only ever replaces the desktop-icon fallback, so it needs that feature enabled and
+            // the user's opt-in as well.
+            anipIconEnabled = enabled
+                    && config != null
+                    && config.notificationAppIconEnabled
+                    && config.anipIconEnabled;
+            anipIconMode = config == null
+                    ? SettingsStore.DEFAULT_ANIP_ICON_MODE
+                    : config.anipOverrides();
+            anipIconColorMode = config == null
+                    ? SettingsStore.DEFAULT_ANIP_ICON_COLOR_MODE
+                    : config.anipIconColorMode;
             notificationAppIconSizeDp = config == null ? 0 : config.notificationAppIconSizeDp;
             notificationAppIconPaddingDp = config == null ? 0 : config.notificationAppIconPaddingDp;
             notificationCardCornerRadiusEnabled = enabled

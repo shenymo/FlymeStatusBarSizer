@@ -183,3 +183,14 @@ Java 源码位于 `app/src/main/java/com/example/flymestatusbarsizer/`，按以�
 ## 开源许可
 
 本项目采用 [MIT License](LICENSE)。
+
+### 第三方资源
+
+通知图标库中的单色图标来自 [Android Notification Icon Project (ANIP)](https://github.com/BetterAndroid/android-notification-icon-project)，
+版权归 HighCapable 所有，按 **Apache License 2.0** 原样再分发，未做修改。
+
+- 许可全文：[licenses/ANIP-LICENSE.txt](licenses/ANIP-LICENSE.txt)
+- 来源与商标说明：[licenses/ANIP-NOTICE.md](licenses/ANIP-NOTICE.md)
+
+图标中出现的应用名称、标识与品牌均归各自所有者所有，仅用于在通知栏中标识对应应用。
+

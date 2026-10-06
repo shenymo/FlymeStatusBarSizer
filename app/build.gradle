@@ -35,7 +35,11 @@ signingConfigs {
     }
 
     defaultConfig {
-        applicationId "com.fiyme.statusbarsizer"
+        // Pass -PdevSuffix=.dev to build a side-by-side copy under another package name. Used to test
+        // a build against the same frameworks without uninstalling the signed release: a different
+        // package name can coexist with it, whereas a differently signed APK cannot replace it.
+        def devSuffix = project.findProperty("devSuffix") ?: ""
+        applicationId "com.fiyme.statusbarsizer" + devSuffix
         minSdk 26
         targetSdk 36
         versionCode buildCode
@@ -77,6 +81,17 @@ androidComponents {
     onVariants(selector().all()) { variant ->
         variant.outputs.forEach { output ->
             output.outputFileName.set(output.versionName.map { "${it}.apk" })
+        }
+    }
+}
+
+// Name side-by-side builds distinctly so they cannot be confused with the real artifact.
+if (project.findProperty("devSuffix")) {
+    androidComponents {
+        onVariants(selector().all()) { variant ->
+            variant.outputs.forEach { output ->
+                output.outputFileName.set(output.versionName.map { "${it}-dev.apk" })
+            }
         }
     }
 }

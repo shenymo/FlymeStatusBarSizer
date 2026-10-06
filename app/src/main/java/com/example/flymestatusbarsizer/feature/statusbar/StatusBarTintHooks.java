@@ -63,6 +63,17 @@ public final class StatusBarTintHooks {
     private static ArrayList<Rect> appliedAreas, panelNativeAreas;
     private static int appliedTint, appliedContrast, panelNativeTint;
     private static float appliedIntensity;
+    /**
+     * Latest status bar icon colour, published for other features that draw their own monochrome
+     * icons. Starts white, which is what the shade uses on a dark background.
+     */
+    private static volatile int publishedIconTint = Color.WHITE;
+    /**
+     * Status bar darkness observed from the dispatcher callback, tracked whether or not the scene tint
+     * feature is enabled. The dispatcher's own field is not reliably refreshed while the feature is off.
+     */
+    private static volatile float liveDarkIntensity;
+    private static volatile boolean liveDarkIntensityObserved;
 
     private StatusBarTintHooks() {}
 
@@ -87,8 +98,18 @@ public final class StatusBarTintHooks {
             Log.w(TAG, "Dispatcher unavailable", error);
         }
         hook(module, loader, PHONE + "DarkIconDispatcherImpl", "applyDarkIntensity", chain -> {
-            if (chain.getThisObject() != dispatcher || !syncEnabled()) return chain.proceed();
             nativeIntensity = (Float) chain.getArg(0);
+            // Track the real status bar darkness even when the scene tint feature is off, so that
+            // monochrome artwork (the ANIP notification icons) can be painted in the matching colour.
+            liveDarkIntensity = nativeIntensity;
+            liveDarkIntensityObserved = true;
+            if (chain.getThisObject() != dispatcher || !syncEnabled()) {
+                // The feature is off, but notification icons still have to follow the status bar.
+                if (chain.getThisObject() == dispatcher) {
+                    notifyIconTintChanged(resolveNativeIconTint());
+                }
+                return chain.proceed();
+            }
             nativeTint = (Integer) ARGB.evaluate(nativeIntensity,
                     field(dispatcher, "mLightModeIconColorSingleTone"),
                     field(dispatcher, "mDarkModeIconColorSingleTone"));
@@ -99,8 +120,9 @@ public final class StatusBarTintHooks {
             return null;
         });
         hook(module, loader, PHONE + "DarkIconDispatcherImpl", "setIconsDarkArea", chain -> {
+            ArrayList<?> incoming = (ArrayList<?>) chain.getArg(0);
             if (chain.getThisObject() != dispatcher || !syncEnabled()) return chain.proceed();
-            ArrayList<?> areas = (ArrayList<?>) chain.getArg(0);
+            ArrayList<?> areas = incoming;
             if (areas == null ? !nativeAreas.isEmpty() : !nativeAreas.equals(areas)) {
                 nativeAreas = copyAreas(areas);
             }
@@ -370,6 +392,57 @@ public final class StatusBarTintHooks {
         ReflectUtils.setIntField(dispatcher, "mIconTint", tint);
         ReflectUtils.setIntField(dispatcher, "mContrastTint", contrast);
         ReflectUtils.invokeNoArg(dispatcher, "applyIconTint");
+        // Publish before applying so icons rebuilt as a result already see the new colour.
+        publishedIconTint = tint;
+        notifyIconTintChanged(tint);
+    }
+
+    /**
+     * Rebuilds the monochrome notification icons when the status bar icon colour changes.
+     *
+     * <p>Those icons are painted in this colour, so a stale one is invisible on the matching
+     * background. Announced from both the scene tint path and the plain intensity callback, because
+     * the two are independent: the notification icons must adapt with the tint feature switched off.
+     */
+    private static void notifyIconTintChanged(int tint) {
+        if (lastAnnouncedTint == tint) {
+            return;
+        }
+        lastAnnouncedTint = tint;
+        try {
+            com.example.flymestatusbarsizer.feature.notification.NotificationHooks
+                    .refreshTrackedNotificationIconsForTintChange(tint);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static volatile int lastAnnouncedTint = Integer.MIN_VALUE;
+
+    /**
+     * The icon colour the dispatcher would use for the darkness currently in effect.
+     *
+     * <p>Read directly rather than from {@code mIconTint}, which the scene tint feature only keeps
+     * current while it is enabled.
+     */
+    private static int resolveNativeIconTint() {
+        Object current = dispatcher;
+        if (current == null) {
+            return publishedIconTint;
+        }
+        float intensity = liveDarkIntensityObserved
+                ? liveDarkIntensity
+                : 0f;
+        if (!liveDarkIntensityObserved) {
+            Object raw = ReflectUtils.getField(current, "mDarkIntensity");
+            if (raw instanceof Number) {
+                intensity = ((Number) raw).floatValue();
+            }
+        }
+        String fieldName = intensity > 0.5f
+                ? "mDarkModeIconColorSingleTone"
+                : "mLightModeIconColorSingleTone";
+        Object colorValue = ReflectUtils.getField(current, fieldName);
+        return colorValue instanceof Integer ? ((Integer) colorValue).intValue() : publishedIconTint;
     }
 
     private static void applyLockColor(View view, Object manager, int mode) throws ReflectiveOperationException {

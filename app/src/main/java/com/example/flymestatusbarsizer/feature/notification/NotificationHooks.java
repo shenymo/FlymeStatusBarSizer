@@ -1,6 +1,11 @@
 package com.example.flymestatusbarsizer.feature.notification;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
+import com.example.flymestatusbarsizer.config.SettingsStore;
+import com.example.flymestatusbarsizer.feature.notification.anip.AnipBundleStore;
+import com.example.flymestatusbarsizer.feature.notification.anip.AnipIconLibrary;
+import com.example.flymestatusbarsizer.feature.notification.anip.AnipIconMode;
+import com.example.flymestatusbarsizer.feature.notification.anip.AnipIconRule;
 
 import android.app.Notification;
 import android.content.Context;
@@ -15,6 +20,7 @@ import android.graphics.ColorFilter;
 import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -68,6 +74,31 @@ public final class NotificationHooks {
     private static volatile Method flymeGetApplicationIconMethod;
     private static volatile Method flymeClearApplicationIconCacheMethod;
     private static volatile int LAST_NOTIFICATION_APP_ICON_VIEW_REFRESH_NIGHT = -1;
+    /**
+     * Decoded ANIP override map plus the raw value it came from. The raw string doubles as the cache
+     * key, so a settings change is picked up without any explicit invalidation.
+     */
+    private static final Object ANIP_OVERRIDE_CACHE_LOCK = new Object();
+    private static Map<String, Integer> ANIP_OVERRIDE_CACHE = java.util.Collections.emptyMap();
+    private static String ANIP_OVERRIDE_CACHE_SOURCE = SettingsStore.DEFAULT_ANIP_ICON_MODE;
+    /** Resolved downloaded-bundle directory, cached per process; see {@link #resolveAnipBundleDirectory}. */
+    private static final Object ANIP_BUNDLE_LOCK = new Object();
+    private static boolean ANIP_BUNDLE_RESOLVED;
+    private static java.io.File ANIP_BUNDLE_DIRECTORY;
+    /**
+     * Diagnostic switch for the ANIP decision trace; see {@link #logAnipProbe}.
+     *
+     * <p>Off in normal builds: the trace writes a warning per package every few seconds, which is
+     * useful when a specific application does not pick up its ANIP artwork but noisy otherwise.
+     */
+    private static final boolean ANIP_PROBE_ENABLED = false;
+    private static final long ANIP_PROBE_INTERVAL_MS = 5_000L;
+    private static final Object ANIP_PROBE_LOCK = new Object();
+    private static final Map<String, Long> ANIP_PROBE_LAST = new java.util.HashMap<>();
+    /** Views that currently carry artwork this module painted, so a colour change can refresh them. */
+    private static final java.util.Set<View> ANIP_TRACKED_ICON_VIEWS =
+            java.util.Collections.newSetFromMap(new WeakHashMap<View, Boolean>());
+    private static volatile int lastNotifiedIconTint = Integer.MIN_VALUE;
     private static volatile int LAST_STATUS_BAR_ICON_TINT = 0;
     private static volatile int LAST_KEYGUARD_STATUS_BAR_ICON_TINT = 0;
     private static volatile int LAST_STATUS_BAR_STATE = 0;
@@ -244,6 +275,11 @@ public final class NotificationHooks {
     }
 
     public static void clearRenderedNotificationAppIconCache() {
+        synchronized (ANIP_BUNDLE_LOCK) {
+            // A bundle may have been installed since the last lookup.
+            ANIP_BUNDLE_RESOLVED = false;
+            ANIP_BUNDLE_DIRECTORY = null;
+        }
         synchronized (RENDERED_NOTIFICATION_APP_ICON_CACHE) {
             RENDERED_NOTIFICATION_APP_ICON_CACHE.clear();
         }
@@ -1790,12 +1826,16 @@ public final class NotificationHooks {
         }
         int paddingPx = dp(view, config.notificationAppIconPaddingDp);
         int nightMode = readNightModeMask(view.getResources().getConfiguration());
+        // Which artwork is used is part of the identity. Without it a toggle would keep hitting the
+        // cached drawable produced by the previous mode, so the icon would not change until a restart.
+        int iconSource = resolveNotificationIconSource(config, packageName);
         NotificationAppIconViewSignature signature = new NotificationAppIconViewSignature(
                 packageName,
                 userId,
                 renderSizePx,
                 paddingPx,
-                nightMode);
+                nightMode,
+                iconSource);
         return new NotificationAppIconBinding(
                 sbn.getNotification(),
                 packageName,
@@ -1811,6 +1851,10 @@ public final class NotificationHooks {
         Drawable renderedDrawable = getRenderedNotificationAppIconDrawable(view, binding.signature);
         if (renderedDrawable != null) {
             return renderedDrawable;
+        }
+        Drawable anipIcon = resolveAnipNotificationAppIconDrawable(view, binding);
+        if (anipIcon != null) {
+            return anipIcon;
         }
         Drawable drawable = getCachedNotificationApplicationIcon(
                 view.getContext(),
@@ -1928,6 +1972,27 @@ public final class NotificationHooks {
                 || SYSTEM_UI.equals(packageName);
     }
 
+    /** Artwork drawn from the ANIP bundle. */
+    private static final int ICON_SOURCE_ANIP = 0;
+    /** Artwork drawn from the application's own (desktop) icon. */
+    private static final int ICON_SOURCE_APPLICATION = 1;
+
+    /**
+     * Which artwork the current settings select for {@code packageName}.
+     *
+     * <p>Part of the rendered-icon identity so that flipping either switch takes effect on the icons
+     * already on screen instead of waiting for the next SystemUI restart.
+     */
+    private static int resolveNotificationIconSource(
+            FlymeStatusBarSizer.NotificationConfigSnapshot config, String packageName) {
+        if (config == null) {
+            return ICON_SOURCE_APPLICATION;
+        }
+        return isAnipIconModeAllowed(config, packageName)
+                ? ICON_SOURCE_ANIP
+                : ICON_SOURCE_APPLICATION;
+    }
+
     private static boolean hasLauncherEntry(PackageManager packageManager, String packageName) {
         if (packageManager == null || TextUtils.isEmpty(packageName)) {
             return false;
@@ -1937,6 +2002,248 @@ public final class NotificationHooks {
         } catch (Throwable ignored) {
             return false;
         }
+    }
+
+    /**
+     * Builds the status bar icon from the bundled ANIP artwork, or returns {@code null} so the caller
+     * falls back to the application's own (desktop) icon.
+     *
+     * <p>The decoded bitmap goes through {@link #createNotificationStatusBarIconDrawable} so ANIP icons
+     * receive exactly the same padding, sizing and tint handling as the desktop-icon path.
+     */
+    private static Drawable resolveAnipNotificationAppIconDrawable(
+            View view, NotificationAppIconBinding binding) {
+        if (view == null || binding == null) {
+            return null;
+        }
+        try {
+            FlymeStatusBarSizer.NotificationConfigSnapshot config =
+                    FlymeStatusBarSizer.loadNotificationConfig(view.getContext());
+            if (!isAnipIconModeAllowed(config, binding.packageName)) {
+                logAnipProbe(binding.packageName, "blocked by mode", config);
+                return null;
+            }
+            AnipIconLibrary library = AnipIconLibrary.get();
+            Context context = view.getContext();
+            // The bundle is not shipped in the APK, so the catalog only exists after a download. Each
+            // process reads its own copy; a process that cannot see one simply leaves the desktop icon.
+            java.io.File bundleDirectory = resolveAnipBundleDirectory(context);
+            if (bundleDirectory == null) {
+                // Nothing is shipped in the APK, so the first use has to fetch the catalog. Kicked off
+                // on a worker; this icon keeps the desktop artwork until it is ready.
+                com.example.flymestatusbarsizer.feature.notification.anip.AnipIconUpdater
+                        .ensureInstalledAsync(context);
+                logAnipProbe(binding.packageName, "no local bundle", config);
+                return null;
+            }
+            if (!library.load(bundleDirectory)) {
+                logAnipProbe(binding.packageName, "library load failed", config);
+                return null;
+            }
+            AnipIconRule rule = library.find(binding.packageName);
+            if (rule == null) {
+                logAnipProbe(binding.packageName, "no rule in bundle", config);
+                return null;
+            }
+            Bitmap bitmap = library.loadBitmap(bundleDirectory, rule);
+            if (bitmap == null || bitmap.isRecycled()) {
+                logAnipProbe(binding.packageName, "bitmap decode failed", config);
+                return null;
+            }
+            BitmapDrawable bitmapDrawable = new BitmapDrawable(view.getResources(), bitmap);
+            clearDrawableColorState(bitmapDrawable);
+            RenderedNotificationAppIcon renderedIcon = createNotificationStatusBarIconDrawable(
+                    view, bitmapDrawable, binding.signature.renderSizePx);
+            if (renderedIcon == null) {
+                logAnipProbe(binding.packageName, "render returned null", config);
+                return null;
+            }
+            // Deliberately not recoloured here. The artwork is a monochrome silhouette, which is
+            // exactly what the status bar tints itself: StatusBarIconView runs updateIconColor for its
+            // own icons, and this module already hooks the tint dispatcher. Painting the colour here
+            // would fight that and pin one colour into the cached drawable.
+            RenderedNotificationAppIcon tintedIcon = renderedIcon;
+            // Remember the view so a status bar colour change can rebuild this icon.
+            synchronized (ANIP_TRACKED_ICON_VIEWS) {
+                ANIP_TRACKED_ICON_VIEWS.add(view);
+            }
+            cacheRenderedNotificationAppIconBitmap(binding.signature, tintedIcon.bitmap);
+            return tintedIcon.drawable;
+        } catch (Throwable t) {
+            logAnipProbe(binding.packageName, "threw " + t, null);
+            return null;
+        }
+    }
+
+    /**
+     * Diagnostic trace of the ANIP decision for one package.
+     *
+     * <p>Guarded by its own flag so it can be switched off without touching the feature itself, and
+     * throttled per package to keep a busy status bar from flooding the log.
+     */
+    private static void logAnipProbe(String packageName, String stage,
+            FlymeStatusBarSizer.NotificationConfigSnapshot config) {
+        if (!ANIP_PROBE_ENABLED) {
+            return;
+        }
+        long now = android.os.SystemClock.elapsedRealtime();
+        synchronized (ANIP_PROBE_LOCK) {
+            Long last = ANIP_PROBE_LAST.get(packageName);
+            if (last != null && now - last.longValue() < ANIP_PROBE_INTERVAL_MS) {
+                return;
+            }
+            ANIP_PROBE_LAST.put(packageName, Long.valueOf(now));
+        }
+        String detail = config == null
+                ? "config=null"
+                : "enabled=" + config.enabled
+                        + ",appIcon=" + config.notificationAppIconEnabled
+                        + ",anip=" + config.anipIconEnabled
+                        + ",mode=" + config.anipIconMode;
+        FlymeStatusBarSizer.logNotificationWarning(
+                "ANIP probe " + packageName + " -> " + stage + " [" + detail + "]", null);
+    }
+
+    /**
+     * Resolves the directory of a bundle downloaded by the settings app, or {@code null} when none is
+     * installed or this process cannot read it.
+     *
+     * <p>Looked up once per process: the check touches the filesystem and this runs on the notification
+     * icon update path. {@link #clearRenderedNotificationAppIconCache()} runs on every configuration
+     * change and resets it, so a bundle installed while the module is loaded is picked up after the
+     * settings app triggers a refresh.
+     */
+    private static java.io.File resolveAnipBundleDirectory(Context context) {
+        if (context == null) {
+            return null;
+        }
+        synchronized (ANIP_BUNDLE_LOCK) {
+            if (ANIP_BUNDLE_RESOLVED) {
+                return ANIP_BUNDLE_DIRECTORY;
+            }
+        }
+        java.io.File directory = null;
+        try {
+            AnipBundleStore.Installed installed = AnipBundleStore.resolve(context);
+            if (installed != null) {
+                // Verify readability rather than trusting the metadata: access differs per process.
+                java.io.File manifest = new java.io.File(installed.directory, "manifest.json");
+                if (manifest.isFile() && manifest.canRead()) {
+                    directory = installed.directory;
+                }
+            }
+        } catch (Throwable ignored) {
+            directory = null;
+        }
+        synchronized (ANIP_BUNDLE_LOCK) {
+            ANIP_BUNDLE_DIRECTORY = directory;
+            ANIP_BUNDLE_RESOLVED = true;
+        }
+        return directory;
+    }
+
+    /**
+     * Rebuilds the notification icons this module painted, after the status bar icon colour changed.
+     *
+     * <p>Monochrome ANIP artwork is recoloured with that colour, so the result is only correct for the
+     * scene it was produced in. The rendered-icon cache is keyed by colour, which means a re-resolve is
+     * needed to notice the change; without this the previous colour stays baked into the cached
+     * drawable for as long as the notification lives.
+     *
+     * @param iconTint the colour that will now be used.
+     */
+    public static void refreshTrackedNotificationIconsForTintChange(int iconTint) {
+        if (!beginNotificationIconRefresh(iconTint)) {
+            return;
+        }
+        refreshTrackedNotificationIcons();
+    }
+
+    /**
+     * Rebuilds the tracked notification icons unconditionally.
+     *
+     * <p>Used when settings changed: the artwork for a package can switch between ANIP and the desktop
+     * icon, and the tint comparison in {@link #refreshTrackedNotificationIconsForTintChange(int)} would
+     * short-circuit that because the colour itself did not move. Without this, turning either switch off
+     * leaves the previous artwork on screen until SystemUI restarts.
+     */
+    public static void forceRefreshTrackedNotificationIcons() {
+        refreshTrackedNotificationIconsForTintChange(Integer.MIN_VALUE);
+    }
+
+    /**
+     * Records the tint that the icons are about to be rebuilt for.
+     *
+     * @return whether a rebuild is actually needed; false when nothing changed since the last call.
+     */
+    private static boolean beginNotificationIconRefresh(int iconTint) {
+        if (iconTint != Integer.MIN_VALUE) {
+            if (lastNotifiedIconTint == iconTint) {
+                return false;
+            }
+            lastNotifiedIconTint = iconTint;
+        }
+        return true;
+    }
+
+    /** Drops the colour/artwork cache and re-resolves every tracked notification icon. */
+    private static void refreshTrackedNotificationIcons() {
+        java.util.ArrayList<View> views = new java.util.ArrayList<>();
+        synchronized (ANIP_TRACKED_ICON_VIEWS) {
+            java.util.Iterator<View> iterator = ANIP_TRACKED_ICON_VIEWS.iterator();
+            while (iterator.hasNext()) {
+                View view = iterator.next();
+                if (view == null) {
+                    iterator.remove();
+                    continue;
+                }
+                views.add(view);
+            }
+        }
+        if (views.isEmpty()) {
+            return;
+        }
+        // Cached drawables carry the artwork that was current when they were produced.
+        clearRenderedNotificationAppIconCache();
+        for (View view : views) {
+            try {
+                applyNotificationStatusBarIconDrawable(view);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /**
+     * Whether ANIP artwork may be used for {@code packageName}.
+     *
+     * <p>The persisted override map is decoded through a small process-wide cache because this runs
+     * on every notification icon update, and re-parsing the JSON each time would be wasteful.
+     */
+    private static boolean isAnipIconModeAllowed(
+            FlymeStatusBarSizer.NotificationConfigSnapshot config, String packageName) {
+        if (config == null || !config.enabled || !config.anipIconEnabled) {
+            return false;
+        }
+        if (TextUtils.isEmpty(packageName)) {
+            return false;
+        }
+        String raw = config.anipIconMode;
+        if (raw == null) {
+            raw = SettingsStore.DEFAULT_ANIP_ICON_MODE;
+        }
+        Map<String, Integer> overrides;
+        synchronized (ANIP_OVERRIDE_CACHE_LOCK) {
+            if (raw.equals(ANIP_OVERRIDE_CACHE_SOURCE)) {
+                overrides = ANIP_OVERRIDE_CACHE;
+            } else {
+                overrides = AnipIconMode.decodeOverrides(raw);
+                ANIP_OVERRIDE_CACHE_SOURCE = raw;
+                ANIP_OVERRIDE_CACHE = overrides;
+            }
+        }
+        Integer override = overrides.get(packageName);
+        int mode = override != null ? override.intValue() : AnipIconMode.FOLLOW;
+        return mode != AnipIconMode.APPLICATION;
     }
 
     private static Drawable getCachedNotificationApplicationIcon(
@@ -2320,7 +2627,15 @@ public final class NotificationHooks {
     }
 
     private static boolean isNotificationAppIconTintClearCandidate(ImageView view) {
-        return view != null && isNotificationAppIconActive(view);
+        if (view == null || !isNotificationAppIconActive(view)) {
+            return false;
+        }
+        // ANIP artwork is a monochrome silhouette, so it must keep whatever tint the status bar
+        // applies. Only the desktop-icon path needs the tint cleared, because those icons carry their
+        // own colours.
+        synchronized (ANIP_TRACKED_ICON_VIEWS) {
+            return !ANIP_TRACKED_ICON_VIEWS.contains(view);
+        }
     }
 
     private static boolean isNotificationAppIconActive(View view) {
@@ -2347,6 +2662,9 @@ public final class NotificationHooks {
         setNotificationAppIconActive(view, false);
         clearNotificationAppIconRenderState(view);
         markNotificationAppIconReplacement(notification, false);
+        synchronized (ANIP_TRACKED_ICON_VIEWS) {
+            ANIP_TRACKED_ICON_VIEWS.remove(view);
+        }
     }
 
     private static void rememberNotificationAppIconTintState(ImageView view) {
@@ -2512,18 +2830,22 @@ public final class NotificationHooks {
         final int renderSizePx;
         final int paddingPx;
         final int nightMode;
+        /** Which artwork this entry was produced from; see {@code ICON_SOURCE_*}. */
+        final int iconSource;
 
         NotificationAppIconViewSignature(
                 String packageName,
                 int userId,
                 int renderSizePx,
                 int paddingPx,
-                int nightMode) {
+                int nightMode,
+                int iconSource) {
             this.packageName = packageName;
             this.userId = userId;
             this.renderSizePx = renderSizePx;
             this.paddingPx = paddingPx;
             this.nightMode = nightMode;
+            this.iconSource = iconSource;
         }
 
         @Override
@@ -2539,6 +2861,7 @@ public final class NotificationHooks {
                     && renderSizePx == other.renderSizePx
                     && paddingPx == other.paddingPx
                     && nightMode == other.nightMode
+                    && iconSource == other.iconSource
                     && TextUtils.equals(packageName, other.packageName);
         }
 
@@ -2549,6 +2872,7 @@ public final class NotificationHooks {
             result = 31 * result + renderSizePx;
             result = 31 * result + paddingPx;
             result = 31 * result + nightMode;
+            result = 31 * result + iconSource;
             return result;
         }
     }

@@ -8,6 +8,10 @@ import com.example.flymestatusbarsizer.feature.battery.BatteryTextFontHelper;
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAnimationEditor;
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAppearanceEditor;
 import com.example.flymestatusbarsizer.feature.launcher.LauncherStackScaleCurveView;
+import com.example.flymestatusbarsizer.feature.notification.anip.AnipBundleStore;
+import com.example.flymestatusbarsizer.feature.notification.anip.AnipIconLibrary;
+import com.example.flymestatusbarsizer.feature.notification.anip.AnipIconLibraryEditor;
+import com.example.flymestatusbarsizer.feature.notification.anip.AnipIconMode;
 import com.example.flymestatusbarsizer.feature.signal.SignalAppearancePreviewView;
 import com.example.flymestatusbarsizer.feature.wifi.WifiAppearancePreviewView;
 
@@ -1060,7 +1064,85 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_NOTIFICATION_APP_ICON_PADDING_DP,
                 SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP,
                 0, 8, "dp");
+
+        // ANIP only swaps the *source* of the icon; the sizing controls above still apply to it.
+        activity.addDivider(card);
+        LinearLayout anipHeader = new LinearLayout(activity);
+        anipHeader.setOrientation(LinearLayout.VERTICAL);
+        TextView anipTitle = new TextView(activity);
+        anipTitle.setText("通知图标来源");
+        anipTitle.setTextColor(activity.primaryColor());
+        anipTitle.setTextSize(13);
+        anipHeader.addView(anipTitle);
+        card.addView(anipHeader, activity.matchWrapWithTop(2));
+
+        LinearLayout anipStatusRow = new LinearLayout(activity);
+        anipStatusRow.setOrientation(LinearLayout.VERTICAL);
+        TextView anipStatus = new TextView(activity);
+        anipStatus.setTextColor(activity.subtextColor());
+        anipStatus.setTextSize(11);
+        anipStatus.setLineSpacing(activity.dp(3), 1f);
+        anipStatusRow.addView(anipStatus);
+        anipStatusRow.setVisibility(View.GONE);
+
+        activity.addSwitchRow(card, "优先使用 ANIP 图标库",
+                "开启后，图标库已收录的应用改用 ANIP 的单色通知图标；未收录的应用仍使用桌面图标。"
+                        + "默认关闭。",
+                SettingsStore.KEY_ANIP_ICON_ENABLED,
+                SettingsStore.DEFAULT_ANIP_ICON_ENABLED,
+                (buttonView, isChecked) -> {
+                    anipStatusRow.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+                    updateAnipIconLibraryStatus(anipStatus);
+                });
+        card.addView(anipStatusRow, activity.matchWrapWithTop(2));
+
+        activity.addActionButtonRow(card, "通知图标库",
+                "查看已收录的应用、搜索名称或包名，并单独指定某个应用用哪种图标。",
+                "打开", () -> new AnipIconLibraryEditor(activity).show());
+
+        updateAnipIconLibraryStatus(anipStatus);
+        anipStatusRow.setVisibility(SettingsStore.readBoolean(
+                activity.prefs(),
+                SettingsStore.KEY_ANIP_ICON_ENABLED,
+                SettingsStore.DEFAULT_ANIP_ICON_ENABLED) ? View.VISIBLE : View.GONE);
         return card;
+    }
+
+    /**
+     * Refreshes the ANIP summary line.
+     *
+     * <p>The library parses its manifest from the APK, so this must not run while the card is being
+     * built on the main thread; the count is filled in from a background read.
+     */
+    private void updateAnipIconLibraryStatus(TextView status) {
+        if (status == null) {
+            return;
+        }
+        status.setText("正在读取图标库…");
+        final android.content.Context appContext = activity.getApplicationContext();
+        new Thread(() -> {
+            String text;
+            try {
+                AnipIconLibrary library = AnipIconLibrary.get();
+                AnipBundleStore.Installed installed = AnipBundleStore.resolve(appContext);
+                library.load(installed == null ? null : installed.directory);
+                int available = library.getRuleCount();
+                int overrides = AnipIconMode.readOverrides(activity.prefs()).size();
+                if (available <= 0) {
+                    text = "尚未下载图标库。点下方“通知图标库”打开后可以下载。";
+                } else {
+                    text = "图标库已收录 " + available + " 个应用";
+                    if (overrides > 0) {
+                        text += "，其中 " + overrides + " 个已单独指定";
+                    }
+                    text += "。";
+                }
+            } catch (Throwable ignored) {
+                text = "图标库读取失败，请重试。";
+            }
+            final String result = text;
+            activity.runOnUiThread(() -> status.setText(result));
+        }, "anip-icon-library-status").start();
     }
 
     private View buildStatusBarIconScaleCard() {

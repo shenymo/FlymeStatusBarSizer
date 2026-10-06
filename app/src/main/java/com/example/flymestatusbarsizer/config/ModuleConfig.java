@@ -168,6 +168,19 @@ public final class ModuleConfig {
             SettingsStore.DEFAULT_CARLINK_TASK_LISTENER_CLEANUP_ENABLED;
     public boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
     public boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
+    public boolean anipIconEnabled = SettingsStore.DEFAULT_ANIP_ICON_ENABLED;
+    public String anipIconMode = SettingsStore.DEFAULT_ANIP_ICON_MODE;
+
+    /**
+     * The persisted per-application ANIP overrides, or the empty default.
+     *
+     * <p>Lives here rather than in a helper class so callers do not need an extra indirection for a
+     * single null check.
+     */
+    public String anipOverrides() {
+        return anipIconMode == null ? SettingsStore.DEFAULT_ANIP_ICON_MODE : anipIconMode;
+    }
+    public int anipIconColorMode = SettingsStore.DEFAULT_ANIP_ICON_COLOR_MODE;
     public int notificationAppIconSizeDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP;
     public int notificationAppIconPaddingDp = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_PADDING_DP;
     public boolean notificationCardCornerRadiusEnabled =
@@ -805,6 +818,18 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
                     SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED);
+            config.anipIconEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_ANIP_ICON_ENABLED,
+                    SettingsStore.DEFAULT_ANIP_ICON_ENABLED);
+            config.anipIconMode = SettingsStore.readString(
+                    prefs,
+                    SettingsStore.KEY_ANIP_ICON_MODE,
+                    SettingsStore.DEFAULT_ANIP_ICON_MODE);
+            config.anipIconColorMode = SettingsStore.readInt(
+                    prefs,
+                    SettingsStore.KEY_ANIP_ICON_COLOR_MODE,
+                    SettingsStore.DEFAULT_ANIP_ICON_COLOR_MODE);
             config.notificationAppIconSizeDp = SettingsStore.normalizeNotificationAppIconSizeDp(
                     SettingsStore.readInt(
                             prefs,
