@@ -31,6 +31,7 @@ public final class SettingsStore {
     public static final String KEY_COLOR_PICKER_PALETTE = "color_picker_palette";
     static final String KEY_ENABLED = "enabled";
     public static final String KEY_STATUS_BAR_TINT_ENABLED = "status_bar_tint_enabled";
+    public static final String KEY_HIDE_IDLE_CAMERA_CUTOUT = "hide_idle_camera_cutout";
     public static final String KEY_BATTERY_CODE_DRAW_ENABLED = "battery_code_draw_enabled";
     public static final String KEY_CAMERA_CIRCLE_BATTERY_ENABLED = "camera_circle_battery_enabled";
     public static final String KEY_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED =
@@ -363,6 +364,7 @@ public final class SettingsStore {
     public static final String KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL = "telephony_debug_slot2_signal_level";
     static final boolean DEFAULT_ENABLED = true;
     public static final boolean DEFAULT_STATUS_BAR_TINT_ENABLED = true;
+    public static final boolean DEFAULT_HIDE_IDLE_CAMERA_CUTOUT = false;
     public static final boolean DEFAULT_BATTERY_CODE_DRAW_ENABLED = true;
     public static final boolean DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED = false;
     public static final boolean DEFAULT_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED = false;
@@ -730,6 +732,7 @@ public final class SettingsStore {
 
             KEY_ENABLED,
             KEY_STATUS_BAR_TINT_ENABLED,
+            KEY_HIDE_IDLE_CAMERA_CUTOUT,
             KEY_BATTERY_CODE_DRAW_ENABLED,
             KEY_CAMERA_CIRCLE_BATTERY_ENABLED,
             KEY_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED,
@@ -1227,6 +1230,8 @@ public final class SettingsStore {
                 return DEFAULT_ENABLED;
             case KEY_STATUS_BAR_TINT_ENABLED:
                 return DEFAULT_STATUS_BAR_TINT_ENABLED;
+            case KEY_HIDE_IDLE_CAMERA_CUTOUT:
+                return DEFAULT_HIDE_IDLE_CAMERA_CUTOUT;
             case KEY_BATTERY_CODE_DRAW_ENABLED:
                 return DEFAULT_BATTERY_CODE_DRAW_ENABLED;
             case KEY_CAMERA_CIRCLE_BATTERY_ENABLED:

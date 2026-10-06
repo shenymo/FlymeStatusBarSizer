@@ -27,6 +27,7 @@ import com.example.flymestatusbarsizer.feature.signal.SignalPreviewPainter;
 import com.example.flymestatusbarsizer.feature.statusbar.IconMetrics;
 import com.example.flymestatusbarsizer.feature.statusbar.StatusBarTintHooks;
 import com.example.flymestatusbarsizer.feature.statusbar.StatusBarIconVisibilityHooks;
+import com.example.flymestatusbarsizer.feature.statusbar.CameraCutoutHooks;
 import com.example.flymestatusbarsizer.feature.wifi.WifiIconDrawable;
 import com.example.flymestatusbarsizer.feature.wifi.WifiIconRenderer;
 import com.example.flymestatusbarsizer.feature.wifi.WifiIconStyles;
@@ -274,6 +275,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private void hookSystemUi(ClassLoader loader) {
+        CameraCutoutHooks.install(this, loader);
         StatusBarTintHooks.installSystemUi(this, loader);
         installStatusBarHooks(loader);
         installSignalHooks(loader);
@@ -6550,7 +6552,9 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void refreshTrackedRuntimeViews(boolean forceSignalRequery) {
         AssistantHooks.refresh();
-        StatusBarTintHooks.refresh();        StatusBarIconVisibilityHooks.refresh();
+        StatusBarTintHooks.refresh();
+        StatusBarIconVisibilityHooks.refresh();
+        CameraCutoutHooks.refresh();
         clearBatteryTintSourceCache();
         clearSignalSubSlotIndexCache();
         ConnectionRateHooks.refreshTrackedViews();

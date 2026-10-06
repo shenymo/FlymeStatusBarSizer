@@ -10,6 +10,12 @@ public final class SystemAppearancePageController {
     }
 
     public static void bind(MainActivity activity, LinearLayout root) {
+        LinearLayout camera = new LinearLayout(activity);
+        camera.setOrientation(LinearLayout.VERTICAL);
+        activity.addSwitchRow(camera, "前摄空闲时隐藏黑边",
+                "移除摄像头周围的软件黑色填充，前摄使用时恢复。物理黑边无法移除。",
+                SettingsStore.KEY_HIDE_IDLE_CAMERA_CUTOUT, SettingsStore.DEFAULT_HIDE_IDLE_CAMERA_CUTOUT);
+        root.addView(activity.buildSectionCard("摄像头挖孔", "", camera), PageViewUtils.matchWrap());
         LinearLayout tint = new LinearLayout(activity);
         tint.setOrientation(LinearLayout.VERTICAL);
         activity.addSwitchRow(tint, "启用图标颜色设置", "关闭后跟随系统，保留各界面配置。",
