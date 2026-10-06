@@ -30,6 +30,7 @@ final class AssistantWindowSession {
     final WindowManager.LayoutParams originalAttrs = new WindowManager.LayoutParams();
     final Object originalWindowManager, originalToken, originalAppName, originalBackgroundState;
     final AssistantWindowBackground background;
+    final AssistantTitleColor titleColor;
     final AssistantPanelMotion motion;
     final boolean dark;
     final int originalVisibility, originalSystemUi;
@@ -80,6 +81,7 @@ final class AssistantWindowSession {
         motion = new AssistantPanelMotion((View) panel, slidingContent, fromLeft);
         background = new AssistantWindowBackground(slidingContent,
                 windowContext.getResources().getDisplayMetrics().density);
+        titleColor = new AssistantTitleColor(decor);
     }
 
     void attach() throws ReflectiveOperationException {
@@ -103,6 +105,7 @@ final class AssistantWindowSession {
         decor.setVisibility(View.VISIBLE);
         currentManager().addView(decor, window.getAttributes());
         added.setBoolean(component, true);
+        titleColor.apply();
         lifecycleChanged = true;
         if ("CREATED".equals(restoreLifecycle)) start.invoke(component);
         if (!"RESUMED".equals(restoreLifecycle)) resume.invoke(component);
@@ -136,6 +139,7 @@ final class AssistantWindowSession {
     void restore(boolean reattach) throws ReflectiveOperationException {
         if (restoring) return;
         restoring = true;
+        titleColor.restore();
         if (!moved) return;
         try {
             try { motion.dispose(); } catch (Throwable t) { AssistantHooks.warn("Resetting assistant motion", t); }

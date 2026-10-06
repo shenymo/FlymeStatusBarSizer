@@ -77,6 +77,12 @@ public final class StatusBarTintHooks {
 
     private StatusBarTintHooks() {}
 
+    /** Effective foreground, including scene overrides and in-progress tint animations. */
+    public static Integer currentIconTint() {
+        Object tint = field(dispatcher, "mIconTint");
+        return tint instanceof Integer ? (Integer) tint : null;
+    }
+
     public static void installSystemUi(FlymeStatusBarSizer module, ClassLoader loader) {
         try {
             Class<?> type = Class.forName(PHONE + "DarkIconDispatcherImpl", false, loader);
@@ -97,6 +103,17 @@ public final class StatusBarTintHooks {
         } catch (Throwable error) {
             Log.w(TAG, "Dispatcher unavailable", error);
         }
+        hook(module, loader, PHONE + "DarkIconDispatcherImpl", "applyIconTint", chain -> {
+            Object result = chain.proceed();
+            if (chain.getThisObject() == dispatcher) {
+                Object tint = field(dispatcher, "mIconTint");
+                if (tint instanceof Integer) {
+                    com.example.flymestatusbarsizer.feature.assistant.AssistantHooks
+                            .onStatusBarTintChanged((Integer) tint);
+                }
+            }
+            return result;
+        });
         hook(module, loader, PHONE + "DarkIconDispatcherImpl", "applyDarkIntensity", chain -> {
             nativeIntensity = (Float) chain.getArg(0);
             // Track the real status bar darkness even when the scene tint feature is off, so that
@@ -130,6 +147,8 @@ public final class StatusBarTintHooks {
             return null;
         });
         // Compiled animation callers must enter the hooks instead of an inlined color calculation.
+        deoptimize(module, loader, PHONE + "DarkIconDispatcherImpl",
+                "applyDarkIntensity", "setIconsDarkArea");
         deoptimize(module, loader, PHONE + "LightBarTransitionsController",
                 "dispatchDark", "setIconTintInternal", "lambda$animateIconTint$0");
         deoptimize(module, loader, PHONE + "LightBarControllerImpl", "updateStatus");

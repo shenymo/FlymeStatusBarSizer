@@ -21,6 +21,7 @@ import com.example.flymestatusbarsizer.config.ModuleConfig;
 /** SystemUI owns this connection; the assistant never needs to start HOME. */
 final class AssistantClient {
     private static AssistantClient instance;
+    private static volatile Integer statusBarTint;
     private final Context context;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Runnable reconnect = this::connect;
@@ -49,6 +50,19 @@ final class AssistantClient {
         return instance;
     }
 
+    static synchronized void statusBarTintChanged(int color) {
+        if (statusBarTint != null && statusBarTint == color) return;
+        statusBarTint = color;
+        AssistantClient current = instance;
+        if (current == null) return;
+        current.main.post(() -> {
+            try {
+                AssistantProtocol.send(current.remote, AssistantProtocol.DESCRIPTOR,
+                        AssistantProtocol.TITLE_TINT, p -> p.writeInt(color));
+            } catch (RemoteException e) { AssistantHooks.warn("Cannot sync assistant title tint", e); }
+        });
+    }
+
     static synchronized void refresh() {
         if (instance != null) instance.main.post(() -> {
             if (!enabled(instance.context)) instance.disconnect();
@@ -73,7 +87,14 @@ final class AssistantClient {
             success = onSuccess;
             try {
                 if (!AssistantProtocol.send(remote, AssistantProtocol.DESCRIPTOR, AssistantProtocol.SHOW,
-                        data -> { data.writeLong(id); data.writeInt(fromLeft ? 0 : 1); })) failed(id);
+                        data -> {
+                            data.writeLong(id);
+                            data.writeInt(fromLeft ? 0 : 1);
+                            Integer tint = com.example.flymestatusbarsizer.feature.statusbar
+                                    .StatusBarTintHooks.currentIconTint();
+                            if (tint == null) tint = statusBarTint;
+                            if (tint != null) data.writeInt(tint);
+                        })) failed(id);
             } catch (Throwable t) { AssistantHooks.warn("Assistant request failed", t); failed(id); }
             main.postDelayed(() -> { if (request == id && success != null) failed(id); }, 3000);
         });

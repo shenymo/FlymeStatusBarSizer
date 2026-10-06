@@ -66,7 +66,7 @@ final class AssistantController implements ComponentCallbacks {
                     throws RemoteException {
                 if (code == INTERFACE_TRANSACTION) return super.onTransact(code, data, reply, flags);
                 if (!AssistantProtocol.isSystemUi(context)) return false;
-                if (code < AssistantProtocol.REGISTER || code > AssistantProtocol.HIDE)
+                if (code < AssistantProtocol.REGISTER || code > AssistantProtocol.TITLE_TINT)
                     return super.onTransact(code, data, reply, flags);
                 data.enforceInterface(AssistantProtocol.DESCRIPTOR);
                 if (code == AssistantProtocol.REGISTER) {
@@ -75,7 +75,14 @@ final class AssistantController implements ComponentCallbacks {
                 } else if (code == AssistantProtocol.SHOW) {
                     long id = data.readLong();
                     boolean fromLeft = data.dataAvail() < 4 || data.readInt() != 1;
-                    main.post(() -> show(id, fromLeft));
+                    Integer tint = data.dataAvail() >= 4 ? data.readInt() : null;
+                    main.post(() -> show(id, fromLeft, tint));
+                } else if (code == AssistantProtocol.TITLE_TINT) {
+                    int tint = data.readInt();
+                    main.post(() -> {
+                        AssistantWindowSession current = session;
+                        if (current != null && !current.restoring) current.titleColor.setTint(tint);
+                    });
                 } else main.post(() -> restore(true));
                 return true;
             }
@@ -178,7 +185,7 @@ final class AssistantController implements ComponentCallbacks {
         } catch (Throwable t) { restore(true); }
     }
 
-    private void show(long id, boolean fromLeft) {
+    private void show(long id, boolean fromLeft, Integer tint) {
         IBinder requester = client;
         if (requester == null) return;
         if (!ready()) { result(requester, id, false); publishState(); return; }
@@ -192,6 +199,7 @@ final class AssistantController implements ComponentCallbacks {
                 throw new IllegalStateException("Launcher component is not active: " + lifecycle);
             installCallbackHooks(c);
             AssistantWindowSession current = new AssistantWindowSession(c, fromLeft);
+            current.titleColor.setTint(tint);
             session = current;
             publishState();
             current.attach();

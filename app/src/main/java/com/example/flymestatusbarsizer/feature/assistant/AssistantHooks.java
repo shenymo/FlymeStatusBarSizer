@@ -17,6 +17,10 @@ public final class AssistantHooks {
     private static boolean installed;
     private AssistantHooks() { }
 
+    public static void onStatusBarTintChanged(int color) {
+        AssistantClient.statusBarTintChanged(color);
+    }
+
     public static void installSystemUi(FlymeStatusBarSizer module, ClassLoader loader) {
         try { AssistantGestureHooks.install(module, loader); }
         catch (Throwable t) { warn("Cannot install assistant edge gesture", t); }

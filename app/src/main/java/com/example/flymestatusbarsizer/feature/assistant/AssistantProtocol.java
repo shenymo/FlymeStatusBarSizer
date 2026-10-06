@@ -15,6 +15,7 @@ final class AssistantProtocol {
     static final int REGISTER = IBinder.FIRST_CALL_TRANSACTION;
     static final int SHOW = REGISTER + 1;
     static final int HIDE = REGISTER + 2;
+    static final int TITLE_TINT = REGISTER + 3;
     static final int STATE = IBinder.FIRST_CALL_TRANSACTION;
     static final int RESULT = STATE + 1;
 
