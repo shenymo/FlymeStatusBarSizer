@@ -6416,6 +6416,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             registerConfigurationCallbacks(context);
             registerDefaultNetworkCallback(context);
             CONFIG_REFRESH_REGISTERED = true;
+            NotificationHooks.syncAnipBundle();
             scheduleInitialRuntimeRefreshes();
         }
     }
@@ -6532,6 +6533,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static void scheduleConfigChangedRefresh() {
+        NotificationHooks.syncAnipBundle();
         NotificationHooks.clearRenderedNotificationAppIconCache();
         // The artwork for a package can switch between ANIP and the desktop icon, so the icons already
         // on screen have to be rebuilt. Clearing the cache alone is not enough: a view keeps the

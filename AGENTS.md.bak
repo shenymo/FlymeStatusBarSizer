@@ -1,0 +1,10 @@
+# SystemUI 参考文件
+
+`com.android.systemui/` 是从 MEIZU 20 Pro（Android 16）提取的 SystemUI 参考资料，已加入 `.gitignore`，不属于项目源码。
+
+- `jadx/sources/`：优先用于检索和阅读的 Java 反编译源码，来自已核对的 5 个 SystemUI 内存 DEX。
+- `apktool/`：APK 拆包结果，包含 Manifest、资源、assets 和 smali；Java 还原不完整时对照 smali。
+- `apk/SystemUI.apk`：原始 APK；`dex/`：Frida 提取的 86 个 DEX，包含依赖及异常扫描结果。
+- `framework/`：同机系统资源及 Apktool 缓存；`README.md`、`logs/`：详细记录、DEX 对应关系和验证报告。
+
+JADX 最终报告 283 个错误，反编译代码不保证准确或可编译。常规项目搜索应排除此目录，仅分析 SystemUI 时定向检索；不要提交提取产物。

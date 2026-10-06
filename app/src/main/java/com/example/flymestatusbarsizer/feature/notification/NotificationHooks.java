@@ -2,7 +2,9 @@ package com.example.flymestatusbarsizer.feature.notification;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.config.SettingsStore;
+import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.feature.notification.anip.AnipBundleStore;
+import com.example.flymestatusbarsizer.feature.notification.anip.AnipBundleSync;
 import com.example.flymestatusbarsizer.feature.notification.anip.AnipIconLibrary;
 import com.example.flymestatusbarsizer.feature.notification.anip.AnipIconMode;
 import com.example.flymestatusbarsizer.feature.notification.anip.AnipIconRule;
@@ -287,6 +289,26 @@ public final class NotificationHooks {
             NOTIFICATION_APP_ICON_LAST_SIGNATURES.clear();
             NOTIFICATION_APP_ICON_LAST_DRAWABLES.clear();
         }
+    }
+
+    public static void syncAnipBundle() {
+        Context context = FlymeStatusBarSizer.getSystemUiContextCompat();
+        if (context != null && SYSTEM_UI.equals(context.getPackageName())) {
+            syncAnipBundle(context, ModuleConfig.load(context).anipIconEnabled);
+        }
+    }
+
+    private static void syncAnipBundle(Context context, boolean allowFirstDownload) {
+        AnipBundleSync.get().request(context, ModuleConfig.getRemotePreferences(), allowFirstDownload,
+                NotificationHooks::onAnipBundleChanged);
+    }
+
+    public static void onAnipBundleChanged() {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            AnipIconLibrary.get().invalidate();
+            // Includes views still showing desktop artwork after the first download.
+            refreshNotificationAppIconsForUiModeChange();
+        });
     }
 
     private static void hookNotificationAppIcons(FlymeStatusBarSizer module, ClassLoader loader) {
@@ -2029,10 +2051,6 @@ public final class NotificationHooks {
             // process reads its own copy; a process that cannot see one simply leaves the desktop icon.
             java.io.File bundleDirectory = resolveAnipBundleDirectory(context);
             if (bundleDirectory == null) {
-                // Nothing is shipped in the APK, so the first use has to fetch the catalog. Kicked off
-                // on a worker; this icon keeps the desktop artwork until it is ready.
-                com.example.flymestatusbarsizer.feature.notification.anip.AnipIconUpdater
-                        .ensureInstalledAsync(context);
                 logAnipProbe(binding.packageName, "no local bundle", config);
                 return null;
             }
@@ -2105,8 +2123,7 @@ public final class NotificationHooks {
     }
 
     /**
-     * Resolves the directory of a bundle downloaded by the settings app, or {@code null} when none is
-     * installed or this process cannot read it.
+     * Resolves this process's downloaded bundle while reconciling the settings app's target.
      *
      * <p>Looked up once per process: the check touches the filesystem and this runs on the notification
      * icon update path. {@link #clearRenderedNotificationAppIconCache()} runs on every configuration
@@ -2117,6 +2134,8 @@ public final class NotificationHooks {
         if (context == null) {
             return null;
         }
+        syncAnipBundle(context, true);
+        if (AnipBundleSync.isRemoved(ModuleConfig.getRemotePreferences())) return null;
         synchronized (ANIP_BUNDLE_LOCK) {
             if (ANIP_BUNDLE_RESOLVED) {
                 return ANIP_BUNDLE_DIRECTORY;
@@ -2224,6 +2243,7 @@ public final class NotificationHooks {
         if (config == null || !config.enabled || !config.anipIconEnabled) {
             return false;
         }
+        if (AnipBundleSync.isRemoved(ModuleConfig.getRemotePreferences())) return false;
         if (TextUtils.isEmpty(packageName)) {
             return false;
         }

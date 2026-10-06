@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer.feature.notification.anip;
 
 import android.util.JsonReader;
 import android.util.JsonToken;
+import android.util.JsonWriter;
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -76,6 +77,25 @@ public final class AnipReleaseClient {
             return null;
         }
         return parse(new java.io.StringReader(json));
+    }
+
+    /** Keeps the exact verified release and its resolved URL for the other process to download. */
+    static String encodeManifest(ReleaseInfo release, String downloadUrl) {
+        java.io.StringWriter output = new java.io.StringWriter();
+        try (JsonWriter writer = new JsonWriter(output)) {
+            writer.beginObject();
+            writer.name("schemaVersion").value(SCHEMA_VERSION);
+            writer.name("tag").value(release.tag);
+            writer.name("timestamp").value(release.timestamp);
+            writer.name("assetName").value(release.assetName);
+            writer.name("size").value(release.size);
+            writer.name("sha256").value(release.sha256);
+            writer.name("downloadUrl").value(downloadUrl);
+            writer.endObject();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+        return output.toString();
     }
 
     /** Parses a release manifest from an arbitrary reader. */

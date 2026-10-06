@@ -9,9 +9,8 @@ import java.io.File;
 /**
  * Ties the release check, the download and the local bundle together.
  *
- * <p>Intended to be driven from the settings app on a background thread. Everything degrades to the
- * icons packaged in the APK: an unreachable host, an invalid manifest or an unreadable download all
- * leave the previous catalog in place rather than blanking the notification icons.
+ * <p>Driven from the settings app on a background thread. A failed download keeps the previous
+ * catalog. Successful installs publish an exact release for SystemUI to reconcile independently.
  */
 public final class AnipIconUpdater {
     private AnipIconUpdater() {
@@ -73,6 +72,13 @@ public final class AnipIconUpdater {
             return new CheckResult(false, false, installed, null,
                     "无法获取图标库更新信息，请检查网络或更换更新来源");
         }
+        // Repair synchronization for bundles installed before the desired-state protocol existed.
+        synchronized (LOCAL_UPDATE_LOCK) {
+            AnipBundleStore.Installed local = AnipBundleStore.resolve(context);
+            if (local != null && local.tag.equals(release.tag) && local.timestamp == release.timestamp) {
+                publishTarget(context, releaseTarget(context, release));
+            }
+        }
         boolean newer = AnipReleaseClient.isNewer(release, installed);
         String message = newer
                 ? "发现新版本 " + release.tag
@@ -80,43 +86,30 @@ public final class AnipIconUpdater {
         return new CheckResult(true, newer, installed, release, message);
     }
 
-    /** Guards against two threads starting the first-use download at the same time. */
-    private static final java.util.concurrent.atomic.AtomicBoolean AUTO_DOWNLOAD_STARTED =
-            new java.util.concurrent.atomic.AtomicBoolean();
+    private static final Object LOCAL_UPDATE_LOCK = new Object();
+    private static long localUpdateGeneration;
 
-    /**
-     * Fetches and installs the bundle on a background thread, once per process.
-     *
-     * <p>Nothing is shipped in the APK, so the first use of the feature has to fetch the catalog.
-     * Called from the hook, which runs on SystemUI's main thread, so the work is handed to a worker
-     * and the caller keeps its desktop-icon behaviour until the catalog appears.
-     *
-     * @param context a context from the calling process; each process keeps its own copy.
-     */
-    public static void ensureInstalledAsync(Context context) {
-        if (context == null || AnipBundleStore.resolve(context) != null) {
-            return;
+    private static String releaseTarget(Context context, AnipReleaseClient.ReleaseInfo release) {
+        String url = AnipRemoteSource.bundleUrl(sourceType(context), repository(context),
+                baseUrl(context), release.tag, release.assetName, release.downloadUrl);
+        return AnipReleaseClient.encodeManifest(release, url);
+    }
+
+    /** Publish only after the matching files exist; local installation metadata stays private. */
+    private static void publishTarget(Context context, String target) {
+        SettingsStore.prefs(context).edit()
+                .putString(SettingsStore.KEY_ANIP_BUNDLE_TARGET, target).apply();
+        SettingsStore.notifyChanged(context);
+    }
+
+    public static void removeDownloadedBundle(Context context) {
+        if (context == null) return;
+        synchronized (LOCAL_UPDATE_LOCK) {
+            localUpdateGeneration++;
+            AnipBundleStore.clear(context);
+            publishTarget(context, AnipBundleSync.REMOVED);
+            reloadLibrary(context);
         }
-        if (!AUTO_DOWNLOAD_STARTED.compareAndSet(false, true)) {
-            return;
-        }
-        final Context appContext = context.getApplicationContext() != null
-                ? context.getApplicationContext() : context;
-        Thread worker = new Thread(() -> {
-            try {
-                CheckResult result = check(appContext);
-                if (result.success && result.updateAvailable && result.release != null) {
-                    download(appContext, result.release);
-                }
-            } catch (Throwable ignored) {
-                // Leaving the catalog empty is safe: icons fall back to the desktop icon.
-            } finally {
-                // Let a later attempt retry if this one failed.
-                AUTO_DOWNLOAD_STARTED.set(false);
-            }
-        }, "anip-first-download");
-        worker.setDaemon(true);
-        worker.start();
     }
 
     /**
@@ -128,13 +121,26 @@ public final class AnipIconUpdater {
         if (context == null || release == null) {
             return false;
         }
-        File staging = new File(context.getCacheDir(), "anip-download.zip");
-        //noinspection ResultOfMethodCallIgnored
-        staging.delete();
+        String previousTarget;
+        long generation;
+        synchronized (LOCAL_UPDATE_LOCK) {
+            previousTarget = AnipBundleSync.target(SettingsStore.prefs(context));
+            generation = localUpdateGeneration;
+        }
+        String target = releaseTarget(context, release);
+        // Pin the source as well as the version while the download is in progress.
+        AnipReleaseClient.ReleaseInfo pinned = AnipReleaseClient.parseManifest(target);
+        if (pinned == null) return false;
+        File staging;
+        try {
+            staging = File.createTempFile("anip-download-", ".zip", context.getCacheDir());
+        } catch (java.io.IOException e) {
+            return false;
+        }
         boolean downloaded;
         try {
             downloaded = AnipReleaseClient.download(
-                    sourceType(context), repository(context), baseUrl(context), release, staging);
+                    sourceType(context), repository(context), baseUrl(context), pinned, staging);
         } catch (Throwable ignored) {
             downloaded = false;
         }
@@ -143,16 +149,21 @@ public final class AnipIconUpdater {
             staging.delete();
             return false;
         }
-        AnipBundleStore.Installed installed = AnipBundleStore.install(
-                context, staging, release.tag, release.timestamp);
-        //noinspection ResultOfMethodCallIgnored
-        staging.delete();
-        if (installed != null) {
-            // Raises the cross-process config notification, which is what makes every hooked process
-            // drop its cached bundle path and re-read the new catalog. No new IPC mechanism is needed.
-            SettingsStore.notifyChanged(context);
+        try {
+            synchronized (LOCAL_UPDATE_LOCK) {
+                if (generation != localUpdateGeneration
+                        || !previousTarget.equals(AnipBundleSync.target(SettingsStore.prefs(context)))) {
+                    return false;
+                }
+                AnipBundleStore.Installed installed = AnipBundleStore.install(
+                        context, staging, release.tag, release.timestamp);
+                if (installed == null) return false;
+                publishTarget(context, target);
+                return true;
+            }
+        } finally {
+            staging.delete();
         }
-        return installed != null;
     }
 
     /**

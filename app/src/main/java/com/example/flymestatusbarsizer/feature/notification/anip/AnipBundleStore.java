@@ -154,6 +154,7 @@ public final class AnipBundleStore {
         }
         try {
             prefs(context).edit()
+                    .remove(SettingsStore.KEY_ANIP_LOCAL_BUNDLE_TARGET)
                     .putString(SettingsStore.KEY_ANIP_INSTALLED_TAG, tag)
                     .putLong(SettingsStore.KEY_ANIP_INSTALLED_TIMESTAMP, timestamp)
                     .apply();
@@ -175,6 +176,7 @@ public final class AnipBundleStore {
             prefs(context).edit()
                     .remove(SettingsStore.KEY_ANIP_INSTALLED_TAG)
                     .remove(SettingsStore.KEY_ANIP_INSTALLED_TIMESTAMP)
+                    .remove(SettingsStore.KEY_ANIP_LOCAL_BUNDLE_TARGET)
                     .apply();
         } catch (Throwable ignored) {
         }

@@ -196,6 +196,10 @@ public final class SettingsStore {
     public static final String KEY_ANIP_INSTALLED_TAG = "anip_installed_tag";
     /** Publish timestamp of the downloaded bundle, used to detect a newer release. */
     public static final String KEY_ANIP_INSTALLED_TIMESTAMP = "anip_installed_timestamp";
+    /** Desired bundle shared with SystemUI: a release manifest, "removed", or empty for first use. */
+    public static final String KEY_ANIP_BUNDLE_TARGET = "anip_bundle_target";
+    /** Last target actually installed in this process; never synchronized to another process. */
+    public static final String KEY_ANIP_LOCAL_BUNDLE_TARGET = "anip_local_bundle_target";
     public static final String KEY_NOTIFICATION_APP_ICON_SIZE_DP = "notification_app_icon_size_dp";
     public static final String KEY_NOTIFICATION_APP_ICON_PADDING_DP = "notification_app_icon_padding_dp";
     public static final String KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED =
@@ -783,6 +787,7 @@ public final class SettingsStore {
     });
 
     public static final String[] STRING_KEYS = {
+            KEY_ANIP_BUNDLE_TARGET,
             KEY_SHARE_TARGET_PROFILES,
             KEY_SHARE_TARGET_ORDER,
             KEY_SHARE_HIDDEN_TARGETS,

@@ -184,8 +184,7 @@ public final class AnipIconLibraryEditor {
     /**
      * Update controls: shows where the catalog came from and lets the user pull a newer bundle.
      *
-     * <p>The icons shipped inside the APK are already usable, so this is an optional refresh rather
-     * than a required first-run download.
+     * <p>The catalog is downloaded at runtime and synchronized with SystemUI.
      */
     private View buildUpdateRow() {
         LinearLayout box = new LinearLayout(activity);
@@ -305,16 +304,12 @@ public final class AnipIconLibraryEditor {
 
     /** Removes the downloaded bundle; without it the notification hook keeps the desktop icon. */
     private void removeDownloadedBundle() {
-        if (AnipBundleStore.resolve(activity) == null) {
-            activity.showToast("尚未下载图标库");
-            return;
-        }
+        // SystemUI may have completed its first-use download without a settings-app copy.
         new AlertDialog.Builder(activity)
                 .setTitle("删除已下载的图标库")
                 .setMessage("删除后通知图标会退回应用图标，直到再次下载。")
                 .setPositiveButton("删除", (dialog, which) -> {
-                    AnipBundleStore.clear(activity);
-                    AnipIconUpdater.reloadLibrary(activity);
+                    AnipIconUpdater.removeDownloadedBundle(activity);
                     rules = new ArrayList<>(AnipIconLibrary.get().getRules());
                     refreshUpdateStatus();
                     applyQuery(query);
