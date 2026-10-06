@@ -311,8 +311,9 @@ public final class RightIconGroupPreviewView extends View {
         float anchorRight = stripRect.right - dp(14);
 
         int iconTop = Math.round(centerY - iconSize / 2f);
-        int batteryLeft = Math.round(anchorRight - iconSize);
-        batteryRect.set(batteryLeft, iconTop, batteryLeft + iconSize, iconTop + iconSize);
+        int batteryWidth = resolveBatteryWidth(iconSize);
+        int batteryLeft = Math.round(anchorRight - batteryWidth);
+        batteryRect.set(batteryLeft, iconTop, batteryLeft + batteryWidth, iconTop + iconSize);
         drawBattery(canvas, batteryRect, PREVIEW_BATTERY_LEVEL, false, false,
                 previewTintColor, resolveBatteryTextColor(previewTintColor), batteryLevelTextEnabled);
 
@@ -350,6 +351,18 @@ public final class RightIconGroupPreviewView extends View {
         wifiRect.set(wifiLeft, iconTop, wifiLeft + wifiWidth, iconTop + iconSize);
         wifiRenderer.draw(canvas, wifiRect, previewTintColor, 255, null,
                 4, false, 0, offsetPx(wifiYOffsetTenthDp));
+    }
+
+    private int resolveBatteryWidth(int iconSize) {
+        if (batteryStyle == SettingsStore.BATTERY_STYLE_FLYME_CAPSULE) {
+            return FlymeCapsuleBatteryPainter.getRequiredWidth(iconSize, false,
+                    batteryBodyWidthPercent, batteryCapWidthPercent);
+        }
+        if (batteryStyle == SettingsStore.BATTERY_STYLE_ONEUI) {
+            return OneUiBatteryPainter.getRequiredWidth(iconSize, false, batteryBodyWidthPercent);
+        }
+        return IosBatteryPainter.getRequiredWidth(iconSize, false,
+                batteryBodyWidthPercent, batteryCapWidthPercent);
     }
 
     private void drawPreviewNotes(Canvas canvas) {

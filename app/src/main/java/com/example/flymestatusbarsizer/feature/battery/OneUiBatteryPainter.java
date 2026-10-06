@@ -73,7 +73,9 @@ public final class OneUiBatteryPainter {
         RectF visualBounds = VISUAL_CANVAS.rect;
         float visualWidth = visualBounds.width() * bodyWidthPercent / 100f;
         float visualHeight = visualBounds.height() * bodyHeightPercent / 100f;
-        float left = visualBounds.centerX() - visualWidth / 2f;
+        // The view reserves extra width on the right. Keep wider bodies inside that
+        // space instead of centering them over the preceding signal icon.
+        float left = visualBounds.left + Math.max(0f, (visualBounds.width() - visualWidth) / 2f);
         float top = visualBounds.centerY() - visualHeight / 2f;
         float bottom = top + visualHeight;
         float radius = Math.min(visualHeight / 2f,
