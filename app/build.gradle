@@ -46,7 +46,7 @@ signingConfigs {
     // 2. 配置构建类型，将签名应用到 release
     buildTypes {
         release {
-            minifyEnabled true
+            minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             
             // 引用上方定义的 signingConfigs.release
