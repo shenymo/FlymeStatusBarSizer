@@ -32,6 +32,7 @@ final class AssistantWindowSession {
     final AssistantWindowBackground background;
     final AssistantTitleColor titleColor;
     final AssistantPanelMotion motion;
+    final AssistantSurfaceHost surfaceHost;
     final boolean dark;
     final int originalVisibility, originalSystemUi;
     final Field componentManager, added, windowManager, appToken, appName;
@@ -82,10 +83,12 @@ final class AssistantWindowSession {
         background = new AssistantWindowBackground(slidingContent,
                 windowContext.getResources().getDisplayMetrics().density);
         titleColor = new AssistantTitleColor(decor);
+        surfaceHost = AssistantSurfaceHost.create(component.getClass().getClassLoader());
     }
 
     void attach() throws ReflectiveOperationException {
         moved = true;
+        surfaceHost.prepareForHostChange(decor);
         originalManager.removeViewImmediate(decor);
         added.setBoolean(component, false);
         WindowManager.LayoutParams attrs = new WindowManager.LayoutParams();
@@ -146,7 +149,10 @@ final class AssistantWindowSession {
             // onPanelClosed can be called again here; the owner ignores it while restoring.
             try { close.invoke(component, 0); } catch (Throwable t) { AssistantHooks.warn("Closing assistant panel", t); }
             if (lifecycleChanged) { pause.invoke(component); stop.invoke(component); }
-            if (decor.isAttachedToWindow()) currentManager().removeViewImmediate(decor);
+            if (decor.isAttachedToWindow()) {
+                surfaceHost.prepareForHostChange(decor);
+                currentManager().removeViewImmediate(decor);
+            }
             added.setBoolean(component, false);
             windowManager.set(window, originalWindowManager);
             appToken.set(window, originalToken);

@@ -2,7 +2,6 @@ package com.example.flymestatusbarsizer.feature.assistant;
 
 import android.app.Dialog;
 import android.graphics.Color;
-import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
@@ -10,6 +9,7 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Looper;
 import android.view.View;
+import android.view.SurfaceControl;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
@@ -28,12 +28,14 @@ import static org.junit.Assert.*;
 import static org.robolectric.Shadows.shadowOf;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 28, manifest = Config.NONE)
+@Config(sdk = 28, manifest = Config.NONE, shadows = {
+        AssistantBlurSurfaceTest.BuilderShadow.class, AssistantBlurSurfaceTest.TransactionShadow.class})
 @ConscryptMode(ConscryptMode.Mode.OFF)
 public class AssistantWindowBackgroundTest {
     private String previousWindowVisibility;
 
     @Before public void showTestWindows() {
+        AssistantBlurSurfaceTest.states.clear();
         // Legacy Robolectric marks windows GONE by default, which hides their backgrounds.
         previousWindowVisibility = System.getProperty("robolectric.areWindowsMarkedVisible");
         System.setProperty("robolectric.areWindowsMarkedVisible", "true");
@@ -126,7 +128,7 @@ public class AssistantWindowBackgroundTest {
     }
 
     @Test @Config(sdk = 31)
-    public void nativeBlurRegistersOnAttachedRootWithoutTintAndIsReleasedOnDetach() throws Exception {
+    public void nativeBlurUsesANewEffectSurfaceForEachWindowAndIsReleasedOnDetach() throws Exception {
         Dialog dialog = new Dialog(RuntimeEnvironment.getApplication());
         FrameLayout host = new FrameLayout(dialog.getContext());
         dialog.setContentView(host);
@@ -138,6 +140,8 @@ public class AssistantWindowBackgroundTest {
         nextDialog.getWindow().setLayout(400, 600);
         nextDialog.show();
         shadowOf(Looper.getMainLooper()).idle();
+        SurfaceControl firstWindow = setWindowSurface(host);
+        SurfaceControl nextWindow = setWindowSurface(nextHost);
         host.layout(0, 0, 200, 300);
         nextHost.layout(0, 0, 200, 300);
         FrameLayout decor = new FrameLayout(dialog.getContext());
@@ -155,45 +159,39 @@ public class AssistantWindowBackgroundTest {
         assertTrue(decor.getBackground() instanceof ColorDrawable);
         host.addView(decor);
         decor.getViewTreeObserver().dispatchOnPreDraw();
-        // Check the real framework's region registration without asking the legacy software
-        // test canvas to draw a hardware RenderNode. SurfaceFlinger output needs a device.
         assertTrue(decor.isAttachedToWindow());
-        Drawable first = decor.getBackground();
-        assertEquals("com.android.internal.graphics.drawable.BackgroundBlurDrawable", first.getClass().getName());
-        Object root = AssistantReflection.call(decor, "getViewRootImpl");
-        Object aggregator = AssistantReflection.get(first, "mAggregator");
-        assertSame(root, AssistantReflection.get(aggregator, "mViewRoot"));
-        assertEquals(first + ", shown=" + decor.isShown() + ", windowVisibility=" + decor.getWindowVisibility(),
-                true, AssistantReflection.call(aggregator, "hasRegions"));
-        assertEquals(120, AssistantReflection.get(first, "mBlurRadius"));
-        assertEquals(1f, (Float) AssistantReflection.get(first, "mAlpha"), 0);
-        assertEquals(Color.TRANSPARENT, ((Paint) AssistantReflection.get(first, "mPaint")).getColor());
+        AssistantBlurSurfaceTest.State first = blurState(background);
+        assertSame(firstWindow, first.parent);
+        assertEquals(120, first.radius);
+        assertEquals(1f, first.alpha, 0);
+        assertTrue(first.visible);
+        assertEquals("The window background must not submit blur regions", ColorDrawable.class,
+                decor.getBackground().getClass());
+        assertEquals(Color.TRANSPARENT, ((ColorDrawable) decor.getBackground()).getColor());
         assertSame(cardBackground, card.getBackground());
         assertEquals("Assistant card", card.getText().toString());
 
         host.removeView(decor);
-        assertEquals(false, AssistantReflection.call(aggregator, "hasRegions"));
-        assertNull(first.getCallback());
+        assertFalse(first.visible);
+        assertNull(first.parent);
         nextHost.addView(decor);
-        Drawable second = decor.getBackground();
-        assertNotSame(first, second);
-        assertEquals(first.getClass(), second.getClass());
-        Object nextAggregator = AssistantReflection.get(second, "mAggregator");
-        assertNotSame(aggregator, nextAggregator);
-        assertSame(AssistantReflection.call(decor, "getViewRootImpl"),
-                AssistantReflection.get(nextAggregator, "mViewRoot"));
-        assertEquals(true, AssistantReflection.call(nextAggregator, "hasRegions"));
+        decor.getViewTreeObserver().dispatchOnPreDraw();
+        AssistantBlurSurfaceTest.State second = blurState(background);
+        assertNotSame(first.surface, second.surface);
+        assertSame(nextWindow, second.parent);
+        assertTrue(second.visible);
 
         background.restore();
-        assertEquals(false, AssistantReflection.call(aggregator, "hasRegions"));
-        assertEquals(false, AssistantReflection.call(nextAggregator, "hasRegions"));
+        assertFalse(first.visible);
+        assertFalse(second.visible);
+        assertNull(second.parent);
         assertSame(original, decor.getBackground());
-        assertNull(second.getCallback());
         // A later desktop attachment must not recreate the global blur.
         nextHost.removeView(decor);
         host.addView(decor);
         assertSame(original, decor.getBackground());
-        assertEquals(false, AssistantReflection.call(aggregator, "hasRegions"));
+        assertFalse(second.visible);
+        assertNull(AssistantReflection.get(background, "nativeBlur"));
         nextDialog.dismiss();
         dialog.dismiss();
     }
@@ -208,6 +206,7 @@ public class AssistantWindowBackgroundTest {
         dialog.getWindow().setLayout(400, 600);
         dialog.show();
         shadowOf(Looper.getMainLooper()).idle();
+        setWindowSurface(panel);
         panel.layout(0, 0, 200, 300);
         FrameLayout content = new FrameLayout(dialog.getContext());
         Drawable original = new ColorDrawable(Color.TRANSPARENT);
@@ -217,17 +216,17 @@ public class AssistantWindowBackgroundTest {
         AssistantWindowBackground background = new AssistantWindowBackground(content, 3);
         background.apply();
         panel.addView(content);
-        Drawable blur = content.getBackground();
-        Object aggregator = AssistantReflection.get(blur, "mAggregator");
+        AssistantBlurSurfaceTest.State blur = blurState(background);
         content.getViewTreeObserver().dispatchOnPreDraw();
-        assertEquals(false, AssistantReflection.call(aggregator, "hasRegions"));
+        assertFalse(blur.visible);
 
         content.setTranslationX(200);
         content.getViewTreeObserver().dispatchOnPreDraw();
-        assertSame(content, blur.getCallback());
         assertSame(stationaryBackground, panel.getBackground());
-        assertEquals(1f, (Float) AssistantReflection.get(blur, "mAlpha"), 0);
-        assertEquals(true, AssistantReflection.call(aggregator, "hasRegions"));
+        assertEquals(1f, blur.alpha, 0);
+        assertTrue(blur.visible);
+        assertEquals(new Rect(0, 0, 200, 300), blur.crop);
+        float fullPositionX = blur.x;
 
         // Halfway through closing, only the same half of the panel remains on screen.
         Rect visible = new Rect();
@@ -237,7 +236,8 @@ public class AssistantWindowBackgroundTest {
         content.getViewTreeObserver().dispatchOnPreDraw();
         assertTrue(content.getGlobalVisibleRect(visible));
         assertEquals(100, visible.width());
-        assertEquals(102 / 255f, (Float) AssistantReflection.get(blur, "mAlpha"), 0.001f);
+        assertEquals(0.4f, blur.alpha, 0.001f);
+        assertEquals(100, blur.crop.width());
         assertEquals(0.5f, content.getAlpha(), 0);
 
         // Cancelling a close restores the same blur without a second independent animation.
@@ -245,22 +245,63 @@ public class AssistantWindowBackgroundTest {
         content.setAlpha(1);
         panel.setAlpha(1);
         content.getViewTreeObserver().dispatchOnPreDraw();
-        assertSame(blur, content.getBackground());
-        assertEquals(1f, (Float) AssistantReflection.get(blur, "mAlpha"), 0);
+        assertSame(blur, blurState(background));
+        assertEquals(1f, blur.alpha, 0);
+
+        // Right-side exit uses the clipped location as well as its width.
+        content.setTranslationX(300);
+        content.getViewTreeObserver().dispatchOnPreDraw();
+        assertEquals(100, blur.crop.width());
+        assertEquals(fullPositionX + 100, blur.x, 0);
 
         content.setTranslationX(0);
         content.getViewTreeObserver().dispatchOnPreDraw();
         assertTrue(dialog.isShowing());
         assertTrue(content.isAttachedToWindow());
-        assertEquals(0f, (Float) AssistantReflection.get(blur, "mAlpha"), 0);
-        assertEquals(false, AssistantReflection.call(aggregator, "hasRegions"));
+        assertEquals(0f, blur.alpha, 0);
+        assertFalse(blur.visible);
         background.restore();
         content.setTranslationX(200);
         content.getViewTreeObserver().dispatchOnPreDraw();
         assertSame(original, content.getBackground());
         assertSame(stationaryBackground, panel.getBackground());
-        assertEquals(false, AssistantReflection.call(aggregator, "hasRegions"));
+        assertFalse(blur.visible);
+        assertNull(blur.parent);
         dialog.dismiss();
+    }
+
+    @Test @Config(sdk = 31)
+    public void waitsForWindowSurfaceAndRebuildsAfterItsReplacement() throws Exception {
+        Dialog dialog = new Dialog(RuntimeEnvironment.getApplication());
+        FrameLayout content = new FrameLayout(dialog.getContext());
+        dialog.setContentView(content);
+        dialog.show();
+        shadowOf(Looper.getMainLooper()).idle();
+        Object root = AssistantReflection.call(content, "getViewRootImpl");
+        SurfaceControl existing = (SurfaceControl) AssistantReflection.get(root, "mSurfaceControl");
+        existing.release();
+        AssistantWindowBackground background = new AssistantWindowBackground(content, 1);
+        background.apply();
+        try {
+            content.getViewTreeObserver().dispatchOnPreDraw();
+            assertNull(AssistantReflection.get(background, "nativeBlur"));
+            SurfaceControl firstWindow = setWindowSurface(content);
+            content.getViewTreeObserver().dispatchOnPreDraw();
+            AssistantBlurSurfaceTest.State first = blurState(background);
+            assertSame(firstWindow, first.parent);
+
+            firstWindow.release();
+            SurfaceControl nextWindow = setWindowSurface(content);
+            content.getViewTreeObserver().dispatchOnPreDraw();
+            AssistantBlurSurfaceTest.State second = blurState(background);
+            assertNull(first.parent);
+            assertFalse(first.visible);
+            assertNotSame(first.surface, second.surface);
+            assertSame(nextWindow, second.parent);
+        } finally {
+            background.restore();
+            dialog.dismiss();
+        }
     }
 
     @Test @Config(sdk = 31)
@@ -278,5 +319,20 @@ public class AssistantWindowBackgroundTest {
         assertTrue(decor.isAttachedToWindow());
         assertSame(original, decor.getBackground());
         dialog.dismiss();
+    }
+
+    private static SurfaceControl setWindowSurface(View view) throws ReflectiveOperationException {
+        // Legacy software Robolectric has no compositor window surface. Supply the framework
+        // object while recording the actual builder/transaction commands sent by production.
+        SurfaceControl surface = AssistantBlurSurfaceTest.windowSurface();
+        AssistantReflection.set(AssistantReflection.call(view, "getViewRootImpl"), "mSurfaceControl", surface);
+        return surface;
+    }
+
+    private static AssistantBlurSurfaceTest.State blurState(AssistantWindowBackground background)
+            throws ReflectiveOperationException {
+        AssistantBlurSurface blur = (AssistantBlurSurface) AssistantReflection.get(background, "nativeBlur");
+        assertNotNull("An effect surface should be created after window attachment", blur);
+        return AssistantBlurSurfaceTest.state(blur);
     }
 }

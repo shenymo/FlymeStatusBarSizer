@@ -12,17 +12,18 @@ import android.view.ViewParent;
 import android.view.ViewTreeObserver;
 import android.view.WindowManager;
 
-/** Native blur moves with the sliding content, and is owned only by the temporary global host. */
+/** A compositor blur surface follows the content and belongs only to the global window. */
 final class AssistantWindowBackground implements View.OnAttachStateChangeListener,
         ViewTreeObserver.OnPreDrawListener {
     private final View content;
     private final Drawable original;
     private final ColorDrawable overlay;
     private final int blurRadius;
-    private Drawable nativeBlur;
+    private AssistantBlurSurface nativeBlur;
     private final Rect visibleBounds = new Rect();
     private ViewTreeObserver observer;
     private boolean active;
+    private boolean failed;
 
     AssistantWindowBackground(View content, float density) {
         this.content = content;
@@ -36,9 +37,10 @@ final class AssistantWindowBackground implements View.OnAttachStateChangeListene
     void apply() {
         if (active) return;
         active = true;
+        failed = false;
         content.setBackground(overlay);
-        // The global host has a new ViewRootImpl after migration. A drawable from the desktop
-        // root would submit its blur regions to the wrong window.
+        // Keep the window itself free of blur regions: those also blur the SurfaceView
+        // cards below its buffer. The separate effect surface is below the cards instead.
         content.addOnAttachStateChangeListener(this);
         if (content.isAttachedToWindow()) onViewAttachedToWindow(content);
     }
@@ -47,8 +49,7 @@ final class AssistantWindowBackground implements View.OnAttachStateChangeListene
         attrs.format = PixelFormat.TRANSLUCENT;
         attrs.flags |= WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // Flyme's native drawable submits blur regions independently of the standard
-            // blur-behind flag, which was disabled in the device's captured WindowManager state.
+            // Only our separate effect surface owns the blur, never the containing window.
             attrs.flags &= ~WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
             attrs.setBlurBehindRadius(0);
         }
@@ -59,7 +60,8 @@ final class AssistantWindowBackground implements View.OnAttachStateChangeListene
         removePreDrawListener();
         observer = content.getViewTreeObserver();
         observer.addOnPreDrawListener(this);
-        installNativeBlur();
+        failed = false;
+        onPreDraw();
     }
 
     @Override public void onViewDetachedFromWindow(View view) {
@@ -69,19 +71,32 @@ final class AssistantWindowBackground implements View.OnAttachStateChangeListene
     }
 
     @Override public boolean onPreDraw() {
-        if (active && nativeBlur != null) {
-            float alpha = content.getAlpha();
-            if (content.getVisibility() != View.VISIBLE || !content.getGlobalVisibleRect(visibleBounds)) {
-                alpha = 0;
-            } else {
-                for (ViewParent parent = content.getParent(); parent instanceof View; parent = parent.getParent()) {
-                    if (((View) parent).getVisibility() != View.VISIBLE) { alpha = 0; break; }
-                    alpha *= ((View) parent).getAlpha();
+        if (active && !failed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                if (nativeBlur != null && !nativeBlur.isValid()) releaseNativeBlur();
+                if (nativeBlur == null) {
+                    nativeBlur = AssistantBlurSurface.create(content, blurRadius);
+                    if (nativeBlur == null) return true;
+                    Log.i("FlymeAssistantGesture", "Assistant blur effect surface attached below cards: radius="
+                            + blurRadius);
                 }
+                float alpha = content.getAlpha();
+                if (content.getWindowVisibility() != View.VISIBLE
+                        || content.getVisibility() != View.VISIBLE || !content.getGlobalVisibleRect(visibleBounds)) {
+                    alpha = 0;
+                    visibleBounds.setEmpty();
+                } else {
+                    for (ViewParent parent = content.getParent(); parent instanceof View; parent = parent.getParent()) {
+                        if (((View) parent).getVisibility() != View.VISIBLE) { alpha = 0; break; }
+                        alpha *= ((View) parent).getAlpha();
+                    }
+                }
+                nativeBlur.update(visibleBounds, Math.max(0, Math.min(1, alpha)), content.getRootSurfaceControl());
+            } catch (ReflectiveOperationException | RuntimeException error) {
+                failed = true;
+                releaseNativeBlur();
+                AssistantHooks.warn("Cannot update assistant blur effect surface", error);
             }
-            // RenderNode tracks this content's sliding bounds automatically. Its blur-region
-            // alpha is separate from View alpha, so synchronize it before the same frame draws.
-            nativeBlur.setAlpha(Math.round(255 * Math.max(0, Math.min(1, alpha))));
         }
         return true;
     }
@@ -91,44 +106,12 @@ final class AssistantWindowBackground implements View.OnAttachStateChangeListene
         observer = null;
     }
 
-    private void installNativeBlur() {
-        if (nativeBlur != null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return;
-        try {
-            Object root = AssistantReflection.call(content, "getViewRootImpl");
-            if (root == null) throw new IllegalStateException("Assistant window has no ViewRootImpl");
-            Object drawable = AssistantReflection.call(root, "createBackgroundBlurDrawable");
-            if (!(drawable instanceof Drawable))
-                throw new IllegalStateException("Native assistant background blur is unavailable");
-            nativeBlur = (Drawable) drawable;
-            AssistantReflection.callInt(nativeBlur, "setBlurRadius", blurRadius);
-            AssistantReflection.method(nativeBlur.getClass(), "setCornerRadius", float.class)
-                    .invoke(nativeBlur, 0f);
-            // Color alpha controls tint; drawable alpha controls the blur itself. The first
-            // pre-draw enables the region only if the sliding content is actually visible.
-            AssistantReflection.callInt(nativeBlur, "setColor", Color.TRANSPARENT);
-            nativeBlur.setAlpha(0);
-            try {
-                // Flyme extension: place the blur below all of the assistant's cards and text.
-                AssistantReflection.callInt(nativeBlur, "setZAdjustment", -1);
-            } catch (NoSuchMethodException ignored) { /* Standard Android has no Z adjustment. */ }
-            nativeBlur.setVisible(true, false);
-            content.setBackground(nativeBlur);
-            onPreDraw();
-            Log.i("FlymeAssistantGesture", "Native assistant background blur attached: radius="
-                    + blurRadius + ", hardwareAccelerated=" + content.isHardwareAccelerated());
-        } catch (ReflectiveOperationException | RuntimeException error) {
-            releaseNativeBlur();
-            content.setBackground(overlay);
-            AssistantHooks.warn("Cannot attach native assistant background blur", error);
-        }
-    }
-
     private void releaseNativeBlur() {
         if (nativeBlur == null) return;
-        // Remove this region from the old root's aggregator before the desktop host is restored.
-        nativeBlur.setVisible(false, false);
-        nativeBlur.setCallback(null);
+        AssistantBlurSurface old = nativeBlur;
         nativeBlur = null;
+        try { old.release(); }
+        catch (RuntimeException error) { AssistantHooks.warn("Cannot release assistant blur surface", error); }
     }
 
     void restore() {
