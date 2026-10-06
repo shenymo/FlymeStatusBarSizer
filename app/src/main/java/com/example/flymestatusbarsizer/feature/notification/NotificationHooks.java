@@ -120,7 +120,7 @@ public final class NotificationHooks {
             NOTIFICATION_APP_ICON_TINT_STATES = new WeakHashMap<>();
     private static final WeakHashMap<View, NotificationAppIconViewSignature>
             NOTIFICATION_APP_ICON_LAST_SIGNATURES = new WeakHashMap<>();
-    private static final WeakHashMap<View, Drawable> NOTIFICATION_APP_ICON_LAST_DRAWABLES =
+    private static final WeakHashMap<View, RenderedNotificationAppIcon> NOTIFICATION_APP_ICON_LAST_RENDERED_ICONS =
             new WeakHashMap<>();
     private static final WeakHashMap<TextView, ColorStateList> NOTIFICATION_TEXT_COLOR_STATES =
             new WeakHashMap<>();
@@ -132,15 +132,15 @@ public final class NotificationHooks {
             new WeakHashMap<>();
     private static final HashMap<String, Boolean> NOTIFICATION_APP_ICON_ELIGIBILITY_CACHE =
             new HashMap<>();
-    private static final LinkedHashMap<NotificationAppIconViewSignature, Bitmap>
+    private static final LinkedHashMap<NotificationAppIconViewSignature, CachedNotificationAppIcon>
             RENDERED_NOTIFICATION_APP_ICON_CACHE =
-            new LinkedHashMap<NotificationAppIconViewSignature, Bitmap>(
+            new LinkedHashMap<NotificationAppIconViewSignature, CachedNotificationAppIcon>(
                     MAX_RENDERED_NOTIFICATION_APP_ICON_CACHE_SIZE,
                     0.75f,
                     true) {
                 @Override
                 protected boolean removeEldestEntry(
-                        Map.Entry<NotificationAppIconViewSignature, Bitmap> eldest) {
+                        Map.Entry<NotificationAppIconViewSignature, CachedNotificationAppIcon> eldest) {
                     return size() > MAX_RENDERED_NOTIFICATION_APP_ICON_CACHE_SIZE;
                 }
             };
@@ -232,22 +232,18 @@ public final class NotificationHooks {
             }
             markNotificationAppIconReplacement(binding.notification, true);
             setNotificationAppIconActive(view, true);
-            if (shouldReuseNotificationAppIconDrawable(view, binding.signature)) {
-                clearNotificationAppIconTintIfNeeded(view);
-                scheduleNotificationAppIconTintClear(view);
-                applyNotificationStatusBarIconViewStyle(view);
-                return;
+            RenderedNotificationAppIcon renderedIcon =
+                    getReusableNotificationAppIcon(view, binding.signature);
+            if (renderedIcon == null) {
+                renderedIcon = resolveNotificationStatusBarIconDrawable(view, binding);
             }
-            Drawable drawable = resolveNotificationStatusBarIconDrawable(view, binding);
-            if (drawable == null) {
+            if (renderedIcon == null || renderedIcon.drawable == null) {
                 clearNotificationAppIconReplacementState(view, binding.notification);
                 applyNotificationStatusBarIconViewStyle(view);
                 return;
             }
-            view.setImageDrawable(drawable);
-            rememberNotificationAppIconRenderState(view, binding.signature, drawable);
-            clearNotificationAppIconTintIfNeeded(view);
-            scheduleNotificationAppIconTintClear(view);
+            applyRenderedNotificationAppIcon(view, renderedIcon);
+            rememberNotificationAppIconRenderState(view, binding.signature, renderedIcon);
             applyNotificationStatusBarIconViewStyle(view);
         } catch (Throwable ignored) {
         } finally {
@@ -287,7 +283,7 @@ public final class NotificationHooks {
         }
         synchronized (NOTIFICATION_APP_ICON_LAST_SIGNATURES) {
             NOTIFICATION_APP_ICON_LAST_SIGNATURES.clear();
-            NOTIFICATION_APP_ICON_LAST_DRAWABLES.clear();
+            NOTIFICATION_APP_ICON_LAST_RENDERED_ICONS.clear();
         }
     }
 
@@ -1865,17 +1861,18 @@ public final class NotificationHooks {
                 signature);
     }
 
-    private static Drawable resolveNotificationStatusBarIconDrawable(
+    private static RenderedNotificationAppIcon resolveNotificationStatusBarIconDrawable(
             View view, NotificationAppIconBinding binding) {
         if (view == null || binding == null) {
             return null;
         }
-        Drawable renderedDrawable = getRenderedNotificationAppIconDrawable(view, binding.signature);
-        if (renderedDrawable != null) {
-            return renderedDrawable;
+        RenderedNotificationAppIcon cachedIcon = getRenderedNotificationAppIconDrawable(view, binding.signature);
+        if (cachedIcon != null) {
+            return cachedIcon;
         }
-        Drawable anipIcon = resolveAnipNotificationAppIconDrawable(view, binding);
+        RenderedNotificationAppIcon anipIcon = resolveAnipNotificationAppIconDrawable(view, binding);
         if (anipIcon != null) {
+            cacheRenderedNotificationAppIcon(binding.signature, anipIcon);
             return anipIcon;
         }
         Drawable drawable = getCachedNotificationApplicationIcon(
@@ -1888,12 +1885,13 @@ public final class NotificationHooks {
         RenderedNotificationAppIcon renderedIcon = createNotificationStatusBarIconDrawable(
                 view,
                 drawable,
-                binding.signature.renderSizePx);
+                binding.signature.renderSizePx,
+                ICON_SOURCE_APPLICATION);
         if (renderedIcon == null) {
             return null;
         }
-        cacheRenderedNotificationAppIconBitmap(binding.signature, renderedIcon.bitmap);
-        return renderedIcon.drawable;
+        cacheRenderedNotificationAppIcon(binding.signature, renderedIcon);
+        return renderedIcon;
     }
 
     private static String resolveNotificationSourcePackage(StatusBarNotification sbn) {
@@ -2031,9 +2029,10 @@ public final class NotificationHooks {
      * falls back to the application's own (desktop) icon.
      *
      * <p>The decoded bitmap goes through {@link #createNotificationStatusBarIconDrawable} so ANIP icons
-     * receive exactly the same padding, sizing and tint handling as the desktop-icon path.
+     * receive the same padding and sizing as the desktop-icon path. Their source is retained so the
+     * binding step preserves system tint even when a later view reuses the rendered bitmap.
      */
-    private static Drawable resolveAnipNotificationAppIconDrawable(
+    private static RenderedNotificationAppIcon resolveAnipNotificationAppIconDrawable(
             View view, NotificationAppIconBinding binding) {
         if (view == null || binding == null) {
             return null;
@@ -2071,7 +2070,7 @@ public final class NotificationHooks {
             BitmapDrawable bitmapDrawable = new BitmapDrawable(view.getResources(), bitmap);
             clearDrawableColorState(bitmapDrawable);
             RenderedNotificationAppIcon renderedIcon = createNotificationStatusBarIconDrawable(
-                    view, bitmapDrawable, binding.signature.renderSizePx);
+                    view, bitmapDrawable, binding.signature.renderSizePx, ICON_SOURCE_ANIP);
             if (renderedIcon == null) {
                 logAnipProbe(binding.packageName, "render returned null", config);
                 return null;
@@ -2080,13 +2079,7 @@ public final class NotificationHooks {
             // exactly what the status bar tints itself: StatusBarIconView runs updateIconColor for its
             // own icons, and this module already hooks the tint dispatcher. Painting the colour here
             // would fight that and pin one colour into the cached drawable.
-            RenderedNotificationAppIcon tintedIcon = renderedIcon;
-            // Remember the view so a status bar colour change can rebuild this icon.
-            synchronized (ANIP_TRACKED_ICON_VIEWS) {
-                ANIP_TRACKED_ICON_VIEWS.add(view);
-            }
-            cacheRenderedNotificationAppIconBitmap(binding.signature, tintedIcon.bitmap);
-            return tintedIcon.drawable;
+            return renderedIcon;
         } catch (Throwable t) {
             logAnipProbe(binding.packageName, "threw " + t, null);
             return null;
@@ -2344,51 +2337,54 @@ public final class NotificationHooks {
     private static RenderedNotificationAppIcon createNotificationStatusBarIconDrawable(
             View view,
             Drawable drawable,
-            int sizePx) {
+            int sizePx,
+            int iconSource) {
         Drawable working = cloneNotificationIconDrawable(drawable);
         if (view == null || working == null) {
-            return new RenderedNotificationAppIcon(working, null);
+            return new RenderedNotificationAppIcon(working, null, iconSource);
         }
         if (sizePx <= 0) {
-            return new RenderedNotificationAppIcon(working, null);
+            return new RenderedNotificationAppIcon(working, null, iconSource);
         }
         Bitmap bitmap = createFittedNotificationAppIconBitmap(view, working, sizePx);
         if (bitmap == null) {
-            return new RenderedNotificationAppIcon(working, null);
+            return new RenderedNotificationAppIcon(working, null, iconSource);
         }
         BitmapDrawable bitmapDrawable = new BitmapDrawable(view.getResources(), bitmap);
         clearDrawableColorState(bitmapDrawable);
-        return new RenderedNotificationAppIcon(bitmapDrawable, bitmap);
+        return new RenderedNotificationAppIcon(bitmapDrawable, bitmap, iconSource);
     }
 
-    private static Drawable getRenderedNotificationAppIconDrawable(
+    private static RenderedNotificationAppIcon getRenderedNotificationAppIconDrawable(
             View view, NotificationAppIconViewSignature signature) {
         if (view == null || signature == null) {
             return null;
         }
-        Bitmap bitmap;
+        CachedNotificationAppIcon cachedIcon;
         synchronized (RENDERED_NOTIFICATION_APP_ICON_CACHE) {
-            bitmap = RENDERED_NOTIFICATION_APP_ICON_CACHE.get(signature);
-            if (bitmap != null && bitmap.isRecycled()) {
+            cachedIcon = RENDERED_NOTIFICATION_APP_ICON_CACHE.get(signature);
+            if (cachedIcon != null && cachedIcon.bitmap.isRecycled()) {
                 RENDERED_NOTIFICATION_APP_ICON_CACHE.remove(signature);
-                bitmap = null;
+                cachedIcon = null;
             }
         }
-        if (bitmap == null) {
+        if (cachedIcon == null) {
             return null;
         }
-        BitmapDrawable drawable = new BitmapDrawable(view.getResources(), bitmap);
+        BitmapDrawable drawable = new BitmapDrawable(view.getResources(), cachedIcon.bitmap);
         clearDrawableColorState(drawable);
-        return drawable;
+        return new RenderedNotificationAppIcon(drawable, cachedIcon.bitmap, cachedIcon.iconSource);
     }
 
-    private static void cacheRenderedNotificationAppIconBitmap(
-            NotificationAppIconViewSignature signature, Bitmap bitmap) {
-        if (signature == null || bitmap == null || bitmap.isRecycled()) {
+    private static void cacheRenderedNotificationAppIcon(
+            NotificationAppIconViewSignature signature, RenderedNotificationAppIcon renderedIcon) {
+        if (signature == null || renderedIcon == null
+                || renderedIcon.bitmap == null || renderedIcon.bitmap.isRecycled()) {
             return;
         }
         synchronized (RENDERED_NOTIFICATION_APP_ICON_CACHE) {
-            RENDERED_NOTIFICATION_APP_ICON_CACHE.put(signature, bitmap);
+            RENDERED_NOTIFICATION_APP_ICON_CACHE.put(signature,
+                    new CachedNotificationAppIcon(renderedIcon.bitmap, renderedIcon.iconSource));
         }
     }
 
@@ -2706,6 +2702,10 @@ public final class NotificationHooks {
     }
 
     private static void restoreNotificationAppIconTintState(ImageView view) {
+        restoreNotificationAppIconTintState(view, false);
+    }
+
+    private static void restoreNotificationAppIconTintState(ImageView view, boolean refreshColor) {
         if (view == null) {
             return;
         }
@@ -2726,38 +2726,55 @@ public final class NotificationHooks {
             view.setColorFilter(tintState.colorFilter);
         } catch (Throwable ignored) {
         }
+        if (refreshColor) {
+            FlymeStatusBarSizer.invokeNoArgCompat(view, "updateIconColor");
+        }
     }
 
-    private static boolean shouldReuseNotificationAppIconDrawable(
+    /** All render paths must bind the actual source before a tint hook can observe the new icon. */
+    private static void applyRenderedNotificationAppIcon(
+            ImageView view, RenderedNotificationAppIcon renderedIcon) {
+        boolean isAnip = renderedIcon.iconSource == ICON_SOURCE_ANIP;
+        synchronized (ANIP_TRACKED_ICON_VIEWS) {
+            if (isAnip) {
+                ANIP_TRACKED_ICON_VIEWS.add(view);
+            } else {
+                ANIP_TRACKED_ICON_VIEWS.remove(view);
+            }
+        }
+        clearDrawableColorState(renderedIcon.drawable);
+        view.setImageDrawable(renderedIcon.drawable);
+        if (isAnip) {
+            // A previous desktop icon may have cleared both tint channels. Restore the tint list
+            // and ask SystemUI to apply its current colour rather than retaining an old filter.
+            restoreNotificationAppIconTintState(view, true);
+        } else {
+            clearNotificationAppIconTintIfNeeded(view);
+            scheduleNotificationAppIconTintClear(view);
+        }
+    }
+
+    private static RenderedNotificationAppIcon getReusableNotificationAppIcon(
             ImageView view, NotificationAppIconViewSignature signature) {
         if (view == null || signature == null || !isNotificationAppIconActive(view)) {
-            return false;
+            return null;
         }
         synchronized (NOTIFICATION_APP_ICON_LAST_SIGNATURES) {
             NotificationAppIconViewSignature lastSignature =
                     NOTIFICATION_APP_ICON_LAST_SIGNATURES.get(view);
-            Drawable lastDrawable = NOTIFICATION_APP_ICON_LAST_DRAWABLES.get(view);
-            if (!signature.equals(lastSignature) || lastDrawable == null) {
-                return false;
-            }
-            try {
-                clearDrawableColorState(lastDrawable);
-                view.setImageDrawable(lastDrawable);
-                return true;
-            } catch (Throwable ignored) {
-                return false;
-            }
+            return signature.equals(lastSignature)
+                    ? NOTIFICATION_APP_ICON_LAST_RENDERED_ICONS.get(view) : null;
         }
     }
 
     private static void rememberNotificationAppIconRenderState(
-            View view, NotificationAppIconViewSignature signature, Drawable drawable) {
-        if (view == null || signature == null || drawable == null) {
+            View view, NotificationAppIconViewSignature signature, RenderedNotificationAppIcon renderedIcon) {
+        if (view == null || signature == null || renderedIcon == null || renderedIcon.drawable == null) {
             return;
         }
         synchronized (NOTIFICATION_APP_ICON_LAST_SIGNATURES) {
             NOTIFICATION_APP_ICON_LAST_SIGNATURES.put(view, signature);
-            NOTIFICATION_APP_ICON_LAST_DRAWABLES.put(view, drawable);
+            NOTIFICATION_APP_ICON_LAST_RENDERED_ICONS.put(view, renderedIcon);
         }
     }
 
@@ -2767,7 +2784,7 @@ public final class NotificationHooks {
         }
         synchronized (NOTIFICATION_APP_ICON_LAST_SIGNATURES) {
             NOTIFICATION_APP_ICON_LAST_SIGNATURES.remove(view);
-            NOTIFICATION_APP_ICON_LAST_DRAWABLES.remove(view);
+            NOTIFICATION_APP_ICON_LAST_RENDERED_ICONS.remove(view);
         }
     }
 
@@ -2850,7 +2867,7 @@ public final class NotificationHooks {
         final int renderSizePx;
         final int paddingPx;
         final int nightMode;
-        /** Which artwork this entry was produced from; see {@code ICON_SOURCE_*}. */
+        /** Configured source preference; the rendered icon may fall back to application artwork. */
         final int iconSource;
 
         NotificationAppIconViewSignature(
@@ -2900,10 +2917,23 @@ public final class NotificationHooks {
     private static final class RenderedNotificationAppIcon {
         final Drawable drawable;
         final Bitmap bitmap;
+        final int iconSource;
 
-        RenderedNotificationAppIcon(Drawable drawable, Bitmap bitmap) {
+        RenderedNotificationAppIcon(Drawable drawable, Bitmap bitmap, int iconSource) {
             this.drawable = drawable;
             this.bitmap = bitmap;
+            this.iconSource = iconSource;
+        }
+    }
+
+    /** Shared cache entries retain actual provenance but never a view-bound drawable. */
+    private static final class CachedNotificationAppIcon {
+        final Bitmap bitmap;
+        final int iconSource;
+
+        CachedNotificationAppIcon(Bitmap bitmap, int iconSource) {
+            this.bitmap = bitmap;
+            this.iconSource = iconSource;
         }
     }
 
