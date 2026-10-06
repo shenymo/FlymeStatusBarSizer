@@ -22,6 +22,7 @@ import org.robolectric.annotation.ConscryptMode;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.nio.file.Files;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -184,5 +185,109 @@ public final class AnipBundleStoreTest {
         assertNull(AnipBundleStore.installedTag(context));
         assertNull(AnipBundleStore.resolve(context));
         assertEquals("尚未下载", AnipIconUpdater.describeInstalled(context));
+    }
+
+    @Test public void invalidTagsPreserveOutsideFilesAndTheInstalledBundle() throws Exception {
+        File archive = writeBundle("safe", null);
+        AnipBundleStore.Installed installed = AnipBundleStore.install(context, archive, "safe", 1L);
+        assertNotNull(installed);
+        File outside = new File(context.getFilesDir(), "outside");
+        File outsideStaging = new File(context.getFilesDir(), "outside.staging");
+        assertTrue(outside.mkdirs());
+        assertTrue(outsideStaging.mkdirs());
+        File marker = new File(outside, "keep.txt");
+        File stagingMarker = new File(outsideStaging, "keep.txt");
+        assertTrue(marker.createNewFile());
+        assertTrue(stagingMarker.createNewFile());
+
+        String[] invalid = {"../outside", ".", "..", "v1/../../outside",
+                outside.getAbsolutePath(), "..\\outside", "%2e%2e%2foutside", "v1\u0000outside",
+                null, "", " "};
+        for (String tag : invalid) {
+            AnipBundleStore.Installed rejected = AnipBundleStore.install(context, archive, tag, 2L);
+            assertTrue("outside target was deleted for " + tag, marker.isFile());
+            assertTrue("outside staging was deleted for " + tag, stagingMarker.isFile());
+            assertNull("unsafe tag accepted: " + tag, rejected);
+            assertEquals("safe", AnipBundleStore.installedTag(context));
+            assertEquals(1L, AnipBundleStore.installedTimestamp(context));
+            assertTrue(new File(installed.directory, "manifest.json").isFile());
+            assertFalse(new File(AnipBundleStore.root(context), "safe.staging").exists());
+        }
+    }
+
+    @Test public void persistedTraversalTagCannotResolveAnOutsideBundle() throws Exception {
+        File outside = new File(context.getFilesDir(), "outside");
+        assertTrue(new File(outside, "res").mkdirs());
+        assertTrue(new File(outside, "manifest.json").createNewFile());
+        prefs.edit().putString(SettingsStore.KEY_ANIP_INSTALLED_TAG, "../outside")
+                .putLong(SettingsStore.KEY_ANIP_INSTALLED_TIMESTAMP, 1L).commit();
+        assertNull(AnipBundleStore.installedTag(context));
+        assertNull(AnipBundleStore.resolve(context));
+    }
+
+    @Test public void installationRejectsLinkedRootTargetAndStagingDirectories() throws Exception {
+        File archive = writeBundle("safe", null);
+        File outside = new File(workDir, "outside");
+        assertTrue(outside.mkdirs());
+        File marker = new File(outside, "keep.txt");
+        assertTrue(marker.createNewFile());
+        File root = AnipBundleStore.root(context);
+        File[] links = {root, new File(root, "safe"), new File(root, "safe.staging")};
+        for (File link : links) {
+            if (!link.equals(root)) {
+                assertTrue(root.isDirectory() || root.mkdirs());
+            }
+            Files.createSymbolicLink(link.toPath(), outside.toPath());
+            try {
+                assertNull(AnipBundleStore.install(context, archive, "safe", 1L));
+                assertTrue("linked directory was traversed: " + link, marker.isFile());
+            } finally {
+                if (Files.isSymbolicLink(link.toPath())) {
+                    Files.delete(link.toPath());
+                }
+            }
+        }
+    }
+
+    @Test public void persistedTagCannotResolveALinkedBundle() throws Exception {
+        File outside = new File(workDir, "outside");
+        assertTrue(new File(outside, "res").mkdirs());
+        assertTrue(new File(outside, "manifest.json").createNewFile());
+        File root = AnipBundleStore.root(context);
+        assertTrue(root.mkdirs());
+        File link = new File(root, "safe");
+        Files.createSymbolicLink(link.toPath(), outside.toPath());
+        try {
+            prefs.edit().putString(SettingsStore.KEY_ANIP_INSTALLED_TAG, "safe")
+                    .putLong(SettingsStore.KEY_ANIP_INSTALLED_TIMESTAMP, 1L).commit();
+            assertNull(AnipBundleStore.resolve(context));
+        } finally {
+            Files.delete(link.toPath());
+        }
+    }
+
+    @Test public void pruningAndClearingNeverFollowLinksInsideBundles() throws Exception {
+        File archive = writeBundle("safe", null);
+        AnipBundleStore.Installed first = AnipBundleStore.install(context, archive, "v1", 1L);
+        assertNotNull(first);
+        File outside = new File(workDir, "outside");
+        assertTrue(outside.mkdirs());
+        File marker = new File(outside, "keep.txt");
+        assertTrue(marker.createNewFile());
+        Files.createSymbolicLink(new File(first.directory, "link").toPath(), outside.toPath());
+        AnipBundleStore.Installed second = AnipBundleStore.install(context, archive, "v2", 2L);
+        assertNotNull(second);
+        assertFalse(first.directory.exists());
+        assertTrue("pruning followed a symbolic link", marker.isFile());
+
+        Files.createSymbolicLink(new File(second.directory, "link").toPath(), outside.toPath());
+        AnipBundleStore.clear(context);
+        assertFalse(AnipBundleStore.root(context).exists());
+        assertTrue("clearing followed a symbolic link", marker.isFile());
+
+        Files.createSymbolicLink(AnipBundleStore.root(context).toPath(), outside.toPath());
+        AnipBundleStore.clear(context);
+        assertFalse(Files.isSymbolicLink(AnipBundleStore.root(context).toPath()));
+        assertTrue("clearing followed the root symbolic link", marker.isFile());
     }
 }

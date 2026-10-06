@@ -36,6 +36,11 @@ public final class AnipRemoteSource {
     private AnipRemoteSource() {
     }
 
+    /** Tags become directory names and URL path segments; accept a single, unescaped component. */
+    static boolean isSafeReleaseTag(String tag) {
+        return tag != null && tag.matches("[A-Za-z0-9][A-Za-z0-9._+-]*");
+    }
+
     /** Validates a {@code owner/repository} slug, returning {@code null} when it is unusable. */
     public static String normalizeRepository(String repository) {
         if (repository == null) {
@@ -127,7 +132,7 @@ public final class AnipRemoteSource {
      */
     public static String bundleUrl(int sourceType, String repository, String baseUrl, String tag,
             String assetName, String manifestDownloadUrl) {
-        if (isBlank(tag) || isBlank(assetName)) {
+        if (!isSafeReleaseTag(tag) || isBlank(assetName)) {
             return null;
         }
         String declared = manifestDownloadUrl == null ? "" : manifestDownloadUrl.trim();
@@ -171,7 +176,7 @@ public final class AnipRemoteSource {
 
     /** The bundle asset name is fully determined by the tag, which keeps downloads predictable. */
     public static String expectedAssetName(String tag) {
-        return isBlank(tag) ? null : "anip-bundle-" + tag + ".zip";
+        return isSafeReleaseTag(tag) ? "anip-bundle-" + tag + ".zip" : null;
     }
 
     private static boolean isBlank(String value) {

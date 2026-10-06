@@ -7,7 +7,9 @@ import com.example.flymestatusbarsizer.config.SettingsStore;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -84,7 +86,7 @@ public final class AnipBundleStore {
         }
         try {
             String tag = prefs(context).getString(SettingsStore.KEY_ANIP_INSTALLED_TAG, null);
-            return tag == null || tag.isEmpty() ? null : tag;
+            return AnipRemoteSource.isSafeReleaseTag(tag) ? tag : null;
         } catch (Throwable ignored) {
             return null;
         }
@@ -104,8 +106,9 @@ public final class AnipBundleStore {
         if (tag == null || timestamp <= 0L) {
             return null;
         }
-        File directory = new File(root(context), tag);
-        if (!new File(directory, MANIFEST_NAME).isFile()) {
+        File root = checkedDirectChild(context.getFilesDir(), DIR_NAME);
+        File directory = checkedDirectChild(root, tag);
+        if (directory == null || !new File(directory, MANIFEST_NAME).isFile()) {
             return null;
         }
         File resourceDir = new File(directory, RES_DIR);
@@ -122,14 +125,19 @@ public final class AnipBundleStore {
      */
     public static Installed install(Context context, File archive, String tag, long timestamp) {
         if (context == null || archive == null || !archive.isFile()
-                || tag == null || tag.isEmpty() || timestamp <= 0L) {
+                || !AnipRemoteSource.isSafeReleaseTag(tag) || timestamp <= 0L) {
             return null;
         }
-        File root = root(context);
+        File root = checkedDirectChild(context.getFilesDir(), DIR_NAME);
+        File staging = checkedDirectChild(root, tag + STAGING_SUFFIX);
+        File target = checkedDirectChild(root, tag);
+        // Validate both destinations before any cleanup, including existing symbolic links.
+        if (root == null || staging == null || target == null) {
+            return null;
+        }
         if (!root.isDirectory() && !root.mkdirs()) {
             return null;
         }
-        File staging = new File(root, tag + STAGING_SUFFIX);
         deleteRecursively(staging);
         if (!staging.mkdirs()) {
             return null;
@@ -139,7 +147,6 @@ public final class AnipBundleStore {
             deleteRecursively(staging);
             return null;
         }
-        File target = new File(root, tag);
         deleteRecursively(target);
         if (!staging.renameTo(target)) {
             deleteRecursively(staging);
@@ -252,11 +259,32 @@ public final class AnipBundleStore {
         }
     }
 
+    /** Resolves only a direct child, refusing aliases and links even if they point within the store. */
+    private static File checkedDirectChild(File parent, String name) {
+        if (parent == null) {
+            return null;
+        }
+        try {
+            File canonicalParent = parent.getCanonicalFile();
+            File child = new File(canonicalParent, name);
+            File canonicalChild = child.getCanonicalFile();
+            if (!canonicalParent.equals(canonicalChild.getParentFile())
+                    || !child.equals(canonicalChild)
+                    || Files.isSymbolicLink(child.toPath())) {
+                return null;
+            }
+            return child;
+        } catch (IOException | SecurityException ignored) {
+            return null;
+        }
+    }
+
     private static void deleteRecursively(File file) {
-        if (file == null || !file.exists()) {
+        if (file == null) {
             return;
         }
-        File[] children = file.listFiles();
+        // Old bundles may contain links. Remove the link itself, never traverse its destination.
+        File[] children = Files.isSymbolicLink(file.toPath()) ? null : file.listFiles();
         if (children != null) {
             for (File child : children) {
                 deleteRecursively(child);

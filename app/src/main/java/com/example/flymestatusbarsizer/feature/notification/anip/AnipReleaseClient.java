@@ -129,7 +129,7 @@ public final class AnipReleaseClient {
         if (schemaVersion == null || schemaVersion.intValue() != SCHEMA_VERSION) {
             return null;
         }
-        if (tag == null) {
+        if (!AnipRemoteSource.isSafeReleaseTag(tag)) {
             return null;
         }
         // The published name is derived from the tag; refusing anything else keeps a manifest from

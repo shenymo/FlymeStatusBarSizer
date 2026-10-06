@@ -6,6 +6,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import org.json.JSONObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
@@ -167,6 +168,36 @@ public final class AnipReleaseClientTest {
         assertFalse(AnipReleaseClient.isNewer(info, info.timestamp));
         assertFalse(AnipReleaseClient.isNewer(info, info.timestamp + 1));
         assertFalse(AnipReleaseClient.isNewer(null, 0L));
+    }
+
+    @Test public void releaseTagsCannotContainPathsOrEncodedSeparators() throws Exception {
+        String[] invalid = {".", "..", "../outside", "v1/../../outside", "/outside",
+                "..\\outside", "v1\\..\\outside", "%2e%2e%2foutside", "v1%2foutside",
+                "v1?path=outside", "v1#outside", "v1\u0000outside"};
+        for (String tag : invalid) {
+            String assetName = "anip-bundle-" + tag + ".zip";
+            JSONObject manifest = new JSONObject(VALID_MANIFEST);
+            manifest.put("tag", tag);
+            manifest.put("assetName", assetName);
+            // A matching asset name and an absolute URL must not bypass tag validation.
+            manifest.put("downloadUrl", "https://example.com/bundle.zip");
+            assertNull(tag, AnipReleaseClient.parseManifest(manifest.toString()));
+            assertNull(tag, AnipRemoteSource.expectedAssetName(tag));
+            assertNull(tag, AnipRemoteSource.bundleUrl(AnipRemoteSource.SOURCE_GITHUB_DIRECT,
+                    AnipRemoteSource.OFFICIAL_REPOSITORY, null, tag, assetName,
+                    "https://example.com/bundle.zip"));
+        }
+    }
+
+    @Test public void ordinaryReleaseTagsRemainSupported() throws Exception {
+        for (String tag : new String[]{"54b3c62", "v1.2.3", "release-2026_10", "v1.2+build3"}) {
+            JSONObject manifest = new JSONObject(VALID_MANIFEST);
+            manifest.put("tag", tag);
+            manifest.put("assetName", "anip-bundle-" + tag + ".zip");
+            AnipReleaseClient.ReleaseInfo release = AnipReleaseClient.parseManifest(manifest.toString());
+            assertNotNull(tag, release);
+            assertEquals(tag, release.tag);
+        }
     }
 
     @Test public void expectedAssetNameFollowsTheTag() {
