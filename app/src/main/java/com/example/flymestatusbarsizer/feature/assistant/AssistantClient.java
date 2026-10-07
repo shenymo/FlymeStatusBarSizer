@@ -17,9 +17,10 @@ import android.os.UserHandle;
 import android.widget.Toast;
 
 import com.example.flymestatusbarsizer.config.ModuleConfig;
+import com.example.flymestatusbarsizer.config.SettingsStore;
 
 /** SystemUI owns this connection; the assistant never needs to start HOME. */
-final class AssistantClient {
+final class AssistantClient implements SideGestureActions.Action {
     private static AssistantClient instance;
     private static volatile Integer statusBarTint;
     private final Context context;
@@ -72,15 +73,16 @@ final class AssistantClient {
 
     static boolean enabled(Context context) {
         ModuleConfig c = ModuleConfig.load(context);
-        return c.enabled && c.assistantGestureEnabled;
+        return c.enabled && c.assistantGestureEnabled
+                && c.sideGestureAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
     }
 
-    boolean isReady() {
+    @Override public boolean isReady() {
         IBinder binder = remote;
         return ready && binder != null && binder.isBinderAlive();
     }
 
-    void show(boolean fromLeft, Runnable onSuccess) {
+    @Override public void execute(boolean fromLeft, Runnable onSuccess) {
         ready = false;
         main.post(() -> {
             long id = ++request;

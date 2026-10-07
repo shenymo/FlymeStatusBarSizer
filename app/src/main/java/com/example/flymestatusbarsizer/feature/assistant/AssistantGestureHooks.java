@@ -47,7 +47,7 @@ final class AssistantGestureHooks {
                 if (gesture == null) {
                     Object c = ReflectUtils.getField(owner, "mContext");
                     if (!(c instanceof Context) || Looper.myLooper() == null) return chain.proceed();
-                    gesture = new Gesture(owner, (Context) c, cancel, pilfer);
+                    gesture = new Gesture(owner, (Context) c, cancel, pilfer, AssistantClient.get((Context) c));
                     GESTURES.put(owner, gesture);
                 }
             }
@@ -79,31 +79,35 @@ final class AssistantGestureHooks {
         });
     }
 
-    private static final class Gesture {
+    static final class Gesture {
         final WeakReference<Object> owner;
         final Context context;
         final Handler handler = new Handler(Looper.myLooper());
         final AssistantGestureState state = new AssistantGestureState();
-        final AssistantClient client;
+        final SideGestureActions.Action globalAssistant;
         final Method cancel, pilfer;
         final Runnable timeout = this::tryClaim;
         MotionEvent last;
         boolean consumed;
         boolean fromLeft;
+        int actionId;
+        SideGestureActions.Action action;
 
-        Gesture(Object owner, Context context, Method cancel, Method pilfer) {
+        Gesture(Object owner, Context context, Method cancel, Method pilfer,
+                SideGestureActions.Action globalAssistant) {
             this.owner = new WeakReference<>(owner);
             this.context = context;
             this.cancel = cancel;
             this.pilfer = pilfer;
-            client = AssistantClient.get(context);
+            this.globalAssistant = globalAssistant;
         }
 
         void begin(MotionEvent event) {
             Object target = owner.get();
             ModuleConfig config = ModuleConfig.load(context);
             boolean leftEdge = ReflectUtils.getBooleanField(target, "mIsOnLeftEdge", false);
-            if (!config.enabled || !config.assistantGestureEnabled || !client.isReady()
+            SideGestureActions.Action candidate = SideGestureActions.resolve(config.sideGestureAction, globalAssistant);
+            if (!config.enabled || !config.assistantGestureEnabled || candidate == null || !candidate.isReady()
                     || !event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN) || event.getPointerCount() != 1
                     || ReflectUtils.invokeNoArgInt(event, "getDisplayId", -1)
                             != ReflectUtils.getIntField(target, "mDisplayId", 0)
@@ -119,6 +123,8 @@ final class AssistantGestureHooks {
                     config.assistantGestureVerticalLimitEnabled
                             ? config.assistantGestureVerticalLimitDp * density : Float.POSITIVE_INFINITY);
             fromLeft = leftEdge;
+            actionId = config.sideGestureAction;
+            action = candidate;
             remember(event);
             handler.postAtTime(timeout, state.deadline());
         }
@@ -137,7 +143,8 @@ final class AssistantGestureHooks {
             Object target = owner.get();
             if (last == null || target == null || consumed || !state.ready(SystemClock.uptimeMillis())) return false;
             ModuleConfig config = ModuleConfig.load(context);
-            if (!config.enabled || !config.assistantGestureEnabled || !client.isReady() || locked()
+            if (!config.enabled || !config.assistantGestureEnabled
+                    || config.sideGestureAction != actionId || action == null || !action.isReady() || locked()
                     || !AssistantGestureScenes.allows(config.assistantGestureScenes, target)
                     || !ReflectUtils.getBooleanField(target, "mAllowGesture", false)
                     || ReflectUtils.getBooleanField(target, "mInterceptBack", false)) { reset(); return false; }
@@ -149,7 +156,7 @@ final class AssistantGestureHooks {
                 consumed = true;
                 handler.removeCallbacks(timeout);
                 Object panel = ReflectUtils.getField(target, "mEdgeBackPlugin");
-                client.show(fromLeft, () -> {
+                action.execute(fromLeft, () -> {
                     if (panel instanceof View) ((View) panel).post(() -> ((View) panel).performHapticFeedback(
                             HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING));
                 });
@@ -173,6 +180,7 @@ final class AssistantGestureHooks {
 
         void reset() {
             state.cancel();
+            action = null;
             consumed = false;
             handler.removeCallbacks(timeout);
             if (last != null) { last.recycle(); last = null; }

@@ -10,7 +10,7 @@ public final class SystemInteractionPageController {
 
     public static void bind(MainActivity activity, LinearLayout root) {
         root.addView(activity.createMBackActionSettingsCard(), PageViewUtils.matchWrap());
-        root.addView(activity.createAssistantGestureSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
+        root.addView(activity.createSideGestureSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createWindowModeSideGestureSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createCarLinkSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createShareTargetsSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));

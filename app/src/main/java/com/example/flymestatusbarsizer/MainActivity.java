@@ -2622,8 +2622,8 @@ public class MainActivity extends Activity {
         return settingsCardFactory.createWindowModeSideGestureSettingsCard();
     }
 
-    public View createAssistantGestureSettingsCard() {
-        return settingsCardFactory.createAssistantGestureSettingsCard();
+    public View createSideGestureSettingsCard() {
+        return settingsCardFactory.createSideGestureSettingsCard();
     }
 
     public View createShareTargetsSettingsCard() {

@@ -120,6 +120,10 @@ public final class SettingsStore {
     public static final int ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR = 0;
     public static final int ASSISTANT_FOREGROUND_BLACK = 1;
     public static final int ASSISTANT_FOREGROUND_WHITE = 2;
+    public static final String KEY_SIDE_GESTURE_ACTION = "side_gesture_action";
+    public static final int SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT = 0;
+    public static final int DEFAULT_SIDE_GESTURE_ACTION = SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
+    // Keep the original gesture keys so upgrades and old backups retain their settings.
     public static final String KEY_ASSISTANT_GESTURE_ENABLED = "assistant_gesture_enabled";
     public static final String KEY_ASSISTANT_GESTURE_SCENES = "assistant_gesture_scenes";
     public static final int ASSISTANT_GESTURE_SCENE_NORMAL = 1;
@@ -600,6 +604,7 @@ public final class SettingsStore {
     public static final int DEFAULT_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE = TELEPHONY_DEBUG_NETWORK_PROFILE_4G;
     public static final int DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL = 2;
     public static final String[] INT_KEYS = {
+            KEY_SIDE_GESTURE_ACTION,
             KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE,
             KEY_ASSISTANT_GESTURE_SCENES,
             KEY_ASSISTANT_GESTURE_SIDE,
@@ -1010,6 +1015,7 @@ public final class SettingsStore {
             case KEY_ANIP_SOURCE_TYPE: return DEFAULT_ANIP_SOURCE_TYPE;
             case KEY_ANIP_ICON_COLOR_MODE: return DEFAULT_ANIP_ICON_COLOR_MODE;
             case KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE: return ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR;
+            case KEY_SIDE_GESTURE_ACTION: return DEFAULT_SIDE_GESTURE_ACTION;
             case KEY_ASSISTANT_GESTURE_SCENES: return DEFAULT_ASSISTANT_GESTURE_SCENES;
             case KEY_ASSISTANT_GESTURE_SIDE: return DEFAULT_ASSISTANT_GESTURE_SIDE;
             case KEY_ASSISTANT_GESTURE_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
@@ -1417,6 +1423,15 @@ public final class SettingsStore {
     public static int normalizeAssistantForegroundMode(int mode) {
         return mode == ASSISTANT_FOREGROUND_BLACK || mode == ASSISTANT_FOREGROUND_WHITE
                 ? mode : ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR;
+    }
+
+    public static int normalizeSideGestureAction(int value) {
+        switch (value) {
+            case SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT:
+                return value;
+            default:
+                return DEFAULT_SIDE_GESTURE_ACTION;
+        }
     }
 
     public static int normalizeAssistantGestureScenes(int value) {
