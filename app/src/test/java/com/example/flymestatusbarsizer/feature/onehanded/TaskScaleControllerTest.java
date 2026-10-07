@@ -184,6 +184,246 @@ public class TaskScaleControllerTest {
         assertTrue(outside.isEmpty());
     }
 
+    @Test public void cardSwitchRestoresOldTaskBeforeLaunchAndWaitsForSelectedTaskAndIdle() {
+        enter();
+        RecentTaskCard card = card(12, "task-B");
+        controller.selectTask(card, () -> {
+            assertEquals(1f, backend.scale, 0f);
+            assertEquals("task-A", backend.lastRestored.token);
+            assertTrue(overlay.visible);
+            assertTrue(overlay.covered);
+            backend.idle = false;
+            return true;
+        });
+        idle(100);
+        backend.focused = null; // Focus handoff is not instantaneous.
+        idle(100);
+        backend.focused = target(12, "task-B", "surface-B");
+        idle(100);
+        assertEquals(1f, backend.scale, 0f);
+        backend.idle = true;
+        idle(400);
+        assertEquals(.7f, backend.scale, .001f);
+        assertEquals("task-B", backend.lastTransformed.token);
+        assertTrue(overlay.visible);
+        assertEquals(1, successes);
+    }
+
+    @Test public void staleOrRejectedCardReturnsToOriginalScaledTask() {
+        enter();
+        controller.selectTask(card(12, "task-B"), () -> false);
+        idle(400);
+        assertEquals(.7f, backend.scale, .001f);
+        assertEquals("task-A", backend.lastTransformed.token);
+        assertTrue(overlay.visible);
+    }
+
+    @Test public void failedCardLaunchReturnsToOriginalTask() {
+        enter();
+        controller.selectTask(card(12, "task-B"), () -> { throw new Exception("task removed"); });
+        idle(400);
+        assertEquals(.7f, backend.scale, .001f);
+        assertTrue(overlay.visible);
+    }
+
+    @Test public void selectedTaskIdReuseCannotScaleAnUnexpectedTask() {
+        enter();
+        controller.selectTask(card(12, "task-B"), () -> true);
+        backend.focused = target(12, "recycled-task", "surface-C");
+        idle(400);
+        assertEquals(1f, backend.scale, 0f);
+        assertEquals("task-A", backend.lastTransformed.token);
+        assertFalse(overlay.visible);
+    }
+
+    @Test public void stopDuringCardSwitchCannotResurrectScaling() {
+        enter();
+        controller.selectTask(card(12, "task-B"), () -> true);
+        controller.stop("screen off");
+        backend.focused = target(12, "task-B", "surface-B");
+        idle(400);
+        assertEquals(1f, backend.scale, 0f);
+        assertFalse(overlay.visible);
+    }
+
+    @Test public void cardSwitchTimesOutWithoutScalingLateTask() {
+        enter();
+        controller.selectTask(card(12, "task-B"), () -> true);
+        idle(5300);
+        backend.focused = target(12, "task-B", "surface-B");
+        idle(400);
+        assertEquals(1f, backend.scale, 0f);
+        assertFalse(overlay.visible);
+    }
+
+    @Test public void repeatedCardClickAndRemovedSelectedTaskDoNotLaunchAgain() {
+        enter();
+        int[] launches = {0};
+        controller.selectTask(card(12, "task-B"), () -> { launches[0]++; return true; });
+        controller.selectTask(card(13, "task-C"), () -> { launches[0]++; return true; });
+        assertEquals(1, launches[0]);
+        controller.taskVanished(12);
+        backend.focused = target(12, "task-B", "surface-B");
+        idle(400);
+        assertFalse(overlay.visible);
+        assertEquals(1f, backend.scale, 0f);
+    }
+
+    @Test public void swapWaitsForBothCoverAndTaskTransactionsWithoutFullscreenAnimation() {
+        enter();
+        overlay.autoCover = false;
+        backend.autoCommit = false;
+        int[] launches = {0};
+        controller.selectTask(card(12, "task-B"), () -> { launches[0]++; return true; });
+        idle(200);
+        assertEquals(0, launches[0]);
+        assertEquals(.7f, backend.scale, .001f);
+        assertNull(backend.lastRestored);
+        overlay.coverCommit.run();
+        assertEquals(1, launches[0]);
+        assertEquals("task-A", backend.lastRestored.token);
+        backend.scales.clear();
+        backend.focused = target(12, "task-B", "surface-B");
+        idle(300);
+        assertEquals(java.util.Collections.singletonList(.7f), backend.scales);
+        assertTrue(overlay.covered);
+        assertEquals(0, overlay.swapReveals);
+        backend.commit.run();
+        assertTrue(overlay.visible);
+        assertFalse(overlay.covered);
+        assertEquals(1, overlay.swapReveals);
+        assertEquals(.7f, backend.scale, .001f);
+    }
+
+    @Test public void missingCoverCommitCancelsSwapWithoutLaunchingOrLeavingScaledMode() {
+        enter();
+        overlay.autoCover = false;
+        int[] launches = {0};
+        controller.selectTask(card(12, "task-B"), () -> { launches[0]++; return true; });
+        idle(5300);
+        overlay.coverCommit.run();
+        assertEquals(0, launches[0]);
+        assertTrue(overlay.visible);
+        assertFalse(overlay.covered);
+        assertEquals(.7f, backend.scale, .001f);
+    }
+
+    @Test public void launchClosingSystemDialogsDoesNotExitSwapOrScaledMode() {
+        enter();
+        controller.selectTask(card(12, "task-B"), () -> {
+            controller.systemDialogsClosed();
+            return true;
+        });
+        idle(100);
+        assertTrue(overlay.covered);
+        backend.focused = target(12, "task-B", "surface-B");
+        idle(400);
+        controller.systemDialogsClosed();
+        idle(300);
+        assertTrue(overlay.visible);
+        assertEquals(.7f, backend.scale, .001f);
+        // A real focus change still exits even without trusting the dialog broadcast.
+        backend.focused = target(13, "task-C", "surface-C");
+        controller.systemDialogsClosed();
+        idle(200);
+        assertFalse(overlay.visible);
+    }
+
+    @Test public void transientSelectedVisibilityDuringTransitionDoesNotExitSwap() {
+        enter();
+        controller.selectTask(card(12, "task-B"), () -> true);
+        backend.idle = false;
+        backend.focused = new TaskScaleTarget(12, "task-B", "surface-B",
+                new Rect(0, 0, 1080, 2400), new Point(), false);
+        idle(200);
+        assertTrue(overlay.covered);
+        backend.focused = target(12, "task-B", "surface-B");
+        backend.idle = true;
+        idle(300);
+        assertTrue(overlay.visible);
+        assertEquals(.7f, backend.scale, .001f);
+    }
+
+    @Test public void oldTaskDisappearingDuringSwapDoesNotCancelSelectedTask() {
+        enter();
+        controller.selectTask(card(12, "task-B"), () -> true);
+        controller.taskVanished(11);
+        backend.focused = target(12, "task-B", "surface-B");
+        idle(400);
+        assertTrue(overlay.visible);
+        assertEquals(.7f, backend.scale, .001f);
+    }
+
+    @Test public void transitionBeforeRevealInvalidatesOldCommitAndKeepsCover() {
+        enter();
+        backend.autoCommit = false;
+        controller.selectTask(card(12, "task-B"), () -> true);
+        backend.focused = target(12, "task-B", "surface-B");
+        idle(100);
+        Runnable previousCommit = backend.commit;
+        backend.idle = false;
+        controller.suspend();
+        previousCommit.run();
+        assertTrue(overlay.covered);
+        assertEquals(0, overlay.swapReveals);
+        backend.idle = true;
+        idle(100);
+        backend.commit.run();
+        assertEquals(1, overlay.swapReveals);
+        assertEquals(.7f, backend.scale, .001f);
+    }
+
+    @Test public void exitBeforeCommitCannotRevealOrResurrectSwap() {
+        enter();
+        backend.autoCommit = false;
+        controller.selectTask(card(12, "task-B"), () -> true);
+        backend.focused = target(12, "task-B", "surface-B");
+        idle(100);
+        controller.stop("screen off");
+        backend.commit.run();
+        idle(300);
+        assertFalse(overlay.visible);
+        assertEquals(0, overlay.swapReveals);
+        assertEquals(1f, backend.scale, .001f);
+    }
+
+    @Test public void fastTaskLaunchStillWaitsForThePreviewExchangeAnimation() {
+        enter();
+        overlay.animationComplete = false;
+        backend.autoCommit = false;
+        controller.selectTask(card(12, "task-B"), () -> true);
+        backend.focused = target(12, "task-B", "surface-B");
+        idle(200);
+        assertTrue(overlay.covered);
+        assertNull(backend.commit);
+        assertEquals(0, overlay.swapReveals);
+        overlay.animationComplete = true;
+        idle(100);
+        assertNotNull(backend.commit);
+        assertTrue(overlay.covered);
+        backend.commit.run();
+        assertEquals(1, overlay.swapReveals);
+        assertEquals(.7f, backend.scale, .001f);
+    }
+
+    @Test public void interruptedPreviewAnimationCannotLaterRevealTheTask() {
+        enter();
+        overlay.animationComplete = false;
+        controller.selectTask(card(12, "task-B"), () -> true);
+        backend.focused = target(12, "task-B", "surface-B");
+        idle(100);
+        controller.stop("screen off during animation");
+        overlay.animationComplete = true;
+        idle(400);
+        assertFalse(overlay.visible);
+        assertEquals(0, overlay.swapReveals);
+        assertEquals(1f, backend.scale, .001f);
+    }
+
+    private RecentTaskCard card(int id, String token) {
+        return new RecentTaskCard(id, 0, token, "App " + id, null);
+    }
+
     private void enter() { controller.toggle(() -> successes++); idle(400); }
     private void idle(long ms) {
         // Advance vsync as well as Handler time, even when no periodic check is queued (exit).
@@ -198,6 +438,8 @@ public class TaskScaleControllerTest {
     private static final class FakeBackend implements TaskScaleController.Backend {
         TaskScaleTarget focused, lastTransformed, lastRestored;
         boolean allowed = true, idle = true, failTransform;
+        boolean autoCommit = true;
+        Runnable commit;
         int restoreFailures;
         float scale = 1f;
         final List<Float> scales = new ArrayList<>();
@@ -211,6 +453,11 @@ public class TaskScaleControllerTest {
             scales.add(value);
             if (failTransform) throw new Exception("transaction failure");
         }
+        @Override public void transformAndCommit(TaskScaleTarget target, float value, Runnable committed) throws Exception {
+            transform(target, value);
+            commit = committed;
+            if (autoCommit) committed.run();
+        }
         @Override public void restore(TaskScaleTarget target) throws Exception {
             if (restoreFailures-- > 0) throw new Exception("restore failure");
             lastRestored = target;
@@ -219,12 +466,29 @@ public class TaskScaleControllerTest {
     }
 
     private static final class FakeOverlay implements TaskScaleController.Overlay {
-        boolean visible, animating, fail;
+        boolean visible, animating, fail, covered;
+        boolean autoCover = true;
+        boolean animationComplete = true;
+        int swapReveals;
+        Runnable coverCommit;
         @Override public void show(TaskScaleTarget target, float scale, boolean animate) throws Exception {
             if (fail) throw new Exception("window rejected");
             visible = true;
             animating = animate;
         }
-        @Override public void hide() { visible = false; }
+        @Override public void beginSwap(TaskScaleTarget current, RecentTaskCard selected, Runnable onCovered) throws Exception {
+            if (fail) throw new Exception("window rejected");
+            visible = true;
+            covered = true;
+            coverCommit = onCovered;
+            if (autoCover) onCovered.run();
+        }
+        @Override public void endSwap(TaskScaleTarget current) throws Exception {
+            covered = false;
+            swapReveals++;
+            show(current, .7f, false);
+        }
+        @Override public boolean swapAnimationFinished() { return animationComplete; }
+        @Override public void hide() { visible = false; covered = false; }
     }
 }

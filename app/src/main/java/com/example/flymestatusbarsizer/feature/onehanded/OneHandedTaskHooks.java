@@ -27,6 +27,7 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 /** Flyme Android 16 Shell integration. Missing hook points leave native back untouched. */
 public final class OneHandedTaskHooks {
@@ -181,9 +182,17 @@ public final class OneHandedTaskHooks {
                 Context context = (Context) sourceContext;
                 Handler handler = new Handler(Looper.myLooper());
                 ShellTaskAccess backend = new ShellTaskAccess(context, transitions);
+                TaskScaleRecentTasks recentTasks = createRecentTasks(context);
+                RecentTaskCardsLoader cards = recentTasks == null ? null : new RecentTaskCardsLoader(
+                        recentTasks, Executors.newSingleThreadExecutor(r -> new Thread(r, "FlymeTaskPreviews")), handler);
                 TaskScaleOverlay overlay = new TaskScaleOverlay(context, () -> {
                     TaskScaleController current = controller;
                     if (current != null) current.dispatch(() -> current.exit(true, "outside tap"));
+                }, cards, card -> {
+                    TaskScaleController current = controller;
+                    if (current != null && recentTasks != null) {
+                        current.selectTask(card, () -> recentTasks.launch(card));
+                    }
                 });
                 TaskScaleController current = new TaskScaleController(handler, backend, overlay);
                 registerEnvironment(context, handler);
@@ -195,12 +204,26 @@ public final class OneHandedTaskHooks {
         });
     }
 
+    private static TaskScaleRecentTasks createRecentTasks(Context context) {
+        try { return new TaskScaleRecentTasks(context); }
+        catch (Throwable e) {
+            // Optional preview APIs must not disable the already working task scaling feature.
+            Log.w(TAG, "Recent task cards unavailable", e);
+            return null;
+        }
+    }
+
     private static void registerEnvironment(Context context, Handler handler) {
         IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_OFF);
         filter.addAction(Intent.ACTION_CLOSE_SYSTEM_DIALOGS);
         filter.addAction("android.intent.action.USER_SWITCHED");
         context.registerReceiver(new BroadcastReceiver() {
-            @Override public void onReceive(Context c, Intent intent) { stop(intent.getAction()); }
+            @Override public void onReceive(Context c, Intent intent) {
+                if (Intent.ACTION_CLOSE_SYSTEM_DIALOGS.equals(intent.getAction())) {
+                    TaskScaleController current = controller;
+                    if (current != null) current.systemDialogsClosed();
+                } else stop(intent.getAction());
+            }
         }, filter, null, handler, Context.RECEIVER_EXPORTED);
         context.registerComponentCallbacks(new ComponentCallbacks() {
             @Override public void onConfigurationChanged(Configuration config) { stop("configuration changed"); }

@@ -14,6 +14,7 @@ final class TaskScaleController {
     static final float SCALE = 0.7f;
     private static final long WAIT_TIMEOUT_MS = 2500;
     private static final long CHECK_INTERVAL_MS = 120;
+    private static final long SWAP_TIMEOUT_MS = 5000;
 
     interface Backend {
         TaskScaleTarget focusedTask();
@@ -21,19 +22,35 @@ final class TaskScaleController {
         boolean idle();
         boolean sameSurface(TaskScaleTarget a, TaskScaleTarget b);
         void transform(TaskScaleTarget target, float scale) throws Exception;
+        default void transformAndCommit(TaskScaleTarget target, float scale, Runnable committed) throws Exception {
+            transform(target, scale);
+            committed.run();
+        }
         void restore(TaskScaleTarget target) throws Exception;
     }
 
     interface Overlay {
         void show(TaskScaleTarget target, float scale, boolean animating) throws Exception;
         void hide();
+        default void pause() { hide(); }
+        void beginSwap(TaskScaleTarget current, RecentTaskCard selected, Runnable covered) throws Exception;
+        default boolean swapAnimationFinished() { return true; }
+        default void endSwap(TaskScaleTarget current) throws Exception { show(current, SCALE, false); }
+        default void tasksChanged() {}
     }
+
+    interface TaskLauncher { boolean launch() throws Exception; }
 
     private final Handler handler;
     private final Backend backend;
     private final Overlay overlay;
     private final Runnable check = this::check;
     private TaskScaleTarget target;
+    private RecentTaskCard pendingTask;
+    private TaskScaleTarget swapOriginal;
+    private boolean swapLaunched;
+    private boolean swapRollback;
+    private boolean swapAwaitingCommit;
     private ValueAnimator animator;
     private Runnable success;
     private long deadline;
@@ -87,18 +104,77 @@ final class TaskScaleController {
 
     void stop(String reason) { dispatch(() -> exit(false, reason)); }
 
+    // Task launch itself can close system dialogs. Actual focus, shade, recents and lock events
+    // still decide whether to exit; the generic broadcast is not proof the user left this mode.
+    void systemDialogsClosed() { refresh(); }
+
+    void selectTask(RecentTaskCard requested, TaskLauncher launcher) {
+        dispatch(() -> {
+            if (!active || recovering || suspended || exiting || animator != null || pendingTask != null
+                    || !backend.allowed() || !backend.idle() || requested.matches(target)
+                    || !target.sameTask(backend.focusedTask())) return;
+            pendingTask = requested;
+            swapOriginal = target;
+            swapLaunched = false;
+            swapRollback = false;
+            swapAwaitingCommit = false;
+            success = null;
+            final long epoch = ++generation;
+            deadline = SystemClock.uptimeMillis() + SWAP_TIMEOUT_MS;
+            Log.i(OneHandedTaskHooks.TAG, "Preparing task swap " + target.taskId + " -> " + requested.taskId);
+            try {
+                // Do not restore or launch until an opaque, scaled preview has reached SF.
+                overlay.beginSwap(target, requested, () -> dispatch(() -> {
+                    if (!active || generation != epoch || pendingTask != requested || swapLaunched) return;
+                    if (!backend.allowed() || !target.sameTask(backend.focusedTask())) {
+                        exit(false, "environment changed before card swap");
+                        return;
+                    }
+                    swapLaunched = true;
+                    Log.i(OneHandedTaskHooks.TAG, "Swap cover committed; launching task=" + requested.taskId);
+                    if (!restore()) { exit(false, "restore under swap cover failed"); return; }
+                    suspended = true;
+                    deadline = SystemClock.uptimeMillis() + SWAP_TIMEOUT_MS;
+                    try { swapRollback = !launcher.launch(); }
+                    catch (Exception e) {
+                        Log.w(OneHandedTaskHooks.TAG, "Cannot switch to recent task", e);
+                        swapRollback = true;
+                    }
+                    if (active) schedule(32);
+                }));
+            } catch (Exception e) {
+                Log.w(OneHandedTaskHooks.TAG, "Cannot prepare card swap", e);
+                cancelUnlaunchedSwap();
+            }
+            if (active) schedule(32);
+        });
+    }
+
     void taskVanished(int taskId) {
-        dispatch(() -> { if (target != null && target.taskId == taskId) exit(false, "task vanished"); });
+        dispatch(() -> {
+            if ((target != null && target.taskId == taskId && pendingTask == null)
+                    || (pendingTask != null && pendingTask.taskId == taskId)) exit(false, "task vanished");
+            else if (active) overlay.tasksChanged();
+        });
     }
 
     void suspend() {
         dispatch(() -> {
+            if (active && pendingTask != null) {
+                // Keep the cover and card slots throughout Shell's own transactions.
+                if (swapLaunched && transformed) {
+                    generation++;
+                    swapAwaitingCommit = false;
+                    if (!restore()) exit(false, "restore during card swap failed");
+                }
+                return;
+            }
             if (!active || suspended) return;
             if (exiting) { exit(false, "transition during exit"); return; }
             cancelAnimation();
             // Run before Shell's start transaction. Shell owns the surface throughout transition.
             if (!restore()) { exit(false, "restore before transition failed"); return; }
-            overlay.hide();
+            overlay.pause();
             suspended = true;
             deadline = SystemClock.uptimeMillis() + WAIT_TIMEOUT_MS;
             schedule(32);
@@ -108,7 +184,12 @@ final class TaskScaleController {
     private void check() {
         if (!active || exiting) return;
         TaskScaleTarget focused = backend.focusedTask();
-        if (!backend.allowed() || !target.sameTask(focused) || !focused.eligible
+        if (!backend.allowed()) { exit(false, "environment changed"); return; }
+        if (pendingTask != null) {
+            checkSwap(focused);
+            return;
+        }
+        if (!target.sameTask(focused) || !focused.eligible
                 || !target.bounds.equals(focused.bounds)) {
             exit(false, "environment or task changed");
             return;
@@ -129,6 +210,71 @@ final class TaskScaleController {
             return;
         }
         schedule(CHECK_INTERVAL_MS);
+    }
+
+    private void checkSwap(TaskScaleTarget focused) {
+        if (SystemClock.uptimeMillis() >= deadline) {
+            if (!swapLaunched) cancelUnlaunchedSwap();
+            else exit(false, "task swap timeout expected=" + pendingTask.taskId
+                    + " focused=" + (focused == null ? -1 : focused.taskId)
+                    + " idle=" + backend.idle() + " awaitingCommit=" + swapAwaitingCommit);
+            return;
+        }
+        if (!swapLaunched) { schedule(32); return; }
+        boolean expected = swapRollback ? swapOriginal.sameTask(focused) : pendingTask.matches(focused);
+        if (!backend.idle()) { suspend(); schedule(32); return; }
+        if (!expected) {
+            if (focused != null && !swapOriginal.sameTask(focused)) {
+                exit(false, "unexpected task during card swap");
+                return;
+            }
+        } else if (focused.eligible && !swapAwaitingCommit) {
+            if (!overlay.swapAnimationFinished()) { schedule(32); return; }
+            target = focused;
+            swapAwaitingCommit = true;
+            currentScale = SCALE;
+            transformed = true;
+            long epoch = ++generation;
+            try {
+                backend.transformAndCommit(target, SCALE, () -> dispatch(() -> {
+                    if (!active || generation != epoch || pendingTask == null || !swapAwaitingCommit) return;
+                    TaskScaleTarget current = backend.focusedTask();
+                    if (!backend.allowed() || !target.sameTask(current) || !current.eligible
+                            || !target.bounds.equals(current.bounds)) {
+                        exit(false, "environment changed before swap reveal");
+                        return;
+                    }
+                    if (!backend.idle() || !backend.sameSurface(target, current)) {
+                        suspend();
+                        schedule(32);
+                        return;
+                    }
+                    clearSwap();
+                    suspended = false;
+                    try { overlay.endSwap(target); }
+                    catch (Exception e) { fail(e); return; }
+                    Log.i(OneHandedTaskHooks.TAG, "Swapped main task=" + target.taskId);
+                    schedule(CHECK_INTERVAL_MS);
+                }));
+            } catch (Exception e) { fail(e); return; }
+        }
+        if (pendingTask != null) schedule(32);
+    }
+
+    private void cancelUnlaunchedSwap() {
+        generation++;
+        clearSwap();
+        try { overlay.endSwap(target); }
+        catch (Exception e) { fail(e); }
+        if (active) schedule(CHECK_INTERVAL_MS);
+    }
+
+    private void clearSwap() {
+        pendingTask = null;
+        swapOriginal = null;
+        swapLaunched = false;
+        swapRollback = false;
+        swapAwaitingCommit = false;
     }
 
     private void animateTo(float end, boolean exit) {
@@ -174,8 +320,10 @@ final class TaskScaleController {
     }
 
     void exit(boolean animate, String reason) {
+        boolean wasSwapping = pendingTask != null;
+        clearSwap();
         if (!active) { overlay.hide(); return; }
-        if (animate && !suspended && !exiting && backend.idle() && backend.allowed()) {
+        if (animate && !wasSwapping && !suspended && !exiting && backend.idle() && backend.allowed()) {
             exiting = true;
             handler.removeCallbacks(check);
             animateTo(1f, true);

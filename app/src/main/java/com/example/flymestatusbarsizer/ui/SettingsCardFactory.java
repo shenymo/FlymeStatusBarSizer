@@ -445,7 +445,8 @@ public final class SettingsCardFactory {
         page.addView(appearanceCard, activity.matchWrapWithTop(8));
         TextView scaleHelp = new TextView(activity);
         scaleHelp.setText("将当前应用宽高缩至 70%，固定在右下角。再次触发或点击留白恢复。"
-                + "键盘弹出、切换任务、进入最近任务、旋转或锁屏时自动恢复。"
+                + "左侧紧凑排列三个后台任务预览，仅显示卡片内容。点击后通过平滑移动和缩放动画与右下角主应用交换位置，另外两张卡片保持原位。"
+                + "键盘弹出、通过其他方式切换任务、进入最近任务、旋转或锁屏时自动恢复。"
                 + "应用内页面过渡期间可能暂时恢复全屏，结束后重新缩小。"
                 + "仅支持竖屏普通全屏应用；状态栏和导航栏保持原尺寸。此功能需 Flyme 实机验证。");
         scaleHelp.setTextSize(13);

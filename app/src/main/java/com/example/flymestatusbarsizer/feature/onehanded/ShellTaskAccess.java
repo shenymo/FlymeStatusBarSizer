@@ -92,6 +92,14 @@ final class ShellTaskAccess implements TaskScaleController.Backend {
     }
 
     @Override public void transform(TaskScaleTarget target, float scale) {
+        applyTransform(target, scale, null);
+    }
+
+    @Override public void transformAndCommit(TaskScaleTarget target, float scale, Runnable committed) {
+        applyTransform(target, scale, committed);
+    }
+
+    private void applyTransform(TaskScaleTarget target, float scale, Runnable committed) {
         TaskScaleTarget current = focusedTask();
         if (!target.sameTask(current) || !current.eligible || !sameSurface(target, current)) {
             throw new IllegalStateException("Task changed before surface transaction");
@@ -102,6 +110,7 @@ final class ShellTaskAccess implements TaskScaleController.Backend {
             transaction.setPosition(surface,
                     current.position.x + current.bounds.width() * (1f - scale),
                     current.position.y + current.bounds.height() * (1f - scale));
+            if (committed != null) transaction.addTransactionCommittedListener(Runnable::run, committed::run);
             transaction.apply();
         }
     }
