@@ -5080,6 +5080,8 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static boolean shouldMergeDualWifiIntoPrimary(ModuleConfig config) {
         return isWifiCodeDrawEnabled(config)
+                // The merged badge belongs to the primary slot, so slot hiding alone cannot hide it.
+                && !config.hiddenStatusBarSlots.contains(WIFI_SLOT_VICE)
                 && LAST_WIFI_ENABLED
                 && LAST_WIFI_CONNECTED
                 && LAST_VICE_WIFI_ENABLED
