@@ -1,7 +1,16 @@
 package com.example.flymestatusbarsizer.feature.assistant;
 
 import android.content.res.ColorStateList;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
+import android.graphics.Rect;
+import android.graphics.drawable.ColorDrawable;
+import android.view.View;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import org.junit.Test;
@@ -12,6 +21,7 @@ import org.robolectric.annotation.Config;
 import org.robolectric.annotation.ConscryptMode;
 
 import static org.junit.Assert.*;
+import static org.robolectric.Shadows.shadowOf;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 28, manifest = Config.NONE)
@@ -73,5 +83,196 @@ public class AssistantTitleColorTest {
         assertEquals(Color.RED, title.getCurrentTextColor());
         color.restore();
         new AssistantTitleColor((TextView) null).apply();
+    }
+
+    @Test public void allHeaderControlsFollowTintAndRestoreTheirOwnNativeColors() {
+        Header header = new Header();
+        ColorStateList imageColors = new ColorStateList(
+                new int[][]{new int[]{android.R.attr.state_pressed}, new int[]{}},
+                new int[]{Color.RED, Color.GREEN});
+        ColorStateList hints = ColorStateList.valueOf(Color.BLUE);
+        header.add.setImageTintList(imageColors);
+        header.add.setImageTintMode(PorterDuff.Mode.SRC_IN);
+        header.text.setTextColor(Color.RED);
+        header.text.setHintTextColor(hints);
+        header.icon.setAlpha(0.6f);
+        TextView card = new TextView(RuntimeEnvironment.getApplication());
+        card.setTextColor(Color.MAGENTA);
+        header.root.addView(card);
+        AssistantTitleColor color = header.colors();
+        color.setTint(Color.WHITE);
+        assertSame(imageColors, header.add.getImageTintList());
+        assertNull(header.search.getBackgroundTintList());
+        color.apply();
+        for (int tint : new int[]{Color.WHITE, 0xff777777, Color.BLACK}) {
+            color.setTint(tint);
+            header.assertTint(tint);
+        }
+        assertEquals(0.6f, header.icon.getAlpha(), 0f);
+        assertEquals(Color.MAGENTA, card.getCurrentTextColor());
+        color.restore();
+        assertSame(imageColors, header.add.getImageTintList());
+        assertEquals(PorterDuff.Mode.SRC_IN, header.add.getImageTintMode());
+        assertNull(header.add.getBackgroundTintList());
+        assertNull(header.search.getBackgroundTintList());
+        assertNull(header.icon.getImageTintList());
+        assertNull(header.icon.getBackgroundTintList());
+        assertEquals(Color.RED, header.text.getCurrentTextColor());
+        assertSame(hints, header.text.getHintTextColors());
+        color.setTint(Color.WHITE);
+        header.draw();
+        assertSame(imageColors, header.add.getImageTintList());
+        assertSame(hints, header.text.getHintTextColors());
+    }
+
+    @Test public void wallpaperUpdatesAndLastMomentNativeChangesSurviveClosing() {
+        Header header = new Header();
+        AssistantTitleColor color = header.colors();
+        color.setTint(Color.BLACK);
+        color.apply();
+        ColorStateList wallpaper = ColorStateList.valueOf(0xffeeeeee);
+        header.add.setImageTintList(wallpaper);
+        header.add.setBackgroundTintList(wallpaper);
+        header.text.setTextColor(wallpaper);
+        header.text.setHintTextColor(wallpaper);
+        header.icon.setImageTintList(wallpaper);
+        header.search.setBackgroundTintList(wallpaper);
+        header.draw();
+        header.assertTint(Color.BLACK);
+        // A native change can also arrive immediately before restore, without a pre-draw.
+        header.icon.setImageTintList(null);
+        color.restore();
+        assertSame(wallpaper, header.add.getImageTintList());
+        assertSame(wallpaper, header.add.getBackgroundTintList());
+        assertSame(wallpaper, header.text.getTextColors());
+        assertSame(wallpaper, header.text.getHintTextColors());
+        assertSame(wallpaper, header.search.getBackgroundTintList());
+        assertNull(header.icon.getImageTintList());
+        color.apply();
+        header.assertTint(Color.BLACK);
+        color.restore();
+        assertSame(wallpaper, header.text.getHintTextColors());
+        assertNull(header.icon.getImageTintList());
+    }
+
+    @Test public void lateAndRecycledSearchViewsFollowTintEvenWithoutTitle() {
+        Header header = new Header();
+        header.root.removeView(header.title);
+        header.root.removeView(header.search);
+        AssistantTitleColor color = header.colors();
+        color.setTint(Color.BLACK);
+        color.apply();
+        assertEquals(Color.BLACK, header.add.getImageTintList().getDefaultColor());
+        ColorStateList hints = header.text.getHintTextColors();
+        header.root.addView(header.search);
+        header.draw();
+        assertEquals(Color.BLACK, header.text.getCurrentHintTextColor());
+        Header replacement = new Header();
+        replacement.root.removeView(replacement.search);
+        ColorStateList replacementHints = replacement.text.getHintTextColors();
+        header.root.removeView(header.search);
+        header.root.addView(replacement.search);
+        header.draw();
+        assertSame(hints, header.text.getHintTextColors());
+        assertNull(header.search.getBackgroundTintList());
+        assertNull(header.icon.getImageTintList());
+        assertEquals(Color.BLACK, replacement.text.getCurrentHintTextColor());
+        assertEquals(Color.BLACK, replacement.icon.getImageTintList().getDefaultColor());
+        color.restore();
+        assertSame(replacementHints, replacement.text.getHintTextColors());
+        assertNull(replacement.search.getBackgroundTintList());
+        assertNull(replacement.icon.getImageTintList());
+    }
+
+    @Test public void noTintOrCancelledAttachmentLeavesAllNativeControlsAlone() {
+        Header header = new Header();
+        ColorStateList hints = header.text.getHintTextColors();
+        AssistantTitleColor color = header.colors();
+        color.setTint(Color.BLACK);
+        color.restore();
+        assertNull(header.add.getImageTintList());
+        assertNull(header.search.getBackgroundTintList());
+        color.setTint(null);
+        color.apply();
+        header.draw();
+        color.restore();
+        assertSame(hints, header.text.getHintTextColors());
+        assertNull(header.add.getImageTintList());
+        assertNull(header.search.getBackgroundTintList());
+        assertNull(header.icon.getImageTintList());
+    }
+
+    @Test public void searchBackgroundDrawsWithStatusBarTintAndNativeTranslucency() {
+        Header header = new Header();
+        AssistantTitleColor color = header.colors();
+        color.setTint(Color.BLACK);
+        color.apply();
+        for (int nativeColor : new int[]{0x40ffffff, 0x59000000}) {
+            // SearchViewHolder can rebind the native background while the panel is open.
+            header.search.setBackgroundColor(nativeColor);
+            ColorDrawable background = (ColorDrawable) header.search.getBackground();
+            for (int tint : new int[]{Color.BLACK, Color.WHITE}) {
+                color.setTint(tint);
+                header.draw();
+                background.setBounds(0, 0, 2, 2);
+                int[] draws = {0};
+                // Inspect the actual Drawable draw call; native pixel rendering is unavailable
+                // in Robolectric on Linux/aarch64, so final composition still needs a device.
+                background.draw(new Canvas() {
+                    @Override public void drawRect(Rect bounds, Paint paint) {
+                        draws[0]++;
+                        assertEquals(nativeColor, paint.getColor());
+                        assertTrue(paint.getColorFilter() instanceof PorterDuffColorFilter);
+                        PorterDuffColorFilter filter = (PorterDuffColorFilter) paint.getColorFilter();
+                        assertEquals(tint, shadowOf(filter).getColor());
+                        assertEquals(PorterDuff.Mode.SRC_IN, shadowOf(filter).getMode());
+                    }
+                });
+                assertEquals(1, draws[0]);
+                assertEquals(nativeColor, background.getColor());
+            }
+        }
+        color.restore();
+        assertNull(header.search.getBackgroundTintList());
+        assertEquals(0x59000000, ((ColorDrawable) header.search.getBackground()).getColor());
+    }
+
+    private static final class Header {
+        final FrameLayout root = new FrameLayout(RuntimeEnvironment.getApplication());
+        final TextView title = new TextView(root.getContext());
+        final ImageView add = new ImageView(root.getContext());
+        final FrameLayout search = new FrameLayout(root.getContext());
+        final TextView text = new TextView(root.getContext());
+        final ImageView icon = new ImageView(root.getContext());
+
+        Header() {
+            View[] views = {title, add, search, text, icon};
+            for (int i = 0; i < views.length; i++) views[i].setId(i + 1);
+            root.addView(title);
+            root.addView(add);
+            root.addView(search);
+            search.addView(text);
+            search.addView(icon);
+            search.setBackgroundColor(0x40ffffff);
+            text.setEnabled(false);
+            text.setHint("搜索");
+            text.setHintTextColor(Color.WHITE);
+            add.setImageDrawable(new ColorDrawable(Color.WHITE));
+            icon.setImageDrawable(new ColorDrawable(Color.WHITE));
+        }
+
+        AssistantTitleColor colors() { return new AssistantTitleColor(root, 1, 2, 3, 4, 5); }
+        void draw() { root.getViewTreeObserver().dispatchOnPreDraw(); }
+
+        void assertTint(int tint) {
+            assertEquals(tint, title.getCurrentTextColor());
+            assertEquals(tint, add.getImageTintList().getDefaultColor());
+            assertEquals(tint, add.getBackgroundTintList().getDefaultColor());
+            assertEquals(tint, search.getBackgroundTintList().getDefaultColor());
+            assertEquals(tint, text.getCurrentTextColor());
+            assertEquals(tint, text.getCurrentHintTextColor());
+            assertEquals(tint, icon.getImageTintList().getDefaultColor());
+            assertEquals(tint, icon.getBackgroundTintList().getDefaultColor());
+        }
     }
 }
