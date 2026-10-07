@@ -106,6 +106,19 @@ public class SideGestureActionsTest {
         assertFalse(AssistantClient.enabled(context));
     }
 
+    @Test public void taskScaleIsDispatchedWithoutAssistantReadiness() {
+        AssistantAction scale = new AssistantAction();
+        assistant.ready = false;
+        config.sideGestureAction = SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
+        prepareReadyGesture(true);
+        gesture.action = SideGestureActions.resolve(config.sideGestureAction, assistant, scale);
+        assertFalse(AssistantClient.enabled(RuntimeEnvironment.getApplication()));
+        assertTrue(gesture.tryClaim());
+        assertNotNull(scale.onSuccess);
+        assertNull(assistant.onSuccess);
+        assertEquals(Arrays.asList("pilfer", "cancel", "assistant"), calls);
+    }
+
     private void prepareReadyGesture(boolean left) {
         long now = SystemClock.uptimeMillis();
         gesture.actionId = config.sideGestureAction;

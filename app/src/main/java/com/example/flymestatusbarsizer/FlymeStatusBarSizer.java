@@ -276,6 +276,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private void hookSystemUi(ClassLoader loader) {
+        com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.install(this, loader);
         CameraCutoutHooks.install(this, loader);
         StatusBarTintHooks.installSystemUi(this, loader);
         installStatusBarHooks(loader);
@@ -6558,6 +6559,7 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void refreshTrackedRuntimeViews(boolean forceSignalRequery) {
         AssistantHooks.refresh();
+        com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.refresh();
         StatusBarTintHooks.refresh();
         StatusBarIconVisibilityHooks.refresh();
         CameraCutoutHooks.refresh();

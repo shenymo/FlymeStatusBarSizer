@@ -58,7 +58,7 @@ public class SideGestureConfigTest {
     }
 
     @Test public void invalidActionFallsBackAndResetRestoresDisabledDefault() throws Exception {
-        for (int value : new int[]{-1, 1, Integer.MAX_VALUE}) {
+        for (int value : new int[]{-1, 2, Integer.MAX_VALUE}) {
             prefs.edit().putInt(KEY_SIDE_GESTURE_ACTION, value).commit();
             assertEquals(SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT, load(prefs).sideGestureAction);
         }
@@ -112,6 +112,27 @@ public class SideGestureConfigTest {
         } finally {
             field.set(null, previous);
         }
+    }
+
+    @Test public void taskScaleActionSurvivesBackupAndRemoteSync() throws Exception {
+        prefs.edit().putBoolean(KEY_ASSISTANT_GESTURE_ENABLED, true)
+                .putInt(KEY_SIDE_GESTURE_ACTION, SIDE_GESTURE_ACTION_TASK_SCALE).commit();
+        assertEquals(SIDE_GESTURE_ACTION_TASK_SCALE, load(prefs).sideGestureAction);
+        backupAction("exportConfig");
+        prefs.edit().clear().commit();
+        backupAction("importConfig");
+        assertEquals(SIDE_GESTURE_ACTION_TASK_SCALE, load(prefs).sideGestureAction);
+        SharedPreferences remote = activity.getSharedPreferences("task-scale-remote", Context.MODE_PRIVATE);
+        remote.edit().clear().commit();
+        Field field = RemoteSettingsSync.class.getDeclaredField("remotePrefs");
+        field.setAccessible(true);
+        Object previous = field.get(null);
+        try {
+            field.set(null, remote);
+            RemoteSettingsSync.syncFromLocal(activity);
+            assertEquals(SIDE_GESTURE_ACTION_TASK_SCALE, load(remote).sideGestureAction);
+            assertTrue(load(remote).assistantGestureEnabled);
+        } finally { field.set(null, previous); }
     }
 
     private void writeLegacySettings() {

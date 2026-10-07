@@ -378,11 +378,13 @@ public final class SettingsCardFactory {
         activity.addSwitchRow(page, "启用侧边手势", null,
                 SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED, SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
         TextView summary = new TextView(activity);
-        summary.setText("从屏幕侧边向内滑动并按住，打开全局负一屏。");
         summary.setTextColor(activity.subtextColor());
         summary.setTextSize(13);
         summary.setPadding(0, 0, 0, activity.dp(8));
         page.addView(summary, activity.matchWrap());
+        LinearLayout actionOptions = new LinearLayout(activity);
+        actionOptions.setOrientation(LinearLayout.VERTICAL);
+        page.addView(actionOptions, activity.matchWrap());
 
         AssistantGesturePreviewLayout gestureOptions = new AssistantGesturePreviewLayout(
                 activity, activity.prefs(), activity.primaryColor());
@@ -393,7 +395,8 @@ public final class SettingsCardFactory {
                 new String[]{"左侧", "右侧", "两侧"});
         activity.addDivider(gestureOptions);
         activity.addMultiChoiceRow(gestureOptions, "触发场景",
-                "可多选。常规界面包括应用和桌面；通知栏或控制中心展开时，按当前面板判断。全部取消后不触发。",
+                "可多选。常规界面包括应用和桌面；通知栏或控制中心展开时，按当前面板判断。"
+                        + "应用单手缩放仅在勾选“常规界面”时对竖屏全屏应用生效。全部取消后不触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_SCENES, SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES,
                 new int[]{SettingsStore.ASSISTANT_GESTURE_SCENE_NORMAL,
                         SettingsStore.ASSISTANT_GESTURE_SCENE_NOTIFICATION,
@@ -440,9 +443,33 @@ public final class SettingsCardFactory {
                 "下次打开全局负一屏时生效，不影响桌面负一屏。", assistantOptions);
         appearanceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
         page.addView(appearanceCard, activity.matchWrapWithTop(8));
+        TextView scaleHelp = new TextView(activity);
+        scaleHelp.setText("将当前应用宽高缩至 70%，固定在右下角。再次触发或点击留白恢复。"
+                + "键盘弹出、切换任务、进入最近任务、旋转或锁屏时自动恢复。"
+                + "应用内页面过渡期间可能暂时恢复全屏，结束后重新缩小。"
+                + "仅支持竖屏普通全屏应用；状态栏和导航栏保持原尺寸。此功能需 Flyme 实机验证。");
+        scaleHelp.setTextSize(13);
+        scaleHelp.setTextColor(activity.subtextColor());
+        scaleHelp.setPadding(0, activity.dp(8), 0, activity.dp(8));
+        page.addView(scaleHelp, activity.matchWrap());
+        java.util.function.IntConsumer updateAction = value -> {
+            boolean scale = value == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
+            summary.setText(scale ? "从屏幕侧边向内滑动并按住，将当前应用缩小到右下角。"
+                    : "从屏幕侧边向内滑动并按住，打开全局负一屏。");
+            appearanceCard.setVisibility(scale ? View.GONE : View.VISIBLE);
+            scaleHelp.setVisibility(scale ? View.VISIBLE : View.GONE);
+        };
+        activity.addChoiceRow(actionOptions, "触发动作", "选择侧边长滑手势执行的功能。",
+                SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION,
+                new int[]{SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT, SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE},
+                new String[]{"全局负一屏", "应用单手缩放"}, updateAction);
+        updateAction.accept(SettingsStore.normalizeSideGestureAction(SettingsStore.readInt(activity.prefs(),
+                SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION)));
         return activity.buildSectionCard("侧边手势",
-                "首次使用\n在 LSPosed 中勾选系统界面与 Aicy 纵览，重启手机，再从桌面打开一次负一屏。\n\n"
-                        + "使用方法\n从所选侧边的返回区域向内滑动并按住，打开全局负一屏（Aicy 纵览）。左右滑动或返回可关闭。"
+                "首次使用\n在 LSPosed 中勾选系统界面，更新模块后重启 SystemUI 或手机。"
+                        + "全局负一屏还需勾选 Aicy 纵览并重启，再从桌面打开一次负一屏。\n\n"
+                        + "使用方法\n选择触发动作，从所选侧边的返回区域向内滑动并按住。"
+                        + "应用单手缩放可再次触发或点击留白退出；全局负一屏可左右滑动或返回关闭。"
                         + "未达到触发条件时正常返回，锁屏时不触发。", page);
     }
 

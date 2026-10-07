@@ -1361,6 +1361,12 @@ public class MainActivity extends Activity {
 
     public void addChoiceRow(LinearLayout root, String titleText, String subtitleText,
             String key, int defaultValue, int[] values, String[] labels) {
+        addChoiceRow(root, titleText, subtitleText, key, defaultValue, values, labels, null);
+    }
+
+    public void addChoiceRow(LinearLayout root, String titleText, String subtitleText,
+            String key, int defaultValue, int[] values, String[] labels,
+            java.util.function.IntConsumer onChanged) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -1384,7 +1390,7 @@ public class MainActivity extends Activity {
         valueView.setGravity(Gravity.CENTER);
         int currentValue = readIntSetting(key, defaultValue);
         valueView.setText(resolveChoiceLabel(currentValue, values, labels));
-        setTapClickListener(valueView, v -> showChoiceMenu(v, key, defaultValue, values, labels, valueView));
+        setTapClickListener(valueView, v -> showChoiceMenu(v, key, defaultValue, values, labels, valueView, onChanged));
 
         row.addView(textColumn, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
@@ -1464,6 +1470,11 @@ public class MainActivity extends Activity {
 
     void showChoiceMenu(View anchor, String key, int defaultValue,
             int[] values, String[] labels, TextView valueView) {
+        showChoiceMenu(anchor, key, defaultValue, values, labels, valueView, null);
+    }
+
+    private void showChoiceMenu(View anchor, String key, int defaultValue,
+            int[] values, String[] labels, TextView valueView, java.util.function.IntConsumer onChanged) {
         PopupMenu popup = new PopupMenu(this, anchor);
         int currentValue = readIntSetting(key, defaultValue);
         for (int i = 0; i < values.length && i < labels.length; i++) {
@@ -1474,6 +1485,7 @@ public class MainActivity extends Activity {
             int selectedValue = item.getItemId();
             putIntSetting(key, selectedValue);
             valueView.setText(resolveChoiceLabel(selectedValue, values, labels));
+            if (onChanged != null) onChanged.accept(selectedValue);
             return true;
         });
         popup.show();

@@ -8,6 +8,7 @@ import android.view.ViewGroup;
 import android.widget.ListView;
 import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.PopupMenu;
 
 import com.example.flymestatusbarsizer.MainActivity;
 import com.example.flymestatusbarsizer.config.SettingsStore;
@@ -19,6 +20,7 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.ConscryptMode;
 import org.robolectric.shadows.ShadowAlertDialog;
+import org.robolectric.shadows.ShadowPopupMenu;
 
 import java.lang.reflect.Field;
 
@@ -50,7 +52,7 @@ public class AssistantGestureSettingsTest {
         java.util.Map<String, ?> savedSettings = activity.prefs().getAll();
         card = new SettingsCardFactory(activity).createSideGestureSettingsCard();
         assertNotNull(byText(card, "侧边手势"));
-        assertNull(byText(card, "触发动作"));
+        assertNotNull(byText(card, "触发动作"));
         assertNotNull(byText(card, "手势设置"));
         assertNotNull(byText(card, "负一屏外观"));
         assertNotNull(byText(card, "使用自选背景"));
@@ -72,6 +74,42 @@ public class AssistantGestureSettingsTest {
             if (row.getChildAt(i) instanceof Switch) return (Switch) row.getChildAt(i);
         }
         throw new AssertionError("Missing side gesture toggle");
+    }
+
+    @Test public void selectingTaskScaleChangesDescriptionAndHidesAssistantAppearance() {
+        ((View) byText(card, "侧边手势").getParent()).performClick();
+        View value = byText(card, "全局负一屏");
+        assertNotNull(value);
+        value.performClick();
+        shadowOf(Looper.getMainLooper()).idle();
+        PopupMenu popup = ShadowPopupMenu.getLatestPopupMenu();
+        assertNotNull(popup);
+        shadowOf(popup).getOnMenuItemClickListener().onMenuItemClick(
+                popup.getMenu().findItem(SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE));
+        assertEquals(SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE,
+                activity.prefs().getInt(SettingsStore.KEY_SIDE_GESTURE_ACTION, -1));
+        assertNotNull(byText(card, "应用单手缩放"));
+        assertNotNull(byText(card, "从屏幕侧边向内滑动并按住，将当前应用缩小到右下角。"));
+        assertFalse(isVisibleThroughParents(byText(card, "负一屏外观")));
+        card = new SettingsCardFactory(activity).createSideGestureSettingsCard();
+        assertNotNull(byText(card, "应用单手缩放"));
+        ((View) byText(card, "侧边手势").getParent()).performClick();
+        assertFalse(isVisibleThroughParents(byText(card, "负一屏外观")));
+        byText(card, "应用单手缩放").performClick();
+        shadowOf(Looper.getMainLooper()).idle();
+        popup = ShadowPopupMenu.getLatestPopupMenu();
+        shadowOf(popup).getOnMenuItemClickListener().onMenuItemClick(
+                popup.getMenu().findItem(SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT));
+        assertTrue(isVisibleThroughParents(byText(card, "负一屏外观")));
+    }
+
+    private boolean isVisibleThroughParents(View view) {
+        assertNotNull(view);
+        while (view != null) {
+            if (view.getVisibility() != View.VISIBLE) return false;
+            view = view.getParent() instanceof View ? (View) view.getParent() : null;
+        }
+        return true;
     }
 
     @Test public void defaultIsAllAndCancelDiscardsPendingChanges() {

@@ -4,7 +4,7 @@ import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 /** Reads the shade window owned by this EdgeBackGestureHandler, including partial expansion. */
-final class AssistantGestureScenes {
+public final class AssistantGestureScenes {
     private AssistantGestureScenes() {}
 
     static boolean allows(int selected, Object edgeHandler) {
@@ -15,7 +15,7 @@ final class AssistantGestureScenes {
         return (selected & current(edgeHandler)) != 0;
     }
 
-    static int current(Object edgeHandler) {
+    public static int current(Object edgeHandler) {
         Object controller = ReflectUtils.getField(edgeHandler, "mNotificationShadeWindowController");
         Object state = ReflectUtils.getField(controller, "mCurrentState");
         Object center = ReflectUtils.getField(state, "centerControllerVisible");

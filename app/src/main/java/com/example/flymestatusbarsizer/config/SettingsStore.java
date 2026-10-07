@@ -122,6 +122,7 @@ public final class SettingsStore {
     public static final int ASSISTANT_FOREGROUND_WHITE = 2;
     public static final String KEY_SIDE_GESTURE_ACTION = "side_gesture_action";
     public static final int SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT = 0;
+    public static final int SIDE_GESTURE_ACTION_TASK_SCALE = 1;
     public static final int DEFAULT_SIDE_GESTURE_ACTION = SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
     // Keep the original gesture keys so upgrades and old backups retain their settings.
     public static final String KEY_ASSISTANT_GESTURE_ENABLED = "assistant_gesture_enabled";
@@ -1428,6 +1429,7 @@ public final class SettingsStore {
     public static int normalizeSideGestureAction(int value) {
         switch (value) {
             case SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT:
+            case SIDE_GESTURE_ACTION_TASK_SCALE:
                 return value;
             default:
                 return DEFAULT_SIDE_GESTURE_ACTION;

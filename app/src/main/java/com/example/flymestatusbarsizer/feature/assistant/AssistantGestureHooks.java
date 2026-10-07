@@ -33,6 +33,7 @@ final class AssistantGestureHooks {
             constructor.setAccessible(true);
             module.intercept(constructor, chain -> {
                 Object result = chain.proceed();
+                com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.trackEdgeHandler(chain.getThisObject());
                 Object c = ReflectUtils.getField(chain.getThisObject(), "mContext");
                 if (c instanceof Context) AssistantClient.get((Context) c);
                 return result;
@@ -40,6 +41,7 @@ final class AssistantGestureHooks {
         }
         module.intercept(motion, chain -> {
             Object owner = chain.getThisObject();
+            com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.trackEdgeHandler(owner);
             MotionEvent event = (MotionEvent) chain.getArg(0);
             Gesture gesture;
             synchronized (GESTURES) {
