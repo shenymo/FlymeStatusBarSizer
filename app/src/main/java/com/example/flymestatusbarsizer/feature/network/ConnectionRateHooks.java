@@ -5,6 +5,8 @@ import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
+import android.graphics.Paint;
+import android.graphics.Typeface;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
@@ -38,6 +40,7 @@ public final class ConnectionRateHooks {
                     continue;
                 }
                 applyConnectionRateTextScale(view);
+                applyConnectionRateFontWeight(view, ModuleConfig.load(view.getContext()));
                 applyConnectionRateThresholdVisibility(view);
             }
         });
@@ -53,12 +56,18 @@ public final class ConnectionRateHooks {
                 String name = method.getName();
                 if (!"onAttachedToWindow".equals(name)
                         && !"onConnectionRateChange".equals(name)
-                        && !"onConfigurationChanged".equals(name)) {
+                        && !"onConfigurationChanged".equals(name)
+                        && !"refreshFont".equals(name)) {
                     continue;
                 }
                 method.setAccessible(true);
                 module.intercept(method, chain -> {
                     Object thisObject = chain.getThisObject();
+                    // Let Flyme refresh its native font from an unmodified baseline. Otherwise
+                    // reattachment/theme changes can capture our own weight as the original.
+                    if (thisObject instanceof View && !"onConnectionRateChange".equals(name)) {
+                        restoreConnectionRateFontWeight((View) thisObject);
+                    }
                     Object result = chain.proceed();
                     if (thisObject instanceof View) {
                         View view = (View) thisObject;
@@ -68,6 +77,10 @@ public final class ConnectionRateHooks {
                                 || "onConfigurationChanged".equals(name)) {
                             rememberConnectionRateBaseState(view, true);
                             applyConnectionRateTextScale(view);
+                        }
+                        applyConnectionRateFontWeight(view, ModuleConfig.load(view.getContext()));
+                        if ("refreshFont".equals(name)) {
+                            return result;
                         }
                         if ("onConnectionRateChange".equals(name) && chain.getArgs().size() == 2
                                 && chain.getArg(0) instanceof Boolean) {
@@ -177,6 +190,71 @@ public final class ConnectionRateHooks {
             }
         }
         return null;
+    }
+
+    static void applyConnectionRateFontWeight(View view, ModuleConfig config) {
+        if (view == null) {
+            return;
+        }
+        if (config == null || !config.enabled || !config.clockBoldEnabled) {
+            restoreConnectionRateFontWeight(view);
+            return;
+        }
+        ConnectionRateViewState state = rememberConnectionRateViewState(view);
+        int weight = Math.max(100, Math.min(900, config.clockFontWeight));
+        // The digits are drawn on Canvas, and getPaint() initializes both the lazy Paint
+        // and DecimalFormat. Do not replace it with a new Paint or only style mUnitView.
+        Object numberPaint = ReflectUtils.getField(view, "mPaint");
+        if (!(numberPaint instanceof Paint)) {
+            numberPaint = ReflectUtils.invokeNoArg(view, "getPaint");
+        }
+        boolean changed = false;
+        if (numberPaint instanceof Paint) {
+            Paint paint = (Paint) numberPaint;
+            if (state.numberFont == null || state.numberFont.paint != paint) {
+                state.numberFont = new ConnectionRateFontState(paint);
+            }
+            changed = state.numberFont.apply(null, weight);
+        }
+        TextView unitView = resolveConnectionRateUnitView(view);
+        if (unitView != null) {
+            if (state.unitFont == null || state.unitFont.paint != unitView.getPaint()) {
+                state.unitFont = new ConnectionRateFontState(unitView.getPaint());
+            }
+            if (state.unitFont.apply(unitView, weight)) {
+                unitView.requestLayout();
+                unitView.invalidate();
+                changed = true;
+            }
+        }
+        if (changed) {
+            view.requestLayout();
+            view.invalidate();
+        }
+    }
+
+    static void restoreConnectionRateFontWeight(View view) {
+        ConnectionRateViewState state = CONNECTION_RATE_VIEW_STATES.get(view);
+        if (state == null || (state.numberFont == null && state.unitFont == null)) {
+            return;
+        }
+        if (state.numberFont != null) {
+            state.numberFont.restore(null);
+            state.numberFont = null;
+        }
+        if (state.unitFont != null) {
+            TextView unitView = resolveConnectionRateUnitView(view);
+            if (unitView != null && unitView.getPaint() == state.unitFont.paint) {
+                state.unitFont.restore(unitView);
+                unitView.requestLayout();
+                unitView.invalidate();
+            } else {
+                state.unitFont.restore(null);
+            }
+            state.unitFont = null;
+        }
+        view.requestLayout();
+        view.invalidate();
     }
 
     private static boolean applyConnectionRateTextScale(View view) {
@@ -565,6 +643,8 @@ public final class ConnectionRateHooks {
     }
 
     private static final class ConnectionRateViewState {
+        ConnectionRateFontState numberFont;
+        ConnectionRateFontState unitFont;
         int originalTextSize = -1;
         int originalMaxWidth = -1;
         int originalOrientation = Integer.MIN_VALUE;
@@ -593,6 +673,54 @@ public final class ConnectionRateHooks {
         void resetCounters() {
             aboveCount = 0;
             belowCount = 0;
+        }
+    }
+
+    private static final class ConnectionRateFontState {
+        // Keep Paint, not TextView: a strong reference to the child would retain the
+        // parent key in CONNECTION_RATE_VIEW_STATES and defeat the WeakHashMap.
+        final Paint paint;
+        final Typeface originalTypeface;
+        final boolean originalFakeBold;
+        Typeface weightedTypeface;
+        int appliedWeight = -1;
+
+        ConnectionRateFontState(Paint paint) {
+            this.paint = paint;
+            originalTypeface = paint.getTypeface();
+            originalFakeBold = paint.isFakeBoldText();
+        }
+
+        boolean apply(TextView unitView, int weight) {
+            if (appliedWeight != weight) {
+                boolean italic = originalTypeface != null && originalTypeface.isItalic();
+                try {
+                    weightedTypeface = Typeface.create(originalTypeface, weight, italic);
+                } catch (Throwable ignored) {
+                    int style = (weight >= 600 ? Typeface.BOLD : Typeface.NORMAL)
+                            | (italic ? Typeface.ITALIC : Typeface.NORMAL);
+                    weightedTypeface = Typeface.create(originalTypeface, style);
+                }
+                appliedWeight = weight;
+            }
+            return setFont(unitView, weightedTypeface, weight >= 600);
+        }
+
+        void restore(TextView unitView) {
+            setFont(unitView, originalTypeface, originalFakeBold);
+        }
+
+        private boolean setFont(TextView unitView, Typeface typeface, boolean fakeBold) {
+            boolean changed = paint.getTypeface() != typeface || paint.isFakeBoldText() != fakeBold;
+            if (paint.getTypeface() != typeface) {
+                if (unitView != null) {
+                    unitView.setTypeface(typeface);
+                } else {
+                    paint.setTypeface(typeface);
+                }
+            }
+            paint.setFakeBoldText(fakeBold);
+            return changed;
         }
     }
 }

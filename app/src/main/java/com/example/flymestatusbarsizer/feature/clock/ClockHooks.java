@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.clock;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
+import com.example.flymestatusbarsizer.feature.statusbar.NativeStatusBarTextWeight;
 
 import android.content.res.Configuration;
 import android.content.res.ColorStateList;
@@ -129,6 +130,7 @@ public final class ClockHooks {
         hookConstructors(module, loader, "com.android.keyguard.CarrierText", view -> {
             if (view instanceof TextView) {
                 TextView textView = (TextView) view;
+                NativeStatusBarTextWeight.track(textView);
                 trackClockAndCarrierTextView(textView);
                 scheduleClockAndCarrierTextRelayout(textView);
                 applyClockAndCarrierTextSize(textView);

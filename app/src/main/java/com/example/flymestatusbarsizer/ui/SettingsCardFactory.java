@@ -352,8 +352,8 @@ public final class SettingsCardFactory {
 
     public View createTimeTypographySettingsCard() {
         return activity.buildSectionCard(
-                "时间字体",
-                "集中控制状态栏时间、追加日期和锁屏运营商的字重与字号。",
+                "状态栏文字",
+                "统一调整时间、日期、网速、锁屏运营商和原生电量数字的粗细。",
                 buildTimeTypographyPage());
     }
 
@@ -1459,18 +1459,18 @@ public final class SettingsCardFactory {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
 
-        activity.addProfileSectionHeader(page, "字重 / 字号",
-                "这里集中控制状态栏时间、右侧追加日期以及锁屏运营商相关文字的字重和字号。");
-        activity.addSwitchRow(page, "时间加粗",
-                "对状态栏时间以及其右侧追加的星期/日期应用字重",
+        activity.addProfileSectionHeader(page, "字体粗细与大小",
+                "粗细支持原生电量数字（含仅数字模式）；不影响电池图标内部数字、信号标识和活动胶囊文字。");
+        activity.addSwitchRow(page, "自定义字体粗细",
+                "同步调整时间、日期、网速、锁屏运营商和原生电量数字。关闭后时间恢复常规粗细，其余恢复系统字体。",
                 SettingsStore.KEY_CLOCK_BOLD_ENABLED, SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED);
         activity.addDivider(page);
-        activity.addApplySliderRow(page, "时间/日期粗细",
-                "只对状态栏时间文字生效，范围 100-900",
+        activity.addApplySliderRow(page, "字体粗细",
+                "数值越大越粗，范围 100–900；开启“自定义字体粗细”后生效。",
                 SettingsStore.KEY_CLOCK_FONT_WEIGHT, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT, 100, 900, "");
         activity.addDivider(page);
-        activity.addApplySliderRow(page, "时间和锁屏运营商字体大小",
-                "同时控制左上角时间、锁屏界面运营商，以及网速显示文字大小。默认 100%。",
+        activity.addApplySliderRow(page, "字体大小",
+                "缩放时间、日期、网速和锁屏运营商文字，100% 为系统默认大小；不影响原生电量数字。",
                 SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
                 SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT, 50, 200, "%");
         activity.addDivider(page);

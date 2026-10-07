@@ -6,6 +6,7 @@ import com.example.flymestatusbarsizer.feature.share.GalleryShareTargetsHooks;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.feature.battery.BatteryTextFontHelper;
+import com.example.flymestatusbarsizer.feature.statusbar.NativeStatusBarTextWeight;
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAppearance;
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryDynamics;
 import com.example.flymestatusbarsizer.feature.battery.FlymeCapsuleBatteryPainter;
@@ -346,6 +347,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         hookFlymeBatteryMeterViewConfigurationChanged(loader);
         hookFlymeBatteryMeterViewDarkChanged(loader);
         hookConstructors(loader, "com.flyme.statusbar.battery.FlymeBatteryTextView", view -> {
+            if (view instanceof TextView) {
+                NativeStatusBarTextWeight.track((TextView) view);
+            }
             ModuleConfig config = ModuleConfig.load(view.getContext());
             if (!isBatteryCodeDrawEnabled(config) || !(view instanceof TextView)) {
                 return;
@@ -6560,6 +6564,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         clearBatteryTintSourceCache();
         clearSignalSubSlotIndexCache();
         ConnectionRateHooks.refreshTrackedViews();
+        NativeStatusBarTextWeight.refreshTrackedViews();
         refreshTrackedBatteryViews();
         refreshCameraCircleBatteryWindow();
         refreshTrackedStatusBarIconViews();
