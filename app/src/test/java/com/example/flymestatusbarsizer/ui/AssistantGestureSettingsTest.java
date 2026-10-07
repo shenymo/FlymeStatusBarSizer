@@ -6,7 +6,6 @@ import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ListView;
-import android.widget.PopupMenu;
 import android.widget.Switch;
 import android.widget.TextView;
 
@@ -20,7 +19,6 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.ConscryptMode;
 import org.robolectric.shadows.ShadowAlertDialog;
-import org.robolectric.shadows.ShadowPopupMenu;
 
 import java.lang.reflect.Field;
 
@@ -44,33 +42,23 @@ public class AssistantGestureSettingsTest {
         card = new SettingsCardFactory(activity).createSideGestureSettingsCard();
     }
 
-    @Test public void actionCanBeSelectedAndReopenedWithoutChangingLegacySettings() {
+    @Test public void settingsCanBeReopenedWithoutChangingLegacySettings() {
         activity.prefs().edit().putBoolean(SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED, true)
+                .putInt(SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT)
                 .putInt(SettingsStore.KEY_ASSISTANT_GESTURE_SIDE, SettingsStore.ASSISTANT_GESTURE_SIDE_RIGHT)
                 .putInt(SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP, 180).commit();
+        java.util.Map<String, ?> savedSettings = activity.prefs().getAll();
         card = new SettingsCardFactory(activity).createSideGestureSettingsCard();
         assertNotNull(byText(card, "侧边手势"));
-        assertNotNull(byText(card, "触发动作"));
+        assertNull(byText(card, "触发动作"));
         assertNotNull(byText(card, "手势设置"));
-        View groupTitle = byText(card, "全局负一屏设置");
-        assertNotNull(groupTitle);
-        assertNotNull(byText(card, "首次启用全局负一屏"));
+        assertNotNull(byText(card, "负一屏外观"));
         assertNotNull(byText(card, "使用自选背景"));
         assertNotNull(byText(card, "右侧"));
-
-        View selection = byText(card, "全局负一屏");
-        assertNotNull(selection);
-        selection.performClick();
-        PopupMenu popup = ShadowPopupMenu.getLatestPopupMenu();
-        assertNotNull(popup);
-        assertEquals(1, popup.getMenu().size());
-        assertTrue(popup.getMenu().performIdentifierAction(SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT, 0));
-        assertEquals(SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT,
-                activity.prefs().getInt(SettingsStore.KEY_SIDE_GESTURE_ACTION, -1));
-        popup.dismiss();
+        assertEquals(savedSettings, activity.prefs().getAll());
 
         card = new SettingsCardFactory(activity).createSideGestureSettingsCard();
-        assertNotNull(byText(card, "全局负一屏"));
+        assertEquals(savedSettings, activity.prefs().getAll());
         assertTrue(gestureToggle().isChecked());
         assertEquals(180, activity.prefs().getInt(SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP, -1));
         gestureToggle().setChecked(false);

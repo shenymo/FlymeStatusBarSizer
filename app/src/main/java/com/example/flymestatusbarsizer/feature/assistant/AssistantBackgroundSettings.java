@@ -7,6 +7,7 @@ import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
+import android.view.View;
 import android.widget.LinearLayout;
 
 import com.example.flymestatusbarsizer.MainActivity;
@@ -17,24 +18,30 @@ public final class AssistantBackgroundSettings {
     private AssistantBackgroundSettings() { }
 
     public static void addRows(MainActivity activity, LinearLayout page) {
-        activity.addProfileSectionHeader(page, "全局负一屏背景", "仅影响全局打开的负一屏，下次打开时生效。图片居中裁剪铺满背景。");
-        activity.addSwitchRow(page, "使用自选背景", "关闭后显示后方应用；开启前请先选择图片。",
-                SettingsStore.KEY_ASSISTANT_BACKGROUND_CUSTOM, false);
+        LinearLayout customOptions = new LinearLayout(activity);
+        customOptions.setOrientation(LinearLayout.VERTICAL);
+        customOptions.setVisibility(SettingsStore.readBoolean(activity.prefs(),
+                SettingsStore.KEY_ASSISTANT_BACKGROUND_CUSTOM, false) ? View.VISIBLE : View.GONE);
+        activity.addSwitchRow(page, "使用自选背景", "选择图片后自动开启；关闭后保留图片，显示后方应用。",
+                SettingsStore.KEY_ASSISTANT_BACKGROUND_CUSTOM, false,
+                (buttonView, isChecked) -> customOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
         String id = activity.prefs().getString(SettingsStore.KEY_ASSISTANT_BACKGROUND_IMAGE, "");
         boolean available = AssistantBackgroundImages.validId(id)
                 && AssistantBackgroundImages.file(activity, id, false).isFile();
-        activity.addActionButtonRow(page, "背景图片", available ? "已保存自选图片，可随时更换。"
-                        : "尚未选择图片。图片保存在模块内，导出配置不包含图片。",
+        activity.addActionButtonRow(page, "背景图片", "图片居中裁剪铺满，导出配置不包含图片。",
                 available ? "更换图片" : "选择图片", () -> pickImage(activity));
-        activity.addSwitchRow(page, "背景模糊", "使用自选图片时仅模糊图片；使用应用背景时模糊后方界面，卡片和文字保持清晰。",
-                SettingsStore.KEY_ASSISTANT_BACKGROUND_BLUR, SettingsStore.DEFAULT_ASSISTANT_BACKGROUND_BLUR);
-        activity.addChoiceRow(page, "自选背景顶部颜色",
-                "自选背景开启时，统一设置 Aicy 纵览、加号、搜索文字与图标、搜索框的颜色；保留搜索框透明度与圆角。",
+        activity.addChoiceRow(customOptions, "顶部颜色",
+                "调整自选背景上的标题、图标和搜索框颜色。",
                 SettingsStore.KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE,
                 SettingsStore.ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR,
                 new int[]{SettingsStore.ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR,
                         SettingsStore.ASSISTANT_FOREGROUND_BLACK, SettingsStore.ASSISTANT_FOREGROUND_WHITE},
                 new String[]{"跟随状态栏", "黑色", "白色"});
+        page.addView(customOptions, activity.matchWrap());
+        activity.addDivider(page);
+        activity.addSwitchRow(page, "背景模糊", "模糊自选图片或后方应用，卡片和文字保持清晰。",
+                SettingsStore.KEY_ASSISTANT_BACKGROUND_BLUR, SettingsStore.DEFAULT_ASSISTANT_BACKGROUND_BLUR);
+        activity.addDivider(page);
         activity.addActionButtonRow(page, "恢复默认背景", "清除自选图片，恢复应用背景、背景模糊和顶部颜色跟随状态栏。",
                 "恢复默认", () -> {
                     Context context = activity.getApplicationContext();

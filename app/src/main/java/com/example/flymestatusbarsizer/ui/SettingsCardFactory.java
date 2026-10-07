@@ -3,6 +3,7 @@ package com.example.flymestatusbarsizer.ui;
 import com.example.flymestatusbarsizer.MainActivity;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.feature.share.ShareTargetsEditor;
+import com.example.flymestatusbarsizer.feature.assistant.AssistantBackgroundSettings;
 import com.example.flymestatusbarsizer.feature.assistant.AssistantGesturePreviewLayout;
 import com.example.flymestatusbarsizer.feature.battery.BatteryTextFontHelper;
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAnimationEditor;
@@ -372,69 +373,77 @@ public final class SettingsCardFactory {
     }
 
     public View createSideGestureSettingsCard() {
-        AssistantGesturePreviewLayout page = new AssistantGesturePreviewLayout(
-                activity, activity.prefs(), activity.primaryColor());
-        activity.addSwitchRow(page, "启用侧边手势",
-                "从所选侧边的返回区域向内滑动并按住，距离和时间都达到阈值后执行所选动作。遵循系统返回手势区域，锁屏时不触发；未达到阈值时正常返回。",
+        LinearLayout page = new LinearLayout(activity);
+        page.setOrientation(LinearLayout.VERTICAL);
+        activity.addSwitchRow(page, "启用侧边手势", null,
                 SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED, SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
-        activity.addDivider(page);
-        activity.addChoiceRow(page, "触发动作", "达到手势触发条件后执行的动作。",
-                SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION,
-                new int[]{SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT},
-                new String[]{"全局负一屏"});
-        activity.addProfileSectionHeader(page, "手势设置", "以下设置用于侧边手势的触发判断与距离预览。");
-        activity.addMultiChoiceRow(page, "触发场景",
-                "可多选，默认全选。常规界面包括应用与桌面；通知栏或控制中心展开时，按当前面板判断，"
-                        + "不受底下应用影响。未勾选的场景保留系统手势；全部取消后不触发，锁屏时始终不触发。",
+        TextView summary = new TextView(activity);
+        summary.setText("从屏幕侧边向内滑动并按住，打开全局负一屏。");
+        summary.setTextColor(activity.subtextColor());
+        summary.setTextSize(13);
+        summary.setPadding(0, 0, 0, activity.dp(8));
+        page.addView(summary, activity.matchWrap());
+
+        AssistantGesturePreviewLayout gestureOptions = new AssistantGesturePreviewLayout(
+                activity, activity.prefs(), activity.primaryColor());
+        activity.addChoiceRow(gestureOptions, "触发侧边", null,
+                SettingsStore.KEY_ASSISTANT_GESTURE_SIDE, SettingsStore.DEFAULT_ASSISTANT_GESTURE_SIDE,
+                new int[]{SettingsStore.ASSISTANT_GESTURE_SIDE_LEFT,
+                        SettingsStore.ASSISTANT_GESTURE_SIDE_RIGHT, SettingsStore.ASSISTANT_GESTURE_SIDE_BOTH},
+                new String[]{"左侧", "右侧", "两侧"});
+        activity.addDivider(gestureOptions);
+        activity.addMultiChoiceRow(gestureOptions, "触发场景",
+                "可多选。常规界面包括应用和桌面；通知栏或控制中心展开时，按当前面板判断。全部取消后不触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_SCENES, SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES,
                 new int[]{SettingsStore.ASSISTANT_GESTURE_SCENE_NORMAL,
                         SettingsStore.ASSISTANT_GESTURE_SCENE_NOTIFICATION,
                         SettingsStore.ASSISTANT_GESTURE_SCENE_CONTROL_CENTER},
                 new String[]{"常规界面", "通知栏", "控制中心"}, "未选择触发场景");
-        activity.addDivider(page);
-        activity.addChoiceRow(page, "触发侧边", "选择哪一侧的返回手势可以执行所选动作。",
-                SettingsStore.KEY_ASSISTANT_GESTURE_SIDE, SettingsStore.DEFAULT_ASSISTANT_GESTURE_SIDE,
-                new int[]{SettingsStore.ASSISTANT_GESTURE_SIDE_LEFT,
-                        SettingsStore.ASSISTANT_GESTURE_SIDE_RIGHT, SettingsStore.ASSISTANT_GESTURE_SIDE_BOTH},
-                new String[]{"左侧", "右侧", "两侧"});
-        activity.addDivider(page);
-        activity.addSliderRow(page, "滑动距离", "从起手位置向屏幕内侧移动的最短距离；达到或超过都有效，没有水平距离上限。",
+        activity.addDivider(gestureOptions);
+        activity.addSliderRow(gestureOptions, "滑动距离", "向内滑动的最短距离，超过后仍可触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP, SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP,
                 40, 240, "dp");
-        activity.addActionButtonRow(page, "屏幕距离标识",
-                "按所选侧边显示标识，两侧模式同时显示左右标线；竖线标出当前最短滑动距离；超过仍有效，还需满足按住时间。",
-                "显示标识", page::showPreview);
-        activity.addDivider(page);
-        activity.addSwitchRow(page, "限制上下偏移",
-                "默认关闭。开启后，相对本次按下位置向上或向下偏移超过设定距离，就取消本次手势触发；移回范围内也不会恢复，需重新起手。",
+        activity.addSliderRow(gestureOptions, "按住时间", "从手指按下开始计时，距离和时间都达标后触发。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_HOLD_MS, SettingsStore.DEFAULT_ASSISTANT_GESTURE_HOLD_MS,
+                250, 2000, "ms");
+        activity.addActionButtonRow(gestureOptions, "距离预览",
+                "显示所选侧边的最短滑动距离。切换侧边或调节距离时也会显示，5 秒后自动消失。",
+                "显示标线", gestureOptions::showPreview);
+        activity.addDivider(gestureOptions);
+        LinearLayout verticalOptions = new LinearLayout(activity);
+        verticalOptions.setOrientation(LinearLayout.VERTICAL);
+        verticalOptions.setVisibility(SettingsStore.readBoolean(activity.prefs(),
                 SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
-                SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED);
-        activity.addSliderRow(page, "上下偏移上限", "仅在开启限制后生效；上下分别按此距离判断，等于上限仍有效，超过则取消。",
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED) ? View.VISIBLE : View.GONE);
+        activity.addSwitchRow(gestureOptions, "限制上下偏移",
+                "相对起手位置，上下偏移超过上限即取消触发，需重新起手。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
+                (buttonView, isChecked) -> verticalOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
+        activity.addSliderRow(verticalOptions, "上下偏移上限", null,
                 SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
                 SettingsStore.MIN_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
                 SettingsStore.MAX_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP, "dp");
-        activity.addActionButtonRow(page, "上下距离标识",
-                "以屏幕中部的示例起点显示上下边界，实际限制随手指按下位置移动。关闭限制时仍可预览距离。",
-                "显示上下边界", page::showVerticalPreview);
-        TextView previewHint = new TextView(activity);
-        previewHint.setText("切换侧边、上下偏移开关或调节距离时自动显示对应标线，5 秒后消失；上下边界相对实际按下位置计算，超限后需重新起手。");
-        previewHint.setTextColor(activity.subtextColor());
-        previewHint.setTextSize(13);
-        previewHint.setPadding(0, activity.dp(8), 0, activity.dp(12));
-        page.addView(previewHint, activity.matchWrap());
-        activity.addSliderRow(page, "按住时间", "从手指按下开始计时；滑够距离后保持按住即可触发。",
-                SettingsStore.KEY_ASSISTANT_GESTURE_HOLD_MS, SettingsStore.DEFAULT_ASSISTANT_GESTURE_HOLD_MS,
-                250, 2000, "ms");
+        activity.addActionButtonRow(verticalOptions, "偏移预览",
+                "以屏幕中部为示例起点显示上下边界，5 秒后消失。实际边界随起手位置移动。",
+                "显示边界", gestureOptions::showVerticalPreview);
+        gestureOptions.addView(verticalOptions, activity.matchWrap());
+        View gestureCard = activity.buildSectionCard("手势设置", null, gestureOptions, true);
+        gestureCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
+        page.addView(gestureCard, activity.matchWrapWithTop(8));
+
         LinearLayout assistantOptions = new LinearLayout(activity);
         assistantOptions.setOrientation(LinearLayout.VERTICAL);
-        activity.addProfileSectionHeader(assistantOptions, "全局负一屏设置",
-                "在当前应用上打开 Aicy 纵览。面板从触发侧进入，可左右滑动退出，直接返回默认向左退出；关闭后恢复原界面。");
-        com.example.flymestatusbarsizer.feature.assistant.AssistantBackgroundSettings.addRows(activity, assistantOptions);
-        activity.addProfileSectionHeader(assistantOptions, "首次启用全局负一屏",
-                "在 LSPosed 中勾选系统界面和 Aicy 纵览（com.meizu.assistant），重启手机，并先从桌面打开一次负一屏。");
-        page.addView(assistantOptions, activity.matchWrap());
-        return activity.buildSectionCard("侧边手势", "从左侧、右侧或两侧返回区域向内滑动并按住，达到条件后执行所选动作。", page);
+        AssistantBackgroundSettings.addRows(activity, assistantOptions);
+        View appearanceCard = activity.buildSectionCard("负一屏外观",
+                "下次打开全局负一屏时生效，不影响桌面负一屏。", assistantOptions);
+        appearanceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
+        page.addView(appearanceCard, activity.matchWrapWithTop(8));
+        return activity.buildSectionCard("侧边手势",
+                "首次使用\n在 LSPosed 中勾选系统界面与 Aicy 纵览，重启手机，再从桌面打开一次负一屏。\n\n"
+                        + "使用方法\n从所选侧边的返回区域向内滑动并按住，打开全局负一屏（Aicy 纵览）。左右滑动或返回可关闭。"
+                        + "未达到触发条件时正常返回，锁屏时不触发。", page);
     }
 
     public View createShareTargetsSettingsCard() {
