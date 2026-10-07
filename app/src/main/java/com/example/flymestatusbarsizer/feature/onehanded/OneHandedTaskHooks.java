@@ -43,6 +43,9 @@ public final class OneHandedTaskHooks {
     private static volatile WeakReference<Object> edgeHandler = new WeakReference<>(null);
     private static volatile boolean installed;
     private static volatile boolean imeVisible;
+    private static volatile boolean imeTracking;
+    private static volatile int imeTop = TaskScaleImeInsets.HIDDEN;
+    private static volatile boolean dismissingIme;
 
     public static final SideGestureActions.Action ACTION = new SideGestureActions.Action() {
         @Override public boolean isReady() {
@@ -103,7 +106,7 @@ public final class OneHandedTaskHooks {
                     return result;
                 });
             }
-            for (Method method : new Method[]{request, ready, gestureStarted}) {
+            for (Method method : new Method[]{request, ready}) {
                 method.setAccessible(true);
                 module.intercept(method, chain -> {
                     TaskScaleController current = controller;
@@ -113,10 +116,20 @@ public final class OneHandedTaskHooks {
                     return result;
                 });
             }
+            gestureStarted.setAccessible(true);
+            module.intercept(gestureStarted, chain -> {
+                dismissingIme = imeTracking && imeVisible;
+                TaskScaleController current = controller;
+                if (current != null && !dismissingIme) current.suspend();
+                Object result = chain.proceed();
+                refresh();
+                return result;
+            });
             for (Method method : new Method[]{processQueue, finishBack, changed}) {
                 method.setAccessible(true);
                 module.intercept(method, chain -> {
                     Object result = chain.proceed();
+                    if (method == finishBack) dismissingIme = false;
                     refresh();
                     return result;
                 });
@@ -133,11 +146,13 @@ public final class OneHandedTaskHooks {
                 stop("recents started");
                 return chain.proceed();
             });
+            imeTracking = installImeTracking(module, loader);
             ime.setAccessible(true);
             module.intercept(ime, chain -> {
                 if (((Integer) chain.getArg(0)) == 0) {
                     imeVisible = (((Integer) chain.getArg(1)) & 2) != 0;
-                    if (imeVisible) stop("IME visible");
+                    if (imeVisible && !imeTracking) stop("IME insets unavailable");
+                    else if (!imeVisible) updateImeTop(TaskScaleImeInsets.HIDDEN);
                 }
                 return chain.proceed();
             });
@@ -145,7 +160,7 @@ public final class OneHandedTaskHooks {
             module.intercept(state, chain -> {
                 Object result = chain.proceed();
                 if (ReflectUtils.invokeNoArgInt(chain.getThisObject(), "getDisplayId", -1) == 0
-                        && ((((Number) chain.getArg(0)).longValue() & BLOCKED_FLAGS) != 0)) {
+                        && ((((Number) chain.getArg(0)).longValue() & blockedFlags()) != 0)) {
                     stop("SystemUI state");
                 }
                 return result;
@@ -157,6 +172,43 @@ public final class OneHandedTaskHooks {
             stop("hook initialization failed");
             Log.w(TAG, "Task scaling unavailable on this SystemUI", e);
         }
+    }
+
+    private static boolean installImeTracking(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            TaskScaleImeInsets reader = new TaskScaleImeInsets(loader);
+            Class<?> perDisplay = Class.forName(
+                    "com.android.wm.shell.common.DisplayInsetsController$PerDisplay", false, loader);
+            for (String name : new String[]{"insetsChanged", "insetsControlChanged"}) {
+                Method method = named(perDisplay, name);
+                method.setAccessible(true);
+                module.intercept(method, chain -> {
+                    Object result = chain.proceed();
+                    if (ReflectUtils.getIntField(chain.getThisObject(), "mDisplayId", -1) == 0) {
+                        try { updateImeTop(reader.top(chain.getArg(0))); }
+                        catch (ReflectiveOperationException | RuntimeException e) {
+                            stop("cannot read IME bounds");
+                            Log.w(TAG, "Cannot read display IME insets", e);
+                        }
+                    }
+                    return result;
+                });
+            }
+            return true;
+        } catch (Throwable e) {
+            Log.w(TAG, "IME avoidance unavailable; retain exit-on-keyboard fallback", e);
+            return false;
+        }
+    }
+
+    private static void updateImeTop(int top) {
+        imeTop = top;
+        TaskScaleController current = controller;
+        if (current != null) current.imeChanged(top);
+    }
+
+    private static long blockedFlags() {
+        return imeTracking ? BLOCKED_FLAGS & ~262144L : BLOCKED_FLAGS;
     }
 
     private static Method named(Class<?> type, String name) throws NoSuchMethodException {
@@ -197,6 +249,7 @@ public final class OneHandedTaskHooks {
                 TaskScaleController current = new TaskScaleController(handler, backend, overlay);
                 registerEnvironment(context, handler);
                 controller = current;
+                current.imeChanged(imeTop);
                 Log.i(TAG, "Task scaling controller ready on " + Thread.currentThread().getName());
             } catch (Throwable e) {
                 Log.w(TAG, "Cannot initialize task scaling controller", e);
@@ -251,20 +304,21 @@ public final class OneHandedTaskHooks {
     }
 
     static boolean backAnimationIdle() {
+        if (dismissingIme) return true;
         Object back = backAnimation;
         return back != null && !ReflectUtils.getBooleanField(back, "mBackGestureStarted", true)
                 && !ReflectUtils.getBooleanField(back, "mPostCommitAnimationInProgress", true);
     }
 
     static boolean environmentAllowed(Context context) {
-        if (!installed || imeVisible) return false;
+        if (!installed || (imeVisible && !imeTracking)) return false;
         ModuleConfig config = ModuleConfig.load(context);
         if (!config.enabled || !config.assistantGestureEnabled
                 || config.sideGestureAction != SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE
                 || (config.assistantGestureScenes & SettingsStore.ASSISTANT_GESTURE_SCENE_NORMAL) == 0) return false;
         Object edge = edgeHandler.get();
         Object flags = ReflectUtils.invokeNoArg(ReflectUtils.getField(edge, "mSysUiState"), "getFlags");
-        if (!(flags instanceof Number) || (((Number) flags).longValue() & BLOCKED_FLAGS) != 0
+        if (!(flags instanceof Number) || (((Number) flags).longValue() & blockedFlags()) != 0
                 || AssistantGestureScenes.current(edge) != SettingsStore.ASSISTANT_GESTURE_SCENE_NORMAL) return false;
         KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
         PowerManager power = context.getSystemService(PowerManager.class);

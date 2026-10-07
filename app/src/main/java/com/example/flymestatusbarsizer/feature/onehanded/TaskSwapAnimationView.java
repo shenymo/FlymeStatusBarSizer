@@ -70,6 +70,15 @@ final class TaskSwapAnimationView extends View {
 
     boolean isFinished() { return finished; }
 
+    int cardCount() { return cards.length; }
+
+    void setLayout(Rect[] positions, Rect main) {
+        if (positions.length != cardBounds.length) return;
+        for (int i = 0; i < positions.length; i++) cardBounds[i].set(positions[i]);
+        mainBounds.set(main);
+        updateProgress(progress);
+    }
+
     void cancel() {
         ValueAnimator previous = animator;
         animator = null;

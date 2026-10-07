@@ -3,7 +3,6 @@ package com.example.flymestatusbarsizer.feature.onehanded;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Insets;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
@@ -16,9 +15,7 @@ import android.view.MotionEvent;
 import android.view.SurfaceControl;
 import android.view.ViewTreeObserver;
 import android.view.ViewConfiguration;
-import android.view.WindowInsets;
 import android.view.WindowManager;
-import android.view.WindowMetrics;
 import android.widget.FrameLayout;
 
 import java.util.ArrayList;
@@ -41,6 +38,7 @@ final class TaskScaleOverlay implements TaskScaleController.Overlay {
     private Mask coverOwner;
     private ViewTreeObserver.OnPreDrawListener coverDraw;
     private TaskSwapAnimationView swapAnimation;
+    private TaskScaleLayout layout;
 
     TaskScaleOverlay(Context source, Runnable onExit, RecentTaskCardsLoader cardsLoader,
             Consumer<RecentTaskCard> onSelect) {
@@ -53,27 +51,26 @@ final class TaskScaleOverlay implements TaskScaleController.Overlay {
         this.onSelect = onSelect;
     }
 
-    @Override public void show(TaskScaleTarget target, float scale, boolean animating) {
-        this.animating = animating;
+    @Override public void show(TaskScaleTarget target, TaskScaleLayout layout, boolean animating) {
+        this.layout = layout;
+        this.animating = animating || swapping;
         if (animating) cancelCards();
-        WindowMetrics metrics = manager.getMaximumWindowMetrics();
-        Rect usable = new Rect(metrics.getBounds());
-        Insets bars = metrics.getWindowInsets().getInsetsIgnoringVisibility(
-                WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-        usable.inset(bars.left, bars.top, bars.right, bars.bottom);
-        Rect content = target.scaledBounds(scale);
+        Rect content = layout.content;
         Rect top = new Rect(target.bounds);
         Rect left = new Rect();
         if (!animating) {
             top.bottom = content.top;
-            left.set(target.bounds.left, content.top, content.left, target.bounds.bottom);
+            left.set(target.bounds.left, content.top, content.left, content.bottom);
         }
         // During the short enter/exit animation input is blocked, but the app remains visible.
-        intersect(top, usable);
-        intersect(left, usable);
+        intersect(top, layout.available);
+        intersect(left, layout.available);
         update(0, top, animating ? content : null);
         update(1, left, null);
-        if (!animating) showCards(target, false);
+        if (!animating) {
+            showCards(target, false);
+            positionCards(target);
+        }
     }
 
     @Override public void beginSwap(TaskScaleTarget current, RecentTaskCard selected, Runnable covered) {
@@ -86,25 +83,21 @@ final class TaskScaleOverlay implements TaskScaleController.Overlay {
         WindowManager.LayoutParams margin = (WindowManager.LayoutParams) masks[1].getLayoutParams();
         int gap = Math.max(1, Math.round(RecentTaskCardLayout.GAP_DP
                 * context.getResources().getDisplayMetrics().density));
-        Rect[] positions = RecentTaskCardLayout.arrange(margin.width, margin.height, previousCards.size(),
+        Rect[] positions = layout.cards(new Rect(0, 0, margin.width, margin.height), previousCards.size(),
                 current.bounds.width() / (float) current.bounds.height(), gap);
         if (positions.length != previousCards.size()) throw new IllegalStateException("Invalid card layout");
         RecentTaskCard oldMain = slots.begin(current, selected);
         swapping = true;
         animating = true;
         cancelCards();
-        WindowMetrics metrics = manager.getMaximumWindowMetrics();
-        Rect frame = new Rect(metrics.getBounds());
-        Insets bars = metrics.getWindowInsets().getInsetsIgnoringVisibility(
-                WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-        frame.inset(bars.left, bars.top, bars.right, bars.bottom);
-        intersect(frame, current.bounds);
+        // Cover the complete usable display behind IME, including space exposed as IME hides.
+        Rect frame = new Rect(layout.usable);
         if (frame.isEmpty()) throw new IllegalStateException("No space for swap cover");
         // This window is above both margins, so their opaque backgrounds cannot clip the motion.
         update(2, frame, null);
         Mask cover = masks[2];
         cover.removeAllViews();
-        Rect content = current.scaledBounds(TaskScaleController.SCALE);
+        Rect content = new Rect(layout.content);
         content.offset(-frame.left, -frame.top);
         for (Rect position : positions) position.offset(margin.x - frame.left, margin.y - frame.top);
         TaskSwapAnimationView animation = new TaskSwapAnimationView(context, previousCards, positions,
@@ -121,6 +114,19 @@ final class TaskScaleOverlay implements TaskScaleController.Overlay {
 
     @Override public boolean swapAnimationFinished() {
         return swapAnimation != null && swapAnimation.isFinished();
+    }
+
+    @Override public void moveSwap(TaskScaleTarget current, TaskScaleLayout layout) {
+        if (!swapping || swapAnimation == null) return;
+        show(current, layout, false);
+        if (masks[1] == null || masks[2] == null) return;
+        WindowManager.LayoutParams margin = (WindowManager.LayoutParams) masks[1].getLayoutParams();
+        WindowManager.LayoutParams cover = (WindowManager.LayoutParams) masks[2].getLayoutParams();
+        Rect[] positions = cardPositions(current, swapAnimation.cardCount());
+        for (Rect position : positions) position.offset(margin.x - cover.x, margin.y - cover.y);
+        Rect main = new Rect(layout.content);
+        main.offset(-cover.x, -cover.y);
+        swapAnimation.setLayout(positions, main);
     }
 
     private void awaitCoverCommit(Mask cover, int width, int height, Runnable covered) {
@@ -158,11 +164,11 @@ final class TaskScaleOverlay implements TaskScaleController.Overlay {
         coverOwner = null;
     }
 
-    @Override public void endSwap(TaskScaleTarget current) {
+    @Override public void endSwap(TaskScaleTarget current, TaskScaleLayout layout) {
         cancelCoverCallback();
         swapping = false;
         slots.end(current);
-        show(current, TaskScaleController.SCALE, false);
+        show(current, layout, false);
         cancelSwapAnimation();
         remove(2);
     }
@@ -171,11 +177,7 @@ final class TaskScaleOverlay implements TaskScaleController.Overlay {
         Mask margin = masks[1];
         if (margin == null) return;
         margin.removeAllViews();
-        WindowManager.LayoutParams frame = (WindowManager.LayoutParams) margin.getLayoutParams();
-        int gap = Math.max(1, Math.round(RecentTaskCardLayout.GAP_DP
-                * context.getResources().getDisplayMetrics().density));
-        float aspect = target.bounds.width() / (float) target.bounds.height();
-        Rect[] positions = RecentTaskCardLayout.arrange(frame.width, frame.height, slots.cards().size(), aspect, gap);
+        Rect[] positions = cardPositions(target, slots.cards().size());
         for (int i = 0; i < positions.length; i++) {
             RecentTaskCard card = slots.cards().get(i);
             RecentTaskCardView view = new RecentTaskCardView(context, card, () -> {
@@ -190,17 +192,41 @@ final class TaskScaleOverlay implements TaskScaleController.Overlay {
         }
     }
 
+    private Rect[] cardPositions(TaskScaleTarget target, int count) {
+        if (masks[1] == null) return new Rect[0];
+        WindowManager.LayoutParams frame = (WindowManager.LayoutParams) masks[1].getLayoutParams();
+        int gap = Math.max(1, Math.round(RecentTaskCardLayout.GAP_DP
+                * context.getResources().getDisplayMetrics().density));
+        return layout.cards(new Rect(0, 0, frame.width, frame.height), count,
+                target.bounds.width() / (float) target.bounds.height(), gap);
+    }
+
+    private void positionCards(TaskScaleTarget target) {
+        Mask margin = masks[1];
+        if (margin == null) return;
+        Rect[] positions = cardPositions(target, slots.cards().size());
+        if (margin.getChildCount() != positions.length) { renderCards(target); return; }
+        for (int i = 0; i < positions.length; i++) {
+            Rect rect = positions[i];
+            android.view.View child = margin.getChildAt(i);
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) child.getLayoutParams();
+            if (params.width == rect.width() && params.height == rect.height()
+                    && params.leftMargin == rect.left && params.topMargin == rect.top) continue;
+            params.width = rect.width();
+            params.height = rect.height();
+            params.leftMargin = rect.left;
+            params.topMargin = rect.top;
+            child.setLayoutParams(params);
+        }
+    }
+
     private void showCards(TaskScaleTarget target, boolean force) {
         Mask margin = masks[1];
         if (cardsLoader == null || margin == null || animating) return;
         if (!force && target.sameTask(cardsTarget)) return;
         cardsTarget = target;
         renderCards(target);
-        WindowManager.LayoutParams frame = (WindowManager.LayoutParams) margin.getLayoutParams();
-        int gap = Math.max(1, Math.round(RecentTaskCardLayout.GAP_DP
-                * context.getResources().getDisplayMetrics().density));
-        float aspect = target.bounds.width() / (float) target.bounds.height();
-        Rect[] positions = RecentTaskCardLayout.arrange(frame.width, frame.height, 3, aspect, gap);
+        Rect[] positions = cardPositions(target, 3);
         if (positions.length == 0) return;
         cardsLoader.request(target, positions[0].width(), positions[0].height(), cards -> {
             if (cardsTarget != target || masks[1] != margin || animating) return;
@@ -237,6 +263,7 @@ final class TaskScaleOverlay implements TaskScaleController.Overlay {
                     PixelFormat.TRANSLUCENT);
             params.gravity = Gravity.TOP | Gravity.LEFT;
             params.setFitInsetsTypes(0);
+            params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING;
             params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
             params.setTitle("FlymeBarSizer TaskScale margin " + index);
             params.packageName = context.getPackageName();

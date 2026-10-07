@@ -109,7 +109,7 @@ public class TaskScaleControllerTest {
         assertEquals(1f, backend.scale, 0f);
     }
 
-    @Test public void imeLockscreenOrDisabledSettingRestoresAndCancelsPendingResume() {
+    @Test public void lockscreenOrDisabledSettingRestoresAndCancelsPendingResume() {
         enter();
         backend.idle = false;
         controller.suspend();
@@ -420,6 +420,136 @@ public class TaskScaleControllerTest {
         assertEquals(1f, backend.scale, .001f);
     }
 
+    @Test public void imeMovesTaskAndCardsTogetherAndRestoresWithoutExiting() {
+        enter();
+        controller.imeChanged(1800);
+        idle(96);
+        assertTrue(backend.layout.offsetY < 0f);
+        assertTrue(backend.layout.offsetY > -600f);
+        assertEquals(backend.layout.content, overlay.layout.content);
+        idle(300);
+        assertEquals(.7f, backend.scale, .001f);
+        assertEquals(-600f, backend.layout.offsetY, .001f);
+        assertEquals(new Rect(324, 120, 1080, 1800), backend.layout.content);
+        assertTrue(overlay.visible);
+        assertFalse(overlay.animating);
+        assertNull(backend.lastRestored);
+        controller.imeChanged(TaskScaleImeInsets.HIDDEN);
+        idle(400);
+        assertEquals(new Rect(324, 720, 1080, 2400), backend.layout.content);
+        assertEquals(1, successes);
+        assertTrue(overlay.visible);
+    }
+
+    @Test public void tallKeyboardFitsMainAboveItAndRapidHideCancelsOldMovement() {
+        enter();
+        controller.imeChanged(1400);
+        idle(400);
+        assertEquals(1400f / 2400f, backend.scale, .001f);
+        assertEquals(0, backend.layout.content.top);
+        assertEquals(1400, backend.layout.content.bottom);
+        controller.imeChanged(1200);
+        idle(64);
+        controller.imeChanged(TaskScaleImeInsets.HIDDEN);
+        idle(400);
+        assertEquals(.7f, backend.scale, .001f);
+        assertEquals(0f, backend.layout.offsetY, .001f);
+        assertTrue(overlay.visible);
+    }
+
+    @Test public void enteringWithKeyboardAlreadyVisibleStartsAboveKeyboard() {
+        controller.imeChanged(1500);
+        enter();
+        assertEquals(1500, backend.layout.content.bottom);
+        assertEquals(0, backend.layout.content.top);
+        assertEquals(1500f / 2400f, backend.scale, .001f);
+        assertEquals(1, successes);
+    }
+
+    @Test public void navigationStripFromFloatingImeDoesNotMoveLayout() {
+        backend.usable = new Rect(0, 80, 1080, 2340);
+        enter();
+        controller.imeChanged(2340);
+        idle(400);
+        assertEquals(.7f, backend.scale, .001f);
+        assertEquals(0f, backend.layout.offsetY, 0f);
+        assertEquals(new Rect(324, 720, 1080, 2400), backend.layout.content);
+    }
+
+    @Test public void stoppingDuringImeMovementDoesNotResurrectTaskOrMargins() {
+        enter();
+        controller.imeChanged(1600);
+        idle(64);
+        controller.stop("screen off");
+        int writes = backend.scales.size();
+        idle(400);
+        assertEquals(writes, backend.scales.size());
+        assertEquals(1f, backend.scale, .001f);
+        assertFalse(overlay.visible);
+    }
+
+    @Test public void keyboardHidingDuringSwapMovesPreviewAndWaitsBeforeReveal() {
+        enter();
+        controller.imeChanged(1600);
+        idle(400);
+        controller.selectTask(card(12, "task-B"), () -> true);
+        backend.focused = target(12, "task-B", "surface-B");
+        controller.imeChanged(TaskScaleImeInsets.HIDDEN);
+        idle(96);
+        assertTrue(overlay.covered);
+        assertTrue(overlay.swapMoves > 0);
+        assertNull(backend.commit);
+        idle(400);
+        assertFalse(overlay.covered);
+        assertEquals(.7f, backend.scale, .001f);
+        assertEquals(0f, backend.layout.offsetY, .001f);
+        assertEquals(backend.layout.content, overlay.layout.content);
+    }
+
+    @Test public void imeChangeInvalidatesTaskCommitBeforeSwapReveal() {
+        enter();
+        backend.autoCommit = false;
+        controller.selectTask(card(12, "task-B"), () -> true);
+        backend.focused = target(12, "task-B", "surface-B");
+        idle(100);
+        Runnable originalCommit = backend.commit;
+        controller.imeChanged(1800);
+        originalCommit.run();
+        assertEquals(0, overlay.swapReveals);
+        idle(400);
+        assertNotSame(originalCommit, backend.commit);
+        assertEquals(1800, backend.layout.content.bottom);
+        backend.commit.run();
+        assertEquals(1, overlay.swapReveals);
+        assertEquals(backend.layout.content, overlay.layout.content);
+    }
+
+    @Test public void imeChangeWhileSuspendedResumesAtLatestKeyboardHeight() {
+        enter();
+        backend.idle = false;
+        controller.suspend();
+        int writes = backend.scales.size();
+        controller.imeChanged(1700);
+        idle(300);
+        assertEquals(writes, backend.scales.size());
+        backend.idle = true;
+        idle(400);
+        assertEquals(1700, backend.layout.content.bottom);
+        assertTrue(overlay.visible);
+    }
+
+    @Test public void missingSwapCoverCommitStillRestoresLatestImePosition() {
+        enter();
+        overlay.autoCover = false;
+        controller.selectTask(card(12, "task-B"), () -> { fail("must not launch"); return true; });
+        controller.imeChanged(1600);
+        idle(5300);
+        assertFalse(overlay.covered);
+        assertTrue(overlay.visible);
+        assertEquals(1600, backend.layout.content.bottom);
+        assertEquals(backend.layout.content, overlay.layout.content);
+    }
+
     private RecentTaskCard card(int id, String token) {
         return new RecentTaskCard(id, 0, token, "App " + id, null);
     }
@@ -442,19 +572,25 @@ public class TaskScaleControllerTest {
         Runnable commit;
         int restoreFailures;
         float scale = 1f;
+        TaskScaleLayout layout;
+        Rect usable;
         final List<Float> scales = new ArrayList<>();
         @Override public TaskScaleTarget focusedTask() { return focused; }
         @Override public boolean allowed() { return allowed; }
         @Override public boolean idle() { return idle; }
+        @Override public Rect usableBounds(TaskScaleTarget target) {
+            return usable != null ? new Rect(usable) : new Rect(target.bounds);
+        }
         @Override public boolean sameSurface(TaskScaleTarget a, TaskScaleTarget b) { return a.surface.equals(b.surface); }
-        @Override public void transform(TaskScaleTarget target, float value) throws Exception {
+        @Override public void transform(TaskScaleTarget target, TaskScaleLayout frame) throws Exception {
             lastTransformed = target;
-            scale = value;
-            scales.add(value);
+            layout = frame;
+            scale = frame.scale;
+            scales.add(frame.scale);
             if (failTransform) throw new Exception("transaction failure");
         }
-        @Override public void transformAndCommit(TaskScaleTarget target, float value, Runnable committed) throws Exception {
-            transform(target, value);
+        @Override public void transformAndCommit(TaskScaleTarget target, TaskScaleLayout frame, Runnable committed) throws Exception {
+            transform(target, frame);
             commit = committed;
             if (autoCommit) committed.run();
         }
@@ -471,10 +607,13 @@ public class TaskScaleControllerTest {
         boolean animationComplete = true;
         int swapReveals;
         Runnable coverCommit;
-        @Override public void show(TaskScaleTarget target, float scale, boolean animate) throws Exception {
+        TaskScaleLayout layout;
+        int swapMoves;
+        @Override public void show(TaskScaleTarget target, TaskScaleLayout frame, boolean animate) throws Exception {
             if (fail) throw new Exception("window rejected");
             visible = true;
             animating = animate;
+            layout = frame;
         }
         @Override public void beginSwap(TaskScaleTarget current, RecentTaskCard selected, Runnable onCovered) throws Exception {
             if (fail) throw new Exception("window rejected");
@@ -483,10 +622,14 @@ public class TaskScaleControllerTest {
             coverCommit = onCovered;
             if (autoCover) onCovered.run();
         }
-        @Override public void endSwap(TaskScaleTarget current) throws Exception {
+        @Override public void endSwap(TaskScaleTarget current, TaskScaleLayout frame) throws Exception {
             covered = false;
             swapReveals++;
-            show(current, .7f, false);
+            show(current, frame, false);
+        }
+        @Override public void moveSwap(TaskScaleTarget current, TaskScaleLayout frame) {
+            layout = frame;
+            swapMoves++;
         }
         @Override public boolean swapAnimationFinished() { return animationComplete; }
         @Override public void hide() { visible = false; covered = false; }

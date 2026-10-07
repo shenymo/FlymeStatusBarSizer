@@ -3,6 +3,7 @@ package com.example.flymestatusbarsizer.feature.onehanded;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
+import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -21,21 +22,23 @@ final class TaskScaleController {
         boolean allowed();
         boolean idle();
         boolean sameSurface(TaskScaleTarget a, TaskScaleTarget b);
-        void transform(TaskScaleTarget target, float scale) throws Exception;
-        default void transformAndCommit(TaskScaleTarget target, float scale, Runnable committed) throws Exception {
-            transform(target, scale);
+        default Rect usableBounds(TaskScaleTarget target) { return new Rect(target.bounds); }
+        void transform(TaskScaleTarget target, TaskScaleLayout layout) throws Exception;
+        default void transformAndCommit(TaskScaleTarget target, TaskScaleLayout layout, Runnable committed) throws Exception {
+            transform(target, layout);
             committed.run();
         }
         void restore(TaskScaleTarget target) throws Exception;
     }
 
     interface Overlay {
-        void show(TaskScaleTarget target, float scale, boolean animating) throws Exception;
+        void show(TaskScaleTarget target, TaskScaleLayout layout, boolean animating) throws Exception;
         void hide();
         default void pause() { hide(); }
         void beginSwap(TaskScaleTarget current, RecentTaskCard selected, Runnable covered) throws Exception;
         default boolean swapAnimationFinished() { return true; }
-        default void endSwap(TaskScaleTarget current) throws Exception { show(current, SCALE, false); }
+        void endSwap(TaskScaleTarget current, TaskScaleLayout layout) throws Exception;
+        default void moveSwap(TaskScaleTarget current, TaskScaleLayout layout) throws Exception {}
         default void tasksChanged() {}
     }
 
@@ -52,6 +55,11 @@ final class TaskScaleController {
     private boolean swapRollback;
     private boolean swapAwaitingCommit;
     private ValueAnimator animator;
+    private ValueAnimator imeAnimator;
+    private int imeTop = TaskScaleImeInsets.HIDDEN;
+    private float imeHeight;
+    private Rect usableBounds;
+    private long layoutGeneration;
     private Runnable success;
     private long deadline;
     private long generation;
@@ -85,6 +93,9 @@ final class TaskScaleController {
             }
             if (!backend.allowed() || requested == null || !requested.eligible) return;
             target = requested;
+            try { usableBounds = backend.usableBounds(target); }
+            catch (RuntimeException e) { fail(e); target = null; return; }
+            imeHeight = desiredImeHeight();
             active = true;
             suspended = true;
             exiting = false;
@@ -101,6 +112,59 @@ final class TaskScaleController {
     }
 
     void refresh() { dispatch(() -> { if (active) schedule(0); }); }
+
+    void imeChanged(int top) {
+        dispatch(() -> {
+            if (imeTop == top) return;
+            imeTop = top;
+            layoutGeneration++;
+            cancelImeAnimation();
+            if (!active || exiting || recovering) return;
+            if (suspended && pendingTask == null) {
+                imeHeight = desiredImeHeight();
+                return;
+            }
+            ValueAnimator next = ValueAnimator.ofFloat(imeHeight, desiredImeHeight());
+            imeAnimator = next;
+            next.setDuration(220);
+            next.setInterpolator(new DecelerateInterpolator());
+            next.addUpdateListener(value -> {
+                if (imeAnimator != next || !active) return;
+                imeHeight = (float) value.getAnimatedValue();
+                layoutGeneration++;
+                if (!backend.allowed()) { exit(false, "environment changed during IME movement"); return; }
+                try {
+                    if (pendingTask != null) {
+                        overlay.moveSwap(swapOriginal, layout(swapOriginal, SCALE));
+                    } else if (!suspended && backend.idle()) {
+                        transformed = true;
+                        TaskScaleLayout frame = layout(target, currentScale);
+                        backend.transform(target, frame);
+                        overlay.show(target, frame, animator != null);
+                    }
+                } catch (Exception e) { fail(e); }
+            });
+            next.addListener(new AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(Animator animation) {
+                    if (imeAnimator != next) return;
+                    imeAnimator = null;
+                    if (active) schedule(0);
+                }
+            });
+            next.start();
+        });
+    }
+
+    private float desiredImeHeight() {
+        // Some floating/hardware IMEs report only the already excluded navigation-bar strip.
+        return target == null || imeTop == TaskScaleImeInsets.HIDDEN
+                || (usableBounds != null && imeTop >= usableBounds.bottom) ? 0f
+                : Math.max(0, target.bounds.bottom - imeTop);
+    }
+
+    private TaskScaleLayout layout(TaskScaleTarget task, float scale) {
+        return new TaskScaleLayout(task, usableBounds, scale, imeHeight);
+    }
 
     void stop(String reason) { dispatch(() -> exit(false, reason)); }
 
@@ -229,15 +293,21 @@ final class TaskScaleController {
                 return;
             }
         } else if (focused.eligible && !swapAwaitingCommit) {
-            if (!overlay.swapAnimationFinished()) { schedule(32); return; }
+            if (!overlay.swapAnimationFinished() || imeAnimator != null) { schedule(32); return; }
             target = focused;
             swapAwaitingCommit = true;
             currentScale = SCALE;
             transformed = true;
             long epoch = ++generation;
+            long frameGeneration = layoutGeneration;
             try {
-                backend.transformAndCommit(target, SCALE, () -> dispatch(() -> {
+                backend.transformAndCommit(target, layout(target, SCALE), () -> dispatch(() -> {
                     if (!active || generation != epoch || pendingTask == null || !swapAwaitingCommit) return;
+                    if (layoutGeneration != frameGeneration || imeAnimator != null) {
+                        swapAwaitingCommit = false;
+                        schedule(32);
+                        return;
+                    }
                     TaskScaleTarget current = backend.focusedTask();
                     if (!backend.allowed() || !target.sameTask(current) || !current.eligible
                             || !target.bounds.equals(current.bounds)) {
@@ -251,7 +321,7 @@ final class TaskScaleController {
                     }
                     clearSwap();
                     suspended = false;
-                    try { overlay.endSwap(target); }
+                    try { overlay.endSwap(target, layout(target, SCALE)); }
                     catch (Exception e) { fail(e); return; }
                     Log.i(OneHandedTaskHooks.TAG, "Swapped main task=" + target.taskId);
                     schedule(CHECK_INTERVAL_MS);
@@ -264,7 +334,17 @@ final class TaskScaleController {
     private void cancelUnlaunchedSwap() {
         generation++;
         clearSwap();
-        try { overlay.endSwap(target); }
+        if (!backend.allowed() || !backend.idle() || !target.sameTask(backend.focusedTask())) {
+            exit(false, "environment changed while cancelling card swap");
+            return;
+        }
+        try {
+            // IME may have finished moving the cover while the old task stayed underneath it.
+            TaskScaleLayout frame = layout(target, currentScale);
+            transformed = true;
+            backend.transform(target, frame);
+            overlay.endSwap(target, frame);
+        }
         catch (Exception e) { fail(e); }
         if (active) schedule(CHECK_INTERVAL_MS);
     }
@@ -281,7 +361,7 @@ final class TaskScaleController {
         cancelAnimation();
         final long epoch = generation;
         try {
-            overlay.show(target, currentScale, true);
+            overlay.show(target, layout(target, currentScale), true);
         } catch (Exception e) {
             fail(e);
             return;
@@ -298,8 +378,9 @@ final class TaskScaleController {
             try {
                 currentScale = (float) value.getAnimatedValue();
                 transformed = true; // A partly failed transaction still needs cleanup.
-                backend.transform(target, currentScale);
-                overlay.show(target, currentScale, true);
+                TaskScaleLayout frame = layout(target, currentScale);
+                backend.transform(target, frame);
+                overlay.show(target, frame, true);
             } catch (Exception e) { fail(e); }
         });
         next.addListener(new AnimatorListenerAdapter() {
@@ -308,7 +389,7 @@ final class TaskScaleController {
                 animator = null;
                 if (exit) { exit(false, "exit animation finished"); return; }
                 try {
-                    overlay.show(target, SCALE, false);
+                    overlay.show(target, layout(target, SCALE), false);
                     Runnable callback = success;
                     success = null;
                     if (callback != null) callback.run();
@@ -323,7 +404,7 @@ final class TaskScaleController {
         boolean wasSwapping = pendingTask != null;
         clearSwap();
         if (!active) { overlay.hide(); return; }
-        if (animate && !wasSwapping && !suspended && !exiting && backend.idle() && backend.allowed()) {
+        if (animate && imeHeight == 0f && !wasSwapping && !suspended && !exiting && backend.idle() && backend.allowed()) {
             exiting = true;
             handler.removeCallbacks(check);
             animateTo(1f, true);
@@ -331,6 +412,7 @@ final class TaskScaleController {
         }
         generation++;
         cancelAnimation();
+        cancelImeAnimation();
         handler.removeCallbacks(check);
         boolean restored = restore();
         overlay.hide();
@@ -375,6 +457,12 @@ final class TaskScaleController {
     private void cancelAnimation() {
         ValueAnimator previous = animator;
         animator = null;
+        if (previous != null) previous.cancel();
+    }
+
+    private void cancelImeAnimation() {
+        ValueAnimator previous = imeAnimator;
+        imeAnimator = null;
         if (previous != null) previous.cancel();
     }
 

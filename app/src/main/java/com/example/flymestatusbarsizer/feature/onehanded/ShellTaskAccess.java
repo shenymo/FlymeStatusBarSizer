@@ -2,9 +2,13 @@ package com.example.flymestatusbarsizer.feature.onehanded;
 
 import android.content.Context;
 import android.graphics.Point;
+import android.graphics.Insets;
 import android.graphics.Rect;
 import android.util.SparseArray;
 import android.view.SurfaceControl;
+import android.view.WindowInsets;
+import android.view.WindowManager;
+import android.view.WindowMetrics;
 
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
@@ -91,25 +95,34 @@ final class ShellTaskAccess implements TaskScaleController.Backend {
         catch (ReflectiveOperationException e) { return false; }
     }
 
-    @Override public void transform(TaskScaleTarget target, float scale) {
-        applyTransform(target, scale, null);
+    @Override public Rect usableBounds(TaskScaleTarget target) {
+        WindowMetrics metrics = context.getSystemService(WindowManager.class).getMaximumWindowMetrics();
+        Rect bounds = new Rect(metrics.getBounds());
+        Insets bars = metrics.getWindowInsets().getInsetsIgnoringVisibility(
+                WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+        bounds.inset(bars.left, bars.top, bars.right, bars.bottom);
+        return bounds;
     }
 
-    @Override public void transformAndCommit(TaskScaleTarget target, float scale, Runnable committed) {
-        applyTransform(target, scale, committed);
+    @Override public void transform(TaskScaleTarget target, TaskScaleLayout layout) {
+        applyTransform(target, layout, null);
     }
 
-    private void applyTransform(TaskScaleTarget target, float scale, Runnable committed) {
+    @Override public void transformAndCommit(TaskScaleTarget target, TaskScaleLayout layout, Runnable committed) {
+        applyTransform(target, layout, committed);
+    }
+
+    private void applyTransform(TaskScaleTarget target, TaskScaleLayout layout, Runnable committed) {
         TaskScaleTarget current = focusedTask();
         if (!target.sameTask(current) || !current.eligible || !sameSurface(target, current)) {
             throw new IllegalStateException("Task changed before surface transaction");
         }
         SurfaceControl surface = (SurfaceControl) current.surface;
         try (SurfaceControl.Transaction transaction = new SurfaceControl.Transaction()) {
-            transaction.setScale(surface, scale, scale);
+            transaction.setScale(surface, layout.scale, layout.scale);
             transaction.setPosition(surface,
-                    current.position.x + current.bounds.width() * (1f - scale),
-                    current.position.y + current.bounds.height() * (1f - scale));
+                    current.position.x + current.bounds.width() * (1f - layout.scale),
+                    current.position.y + current.bounds.height() * (1f - layout.scale) + layout.offsetY);
             if (committed != null) transaction.addTransactionCommittedListener(Runnable::run, committed::run);
             transaction.apply();
         }

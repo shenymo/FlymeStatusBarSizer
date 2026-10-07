@@ -86,6 +86,30 @@ public class TaskSwapAnimationViewTest {
         assertEquals(new RectF(cards[1]), bounds("outgoing"));
     }
 
+    @Test public void keyboardMovementRetargetsBothPreviewsWithoutRestartingSwap() {
+        view.start();
+        idle(96);
+        RectF before = new RectF(bounds("incoming"));
+        Rect shiftedMain = new Rect(main);
+        shiftedMain.offset(0, -400);
+        Rect[] shiftedCards = new Rect[cards.length];
+        for (int i = 0; i < cards.length; i++) {
+            shiftedCards[i] = new Rect(cards[i]);
+            shiftedCards[i].offset(0, -400);
+        }
+        view.setLayout(shiftedCards, shiftedMain);
+        assertEquals(before.top - 400, bounds("incoming").top, .001f);
+        assertEquals(before.width(), bounds("incoming").width(), .001f);
+        idle(210);
+        assertTrue(view.isFinished());
+        assertEquals(new RectF(shiftedMain), bounds("incoming"));
+        assertEquals(new RectF(shiftedCards[1]), bounds("outgoing"));
+        // A later IME frame must also update an already completed preview awaiting task commit.
+        view.setLayout(cards, main);
+        assertTrue(view.isFinished());
+        assertEquals(new RectF(main), bounds("incoming"));
+    }
+
     private RectF bounds(String field) { return (RectF) ReflectUtils.getField(view, field); }
 
     private void durationScale(float value) throws Exception {
