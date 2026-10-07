@@ -112,6 +112,14 @@ public final class SettingsStore {
     public static final String KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON =
             "clock_detail_assistant_action_cache_json";
     public static final String KEY_MBACK_LONG_TOUCH_URL_ENABLED = "mback_long_touch_url_enabled";
+    public static final String KEY_ASSISTANT_BACKGROUND_IMAGE = "assistant_background_image";
+    public static final String KEY_ASSISTANT_BACKGROUND_CUSTOM = "assistant_background_custom";
+    public static final String KEY_ASSISTANT_BACKGROUND_BLUR = "assistant_background_blur";
+    public static final boolean DEFAULT_ASSISTANT_BACKGROUND_BLUR = true;
+    public static final String KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE = "assistant_background_foreground_mode";
+    public static final int ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR = 0;
+    public static final int ASSISTANT_FOREGROUND_BLACK = 1;
+    public static final int ASSISTANT_FOREGROUND_WHITE = 2;
     public static final String KEY_ASSISTANT_GESTURE_ENABLED = "assistant_gesture_enabled";
     public static final String KEY_ASSISTANT_GESTURE_SCENES = "assistant_gesture_scenes";
     public static final int ASSISTANT_GESTURE_SCENE_NORMAL = 1;
@@ -592,6 +600,7 @@ public final class SettingsStore {
     public static final int DEFAULT_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE = TELEPHONY_DEBUG_NETWORK_PROFILE_4G;
     public static final int DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL = 2;
     public static final String[] INT_KEYS = {
+            KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE,
             KEY_ASSISTANT_GESTURE_SCENES,
             KEY_ASSISTANT_GESTURE_SIDE,
             KEY_ASSISTANT_GESTURE_DISTANCE_DP,
@@ -727,6 +736,8 @@ public final class SettingsStore {
 
     public static final String[] BOOLEAN_KEYS = StatusBarIconVisibility.appendPreferenceKeys(new String[]{
             KEY_SHARE_TARGETS_ENABLED,
+            KEY_ASSISTANT_BACKGROUND_CUSTOM,
+            KEY_ASSISTANT_BACKGROUND_BLUR,
             KEY_ASSISTANT_GESTURE_ENABLED,
             KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
             CircleBatteryAnimationConfig.ENABLED,
@@ -794,6 +805,7 @@ public final class SettingsStore {
     });
 
     public static final String[] STRING_KEYS = {
+            KEY_ASSISTANT_BACKGROUND_IMAGE,
             KEY_ANIP_BUNDLE_TARGET,
             KEY_SHARE_TARGET_PROFILES,
             KEY_SHARE_TARGET_ORDER,
@@ -997,6 +1009,7 @@ public final class SettingsStore {
         switch (key) {
             case KEY_ANIP_SOURCE_TYPE: return DEFAULT_ANIP_SOURCE_TYPE;
             case KEY_ANIP_ICON_COLOR_MODE: return DEFAULT_ANIP_ICON_COLOR_MODE;
+            case KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE: return ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR;
             case KEY_ASSISTANT_GESTURE_SCENES: return DEFAULT_ASSISTANT_GESTURE_SCENES;
             case KEY_ASSISTANT_GESTURE_SIDE: return DEFAULT_ASSISTANT_GESTURE_SIDE;
             case KEY_ASSISTANT_GESTURE_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
@@ -1228,6 +1241,7 @@ public final class SettingsStore {
     public static boolean defaultBoolean(String key) {
         if (CircleBatteryAnimationConfig.isKey(key)) return CircleBatteryAnimationConfig.defaultBoolean(key);
         switch (key) {
+            case KEY_ASSISTANT_BACKGROUND_BLUR: return DEFAULT_ASSISTANT_BACKGROUND_BLUR;
             case KEY_ASSISTANT_GESTURE_ENABLED: return DEFAULT_ASSISTANT_GESTURE_ENABLED;
             case KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED: return DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED;
             case KEY_ENABLED:
@@ -1398,6 +1412,11 @@ public final class SettingsStore {
             return DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;
         }
         return "";
+    }
+
+    public static int normalizeAssistantForegroundMode(int mode) {
+        return mode == ASSISTANT_FOREGROUND_BLACK || mode == ASSISTANT_FOREGROUND_WHITE
+                ? mode : ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR;
     }
 
     public static int normalizeAssistantGestureScenes(int value) {

@@ -421,6 +421,7 @@ public final class SettingsCardFactory {
         activity.addSliderRow(page, "按住时间", "从手指按下开始计时；滑够距离后保持按住即可触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_HOLD_MS, SettingsStore.DEFAULT_ASSISTANT_GESTURE_HOLD_MS,
                 250, 2000, "ms");
+        com.example.flymestatusbarsizer.feature.assistant.AssistantBackgroundSettings.addRows(activity, page);
         activity.addProfileSectionHeader(page, "首次启用",
                 "在 LSPosed 中勾选系统界面和 Aicy 纵览（com.meizu.assistant），重启手机，并先从桌面打开一次负一屏。遵循系统返回手势区域，锁屏时不触发。未达到阈值时正常返回。");
         return activity.buildSectionCard("全局负一屏", "支持左侧、右侧或两侧长滑返回，在当前应用上打开 Aicy 纵览。", page);

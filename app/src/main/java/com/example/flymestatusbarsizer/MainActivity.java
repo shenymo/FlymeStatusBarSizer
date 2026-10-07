@@ -261,6 +261,8 @@ public class MainActivity extends Activity {
             return;
         }
         Uri uri = data.getData();
+        if (com.example.flymestatusbarsizer.feature.assistant.AssistantBackgroundSettings.onResult(
+                this, requestCode, uri)) return;
         if (requestCode == REQUEST_EXPORT_CONFIG) {
             exportConfig(uri);
         } else if (requestCode == REQUEST_IMPORT_CONFIG) {

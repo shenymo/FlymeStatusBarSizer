@@ -1,6 +1,9 @@
 package com.example.flymestatusbarsizer.feature.assistant;
 
 import android.content.res.ColorStateList;
+import android.graphics.Color;
+
+import com.example.flymestatusbarsizer.config.SettingsStore;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.widget.ImageView;
@@ -17,6 +20,8 @@ final class AssistantTitleColor implements ViewTreeObserver.OnPreDrawListener {
     private final Target[] targets;
     private ViewTreeObserver observer;
     private ColorStateList tint;
+    private Integer statusBarTint;
+    private int foregroundMode = SettingsStore.ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR;
     private boolean active;
 
     AssistantTitleColor(View decor) {
@@ -53,7 +58,17 @@ final class AssistantTitleColor implements ViewTreeObserver.OnPreDrawListener {
         });
     }
 
+    void setBackgroundColorMode(boolean customBackground, int mode) {
+        foregroundMode = customBackground ? SettingsStore.normalizeAssistantForegroundMode(mode)
+                : SettingsStore.ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR;
+        setTint(statusBarTint);
+    }
+
     void setTint(Integer color) {
+        // Keep the latest status bar tint even in fixed mode, so returning to follow mode is immediate.
+        statusBarTint = color;
+        if (foregroundMode == SettingsStore.ASSISTANT_FOREGROUND_BLACK) color = Color.BLACK;
+        else if (foregroundMode == SettingsStore.ASSISTANT_FOREGROUND_WHITE) color = Color.WHITE;
         tint = color == null ? null : ColorStateList.valueOf(color);
         if (active) update();
     }
@@ -67,7 +82,10 @@ final class AssistantTitleColor implements ViewTreeObserver.OnPreDrawListener {
     }
 
     private void update() {
-        if (tint == null) return;
+        if (tint == null) {
+            for (Target target : targets) target.restore();
+            return;
+        }
         for (Target target : targets) target.update(tint);
     }
 

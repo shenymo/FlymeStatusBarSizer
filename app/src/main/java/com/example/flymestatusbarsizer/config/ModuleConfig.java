@@ -120,6 +120,10 @@ public final class ModuleConfig {
     public String clockDetailAssistantActionCacheJson =
             SettingsStore.DEFAULT_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON;
     public boolean mbackLongTouchIntentEnabled = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
+    public String assistantBackgroundImage = "";
+    public boolean assistantBackgroundCustom;
+    public int assistantBackgroundForegroundMode = SettingsStore.ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR;
+    public boolean assistantBackgroundBlur = SettingsStore.DEFAULT_ASSISTANT_BACKGROUND_BLUR;
     public boolean assistantGestureEnabled = SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED;
     public int assistantGestureScenes = SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES;
     public int assistantGestureSide = SettingsStore.DEFAULT_ASSISTANT_GESTURE_SIDE;
@@ -689,6 +693,15 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
                     SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED);
+            config.assistantBackgroundImage = SettingsStore.readString(prefs,
+                    SettingsStore.KEY_ASSISTANT_BACKGROUND_IMAGE, "");
+            config.assistantBackgroundForegroundMode = SettingsStore.normalizeAssistantForegroundMode(
+                    SettingsStore.readInt(prefs, SettingsStore.KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE,
+                            SettingsStore.ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR));
+            config.assistantBackgroundCustom = SettingsStore.readBoolean(prefs,
+                    SettingsStore.KEY_ASSISTANT_BACKGROUND_CUSTOM, false);
+            config.assistantBackgroundBlur = SettingsStore.readBoolean(prefs,
+                    SettingsStore.KEY_ASSISTANT_BACKGROUND_BLUR, SettingsStore.DEFAULT_ASSISTANT_BACKGROUND_BLUR);
             config.assistantGestureEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED, SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
             config.assistantGestureScenes = SettingsStore.normalizeAssistantGestureScenes(SettingsStore.readInt(prefs,

@@ -2,6 +2,8 @@ package com.example.flymestatusbarsizer.feature.assistant;
 
 import android.content.Context;
 import android.content.res.Configuration;
+
+import com.example.flymestatusbarsizer.config.ModuleConfig;
 import android.graphics.Rect;
 import android.os.IBinder;
 import android.view.Gravity;
@@ -80,9 +82,12 @@ final class AssistantWindowSession {
         View slidingContent = (View) AssistantReflection.get(panel, "mContentView");
         if (slidingContent == null) throw new IllegalStateException("Assistant sliding content is not ready");
         motion = new AssistantPanelMotion((View) panel, slidingContent, fromLeft);
+        ModuleConfig config = ModuleConfig.load(context);
         background = new AssistantWindowBackground(slidingContent,
-                windowContext.getResources().getDisplayMetrics().density);
+                windowContext.getResources().getDisplayMetrics().density,
+                config);
         titleColor = new AssistantTitleColor(decor);
+        titleColor.setBackgroundColorMode(config.assistantBackgroundCustom, config.assistantBackgroundForegroundMode);
         surfaceHost = AssistantSurfaceHost.create(component.getClass().getClassLoader());
     }
 

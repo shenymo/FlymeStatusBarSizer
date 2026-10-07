@@ -1,6 +1,8 @@
 package com.example.flymestatusbarsizer.feature.assistant;
 
 import android.content.res.ColorStateList;
+
+import com.example.flymestatusbarsizer.config.SettingsStore;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -27,6 +29,68 @@ import static org.robolectric.Shadows.shadowOf;
 @Config(sdk = 28, manifest = Config.NONE)
 @ConscryptMode(ConscryptMode.Mode.OFF)
 public class AssistantTitleColorTest {
+    @Test public void customBackgroundFixedColorsIgnoreStatusBarChangesAndRestoreNativeControls() {
+        for (int mode : new int[]{SettingsStore.ASSISTANT_FOREGROUND_BLACK, SettingsStore.ASSISTANT_FOREGROUND_WHITE}) {
+            Header header = new Header();
+            ColorStateList originalTitle = header.title.getTextColors();
+            ColorStateList originalHint = header.text.getHintTextColors();
+            android.graphics.drawable.Drawable originalBackground = header.search.getBackground();
+            int alpha = originalBackground.getAlpha();
+            AssistantTitleColor color = header.colors();
+            color.setBackgroundColorMode(true, mode);
+            // Fixed colors work before SystemUI has supplied a tint.
+            color.apply();
+            int expected = mode == SettingsStore.ASSISTANT_FOREGROUND_BLACK ? Color.BLACK : Color.WHITE;
+            header.assertTint(expected);
+            for (Integer status : new Integer[]{Color.WHITE, Color.BLACK, Color.RED, null}) {
+                color.setTint(status);
+                header.draw();
+                header.assertTint(expected);
+                assertSame(originalBackground, header.search.getBackground());
+                assertEquals(alpha, originalBackground.getAlpha());
+            }
+            color.restore();
+            assertSame(originalTitle, header.title.getTextColors());
+            assertSame(originalHint, header.text.getHintTextColors());
+            assertNull(header.add.getImageTintList());
+            assertNull(header.icon.getImageTintList());
+            assertNull(header.search.getBackgroundTintList());
+        }
+    }
+
+    @Test public void applicationBackgroundAlwaysFollowsAndSwitchingBackUsesLatestStatusBarTint() {
+        Header header = new Header();
+        AssistantTitleColor color = header.colors();
+        color.setBackgroundColorMode(true, SettingsStore.ASSISTANT_FOREGROUND_BLACK);
+        color.setTint(Color.WHITE);
+        color.apply();
+        header.assertTint(Color.BLACK);
+        color.setBackgroundColorMode(false, SettingsStore.ASSISTANT_FOREGROUND_BLACK);
+        header.assertTint(Color.WHITE);
+        color.setTint(Color.RED);
+        header.assertTint(Color.RED);
+        color.setBackgroundColorMode(true, SettingsStore.ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR);
+        color.setTint(Color.WHITE);
+        header.assertTint(Color.WHITE);
+        color.setBackgroundColorMode(true, 99);
+        color.setTint(Color.BLACK);
+        header.assertTint(Color.BLACK);
+        color.restore();
+    }
+
+    @Test public void returningFromFixedModeWithoutStatusBarTintRestoresNativeColors() {
+        Header header = new Header();
+        ColorStateList originalTitle = header.title.getTextColors();
+        AssistantTitleColor color = header.colors();
+        color.setBackgroundColorMode(true, SettingsStore.ASSISTANT_FOREGROUND_WHITE);
+        color.apply();
+        header.assertTint(Color.WHITE);
+        color.setBackgroundColorMode(true, SettingsStore.ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR);
+        assertSame(originalTitle, header.title.getTextColors());
+        assertNull(header.search.getBackgroundTintList());
+        color.restore();
+    }
+
     @Test public void globalTintFollowsTransitionsAndRestoresStatefulDesktopColors() {
         TextView title = new TextView(RuntimeEnvironment.getApplication());
         ColorStateList nativeColors = new ColorStateList(

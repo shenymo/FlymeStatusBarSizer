@@ -64,6 +64,12 @@
         </activity-alias>
 
         <provider
+            android:name=".feature.assistant.AssistantBackgroundProvider"
+            android:authorities="${applicationId}.assistant.background"
+            android:directBootAware="false"
+            android:exported="true" />
+
+        <provider
             android:name=".feature.launcher.organizer.LauncherOrganizerProvider"
             android:authorities="${applicationId}.organizer"
             android:exported="true" />
