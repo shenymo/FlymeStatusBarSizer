@@ -82,11 +82,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private final Rect logicalBounds = new Rect();
     private int width;
     private int height;
-    private int baseHeight;
     private int mainSlot;
     private int generation;
     private int highlightedSlot = -1;
     private int imeBottom;
+    private int imeOffset;
     private boolean mainOnLeft;
     private boolean checkInFlight;
     private boolean taskNotifications;
@@ -164,13 +164,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         contentBounds.top += Math.min(dp(REFERENCE_TOP_AREA_DP - TOOLBAR_HEIGHT_DP),
                 Math.max(0, contentBounds.height() - dp(TOOLBAR_HEIGHT_DP + 160)));
         width = contentBounds.width();
-        height = baseHeight = contentBounds.height();
+        height = contentBounds.height();
         if (width <= 0 || height <= 0) throw new IllegalStateException("Invalid workspace bounds");
         mainSlot = 0;
         mainOnLeft = fromLeft;
         onSuccess = success;
         transitionProgress = 0;
         imeBottom = 0;
+        imeOffset = 0;
         sideOrder.clear();
         for (int i = 1; i < COUNT; i++) sideOrder.add(i);
         frames = layout();
@@ -213,13 +214,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         params.setTitle("FlymeOneStepWorkspace");
         params.windowAnimations = 0;
         params.preferredRefreshRate = 120f;
+        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING;
         // The default-display IME stays above this non-focusable host and owns its normal input.
         backdrop.setOnApplyWindowInsetsListener((view, windowInsets) -> {
             int bottom = windowInsets.isVisible(WindowInsets.Type.ime())
                     ? windowInsets.getInsets(WindowInsets.Type.ime()).bottom : 0;
             if (bottom != imeBottom) {
                 imeBottom = bottom;
-                handler.post(this::relayoutForIme);
+                handler.post(this::positionForIme);
             }
             return windowInsets;
         });
@@ -241,33 +243,33 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void updateLogicalBounds() {
         logicalBounds.set(frames[mainSlot]);
+        // The task viewport stays fixed; IME avoidance belongs to the workspace surface.
         logicalBounds.offset(contentBounds.left, contentBounds.top);
     }
 
     private void position(View view, Rect frame) {
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(frame.width(), frame.height());
+        // TaskViews keep the logical viewport in every slot. SurfaceView's render-thread
+        // transform moves both the task and its window hole together, without a buffer resize.
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(logicalBounds.width(), logicalBounds.height());
         params.leftMargin = frame.left;
         params.topMargin = frame.top;
         view.setLayoutParams(params);
+        view.setScaleX(frame.width() / (float) logicalBounds.width());
+        view.setScaleY(frame.height() / (float) logicalBounds.height());
     }
 
-    private void relayoutForIme() {
+    private void positionForIme() {
         if (!active() || workspace == null || animator != null || transitionAnimator != null) return;
         Rect screen = windows.getMaximumWindowMetrics().getBounds();
-        int availableBottom = Math.min(contentBounds.bottom, screen.bottom - imeBottom);
-        int nextHeight = Math.min(baseHeight, Math.max(dp(TOOLBAR_HEIGHT_DP + 160), availableBottom - contentBounds.top));
-        if (height == nextHeight) return;
+        int nextOffset = Math.max(0, contentBounds.bottom - (screen.bottom - imeBottom));
+        if (imeOffset == nextOffset) return;
         blockInput(true);
-        height = nextHeight;
-        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) workspace.getLayoutParams();
-        params.height = height;
-        workspace.setLayoutParams(params);
-        frames = layout();
-        updateLogicalBounds();
-        for (Pane pane : panes) {
-            position(pane.container, frames[pane.slot]);
-            pane.updateGeometry();
-        }
+        imeOffset = nextOffset;
+        // Move the toolbar and all panes together without changing their size or scale.
+        workspace.setTranslationY(-imeOffset);
+        // Shell excludes IME layout insets for the hosted tasks for the whole session.
+        // Do not send setBounds here: even a position-only change triggers task relayout
+        // and a Shell transition. SurfaceView moves the native task input with its surface.
         workspace.post(this::updateInput);
     }
 
@@ -288,7 +290,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (!ValueAnimator.areAnimatorsEnabled()) {
             applyTransition(target);
             if (done != null) done.run();
-            else { updateInput(); relayoutForIme(); }
+            else { updateInput(); positionForIme(); }
             return;
         }
         ValueAnimator transition = ValueAnimator.ofFloat(transitionProgress, target);
@@ -301,7 +303,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 if (transitionAnimator != animation) return;
                 transitionAnimator = null;
                 if (done != null) done.run();
-                else { updateInput(); relayoutForIme(); }
+                else { updateInput(); positionForIme(); }
             }
         });
         transition.start();
@@ -327,13 +329,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 position(pane.container, frames[pane.slot]);
                 pane.container.setTranslationX(0);
                 pane.container.setTranslationY(0);
-                pane.container.setScaleX(1);
-                pane.container.setScaleY(1);
                 pane.updateGeometry();
             }
             shell.focus(selected.host);
             workspace.post(this::updateInput);
-            relayoutForIme();
+            positionForIme();
             if (perf != null) perf.phase("steady");
         };
         if (!ValueAnimator.areAnimatorsEnabled()) { finish.run(); return; }
@@ -359,8 +359,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private static void transform(View view, Rect start, Rect end, float fraction) {
         view.setTranslationX((end.left - start.left) * fraction);
         view.setTranslationY((end.top - start.top) * fraction);
-        view.setScaleX(1 + (end.width() / (float) start.width() - 1) * fraction);
-        view.setScaleY(1 + (end.height() / (float) start.height() - 1) * fraction);
+        view.setScaleX((start.width() + (end.width() - start.width()) * fraction) / view.getWidth());
+        view.setScaleY((start.height() + (end.height() - start.height()) * fraction) / view.getHeight());
     }
 
     private void cancelAnimator(boolean swap) {
@@ -380,19 +380,16 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void blockInput(boolean block) {
         if (backdrop == null) return;
-        // Native TaskView subtracts its rectangle from the host's input region. All TaskViews
-        // share the same obscured region so later listeners cannot reopen a blocked pane.
+        // TaskView's native insets listener uses its unscaled width/height. Cover everything
+        // except the visible main pane so scaled side TaskViews cannot open oversized holes.
         android.graphics.Region obscured = new android.graphics.Region();
-        if (block) obscured.set(0, 0, Math.max(width, backdrop.getWidth()),
-                Math.max(baseHeight + contentBounds.top, backdrop.getHeight()));
-        Rect blocked = new Rect();
-        for (Pane pane : panes) {
-            if (pane == null || pane.host == null) continue;
-            if (!block && (pane.slot != mainSlot || !pane.host.ready)) {
-                int[] location = new int[2];
-                pane.container.getLocationInWindow(location);
-                blocked.set(location[0], location[1], location[0] + pane.container.getWidth(), location[1] + pane.container.getHeight());
-                obscured.op(blocked, android.graphics.Region.Op.UNION);
+        obscured.set(0, 0, Math.max(width, backdrop.getWidth()),
+                Math.max(height + contentBounds.top, backdrop.getHeight()));
+        Pane main = panes[mainSlot];
+        if (!block && main != null && main.host != null && main.host.ready) {
+            Rect visible = new Rect();
+            if (main.host.view.getGlobalVisibleRect(visible)) {
+                obscured.op(visible, android.graphics.Region.Op.DIFFERENCE);
             }
         }
         try {
@@ -407,9 +404,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 }
             }
             if (changed) {
-                // Publish the new input region even when task bounds have not changed, e.g.
-                // when readiness or animation completion opens the main pane's input hole.
-                backdrop.requestLayout();
+                // Schedule a traversal to publish the input region without requesting
+                // a new measure/layout pass for every workspace movement.
                 backdrop.invalidate();
             }
         } catch (Exception error) {
@@ -536,8 +532,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private int dropSlot(DragEvent event) {
         if (!running() || workspace == null || OneHandedTaskHooks.shadeOpen()) return -1;
-        int x = (int) (event.getX() - workspace.getLeft());
-        int y = (int) (event.getY() - workspace.getTop());
+        int x = (int) (event.getX() - workspace.getX());
+        int y = (int) (event.getY() - workspace.getY());
         for (int slot : sideOrder) {
             if (frames[slot].contains(x, y)) return slot;
         }
@@ -789,8 +785,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
         void updateGeometry() {
             if (host == null || !active()) return;
-            Rect frame = frames[slot];
-            shell.geometry(host, logicalBounds, frame.width(), frame.height(), slot == mainSlot);
+            shell.geometry(host, logicalBounds, logicalBounds.width(), logicalBounds.height(), slot == mainSlot);
         }
     }
 }

@@ -135,6 +135,9 @@ final class OneStepShell {
     private final ArrayList<Host> retired = new ArrayList<>();
     private final java.util.concurrent.atomic.AtomicInteger closeRequest = new java.util.concurrent.atomic.AtomicInteger();
     private final Map<IBinder, Integer> pending = new HashMap<>();
+    // Shell owns these transactions. Keep merged finishes too: they are applied after the
+    // observer's onTransitionFinished callback and may otherwise undo the hosted parent.
+    private final Map<IBinder, ArrayList<SurfaceControl.Transaction>> finishes = new HashMap<>();
     private final Map<Integer, JSONObject> journal = new HashMap<>();
     private volatile boolean initialized;
     private volatile boolean transitionBusy;
@@ -194,7 +197,7 @@ final class OneStepShell {
                     case "onTransitionConsumed":
                         pending.remove(args[0]);
                         transitionBusy = !pending.isEmpty();
-                        reattach();
+                        if (args[2] != null) reattach((SurfaceControl.Transaction) args[2]);
                         if (pending.isEmpty()) retired.clear();
                         break;
                     // Our transitions finish synchronously; merges are left to the normal queue.
@@ -207,15 +210,28 @@ final class OneStepShell {
         observer = Proxy.newProxyInstance(loader, new Class<?>[]{observerClass}, (proxy, method, args) -> {
             if (method.getDeclaringClass() == Object.class) return objectMethod(proxy, method.getName(), args);
             try {
-                if ("onTransitionReady".equals(method.getName())) observeTransition(args);
+                if ("onTransitionReady".equals(method.getName())) {
+                    if (accepting || !pending.isEmpty()) {
+                        finishes.computeIfAbsent((IBinder) args[0], key -> new ArrayList<>())
+                                .add((SurfaceControl.Transaction) args[3]);
+                    }
+                    observeTransition(args);
+                }
                 else if ("onTransitionFinished".equals(method.getName())) {
                     pending.remove(args[0]);
                     transitionBusy = !pending.isEmpty();
-                    reattach();
+                    ArrayList<SurfaceControl.Transaction> transactions = finishes.remove(args[0]);
+                    if (transactions != null) {
+                        for (SurfaceControl.Transaction tx : transactions) reattach(tx);
+                    }
                     if (pending.isEmpty()) retired.clear();
                 } else if ("onTransitionMerged".equals(method.getName())) {
                     Integer value = pending.remove(args[0]);
                     if (value != null) pending.put((IBinder) args[1], value);
+                    ArrayList<SurfaceControl.Transaction> transactions = finishes.remove(args[0]);
+                    if (transactions != null) {
+                        finishes.computeIfAbsent((IBinder) args[1], key -> new ArrayList<>()).addAll(transactions);
+                    }
                     transitionBusy = !pending.isEmpty();
                 }
             } catch (Exception error) { fail("无法同步应用窗口", error); }
@@ -227,6 +243,7 @@ final class OneStepShell {
         OneStepReflection.method(wctClass, "setFocusable", tokenClass, boolean.class);
         OneStepReflection.method(wctClass, "setForceTranslucent", tokenClass, boolean.class);
         OneStepReflection.method(wctClass, "setAlwaysOnTop", tokenClass, boolean.class);
+        OneStepReflection.method(wctClass, "setExcludeImeInsets", tokenClass, boolean.class);
         OneStepReflection.method(SurfaceControl.Transaction.class, "setWindowCrop", SurfaceControl.class, Rect.class);
         executor.execute(() -> initialize(observerClass));
     }
@@ -272,17 +289,15 @@ final class OneStepShell {
         executor.execute(() -> {
             if (!current(host)) return;
             boolean changed = !host.logicalBounds.equals(bounds);
-            boolean roleChanged = host.main != main;
             host.logicalBounds = bounds;
             host.width = width;
             host.height = height;
             host.main = main;
             try {
                 if (host.borrowed) {
-                    if (changed || roleChanged) {
+                    if (changed) {
                         Object wct = transaction();
-                        if (changed) bounds(wct, host.token, bounds);
-                        bool(wct, "setFocusable", host.token, main);
+                        bounds(wct, host.token, bounds);
                         submit(wct);
                     }
                     present(host, null, null);
@@ -294,7 +309,18 @@ final class OneStepShell {
     void focus(Host host) {
         executor.execute(() -> {
             if (!current(host) || !host.borrowed) return;
-            try { tasks.focusTask(host.card.taskId); }
+            try {
+                // Change both roles in one WM transaction, with the new main task on top.
+                // Separate disable/enable transitions can briefly focus Home or another app.
+                Object wct = transaction();
+                for (Host candidate : hosts) {
+                    if (!current(candidate) || !candidate.borrowed) continue;
+                    candidate.main = candidate == host;
+                    bool(wct, "setFocusable", candidate.token, candidate.main);
+                }
+                reorder(wct, host.token, true);
+                OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
+            }
             catch (Exception error) { fail("无法聚焦应用窗口", error); }
         });
     }
@@ -372,6 +398,10 @@ final class OneStepShell {
             // transforms, so WM must not occlude the other tasks at their overlapping bounds.
             bool(wct, "setForceTranslucent", host.token, true);
             bool(wct, "setAlwaysOnTop", host.token, true);
+            // Flyme's InsetsPolicy reports an empty IME frame to this task and its children,
+            // retaining keyboard visibility/control while avoiding app resize and adjustPan.
+            // Keep this enabled throughout hosting, including main/side swaps.
+            bool(wct, "setExcludeImeInsets", host.token, true);
             reorder(wct, host.token, true);
             submit(wct);
             // The surface is made visible by the collected Shell transition, after relayout.
@@ -498,8 +528,14 @@ final class OneStepShell {
         }, 0, request));
     }
 
-    private void reattach() throws Exception {
-        for (Host host : hosts) if (current(host) && host.borrowed) present(host, null, null);
+    private void reattach(SurfaceControl.Transaction tx) throws Exception {
+        for (Host host : hosts) {
+            if (!current(host) || !host.borrowed || !host.collected) continue;
+            SurfaceControl parent = (SurfaceControl) OneStepReflection.call(host.controller, "getSurfaceControl");
+            if (parent != null && parent.isValid() && host.leash != null && host.leash.isValid()) {
+                place(host, parent, tx);
+            }
+        }
     }
 
     private void present(Host host, SurfaceControl.Transaction start, SurfaceControl.Transaction finish) throws Exception {
@@ -601,6 +637,7 @@ final class OneStepShell {
                 bool(wct, "setFocusable", host.token, host.originalFocusable);
                 bool(wct, "setForceTranslucent", host.token, false);
                 bool(wct, "setAlwaysOnTop", host.token, host.originalAlwaysOnTop);
+                bool(wct, "setExcludeImeInsets", host.token, false);
                 OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
                 SurfaceControl leash = (SurfaceControl) OneStepReflection.call(appeared, "getLeash");
                 if (leash.isValid()) {
@@ -737,6 +774,7 @@ final class OneStepShell {
         item.put("mode", host.originalMode).put("bounds", host.originalBounds.flattenToString());
         item.put("focusable", host.originalFocusable).put("alwaysOnTop", host.originalAlwaysOnTop);
         item.put("x", host.originalPosition.x).put("y", host.originalPosition.y);
+        item.put("imeInsetsExcluded", true);
         journal.put(host.card.taskId, item);
         persist();
     }
@@ -759,12 +797,21 @@ final class OneStepShell {
             Object info = OneStepReflection.call(appeared, "getTaskInfo");
             ComponentName base = (ComponentName) ReflectUtils.getField(info, "baseActivity");
             if (base == null || !base.flattenToString().equals(item.optString("component"))
-                    || ReflectUtils.getIntField(info, "userId", -1) != item.getInt("user")
-                    || OneStepTaskAccess.display(info) != 0 || ReflectUtils.invokeNoArgInt(info, "getWindowingMode", -1) != 6) continue;
-            Rect bounds = Rect.unflattenFromString(item.getString("bounds"));
-            if (bounds == null) continue;
+                    || ReflectUtils.getIntField(info, "userId", -1) != item.getInt("user")) continue;
             Object token = OneStepReflection.get(info, "token");
             Object wct = transaction();
+            boolean imeInsetsExcluded = item.optBoolean("imeInsetsExcluded", false);
+            if (imeInsetsExcluded) bool(wct, "setExcludeImeInsets", token, false);
+            Rect bounds = Rect.unflattenFromString(item.optString("bounds", ""));
+            if (OneStepTaskAccess.display(info) != 0
+                    || ReflectUtils.invokeNoArgInt(info, "getWindowingMode", -1) != 6 || bounds == null) {
+                // The task may have left the workspace before SystemUI died. Clear only
+                // our IME exclusion, preserving its new display, bounds and windowing mode.
+                if (imeInsetsExcluded) {
+                    OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
+                }
+                continue;
+            }
             mode(wct, token, item.getInt("mode"));
             bounds(wct, token, bounds);
             bool(wct, "setFocusable", token, item.optBoolean("focusable", true));
