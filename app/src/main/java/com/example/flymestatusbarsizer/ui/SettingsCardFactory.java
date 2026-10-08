@@ -444,19 +444,22 @@ public final class SettingsCardFactory {
         appearanceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
         page.addView(appearanceCard, activity.matchWrapWithTop(8));
         TextView scaleHelp = new TextView(activity);
-        scaleHelp.setText("将当前应用宽高缩至 70%，固定在右下角。再次触发或点击留白恢复。"
-                + "左侧紧凑排列三个后台任务预览，仅显示卡片内容。点击后通过平滑移动和缩放动画与右下角主应用交换位置，另外两张卡片保持原位。"
-                + "键盘弹出时主应用和卡片一起上移，空间不足时等比缩小，键盘收起后恢复原位置。"
-                + "通过其他方式切换任务、进入最近任务、旋转或锁屏时退出缩放。"
-                + "应用内页面过渡期间可能暂时恢复全屏，结束后重新缩小。"
-                + "仅支持竖屏普通全屏应用；状态栏和导航栏保持原尺寸。此功能需 Flyme 实机验证。");
+        scaleHelp.setText("将当前应用放入主窗口，侧边同时显示三个可实时运行的应用窗口。"
+                + "工作台使用不透明纯色背景，不露出下层桌面或应用，应用窗口保持缩小尺寸。"
+                + "点击侧边窗口与主窗口交换，空位可选择最近使用的应用。"
+                + "从左侧触发时主窗口在左，从右侧触发时主窗口在右。"
+                + "主窗口支持触摸、多指操作和窗口内键盘；顶部返回按钮操作当前主窗口。"
+                + "屏幕顶部保留原生状态栏，下拉通知栏或控制中心后，收起仍保持当前主应用和窗口布局。"
+                + "再次触发侧边手势、点击留白或顶部全屏按钮可退出，并将应用恢复到主屏。"
+                + "进入最近任务、回到桌面、旋转或锁屏时退出工作台。"
+                + "使用 SystemUI 权限实现，无需额外安装 KernelSU 模块。");
         scaleHelp.setTextSize(13);
         scaleHelp.setTextColor(activity.subtextColor());
         scaleHelp.setPadding(0, activity.dp(8), 0, activity.dp(8));
         page.addView(scaleHelp, activity.matchWrap());
         java.util.function.IntConsumer updateAction = value -> {
             boolean scale = value == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
-            summary.setText(scale ? "从屏幕侧边向内滑动并按住，将当前应用缩小到右下角。"
+            summary.setText(scale ? "从屏幕侧边向内滑动并按住，打开多应用工作台。"
                     : "从屏幕侧边向内滑动并按住，打开全局负一屏。");
             appearanceCard.setVisibility(scale ? View.GONE : View.VISIBLE);
             scaleHelp.setVisibility(scale ? View.VISIBLE : View.GONE);
@@ -464,14 +467,14 @@ public final class SettingsCardFactory {
         activity.addChoiceRow(actionOptions, "触发动作", "选择侧边长滑手势执行的功能。",
                 SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION,
                 new int[]{SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT, SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE},
-                new String[]{"全局负一屏", "应用单手缩放"}, updateAction);
+                new String[]{"全局负一屏", "多应用工作台"}, updateAction);
         updateAction.accept(SettingsStore.normalizeSideGestureAction(SettingsStore.readInt(activity.prefs(),
                 SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION)));
         return activity.buildSectionCard("侧边手势",
                 "首次使用\n在 LSPosed 中勾选系统界面，更新模块后重启 SystemUI 或手机。"
                         + "全局负一屏还需勾选 Aicy 纵览并重启，再从桌面打开一次负一屏。\n\n"
                         + "使用方法\n选择触发动作，从所选侧边的返回区域向内滑动并按住。"
-                        + "应用单手缩放可再次触发或点击留白退出；全局负一屏可左右滑动或返回关闭。"
+                        + "多应用工作台可再次触发、点击留白或全屏按钮退出；全局负一屏可左右滑动或返回关闭。"
                         + "未达到触发条件时正常返回，锁屏时不触发。", page);
     }
 
