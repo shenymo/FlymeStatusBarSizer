@@ -37,6 +37,9 @@ public final class OneHandedTaskHooks {
     private static volatile OneStepWorkspace controller;
     private static volatile WeakReference<Object> edgeHandler = new WeakReference<>(null);
     private static volatile boolean installed;
+    private static volatile Object shellTransitions;
+    private static volatile Object taskViewFactory;
+    private static volatile Object taskDisplayAreas;
 
     public static final SideGestureActions.Action ACTION = new SideGestureActions.Action() {
         @Override public boolean isReady() {
@@ -67,17 +70,20 @@ public final class OneHandedTaskHooks {
         if (Build.VERSION.SDK_INT < 33 || installed) return;
         OneStepStatusBar.install(module, loader);
         try {
-            Class<?> transitions = Class.forName("com.android.wm.shell.transition.Transitions", false, loader);
-            for (Constructor<?> constructor : transitions.getDeclaredConstructors()) {
-                module.intercept(constructor, chain -> {
-                    Object result = chain.proceed();
-                    Object source = ReflectUtils.getField(chain.getThisObject(), "mContext");
-                    if (source instanceof Context) attach((Context) source);
-                    return result;
-                });
-            }
+            hookConstruction(module, loader, "com.android.wm.shell.RootTaskDisplayAreaOrganizer", value -> {
+                taskDisplayAreas = value;
+                attach();
+            });
+            hookConstruction(module, loader, "com.android.wm.shell.taskview.TaskViewFactoryController", value -> {
+                taskViewFactory = value;
+                attach();
+            });
+            hookConstruction(module, loader, "com.android.wm.shell.transition.Transitions", value -> {
+                shellTransitions = value;
+                attach();
+            });
             installed = true;
-            Log.i(TAG, "OneStep virtual workspace hooks installed");
+            Log.i(TAG, "OneStep Shell task workspace hooks installed");
         } catch (Throwable e) {
             Log.w(TAG, "Cannot install OneStep workspace", e);
             return;
@@ -89,22 +95,40 @@ public final class OneHandedTaskHooks {
                 if (!"startRecentsTransition".equals(method.getName())) continue;
                 method.setAccessible(true);
                 module.intercept(method, chain -> {
-                    stop("recents started");
+                    OneStepWorkspace current = controller;
+                    if (current != null) current.beforeRecents();
                     return chain.proceed();
                 });
             }
         } catch (Throwable e) { Log.w(TAG, "Recents lifecycle hook unavailable", e); }
     }
 
-    private static void attach(Context context) {
+    private static void hookConstruction(FlymeStatusBarSizer module, ClassLoader loader, String name,
+                                         java.util.function.Consumer<Object> callback) throws Exception {
+        Class<?> type = Class.forName(name, false, loader);
+        for (Constructor<?> constructor : type.getDeclaredConstructors()) {
+            module.intercept(constructor, chain -> {
+                Object result = chain.proceed();
+                callback.accept(chain.getThisObject());
+                return result;
+            });
+        }
+    }
+
+    private static void attach() {
+        if (shellTransitions == null || taskViewFactory == null || taskDisplayAreas == null) return;
         Handler handler = new Handler(Looper.getMainLooper());
         handler.post(() -> {
             if (controller != null) return;
+            Object source = ReflectUtils.getField(shellTransitions, "mContext");
+            if (!(source instanceof Context)) return;
+            Context context = (Context) source;
             try {
-                OneStepWorkspace current = new OneStepWorkspace(context, handler);
+                OneStepWorkspace current = new OneStepWorkspace(context, handler,
+                        shellTransitions, taskViewFactory, taskDisplayAreas);
                 registerEnvironment(context, handler);
                 controller = current;
-                Log.i(TAG, "OneStep workspace ready in SystemUI");
+                Log.i(TAG, "OneStep Shell workspace ready in SystemUI");
             } catch (Throwable e) { Log.w(TAG, "Cannot initialize OneStep workspace", e); }
         });
     }
