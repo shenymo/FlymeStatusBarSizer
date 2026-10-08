@@ -11,7 +11,7 @@ import android.view.MotionEvent;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import java.lang.reflect.Method;
-import java.util.ArrayList;
+import java.lang.reflect.Proxy;
 import java.util.List;
 
 /** OneStep's display/task/input operations, executed under SystemUI's existing permissions. */
@@ -30,6 +30,7 @@ final class OneStepTaskAccess {
     private final Method imePolicy;
     private final Method getImePolicy;
     private final OneStepRecentTasks recent;
+    private Object taskListener;
 
     OneStepTaskAccess(Context context) throws ReflectiveOperationException {
         this.context = context;
@@ -74,7 +75,11 @@ final class OneStepTaskAccess {
     }
 
     RecentTaskCard focusedTask() throws ReflectiveOperationException {
-        for (Object root : roots()) {
+        return focusedTask(roots());
+    }
+
+    private static RecentTaskCard focusedTask(List<?> rootTasks) {
+        for (Object root : rootTasks) {
             if (display(root) == 0 && application(root)
                     && ReflectUtils.getBooleanField(root, "isFocused", false)) {
                 return OneStepRecentTasks.candidate(root, ReflectUtils.getIntField(root, "userId", -1));
@@ -92,11 +97,17 @@ final class OneStepTaskAccess {
         return null;
     }
 
-    void attach(RecentTaskCard requested, int targetDisplay) throws ReflectiveOperationException {
+    void attach(RecentTaskCard requested, int targetDisplay, boolean requireFocused)
+            throws ReflectiveOperationException {
         // A label or task id alone is insufficient: revalidate the task's binder identity.
         RecentTaskCard valid = findCandidate(requested);
         if (valid == null) throw new IllegalStateException("Selected task no longer exists");
-        for (Object root : roots()) {
+        List<?> rootTasks = roots();
+        // Opening data is prepared off-thread; do not move an app that lost focus in the meantime.
+        if (requireFocused && !valid.sameTask(focusedTask(rootTasks))) {
+            throw new IllegalStateException("Focused task changed while opening workspace");
+        }
+        for (Object root : rootTasks) {
             if (taskId(root) == valid.taskId && valid.token.equals(token(root))) {
                 move.invoke(service, valid.taskId, targetDisplay);
                 focus(targetDisplay);
@@ -154,9 +165,47 @@ final class OneStepTaskAccess {
     }
 
     void restoreDisplay(int id) throws ReflectiveOperationException {
+        restoreDisplay(id, roots());
+    }
+
+    void restoreDisplay(int id, List<?> rootTasks) throws ReflectiveOperationException {
         // Include tasks opened by the hosted app, not just the original task moved into this pane.
-        for (Object root : new ArrayList<>(roots())) {
+        for (Object root : rootTasks) {
             if (display(root) == id) move.invoke(service, taskId(root), 0);
         }
+    }
+
+    void registerTaskChanges(Runnable callback) throws ReflectiveOperationException {
+        if (taskListener != null) return;
+        ClassLoader loader = context.getClassLoader();
+        Class<?> listenerType = Class.forName(
+                "com.android.systemui.shared.system.TaskStackChangeListener", false, loader);
+        Class<?> listenersType = Class.forName(
+                "com.android.systemui.shared.system.TaskStackChangeListeners", false, loader);
+        Object listeners = listenersType.getMethod("getInstance").invoke(null);
+        Object listener = Proxy.newProxyInstance(loader, new Class<?>[]{listenerType}, (proxy, method, args) -> {
+            String name = method.getName();
+            if ("equals".equals(name)) return proxy == args[0];
+            if ("hashCode".equals(name)) return System.identityHashCode(proxy);
+            if ("toString".equals(name)) return "FlymeOneStepTaskListener";
+            switch (name) {
+                case "onTaskStackChanged":
+                case "onTaskCreated":
+                case "onTaskRemoved":
+                case "onTaskMovedToFront":
+                case "onTaskDisplayChanged":
+                case "onRecentTaskListUpdated":
+                case "onTaskProfileLocked":
+                case "onLockTaskModeChanged":
+                    callback.run();
+                    break;
+                default:
+                    break;
+            }
+            // Snapshot ownership stays with SystemUI; this listener only observes task changes.
+            return method.getReturnType() == boolean.class ? Boolean.FALSE : null;
+        });
+        listenersType.getMethod("registerTaskStackListener", listenerType).invoke(listeners, listener);
+        taskListener = listener;
     }
 }

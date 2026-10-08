@@ -107,18 +107,20 @@ final class AssistantGestureHooks {
         void begin(MotionEvent event) {
             Object target = owner.get();
             ModuleConfig config = ModuleConfig.load(context);
-            boolean leftEdge = ReflectUtils.getBooleanField(target, "mIsOnLeftEdge", false);
-            SideGestureActions.Action candidate = SideGestureActions.resolve(config.sideGestureAction, globalAssistant);
-            if (!config.enabled || !config.assistantGestureEnabled || candidate == null || !candidate.isReady()
+            // The input monitor sees ordinary taps too. Reject them before readiness can
+            // query ActivityTaskManager or another action's remote service.
+            if (target == null || !config.enabled || !config.assistantGestureEnabled
                     || !event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN) || event.getPointerCount() != 1
-                    || ReflectUtils.invokeNoArgInt(event, "getDisplayId", -1)
-                            != ReflectUtils.getIntField(target, "mDisplayId", 0)
-                    || ReflectUtils.getIntField(target, "mDisplayId", 0) != 0
                     || !ReflectUtils.getBooleanField(target, "mAllowGesture", false)
-                    || !SettingsStore.assistantGestureAllowsSide(config.assistantGestureSide, leftEdge)
-                    || !AssistantGestureScenes.allows(config.assistantGestureScenes, target)
+                    || ReflectUtils.getIntField(target, "mDisplayId", -1) != 0
+                    || ReflectUtils.invokeNoArgInt(event, "getDisplayId", -1) != 0
                     || ReflectUtils.getBooleanField(target, "mIsTrackpadThreeFingerSwipe", false)
-                    || ReflectUtils.getBooleanField(target, "mInterceptBack", false) || locked()) return;
+                    || ReflectUtils.getBooleanField(target, "mInterceptBack", false)) return;
+            boolean leftEdge = ReflectUtils.getBooleanField(target, "mIsOnLeftEdge", false);
+            if (!SettingsStore.assistantGestureAllowsSide(config.assistantGestureSide, leftEdge)
+                    || !AssistantGestureScenes.allows(config.assistantGestureScenes, target) || locked()) return;
+            SideGestureActions.Action candidate = SideGestureActions.resolve(config.sideGestureAction, globalAssistant);
+            if (candidate == null || !candidate.isReady()) return;
             float density = context.getResources().getDisplayMetrics().density;
             state.begin(event.getX(), event.getY(), event.getDownTime(),
                     config.assistantGestureDistanceDp * density, config.assistantGestureHoldMs, 12f * density, leftEdge,
@@ -146,10 +148,11 @@ final class AssistantGestureHooks {
             if (last == null || target == null || consumed || !state.ready(SystemClock.uptimeMillis())) return false;
             ModuleConfig config = ModuleConfig.load(context);
             if (!config.enabled || !config.assistantGestureEnabled
-                    || config.sideGestureAction != actionId || action == null || !action.isReady() || locked()
-                    || !AssistantGestureScenes.allows(config.assistantGestureScenes, target)
+                    || config.sideGestureAction != actionId || action == null
                     || !ReflectUtils.getBooleanField(target, "mAllowGesture", false)
-                    || ReflectUtils.getBooleanField(target, "mInterceptBack", false)) { reset(); return false; }
+                    || ReflectUtils.getBooleanField(target, "mInterceptBack", false)
+                    || !AssistantGestureScenes.allows(config.assistantGestureScenes, target)
+                    || locked() || !action.isReady()) { reset(); return false; }
             try {
                 // Native predictive back may defer input ownership: ensure the old app loses this stream.
                 pilfer.invoke(target);

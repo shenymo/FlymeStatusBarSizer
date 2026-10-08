@@ -52,6 +52,8 @@ final class OneStepWorkspace {
     private static final long ENTER_DURATION_MS = 300;
     private static final long EXIT_DURATION_MS = 200;
     private static final long BACKDROP_FADE_DURATION_MS = 140;
+    private static final long TASK_CHECK_DEBOUNCE_MS = 100;
+    private static final long TASK_CHECK_FALLBACK_MS = 3000;
     private static final PathInterpolator ENTER_INTERPOLATOR = new PathInterpolator(0.2f, 0f, 0f, 1f);
     private static final PathInterpolator EXIT_INTERPOLATOR = new PathInterpolator(0.4f, 0f, 1f, 1f);
     // OneStep4 defaults: media 116dp + navigation (26 + 20)dp + app strip 74dp.
@@ -70,7 +72,20 @@ final class OneStepWorkspace {
     private final Pane[] panes = new Pane[COUNT];
     private final ArrayList<Integer> sideOrder = new ArrayList<>();
     private final Runnable check = this::check;
+    private final Runnable taskChanged = this::onTasksChanged;
     private final Runnable restoreRetry = this::restoreAndDismiss;
+    private final Executor taskWorker = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "FlymeOneStepTasks");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private boolean taskNotifications;
+    private boolean checkInFlight;
+    private boolean checkAgain;
+    private boolean restoring;
+    private int restoreRequest;
+    private long nextCheckTime;
+    private int taskStateVersion;
     private FrameLayout backdrop;
     private FrameLayout workspace;
     private final ArrayList<ImageView> recentIcons = new ArrayList<>();
@@ -90,6 +105,7 @@ final class OneStepWorkspace {
     private boolean focusMainOnClose;
     private volatile boolean active;
     private volatile boolean closing;
+    private volatile boolean opening;
     private boolean mainOnLeft;
     private int mainSlot;
     private int width;
@@ -113,6 +129,16 @@ final class OneStepWorkspace {
                 .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null);
         windows = context.getSystemService(WindowManager.class);
         tasks = new OneStepTaskAccess(source);
+        try {
+            tasks.registerTaskChanges(() -> {
+                if (!active || closing) return;
+                handler.removeCallbacks(taskChanged);
+                handler.post(taskChanged);
+            });
+            taskNotifications = true;
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            Log.w(TAG, "Task notifications unavailable; using background polling", e);
+        }
         displays.registerDisplayListener(new DisplayManager.DisplayListener() {
             @Override public void onDisplayAdded(int id) {}
             @Override public void onDisplayRemoved(int id) {
@@ -130,7 +156,7 @@ final class OneStepWorkspace {
     }
 
     boolean canTrigger() {
-        if (closing || dragSession != null || !OneHandedTaskHooks.environmentAllowed(context)) return false;
+        if (opening || closing || dragSession != null || !OneHandedTaskHooks.environmentAllowed(context)) return false;
         if (active) return true;
         try { return tasks.focusedTask() != null; }
         catch (Exception e) { return false; }
@@ -138,19 +164,35 @@ final class OneStepWorkspace {
 
     void toggle(boolean fromLeft, Runnable success) {
         handler.post(() -> {
-            if (closing) return;
+            if (opening || closing) return;
             if (active) { close(true); return; }
             if (!OneHandedTaskHooks.environmentAllowed(context)) return;
-            try {
-                RecentTaskCard main = tasks.focusedTask();
-                if (main == null) return;
-                open(main, fromLeft, success);
-            } catch (Exception e) { fail("无法打开多应用工作台", e); }
+            opening = true;
+            int requestGeneration = ++generation;
+            taskWorker.execute(() -> {
+                try {
+                    RecentTaskCard main = tasks.focusedTask();
+                    List<RecentTaskCard> recent = main == null ? null : tasks.candidates();
+                    handler.post(() -> {
+                        if (!opening || generation != requestGeneration) return;
+                        opening = false;
+                        if (main == null || !OneHandedTaskHooks.environmentAllowed(context)) return;
+                        try { open(main, recent, fromLeft, success); }
+                        catch (Exception e) { fail("无法打开多应用工作台", e); }
+                    });
+                } catch (Exception e) {
+                    handler.post(() -> {
+                        if (!opening || generation != requestGeneration) return;
+                        opening = false;
+                        fail("无法打开多应用工作台", e);
+                    });
+                }
+            });
         });
     }
 
-    private void open(RecentTaskCard main, boolean fromLeft, Runnable success) throws Exception {
-        List<RecentTaskCard> recent = tasks.candidates();
+    private void open(RecentTaskCard main, List<RecentTaskCard> recent, boolean fromLeft, Runnable success)
+            throws Exception {
         WindowMetrics metrics = windows.getMaximumWindowMetrics();
         Rect screen = new Rect(metrics.getBounds());
         Rect bounds = new Rect(screen);
@@ -180,6 +222,11 @@ final class OneStepWorkspace {
         primaryTask = -1;
         started = false;
         restoreAttempts = 0;
+        restoring = false;
+        checkInFlight = false;
+        checkAgain = false;
+        nextCheckTime = 0L;
+        taskStateVersion++;
         animateClose = false;
         focusMainOnClose = false;
         mainSlot = 0;
@@ -239,7 +286,7 @@ final class OneStepWorkspace {
         backdrop.postOnAnimation(() -> {
             if (active && !closing && generation == sessionGeneration) animateWorkspace(true);
         });
-        handler.postDelayed(check, 300);
+        scheduleCheck(300);
     }
 
     private void applyWorkspaceTransition(float progress) {
@@ -360,24 +407,29 @@ final class OneStepWorkspace {
         catch (Exception e) { fail("无法切换应用窗口", e); return; }
         int index = sideOrder.indexOf(slot);
         if (index < 0) return;
+        int previousMain = mainSlot;
         sideOrder.set(index, mainSlot);
         mainSlot = slot;
         Rect[] start = frames;
         Rect[] end = layout();
+        Pane previous = panes[previousMain];
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            finishPaneSwap(previous, selected, end);
+            updateRecentIcons();
+            return;
+        }
         animator = ValueAnimator.ofFloat(0, 1);
         animator.setDuration(240);
         animator.setInterpolator(new DecelerateInterpolator());
         animator.addUpdateListener(value -> {
             float f = (float) value.getAnimatedValue();
-            for (int i = 0; i < COUNT; i++) {
-                Rect a = start[i], b = end[i];
-                position(panes[i].container, new Rect(lerp(a.left, b.left, f), lerp(a.top, b.top, f),
-                        lerp(a.right, b.right, f), lerp(a.bottom, b.bottom, f)));
-            }
+            transformPane(previous, start[previousMain], end[previousMain], f);
+            transformPane(selected, start[slot], end[slot], f);
         });
-        animator.addListener(new android.animation.AnimatorListenerAdapter() {
-            @Override public void onAnimationEnd(android.animation.Animator animation) {
-                frames = end;
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator animation) {
+                if (animator != animation) return;
+                finishPaneSwap(previous, selected, end);
                 animator = null;
             }
         });
@@ -385,7 +437,28 @@ final class OneStepWorkspace {
         updateRecentIcons();
     }
 
-    private static int lerp(int a, int b, float fraction) { return Math.round(a + (b - a) * fraction); }
+    private static void transformPane(Pane pane, Rect start, Rect end, float fraction) {
+        View view = pane.container;
+        view.setTranslationX((end.left - start.left) * fraction);
+        view.setTranslationY((end.top - start.top) * fraction);
+        view.setScaleX(1f + (end.width() / (float) start.width() - 1f) * fraction);
+        view.setScaleY(1f + (end.height() / (float) start.height() - 1f) * fraction);
+    }
+
+    private void finishPaneSwap(Pane previous, Pane selected, Rect[] end) {
+        // Keep TextureView geometry fixed during the animation and lay out only once at the end.
+        settlePane(previous, end[previous.slot]);
+        settlePane(selected, end[selected.slot]);
+        frames = end;
+    }
+
+    private void settlePane(Pane pane, Rect frame) {
+        position(pane.container, frame);
+        pane.container.setTranslationX(0f);
+        pane.container.setTranslationY(0f);
+        pane.container.setScaleX(1f);
+        pane.container.setScaleY(1f);
+    }
 
     private View createRecentStrip(List<RecentTaskCard> recent) {
         HorizontalScrollView strip = new HorizontalScrollView(context);
@@ -539,12 +612,20 @@ final class OneStepWorkspace {
 
     void refresh() {
         handler.post(() -> {
+            if (opening && !OneHandedTaskHooks.environmentAllowed(context)) cancelOpening();
             if (active && !OneHandedTaskHooks.workspaceAllowed(context)) close(false);
         });
     }
 
+    private void cancelOpening() {
+        if (!opening) return;
+        opening = false;
+        generation++;
+    }
+
     void stop(String reason) {
         Runnable action = () -> {
+            cancelOpening();
             if (active) {
                 Log.i(TAG, "Closing workspace: " + reason);
                 close(false);
@@ -554,13 +635,66 @@ final class OneStepWorkspace {
         else handler.post(action);
     }
 
-    private void check() {
+    private void onTasksChanged() {
         if (!active || closing) return;
+        taskStateVersion++;
+        scheduleCheck(TASK_CHECK_DEBOUNCE_MS);
+    }
+
+    private void scheduleCheck(long delayMs) {
+        if (!active || closing) return;
+        if (checkInFlight) {
+            checkAgain = true;
+            return;
+        }
+        long when = SystemClock.uptimeMillis() + delayMs;
+        if (nextCheckTime != 0L && nextCheckTime <= when) return;
+        handler.removeCallbacks(check);
+        nextCheckTime = when;
+        handler.postAtTime(check, when);
+    }
+
+    private void check() {
+        nextCheckTime = 0L;
+        if (!active || closing) return;
+        if (checkInFlight) {
+            checkAgain = true;
+            return;
+        }
         try {
             if (!OneHandedTaskHooks.workspaceAllowed(context)) { close(false); return; }
+            if (!started && SystemClock.uptimeMillis() > deadline) {
+                throw new IllegalStateException("Main pane did not draw a frame");
+            }
+        } catch (Exception e) { fail("多应用窗口已退出", e); return; }
+        checkInFlight = true;
+        int sessionGeneration = generation;
+        int stateVersion = taskStateVersion;
+        taskWorker.execute(() -> {
+            try {
+                List<?> roots = tasks.roots();
+                handler.post(() -> finishCheck(sessionGeneration, stateVersion, roots, null));
+            } catch (Exception e) {
+                handler.post(() -> finishCheck(sessionGeneration, stateVersion, null, e));
+            }
+        });
+    }
+
+    private void finishCheck(int sessionGeneration, int stateVersion, List<?> roots, Exception error) {
+        if (generation != sessionGeneration) return;
+        checkInFlight = false;
+        if (!active || closing) return;
+        boolean refreshAgain = checkAgain || stateVersion != taskStateVersion;
+        checkAgain = false;
+        // A drop, task change or display release may have overtaken this background snapshot.
+        if (stateVersion != taskStateVersion) {
+            scheduleCheck(TASK_CHECK_DEBOUNCE_MS);
+            return;
+        }
+        if (error != null) { fail("多应用窗口已退出", error); return; }
+        try {
             boolean shadeOpen = OneHandedTaskHooks.shadeOpen();
             Pane main = panes[mainSlot];
-            List<?> roots = tasks.roots();
             if (!started && main.ready && main.frameReceived && hasTask(roots, main.id())) {
                 Runnable callback = onSuccess;
                 onSuccess = null;
@@ -589,7 +723,8 @@ final class OneStepWorkspace {
                     updateRecentIcons();
                 }
             }
-            handler.postDelayed(check, 700);
+            scheduleCheck(refreshAgain ? TASK_CHECK_DEBOUNCE_MS
+                    : !started ? 300 : taskNotifications ? TASK_CHECK_FALLBACK_MS : 700);
         } catch (Exception e) { fail("多应用窗口已退出", e); }
     }
 
@@ -646,6 +781,8 @@ final class OneStepWorkspace {
         closing = true;
         onSuccess = null;
         handler.removeCallbacks(check);
+        handler.removeCallbacks(taskChanged);
+        nextCheckTime = 0L;
         handler.removeCallbacks(restoreRetry);
         cancelTransition();
         if (dragSource != null) {
@@ -662,18 +799,55 @@ final class OneStepWorkspace {
     }
 
     private void restoreAndDismiss() {
-        if (!active || !closing) return;
+        if (!active || !closing || (restoring && focusMainOnClose)) return;
         handler.removeCallbacks(restoreRetry);
         restoreAttempts++;
-        boolean restored = true;
+        restoring = true;
+        int sessionGeneration = generation;
+        int request = ++restoreRequest;
         // Restore the chosen main last so it is the app shown after leaving the workspace.
         ArrayList<Integer> order = new ArrayList<>(sideOrder);
         order.add(mainSlot);
+        ArrayList<Pane> restoringPanes = new ArrayList<>();
         for (int slot : order) {
             Pane pane = panes[slot];
-            if (pane == null || pane.display == null) continue;
+            if (pane != null && pane.display != null) restoringPanes.add(pane);
+        }
+        if (!focusMainOnClose) {
+            // Recents/Home lifecycle hooks must restore before the native transition continues.
+            // Supersede any pending read; background work never migrates tasks after this exit.
+            List<?> roots = null;
+            Exception queryError = null;
             try {
-                tasks.restoreDisplay(pane.id());
+                if (!restoringPanes.isEmpty()) roots = tasks.roots();
+            } catch (Exception e) {
+                queryError = e;
+            }
+            finishRestoring(sessionGeneration, request, restoringPanes, roots, queryError);
+            return;
+        }
+        taskWorker.execute(() -> {
+            try {
+                List<?> roots = restoringPanes.isEmpty() ? null : tasks.roots();
+                handler.post(() -> finishRestoring(sessionGeneration, request, restoringPanes, roots, null));
+            } catch (Exception e) {
+                handler.post(() -> finishRestoring(sessionGeneration, request, restoringPanes, null, e));
+            }
+        });
+    }
+
+    private void finishRestoring(int sessionGeneration, int request, List<Pane> restoringPanes,
+                                 List<?> roots, Exception queryError) {
+        if (generation != sessionGeneration || restoreRequest != request) return;
+        restoring = false;
+        if (!active || !closing) return;
+        boolean restored = true;
+        // Share one task snapshot across panes. Keep each migration and release ordered on the UI
+        // thread so a synchronous environment exit cannot race a background task migration.
+        for (Pane pane : restoringPanes) {
+            try {
+                if (queryError != null) throw queryError;
+                tasks.restoreDisplay(pane.id(), roots);
                 pane.release();
             } catch (Exception e) {
                 Log.w(TAG, "Cannot explicitly restore display tasks", e);
@@ -706,7 +880,10 @@ final class OneStepWorkspace {
     private void finishClose() {
         cancelTransition();
         handler.removeCallbacks(check);
+        handler.removeCallbacks(taskChanged);
         handler.removeCallbacks(restoreRetry);
+        nextCheckTime = 0L;
+        checkAgain = false;
         active = false;
         OneStepStatusBar.setVisible(false);
         closing = false;
@@ -759,6 +936,8 @@ final class OneStepWorkspace {
         Pane(int slot, RecentTaskCard card) {
             this.slot = slot;
             this.card = card;
+            container.setPivotX(0f);
+            container.setPivotY(0f);
             container.setBackgroundColor(Color.BLACK);
             texture.setSurfaceTextureListener(this);
             texture.setOnTouchListener((v, event) -> touch(event));
@@ -803,6 +982,7 @@ final class OneStepWorkspace {
 
         private void create(SurfaceTexture buffer) {
             if (!active || closing || card == null || display != null || buffer == null) return;
+            taskStateVersion++;
             try {
                 buffer.setDefaultBufferSize(virtualWidth, virtualHeight);
                 surface = new Surface(buffer);
@@ -819,7 +999,7 @@ final class OneStepWorkspace {
                 if (display == null) throw new IllegalStateException("Virtual display creation returned null");
                 callbackDisplayId[0] = id();
                 tasks.configureDisplay(id());
-                tasks.attach(card, id());
+                tasks.attach(card, id(), slot == mainSlot && !OneStepWorkspace.this.started);
                 ready = true;
                 started = SystemClock.uptimeMillis();
                 updateInputSize();
@@ -845,6 +1025,7 @@ final class OneStepWorkspace {
                 } catch (Exception e) { Log.w(TAG, "Cannot restore main pane focus after drop", e); }
                 updateRecentIcons();
             }
+            scheduleCheck(TASK_CHECK_DEBOUNCE_MS);
         }
 
         void updateInputSize() {
@@ -886,6 +1067,7 @@ final class OneStepWorkspace {
         }
 
         void release() {
+            taskStateVersion++;
             cancelTouch();
             ready = false;
             frameReceived = false;
@@ -913,8 +1095,7 @@ final class OneStepWorkspace {
             frameReceived = true;
             empty.setVisibility(View.GONE);
             if (slot == mainSlot && !OneStepWorkspace.this.started) {
-                handler.removeCallbacks(check);
-                handler.post(check);
+                scheduleCheck(0);
             }
         }
     }

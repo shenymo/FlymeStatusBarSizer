@@ -53,7 +53,7 @@ public final class OneHandedTaskHooks {
     private OneHandedTaskHooks() {}
 
     public static void trackEdgeHandler(Object edge) {
-        if (ReflectUtils.getIntField(edge, "mDisplayId", -1) == 0) {
+        if (edgeHandler.get() != edge && ReflectUtils.getIntField(edge, "mDisplayId", -1) == 0) {
             edgeHandler = new WeakReference<>(edge);
         }
     }
