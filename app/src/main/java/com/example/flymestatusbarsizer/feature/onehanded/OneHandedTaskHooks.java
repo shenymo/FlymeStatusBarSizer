@@ -147,9 +147,6 @@ public final class OneHandedTaskHooks {
         if (current != null) current.stop(reason);
     }
 
-    // Retained for the unused legacy Surface backend; the workspace owns independent displays.
-    static boolean backAnimationIdle() { return true; }
-
     static boolean environmentAllowed(Context context) {
         return environmentAllowed(context, false);
     }

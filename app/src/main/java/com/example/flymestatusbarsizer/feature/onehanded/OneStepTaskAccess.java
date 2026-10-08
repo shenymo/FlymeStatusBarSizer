@@ -4,11 +4,8 @@ import android.app.ActivityOptions;
 import android.content.Context;
 import android.graphics.Matrix;
 import android.os.Bundle;
-import android.os.SystemClock;
 import android.view.InputDevice;
 import android.view.InputEvent;
-import android.view.KeyCharacterMap;
-import android.view.KeyEvent;
 import android.view.MotionEvent;
 
 import com.example.flymestatusbarsizer.util.ReflectUtils;
@@ -32,7 +29,7 @@ final class OneStepTaskAccess {
     private final Method displayId;
     private final Method imePolicy;
     private final Method getImePolicy;
-    private final TaskScaleRecentTasks recent;
+    private final OneStepRecentTasks recent;
 
     OneStepTaskAccess(Context context) throws ReflectiveOperationException {
         this.context = context;
@@ -55,7 +52,7 @@ final class OneStepTaskAccess {
         Class<?> wm = Class.forName("android.view.IWindowManager");
         imePolicy = wm.getMethod("setDisplayImePolicy", int.class, int.class);
         getImePolicy = wm.getMethod("getDisplayImePolicy", int.class);
-        recent = new TaskScaleRecentTasks(context);
+        recent = new OneStepRecentTasks(context);
     }
 
     List<?> roots() throws ReflectiveOperationException {
@@ -80,7 +77,7 @@ final class OneStepTaskAccess {
         for (Object root : roots()) {
             if (display(root) == 0 && application(root)
                     && ReflectUtils.getBooleanField(root, "isFocused", false)) {
-                return TaskScaleRecentTasks.candidate(root, ReflectUtils.getIntField(root, "userId", -1));
+                return OneStepRecentTasks.candidate(root, ReflectUtils.getIntField(root, "userId", -1));
             }
         }
         return null;
@@ -88,12 +85,16 @@ final class OneStepTaskAccess {
 
     List<RecentTaskCard> candidates() throws ReflectiveOperationException { return recent.recentTasks(); }
 
+    RecentTaskCard findCandidate(RecentTaskCard requested) throws ReflectiveOperationException {
+        for (RecentTaskCard card : candidates()) {
+            if (requested.sameTask(card)) return card;
+        }
+        return null;
+    }
+
     void attach(RecentTaskCard requested, int targetDisplay) throws ReflectiveOperationException {
         // A label or task id alone is insufficient: revalidate the task's binder identity.
-        RecentTaskCard valid = null;
-        for (RecentTaskCard card : candidates()) {
-            if (requested.sameTask(card)) { valid = card; break; }
-        }
+        RecentTaskCard valid = findCandidate(requested);
         if (valid == null) throw new IllegalStateException("Selected task no longer exists");
         for (Object root : roots()) {
             if (taskId(root) == valid.taskId && valid.token.equals(token(root))) {
@@ -150,19 +151,6 @@ final class OneStepTaskAccess {
                 throw new IllegalStateException("Virtual display rejected touch input");
             }
         } finally { event.recycle(); }
-    }
-
-    void back(int id) throws ReflectiveOperationException {
-        focus(id);
-        long now = SystemClock.uptimeMillis();
-        for (int action : new int[]{KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP}) {
-            KeyEvent event = new KeyEvent(now, now, action, KeyEvent.KEYCODE_BACK, 0, 0,
-                    KeyCharacterMap.VIRTUAL_KEYBOARD, 0, KeyEvent.FLAG_FROM_SYSTEM, InputDevice.SOURCE_KEYBOARD);
-            displayId.invoke(event, id);
-            if (Boolean.FALSE.equals(inject.invoke(input, event, 0))) {
-                throw new IllegalStateException("Virtual display rejected back key");
-            }
-        }
     }
 
     void restoreDisplay(int id) throws ReflectiveOperationException {

@@ -67,10 +67,6 @@ signingConfigs {
         abortOnError false
     }
 
-    testOptions {
-        unitTests.includeAndroidResources = true
-    }
-
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -97,10 +93,7 @@ if (project.findProperty("devSuffix")) {
 }
 
 dependencies {
-    testImplementation "junit:junit:4.13.2"
-    testImplementation "org.robolectric:robolectric:4.16.1"
     implementation "io.github.libxposed:service:101.0.0"
     implementation "org.lsposed.hiddenapibypass:hiddenapibypass:6.1"
     compileOnly "io.github.libxposed:api:101.0.1"
-    testRuntimeOnly "io.github.libxposed:api:101.0.1"
 }

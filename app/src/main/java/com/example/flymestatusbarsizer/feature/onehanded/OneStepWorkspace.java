@@ -1,26 +1,25 @@
 package com.example.flymestatusbarsizer.feature.onehanded;
 
 import android.animation.ValueAnimator;
-import android.content.Context;
 import android.content.ClipData;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
-import android.view.DragEvent;
-import android.view.HapticFeedbackConstants;
-import android.widget.HorizontalScrollView;
-import android.widget.ImageView;
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.os.Handler;
 import android.os.SystemClock;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
+import android.view.DragEvent;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
@@ -30,13 +29,15 @@ import android.view.WindowManager;
 import android.view.WindowMetrics;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
-import java.util.List;
 import java.util.HashSet;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
@@ -115,8 +116,6 @@ final class OneStepWorkspace {
         }, handler);
     }
 
-    boolean isActive() { return active; }
-
     boolean canTrigger() {
         if (closing || dragSession != null || !OneHandedTaskHooks.environmentAllowed(context)) return false;
         if (active) return true;
@@ -153,6 +152,13 @@ final class OneStepWorkspace {
         width = bounds.width();
         height = bounds.height();
         if (width <= 0 || height <= 0) throw new IllegalStateException("Invalid workspace bounds");
+        Display primaryDisplay = displays.getDisplay(Display.DEFAULT_DISPLAY);
+        if (primaryDisplay == null) throw new IllegalStateException("Primary display unavailable");
+        DisplayMetrics primaryMetrics = new DisplayMetrics();
+        primaryDisplay.getRealMetrics(primaryMetrics);
+        if (primaryMetrics.widthPixels <= 0 || primaryMetrics.densityDpi <= 0) {
+            throw new IllegalStateException("Invalid primary display metrics");
+        }
         active = true;
         generation++;
         closing = false;
@@ -168,15 +174,12 @@ final class OneStepWorkspace {
         sideOrder.clear();
         for (int i = 1; i < COUNT; i++) sideOrder.add(i);
         frames = layout();
-        // Keep all buffers at the main pane's resolution. Swapping panes changes view geometry only.
-        virtualWidth = Math.min(1080, width);
+        // Some IMEs retain primary-display pixel sizes even after moving to another display.
+        // Match its width and density so cached keys fit, then scale the whole frame in TextureView.
+        // All panes share these metrics; swapping panes changes view geometry only.
+        virtualWidth = primaryMetrics.widthPixels;
         virtualHeight = Math.max(1, Math.round(virtualWidth * frames[0].height() / (float) frames[0].width()));
-        if (virtualHeight > 4096) {
-            virtualWidth = Math.max(1, Math.round(virtualWidth * 4096f / virtualHeight));
-            virtualHeight = 4096;
-        }
-        // Same stable 393dp phone width as OneStep4's VirtualDisplayDensityPolicy.
-        density = Math.max(120, Math.round(virtualWidth * 160f / 393f));
+        density = primaryMetrics.densityDpi;
         workspace = new FrameLayout(context);
         workspace.setOnClickListener(v -> { if (dragSession == null) close(true); });
         backdrop = new FrameLayout(context);
@@ -638,11 +641,7 @@ final class OneStepWorkspace {
         void load(RecentTaskCard next) {
             if (!active || closing || slot == mainSlot || isHosted(next)) return;
             try {
-                boolean valid = false;
-                for (RecentTaskCard candidate : tasks.candidates()) {
-                    if (candidate.sameTask(next)) { valid = true; break; }
-                }
-                if (!valid) {
+                if (tasks.findCandidate(next) == null) {
                     Toast.makeText(context, "该应用任务已结束，请重新打开工作台", Toast.LENGTH_SHORT).show();
                     return;
                 }
@@ -711,7 +710,7 @@ final class OneStepWorkspace {
 
         void updateInputSize() {
             if (display == null) return;
-            android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+            DisplayMetrics metrics = new DisplayMetrics();
             display.getDisplay().getRealMetrics(metrics);
             inputWidth = metrics.widthPixels;
             inputHeight = metrics.heightPixels;
