@@ -76,7 +76,7 @@ final class TaskScaleRecentTasks implements RecentTaskCardsLoader.Source {
         Object label = ReflectUtils.invokeNoArg(ReflectUtils.getField(info, "taskDescription"), "getLabel");
         String description = label instanceof String && !((String) label).isEmpty()
                 ? (String) label : ((ComponentName) component).getPackageName();
-        return new RecentTaskCard(taskId, userId, token, description, null);
+        return new RecentTaskCard(taskId, userId, token, description, null, (ComponentName) component);
     }
 
     @Override public Bitmap thumbnail(int taskId) throws ReflectiveOperationException {

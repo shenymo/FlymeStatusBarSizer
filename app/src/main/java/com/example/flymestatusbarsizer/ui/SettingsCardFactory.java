@@ -444,13 +444,13 @@ public final class SettingsCardFactory {
         appearanceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
         page.addView(appearanceCard, activity.matchWrapWithTop(8));
         TextView scaleHelp = new TextView(activity);
-        scaleHelp.setText("将当前应用放入主窗口，侧边同时显示三个可实时运行的应用窗口。"
+        scaleHelp.setText("进入时仅将当前应用放入主窗口，侧边三个窗口保持空白。"
                 + "工作台使用不透明纯色背景，不露出下层桌面或应用，应用窗口保持缩小尺寸。"
-                + "点击侧边窗口与主窗口交换，空位可选择最近使用的应用。"
+                + "上方长条显示最近使用的应用图标，可横向滚动；长按图标拖到侧边窗口，松手后在该窗口运行。点击已运行的侧边窗口与主窗口交换。"
                 + "从左侧触发时主窗口在左，从右侧触发时主窗口在右。"
-                + "主窗口支持触摸、多指操作和窗口内键盘；顶部返回按钮操作当前主窗口。"
+                + "主窗口支持触摸、多指操作和窗口内键盘。"
                 + "屏幕顶部保留原生状态栏，下拉通知栏或控制中心后，收起仍保持当前主应用和窗口布局。"
-                + "再次触发侧边手势、点击留白或顶部全屏按钮可退出，并将应用恢复到主屏。"
+                + "再次触发侧边手势或点击留白可退出，并将应用恢复到主屏。"
                 + "进入最近任务、回到桌面、旋转或锁屏时退出工作台。"
                 + "使用 SystemUI 权限实现，无需额外安装 KernelSU 模块。");
         scaleHelp.setTextSize(13);
@@ -474,7 +474,7 @@ public final class SettingsCardFactory {
                 "首次使用\n在 LSPosed 中勾选系统界面，更新模块后重启 SystemUI 或手机。"
                         + "全局负一屏还需勾选 Aicy 纵览并重启，再从桌面打开一次负一屏。\n\n"
                         + "使用方法\n选择触发动作，从所选侧边的返回区域向内滑动并按住。"
-                        + "多应用工作台可再次触发、点击留白或全屏按钮退出；全局负一屏可左右滑动或返回关闭。"
+                        + "多应用工作台可再次触发或点击留白退出；全局负一屏可左右滑动或返回关闭。"
                         + "未达到触发条件时正常返回，锁屏时不触发。", page);
     }
 

@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.onehanded;
 
 import android.graphics.Bitmap;
+import android.content.ComponentName;
 
 /** A recent task's identity and its system-provided preview. Labels are accessibility-only. */
 final class RecentTaskCard {
@@ -9,13 +10,20 @@ final class RecentTaskCard {
     final Object token;
     final String description;
     final Bitmap preview;
+    final ComponentName component;
 
     RecentTaskCard(int taskId, int userId, Object token, String description, Bitmap preview) {
+        this(taskId, userId, token, description, preview, null);
+    }
+
+    RecentTaskCard(int taskId, int userId, Object token, String description, Bitmap preview,
+            ComponentName component) {
         this.taskId = taskId;
         this.userId = userId;
         this.token = token;
         this.description = description;
         this.preview = preview;
+        this.component = component;
     }
 
     boolean matches(TaskScaleTarget target) {
@@ -28,6 +36,6 @@ final class RecentTaskCard {
     }
 
     RecentTaskCard withPreview(Bitmap bitmap) {
-        return new RecentTaskCard(taskId, userId, token, description, bitmap);
+        return new RecentTaskCard(taskId, userId, token, description, bitmap, component);
     }
 }

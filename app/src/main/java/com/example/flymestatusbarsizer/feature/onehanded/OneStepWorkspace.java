@@ -2,6 +2,13 @@ package com.example.flymestatusbarsizer.feature.onehanded;
 
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.content.ClipData;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.view.DragEvent;
+import android.view.HapticFeedbackConstants;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.PixelFormat;
@@ -24,18 +31,20 @@ import android.view.WindowMetrics;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashSet;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 /** Live OneStep panes hosted entirely in the LSPosed-injected SystemUI process. */
 final class OneStepWorkspace {
     private static final String TAG = "FlymeOneStep";
     private static final int COUNT = 4;
-    private static final int TOOLBAR_HEIGHT_DP = 44;
+    private static final int TOOLBAR_HEIGHT_DP = 56;
     // OneStep4 defaults: media 116dp + navigation (26 + 20)dp + app strip 74dp.
     // Status/cutout insets are already excluded from this overlay's bounds.
     private static final int REFERENCE_TOP_AREA_DP = 116 + 46 + 74;
@@ -54,8 +63,15 @@ final class OneStepWorkspace {
     private final Runnable check = this::check;
     private FrameLayout backdrop;
     private FrameLayout workspace;
-    private FrameLayout picker;
-    private TextView status;
+    private final ArrayList<ImageView> recentIcons = new ArrayList<>();
+    private final Executor iconLoader = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "FlymeOneStepIcons");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private DragSession dragSession;
+    private ImageView dragSource;
+    private int highlightedSlot = -1;
     private Rect[] frames;
     private ValueAnimator animator;
     private volatile boolean active;
@@ -102,7 +118,7 @@ final class OneStepWorkspace {
     boolean isActive() { return active; }
 
     boolean canTrigger() {
-        if (closing || !OneHandedTaskHooks.environmentAllowed(context)) return false;
+        if (closing || dragSession != null || !OneHandedTaskHooks.environmentAllowed(context)) return false;
         if (active) return true;
         try { return tasks.focusedTask() != null; }
         catch (Exception e) { return false; }
@@ -162,37 +178,20 @@ final class OneStepWorkspace {
         // Same stable 393dp phone width as OneStep4's VirtualDisplayDensityPolicy.
         density = Math.max(120, Math.round(virtualWidth * 160f / 393f));
         workspace = new FrameLayout(context);
-        workspace.setOnClickListener(v -> close(true));
+        workspace.setOnClickListener(v -> { if (dragSession == null) close(true); });
         backdrop = new FrameLayout(context);
         // One opaque window lets SurfaceFlinger occlude the underlying primary-display layers.
         // This is compositor occlusion, not an Activity lifecycle or process suspension request.
         backdrop.setBackgroundColor(Color.rgb(19, 21, 25));
-        backdrop.setOnClickListener(v -> {
-            if (picker != null) dismissPicker();
-            else close(true);
-        });
+        backdrop.setOnClickListener(v -> { if (dragSession == null) close(true); });
+        backdrop.setOnDragListener((v, event) -> onAppDrag(event));
         FrameLayout.LayoutParams workspaceParams = new FrameLayout.LayoutParams(width, height);
         workspaceParams.leftMargin = bounds.left - screen.left;
         workspaceParams.topMargin = bounds.top - screen.top;
         backdrop.addView(workspace, workspaceParams);
-        LinearLayout toolbar = new LinearLayout(context);
-        toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        status = label("多应用工作台", 14);
-        toolbar.addView(status, new LinearLayout.LayoutParams(0, -1, 1));
-        TextView back = label("返回", 14);
-        back.setOnClickListener(v -> back());
-        toolbar.addView(back, new LinearLayout.LayoutParams(dp(56), -1));
-        TextView exit = label("全屏", 14);
-        exit.setOnClickListener(v -> close(true));
-        toolbar.addView(exit, new LinearLayout.LayoutParams(dp(56), -1));
-        workspace.addView(toolbar, new FrameLayout.LayoutParams(-1, dp(TOOLBAR_HEIGHT_DP)));
-        ArrayList<RecentTaskCard> selected = new ArrayList<>();
-        selected.add(main);
-        for (RecentTaskCard card : recent) {
-            if (!main.sameTask(card) && selected.size() < COUNT) selected.add(card);
-        }
+        workspace.addView(createRecentStrip(recent), new FrameLayout.LayoutParams(-1, dp(TOOLBAR_HEIGHT_DP)));
         for (int i = 0; i < COUNT; i++) {
-            Pane pane = new Pane(i, i < selected.size() ? selected.get(i) : null);
+            Pane pane = new Pane(i, i == 0 ? main : null);
             panes[i] = pane;
             workspace.addView(pane.container);
             position(pane.container, frames[i]);
@@ -211,6 +210,7 @@ final class OneStepWorkspace {
         params.setTitle("FlymeOneStepWorkspace");
         windows.addView(backdrop, params);
         OneStepStatusBar.setVisible(true);
+        updateRecentIcons();
         handler.postDelayed(check, 300);
     }
 
@@ -227,9 +227,9 @@ final class OneStepWorkspace {
     }
 
     private void select(int slot) {
-        if (!active || closing || animator != null || slot == mainSlot) return;
+        if (!active || closing || dragSession != null || animator != null || slot == mainSlot) return;
         Pane selected = panes[slot];
-        if (!selected.ready) { choose(selected); return; }
+        if (!selected.ready) return;
         cancelTouches();
         try { tasks.focus(selected.id()); }
         catch (Exception e) { fail("无法切换应用窗口", e); return; }
@@ -257,63 +257,158 @@ final class OneStepWorkspace {
             }
         });
         animator.start();
-        updateStatus();
+        updateRecentIcons();
     }
 
     private static int lerp(int a, int b, float fraction) { return Math.round(a + (b - a) * fraction); }
 
-    private void back() {
-        if (picker != null) { dismissPicker(); return; }
-        Pane main = panes[mainSlot];
-        if (closing || main == null || !main.ready) return;
-        try { tasks.back(main.id()); }
-        catch (Exception e) { fail("无法返回应用上一页", e); }
-    }
-
-    private void updateStatus() {
-        Pane pane = panes[mainSlot];
-        if (status != null) status.setText(pane != null && pane.card != null
-                ? pane.card.description : "多应用工作台");
-    }
-
-    private void choose(Pane pane) {
-        if (!active || closing || picker != null) return;
-        try {
-            List<RecentTaskCard> candidates = tasks.candidates();
-            picker = new FrameLayout(context);
-            picker.setBackgroundColor(0xee17191d);
-            picker.setOnClickListener(v -> dismissPicker());
-            LinearLayout list = new LinearLayout(context);
-            list.setOrientation(LinearLayout.VERTICAL);
-            TextView title = label("选择最近使用的应用 · 点击空白关闭", 16);
-            list.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
-            int count = 0;
-            for (RecentTaskCard card : candidates) {
-                boolean hosted = false;
-                for (Pane existing : panes) {
-                    if (existing != null && existing.card != null && existing.card.sameTask(card)) hosted = true;
-                }
-                if (hosted) continue;
-                TextView item = label(card.description, 15);
-                item.setOnClickListener(v -> {
-                    dismissPicker();
-                    pane.load(card);
+    private View createRecentStrip(List<RecentTaskCard> recent) {
+        HorizontalScrollView strip = new HorizontalScrollView(context);
+        strip.setHorizontalScrollBarEnabled(false);
+        strip.setFillViewport(true);
+        strip.setContentDescription("最近使用的应用，长按图标拖入侧边窗口");
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(Color.rgb(31, 34, 40));
+        background.setCornerRadius(dp(16));
+        strip.setBackground(background);
+        LinearLayout row = new LinearLayout(context);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(8), 0, dp(8), 0);
+        // Consume taps in the bar's empty area instead of exiting the workspace.
+        row.setOnClickListener(v -> { });
+        recentIcons.clear();
+        HashSet<String> packages = new HashSet<>();
+        final int sessionGeneration = generation;
+        for (RecentTaskCard card : recent) {
+            if (card.component == null || !packages.add(card.userId + ":" + card.component.getPackageName())) continue;
+            ImageView icon = new ImageView(context);
+            icon.setTag(card);
+            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            icon.setPadding(dp(8), dp(8), dp(8), dp(8));
+            icon.setImageDrawable(context.getPackageManager().getDefaultActivityIcon());
+            icon.setContentDescription(card.description + "，长按拖入侧边窗口");
+            icon.setOnClickListener(v -> { });
+            icon.setOnLongClickListener(v -> beginAppDrag(icon, card));
+            row.addView(icon, new LinearLayout.LayoutParams(dp(56), dp(56)));
+            recentIcons.add(icon);
+            iconLoader.execute(() -> {
+                Drawable drawable;
+                try { drawable = context.getPackageManager().getActivityIcon(card.component); }
+                catch (Exception e) { drawable = context.getPackageManager().getDefaultActivityIcon(); }
+                Drawable result = drawable;
+                handler.post(() -> {
+                    if (active && generation == sessionGeneration) icon.setImageDrawable(result);
                 });
-                list.addView(item, new LinearLayout.LayoutParams(-1, dp(52)));
-                count++;
-            }
-            if (count == 0) list.addView(label("暂无可添加的应用，请先全屏打开其他应用", 14));
-            ScrollView scroll = new ScrollView(context);
-            scroll.addView(list);
-            FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(Math.max(1, width - dp(40)), -2, Gravity.CENTER);
-            picker.addView(scroll, p);
-            workspace.addView(picker, new FrameLayout.LayoutParams(-1, -1));
-        } catch (Exception e) { Log.w(TAG, "Cannot list recent apps", e); }
+            });
+        }
+        strip.addView(row, new HorizontalScrollView.LayoutParams(-2, -1));
+        return strip;
     }
 
-    private void dismissPicker() {
-        if (picker != null && workspace != null) workspace.removeView(picker);
-        picker = null;
+    private boolean isHosted(RecentTaskCard card) {
+        for (Pane pane : panes) {
+            if (pane == null || pane.card == null) continue;
+            if (pane.card.sameTask(card)) return true;
+            if (pane.card.userId == card.userId && pane.card.component != null && card.component != null
+                    && pane.card.component.getPackageName().equals(card.component.getPackageName())) return true;
+        }
+        return false;
+    }
+
+    private void updateRecentIcons() {
+        for (ImageView icon : recentIcons) {
+            RecentTaskCard card = (RecentTaskCard) icon.getTag();
+            boolean available = !isHosted(card);
+            icon.setAlpha(available ? 1f : 0.4f);
+            icon.setLongClickable(available);
+            icon.setContentDescription(card.description + (available ? "，长按拖入侧边窗口" : "，已在工作台中"));
+        }
+    }
+
+    private boolean beginAppDrag(ImageView icon, RecentTaskCard card) {
+        if (!active || closing || !started || animator != null || dragSession != null || isHosted(card)) return false;
+        cancelTouches();
+        dragSession = new DragSession(card, generation);
+        dragSource = icon;
+        try {
+            if (icon.startDragAndDrop(ClipData.newPlainText("OneStepApp", card.description),
+                    new View.DragShadowBuilder(icon), dragSession, 0)) {
+                icon.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                return true;
+            }
+        } catch (RuntimeException e) { Log.w(TAG, "Cannot start app drag", e); }
+        dragSession = null;
+        dragSource = null;
+        return false;
+    }
+
+    private boolean onAppDrag(DragEvent event) {
+        DragSession session = dragSession;
+        if (session == null || event.getLocalState() != session || session.generation != generation) return false;
+        switch (event.getAction()) {
+            case DragEvent.ACTION_DRAG_STARTED:
+                return active && !closing;
+            case DragEvent.ACTION_DRAG_LOCATION:
+            case DragEvent.ACTION_DRAG_ENTERED:
+                highlightDropTarget(dropSlot(event));
+                return true;
+            case DragEvent.ACTION_DRAG_EXITED:
+                highlightDropTarget(-1);
+                return true;
+            case DragEvent.ACTION_DROP:
+                session.targetSlot = dropSlot(event);
+                return session.targetSlot >= 0;
+            case DragEvent.ACTION_DRAG_ENDED:
+                highlightDropTarget(-1);
+                dragSession = null;
+                dragSource = null;
+                if (event.getResult() && session.targetSlot >= 0) {
+                    handler.post(() -> {
+                        if (!active || closing || generation != session.generation
+                                || session.targetSlot == mainSlot || OneHandedTaskHooks.shadeOpen()) return;
+                        panes[session.targetSlot].load(session.card);
+                    });
+                }
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private int dropSlot(DragEvent event) {
+        if (!active || closing || workspace == null || OneHandedTaskHooks.shadeOpen()) return -1;
+        int x = (int) (event.getX() - workspace.getLeft());
+        int y = (int) (event.getY() - workspace.getTop());
+        for (int slot : sideOrder) {
+            if (frames[slot].contains(x, y)) return slot;
+        }
+        return -1;
+    }
+
+    private void highlightDropTarget(int slot) {
+        if (highlightedSlot == slot) return;
+        highlightedSlot = slot;
+        for (Pane pane : panes) {
+            if (pane == null) continue;
+            GradientDrawable highlight = null;
+            if (pane.slot == slot) {
+                highlight = new GradientDrawable();
+                highlight.setColor(0x225aaaff);
+                highlight.setStroke(dp(2), 0xff75baff);
+            }
+            pane.container.setForeground(highlight);
+        }
+    }
+
+    private static final class DragSession {
+        final RecentTaskCard card;
+        final int generation;
+        int targetSlot = -1;
+
+        DragSession(RecentTaskCard card, int generation) {
+            this.card = card;
+            this.generation = generation;
+        }
     }
 
     void refresh() {
@@ -346,7 +441,7 @@ final class OneStepWorkspace {
                 started = true;
                 primaryTask = focusedPrimaryTask(roots);
                 if (!shadeOpen) tasks.focus(main.id());
-                updateStatus();
+                updateRecentIcons();
                 if (callback != null) callback.run();
             }
             if (!main.ready && SystemClock.uptimeMillis() > deadline) {
@@ -364,7 +459,8 @@ final class OneStepWorkspace {
                 if (pane.ready && SystemClock.uptimeMillis() > pane.started + 2500 && !hasTask(roots, pane.id())) {
                     if (pane.slot == mainSlot) { close(false); return; }
                     pane.release();
-                    pane.showEmpty("＋ 添加应用");
+                    pane.showEmpty("");
+                    updateRecentIcons();
                 }
             }
             handler.postDelayed(check, 700);
@@ -420,7 +516,13 @@ final class OneStepWorkspace {
         restoreAttempts++;
         onSuccess = null;
         handler.removeCallbacks(check);
-        dismissPicker();
+        if (dragSource != null) {
+            try { dragSource.cancelDragAndDrop(); }
+            catch (RuntimeException e) { Log.w(TAG, "Cannot cancel app drag", e); }
+        }
+        dragSession = null;
+        dragSource = null;
+        highlightDropTarget(-1);
         cancelTouches();
         if (animator != null) { animator.cancel(); animator = null; }
         boolean restored = true;
@@ -445,7 +547,6 @@ final class OneStepWorkspace {
             }
         }
         if (!restored) {
-            if (status != null) status.setText("正在恢复应用…");
             int currentGeneration = generation;
             handler.postDelayed(() -> {
                 if (active && closing && generation == currentGeneration) close(focusMain);
@@ -472,6 +573,7 @@ final class OneStepWorkspace {
             backdrop = null;
         }
         workspace = null;
+        recentIcons.clear();
         for (int i = 0; i < COUNT; i++) panes[i] = null;
     }
 
@@ -518,8 +620,10 @@ final class OneStepWorkspace {
             texture.setOnTouchListener((v, event) -> touch(event));
             container.addView(texture, new FrameLayout.LayoutParams(-1, -1));
             container.addView(empty, new FrameLayout.LayoutParams(-1, -1));
-            empty.setOnClickListener(v -> choose(this));
-            if (card == null) showEmpty("＋ 添加应用");
+            empty.setBackgroundColor(Color.BLACK);
+            empty.setOnClickListener(v -> { });
+            empty.setContentDescription("空白应用窗口，长按上方应用图标拖入此处");
+            if (card == null) showEmpty("");
         }
 
         int id() { return display == null ? -1 : display.getDisplay().getDisplayId(); }
@@ -532,11 +636,29 @@ final class OneStepWorkspace {
         }
 
         void load(RecentTaskCard next) {
-            if (closing) return;
+            if (!active || closing || slot == mainSlot || isHosted(next)) return;
+            try {
+                boolean valid = false;
+                for (RecentTaskCard candidate : tasks.candidates()) {
+                    if (candidate.sameTask(next)) { valid = true; break; }
+                }
+                if (!valid) {
+                    Toast.makeText(context, "该应用任务已结束，请重新打开工作台", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                if (display != null) {
+                    tasks.restoreDisplay(id());
+                    release();
+                }
+            } catch (Exception e) {
+                fail("无法替换侧边应用", e);
+                return;
+            }
             card = next;
             empty.setText("正在打开…");
             empty.setVisibility(View.VISIBLE);
             if (texture.isAvailable()) create(texture.getSurfaceTexture());
+            updateRecentIcons();
         }
 
         private void create(SurfaceTexture buffer) {
@@ -573,7 +695,17 @@ final class OneStepWorkspace {
                     return;
                 }
                 if (slot == mainSlot) { fail("当前应用无法进入多应用窗口", e); return; }
-                showEmpty("打开失败，点击选择其他应用");
+                showEmpty("打开失败，请重新拖入应用");
+            }
+            if (active && !closing && slot != mainSlot) {
+                try {
+                    // A deliberate drop can move the task previously underneath the backdrop.
+                    // Track the new baseline so the periodic external-launch check does not exit.
+                    primaryTask = focusedPrimaryTask(tasks.roots());
+                    Pane main = panes[mainSlot];
+                    if (main != null && main.ready && !OneHandedTaskHooks.shadeOpen()) tasks.focus(main.id());
+                } catch (Exception e) { Log.w(TAG, "Cannot restore main pane focus after drop", e); }
+                updateRecentIcons();
             }
         }
 
@@ -586,7 +718,7 @@ final class OneStepWorkspace {
         }
 
         boolean touch(MotionEvent event) {
-            if (!active || closing || !ready) return true;
+            if (!active || closing || dragSession != null || !ready) return true;
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN) {
                 consumeSelection = slot != mainSlot || animator != null;
