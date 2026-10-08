@@ -139,6 +139,32 @@ final class OneStepTaskAccess {
 
     void focus(int id) throws ReflectiveOperationException { focus.invoke(service, id); }
 
+    void swapDisplays(int mainDisplay, int sideDisplay) throws ReflectiveOperationException {
+        if (mainDisplay <= 0 || sideDisplay <= 0 || mainDisplay == sideDisplay) {
+            throw new IllegalArgumentException("Invalid pane displays");
+        }
+        // Take one snapshot before either move so tasks cannot get moved twice. Include
+        // activities launched by the hosted apps, just as display restoration does.
+        List<?> rootTasks = roots();
+        boolean hasMain = false;
+        boolean hasSide = false;
+        for (Object root : rootTasks) {
+            if (application(root)) {
+                hasMain |= display(root) == mainDisplay;
+                hasSide |= display(root) == sideDisplay;
+            }
+        }
+        if (!hasMain || !hasSide) throw new IllegalStateException("Pane task no longer exists");
+        // Root task infos are returned top-first; moving bottom-first preserves each stack.
+        for (int index = rootTasks.size() - 1; index >= 0; index--) {
+            Object root = rootTasks.get(index);
+            int source = display(root);
+            if (source == mainDisplay || source == sideDisplay) {
+                move.invoke(service, taskId(root), source == mainDisplay ? sideDisplay : mainDisplay);
+            }
+        }
+    }
+
     int defaultFocusedTaskId() throws ReflectiveOperationException {
         for (Object root : roots()) {
             if (display(root) == 0 && ReflectUtils.getBooleanField(root, "isFocused", false)) return taskId(root);

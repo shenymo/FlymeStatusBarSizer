@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.ClipData;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.PixelFormat;
@@ -14,6 +15,8 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
+import android.hardware.display.VirtualDisplayConfig;
+import android.os.Build;
 import android.os.Handler;
 import android.os.SystemClock;
 import android.util.DisplayMetrics;
@@ -48,6 +51,8 @@ import java.util.concurrent.Executors;
 final class OneStepWorkspace {
     private static final String TAG = "FlymeOneStep";
     private static final int COUNT = 4;
+    private static final float MAIN_REFRESH_RATE = 120f;
+    private static final float SIDE_REFRESH_RATE = 30f;
     private static final int TOOLBAR_HEIGHT_DP = 56;
     private static final long ENTER_DURATION_MS = 300;
     private static final long EXIT_DURATION_MS = 200;
@@ -69,6 +74,7 @@ final class OneStepWorkspace {
     private final WindowManager windows;
     private final DisplayManager displays;
     private final OneStepTaskAccess tasks;
+    private final OneStepTouchMode touchMode = new OneStepTouchMode();
     private final Pane[] panes = new Pane[COUNT];
     private final ArrayList<Integer> sideOrder = new ArrayList<>();
     private final Runnable check = this::check;
@@ -243,6 +249,7 @@ final class OneStepWorkspace {
         virtualHeight = Math.max(1, Math.round(virtualWidth * frames[0].height() / (float) frames[0].width()));
         density = primaryMetrics.densityDpi;
         workspace = new FrameLayout(context);
+        if (Build.VERSION.SDK_INT >= 35) workspace.setRequestedFrameRate(MAIN_REFRESH_RATE);
         workspace.setPivotX(fromLeft ? 0f : width);
         workspace.setPivotY(height * 0.5f);
         applyWorkspaceTransition(0f);
@@ -279,7 +286,9 @@ final class OneStepWorkspace {
         params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
         params.setTitle("FlymeOneStepWorkspace");
         params.windowAnimations = 0;
+        params.preferredRefreshRate = MAIN_REFRESH_RATE;
         windows.addView(backdrop, params);
+        touchMode.enable();
         OneStepStatusBar.setVisible(true);
         updateRecentIcons();
         int sessionGeneration = generation;
@@ -429,8 +438,8 @@ final class OneStepWorkspace {
         animator.addListener(new AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(Animator animation) {
                 if (animator != animation) return;
-                finishPaneSwap(previous, selected, end);
                 animator = null;
+                finishPaneSwap(previous, selected, end);
             }
         });
         animator.start();
@@ -446,6 +455,31 @@ final class OneStepWorkspace {
     }
 
     private void finishPaneSwap(Pane previous, Pane selected, Rect[] end) {
+        if (active && !closing && Build.VERSION.SDK_INT >= 34) {
+            try {
+                // Display rates are immutable. Move the task stacks, keeping each display
+                // connected to its original TextureView/BufferQueue. Retain the app images
+                // until the first new output frame so the old contents do not flash at swap.
+                previous.showSwapPreview(selected.texture);
+                selected.showSwapPreview(previous.texture);
+                taskStateVersion++;
+                tasks.swapDisplays(previous.id(), selected.id());
+                int previousSlot = previous.slot;
+                previous.slot = selected.slot;
+                selected.slot = previousSlot;
+                panes[previous.slot] = previous;
+                panes[selected.slot] = selected;
+                RecentTaskCard previousCard = previous.card;
+                previous.card = selected.card;
+                selected.card = previousCard;
+                tasks.focus(previous.id());
+                logDisplayRates("swap");
+                scheduleCheck(TASK_CHECK_DEBOUNCE_MS);
+            } catch (Exception e) {
+                fail("无法切换应用窗口", e);
+                return;
+            }
+        }
         // Keep TextureView geometry fixed during the animation and lay out only once at the end.
         settlePane(previous, end[previous.slot]);
         settlePane(selected, end[selected.slot]);
@@ -904,6 +938,22 @@ final class OneStepWorkspace {
         close(false);
     }
 
+    private void logDisplayRates(String reason) {
+        Display primary = displays.getDisplay(Display.DEFAULT_DISPLAY);
+        StringBuilder message = new StringBuilder("Display refresh rates (").append(reason)
+                .append("): physicalReportedHz=").append(primary != null ? primary.getRefreshRate() : 0f);
+        for (Pane pane : panes) {
+            if (pane == null || pane.display == null) continue;
+            message.append(", slot=").append(pane.slot).append(pane.slot == mainSlot ? " main" : " side")
+                    .append(" display=").append(pane.id())
+                    .append(" requestedHz=").append(Build.VERSION.SDK_INT >= 34
+                            ? (pane.slot == mainSlot ? MAIN_REFRESH_RATE : SIDE_REFRESH_RATE) : 0f)
+                    .append(" reportedHz=").append(pane.display.getDisplay().getRefreshRate());
+        }
+        // Display-reported rates describe scheduling modes, not measured app frame rates.
+        Log.i(TAG, message.toString());
+    }
+
     private int dp(float value) { return Math.round(value * context.getResources().getDisplayMetrics().density); }
 
     private TextView label(String text, int size) {
@@ -918,10 +968,12 @@ final class OneStepWorkspace {
     }
 
     private final class Pane implements TextureView.SurfaceTextureListener {
-        final int slot;
+        int slot;
         final FrameLayout container = new FrameLayout(context);
         final TextureView texture = new TextureView(context);
         final TextView empty = label("正在打开…", 12);
+        ImageView swapPreview;
+        Runnable pendingFrameUiUpdate;
         RecentTaskCard card;
         VirtualDisplay display;
         Surface surface;
@@ -950,6 +1002,28 @@ final class OneStepWorkspace {
         }
 
         int id() { return display == null ? -1 : display.getDisplay().getDisplayId(); }
+
+        void showSwapPreview(TextureView source) {
+            clearSwapPreview();
+            Bitmap bitmap = source.getBitmap();
+            if (bitmap == null) return;
+            swapPreview = new ImageView(context);
+            swapPreview.setScaleType(ImageView.ScaleType.FIT_XY);
+            swapPreview.setImageBitmap(bitmap);
+            swapPreview.setOnTouchListener((view, event) -> true);
+            container.addView(swapPreview, new FrameLayout.LayoutParams(-1, -1));
+        }
+
+        void clearSwapPreview() {
+            if (pendingFrameUiUpdate != null) {
+                handler.removeCallbacks(pendingFrameUiUpdate);
+                pendingFrameUiUpdate = null;
+            }
+            if (swapPreview == null) return;
+            container.removeView(swapPreview);
+            swapPreview.setImageDrawable(null);
+            swapPreview = null;
+        }
 
         void showEmpty(String text) {
             ready = false;
@@ -988,14 +1062,25 @@ final class OneStepWorkspace {
                 surface = new Surface(buffer);
                 frameReceived = false;
                 final int[] callbackDisplayId = {-1};
-                display = displays.createVirtualDisplay("FlymeOneStep-" + generation + "-" + slot,
-                        virtualWidth, virtualHeight, density, surface, DISPLAY_FLAGS,
-                        new VirtualDisplay.Callback() {
-                            @Override public void onStopped() {
-                                if (active && !closing && callbackDisplayId[0] > 0
-                                        && id() == callbackDisplayId[0]) stop("display stopped");
-                            }
-                        }, handler);
+                VirtualDisplay.Callback callback = new VirtualDisplay.Callback() {
+                    @Override public void onStopped() {
+                        if (active && !closing && callbackDisplayId[0] > 0
+                                && id() == callbackDisplayId[0]) stop("display stopped");
+                    }
+                };
+                String name = "FlymeOneStep-" + generation + "-" + slot;
+                if (Build.VERSION.SDK_INT >= 34) {
+                    VirtualDisplayConfig config = new VirtualDisplayConfig.Builder(
+                            name, virtualWidth, virtualHeight, density)
+                            .setSurface(surface)
+                            .setFlags(DISPLAY_FLAGS)
+                            .setRequestedRefreshRate(slot == mainSlot ? MAIN_REFRESH_RATE : SIDE_REFRESH_RATE)
+                            .build();
+                    display = displays.createVirtualDisplay(config, handler, callback);
+                } else {
+                    display = displays.createVirtualDisplay(name, virtualWidth, virtualHeight,
+                            density, surface, DISPLAY_FLAGS, callback, handler);
+                }
                 if (display == null) throw new IllegalStateException("Virtual display creation returned null");
                 callbackDisplayId[0] = id();
                 tasks.configureDisplay(id());
@@ -1003,6 +1088,7 @@ final class OneStepWorkspace {
                 ready = true;
                 started = SystemClock.uptimeMillis();
                 updateInputSize();
+                logDisplayRates("pane created");
             } catch (Exception e) {
                 Log.w(TAG, "Cannot host pane " + slot, e);
                 try {
@@ -1069,6 +1155,7 @@ final class OneStepWorkspace {
         void release() {
             taskStateVersion++;
             cancelTouch();
+            clearSwapPreview();
             ready = false;
             frameReceived = false;
             card = null;
@@ -1090,13 +1177,26 @@ final class OneStepWorkspace {
             return true;
         }
         @Override public void onSurfaceTextureUpdated(SurfaceTexture buffer) {
-            if (!active || closing || !ready || frameReceived) return;
-            // Reveal the app only after its first frame, then acknowledge the opening gesture.
-            frameReceived = true;
-            empty.setVisibility(View.GONE);
-            if (slot == mainSlot && !OneStepWorkspace.this.started) {
-                scheduleCheck(0);
-            }
+            if (!active || closing || !ready || pendingFrameUiUpdate != null
+                    || (frameReceived && swapPreview == null)) return;
+            int frameGeneration = generation;
+            VirtualDisplay frameDisplay = display;
+            ImageView framePreview = swapPreview;
+            // TextureView invokes this while its parent's display list may be traversing
+            // children. Removing a sibling here invalidates that traversal; even on the main
+            // thread, all view changes must wait until the current drawing call has returned.
+            pendingFrameUiUpdate = () -> {
+                pendingFrameUiUpdate = null;
+                if (!active || closing || !ready || generation != frameGeneration
+                        || display != frameDisplay) return;
+                if (swapPreview == framePreview) clearSwapPreview();
+                if (frameReceived) return;
+                // Reveal the app only after its first frame, then acknowledge the gesture.
+                frameReceived = true;
+                empty.setVisibility(View.GONE);
+                if (slot == mainSlot && !OneStepWorkspace.this.started) scheduleCheck(0);
+            };
+            if (!handler.post(pendingFrameUiUpdate)) pendingFrameUiUpdate = null;
         }
     }
 }
