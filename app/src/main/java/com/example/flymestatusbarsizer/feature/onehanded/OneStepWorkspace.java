@@ -10,7 +10,6 @@ import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
-import android.graphics.SurfaceTexture;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.hardware.display.DisplayManager;
@@ -27,7 +26,6 @@ import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.Surface;
-import android.view.TextureView;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
@@ -94,6 +92,9 @@ final class OneStepWorkspace {
     private int taskStateVersion;
     private FrameLayout backdrop;
     private FrameLayout workspace;
+    private View recentStrip;
+    private OneStepPerf perf;
+    private PaneSwap pendingSwap;
     private final ArrayList<ImageView> recentIcons = new ArrayList<>();
     private final Executor iconLoader = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "FlymeOneStepIcons");
@@ -162,7 +163,8 @@ final class OneStepWorkspace {
     }
 
     boolean canTrigger() {
-        if (opening || closing || dragSession != null || !OneHandedTaskHooks.environmentAllowed(context)) return false;
+        if (opening || closing || pendingSwap != null || dragSession != null
+                || !OneHandedTaskHooks.environmentAllowed(context)) return false;
         if (active) return true;
         try { return tasks.focusedTask() != null; }
         catch (Exception e) { return false; }
@@ -243,7 +245,7 @@ final class OneStepWorkspace {
         for (int i = 1; i < COUNT; i++) sideOrder.add(i);
         frames = layout();
         // Some IMEs retain primary-display pixel sizes even after moving to another display.
-        // Match its width and density so cached keys fit, then scale the whole frame in TextureView.
+        // Match its width and density so cached keys fit; SurfaceView scales the fixed buffer.
         // All panes share these metrics; swapping panes changes view geometry only.
         virtualWidth = primaryMetrics.widthPixels;
         virtualHeight = Math.max(1, Math.round(virtualWidth * frames[0].height() / (float) frames[0].width()));
@@ -258,15 +260,16 @@ final class OneStepWorkspace {
         // Only transitions need a translucent window; the steady workspace stays opaque so
         // SurfaceFlinger can occlude the underlying primary-display layers.
         // This is compositor occlusion, not an Activity lifecycle or process suspension request.
-        backdrop.setBackgroundColor(Color.rgb(19, 21, 25));
-        backdrop.setAlpha(0f);
+        setBackdropProgress(0f);
         backdrop.setOnClickListener(v -> { if (dragSession == null) close(true); });
         backdrop.setOnDragListener((v, event) -> onAppDrag(event));
         FrameLayout.LayoutParams workspaceParams = new FrameLayout.LayoutParams(width, height);
         workspaceParams.leftMargin = bounds.left - screen.left;
         workspaceParams.topMargin = bounds.top - screen.top;
         backdrop.addView(workspace, workspaceParams);
-        workspace.addView(createRecentStrip(recent), new FrameLayout.LayoutParams(-1, dp(TOOLBAR_HEIGHT_DP)));
+        recentStrip = createRecentStrip(recent);
+        recentStrip.setAlpha(0f);
+        workspace.addView(recentStrip, new FrameLayout.LayoutParams(-1, dp(TOOLBAR_HEIGHT_DP)));
         for (int i = 0; i < COUNT; i++) {
             Pane pane = new Pane(i, i == 0 ? main : null);
             panes[i] = pane;
@@ -288,6 +291,7 @@ final class OneStepWorkspace {
         params.windowAnimations = 0;
         params.preferredRefreshRate = MAIN_REFRESH_RATE;
         windows.addView(backdrop, params);
+        perf = new OneStepPerf(backdrop, handler, generation);
         touchMode.enable();
         OneStepStatusBar.setVisible(true);
         updateRecentIcons();
@@ -300,12 +304,19 @@ final class OneStepWorkspace {
 
     private void applyWorkspaceTransition(float progress) {
         transitionProgress = progress;
-        workspace.setAlpha(progress);
+        // SurfaceView punches a hole in the host window. Do not put its parent into an alpha
+        // layer: fade the hole/surface and ordinary overlay views separately.
+        if (recentStrip != null) recentStrip.setAlpha(progress);
+        for (Pane pane : panes) if (pane != null) pane.applyAlpha(progress);
         float scale = 0.94f + 0.06f * progress;
         workspace.setScaleX(scale);
         workspace.setScaleY(scale);
         workspace.setTranslationX((mainOnLeft ? -1 : 1) * dp(24) * (1f - progress));
         workspace.setTranslationY(dp(12) * (1f - progress));
+    }
+
+    private void setBackdropProgress(float progress) {
+        backdrop.setBackgroundColor(Color.argb(Math.round(255f * progress), 19, 21, 25));
     }
 
     private void cancelTransition() {
@@ -332,9 +343,9 @@ final class OneStepWorkspace {
         transition.setInterpolator(entering ? ENTER_INTERPOLATOR : EXIT_INTERPOLATOR);
         transition.addUpdateListener(value -> {
             float progress = (float) value.getAnimatedValue();
-            // Render properties keep the live textures at a fixed size throughout the animation.
+            // SurfaceView follows the parent's render transforms without resizing its buffer.
             applyWorkspaceTransition(progress);
-            if (entering) backdrop.setAlpha(progress);
+            if (entering) setBackdropProgress(progress);
         });
         transition.addListener(new AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(Animator animation) {
@@ -348,8 +359,9 @@ final class OneStepWorkspace {
 
     private void finishWorkspaceTransition(boolean entering) {
         if (entering) {
-            backdrop.setAlpha(1f);
+            setBackdropProgress(1f);
             setWindowFormat(PixelFormat.OPAQUE);
+            if (perf != null) perf.phase("steady");
         } else {
             restoreAndDismiss();
         }
@@ -379,11 +391,11 @@ final class OneStepWorkspace {
         }
         // Tasks are back on the primary display before revealing it. Keep the background
         // covering their migration instead of releasing live textures mid-animation.
-        ValueAnimator fade = ValueAnimator.ofFloat(backdrop.getAlpha(), 0f);
+        ValueAnimator fade = ValueAnimator.ofFloat(1f, 0f);
         transitionAnimator = fade;
         fade.setDuration(BACKDROP_FADE_DURATION_MS);
         fade.setInterpolator(ENTER_INTERPOLATOR);
-        fade.addUpdateListener(value -> backdrop.setAlpha((float) value.getAnimatedValue()));
+        fade.addUpdateListener(value -> setBackdropProgress((float) value.getAnimatedValue()));
         fade.addListener(new AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(Animator animation) {
                 if (transitionAnimator != animation) return;
@@ -407,23 +419,29 @@ final class OneStepWorkspace {
     }
 
     private void select(int slot) {
-        if (!active || closing || !started || dragSession != null || animator != null
+        if (!active || closing || !started || pendingSwap != null || dragSession != null || animator != null
                 || transitionAnimator != null || slot == mainSlot) return;
         Pane selected = panes[slot];
-        if (!selected.ready) return;
+        if (!selected.ready || !selected.frameReceived) return;
         cancelTouches();
         try { tasks.focus(selected.id()); }
         catch (Exception e) { fail("无法切换应用窗口", e); return; }
         int index = sideOrder.indexOf(slot);
         if (index < 0) return;
+        if (perf != null) perf.phase("swap");
         int previousMain = mainSlot;
         sideOrder.set(index, mainSlot);
         mainSlot = slot;
         Rect[] start = frames;
         Rect[] end = layout();
         Pane previous = panes[previousMain];
+        PaneSwap swap = new PaneSwap(previous, selected, end);
+        pendingSwap = swap;
+        // Capture while the panes start moving; each completed snapshot then covers its source.
+        swap.capture();
         if (!ValueAnimator.areAnimatorsEnabled()) {
-            finishPaneSwap(previous, selected, end);
+            swap.animationDone = true;
+            swap.finishIfReady();
             updateRecentIcons();
             return;
         }
@@ -439,7 +457,8 @@ final class OneStepWorkspace {
             @Override public void onAnimationEnd(Animator animation) {
                 if (animator != animation) return;
                 animator = null;
-                finishPaneSwap(previous, selected, end);
+                swap.animationDone = true;
+                swap.finishIfReady();
             }
         });
         animator.start();
@@ -454,14 +473,20 @@ final class OneStepWorkspace {
         view.setScaleY(1f + (end.height() / (float) start.height() - 1f) * fraction);
     }
 
-    private void finishPaneSwap(Pane previous, Pane selected, Rect[] end) {
+    private void finishPaneSwap(PaneSwap swap) {
+        if (!active || closing || pendingSwap != swap || generation != swap.generation) return;
+        pendingSwap = null;
+        handler.removeCallbacks(swap.timeout);
+        Pane previous = swap.previous;
+        Pane selected = swap.selected;
+        Rect[] end = swap.end;
         if (active && !closing && Build.VERSION.SDK_INT >= 34) {
             try {
-                // Display rates are immutable. Move the task stacks, keeping each display
-                // connected to its original TextureView/BufferQueue. Retain the app images
-                // until the first new output frame so the old contents do not flash at swap.
-                previous.showSwapPreview(selected.texture);
-                selected.showSwapPreview(previous.texture);
+                // Each display keeps its rate. Snapshots cover task migration and the new
+                // output queues, so an old queued image cannot flash under the new task.
+                previous.showSwapPreview(swap.selectedBitmap);
+                selected.showSwapPreview(swap.previousBitmap);
+                swap.selectedBitmap = swap.previousBitmap = null;
                 taskStateVersion++;
                 tasks.swapDisplays(previous.id(), selected.id());
                 int previousSlot = previous.slot;
@@ -476,14 +501,93 @@ final class OneStepWorkspace {
                 logDisplayRates("swap");
                 scheduleCheck(TASK_CHECK_DEBOUNCE_MS);
             } catch (Exception e) {
+                swap.recycleUnused();
                 fail("无法切换应用窗口", e);
                 return;
             }
         }
-        // Keep TextureView geometry fixed during the animation and lay out only once at the end.
+        swap.recycleUnused();
+        // Keep holder buffer dimensions fixed, and settle the view geometry once.
         settlePane(previous, end[previous.slot]);
         settlePane(selected, end[selected.slot]);
         frames = end;
+        previous.updatePerfIdentity();
+        selected.updatePerfIdentity();
+        if (Build.VERSION.SDK_INT >= 34) {
+            try {
+                previous.replaceOutputSurface();
+                selected.replaceOutputSurface();
+            } catch (RuntimeException e) {
+                fail("无法重新连接应用画面", e);
+                return;
+            }
+        }
+        if (perf != null) perf.phase("steady");
+    }
+
+    private void cancelPaneSwap() {
+        if (pendingSwap == null) return;
+        handler.removeCallbacks(pendingSwap.timeout);
+        pendingSwap.recycleUnused();
+        pendingSwap = null;
+    }
+
+    private final class PaneSwap {
+        final Pane previous;
+        final Pane selected;
+        final Rect[] end;
+        final int generation = OneStepWorkspace.this.generation;
+        final Runnable timeout = () -> { timedOut = true; finishIfReady(); };
+        Bitmap previousBitmap;
+        Bitmap selectedBitmap;
+        boolean previousPreviewShown;
+        boolean selectedPreviewShown;
+        int copiesDone;
+        boolean animationDone;
+        boolean timedOut;
+
+        PaneSwap(Pane previous, Pane selected, Rect[] end) {
+            this.previous = previous;
+            this.selected = selected;
+            this.end = end;
+        }
+
+        void capture() {
+            if (Build.VERSION.SDK_INT < 34) { copiesDone = 2; return; }
+            handler.postDelayed(timeout, 600);
+            previous.output.requestSnapshot(bitmap -> copied(true, bitmap));
+            selected.output.requestSnapshot(bitmap -> copied(false, bitmap));
+        }
+
+        void copied(boolean fromPrevious, Bitmap bitmap) {
+            if (pendingSwap != this || generation != OneStepWorkspace.this.generation || closing) {
+                if (bitmap != null) bitmap.recycle();
+                return;
+            }
+            if (fromPrevious) {
+                previousBitmap = bitmap;
+                if (bitmap != null) { previous.showSwapPreview(bitmap); previousPreviewShown = true; }
+            } else {
+                selectedBitmap = bitmap;
+                if (bitmap != null) { selected.showSwapPreview(bitmap); selectedPreviewShown = true; }
+            }
+            copiesDone++;
+            finishIfReady();
+        }
+
+        void finishIfReady() {
+            if (pendingSwap == this && animationDone && (copiesDone == 2 || timedOut)) {
+                finishPaneSwap(this);
+            }
+        }
+
+        void recycleUnused() {
+            // A displayed snapshot may still be referenced by RenderThread after its view is
+            // removed. Let those bitmaps be collected instead of recycling their live pixels.
+            if (previousBitmap != null && !previousPreviewShown) previousBitmap.recycle();
+            if (selectedBitmap != null && !selectedPreviewShown) selectedBitmap.recycle();
+            previousBitmap = selectedBitmap = null;
+        }
     }
 
     private void settlePane(Pane pane, Rect frame) {
@@ -558,7 +662,7 @@ final class OneStepWorkspace {
     }
 
     private boolean beginAppDrag(ImageView icon, RecentTaskCard card) {
-        if (!active || closing || !started || animator != null || transitionAnimator != null
+        if (!active || closing || !started || pendingSwap != null || animator != null || transitionAnimator != null
                 || dragSession != null || isHosted(card)) return false;
         cancelTouches();
         dragSession = new DragSession(card, generation);
@@ -791,6 +895,8 @@ final class OneStepWorkspace {
     private void close(boolean focusMain) {
         if (!active) return;
         if (closing && focusMain) return;
+        cancelPaneSwap();
+        if (perf != null) perf.phase("closing");
         // An environment exit supersedes a pending user animation and its focus request.
         if (!focusMain) {
             restoreMainTask = -1;
@@ -913,6 +1019,8 @@ final class OneStepWorkspace {
 
     private void finishClose() {
         cancelTransition();
+        cancelPaneSwap();
+        if (perf != null) { perf.stop(); perf = null; }
         handler.removeCallbacks(check);
         handler.removeCallbacks(taskChanged);
         handler.removeCallbacks(restoreRetry);
@@ -922,12 +1030,14 @@ final class OneStepWorkspace {
         OneStepStatusBar.setVisible(false);
         closing = false;
         generation++;
+        for (Pane pane : panes) if (pane != null) pane.output.dispose();
         if (backdrop != null) {
             try { windows.removeViewImmediate(backdrop); }
             catch (RuntimeException e) { Log.w(TAG, "Cannot remove workspace window", e); }
             backdrop = null;
         }
         workspace = null;
+        recentStrip = null;
         recentIcons.clear();
         for (int i = 0; i < COUNT; i++) panes[i] = null;
     }
@@ -967,16 +1077,16 @@ final class OneStepWorkspace {
         return view;
     }
 
-    private final class Pane implements TextureView.SurfaceTextureListener {
+    private final class Pane {
         int slot;
         final FrameLayout container = new FrameLayout(context);
-        final TextureView texture = new TextureView(context);
+        OneStepSurfaceView output;
         final TextView empty = label("正在打开…", 12);
         ImageView swapPreview;
-        Runnable pendingFrameUiUpdate;
         RecentTaskCard card;
         VirtualDisplay display;
         Surface surface;
+        OneStepPerf.Pane perfPane;
         MotionEvent lastTouch;
         boolean ready;
         boolean frameReceived;
@@ -984,6 +1094,11 @@ final class OneStepWorkspace {
         long started;
         int inputWidth = virtualWidth;
         int inputHeight = virtualHeight;
+        final Runnable surfaceLostTimeout = () -> {
+            if (active && !closing && display != null && !output.isSurfaceAvailable()) {
+                stop("pane output surface did not reconnect");
+            }
+        };
 
         Pane(int slot, RecentTaskCard card) {
             this.slot = slot;
@@ -991,34 +1106,131 @@ final class OneStepWorkspace {
             container.setPivotX(0f);
             container.setPivotY(0f);
             container.setBackgroundColor(Color.BLACK);
-            texture.setSurfaceTextureListener(this);
-            texture.setOnTouchListener((v, event) -> touch(event));
-            container.addView(texture, new FrameLayout.LayoutParams(-1, -1));
+            output = newOutput();
+            container.addView(output, new FrameLayout.LayoutParams(-1, -1));
             container.addView(empty, new FrameLayout.LayoutParams(-1, -1));
             empty.setBackgroundColor(Color.BLACK);
             empty.setOnClickListener(v -> { });
             empty.setContentDescription("空白应用窗口，长按上方应用图标拖入此处");
             if (card == null) showEmpty("");
+            applyAlpha(transitionProgress);
+        }
+
+        private OneStepSurfaceView newOutput() {
+            OneStepSurfaceView view = new OneStepSurfaceView(context, handler, virtualWidth, virtualHeight,
+                    new OneStepSurfaceView.Listener() {
+                        @Override public void onSurfaceAvailable(Surface target) { connect(target); }
+                        @Override public void onSurfaceDestroyed() { disconnect(); }
+                        @Override public void onBufferAvailable(long waitMs) {
+                            if (!active || closing || display == null) return;
+                            frameReceived = true;
+                            if (perfPane != null) perfPane.bufferAvailable(waitMs);
+                            empty.setVisibility(View.GONE);
+                            clearSwapPreview();
+                            if (slot == mainSlot && !OneStepWorkspace.this.started) scheduleCheck(0);
+                        }
+                        @Override public void onBufferTimeout() {
+                            if (active && !closing && display != null) {
+                                fail("应用画面未就绪", new IllegalStateException("SurfaceView received no buffer"));
+                            }
+                        }
+                        @Override public void onSnapshotFinished(long elapsedMs, int result) {
+                            if (perfPane != null) perfPane.snapshotFinished(elapsedMs, result);
+                        }
+                    });
+            view.setOnTouchListener((v, event) -> touch(event));
+            return view;
+        }
+
+        void applyAlpha(float progress) {
+            // Arbitrary below-window SurfaceView alpha is supported from Android 14.
+            container.setBackgroundColor(Color.argb(Math.round(255f * progress), 0, 0, 0));
+            output.setAlpha(Build.VERSION.SDK_INT >= 34 ? progress : (progress > 0f ? 1f : 0f));
+            empty.setAlpha(progress);
+            if (swapPreview != null) swapPreview.setAlpha(progress);
+        }
+
+        private void connect(Surface target) {
+            handler.removeCallbacks(surfaceLostTimeout);
+            if (!active || closing || card == null || !target.isValid()) return;
+            surface = target;
+            if (display == null) {
+                create(target);
+                return;
+            }
+            try {
+                display.setSurface(target);
+                awaitOutput();
+            } catch (RuntimeException e) { fail("无法连接应用画面", e); }
+        }
+
+        private void awaitOutput() {
+            frameReceived = false;
+            if (perfPane != null) perfPane.surfaceAttached();
+            if (Build.VERSION.SDK_INT >= 30) {
+                try {
+                    surface.setFrameRate(display.getDisplay().getRefreshRate(), Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
+                } catch (RuntimeException e) { Log.w(TAG, "Cannot request pane surface frame rate", e); }
+            }
+            output.awaitBuffer();
+        }
+
+        private void disconnect() {
+            cancelTouch();
+            surface = null;
+            frameReceived = false;
+            if (perfPane != null) perfPane.surfaceDetached();
+            if (!active || closing || display == null) return;
+            try {
+                display.setSurface(null);
+                if (swapPreview == null) {
+                    empty.setText("正在打开…");
+                    empty.setVisibility(View.VISIBLE);
+                }
+                handler.removeCallbacks(surfaceLostTimeout);
+                handler.postDelayed(surfaceLostTimeout, 5000);
+            } catch (RuntimeException e) { fail("无法断开应用画面", e); }
+        }
+
+        void replaceOutputSurface() {
+            handler.removeCallbacks(surfaceLostTimeout);
+            if (display != null) display.setSurface(null);
+            if (perfPane != null) perfPane.surfaceDetached();
+            surface = null;
+            frameReceived = false;
+            output.dispose();
+            container.removeView(output);
+            output = newOutput();
+            container.addView(output, 0, new FrameLayout.LayoutParams(-1, -1));
+            applyAlpha(transitionProgress);
         }
 
         int id() { return display == null ? -1 : display.getDisplay().getDisplayId(); }
 
-        void showSwapPreview(TextureView source) {
+        private String perfApp() {
+            return card == null || card.component == null ? "unknown" : card.component.getPackageName();
+        }
+
+        void updatePerfIdentity() {
+            if (perfPane != null) perfPane.rebind(slot, slot == mainSlot, perfApp());
+        }
+
+        void showSwapPreview(Bitmap bitmap) {
             clearSwapPreview();
-            Bitmap bitmap = source.getBitmap();
-            if (bitmap == null) return;
+            if (bitmap == null) {
+                empty.setText("正在切换…");
+                empty.setVisibility(View.VISIBLE);
+                return;
+            }
             swapPreview = new ImageView(context);
             swapPreview.setScaleType(ImageView.ScaleType.FIT_XY);
             swapPreview.setImageBitmap(bitmap);
             swapPreview.setOnTouchListener((view, event) -> true);
             container.addView(swapPreview, new FrameLayout.LayoutParams(-1, -1));
+            swapPreview.setAlpha(transitionProgress);
         }
 
         void clearSwapPreview() {
-            if (pendingFrameUiUpdate != null) {
-                handler.removeCallbacks(pendingFrameUiUpdate);
-                pendingFrameUiUpdate = null;
-            }
             if (swapPreview == null) return;
             container.removeView(swapPreview);
             swapPreview.setImageDrawable(null);
@@ -1050,16 +1262,16 @@ final class OneStepWorkspace {
             card = next;
             empty.setText("正在打开…");
             empty.setVisibility(View.VISIBLE);
-            if (texture.isAvailable()) create(texture.getSurfaceTexture());
+            try { replaceOutputSurface(); }
+            catch (RuntimeException e) { fail("无法创建应用画面", e); return; }
             updateRecentIcons();
         }
 
-        private void create(SurfaceTexture buffer) {
-            if (!active || closing || card == null || display != null || buffer == null) return;
+        private void create(Surface target) {
+            if (!active || closing || card == null || display != null || !target.isValid()) return;
             taskStateVersion++;
             try {
-                buffer.setDefaultBufferSize(virtualWidth, virtualHeight);
-                surface = new Surface(buffer);
+                surface = target;
                 frameReceived = false;
                 final int[] callbackDisplayId = {-1};
                 VirtualDisplay.Callback callback = new VirtualDisplay.Callback() {
@@ -1083,11 +1295,16 @@ final class OneStepWorkspace {
                 }
                 if (display == null) throw new IllegalStateException("Virtual display creation returned null");
                 callbackDisplayId[0] = id();
+                if (perf != null) {
+                    perfPane = perf.addPane(slot, slot == mainSlot, display.getDisplay(), perfApp(),
+                            virtualWidth, virtualHeight);
+                }
                 tasks.configureDisplay(id());
                 tasks.attach(card, id(), slot == mainSlot && !OneStepWorkspace.this.started);
                 ready = true;
                 started = SystemClock.uptimeMillis();
                 updateInputSize();
+                awaitOutput();
                 logDisplayRates("pane created");
             } catch (Exception e) {
                 Log.w(TAG, "Cannot host pane " + slot, e);
@@ -1124,18 +1341,26 @@ final class OneStepWorkspace {
 
         boolean touch(MotionEvent event) {
             if (!active || closing || dragSession != null || !ready) return true;
+            long receivedUptimeMs = SystemClock.uptimeMillis();
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN) {
-                consumeSelection = !OneStepWorkspace.this.started || transitionAnimator != null
-                        || slot != mainSlot || animator != null;
+                consumeSelection = !OneStepWorkspace.this.started || !frameReceived || pendingSwap != null
+                        || transitionAnimator != null || slot != mainSlot || animator != null;
                 if (consumeSelection) { select(slot); return true; }
                 try { tasks.focus(id()); }
                 catch (Exception e) { fail("无法聚焦应用窗口", e); return true; }
             }
-            if (consumeSelection || animator != null || transitionAnimator != null
+            if (consumeSelection || !frameReceived || pendingSwap != null || animator != null || transitionAnimator != null
                     || !OneStepWorkspace.this.started) return true;
             try {
-                tasks.motion(id(), event, inputWidth, inputHeight, texture.getWidth(), texture.getHeight());
+                long submitStartNs = System.nanoTime();
+                boolean submitted = false;
+                try {
+                    tasks.motion(id(), event, inputWidth, inputHeight, output.getWidth(), output.getHeight());
+                    submitted = true;
+                } finally {
+                    if (perfPane != null) perfPane.forwarded(event, receivedUptimeMs, submitStartNs, submitted);
+                }
                 if (lastTouch != null) lastTouch.recycle();
                 lastTouch = action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL
                         ? null : MotionEvent.obtain(event);
@@ -1144,10 +1369,11 @@ final class OneStepWorkspace {
         }
 
         void cancelTouch() {
+            if (perfPane != null) perfPane.cancelTouch();
             if (lastTouch == null) return;
             try {
                 lastTouch.setAction(MotionEvent.ACTION_CANCEL);
-                tasks.motion(id(), lastTouch, inputWidth, inputHeight, texture.getWidth(), texture.getHeight());
+                tasks.motion(id(), lastTouch, inputWidth, inputHeight, output.getWidth(), output.getHeight());
             } catch (Exception e) { Log.w(TAG, "Cannot cancel pane touch", e); }
             finally { lastTouch.recycle(); lastTouch = null; }
         }
@@ -1155,6 +1381,10 @@ final class OneStepWorkspace {
         void release() {
             taskStateVersion++;
             cancelTouch();
+            handler.removeCallbacks(surfaceLostTimeout);
+            output.dispose();
+            if (perf != null) perf.removePane(perfPane);
+            perfPane = null;
             clearSwapPreview();
             ready = false;
             frameReceived = false;
@@ -1165,38 +1395,7 @@ final class OneStepWorkspace {
                 try { old.release(); }
                 catch (RuntimeException e) { Log.w(TAG, "Cannot release virtual display", e); }
             }
-            if (surface != null) { surface.release(); surface = null; }
-        }
-
-        @Override public void onSurfaceTextureAvailable(SurfaceTexture buffer, int w, int h) { create(buffer); }
-        @Override public void onSurfaceTextureSizeChanged(SurfaceTexture buffer, int w, int h) {
-            buffer.setDefaultBufferSize(virtualWidth, virtualHeight);
-        }
-        @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture buffer) {
-            if (active && !closing) stop("pane surface destroyed");
-            return true;
-        }
-        @Override public void onSurfaceTextureUpdated(SurfaceTexture buffer) {
-            if (!active || closing || !ready || pendingFrameUiUpdate != null
-                    || (frameReceived && swapPreview == null)) return;
-            int frameGeneration = generation;
-            VirtualDisplay frameDisplay = display;
-            ImageView framePreview = swapPreview;
-            // TextureView invokes this while its parent's display list may be traversing
-            // children. Removing a sibling here invalidates that traversal; even on the main
-            // thread, all view changes must wait until the current drawing call has returned.
-            pendingFrameUiUpdate = () -> {
-                pendingFrameUiUpdate = null;
-                if (!active || closing || !ready || generation != frameGeneration
-                        || display != frameDisplay) return;
-                if (swapPreview == framePreview) clearSwapPreview();
-                if (frameReceived) return;
-                // Reveal the app only after its first frame, then acknowledge the gesture.
-                frameReceived = true;
-                empty.setVisibility(View.GONE);
-                if (slot == mainSlot && !OneStepWorkspace.this.started) scheduleCheck(0);
-            };
-            if (!handler.post(pendingFrameUiUpdate)) pendingFrameUiUpdate = null;
+            surface = null;
         }
     }
 }

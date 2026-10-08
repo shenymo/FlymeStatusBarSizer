@@ -55,3 +55,7 @@ com.android.systemui_dumpdex_jadx/
 /work
 /.codex
 /com.android.systemui/
+/com.android.intentresolver/
+/com.meizu.flyme.launcher/
+/com.meizu.assistant/
+/docs
