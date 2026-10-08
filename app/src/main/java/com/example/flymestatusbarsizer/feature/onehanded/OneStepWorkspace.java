@@ -44,7 +44,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private static final String TAG = "FlymeOneStep";
     private static final int COUNT = 4;
     private static final int TOOLBAR_HEIGHT_DP = 56;
-    private static final int REFERENCE_TOP_AREA_DP = 236;
+    private static final int PANE_GAP_DP = 4;
     private static final PathInterpolator EASING = new PathInterpolator(0.2f, 0f, 0f, 1f);
     private enum State { CLOSED, OPENING, RUNNING, CLOSING }
     private volatile State state = State.CLOSED;
@@ -161,8 +161,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
         updateLogicalBounds(screen, insets);
         contentBounds = new Rect(logicalBounds);
-        contentBounds.top += Math.min(dp(REFERENCE_TOP_AREA_DP - TOOLBAR_HEIGHT_DP),
-                Math.max(0, contentBounds.height() - dp(TOOLBAR_HEIGHT_DP + 160)));
         width = contentBounds.width();
         height = contentBounds.height();
         if (width <= 0 || height <= 0) throw new IllegalStateException("Invalid workspace bounds");
@@ -188,7 +186,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         workspaceParams.topMargin = contentBounds.top - screen.top;
         backdrop.addView(workspace, workspaceParams);
         recentStrip = createRecentStrip(recent);
-        workspace.addView(recentStrip, new FrameLayout.LayoutParams(-1, dp(TOOLBAR_HEIGHT_DP)));
+        int panesTop = frames[mainSlot].top;
+        for (int slot : sideOrder) panesTop = Math.min(panesTop, frames[slot].top);
+        FrameLayout.LayoutParams stripParams = new FrameLayout.LayoutParams(-1, dp(TOOLBAR_HEIGHT_DP));
+        stripParams.topMargin = Math.max(0, panesTop - dp(TOOLBAR_HEIGHT_DP));
+        workspace.addView(recentStrip, stripParams);
         for (int i = 0; i < COUNT; i++) {
             Pane pane = new Pane(i);
             panes[i] = pane;
@@ -236,19 +238,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private Rect[] layout() {
-        Rect[] result = OneStepWindowLayout.calculate(COUNT, width, height, dp(8), dp(TOOLBAR_HEIGHT_DP),
-                true, false, mainSlot, sideOrder, 3, mainOnLeft, dp(16));
-        // Fit the full app viewport inside each slot without stretching or cropping it.
-        // Store the fitted frames so swaps and drag targets follow the visible panes.
-        for (Rect frame : result) {
-            float scale = scaleForFrame(frame);
-            int fittedWidth = Math.max(1, Math.round(logicalBounds.width() * scale));
-            int fittedHeight = Math.max(1, Math.round(logicalBounds.height() * scale));
-            int left = frame.left + (frame.width() - fittedWidth) / 2;
-            int top = frame.top + (frame.height() - fittedHeight) / 2;
-            frame.set(left, top, left + fittedWidth, top + fittedHeight);
-        }
-        return result;
+        return OneStepWindowLayout.calculateWorkspace(width, height, dp(PANE_GAP_DP),
+                dp(TOOLBAR_HEIGHT_DP), logicalBounds.width(), logicalBounds.height(),
+                mainSlot, sideOrder, mainOnLeft);
     }
 
     private void updateLogicalBounds(Rect screen, Insets insets) {
