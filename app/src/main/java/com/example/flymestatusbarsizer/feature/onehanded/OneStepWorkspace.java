@@ -157,10 +157,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             throws Exception {
         WindowMetrics metrics = windows.getMaximumWindowMetrics();
         Rect screen = new Rect(metrics.getBounds());
-        contentBounds = new Rect(screen);
         Insets insets = metrics.getWindowInsets().getInsetsIgnoringVisibility(
                 WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-        contentBounds.inset(insets.left, insets.top, insets.right, insets.bottom);
+        updateLogicalBounds(screen, insets);
+        contentBounds = new Rect(logicalBounds);
         contentBounds.top += Math.min(dp(REFERENCE_TOP_AREA_DP - TOOLBAR_HEIGHT_DP),
                 Math.max(0, contentBounds.height() - dp(TOOLBAR_HEIGHT_DP + 160)));
         width = contentBounds.width();
@@ -175,7 +175,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         sideOrder.clear();
         for (int i = 1; i < COUNT; i++) sideOrder.add(i);
         frames = layout();
-        updateLogicalBounds();
         shell.begin(generation);
         backdrop = new FrameLayout(context);
         backdrop.setBackgroundColor(Color.rgb(19, 21, 25));
@@ -237,14 +236,32 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private Rect[] layout() {
-        return OneStepWindowLayout.calculate(COUNT, width, height, dp(8), dp(TOOLBAR_HEIGHT_DP),
+        Rect[] result = OneStepWindowLayout.calculate(COUNT, width, height, dp(8), dp(TOOLBAR_HEIGHT_DP),
                 true, false, mainSlot, sideOrder, 3, mainOnLeft, dp(16));
+        // Fit the full app viewport inside each slot without stretching or cropping it.
+        // Store the fitted frames so swaps and drag targets follow the visible panes.
+        for (Rect frame : result) {
+            float scale = scaleForFrame(frame);
+            int fittedWidth = Math.max(1, Math.round(logicalBounds.width() * scale));
+            int fittedHeight = Math.max(1, Math.round(logicalBounds.height() * scale));
+            int left = frame.left + (frame.width() - fittedWidth) / 2;
+            int top = frame.top + (frame.height() - fittedHeight) / 2;
+            frame.set(left, top, left + fittedWidth, top + fittedHeight);
+        }
+        return result;
     }
 
-    private void updateLogicalBounds() {
-        logicalBounds.set(frames[mainSlot]);
-        // The task viewport stays fixed; IME avoidance belongs to the workspace surface.
-        logicalBounds.offset(contentBounds.left, contentBounds.top);
+    private void updateLogicalBounds(Rect screen, Insets insets) {
+        // Capture the full usable display before reserving space for workspace chrome.
+        // Keep this viewport fixed for the session, including pane swaps and IME movement.
+        logicalBounds.set(screen);
+        logicalBounds.inset(insets.left, insets.top, insets.right, insets.bottom);
+        if (logicalBounds.isEmpty()) throw new IllegalStateException("Invalid app viewport");
+    }
+
+    private float scaleForFrame(Rect frame) {
+        return Math.min(1f, Math.min(frame.width() / (float) logicalBounds.width(),
+                frame.height() / (float) logicalBounds.height()));
     }
 
     private void position(View view, Rect frame) {
@@ -254,8 +271,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         params.leftMargin = frame.left;
         params.topMargin = frame.top;
         view.setLayoutParams(params);
-        view.setScaleX(frame.width() / (float) logicalBounds.width());
-        view.setScaleY(frame.height() / (float) logicalBounds.height());
+        float scale = scaleForFrame(frame);
+        view.setScaleX(scale);
+        view.setScaleY(scale);
     }
 
     private void positionForIme() {
@@ -324,7 +342,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (perf != null) perf.phase("swap");
         Runnable finish = () -> {
             frames = end;
-            updateLogicalBounds();
             for (Pane pane : panes) {
                 position(pane.container, frames[pane.slot]);
                 pane.container.setTranslationX(0);
@@ -356,11 +373,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         swap.start();
     }
 
-    private static void transform(View view, Rect start, Rect end, float fraction) {
+    private void transform(View view, Rect start, Rect end, float fraction) {
         view.setTranslationX((end.left - start.left) * fraction);
         view.setTranslationY((end.top - start.top) * fraction);
-        view.setScaleX((start.width() + (end.width() - start.width()) * fraction) / view.getWidth());
-        view.setScaleY((start.height() + (end.height() - start.height()) * fraction) / view.getHeight());
+        float startScale = scaleForFrame(start);
+        float scale = startScale + (scaleForFrame(end) - startScale) * fraction;
+        view.setScaleX(scale);
+        view.setScaleY(scale);
     }
 
     private void cancelAnimator(boolean swap) {
@@ -785,6 +804,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
         void updateGeometry() {
             if (host == null || !active()) return;
+            // Keep the task surface at 1:1 inside TaskView; only the container scales it.
             shell.geometry(host, logicalBounds, logicalBounds.width(), logicalBounds.height(), slot == mainSlot);
         }
     }
