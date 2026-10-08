@@ -1,5 +1,7 @@
 package com.example.flymestatusbarsizer.feature.onehanded;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.ClipData;
 import android.content.Context;
@@ -28,6 +30,7 @@ import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.WindowMetrics;
 import android.view.animation.DecelerateInterpolator;
+import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
@@ -46,6 +49,11 @@ final class OneStepWorkspace {
     private static final String TAG = "FlymeOneStep";
     private static final int COUNT = 4;
     private static final int TOOLBAR_HEIGHT_DP = 56;
+    private static final long ENTER_DURATION_MS = 300;
+    private static final long EXIT_DURATION_MS = 200;
+    private static final long BACKDROP_FADE_DURATION_MS = 140;
+    private static final PathInterpolator ENTER_INTERPOLATOR = new PathInterpolator(0.2f, 0f, 0f, 1f);
+    private static final PathInterpolator EXIT_INTERPOLATOR = new PathInterpolator(0.4f, 0f, 1f, 1f);
     // OneStep4 defaults: media 116dp + navigation (26 + 20)dp + app strip 74dp.
     // Status/cutout insets are already excluded from this overlay's bounds.
     private static final int REFERENCE_TOP_AREA_DP = 116 + 46 + 74;
@@ -62,6 +70,7 @@ final class OneStepWorkspace {
     private final Pane[] panes = new Pane[COUNT];
     private final ArrayList<Integer> sideOrder = new ArrayList<>();
     private final Runnable check = this::check;
+    private final Runnable restoreRetry = this::restoreAndDismiss;
     private FrameLayout backdrop;
     private FrameLayout workspace;
     private final ArrayList<ImageView> recentIcons = new ArrayList<>();
@@ -75,6 +84,10 @@ final class OneStepWorkspace {
     private int highlightedSlot = -1;
     private Rect[] frames;
     private ValueAnimator animator;
+    private ValueAnimator transitionAnimator;
+    private float transitionProgress;
+    private boolean animateClose;
+    private boolean focusMainOnClose;
     private volatile boolean active;
     private volatile boolean closing;
     private boolean mainOnLeft;
@@ -167,6 +180,8 @@ final class OneStepWorkspace {
         primaryTask = -1;
         started = false;
         restoreAttempts = 0;
+        animateClose = false;
+        focusMainOnClose = false;
         mainSlot = 0;
         mainOnLeft = fromLeft;
         onSuccess = success;
@@ -181,11 +196,16 @@ final class OneStepWorkspace {
         virtualHeight = Math.max(1, Math.round(virtualWidth * frames[0].height() / (float) frames[0].width()));
         density = primaryMetrics.densityDpi;
         workspace = new FrameLayout(context);
+        workspace.setPivotX(fromLeft ? 0f : width);
+        workspace.setPivotY(height * 0.5f);
+        applyWorkspaceTransition(0f);
         workspace.setOnClickListener(v -> { if (dragSession == null) close(true); });
         backdrop = new FrameLayout(context);
-        // One opaque window lets SurfaceFlinger occlude the underlying primary-display layers.
+        // Only transitions need a translucent window; the steady workspace stays opaque so
+        // SurfaceFlinger can occlude the underlying primary-display layers.
         // This is compositor occlusion, not an Activity lifecycle or process suspension request.
         backdrop.setBackgroundColor(Color.rgb(19, 21, 25));
+        backdrop.setAlpha(0f);
         backdrop.setOnClickListener(v -> { if (dragSession == null) close(true); });
         backdrop.setOnDragListener((v, event) -> onAppDrag(event));
         FrameLayout.LayoutParams workspaceParams = new FrameLayout.LayoutParams(width, height);
@@ -204,17 +224,118 @@ final class OneStepWorkspace {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-                PixelFormat.OPAQUE);
+                PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.TOP | Gravity.LEFT;
         params.x = screen.left;
         params.y = screen.top;
         params.setFitInsetsTypes(0);
         params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
         params.setTitle("FlymeOneStepWorkspace");
+        params.windowAnimations = 0;
         windows.addView(backdrop, params);
         OneStepStatusBar.setVisible(true);
         updateRecentIcons();
+        int sessionGeneration = generation;
+        backdrop.postOnAnimation(() -> {
+            if (active && !closing && generation == sessionGeneration) animateWorkspace(true);
+        });
         handler.postDelayed(check, 300);
+    }
+
+    private void applyWorkspaceTransition(float progress) {
+        transitionProgress = progress;
+        workspace.setAlpha(progress);
+        float scale = 0.94f + 0.06f * progress;
+        workspace.setScaleX(scale);
+        workspace.setScaleY(scale);
+        workspace.setTranslationX((mainOnLeft ? -1 : 1) * dp(24) * (1f - progress));
+        workspace.setTranslationY(dp(12) * (1f - progress));
+    }
+
+    private void cancelTransition() {
+        if (transitionAnimator == null) return;
+        ValueAnimator current = transitionAnimator;
+        transitionAnimator = null;
+        current.removeAllListeners();
+        current.removeAllUpdateListeners();
+        current.cancel();
+    }
+
+    private void animateWorkspace(boolean entering) {
+        cancelTransition();
+        float target = entering ? 1f : 0f;
+        if (!ValueAnimator.areAnimatorsEnabled() || transitionProgress == target) {
+            applyWorkspaceTransition(target);
+            finishWorkspaceTransition(entering);
+            return;
+        }
+        ValueAnimator transition = ValueAnimator.ofFloat(transitionProgress, target);
+        transitionAnimator = transition;
+        transition.setDuration(Math.max(1L, Math.round((entering ? ENTER_DURATION_MS : EXIT_DURATION_MS)
+                * Math.abs(target - transitionProgress))));
+        transition.setInterpolator(entering ? ENTER_INTERPOLATOR : EXIT_INTERPOLATOR);
+        transition.addUpdateListener(value -> {
+            float progress = (float) value.getAnimatedValue();
+            // Render properties keep the live textures at a fixed size throughout the animation.
+            applyWorkspaceTransition(progress);
+            if (entering) backdrop.setAlpha(progress);
+        });
+        transition.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator animation) {
+                if (transitionAnimator != animation) return;
+                transitionAnimator = null;
+                finishWorkspaceTransition(entering);
+            }
+        });
+        transition.start();
+    }
+
+    private void finishWorkspaceTransition(boolean entering) {
+        if (entering) {
+            backdrop.setAlpha(1f);
+            setWindowFormat(PixelFormat.OPAQUE);
+        } else {
+            restoreAndDismiss();
+        }
+    }
+
+    private boolean setWindowFormat(int format) {
+        if (backdrop == null || !backdrop.isAttachedToWindow()) return false;
+        WindowManager.LayoutParams params = (WindowManager.LayoutParams) backdrop.getLayoutParams();
+        if (params.format == format) return true;
+        int previous = params.format;
+        params.format = format;
+        try {
+            windows.updateViewLayout(backdrop, params);
+            return true;
+        } catch (RuntimeException e) {
+            params.format = previous;
+            Log.w(TAG, "Cannot change workspace window format", e);
+            return false;
+        }
+    }
+
+    private void fadeBackdropAndDismiss() {
+        if (!animateClose || !ValueAnimator.areAnimatorsEnabled()
+                || !setWindowFormat(PixelFormat.TRANSLUCENT)) {
+            finishClose();
+            return;
+        }
+        // Tasks are back on the primary display before revealing it. Keep the background
+        // covering their migration instead of releasing live textures mid-animation.
+        ValueAnimator fade = ValueAnimator.ofFloat(backdrop.getAlpha(), 0f);
+        transitionAnimator = fade;
+        fade.setDuration(BACKDROP_FADE_DURATION_MS);
+        fade.setInterpolator(ENTER_INTERPOLATOR);
+        fade.addUpdateListener(value -> backdrop.setAlpha((float) value.getAnimatedValue()));
+        fade.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator animation) {
+                if (transitionAnimator != animation) return;
+                transitionAnimator = null;
+                finishClose();
+            }
+        });
+        fade.start();
     }
 
     private Rect[] layout() {
@@ -230,7 +351,8 @@ final class OneStepWorkspace {
     }
 
     private void select(int slot) {
-        if (!active || closing || dragSession != null || animator != null || slot == mainSlot) return;
+        if (!active || closing || !started || dragSession != null || animator != null
+                || transitionAnimator != null || slot == mainSlot) return;
         Pane selected = panes[slot];
         if (!selected.ready) return;
         cancelTouches();
@@ -329,7 +451,8 @@ final class OneStepWorkspace {
     }
 
     private boolean beginAppDrag(ImageView icon, RecentTaskCard card) {
-        if (!active || closing || !started || animator != null || dragSession != null || isHosted(card)) return false;
+        if (!active || closing || !started || animator != null || transitionAnimator != null
+                || dragSession != null || isHosted(card)) return false;
         cancelTouches();
         dragSession = new DragSession(card, generation);
         dragSource = icon;
@@ -416,7 +539,7 @@ final class OneStepWorkspace {
 
     void refresh() {
         handler.post(() -> {
-            if (active && !closing && !OneHandedTaskHooks.workspaceAllowed(context)) close(false);
+            if (active && !OneHandedTaskHooks.workspaceAllowed(context)) close(false);
         });
     }
 
@@ -498,7 +621,13 @@ final class OneStepWorkspace {
 
     private void close(boolean focusMain) {
         if (!active) return;
-        if (!closing && focusMain) {
+        if (closing && focusMain) return;
+        // An environment exit supersedes a pending user animation and its focus request.
+        if (!focusMain) {
+            restoreMainTask = -1;
+            try { restoreFocusTask = tasks.defaultFocusedTaskId(); }
+            catch (Exception e) { Log.w(TAG, "Cannot retain primary display focus", e); }
+        } else {
             Pane pane = panes[mainSlot];
             if (pane != null && pane.display != null) {
                 try {
@@ -511,14 +640,14 @@ final class OneStepWorkspace {
                 } catch (Exception e) { Log.w(TAG, "Cannot identify main pane task", e); }
             }
         }
-        if (!closing && !focusMain) {
-            try { restoreFocusTask = tasks.defaultFocusedTaskId(); }
-            catch (Exception e) { Log.w(TAG, "Cannot retain primary display focus", e); }
-        }
+        focusMainOnClose = focusMain;
+        animateClose = focusMain && backdrop != null && backdrop.isAttachedToWindow()
+                && transitionProgress > 0f && ValueAnimator.areAnimatorsEnabled();
         closing = true;
-        restoreAttempts++;
         onSuccess = null;
         handler.removeCallbacks(check);
+        handler.removeCallbacks(restoreRetry);
+        cancelTransition();
         if (dragSource != null) {
             try { dragSource.cancelDragAndDrop(); }
             catch (RuntimeException e) { Log.w(TAG, "Cannot cancel app drag", e); }
@@ -528,6 +657,14 @@ final class OneStepWorkspace {
         highlightDropTarget(-1);
         cancelTouches();
         if (animator != null) { animator.cancel(); animator = null; }
+        if (animateClose) animateWorkspace(false);
+        else restoreAndDismiss();
+    }
+
+    private void restoreAndDismiss() {
+        if (!active || !closing) return;
+        handler.removeCallbacks(restoreRetry);
+        restoreAttempts++;
         boolean restored = true;
         // Restore the chosen main last so it is the app shown after leaving the workspace.
         ArrayList<Integer> order = new ArrayList<>(sideOrder);
@@ -550,13 +687,10 @@ final class OneStepWorkspace {
             }
         }
         if (!restored) {
-            int currentGeneration = generation;
-            handler.postDelayed(() -> {
-                if (active && closing && generation == currentGeneration) close(focusMain);
-            }, 800);
+            handler.postDelayed(restoreRetry, 800);
             return;
         }
-        if (focusMain) {
+        if (focusMainOnClose) {
             try {
                 if (restoreMainTask >= 0) tasks.focusTask(restoreMainTask);
                 else tasks.focus(0);
@@ -566,6 +700,13 @@ final class OneStepWorkspace {
             try { tasks.focusTask(restoreFocusTask); }
             catch (Exception e) { Log.w(TAG, "Cannot retain primary display task", e); }
         }
+        fadeBackdropAndDismiss();
+    }
+
+    private void finishClose() {
+        cancelTransition();
+        handler.removeCallbacks(check);
+        handler.removeCallbacks(restoreRetry);
         active = false;
         OneStepStatusBar.setVisible(false);
         closing = false;
@@ -682,8 +823,6 @@ final class OneStepWorkspace {
                 ready = true;
                 started = SystemClock.uptimeMillis();
                 updateInputSize();
-                // Wait for a real app frame before allowing the selection gesture to complete.
-                empty.setVisibility(View.GONE);
             } catch (Exception e) {
                 Log.w(TAG, "Cannot host pane " + slot, e);
                 try {
@@ -720,12 +859,14 @@ final class OneStepWorkspace {
             if (!active || closing || dragSession != null || !ready) return true;
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN) {
-                consumeSelection = slot != mainSlot || animator != null;
+                consumeSelection = !OneStepWorkspace.this.started || transitionAnimator != null
+                        || slot != mainSlot || animator != null;
                 if (consumeSelection) { select(slot); return true; }
                 try { tasks.focus(id()); }
                 catch (Exception e) { fail("无法聚焦应用窗口", e); return true; }
             }
-            if (consumeSelection || animator != null) return true;
+            if (consumeSelection || animator != null || transitionAnimator != null
+                    || !OneStepWorkspace.this.started) return true;
             try {
                 tasks.motion(id(), event, inputWidth, inputHeight, texture.getWidth(), texture.getHeight());
                 if (lastTouch != null) lastTouch.recycle();
@@ -766,6 +907,15 @@ final class OneStepWorkspace {
             if (active && !closing) stop("pane surface destroyed");
             return true;
         }
-        @Override public void onSurfaceTextureUpdated(SurfaceTexture buffer) { frameReceived = true; }
+        @Override public void onSurfaceTextureUpdated(SurfaceTexture buffer) {
+            if (!active || closing || !ready || frameReceived) return;
+            // Reveal the app only after its first frame, then acknowledge the opening gesture.
+            frameReceived = true;
+            empty.setVisibility(View.GONE);
+            if (slot == mainSlot && !OneStepWorkspace.this.started) {
+                handler.removeCallbacks(check);
+                handler.post(check);
+            }
+        }
     }
 }
