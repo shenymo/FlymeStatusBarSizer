@@ -52,6 +52,19 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".feature.onehanded.OneStepActivity"
+            android:theme="@style/OneStepTheme"
+            android:label="应用工作台"
+            android:exported="true"
+            android:permission="android.permission.STATUS_BAR_SERVICE"
+            android:taskAffinity="${applicationId}.workspace"
+            android:excludeFromRecents="true"
+            android:autoRemoveFromRecents="true"
+            android:resizeableActivity="false"
+            android:enableOnBackInvokedCallback="true"
+            android:windowSoftInputMode="adjustNothing" />
+
         <activity-alias
             android:name=".MainActivityAlias"
             android:enabled="true"

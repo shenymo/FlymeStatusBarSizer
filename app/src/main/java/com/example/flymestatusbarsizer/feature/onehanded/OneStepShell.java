@@ -45,6 +45,7 @@ final class OneStepShell {
         volatile boolean initialized;
         volatile boolean released;
         boolean launching;
+        boolean prepared;
         int acquireAttempts;
         Object info;
         Object token;
@@ -143,6 +144,9 @@ final class OneStepShell {
     private volatile boolean transitionBusy;
     private volatile boolean accepting;
     private volatile int session;
+    private volatile int activityTaskId = -1;
+    private volatile Object activityToken;
+    private volatile int activityUserId;
     private Listener listener;
     private int initAttempts;
 
@@ -267,11 +271,54 @@ final class OneStepShell {
         }
     }
 
-    void begin(int value) {
+    void begin(int value, int userId) {
         if (!available()) throw new IllegalStateException("Shell workspace is not ready");
         closeRequest.incrementAndGet();
         session = value;
+        activityTaskId = -1;
+        activityToken = null;
+        activityUserId = userId;
         accepting = true;
+    }
+
+    void attachActivity(int taskId, Runnable ready) {
+        int request = session;
+        executor.execute(() -> attachActivity(taskId, ready, request, 0));
+    }
+
+    private void attachActivity(int taskId, Runnable ready, int request, int attempt) {
+        if (!accepting || request != session) return;
+        try {
+            Object appeared = appeared(taskId);
+            if (appeared == null) {
+                if (attempt >= 100) throw new IllegalStateException("Workspace task did not appear");
+                later(() -> attachActivity(taskId, ready, request, attempt + 1), 50);
+                return;
+            }
+            Object info = OneStepReflection.call(appeared, "getTaskInfo");
+            if (!isActivityTask(info) || OneStepTaskAccess.display(info) != 0
+                    || ReflectUtils.getIntField(info, "parentTaskId", -2) != -1
+                    || ReflectUtils.invokeNoArgInt(info, "getWindowingMode", -1) != 1)
+                throw new IllegalStateException("Workspace must be an independent fullscreen Activity");
+            activityToken = OneStepReflection.get(info, "token");
+            activityTaskId = taskId;
+            Object wct = transaction();
+            bool(wct, "setForceTranslucent", activityToken, false);
+            bool(wct, "setAlwaysOnTop", activityToken, false);
+            reorder(wct, activityToken, true);
+            OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
+            ui.post(() -> { if (accepting && request == session) ready.run(); });
+        } catch (Exception error) { fail("无法接管工作台窗口", error); }
+    }
+
+    boolean isActivityTask(Object info) {
+        if (info == null || ReflectUtils.getIntField(info, "userId", -1) != activityUserId) return false;
+        Object component = ReflectUtils.getField(info, "baseActivity");
+        if (!(component instanceof ComponentName)) component = ReflectUtils.getField(info, "topActivity");
+        if (!(component instanceof ComponentName) || !OneStepActivityProtocol.isActivity((ComponentName) component)) return false;
+        return activityTaskId < 0 || (OneStepTaskAccess.taskId(info) == activityTaskId
+                && activityToken != null
+                && java.util.Objects.equals(ReflectUtils.invokeNoArg(activityToken, "asBinder"), OneStepTaskAccess.token(info)));
     }
 
     Host create(Context context, RecentTaskCard card, boolean focused) throws ReflectiveOperationException {
@@ -318,7 +365,7 @@ final class OneStepShell {
                     candidate.main = candidate == host;
                     bool(wct, "setFocusable", candidate.token, candidate.main);
                 }
-                reorder(wct, host.token, true);
+                arrangeTasks(wct, host);
                 OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
             }
             catch (Exception error) { fail("无法聚焦应用窗口", error); }
@@ -354,6 +401,17 @@ final class OneStepShell {
                 if (!host.launching) {
                     if (host.requireFocused) throw new IllegalStateException("Focused task disappeared");
                     host.launching = true;
+                    Object recent = tasks.recentTaskInfo(host.card);
+                    if (!matches(host.card, recent)) throw new IllegalStateException("Recent task disappeared");
+                    remember(host, recent);
+                    // A dormant task can briefly resume fullscreen before its organizer
+                    // callback arrives. Make it non-occluding before that launch, with a
+                    // journal entry covering failure before any TaskView owns the task.
+                    save(host);
+                    host.prepared = true;
+                    Object wct = transaction();
+                    bool(wct, "setForceTranslucent", host.token, true);
+                    OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
                     tasks.activate(host.card);
                 }
                 if (++host.acquireAttempts > 100) throw new IllegalStateException("Task did not appear in Shell");
@@ -365,20 +423,15 @@ final class OneStepShell {
                     || OneStepTaskAccess.display(info) != 0 || ReflectUtils.getIntField(info, "parentTaskId", -2) != -1) {
                 throw new IllegalStateException("Selected task changed identity or windowing mode");
             }
-            if (host.requireFocused && !host.card.sameTask(tasks.focusedTask())) {
-                throw new IllegalStateException("Focused application changed before acquisition");
+            if (host.requireFocused) {
+                int focused = tasks.defaultFocusedTaskId();
+                if (focused != host.card.taskId && focused != activityTaskId)
+                    throw new IllegalStateException("Focused application changed before acquisition");
             }
-            host.info = info;
-            host.token = OneStepReflection.get(info, "token");
+            if (!host.prepared) remember(host, info);
+            else host.info = info;
             host.leash = (SurfaceControl) OneStepReflection.call(appeared, "getLeash");
             if (!host.leash.isValid() || rootSurface() == null) throw new IllegalStateException("Task surface unavailable");
-            Object config = OneStepReflection.get(OneStepReflection.get(info, "configuration"), "windowConfiguration");
-            host.originalBounds = new Rect((Rect) OneStepReflection.call(config, "getBounds"));
-            host.originalMode = ((Number) OneStepReflection.call(config, "getWindowingMode")).intValue();
-            Point position = (Point) OneStepReflection.get(info, "positionInParent");
-            host.originalPosition = new Point(position);
-            host.originalFocusable = ReflectUtils.getBooleanField(info, "isFocusable", true);
-            host.originalAlwaysOnTop = Boolean.TRUE.equals(OneStepReflection.call(config, "isAlwaysOnTop"));
             save(host);
             synchronized (OneStepReflection.get(organizer, "mLock")) {
                 SparseArray<Object> listeners = listeners();
@@ -397,17 +450,31 @@ final class OneStepShell {
             // All panes keep one logical viewport. Their disjoint screen rectangles are Surface
             // transforms, so WM must not occlude the other tasks at their overlapping bounds.
             bool(wct, "setForceTranslucent", host.token, true);
-            bool(wct, "setAlwaysOnTop", host.token, true);
+            bool(wct, "setAlwaysOnTop", host.token, false);
             // Flyme's InsetsPolicy reports an empty IME frame to this task and its children,
             // retaining keyboard visibility/control while avoiding app resize and adjustPan.
             // Keep this enabled throughout hosting, including main/side swaps.
             bool(wct, "setExcludeImeInsets", host.token, true);
-            reorder(wct, host.token, true);
+            Host main = host;
+            for (Host candidate : hosts) if (current(candidate) && candidate.borrowed && candidate.main) main = candidate;
+            arrangeTasks(wct, main);
             submit(wct);
             // The surface is made visible by the collected Shell transition, after relayout.
         } catch (Exception error) {
             fail("无法接管应用任务", error);
         }
+    }
+
+    private void remember(Host host, Object info) throws ReflectiveOperationException {
+        host.info = info;
+        host.token = OneStepReflection.get(info, "token");
+        Object config = OneStepReflection.get(OneStepReflection.get(info, "configuration"), "windowConfiguration");
+        host.originalBounds = new Rect((Rect) OneStepReflection.call(config, "getBounds"));
+        host.originalMode = ((Number) OneStepReflection.call(config, "getWindowingMode")).intValue();
+        Object position = OneStepReflection.get(info, "positionInParent");
+        host.originalPosition = position instanceof Point ? new Point((Point) position) : new Point();
+        host.originalFocusable = ReflectUtils.getBooleanField(info, "isFocusable", true);
+        host.originalAlwaysOnTop = Boolean.TRUE.equals(OneStepReflection.call(config, "isAlwaysOnTop"));
     }
 
     private void surfaceChanged(Object controller, boolean visible) {
@@ -483,6 +550,9 @@ final class OneStepShell {
         for (Object change : (List<?>) OneStepReflection.call(args[1], "getChanges")) {
             Object info = OneStepReflection.call(change, "getTaskInfo");
             if (info == null) continue;
+            // The opaque host is part of this session. Its launch/reorder is not an
+            // external app switch; onStop and Binder death handle actual host loss.
+            if (isActivityTask(info)) continue;
             Host host = find(info);
             boolean acquiring = false;
             for (Host candidate : hosts) {
@@ -600,7 +670,7 @@ final class OneStepShell {
                     int focused = tasks.defaultFocusedTaskId();
                     boolean owned = false;
                     for (Host host : hosts) owned |= host.card.taskId == focused;
-                    if (!owned) retainFocus = focused;
+                    if (!owned && focused != activityTaskId) retainFocus = focused;
                 } catch (Exception error) { Log.w(TAG, "Cannot remember external task focus", error); }
             }
             // Restore the selected task last, without stealing focus from Home/Recents/external apps.
@@ -638,6 +708,14 @@ final class OneStepShell {
                 bool(wct, "setForceTranslucent", host.token, false);
                 bool(wct, "setAlwaysOnTop", host.token, host.originalAlwaysOnTop);
                 bool(wct, "setExcludeImeInsets", host.token, false);
+                if (accepting && host.session == session) {
+                    // Replacing a side pane returns a fullscreen task. Keep it below the
+                    // opaque Activity in the same transaction so it cannot stop our host.
+                    Host main = null;
+                    for (Host candidate : hosts)
+                        if (current(candidate) && candidate.borrowed && candidate.main) main = candidate;
+                    arrangeTasks(wct, main);
+                }
                 OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
                 SurfaceControl leash = (SurfaceControl) OneStepReflection.call(appeared, "getLeash");
                 if (leash.isValid()) {
@@ -668,9 +746,15 @@ final class OneStepShell {
             forget(host.card.taskId);
             host.borrowed = false;
             if (!pending.isEmpty() && !retired.contains(host)) retired.add(host);
-        } else if (journal.containsKey(host.card.taskId)) {
-            forget(host.card.taskId);
+        } else {
+            if (host.prepared) {
+                Object wct = transaction();
+                bool(wct, "setForceTranslucent", host.token, false);
+                OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
+            }
+            if (journal.containsKey(host.card.taskId)) forget(host.card.taskId);
         }
+        host.prepared = false;
         releaseView(host);
     }
 
@@ -723,6 +807,19 @@ final class OneStepShell {
     }
     private void reorder(Object wct, Object token, boolean top) throws ReflectiveOperationException { bool(wct, "reorder", token, top); }
 
+    private void arrangeTasks(Object wct, Host focused) throws ReflectiveOperationException {
+        if (activityToken == null) throw new IllegalStateException("Workspace Activity is not attached");
+        // Only the workspace panes are above this opaque fullscreen task. Their logical
+        // viewports overlap, so they stay translucent to WM; the Activity below them
+        // occludes unrelated apps and Home without hiding or freezing those processes.
+        reorder(wct, activityToken, true);
+        for (Host candidate : hosts) {
+            if (current(candidate) && candidate.borrowed && candidate != focused)
+                reorder(wct, candidate.token, true);
+        }
+        if (focused != null) reorder(wct, focused.token, true);
+    }
+
     @SuppressWarnings("unchecked")
     private SparseArray<Object> listeners() throws ReflectiveOperationException {
         return (SparseArray<Object>) OneStepReflection.get(organizer, "mTaskListeners");
@@ -769,12 +866,14 @@ final class OneStepShell {
     private void save(Host host) throws Exception {
         JSONObject item = new JSONObject();
         item.put("task", host.card.taskId).put("user", host.card.userId).put("boot", bootCount);
-        ComponentName base = (ComponentName) ReflectUtils.getField(host.info, "baseActivity");
-        item.put("component", base == null ? "" : base.flattenToString());
+        ComponentName base = baseComponent(host.info);
+        if (base == null) throw new IllegalStateException("Cannot journal a task without its base component");
+        item.put("component", base.flattenToString());
         item.put("mode", host.originalMode).put("bounds", host.originalBounds.flattenToString());
         item.put("focusable", host.originalFocusable).put("alwaysOnTop", host.originalAlwaysOnTop);
         item.put("x", host.originalPosition.x).put("y", host.originalPosition.y);
         item.put("imeInsetsExcluded", true);
+        item.put("forceTranslucent", true);
         journal.put(host.card.taskId, item);
         persist();
     }
@@ -795,19 +894,21 @@ final class OneStepShell {
             Object appeared = appeared(id);
             if (appeared == null) continue;
             Object info = OneStepReflection.call(appeared, "getTaskInfo");
-            ComponentName base = (ComponentName) ReflectUtils.getField(info, "baseActivity");
+            ComponentName base = baseComponent(info);
             if (base == null || !base.flattenToString().equals(item.optString("component"))
                     || ReflectUtils.getIntField(info, "userId", -1) != item.getInt("user")) continue;
             Object token = OneStepReflection.get(info, "token");
             Object wct = transaction();
             boolean imeInsetsExcluded = item.optBoolean("imeInsetsExcluded", false);
             if (imeInsetsExcluded) bool(wct, "setExcludeImeInsets", token, false);
+            boolean forceTranslucent = item.optBoolean("forceTranslucent", false);
+            if (forceTranslucent) bool(wct, "setForceTranslucent", token, false);
             Rect bounds = Rect.unflattenFromString(item.optString("bounds", ""));
             if (OneStepTaskAccess.display(info) != 0
                     || ReflectUtils.invokeNoArgInt(info, "getWindowingMode", -1) != 6 || bounds == null) {
-                // The task may have left the workspace before SystemUI died. Clear only
-                // our IME exclusion, preserving its new display, bounds and windowing mode.
-                if (imeInsetsExcluded) {
+                // The task may have left the workspace, or SystemUI died between preparing
+                // a dormant task and acquiring it. Clear our flags without changing its mode.
+                if (imeInsetsExcluded || forceTranslucent) {
                     OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
                 }
                 continue;
@@ -831,5 +932,12 @@ final class OneStepShell {
         }
         journal.clear();
         persist();
+    }
+
+    private static ComponentName baseComponent(Object info) {
+        Object base = ReflectUtils.getField(info, "baseActivity");
+        if (base instanceof ComponentName) return (ComponentName) base;
+        Object intent = ReflectUtils.getField(info, "baseIntent");
+        return intent instanceof android.content.Intent ? ((android.content.Intent) intent).getComponent() : null;
     }
 }

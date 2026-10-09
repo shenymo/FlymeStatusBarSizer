@@ -41,6 +41,15 @@ final class OneStepRecentTasks {
         return cards;
     }
 
+    Object taskInfo(RecentTaskCard requested) throws ReflectiveOperationException {
+        Object result = recentTasks.invoke(taskManager, 32, ActivityManager.RECENT_IGNORE_UNAVAILABLE, requested.userId);
+        if (result instanceof List) for (Object info : (List<?>) result) {
+            RecentTaskCard card = candidate(info, requested.userId);
+            if (requested.sameTask(card)) return info;
+        }
+        return null;
+    }
+
     static RecentTaskCard candidate(Object info, int userId) {
         Object config = ReflectUtils.getField(info, "configuration");
         Object window = ReflectUtils.getField(config, "windowConfiguration");
@@ -61,6 +70,7 @@ final class OneStepRecentTasks {
         Object component = ReflectUtils.getField(info, "topActivity");
         if (!(component instanceof ComponentName) && intent instanceof Intent) component = ((Intent) intent).getComponent();
         if (!(component instanceof ComponentName)) return null;
+        if (OneStepActivityProtocol.isActivity((ComponentName) component)) return null;
         Object label = ReflectUtils.invokeNoArg(ReflectUtils.getField(info, "taskDescription"), "getLabel");
         String description = label instanceof String && !((String) label).isEmpty()
                 ? (String) label : ((ComponentName) component).getPackageName();

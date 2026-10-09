@@ -64,6 +64,8 @@ final class OneStepTaskAccess {
 
     List<RecentTaskCard> candidates() throws ReflectiveOperationException { return recent.recentTasks(); }
 
+    Object recentTaskInfo(RecentTaskCard card) throws ReflectiveOperationException { return recent.taskInfo(card); }
+
     RecentTaskCard findCandidate(RecentTaskCard requested) throws ReflectiveOperationException {
         for (RecentTaskCard card : candidates()) {
             if (requested.sameTask(card)) return card;
@@ -74,6 +76,9 @@ final class OneStepTaskAccess {
     void activate(RecentTaskCard requested) throws ReflectiveOperationException {
         if (findCandidate(requested) == null) throw new IllegalStateException("Selected task no longer exists");
         ActivityOptions options = ActivityOptions.makeCustomAnimation(context, 0, 0);
+        // Resume dormant recents behind the opaque host. Shell moves the task above
+        // the host only after setting up its TaskView and translucent multiwindow state.
+        OneStepReflection.call(options, "setAvoidMoveToFront");
         Object result = launch.invoke(service, requested.taskId, options.toBundle());
         if (!(result instanceof Number) || ((Number) result).intValue() < 0) {
             throw new IllegalStateException("Cannot resume recent task");

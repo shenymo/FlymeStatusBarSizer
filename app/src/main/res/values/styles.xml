@@ -9,4 +9,17 @@
         <item name="android:colorAccent">@color/flyme_primary</item>
         <item name="android:windowBackground">@color/flyme_background</item>
     </style>
+    <style name="OneStepTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">#131519</item>
+        <item name="android:colorBackground">#131519</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:statusBarColor">#131519</item>
+        <item name="android:navigationBarColor">#131519</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowDisablePreview">true</item>
+    </style>
 </resources>
