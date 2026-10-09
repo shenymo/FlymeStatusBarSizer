@@ -1,5 +1,6 @@
 package com.example.flymestatusbarsizer.feature.onehanded;
 
+import android.animation.AnimatorSet;
 import android.app.ActivityOptions;
 import android.content.Context;
 import android.graphics.Rect;
@@ -18,6 +19,7 @@ import android.view.View;
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import java.lang.reflect.Array;
+import java.lang.reflect.Field;
 import java.util.concurrent.Executor;
 
 /** Runs Flyme's actual icon animator against temporary, pane-local animation surfaces. */
@@ -44,8 +46,33 @@ final class OneStepLaunchAnimation {
                     return launch.iconParent;
                 return chain.proceed();
             });
+            installWallpaperZoomHooks(module, loader);
             supported = true;
-        } catch (Exception error) { Log.w(TAG, "Native floating icon surface unavailable", error); }
+        } catch (Exception error) { Log.w(TAG, "Native workspace animation hooks unavailable", error); }
+    }
+
+    private static void installWallpaperZoomHooks(FlymeStatusBarSizer module, ClassLoader loader)
+            throws Exception {
+        Class<?> depthController = Class.forName(
+                "com.meizu.flyme.launcher.quickstep.FlymeDepthController", false, loader);
+        Field launcherField = OneStepReflection.field(depthController, "mLauncher");
+        // The workspace shares the system wallpaper. Keep the icon/content animation,
+        // but do not create a wallpaper animator that could outlive this launch.
+        module.intercept(OneStepReflection.method(depthController, "createWallpaperZoomAnim",
+                boolean.class, long.class), chain -> {
+            Launch launch = active;
+            if (launch != null && launcherField.get(chain.getThisObject()) == launch.launcher)
+                return new AnimatorSet();
+            return chain.proceed();
+        });
+        // Freeze the controller's cached value too, including native reset/end callbacks,
+        // so finishing or cancelling the launch cannot cause a wallpaper scale jump.
+        module.intercept(OneStepReflection.method(depthController, "setWallpaperZoomOut", float.class), chain -> {
+            Launch launch = active;
+            if (launch != null && launcherField.get(chain.getThisObject()) == launch.launcher)
+                return null;
+            return chain.proceed();
+        });
     }
 
     static Launch prepare(Context launcher, View view, Object item, Class<?> itemClass, int ownerUid) {
