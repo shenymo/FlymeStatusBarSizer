@@ -25,6 +25,7 @@ import com.example.flymestatusbarsizer.util.ReflectUtils;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 
 /** Initializes the live OneStep workspace through LSPosed in SystemUI. */
 public final class OneHandedTaskHooks {
@@ -89,6 +90,7 @@ public final class OneHandedTaskHooks {
             return;
         }
         // Optional lifecycle hooks must not prevent initialization on another Flyme release.
+        installImePositionObserver(module, loader);
         try {
             Class<?> recents = Class.forName("com.android.wm.shell.recents.RecentsTransitionHandler", false, loader);
             for (Method method : recents.getDeclaredMethods()) {
@@ -101,6 +103,48 @@ public final class OneHandedTaskHooks {
                 });
             }
         } catch (Throwable e) { Log.w(TAG, "Recents lifecycle hook unavailable", e); }
+    }
+
+    private static void installImePositionObserver(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> processor = Class.forName(
+                    "com.android.wm.shell.common.DisplayImeController$ImePositionProcessor", false, loader);
+            hookConstruction(module, loader, "com.android.wm.shell.common.DisplayImeController", ime -> {
+                try {
+                    Object observer = Proxy.newProxyInstance(loader, new Class<?>[]{processor}, (proxy, method, args) -> {
+                        if (method.getDeclaringClass() == Object.class) {
+                            switch (method.getName()) {
+                                case "equals": return proxy == args[0];
+                                case "hashCode": return System.identityHashCode(proxy);
+                                case "toString": return "OneStepImePositionObserver";
+                                default: return null;
+                            }
+                        }
+                        OneStepWorkspace current = controller;
+                        if (current != null && args != null && args.length > 0 && Integer.valueOf(0).equals(args[0])) {
+                            switch (method.getName()) {
+                                case "onImeStartPositioning":
+                                    current.onShellImeStart((Integer) args[2], (Boolean) args[3], (Boolean) args[4]);
+                                    break;
+                                case "onImePositionChanged":
+                                    current.onShellImePosition((Integer) args[1]);
+                                    break;
+                                case "onImeEndPositioning":
+                                    current.onShellImeEnd((Boolean) args[1]);
+                                    break;
+                                case "onImeControlTargetChanged":
+                                    if (!(Boolean) args[1]) current.onShellImeControlLost();
+                                    break;
+                                default: break;
+                            }
+                        }
+                        // Observe only; keep Shell's IME alpha and surface transaction intact.
+                        return method.getReturnType() == int.class ? 0 : null;
+                    });
+                    OneStepReflection.call(ime, "addPositionProcessor", new Class<?>[]{processor}, observer);
+                } catch (Exception error) { Log.w(TAG, "Cannot observe Shell IME positioning", error); }
+            });
+        } catch (Throwable error) { Log.w(TAG, "Shell IME positioning unavailable", error); }
     }
 
     private static void hookConstruction(FlymeStatusBarSizer module, ClassLoader loader, String name,

@@ -25,7 +25,7 @@ final class OneStepActivitySession {
     interface Listener {
         void onAttached(int taskId, Rect bounds, Rect insets);
         void onMounted();
-        void onImeChanged(int bottom);
+        void onImeChanged(int bottom, boolean animating);
         void onClosed(boolean focusMain);
     }
 
@@ -79,9 +79,10 @@ final class OneStepActivitySession {
                         break;
                     case OneStepActivityProtocol.INSETS:
                         int bottom = data.readInt();
+                        boolean animating = data.dataAvail() > 0 && data.readBoolean();
                         handler.post(() -> {
                             if (!closed && mounted && callback.equals(client))
-                                listener.onImeChanged(Math.max(0, Math.min(bottom, height)));
+                                listener.onImeChanged(Math.max(0, Math.min(bottom, height)), animating);
                         });
                         break;
                     case OneStepActivityProtocol.CLOSE:

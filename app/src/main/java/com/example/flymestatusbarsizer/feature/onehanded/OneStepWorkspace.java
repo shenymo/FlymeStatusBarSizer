@@ -71,6 +71,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private View recentStrip;
     private ValueAnimator animator;
     private ValueAnimator transitionAnimator;
+    private ValueAnimator imeAnimator;
     private Rect[] frames;
     private Rect contentBounds;
     private final Rect logicalBounds = new Rect();
@@ -83,6 +84,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private int highlightedSlot = -1;
     private int imeBottom;
     private int imeOffset;
+    private boolean imeAnimating;
+    private int activityImeBottom;
+    private boolean activityImeAnimating;
+    private boolean shellImeControlled;
+    private boolean shellImePositioning;
+    private boolean shellImeFloating;
+    private int shellImeTargetBottom;
     private boolean mainOnLeft;
     private boolean checkInFlight;
     private boolean taskNotifications;
@@ -171,10 +179,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 scheduleCheck(300);
             }
 
-            @Override public void onImeChanged(int bottom) {
-                if (generation != request || !active() || bottom == imeBottom) return;
-                imeBottom = bottom;
-                positionForIme();
+            @Override public void onImeChanged(int bottom, boolean animating) {
+                if (generation != request || !active()) return;
+                activityImeBottom = bottom;
+                activityImeAnimating = animating;
+                // Flyme keeps Activity insets visible until Shell's hide animation ends.
+                // They cannot drive movement while Shell owns the actual IME surface.
+                if (!shellImeControlled) applyActivityIme();
             }
 
             @Override public void onClosed(boolean focusMain) {
@@ -197,6 +208,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         transitionProgress = 0;
         imeBottom = 0;
         imeOffset = 0;
+        imeAnimating = false;
+        activityImeBottom = 0;
+        activityImeAnimating = false;
+        shellImeControlled = false;
+        shellImePositioning = false;
+        shellImeFloating = false;
+        shellImeTargetBottom = 0;
         sideOrder.clear();
         for (int i = 1; i < COUNT; i++) sideOrder.add(i);
         frames = layout();
@@ -259,18 +277,126 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         view.setScaleY(scale);
     }
 
+    void onShellImeStart(int shownTop, boolean showing, boolean floating) {
+        dispatchShellIme(() -> {
+            shellImeControlled = true;
+            shellImePositioning = true;
+            shellImeFloating = floating || shownTop >= contentBounds.bottom;
+            shellImeTargetBottom = showing && !shellImeFloating ? imeBottomForTop(shownTop) : 0;
+            cancelImeAnimator();
+            imeAnimating = true;
+            // Preserve the current position at start, including reversals mid-animation.
+            // The following Shell frame supplies the actual surface position.
+            blockInput(true);
+        });
+    }
+
+    void onShellImePosition(int top) {
+        dispatchShellIme(() -> {
+            if (!shellImeControlled || !shellImePositioning) return;
+            imeBottom = shellImeFloating ? 0 : imeBottomForTop(top);
+            imeAnimating = true;
+            positionForIme();
+        });
+    }
+
+    void onShellImeEnd(boolean cancelled) {
+        dispatchShellIme(() -> {
+            if (!shellImeControlled || !shellImePositioning) return;
+            shellImePositioning = false;
+            if (!cancelled) {
+                imeBottom = shellImeTargetBottom;
+                // Apply the exact final position without starting another fallback animation.
+                imeAnimating = true;
+                positionForIme();
+            }
+            imeAnimating = false;
+            workspace.post(this::updateInput);
+        });
+    }
+
+    void onShellImeControlLost() {
+        dispatchShellIme(() -> {
+            if (!shellImeControlled) return;
+            shellImeControlled = false;
+            shellImePositioning = false;
+            applyActivityIme();
+        });
+    }
+
+    private void dispatchShellIme(Runnable update) {
+        if (!active()) return;
+        int request = generation;
+        Runnable action = () -> {
+            if (generation == request && active() && workspace != null) update.run();
+        };
+        // Shell may run on its own executor. Never carry its shared surface transaction
+        // to another thread, or let a queued frame affect a later workspace session.
+        if (android.os.Looper.myLooper() == handler.getLooper()) action.run();
+        else handler.post(action);
+    }
+
+    private int imeBottomForTop(int top) {
+        return Math.max(0, Math.min(screenBounds.height(), screenBounds.bottom - top));
+    }
+
+    private void applyActivityIme() {
+        if (imeBottom == activityImeBottom && imeAnimating == activityImeAnimating) return;
+        imeBottom = activityImeBottom;
+        imeAnimating = activityImeAnimating;
+        positionForIme();
+    }
+
     private void positionForIme() {
-        if (!active() || workspace == null || animator != null || transitionAnimator != null) return;
+        if (!active() || workspace == null) return;
         int nextOffset = Math.max(0, contentBounds.bottom - (screenBounds.bottom - imeBottom));
-        if (imeOffset == nextOffset) return;
-        blockInput(true);
+        // Parent translation composes with pane swaps and the workspace enter animation.
+        // System animation frames already include the IME's easing; do not animate them again.
+        if (imeAnimating || !ValueAnimator.areAnimatorsEnabled()) {
+            cancelImeAnimator();
+            imeOffset = nextOffset;
+            blockInput(true);
+            workspace.setTranslationY(-nextOffset);
+            if (!imeAnimating) workspace.post(this::updateInput);
+            return;
+        }
+        if (imeAnimator != null && imeOffset == nextOffset) return;
+        cancelImeAnimator();
         imeOffset = nextOffset;
-        // Move the toolbar and all panes together without changing their size or scale.
-        workspace.setTranslationY(-imeOffset);
+        float startOffset = -workspace.getTranslationY();
+        if (startOffset == nextOffset) {
+            workspace.post(this::updateInput);
+            return;
+        }
+        blockInput(true);
+        // Some IMEs/ROMs only report the final inset. Retarget from the current position
+        // so rapid show/hide requests do not snap back to an earlier animation endpoint.
+        ValueAnimator movement = ValueAnimator.ofFloat(startOffset, nextOffset);
+        imeAnimator = movement;
+        movement.setDuration(nextOffset > startOffset ? 280 : 220);
+        movement.setInterpolator(EASING);
+        movement.addUpdateListener(value -> workspace.setTranslationY(-(float) value.getAnimatedValue()));
+        movement.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator animation) {
+                if (imeAnimator != animation) return;
+                imeAnimator = null;
+                workspace.post(OneStepWorkspace.this::updateInput);
+            }
+        });
         // Shell excludes IME layout insets for the hosted tasks for the whole session.
         // Do not send setBounds here: even a position-only change triggers task relayout
         // and a Shell transition. SurfaceView moves the native task input with its surface.
-        workspace.post(this::updateInput);
+        movement.start();
+    }
+
+    private void cancelImeAnimator() {
+        ValueAnimator current = imeAnimator;
+        imeAnimator = null;
+        if (current != null) {
+            current.removeAllListeners();
+            current.removeAllUpdateListeners();
+            current.cancel();
+        }
     }
 
     private void applyTransition(float progress) {
@@ -310,7 +436,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void select(int slot) {
-        if (!running() || slot == mainSlot || animator != null || transitionAnimator != null || dragSession != null) return;
+        if (!running() || slot == mainSlot || animator != null || transitionAnimator != null
+                || imeAnimator != null || imeAnimating || dragSession != null) return;
         Pane selected = panes[slot];
         if (selected.host == null || !selected.host.ready) return;
         int previousMain = mainSlot;
@@ -376,7 +503,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void updateInput() {
-        blockInput(!running() || animator != null || transitionAnimator != null || dragSession != null);
+        blockInput(!running() || animator != null || transitionAnimator != null
+                || imeAnimator != null || imeAnimating || dragSession != null);
     }
 
     private void blockInput(boolean block) {
@@ -480,6 +608,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private boolean beginAppDrag(ImageView icon, RecentTaskCard card) {
         if (!running() || animator != null || transitionAnimator != null
+                || imeAnimator != null || imeAnimating
                 || dragSession != null || isHosted(card) || OneHandedTaskHooks.shadeOpen()
                 || backdrop == null || !backdrop.hasDragPointer()) return false;
         blockInput(true);
@@ -756,6 +885,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         blockInput(true);
         cancelAnimator(true);
         cancelAnimator(false);
+        cancelImeAnimator();
+        imeAnimating = false;
+        shellImeControlled = false;
+        shellImePositioning = false;
         finishAppDrag(-1);
         int focusTask = focusMain && panes[mainSlot] != null && panes[mainSlot].card != null
                 ? panes[mainSlot].card.taskId : -1;
@@ -769,6 +902,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (state == State.CLOSED) return;
         cancelAnimator(true);
         cancelAnimator(false);
+        cancelImeAnimator();
+        imeAnimating = false;
+        shellImeControlled = false;
+        shellImePositioning = false;
         if (perf != null) { perf.stop(); perf = null; }
         OneStepStatusBar.setVisible(false);
         if (activitySession != null) { activitySession.close(); activitySession = null; }

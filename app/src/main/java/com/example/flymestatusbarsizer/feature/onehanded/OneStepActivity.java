@@ -17,10 +17,14 @@ import android.view.SurfaceControlViewHost;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.WindowInsets;
+import android.view.WindowInsetsAnimation;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.window.OnBackInvokedDispatcher;
+
+import java.util.HashSet;
+import java.util.List;
 
 /** Opaque application task; live workspace views remain owned by SystemUI. */
 public final class OneStepActivity extends Activity implements SurfaceHolder.Callback {
@@ -35,6 +39,10 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
     private boolean finished;
     private int surfaceWidth;
     private int surfaceHeight;
+    private final HashSet<WindowInsetsAnimation> imeAnimations = new HashSet<>();
+    private int imeBottom;
+    private int sentImeBottom = -1;
+    private boolean sentImeAnimating;
     private final Runnable timeout = () -> closeWorkspace(true);
     private final Runnable forceFinish = this::finishHost;
 
@@ -86,8 +94,33 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         surface.getHolder().addCallback(this);
         root.addView(surface, new FrameLayout.LayoutParams(-1, -1));
         root.setOnApplyWindowInsetsListener((view, insets) -> {
-            sendInsets(insets);
+            // Layout receives the final insets before the first animation frame.
+            // Forward only animated insets until the IME has finished moving.
+            if (imeAnimations.isEmpty()) sendInsets(insets);
             return insets;
+        });
+        root.setWindowInsetsAnimationCallback(new WindowInsetsAnimation.Callback(
+                WindowInsetsAnimation.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+            @Override public void onPrepare(WindowInsetsAnimation animation) {
+                if ((animation.getTypeMask() & WindowInsets.Type.ime()) != 0) {
+                    imeAnimations.add(animation);
+                    sendImeInsets(imeBottom);
+                }
+            }
+
+            @Override public WindowInsets onProgress(WindowInsets insets,
+                    List<WindowInsetsAnimation> runningAnimations) {
+                if (!imeAnimations.isEmpty()) sendInsets(insets);
+                return insets;
+            }
+
+            @Override public void onEnd(WindowInsetsAnimation animation) {
+                if (imeAnimations.remove(animation) && imeAnimations.isEmpty()) {
+                    WindowInsets insets = root.getRootWindowInsets();
+                    if (insets != null) sendInsets(insets);
+                    else sendImeInsets(imeBottom);
+                }
+            }
         });
         setContentView(root);
         WindowInsetsController bars = getWindow().getInsetsController();
@@ -146,13 +179,27 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         mounted = true;
         handler.removeCallbacks(timeout);
         send(OneStepActivityProtocol.MOUNTED, data -> {});
-        sendInsets(surface.getRootWindowInsets());
+        if (imeAnimations.isEmpty()) sendInsets(surface.getRootWindowInsets());
+        else sendImeInsets(imeBottom);
     }
 
     private void sendInsets(WindowInsets insets) {
-        if (!mounted || closing || finished || insets == null) return;
-        int bottom = insets.isVisible(WindowInsets.Type.ime()) ? insets.getInsets(WindowInsets.Type.ime()).bottom : 0;
-        send(OneStepActivityProtocol.INSETS, data -> data.writeInt(bottom));
+        if (insets == null) return;
+        // Visibility can already be false during the hide animation; its inset still moves.
+        sendImeInsets(insets.getInsets(WindowInsets.Type.ime()).bottom);
+    }
+
+    private void sendImeInsets(int bottom) {
+        imeBottom = bottom;
+        if (!mounted || closing || finished) return;
+        boolean animating = !imeAnimations.isEmpty();
+        if (sentImeBottom == bottom && sentImeAnimating == animating) return;
+        sentImeBottom = bottom;
+        sentImeAnimating = animating;
+        send(OneStepActivityProtocol.INSETS, data -> {
+            data.writeInt(bottom);
+            data.writeBoolean(animating);
+        });
     }
 
     private void send(int code, OneStepActivityProtocol.Writer writer) {
