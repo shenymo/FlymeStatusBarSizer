@@ -10,6 +10,7 @@ final class RecentTaskCard {
     final String description;
     final ComponentName component;
     final boolean home;
+    boolean temporary;
 
     RecentTaskCard(int taskId, int userId, Object token, String description, ComponentName component) {
         this(taskId, userId, token, description, component, false);

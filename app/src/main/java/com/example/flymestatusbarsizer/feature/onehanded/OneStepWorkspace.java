@@ -37,7 +37,6 @@ import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -62,6 +61,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private final Pane[] panes = new Pane[COUNT];
     private final ArrayList<Integer> sideOrder = new ArrayList<>();
     private final ArrayList<ImageView> recentIcons = new ArrayList<>();
+    private final ArrayList<RecentTaskCard> recentCards = new ArrayList<>();
+    private final ArrayList<RecentTaskCard> pinnedCards = new ArrayList<>();
+    private LinearLayout recentRow;
+    private boolean recentOrderDirty;
+    private boolean covered;
+    private boolean hostVisible = true;
     private final Executor taskWorker = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "FlymeOneStepTasks");
         thread.setDaemon(true);
@@ -95,7 +100,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private int width;
     private int height;
     private int mainSlot;
-    private int generation;
+    private volatile int generation;
     private int highlightedSlot = -1;
     private int tappedSlot = -1;
     private int imeBottom;
@@ -108,7 +113,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private boolean shellImeFloating;
     private int shellImeTargetBottom;
     private boolean mainOnLeft;
-    private boolean checkInFlight;
     private boolean taskNotifications;
     private float transitionProgress;
     private DragSession dragSession;
@@ -213,6 +217,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             @Override public void onBarColorsChanged(boolean darkIcons) {
                 if (generation == request && active()) OneStepStatusBar.setDarkIcons(darkIcons);
             }
+
+            @Override public void onVisibilityChanged(boolean visible) {
+                if (generation != request || !active()) return;
+                hostVisible = visible;
+                updateInput();
+                scheduleCheck(100);
+            }
         });
         handler.postDelayed(openingTimeout, 12000);
         activitySession.start();
@@ -226,6 +237,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         height = contentBounds.height();
         if (width <= 0 || height <= 0) throw new IllegalStateException("Invalid workspace bounds");
         mainSlot = 0;
+        covered = false;
+        hostVisible = true;
+        pinnedCards.clear();
         mainOnLeft = fromLeft;
         transitionProgress = 0;
         imeBottom = 0;
@@ -480,7 +494,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void select(int slot) {
-        if (!running() || slot == mainSlot || animator != null || transitionAnimator != null
+        if (!running() || covered || slot == mainSlot || animator != null || transitionAnimator != null
                 || imeAnimator != null || imeAnimating || dragSession != null || desktopBusy) return;
         Pane selected = panes[slot];
         if (selected.host == null && !selected.replacing) { enterDesktop(slot, true); return; }
@@ -676,7 +690,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void updateInput() {
-        boolean blocked = !running() || desktopBusy || animator != null || transitionAnimator != null
+        boolean blocked = !running() || covered || !hostVisible || panesBusy() || desktopBusy || animator != null || transitionAnimator != null
                 || imeAnimator != null || imeAnimating || dragSession != null;
         blockInput(blocked);
         Pane main = panes[mainSlot];
@@ -737,7 +751,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         HorizontalScrollView strip = new HorizontalScrollView(context);
         strip.setHorizontalScrollBarEnabled(false);
         strip.setFillViewport(true);
-        strip.setContentDescription("最近使用的应用，长按图标拖入侧边窗口");
+        strip.setContentDescription("应用选择栏，点击切换主窗口，长按拖入任意窗口");
         GradientDrawable background = new GradientDrawable();
         background.setColor(0x80171c25);
         background.setCornerRadius(dp(18));
@@ -745,66 +759,170 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         strip.setBackground(background);
         strip.setClipToOutline(true);
         strip.setElevation(dp(4));
-        LinearLayout row = new LinearLayout(context);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(8), 0, dp(8), 0);
-        // Consume taps in the bar's empty area instead of exiting the workspace.
-        row.setOnClickListener(v -> { });
-        recentIcons.clear();
-        HashSet<String> packages = new HashSet<>();
-        final int sessionGeneration = generation;
-        for (RecentTaskCard card : recent) {
-            if (card.component == null || !packages.add(card.userId + ":" + card.component.getPackageName())) continue;
-            ImageView icon = new ImageView(context);
-            icon.setTag(card);
-            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            icon.setPadding(dp(8), dp(8), dp(8), dp(8));
-            icon.setImageDrawable(context.getPackageManager().getDefaultActivityIcon());
-            icon.setContentDescription(card.description + "，长按拖入侧边窗口");
-            icon.setOnClickListener(v -> { });
-            // beginAppDrag handles feedback, including the windowless fallback.
-            icon.setHapticFeedbackEnabled(false);
-            icon.setOnLongClickListener(v -> beginAppDrag(icon, card));
-            row.addView(icon, new LinearLayout.LayoutParams(dp(56), dp(56)));
-            recentIcons.add(icon);
-            iconLoader.execute(() -> {
-                Drawable drawable;
-                try { drawable = context.getPackageManager().getActivityIcon(card.component); }
-                catch (Exception e) { drawable = context.getPackageManager().getDefaultActivityIcon(); }
-                Drawable result = drawable;
-                handler.post(() -> {
-                    if (active() && generation == sessionGeneration) icon.setImageDrawable(result);
-                });
-            });
-        }
-        strip.addView(row, new HorizontalScrollView.LayoutParams(-2, -1));
+        recentRow = new LinearLayout(context);
+        recentRow.setGravity(Gravity.CENTER_VERTICAL);
+        recentRow.setPadding(dp(8), 0, dp(8), 0);
+        recentRow.setOnClickListener(v -> { });
+        recentCards.clear();
+        recentCards.addAll(recent);
+        recentOrderDirty = true;
+        strip.addView(recentRow, new HorizontalScrollView.LayoutParams(-2, -1));
+        updateRecentIcons();
         return strip;
     }
 
-    private boolean isHosted(RecentTaskCard card) {
-        for (Pane pane : panes) {
-            if (pane == null || pane.card == null) continue;
-            if (pane.card.sameTask(card)) return true;
-            if (pane.card.userId == card.userId && pane.card.component != null && card.component != null
-                    && pane.card.component.getPackageName().equals(card.component.getPackageName())) return true;
-        }
+    private static boolean sameEntry(RecentTaskCard a, RecentTaskCard b) {
+        return a.sameTask(b) && a.component != null && b.component != null
+                && a.component.getPackageName().equals(b.component.getPackageName());
+    }
+
+    private void pinRecent(RecentTaskCard card) {
+        if (card == null || card.home || card.component == null || card.temporary) return;
+        pinnedCards.removeIf(item -> sameEntry(item, card));
+        pinnedCards.add(0, card);
+        recentOrderDirty = true;
+        updateRecentIcons();
+    }
+
+    private void rememberRecent(RecentTaskCard card) {
+        if (card == null || card.home || card.component == null || card.temporary) return;
+        for (RecentTaskCard item : recentCards) if (sameEntry(item, card)) return;
+        recentCards.add(0, card);
+        recentOrderDirty = true;
+    }
+
+    private Pane hostedPane(RecentTaskCard card) {
+        for (Pane pane : panes) if (pane != null && pane.card != null && pane.card.sameTask(card)) return pane;
+        return null;
+    }
+
+    private boolean isHosted(RecentTaskCard card) { return hostedPane(card) != null; }
+
+    private boolean panesBusy() {
+        for (Pane pane : panes) if (pane != null && (pane.replacing || pane.launchHost != null)) return true;
         return false;
     }
 
+    private boolean canChangeTask() {
+        return running() && !covered && hostVisible && !panesBusy() && !desktopBusy && animator == null
+                && transitionAnimator == null && imeAnimator == null && !imeAnimating
+                && dragSession == null && !OneHandedTaskHooks.shadeOpen();
+    }
+
     private void updateRecentIcons() {
+        if (recentOrderDirty && dragSession == null && recentRow != null) {
+            recentOrderDirty = false;
+            recentRow.removeAllViews();
+            recentIcons.clear();
+            ArrayList<RecentTaskCard> ordered = new ArrayList<>(pinnedCards);
+            for (RecentTaskCard card : recentCards) {
+                boolean duplicate = false;
+                for (RecentTaskCard item : ordered) if (sameEntry(item, card)) { duplicate = true; break; }
+                if (!duplicate && !card.home && !card.temporary) ordered.add(card);
+            }
+            final int request = generation;
+            for (RecentTaskCard card : ordered) {
+                if (card.component == null) continue;
+                ImageView icon = new ImageView(context);
+                icon.setTag(card);
+                icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                icon.setPadding(dp(8), dp(8), dp(8), dp(8));
+                icon.setImageDrawable(context.getPackageManager().getDefaultActivityIcon());
+                icon.setOnClickListener(v -> showTask(card, mainSlot));
+                icon.setHapticFeedbackEnabled(false);
+                icon.setOnLongClickListener(v -> beginAppDrag(icon, card));
+                recentRow.addView(icon, new LinearLayout.LayoutParams(dp(56), dp(56)));
+                recentIcons.add(icon);
+                iconLoader.execute(() -> {
+                    Drawable drawable;
+                    try { drawable = context.getPackageManager().getActivityIcon(card.component); }
+                    catch (Exception error) { drawable = context.getPackageManager().getDefaultActivityIcon(); }
+                    Drawable result = drawable;
+                    handler.post(() -> {
+                        if (active() && generation == request && icon.getParent() == recentRow)
+                            icon.setImageDrawable(result);
+                    });
+                });
+            }
+            if (!pinnedCards.isEmpty() && recentStrip instanceof HorizontalScrollView)
+                ((HorizontalScrollView) recentStrip).scrollTo(0, 0);
+        }
         for (ImageView icon : recentIcons) {
             RecentTaskCard card = (RecentTaskCard) icon.getTag();
-            boolean available = !isHosted(card);
-            icon.setAlpha(available && icon != dragSource ? 1f : 0.4f);
-            icon.setLongClickable(available);
-            icon.setContentDescription(card.description + (available ? "，长按拖入侧边窗口" : "，已在工作台中"));
+            Pane pane = hostedPane(card);
+            icon.setAlpha(icon == dragSource ? 0.4f : pane == null ? 1f : 0.65f);
+            icon.setLongClickable(true);
+            icon.setContentDescription(card.description + (pane == null ? "" : "，已在工作台中")
+                    + "，点击切换主窗口，长按拖入任意窗口");
         }
     }
 
+    private void showTask(RecentTaskCard card, int slot) {
+        if (!canChangeTask() || slot < 0 || slot >= COUNT || panes[slot] == null) return;
+        Pane source = hostedPane(card);
+        Pane target = panes[slot];
+        if (source != null) {
+            if (!source.card.component.getPackageName().equals(card.component.getPackageName())) {
+                // Activities sharing one task cannot be split into two TaskViews.
+                if (slot != mainSlot) {
+                    Toast.makeText(context, "这两个页面属于同一任务，无法同时分窗，请点击图标返回", Toast.LENGTH_SHORT).show();
+                } else if (source.slot != mainSlot) {
+                    select(source.slot);
+                    int request = generation;
+                    handler.postDelayed(() -> {
+                        if (running() && generation == request) showTask(card, mainSlot);
+                    }, 300);
+                } else restorePage(source, card);
+                return;
+            }
+            if (source == target) return;
+            if (source.host == null || !source.host.ready || (target.host != null && !target.host.ready)) return;
+            int oldSlot = source.slot;
+            pinRecent(target.card);
+            panes[slot] = source;
+            panes[oldSlot] = target;
+            source.slot = slot;
+            target.slot = oldSlot;
+            for (Pane pane : panes) {
+                position(pane.container, frames[pane.slot]);
+                pane.updateAppearance();
+                pane.updateGeometry();
+            }
+            if (target.host != null && target.host.home() && target.slot != mainSlot) {
+                disconnectDesktop();
+                clearDesktop(target, this::updateInput);
+            }
+            shell.focus(panes[mainSlot].host);
+            updateRecentIcons();
+            updateInput();
+            haptic(HapticFeedbackConstants.CONFIRM);
+            return;
+        }
+        target.load(card);
+    }
+
+    private void restorePage(Pane pane, RecentTaskCard card) {
+        pane.replacing = true;
+        updateInput();
+        int request = generation;
+        taskWorker.execute(() -> {
+            if (!active() || generation != request) return;
+            boolean restored = false;
+            try { tasks.returnToPage(card); restored = true; }
+            catch (Exception error) { Log.w(TAG, "Cannot return to source Activity", error); }
+            boolean success = restored;
+            handler.post(() -> {
+                if (!active() || generation != request) return;
+                pane.replacing = false;
+                if (!success) Toast.makeText(context, "此页面无法直接恢复，请使用应用内返回", Toast.LENGTH_SHORT).show();
+                scheduleCheck(0);
+                updateInput();
+            });
+        });
+    }
+
     private boolean beginAppDrag(ImageView icon, RecentTaskCard card) {
-        if (!running() || animator != null || transitionAnimator != null
-                || imeAnimator != null || imeAnimating || desktopBusy
-                || dragSession != null || isHosted(card) || OneHandedTaskHooks.shadeOpen()
+        if (!canChangeTask()
                 || backdrop == null || !backdrop.hasDragPointer()) return false;
         clearPaneTapHighlight();
         blockInput(true);
@@ -857,9 +975,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         updateInput();
         if (targetSlot >= 0 && targetSlot < COUNT) {
             handler.post(() -> {
-                if (!running() || generation != session.generation || targetSlot == mainSlot
-                        || panes[targetSlot] == null || OneHandedTaskHooks.shadeOpen()) return;
-                if (panes[targetSlot].load(session.card)) haptic(HapticFeedbackConstants.CONFIRM);
+                if (!running() || generation != session.generation) return;
+                showTask(session.card, targetSlot);
             });
         }
     }
@@ -868,7 +985,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (!running() || workspace == null || OneHandedTaskHooks.shadeOpen()) return -1;
         int x = (int) (pointerX - workspace.getX());
         int y = (int) (pointerY - workspace.getY());
-        for (int slot : sideOrder) {
+        for (int slot = 0; slot < COUNT; slot++) {
             if (panes[slot] != null && !panes[slot].replacing && frames[slot].contains(x, y)) return slot;
         }
         return -1;
@@ -1001,82 +1118,119 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void checkTasks() {
-        if (!active() || checkInFlight) return;
+        if (!active()) return;
         if (!OneHandedTaskHooks.workspaceAllowed(context)) { close(false); return; }
-        checkInFlight = true;
-        int request = generation;
-        // A task snapshot can return after its pane has been replaced/removed. Remember
-        // the identities present when the query started so one stale focus cannot exit.
-        ArrayList<RecentTaskCard> queriedCards = new ArrayList<>();
-        for (Pane pane : panes) if (pane != null) {
-            if (pane.card != null) queriedCards.add(pane.card);
-            if (pane.launchHost != null && pane.launchHost.card != null) queriedCards.add(pane.launchHost.card);
+        shell.checkFocus(generation);
+        scheduleCheck(taskNotifications ? 3000 : 700);
+    }
+
+    @Override public void onCoverageChanged(boolean value) {
+        if (!active()) return;
+        covered = value;
+        OneStepStatusBar.setVisible(!value);
+        if (value) {
+            finishAppDrag(-1);
+        } else if (running() && !panesBusy() && !OneHandedTaskHooks.shadeOpen()) {
+            shell.focus(panes[mainSlot].host);
         }
-        taskWorker.execute(() -> {
-            try {
-                List<?> roots = tasks.roots();
-                handler.post(() -> {
-                    if (generation != request) return;
-                    checkInFlight = false;
-                    if (!active()) return;
-                    if (running() && !OneHandedTaskHooks.shadeOpen()) {
-                        for (Object root : roots) {
-                            if (OneStepTaskAccess.display(root) != 0 || !ReflectUtils.getBooleanField(root, "isFocused", false)) continue;
-                            if (OneStepShell.taskEnded(root)) continue;
-                            boolean hosted = shell.isActivityTask(root);
-                            for (RecentTaskCard card : queriedCards) if (card.taskId == OneStepTaskAccess.taskId(root)
-                                    && card.token.equals(OneStepTaskAccess.token(root))) hosted = true;
-                            for (Pane pane : panes) if (pane != null && pane.card != null
-                                    && pane.card.taskId == OneStepTaskAccess.taskId(root)
-                                    && pane.card.token.equals(OneStepTaskAccess.token(root))) hosted = true;
-                            for (Pane pane : panes) if (pane != null && pane.launchHost != null) {
-                                RecentTaskCard launching = pane.launchHost.card;
-                                if (OneStepShell.hasCookie(pane.launchHost, root)) hosted = true;
-                                if (launching != null && launching.taskId == OneStepTaskAccess.taskId(root)
-                                        && launching.token.equals(OneStepTaskAccess.token(root))) hosted = true;
-                            }
-                            if (!hosted) {
-                                Log.i(TAG, "Leaving workspace for focused task=" + OneStepTaskAccess.taskId(root));
-                                close(false);
-                                return;
-                            }
-                        }
-                    }
-                    scheduleCheck(taskNotifications ? 3000 : 700);
-                });
-            } catch (Exception error) {
-                handler.post(() -> {
-                    if (generation != request) return;
-                    checkInFlight = false;
-                    if (active()) fail("无法同步应用任务", error);
-                });
+        updateInput();
+    }
+
+    @Override public void onTaskChanged(OneStepShell.Host host, RecentTaskCard previous) {
+        if (!active()) return;
+        for (Pane pane : panes) if (pane != null && pane.host == host) {
+            pane.card = host.card;
+            if (pane.slot == mainSlot) pinRecent(previous);
+            rememberRecent(host.card);
+            updateRecentIcons();
+            return;
+        }
+    }
+
+    @Override public void onNavigation(OneStepShell.Navigation navigation) {
+        acceptNavigation(navigation, 0);
+    }
+
+    private void acceptNavigation(OneStepShell.Navigation navigation, int attempt) {
+        if (!active() || navigation.generation != generation || navigation.cancelled) return;
+        if (!running() || animator != null || transitionAnimator != null || panesBusy()
+                || dragSession != null || desktopBusy || OneHandedTaskHooks.shadeOpen()) {
+            if (attempt < 100) handler.postDelayed(() -> acceptNavigation(navigation, attempt + 1), 50);
+            else shell.abandonNavigation(navigation);
+            return;
+        }
+        Pane pane = panes[mainSlot];
+        Pane existing = hostedPane(navigation.card);
+        if (existing != null) {
+            // Focus/task reuse must use the same move path as an explicit icon selection.
+            if (canChangeTask()) {
+                showTask(existing.card, mainSlot);
+                shell.completeNavigation(navigation);
+            } else if (attempt < 100) handler.postDelayed(() -> acceptNavigation(navigation, attempt + 1), 50);
+            else shell.abandonNavigation(navigation);
+            return;
+        }
+        pane.replacing = true;
+        blockInput(true);
+        try {
+            pane.launchHost = shell.createNavigation(context, navigation);
+            pane.mount(pane.launchHost);
+            pane.launchHost.view.bringToFront();
+            shell.geometry(pane.launchHost, logicalBounds, logicalBounds.width(), logicalBounds.height(), true);
+        } catch (Exception error) {
+            Log.w(TAG, "Cannot accept application navigation", error);
+            if (pane.launchHost != null) {
+                OneStepShell.Host failed = pane.launchHost;
+                shell.abandonNavigation(navigation);
+                shell.release(failed, () -> onLaunchFailed(failed));
             }
-        });
+            else { pane.replacing = false; shell.abandonNavigation(navigation); updateInput(); }
+        }
     }
 
     @Override public void onReady(OneStepShell.Host host) {
         if (!active()) return;
         for (Pane pane : panes) if (pane != null && pane.launchHost == host) {
-            OneStepShell.Host home = pane.host;
+            OneStepShell.Host previous = pane.host;
+            RecentTaskCard previousCard = pane.card;
             pane.launchHost = null;
             pane.host = host;
             pane.card = host.card;
             pane.empty.setVisibility(View.GONE);
-            disconnectDesktop();
-            shell.focus(host);
+            if (previous != null && previous.home()) disconnectDesktop();
+            if (host.navigation != null && previousCard != null && !previousCard.home) {
+                pane.history.removeIf(card -> card.sameTask(previousCard));
+                pane.history.add(0, previousCard);
+            } else pane.history.clear();
+            if (host.navigation != null) shell.completeNavigation(host.navigation);
+            if (!host.card.temporary) {
+                RecentTaskCard pin = previousCard;
+                if (pin != null && pin.temporary) for (RecentTaskCard item : pane.history) {
+                    if (!item.temporary) { pin = item; break; }
+                }
+                pinRecent(pin);
+            }
+            rememberRecent(host.card);
+            shell.focus(panes[mainSlot].host);
             int request = generation;
-            shell.release(home, () -> {
+            Runnable finished = () -> {
                 if (!running() || generation != request) return;
-                pane.container.removeView(home.view);
+                if (previous != null) pane.container.removeView(previous.view);
+                pane.replacing = false;
                 desktopBusy = false;
                 pane.updateAppearance();
                 updateRecentIcons();
                 updateInput();
-            });
+            };
+            if (previous != null) shell.release(previous, finished);
+            else finished.run();
             return;
         }
         for (Pane pane : panes) if (pane != null && pane.host == host) {
             pane.card = host.card;
+            pane.replacing = false;
+            rememberRecent(host.card);
+            updateRecentIcons();
             if (host.home()) desktopBusy = false;
             pane.empty.setVisibility(View.GONE);
             if (pane.slot == mainSlot) {
@@ -1099,24 +1253,33 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     @Override public void onLaunchFailed(OneStepShell.Host host) {
-        if (!running()) return;
+        if (!active()) return;
         for (Pane pane : panes) if (pane != null) {
             if (pane.launchHost == host) {
                 pane.container.removeView(host.view);
                 pane.launchHost = null;
+                pane.replacing = false;
                 desktopBusy = false;
                 if (desktopSession != null) desktopSession.retry();
-                pane.empty.setVisibility(View.GONE);
-                shell.focus(pane.host);
+                pane.empty.setVisibility(pane.host == null ? View.VISIBLE : View.GONE);
+                shell.focus(panes[mainSlot].host);
                 Toast.makeText(context, "应用未能打开，请重试", Toast.LENGTH_SHORT).show();
                 updateInput();
                 return;
             }
-            if (pane.host == host && host.home()) {
+            if (pane.host == host) {
                 pane.container.removeView(host.view);
                 pane.host = null;
                 pane.card = null;
-                desktopUnavailable(pane);
+                pane.replacing = false;
+                pane.showEmpty();
+                if (state == State.OPENING) fail("无法打开应用窗口", new IllegalStateException("Initial task unavailable"));
+                else if (host.home()) desktopUnavailable(pane);
+                else {
+                    Toast.makeText(context, "暂时无法打开应用", Toast.LENGTH_SHORT).show();
+                    if (pane.slot == mainSlot) returnToPrevious(pane, generation);
+                    updateInput();
+                }
                 return;
             }
         }
@@ -1159,22 +1322,41 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         for (Pane pane : panes) if (pane != null && pane.host == host) {
             if (host.home()) disconnectDesktop();
             if (pane.launchHost != null) {
-                OneStepShell.Host launching = pane.launchHost;
-                pane.launchHost = null;
-                shell.release(launching, () -> pane.container.removeView(launching.view));
+                // The source may finish as part of a successful redirect. Its successor
+                // still owns this pane's pending handoff and must be allowed to mount.
+                pane.container.removeView(host.view);
+                pane.host = null;
+                pane.card = null;
+                return;
             }
             pane.container.removeView(host.view);
             pane.host = null;
             pane.card = null;
+            pane.replacing = false;
             pane.showEmpty();
             if (pane.slot == mainSlot) {
                 desktopBusy = false;
                 shell.focus(null);
-                if (!host.home()) returnToDesktop(pane, generation);
+                if (!host.home()) returnToPrevious(pane, generation);
             }
         }
         updateRecentIcons();
         updateInput();
+    }
+
+    private void returnToPrevious(Pane pane, int request) {
+        if (!running() || generation != request || pane != panes[mainSlot] || pane.host != null) return;
+        if (!canChangeTask()) {
+            handler.postDelayed(() -> returnToPrevious(pane, request), 100);
+            return;
+        }
+        while (!pane.history.isEmpty()) {
+            RecentTaskCard previous = pane.history.remove(0);
+            Pane existing = hostedPane(previous);
+            if (existing != null) { showTask(existing.card, mainSlot); return; }
+            if (pane.load(previous)) return;
+        }
+        returnToDesktop(pane, request);
     }
 
     private void returnToDesktop(Pane pane, int request) {
@@ -1239,8 +1421,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         workspace = null;
         recentStrip = null;
         recentIcons.clear();
+        recentCards.clear();
+        pinnedCards.clear();
+        recentRow = null;
+        recentOrderDirty = false;
         for (int i = 0; i < COUNT; i++) panes[i] = null;
-        checkInFlight = false;
         generation++;
         desktopBusy = false;
         state = State.CLOSED;
@@ -1257,7 +1442,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private int dp(float value) { return Math.round(value * context.getResources().getDisplayMetrics().density); }
 
     private final class Pane {
-        final int slot;
+        int slot;
+        final ArrayList<RecentTaskCard> history = new ArrayList<>();
         final FrameLayout container = new FrameLayout(context);
         final TextView empty = new TextView(context);
         final GradientDrawable fill = new GradientDrawable();
@@ -1293,10 +1479,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             showEmpty();
             empty.setBackgroundColor(Color.TRANSPARENT);
             empty.setContentDescription("空白应用窗口，点击打开桌面，或长按上方应用图标拖入此处");
-            empty.setOnClickListener(v -> { if (slot == mainSlot) enterDesktop(slot, true); else select(slot); });
+            empty.setOnClickListener(v -> { if (this.slot == mainSlot) enterDesktop(this.slot, true); else select(this.slot); });
             container.addView(empty, new FrameLayout.LayoutParams(-1, -1));
             container.setOnTouchListener((view, event) -> {
-                if (event.getActionMasked() == MotionEvent.ACTION_DOWN && slot != mainSlot) select(slot);
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN && this.slot != mainSlot) select(this.slot);
                 return true;
             });
             container.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateInput());
@@ -1336,31 +1522,71 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
 
         boolean load(RecentTaskCard next) {
-            if (!active() || replacing || isHosted(next)) return false;
+            if (!active() || replacing || launchHost != null || isHosted(next)) return false;
             replacing = true;
-            OneStepShell.Host previous = host;
             int request = generation;
-            Runnable attach = () -> {
-                if (!active() || generation != request) return;
-                if (previous != null) container.removeView(previous.view);
-                host = null;
-                card = next;
-                empty.setText("正在打开…");
-                empty.setVisibility(View.VISIBLE);
+            OneStepShell.Host previous = host;
+            // Validate dormant entries off the UI thread. A stale icon must leave the
+            // current pane intact instead of closing the whole workspace.
+            taskWorker.execute(() -> {
+                RecentTaskCard resolved = null;
                 try {
-                    host = shell.create(context, next, state == State.OPENING && slot == mainSlot);
-                    mount(host);
-                    updateAppearance();
-                    if (Build.VERSION.SDK_INT >= 34) host.view.setAlpha(transitionProgress);
-                    updateGeometry();
-                    updateRecentIcons();
-                    container.post(OneStepWorkspace.this::updateInput);
-                } catch (Exception error) { fail("无法创建应用窗口", error); }
-                replacing = false;
-            };
-            if (previous != null) shell.release(previous, attach);
-            else attach.run();
-            return active();
+                    if (next.home) resolved = next;
+                    else {
+                        for (Object info : tasks.roots()) if (next.taskId == OneStepTaskAccess.taskId(info)
+                                && next.token.equals(OneStepTaskAccess.token(info))
+                                && next.userId == ReflectUtils.getIntField(info, "userId", -1)
+                                && OneStepTaskAccess.externalTaskAllowed(info)) {
+                            resolved = OneStepTaskAccess.runningCard(info);
+                            break;
+                        }
+                        if (resolved == null) resolved = tasks.findCandidate(next);
+                    }
+                } catch (Exception error) { Log.w(TAG, "Cannot resolve selected task", error); }
+                RecentTaskCard cardToLoad = resolved;
+                handler.post(() -> {
+                    if (!active() || generation != request || panes[slot] != this) return;
+                    if (cardToLoad == null) {
+                        replacing = false;
+                        pinnedCards.removeIf(card -> card.sameTask(next));
+                        recentCards.removeIf(card -> card.sameTask(next));
+                        recentOrderDirty = true;
+                        updateRecentIcons();
+                        Toast.makeText(context, "应用任务已结束", Toast.LENGTH_SHORT).show();
+                        if (host == null && slot == mainSlot) returnToPrevious(this, request);
+                        updateInput();
+                        return;
+                    }
+                    try {
+                        OneStepShell.Host created = shell.create(context, cardToLoad,
+                                state == State.OPENING && slot == mainSlot, true);
+                        if (previous == null) { host = created; card = cardToLoad; }
+                        else launchHost = created;
+                        mount(created);
+                        created.view.bringToFront();
+                        if (Build.VERSION.SDK_INT >= 34) created.view.setAlpha(transitionProgress);
+                        shell.geometry(created, logicalBounds, logicalBounds.width(), logicalBounds.height(), slot == mainSlot);
+                        updateAppearance();
+                        updateInput();
+                    } catch (Exception error) {
+                        replacing = false;
+                        if (launchHost != null) {
+                            OneStepShell.Host failed = launchHost;
+                            shell.release(failed, () -> onLaunchFailed(failed));
+                        } else if (host != null && host != previous) {
+                            OneStepShell.Host failed = host;
+                            shell.release(failed, () -> onLaunchFailed(failed));
+                        } else if (state == State.OPENING) fail("无法创建应用窗口", error);
+                        else {
+                            Log.w(TAG, "Cannot replace application", error);
+                            Toast.makeText(context, "暂时无法打开应用", Toast.LENGTH_SHORT).show();
+                            updateInput();
+                        }
+                    }
+                });
+            });
+            updateInput();
+            return true;
         }
 
         void mount(OneStepShell.Host task) throws ReflectiveOperationException {
@@ -1369,7 +1595,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             // Apply before attachment so the first app frame is rounded at launch handoff.
             task.setCornerRadius(cornerRadius);
             task.view.setOnTouchListener((view, event) -> {
-                if (event.getActionMasked() == MotionEvent.ACTION_DOWN && slot != mainSlot) select(slot);
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN && this.slot != mainSlot) select(this.slot);
                 return true;
             });
             task.obscure(new Rect(screenBounds));

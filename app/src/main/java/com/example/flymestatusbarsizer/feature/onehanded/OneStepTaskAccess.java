@@ -3,6 +3,7 @@ package com.example.flymestatusbarsizer.feature.onehanded;
 import android.app.ActivityOptions;
 import android.content.Context;
 import android.content.ComponentName;
+import android.content.Intent;
 import android.os.Bundle;
 
 import com.example.flymestatusbarsizer.util.ReflectUtils;
@@ -41,6 +42,41 @@ final class OneStepTaskAccess {
     static int display(Object info) { return ReflectUtils.getIntField(info, "displayId", -1); }
     static Object token(Object info) {
         return ReflectUtils.invokeNoArg(ReflectUtils.getField(info, "token"), "asBinder");
+    }
+
+    static RecentTaskCard runningCard(Object info) {
+        Object component = ReflectUtils.getField(info, "topActivity");
+        if (!(component instanceof ComponentName)) component = ReflectUtils.getField(info, "baseActivity");
+        if (!(component instanceof ComponentName) || token(info) == null || taskId(info) < 0
+                || OneStepActivityProtocol.isActivity((ComponentName) component)) return null;
+        RecentTaskCard card = new RecentTaskCard(taskId(info), ReflectUtils.getIntField(info, "userId", -1),
+                token(info), ((ComponentName) component).getPackageName(), (ComponentName) component);
+        Object intent = ReflectUtils.getField(info, "baseIntent");
+        String name = card.component.getClassName();
+        String action = intent instanceof Intent ? ((Intent) intent).getAction() : null;
+        card.temporary = (intent instanceof Intent
+                && (((Intent) intent).getFlags() & Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS) != 0)
+                || Intent.ACTION_CHOOSER.equals(action) || Intent.ACTION_GET_CONTENT.equals(action)
+                || Intent.ACTION_OPEN_DOCUMENT.equals(action) || Intent.ACTION_OPEN_DOCUMENT_TREE.equals(action)
+                || Intent.ACTION_CREATE_DOCUMENT.equals(action)
+                || name.contains("ResolverActivity") || name.contains("ChooserActivity")
+                || name.contains("GrantPermissionsActivity");
+        return card;
+    }
+
+    static boolean externalTaskAllowed(Object info) {
+        RecentTaskCard card = runningCard(info);
+        if (card == null || display(info) != 0 || OneStepShell.taskEnded(info)
+                || ReflectUtils.getIntField(info, "parentTaskId", -2) != -1) return false;
+        Object window = ReflectUtils.getField(ReflectUtils.getField(info, "configuration"), "windowConfiguration");
+        int mode = ReflectUtils.invokeNoArgInt(window, "getWindowingMode", -1);
+        String name = card.component.getClassName();
+        // Authentication, calls and translucent system UI remain above the workspace.
+        return ReflectUtils.invokeNoArgInt(window, "getActivityType", -1) == 1
+                && (mode == 1 || mode == 6)
+                && !ReflectUtils.getBooleanField(info, "isTopActivityTransparent", false)
+                && !name.contains("InCallActivity") && !name.contains("ConfirmDeviceCredential")
+                && !name.contains("Biometric") && !name.contains("GrantPermissionsActivity");
     }
 
     static boolean application(Object info) {
@@ -115,6 +151,23 @@ final class OneStepTaskAccess {
     }
 
     void focusTask(int id) throws ReflectiveOperationException { focusTask.invoke(service, id); }
+
+    void returnToPage(RecentTaskCard requested) throws ReflectiveOperationException {
+        boolean exists = false;
+        for (Object info : roots()) if (requested.taskId == taskId(info) && requested.token.equals(token(info))
+                && requested.userId == ReflectUtils.getIntField(info, "userId", -1)) exists = true;
+        if (!exists) throw new IllegalStateException("The source task no longer exists");
+        ActivityOptions options = ActivityOptions.makeBasic();
+        options.setLaunchDisplayId(0);
+        OneStepReflection.call(options, "setLaunchTaskId", new Class<?>[]{int.class}, requested.taskId);
+        // CLEAR_TOP returns to an exported source Activity in its existing task. This
+        // follows same-task back semantics, rather than duplicating that task.
+        Intent intent = new Intent().setComponent(requested.component)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        OneStepReflection.call(context, "startActivityAsUser",
+                new Class<?>[]{Intent.class, Bundle.class, android.os.UserHandle.class}, intent, options.toBundle(),
+                android.os.UserHandle.getUserHandleForUid(requested.userId * 100000));
+    }
 
     void registerTaskChanges(Runnable callback) throws ReflectiveOperationException {
         if (taskListener != null) return;

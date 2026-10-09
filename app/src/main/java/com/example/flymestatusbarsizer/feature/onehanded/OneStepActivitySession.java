@@ -28,6 +28,7 @@ final class OneStepActivitySession {
         void onImeChanged(int bottom, boolean animating);
         void onBarColorsChanged(boolean darkIcons);
         void onClosed(boolean focusMain);
+        void onVisibilityChanged(boolean visible);
     }
 
     private final Context context;
@@ -55,7 +56,7 @@ final class OneStepActivitySession {
         control = new Binder() {
             @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
                     throws RemoteException {
-                if (code < OneStepActivityProtocol.ATTACH || code > OneStepActivityProtocol.BAR_COLORS)
+                if (code < OneStepActivityProtocol.ATTACH || code > OneStepActivityProtocol.REMOUNT)
                     return super.onTransact(code, data, reply, flags);
                 if (Binder.getCallingUid() != clientUid) throw new SecurityException("Workspace client mismatch");
                 data.enforceInterface(OneStepActivityProtocol.CONTROL);
@@ -101,6 +102,29 @@ final class OneStepActivitySession {
                         handler.post(() -> {
                             if (!closed && mounted && callback.equals(client))
                                 listener.onBarColorsChanged(darkIcons);
+                        });
+                        break;
+                    case OneStepActivityProtocol.VISIBILITY:
+                        boolean visible = data.readBoolean();
+                        handler.post(() -> {
+                            if (!closed && callback.equals(client)) listener.onVisibilityChanged(visible);
+                        });
+                        break;
+                    case OneStepActivityProtocol.REMOUNT:
+                        IBinder newToken = data.readStrongBinder();
+                        handler.post(() -> {
+                            if (closed || !callback.equals(client) || host == null) return;
+                            // A recreated SurfaceView can mount a fresh parcel of the same
+                            // embedded hierarchy; its window/input capability must still match.
+                            if (!java.util.Objects.equals(hostToken, newToken)) {
+                                listener.onClosed(false);
+                                return;
+                            }
+                            try { sendSurface(); }
+                            catch (Exception error) {
+                                Log.w(OneHandedTaskHooks.TAG, "Cannot remount workspace", error);
+                                listener.onClosed(false);
+                            }
                         });
                         break;
                     default: break;
@@ -161,6 +185,10 @@ final class OneStepActivitySession {
         // TaskView opens input holes for cross-UID application windows inside this surface tree.
         OneStepReflection.call(params, "setTrustedOverlay");
         OneStepReflection.call(host, "setView", new Class<?>[]{View.class, WindowManager.LayoutParams.class}, view, params);
+        sendSurface();
+    }
+
+    private void sendSurface() throws RemoteException {
         SurfaceControlViewHost.SurfacePackage pack = host.getSurfacePackage();
         if (pack == null) throw new IllegalStateException("Workspace surface is unavailable");
         try {

@@ -44,6 +44,7 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
     };
     private boolean attached;
     private boolean mounted;
+    private boolean remountPending;
     private boolean closing;
     private boolean finished;
     private int surfaceWidth;
@@ -191,7 +192,11 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
     @Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         if (closing || finished || width <= 0 || height <= 0) return;
         if (attached) {
-            if (width != surfaceWidth || height != surfaceHeight) closeWorkspace(false);
+            if (width != surfaceWidth || height != surfaceHeight) { closeWorkspace(false); return; }
+            if (!mounted && !remountPending) {
+                remountPending = true;
+                send(OneStepActivityProtocol.REMOUNT, data -> data.writeStrongBinder(surface.getHostToken()));
+            }
             return;
         }
         IBinder hostToken = surface.getHostToken();
@@ -215,6 +220,7 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
     }
 
     private void mount(SurfaceControlViewHost.SurfacePackage pack) {
+        remountPending = false;
         if (pack == null) { closeWorkspace(true); return; }
         if (closing || finished || !attached || mounted || !surface.getHolder().getSurface().isValid()) {
             pack.release();
@@ -231,6 +237,7 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         mounted = true;
         handler.removeCallbacks(timeout);
         send(OneStepActivityProtocol.MOUNTED, data -> {});
+        send(OneStepActivityProtocol.VISIBILITY, data -> data.writeBoolean(true));
         sendBarColors();
         if (imeAnimations.isEmpty()) sendInsets(surface.getRootWindowInsets());
         else sendImeInsets(imeBottom);
@@ -275,12 +282,21 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
     }
 
     @Override public void surfaceDestroyed(SurfaceHolder holder) {
-        if (!finished) closeWorkspace(false);
+        mounted = false;
+        remountPending = false;
+        if (!closing && !finished) send(OneStepActivityProtocol.VISIBILITY, data -> data.writeBoolean(false));
+    }
+
+    @Override protected void onStart() {
+        super.onStart();
+        if (attached && !closing && !finished)
+            send(OneStepActivityProtocol.VISIBILITY, data -> data.writeBoolean(true));
     }
 
     @Override protected void onStop() {
         super.onStop();
-        if (!finished) closeWorkspace(false);
+        if (!closing && !finished)
+            send(OneStepActivityProtocol.VISIBILITY, data -> data.writeBoolean(false));
     }
 
     @Override protected void onDestroy() {
