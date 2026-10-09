@@ -3,7 +3,6 @@ package com.example.flymestatusbarsizer.feature.onehanded;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
-import android.content.ClipData;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Insets;
@@ -13,8 +12,8 @@ import android.graphics.drawable.GradientDrawable;
 import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.os.Handler;
+import android.os.SystemClock;
 import android.util.Log;
-import android.view.DragEvent;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -67,7 +66,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private final Runnable openingTimeout = () -> {
         if (state == State.OPENING) fail("应用窗口未能就绪", new IllegalStateException("Task attach timed out"));
     };
-    private FrameLayout backdrop;
+    private WorkspaceRoot backdrop;
     private FrameLayout workspace;
     private View recentStrip;
     private ValueAnimator animator;
@@ -90,6 +89,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private float transitionProgress;
     private DragSession dragSession;
     private ImageView dragSource;
+    private ImageView dragPreview;
     private Runnable onSuccess;
     private OneStepPerf perf;
 
@@ -200,10 +200,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         sideOrder.clear();
         for (int i = 1; i < COUNT; i++) sideOrder.add(i);
         frames = layout();
-        backdrop = new FrameLayout(context);
+        backdrop = new WorkspaceRoot();
         backdrop.setBackgroundColor(Color.rgb(19, 21, 25));
         backdrop.setOnClickListener(v -> { if (dragSession == null) close(true); });
-        backdrop.setOnDragListener((v, event) -> onAppDrag(event));
         workspace = new FrameLayout(context);
         workspace.setOnClickListener(v -> { if (dragSession == null) close(true); });
         if (Build.VERSION.SDK_INT >= 35) workspace.setRequestedFrameRate(120f);
@@ -473,7 +472,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         for (ImageView icon : recentIcons) {
             RecentTaskCard card = (RecentTaskCard) icon.getTag();
             boolean available = !isHosted(card);
-            icon.setAlpha(available ? 1f : 0.4f);
+            icon.setAlpha(available && icon != dragSource ? 1f : 0.4f);
             icon.setLongClickable(available);
             icon.setContentDescription(card.description + (available ? "，长按拖入侧边窗口" : "，已在工作台中"));
         }
@@ -481,63 +480,71 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private boolean beginAppDrag(ImageView icon, RecentTaskCard card) {
         if (!running() || animator != null || transitionAnimator != null
-                || dragSession != null || isHosted(card)) return false;
+                || dragSession != null || isHosted(card) || OneHandedTaskHooks.shadeOpen()
+                || backdrop == null || !backdrop.hasDragPointer()) return false;
         blockInput(true);
         dragSession = new DragSession(card, generation);
         dragSource = icon;
         try {
-            if (icon.startDragAndDrop(ClipData.newPlainText("OneStepApp", card.description),
-                    new View.DragShadowBuilder(icon), dragSession, 0)) {
-                icon.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                return true;
-            }
+            // WindowlessWindowManager does not provide a normal window for system drag
+            // dispatch. This drag stays inside the embedded workspace's touch stream.
+            backdrop.takeDragTouch();
+            dragPreview = new ImageView(context);
+            Drawable drawable = icon.getDrawable();
+            Drawable.ConstantState constant = drawable == null ? null : drawable.getConstantState();
+            dragPreview.setImageDrawable(constant == null ? drawable : constant.newDrawable(context.getResources()).mutate());
+            dragPreview.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            dragPreview.setPadding(dp(8), dp(8), dp(8), dp(8));
+            dragPreview.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            backdrop.addView(dragPreview, new FrameLayout.LayoutParams(dp(56), dp(56)));
+            updateRecentIcons();
+            moveAppDrag(backdrop.touchX, backdrop.touchY);
+            icon.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            return true;
         } catch (RuntimeException e) { Log.w(TAG, "Cannot start app drag", e); }
-        dragSession = null;
-        dragSource = null;
-        updateInput();
+        finishAppDrag(-1);
         return false;
     }
 
-    private boolean onAppDrag(DragEvent event) {
+    private void moveAppDrag(float x, float y) {
         DragSession session = dragSession;
-        if (session == null || event.getLocalState() != session || session.generation != generation) return false;
-        switch (event.getAction()) {
-            case DragEvent.ACTION_DRAG_STARTED:
-                return running();
-            case DragEvent.ACTION_DRAG_LOCATION:
-            case DragEvent.ACTION_DRAG_ENTERED:
-                highlightDropTarget(dropSlot(event));
-                return true;
-            case DragEvent.ACTION_DRAG_EXITED:
-                highlightDropTarget(-1);
-                return true;
-            case DragEvent.ACTION_DROP:
-                session.targetSlot = dropSlot(event);
-                return session.targetSlot >= 0;
-            case DragEvent.ACTION_DRAG_ENDED:
-                highlightDropTarget(-1);
-                dragSession = null;
-                dragSource = null;
-                updateInput();
-                if (event.getResult() && session.targetSlot >= 0) {
-                    handler.post(() -> {
-                        if (!running() || generation != session.generation
-                                || session.targetSlot == mainSlot || OneHandedTaskHooks.shadeOpen()) return;
-                        panes[session.targetSlot].load(session.card);
-                    });
-                }
-                return true;
-            default:
-                return true;
+        if (session == null) return;
+        if (!running() || session.generation != generation || OneHandedTaskHooks.shadeOpen()) {
+            finishAppDrag(-1);
+            return;
+        }
+        if (dragPreview != null) {
+            dragPreview.setTranslationX(x - dp(28));
+            dragPreview.setTranslationY(y - dp(28));
+        }
+        highlightDropTarget(dropSlot(x, y));
+    }
+
+    private void finishAppDrag(int targetSlot) {
+        DragSession session = dragSession;
+        dragSession = null;
+        dragSource = null;
+        if (dragPreview != null && backdrop != null) backdrop.removeView(dragPreview);
+        dragPreview = null;
+        highlightDropTarget(-1);
+        if (session == null) return;
+        updateRecentIcons();
+        updateInput();
+        if (targetSlot >= 0 && targetSlot < COUNT) {
+            handler.post(() -> {
+                if (!running() || generation != session.generation || targetSlot == mainSlot
+                        || panes[targetSlot] == null || OneHandedTaskHooks.shadeOpen()) return;
+                panes[targetSlot].load(session.card);
+            });
         }
     }
 
-    private int dropSlot(DragEvent event) {
+    private int dropSlot(float pointerX, float pointerY) {
         if (!running() || workspace == null || OneHandedTaskHooks.shadeOpen()) return -1;
-        int x = (int) (event.getX() - workspace.getX());
-        int y = (int) (event.getY() - workspace.getY());
+        int x = (int) (pointerX - workspace.getX());
+        int y = (int) (pointerY - workspace.getY());
         for (int slot : sideOrder) {
-            if (frames[slot].contains(x, y)) return slot;
+            if (panes[slot] != null && !panes[slot].replacing && frames[slot].contains(x, y)) return slot;
         }
         return -1;
     }
@@ -560,11 +567,74 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private static final class DragSession {
         final RecentTaskCard card;
         final int generation;
-        int targetSlot = -1;
 
         DragSession(RecentTaskCard card, int generation) {
             this.card = card;
             this.generation = generation;
+        }
+    }
+
+    private final class WorkspaceRoot extends FrameLayout {
+        private int pointerId = -1;
+        private int pointerCount;
+        private long downTime;
+        private float touchX;
+        private float touchY;
+        private boolean ownsTouch;
+
+        WorkspaceRoot() { super(context); }
+
+        boolean hasDragPointer() { return pointerId >= 0 && pointerCount == 1; }
+
+        void takeDragTouch() {
+            // Cancel the icon/HorizontalScrollView once, then retain this gesture until
+            // UP/CANCEL. In particular, dropping must not click a pane or the backdrop.
+            MotionEvent cancel = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(),
+                    MotionEvent.ACTION_CANCEL, touchX, touchY, 0);
+            try { super.dispatchTouchEvent(cancel); }
+            finally { cancel.recycle(); }
+            ownsTouch = true;
+        }
+
+        @Override public boolean dispatchTouchEvent(MotionEvent event) {
+            int action = event.getActionMasked();
+            boolean terminal = action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL;
+            if (action == MotionEvent.ACTION_DOWN) {
+                finishAppDrag(-1);
+                ownsTouch = false;
+                pointerId = event.getPointerId(0);
+                downTime = event.getDownTime();
+            }
+            pointerCount = event.getPointerCount();
+            int index = event.findPointerIndex(pointerId);
+            if (index >= 0) {
+                touchX = event.getX(index);
+                touchY = event.getY(index);
+            }
+            if (dragSession != null) {
+                if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN
+                        || action == MotionEvent.ACTION_POINTER_UP || index < 0) {
+                    finishAppDrag(-1);
+                } else if (action == MotionEvent.ACTION_UP) {
+                    finishAppDrag(dropSlot(touchX, touchY));
+                } else if (action == MotionEvent.ACTION_MOVE) {
+                    moveAppDrag(touchX, touchY);
+                }
+            }
+            // Intercept at the root even when the scrolling toolbar has requested that
+            // its parents not intercept. Before long-press, its normal scrolling is intact.
+            boolean handled = ownsTouch || super.dispatchTouchEvent(event);
+            if (terminal) {
+                ownsTouch = false;
+                pointerId = -1;
+                pointerCount = 0;
+            }
+            return handled;
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            if (backdrop == this) finishAppDrag(-1);
+            super.onDetachedFromWindow();
         }
     }
 
@@ -686,12 +756,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         blockInput(true);
         cancelAnimator(true);
         cancelAnimator(false);
-        if (dragSource != null) {
-            try { dragSource.cancelDragAndDrop(); }
-            catch (RuntimeException error) { Log.w(TAG, "Cannot cancel drag", error); }
-        }
-        dragSession = null;
-        dragSource = null;
+        finishAppDrag(-1);
         int focusTask = focusMain && panes[mainSlot] != null && panes[mainSlot].card != null
                 ? panes[mainSlot].card.taskId : -1;
         Runnable restore = () -> shell.close(focusTask, this::finishClose);
@@ -707,7 +772,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (perf != null) { perf.stop(); perf = null; }
         OneStepStatusBar.setVisible(false);
         if (activitySession != null) { activitySession.close(); activitySession = null; }
-        backdrop = workspace = null;
+        backdrop = null;
+        workspace = null;
         recentStrip = null;
         recentIcons.clear();
         for (int i = 0; i < COUNT; i++) panes[i] = null;
