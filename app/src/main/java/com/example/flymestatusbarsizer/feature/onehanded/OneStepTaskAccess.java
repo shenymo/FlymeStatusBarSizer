@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer.feature.onehanded;
 
 import android.app.ActivityOptions;
 import android.content.Context;
+import android.content.ComponentName;
 import android.os.Bundle;
 
 import com.example.flymestatusbarsizer.util.ReflectUtils;
@@ -46,6 +47,27 @@ final class OneStepTaskAccess {
         Object config = ReflectUtils.getField(ReflectUtils.getField(info, "configuration"), "windowConfiguration");
         return ReflectUtils.invokeNoArgInt(config, "getActivityType", -1) == 1
                 && ReflectUtils.invokeNoArgInt(config, "getWindowingMode", -1) == 1;
+    }
+
+    static boolean home(Object info) {
+        Object config = ReflectUtils.getField(ReflectUtils.getField(info, "configuration"), "windowConfiguration");
+        return ReflectUtils.invokeNoArgInt(config, "getActivityType", -1) == 2
+                && ReflectUtils.invokeNoArgInt(config, "getWindowingMode", -1) == 1;
+    }
+
+    RecentTaskCard homeTask(int userId) throws ReflectiveOperationException {
+        for (Object root : roots()) {
+            if (display(root) != 0 || !home(root) || token(root) == null
+                    || ReflectUtils.getIntField(root, "userId", -1) != userId
+                    || ReflectUtils.getIntField(root, "parentTaskId", -2) != -1) continue;
+            Object component = ReflectUtils.getField(root, "topActivity");
+            if (!(component instanceof ComponentName)) component = ReflectUtils.getField(root, "baseActivity");
+            if (component instanceof ComponentName
+                    && OneStepLauncherBridge.LAUNCHER.equals(((ComponentName) component).getPackageName())) {
+                return new RecentTaskCard(taskId(root), userId, token(root), "桌面", (ComponentName) component, true);
+            }
+        }
+        throw new IllegalStateException("Flyme HOME task is unavailable");
     }
 
     RecentTaskCard focusedTask() throws ReflectiveOperationException {

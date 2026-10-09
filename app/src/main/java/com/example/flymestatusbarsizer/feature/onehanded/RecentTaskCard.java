@@ -9,13 +9,19 @@ final class RecentTaskCard {
     final Object token;
     final String description;
     final ComponentName component;
+    final boolean home;
 
     RecentTaskCard(int taskId, int userId, Object token, String description, ComponentName component) {
+        this(taskId, userId, token, description, component, false);
+    }
+
+    RecentTaskCard(int taskId, int userId, Object token, String description, ComponentName component, boolean home) {
         this.taskId = taskId;
         this.userId = userId;
         this.token = token;
         this.description = description;
         this.component = component;
+        this.home = home;
     }
 
     boolean sameTask(RecentTaskCard other) {
