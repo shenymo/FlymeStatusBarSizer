@@ -1,8 +1,11 @@
 package com.example.flymestatusbarsizer.feature.onehanded;
 
 import android.app.Activity;
+import android.app.WallpaperColors;
+import android.app.WallpaperManager;
 import android.graphics.Color;
 import android.graphics.Insets;
+import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.os.Binder;
 import android.os.Build;
@@ -33,6 +36,12 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
     private IBinder callback;
     private IBinder.DeathRecipient death;
     private SurfaceView surface;
+    private WallpaperManager wallpaper;
+    private boolean watchingWallpaper;
+    private boolean darkBarIcons;
+    private final WallpaperManager.OnColorsChangedListener wallpaperColors = (colors, which) -> {
+        if (!this.finished && (which & WallpaperManager.FLAG_SYSTEM) != 0) updateBarColors(colors);
+    };
     private boolean attached;
     private boolean mounted;
     private boolean closing;
@@ -76,19 +85,27 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         catch (RemoteException error) { finishHost(); return; }
 
         getWindow().setDecorFitsSystemWindows(false);
-        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.rgb(19, 21, 25)));
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+        getWindow().setFormat(PixelFormat.TRANSLUCENT);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        getWindow().setStatusBarContrastEnforced(false);
+        getWindow().setNavigationBarContrastEnforced(false);
         WindowManager.LayoutParams params = getWindow().getAttributes();
+        params.flags |= WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER;
         params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
         params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING;
         params.preferredRefreshRate = 120f;
         params.windowAnimations = 0;
         getWindow().setAttributes(params);
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.rgb(19, 21, 25));
+        // Dim the wallpaper once, below every workspace/task surface, including the bars.
+        root.setBackgroundColor(0x14000000);
         surface = new SurfaceView(this);
         // The embedded window and its TaskView children receive input above the Activity's
         // own window. The Activity stays opaque in the task visibility calculation.
         surface.setZOrderOnTop(true);
+        surface.getHolder().setFormat(PixelFormat.TRANSLUCENT);
         if (Build.VERSION.SDK_INT >= 34)
             surface.setSurfaceLifecycle(SurfaceView.SURFACE_LIFECYCLE_FOLLOWS_ATTACHMENT);
         surface.getHolder().addCallback(this);
@@ -125,13 +142,48 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         setContentView(root);
         WindowInsetsController bars = getWindow().getInsetsController();
         if (bars != null) {
-            bars.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
-                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
             bars.show(WindowInsets.Type.systemBars());
         }
+        watchWallpaperColors();
         getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                 OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> closeWorkspace(true));
         handler.postDelayed(timeout, 12000);
+    }
+
+    private void watchWallpaperColors() {
+        updateBarColors(null);
+        try {
+            wallpaper = getSystemService(WallpaperManager.class);
+            if (wallpaper == null) return;
+            wallpaper.addOnColorsChangedListener(wallpaperColors, handler);
+            watchingWallpaper = true;
+            updateBarColors(wallpaper.getWallpaperColors(WallpaperManager.FLAG_SYSTEM));
+        } catch (RuntimeException error) {
+            Log.w("FlymeOneStepActivity", "Cannot read wallpaper colors", error);
+        }
+    }
+
+    private void updateBarColors(WallpaperColors colors) {
+        WindowInsetsController bars = getWindow().getInsetsController();
+        if (bars == null) return;
+        boolean darkText = colors != null
+                && (colors.getColorHints() & WallpaperColors.HINT_SUPPORTS_DARK_TEXT) != 0;
+        // Account for the 8% dim layer before choosing dark icons on a bright wallpaper.
+        if (darkText) {
+            int color = colors.getPrimaryColor().toArgb();
+            darkText = Color.luminance(Color.rgb(Math.round(Color.red(color) * 0.92f),
+                    Math.round(Color.green(color) * 0.92f), Math.round(Color.blue(color) * 0.92f))) > 0.35f;
+        }
+        int mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+        bars.setSystemBarsAppearance(darkText ? mask : 0, mask);
+        darkBarIcons = darkText;
+        sendBarColors();
+    }
+
+    private void sendBarColors() {
+        if (mounted && !closing && !finished)
+            send(OneStepActivityProtocol.BAR_COLORS, data -> data.writeBoolean(darkBarIcons));
     }
 
     @Override public void surfaceCreated(SurfaceHolder holder) {}
@@ -179,6 +231,7 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         mounted = true;
         handler.removeCallbacks(timeout);
         send(OneStepActivityProtocol.MOUNTED, data -> {});
+        sendBarColors();
         if (imeAnimations.isEmpty()) sendInsets(surface.getRootWindowInsets());
         else sendImeInsets(imeBottom);
     }
@@ -236,6 +289,11 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         handler.removeCallbacks(forceFinish);
         if (control != null && death != null) control.unlinkToDeath(death, 0);
         if (surface != null) surface.getHolder().removeCallback(this);
+        if (watchingWallpaper) {
+            try { wallpaper.removeOnColorsChangedListener(wallpaperColors); }
+            catch (RuntimeException error) { Log.w("FlymeOneStepActivity", "Cannot remove wallpaper listener", error); }
+            watchingWallpaper = false;
+        }
         super.onDestroy();
     }
 

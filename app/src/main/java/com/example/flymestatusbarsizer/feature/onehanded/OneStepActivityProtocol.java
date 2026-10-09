@@ -18,6 +18,7 @@ final class OneStepActivityProtocol {
     static final int MOUNTED = ATTACH + 1;
     static final int INSETS = ATTACH + 2;
     static final int CLOSE = ATTACH + 3;
+    static final int BAR_COLORS = ATTACH + 4;
     static final int SURFACE = IBinder.FIRST_CALL_TRANSACTION;
     static final int FINISH = SURFACE + 1;
 

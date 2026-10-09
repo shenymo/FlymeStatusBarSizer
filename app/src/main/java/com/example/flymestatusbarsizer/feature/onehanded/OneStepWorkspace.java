@@ -6,7 +6,11 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Insets;
+import android.graphics.Outline;
+import android.graphics.Path;
 import android.graphics.Rect;
+import android.graphics.RectF;
+import android.graphics.Region;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.hardware.display.DisplayManager;
@@ -18,6 +22,7 @@ import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewOutlineProvider;
 import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -39,7 +44,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private static final String TAG = "FlymeOneStep";
     private static final int COUNT = 4;
     private static final int TOOLBAR_HEIGHT_DP = 56;
-    private static final int PANE_GAP_DP = 4;
+    private static final int PANE_GAP_DP = 8;
+    private static final int WORKSPACE_MARGIN_DP = 12;
+    private static final int PANE_RADIUS_DP = 16;
     private static final PathInterpolator EASING = new PathInterpolator(0.2f, 0f, 0f, 1f);
     private enum State { CLOSED, OPENING, RUNNING, CLOSING }
     private volatile State state = State.CLOSED;
@@ -191,6 +198,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             @Override public void onClosed(boolean focusMain) {
                 if (generation == request) close(focusMain);
             }
+
+            @Override public void onBarColorsChanged(boolean darkIcons) {
+                if (generation == request && active()) OneStepStatusBar.setDarkIcons(darkIcons);
+            }
         });
         handler.postDelayed(openingTimeout, 12000);
         activitySession.start();
@@ -219,9 +230,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         for (int i = 1; i < COUNT; i++) sideOrder.add(i);
         frames = layout();
         backdrop = new WorkspaceRoot();
-        backdrop.setBackgroundColor(Color.rgb(19, 21, 25));
+        backdrop.setClipChildren(false);
+        backdrop.setClipToPadding(false);
         backdrop.setOnClickListener(v -> { if (dragSession == null) close(true); });
         workspace = new FrameLayout(context);
+        workspace.setClipChildren(false);
+        workspace.setClipToPadding(false);
         workspace.setOnClickListener(v -> { if (dragSession == null) close(true); });
         if (Build.VERSION.SDK_INT >= 35) workspace.setRequestedFrameRate(120f);
         FrameLayout.LayoutParams workspaceParams = new FrameLayout.LayoutParams(width, height);
@@ -232,13 +246,16 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         int panesTop = frames[mainSlot].top;
         for (int slot : sideOrder) panesTop = Math.min(panesTop, frames[slot].top);
         FrameLayout.LayoutParams stripParams = new FrameLayout.LayoutParams(-1, dp(TOOLBAR_HEIGHT_DP));
-        stripParams.topMargin = Math.max(0, panesTop - dp(TOOLBAR_HEIGHT_DP));
+        stripParams.leftMargin = dp(WORKSPACE_MARGIN_DP);
+        stripParams.rightMargin = dp(WORKSPACE_MARGIN_DP);
+        stripParams.topMargin = Math.max(0, panesTop - dp(TOOLBAR_HEIGHT_DP + PANE_GAP_DP));
         workspace.addView(recentStrip, stripParams);
         for (int i = 0; i < COUNT; i++) {
             Pane pane = new Pane(i);
             panes[i] = pane;
             workspace.addView(pane.container);
             position(pane.container, frames[i]);
+            pane.updateAppearance();
         }
         activitySession.setView(backdrop);
         perf = new OneStepPerf(backdrop, handler, generation);
@@ -247,9 +264,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private Rect[] layout() {
-        return OneStepWindowLayout.calculateWorkspace(width, height, dp(PANE_GAP_DP),
-                dp(TOOLBAR_HEIGHT_DP), logicalBounds.width(), logicalBounds.height(),
+        int margin = Math.min(dp(WORKSPACE_MARGIN_DP), Math.min(width, height) / 8);
+        Rect[] result = OneStepWindowLayout.calculateWorkspace(width - margin * 2,
+                height - margin * 2, dp(PANE_GAP_DP),
+                dp(TOOLBAR_HEIGHT_DP + PANE_GAP_DP), logicalBounds.width(), logicalBounds.height(),
                 mainSlot, sideOrder, mainOnLeft);
+        for (Rect frame : result) frame.offset(margin, margin);
+        return result;
     }
 
     private void updateLogicalBounds(Rect screen, Insets insets) {
@@ -357,12 +378,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             imeOffset = nextOffset;
             blockInput(true);
             workspace.setTranslationY(-nextOffset);
+            OneStepStatusBar.setImeVisible(imeBottom > 0);
             if (!imeAnimating) workspace.post(this::updateInput);
             return;
         }
         if (imeAnimator != null && imeOffset == nextOffset) return;
         cancelImeAnimator();
         imeOffset = nextOffset;
+        OneStepStatusBar.setImeVisible(imeBottom > 0);
         float startOffset = -workspace.getTranslationY();
         if (startOffset == nextOffset) {
             workspace.post(this::updateInput);
@@ -402,7 +425,17 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private void applyTransition(float progress) {
         transitionProgress = progress;
         if (recentStrip != null) recentStrip.setAlpha(progress);
-        for (Pane pane : panes) if (pane != null) pane.container.setTranslationY(dp(16) * (1f - progress));
+        for (Pane pane : panes) if (pane != null) {
+            Rect frame = frames[pane.slot];
+            float entryScale = 0.97f + 0.03f * progress;
+            float scale = scaleForFrame(frame) * entryScale;
+            pane.container.setScaleX(scale);
+            pane.container.setScaleY(scale);
+            pane.container.setTranslationX(frame.width() * (1f - entryScale) / 2f);
+            pane.container.setTranslationY(dp(16) * (1f - progress)
+                    + frame.height() * (1f - entryScale) / 2f);
+            pane.updateAppearance();
+        }
         // Keep task alpha on each SurfaceView, outside parent alpha layers.
         for (Pane pane : panes) if (pane != null && pane.host != null && Build.VERSION.SDK_INT >= 34) {
             pane.host.view.setAlpha(progress);
@@ -455,6 +488,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 position(pane.container, frames[pane.slot]);
                 pane.container.setTranslationX(0);
                 pane.container.setTranslationY(0);
+                pane.updateAppearance();
                 pane.updateGeometry();
             }
             shell.focus(selected.host);
@@ -471,6 +505,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             float f = (float) value.getAnimatedValue();
             transform(panes[previousMain].container, start[previousMain], end[previousMain], f);
             transform(selected.container, start[slot], end[slot], f);
+            panes[previousMain].updateAppearance();
+            selected.updateAppearance();
         });
         swap.addListener(new AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(Animator animation) {
@@ -518,7 +554,19 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (!block && main != null && main.host != null && main.host.ready) {
             Rect visible = new Rect();
             if (main.host.view.getGlobalVisibleRect(visible)) {
-                obscured.op(visible, android.graphics.Region.Op.DIFFERENCE);
+                // Rounded corners belong to the workspace, not the application's rectangular
+                // logical viewport. Use the unclipped view bounds to retain the correct arc
+                // when the keyboard moves part of the main pane beyond the screen.
+                int[] location = new int[2];
+                main.host.view.getLocationOnScreen(location);
+                RectF bounds = new RectF(location[0], location[1],
+                        location[0] + main.host.view.getWidth() * main.container.getScaleX(),
+                        location[1] + main.host.view.getHeight() * main.container.getScaleY());
+                Path shape = new Path();
+                shape.addRoundRect(bounds, dp(PANE_RADIUS_DP), dp(PANE_RADIUS_DP), Path.Direction.CW);
+                Region touchable = new Region();
+                touchable.setPath(shape, new Region(visible));
+                obscured.op(touchable, Region.Op.DIFFERENCE);
             }
         }
         try {
@@ -549,9 +597,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         strip.setFillViewport(true);
         strip.setContentDescription("最近使用的应用，长按图标拖入侧边窗口");
         GradientDrawable background = new GradientDrawable();
-        background.setColor(Color.rgb(31, 34, 40));
-        background.setCornerRadius(dp(16));
+        background.setColor(0x80171c25);
+        background.setCornerRadius(dp(18));
+        background.setStroke(Math.max(1, dp(0.7f)), 0x30ffffff);
         strip.setBackground(background);
+        strip.setClipToOutline(true);
+        strip.setElevation(dp(4));
         LinearLayout row = new LinearLayout(context);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(8), 0, dp(8), 0);
@@ -683,13 +734,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         highlightedSlot = slot;
         for (Pane pane : panes) {
             if (pane == null) continue;
-            GradientDrawable highlight = null;
-            if (pane.slot == slot) {
-                highlight = new GradientDrawable();
-                highlight.setColor(0x225aaaff);
-                highlight.setStroke(dp(2), 0xff75baff);
-            }
-            pane.container.setForeground(highlight);
+            pane.updateAppearance();
         }
     }
 
@@ -858,7 +903,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             pane.container.removeView(host.view);
             pane.host = null;
             pane.card = null;
-            pane.empty.setText("");
+            pane.empty.setText("＋\n拖入应用");
             pane.empty.setVisibility(View.VISIBLE);
         }
         updateRecentIcons();
@@ -931,6 +976,17 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         final int slot;
         final FrameLayout container = new FrameLayout(context);
         final TextView empty = new TextView(context);
+        final GradientDrawable fill = new GradientDrawable();
+        final GradientDrawable border = new GradientDrawable();
+        final ViewOutlineProvider outline = new ViewOutlineProvider() {
+            @Override public void getOutline(View view, Outline out) {
+                out.setRoundRect(0, 0, view.getWidth(), view.getHeight(), cornerRadius);
+                out.setAlpha(transitionProgress);
+            }
+        };
+        float cornerRadius;
+        float appliedSurfaceRadius = -1;
+        boolean surfaceCornersUnavailable;
         RecentTaskCard card;
         OneStepShell.Host host;
         boolean replacing;
@@ -939,11 +995,20 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             this.slot = slot;
             container.setPivotX(0);
             container.setPivotY(0);
-            container.setBackgroundColor(Color.BLACK);
+            fill.setColor(0x60171c25);
+            container.setBackground(fill);
+            container.setForeground(border);
+            container.setOutlineProvider(outline);
+            container.setClipToOutline(true);
+            container.setOutlineAmbientShadowColor(0x50000000);
+            container.setOutlineSpotShadowColor(0x70000000);
             empty.setGravity(Gravity.CENTER);
-            empty.setTextColor(Color.WHITE);
+            empty.setTextColor(0xe6ffffff);
             empty.setTextSize(12);
-            empty.setBackgroundColor(Color.BLACK);
+            empty.setLineSpacing(dp(4), 1f);
+            empty.setShadowLayer(dp(2), 0, dp(1), 0x66000000);
+            empty.setText("＋\n拖入应用");
+            empty.setBackgroundColor(Color.TRANSPARENT);
             empty.setContentDescription("空白应用窗口，长按上方应用图标拖入此处");
             empty.setOnClickListener(v -> { });
             container.addView(empty, new FrameLayout.LayoutParams(-1, -1));
@@ -952,6 +1017,43 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 return true;
             });
             container.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateInput());
+        }
+
+        void updateAppearance() {
+            float scale = Math.max(0.01f, container.getScaleX());
+            // Pane views retain the full app viewport. Compensate their decorations for
+            // scaling so all four windows keep the same on-screen corner/stroke/text size.
+            cornerRadius = dp(PANE_RADIUS_DP) / scale;
+            fill.setCornerRadius(cornerRadius);
+            fill.setAlpha(Math.round(255 * transitionProgress));
+            border.setCornerRadius(cornerRadius);
+            boolean highlighted = highlightedSlot == slot;
+            border.setColor(highlighted ? 0x225aaaff : Color.TRANSPARENT);
+            border.setStroke(Math.max(1, Math.round(dp(highlighted ? 2 : 0.7f) / scale)),
+                    highlighted ? 0xff9acbff : 0x40ffffff);
+            border.setAlpha(Math.round(255 * transitionProgress));
+            float mainScale = 0.01f;
+            for (Rect frame : frames) mainScale = Math.max(mainScale, scaleForFrame(frame));
+            // During swaps the larger pane carries the stronger shadow throughout the motion.
+            float prominence = Math.max(0f, Math.min(1f, scale / Math.max(0.01f, mainScale)));
+            container.setElevation(dp(8 + 10 * prominence * prominence) / scale);
+            container.invalidateOutline();
+            if (host != null) host.view.invalidateOutline();
+            // Counter-scale the centered label without requesting layout on every frame.
+            empty.setScaleX(1f / scale);
+            empty.setScaleY(1f / scale);
+            empty.setAlpha(transitionProgress);
+            if (host != null && !surfaceCornersUnavailable && appliedSurfaceRadius != cornerRadius) {
+                try {
+                    // SurfaceView owns both the compositor crop and its rounded window hole.
+                    // Clipping only the FrameLayout would leave the live app square underneath.
+                    OneStepReflection.call(host.view, "setCornerRadius", new Class<?>[]{float.class}, cornerRadius);
+                    appliedSurfaceRadius = cornerRadius;
+                } catch (ReflectiveOperationException | RuntimeException error) {
+                    surfaceCornersUnavailable = true;
+                    Log.w(TAG, "Task surface corner radius unavailable", error);
+                }
+            }
         }
 
         void load(RecentTaskCard next) {
@@ -968,12 +1070,18 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 empty.setVisibility(View.VISIBLE);
                 try {
                     host = shell.create(context, next, state == State.OPENING && slot == mainSlot);
+                    appliedSurfaceRadius = -1;
+                    surfaceCornersUnavailable = false;
+                    host.view.setOutlineProvider(outline);
+                    host.view.setClipToOutline(true);
                     host.view.setOnTouchListener((view, event) -> {
                         if (event.getActionMasked() == MotionEvent.ACTION_DOWN && slot != mainSlot) select(slot);
                         return true;
                     });
                     host.obscure(new Rect(screenBounds));
                     container.addView(host.view, 0, new FrameLayout.LayoutParams(-1, -1));
+                    updateAppearance();
+                    if (Build.VERSION.SDK_INT >= 34) host.view.setAlpha(transitionProgress);
                     updateGeometry();
                     updateRecentIcons();
                     container.post(OneStepWorkspace.this::updateInput);

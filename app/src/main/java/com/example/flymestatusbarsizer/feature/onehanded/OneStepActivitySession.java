@@ -26,6 +26,7 @@ final class OneStepActivitySession {
         void onAttached(int taskId, Rect bounds, Rect insets);
         void onMounted();
         void onImeChanged(int bottom, boolean animating);
+        void onBarColorsChanged(boolean darkIcons);
         void onClosed(boolean focusMain);
     }
 
@@ -54,7 +55,7 @@ final class OneStepActivitySession {
         control = new Binder() {
             @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
                     throws RemoteException {
-                if (code < OneStepActivityProtocol.ATTACH || code > OneStepActivityProtocol.CLOSE)
+                if (code < OneStepActivityProtocol.ATTACH || code > OneStepActivityProtocol.BAR_COLORS)
                     return super.onTransact(code, data, reply, flags);
                 if (Binder.getCallingUid() != clientUid) throw new SecurityException("Workspace client mismatch");
                 data.enforceInterface(OneStepActivityProtocol.CONTROL);
@@ -93,6 +94,13 @@ final class OneStepActivitySession {
                                 listener.onClosed(focusMain);
                                 finish(callback);
                             } else if (callback.equals(client)) listener.onClosed(focusMain);
+                        });
+                        break;
+                    case OneStepActivityProtocol.BAR_COLORS:
+                        boolean darkIcons = data.readBoolean();
+                        handler.post(() -> {
+                            if (!closed && mounted && callback.equals(client))
+                                listener.onBarColorsChanged(darkIcons);
                         });
                         break;
                     default: break;
