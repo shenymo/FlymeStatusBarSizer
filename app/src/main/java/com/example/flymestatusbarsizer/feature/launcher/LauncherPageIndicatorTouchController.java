@@ -4,8 +4,10 @@ import android.graphics.RectF;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
 
-/** Owns only gestures that start in the indicator and become horizontal drags. */
+/** Owns only gestures that start in the indicator hit area and become horizontal drags. */
 final class LauncherPageIndicatorTouchController {
+    private static final float HORIZONTAL_DRAG_RATIO = 1.3f;
+
     interface Host {
         boolean isAvailable() throws Exception;
         void showDots() throws Exception;
@@ -121,7 +123,7 @@ final class LauncherPageIndicatorTouchController {
                 reset();
                 return dispatcher.dispatch(event);
             }
-            if (dx <= touchSlop || dx <= dy * 1.5f) return dispatcher.dispatch(event);
+            if (dx <= touchSlop || dx <= dy * HORIZONTAL_DRAG_RATIO) return dispatcher.dispatch(event);
             dragging = true;
             MotionEvent cancel = MotionEvent.obtain(event);
             cancel.setAction(MotionEvent.ACTION_CANCEL);

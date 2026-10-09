@@ -6,6 +6,7 @@ import android.graphics.RectF;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
+import android.view.ViewGroup;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
@@ -23,6 +24,9 @@ final class LauncherPageIndicatorHooks {
             "com.meizu.flyme.launcher.view.indicator.FlymeWorkspaceIndicatorView";
     private static final int PRIVACY_SCREEN_ID = 100000000;
     private static final int SNAP_DURATION_MS = 120;
+    private static final float TOUCH_HEIGHT_DP = 64f;
+    private static final float TOUCH_MIN_WIDTH_DP = 144f;
+    private static final float TOUCH_HORIZONTAL_PADDING_DP = 32f;
 
     private final LauncherPageIndicatorTouchController touch =
             new LauncherPageIndicatorTouchController();
@@ -81,6 +85,7 @@ final class LauncherPageIndicatorHooks {
             if (!host.isAvailable()) return;
             LauncherPageIndicatorTouchController.Targets targets = host.readTargets();
             if (targets == null || !targets.bounds.contains(event.getRawX(), event.getRawY())) return;
+            if (host.isTouchOnItem(event.getRawX(), event.getRawY())) return;
             activeHost = host;
             owner = activity;
             touch.prepare(host, targets, ViewConfiguration.get(activity).getScaledTouchSlop(),
@@ -183,11 +188,13 @@ final class LauncherPageIndicatorHooks {
             // Coordinates, rather than page-number ordering, also cover RTL layouts.
             pages.sort(Comparator.comparingDouble(page -> page.x));
             float density = activity.getResources().getDisplayMetrics().density;
-            float halfWidth = Math.max(bounds.width() / 2f + 20f * density, 48f * density);
+            float halfWidth = Math.max(bounds.width() / 2f + TOUCH_HORIZONTAL_PADDING_DP * density,
+                    TOUCH_MIN_WIDTH_DP * density / 2f);
+            float halfHeight = TOUCH_HEIGHT_DP * density / 2f;
             float centerX = bounds.centerX();
             float centerY = bounds.centerY();
-            bounds.set(centerX - halfWidth, centerY - 22f * density,
-                    centerX + halfWidth, centerY + 22f * density);
+            bounds.set(centerX - halfWidth, centerY - halfHeight,
+                    centerX + halfWidth, centerY + halfHeight);
             Rect visible = new Rect();
             View search = (View) binding.searchView.get(container);
             if (search != null && search.isShown() && search.getAlpha() > 0f
@@ -195,8 +202,10 @@ final class LauncherPageIndicatorHooks {
                 visible.offset(origin[0], origin[1]);
                 bounds.union(new RectF(visible));
             }
-            // Bound the expanded touch area to the indicator container, away from dock icons.
+            // Require a visible indicator while allowing the hit area into surrounding empty space.
+            // prepare() excludes occupied workspace and dock targets before arming a gesture.
             if (!container.getGlobalVisibleRect(visible)) return null;
+            if (!root.getGlobalVisibleRect(visible)) return null;
             visible.offset(origin[0], origin[1]);
             if (!bounds.intersect(new RectF(visible))) return null;
             int[] indices = new int[pages.size()];
@@ -207,6 +216,36 @@ final class LauncherPageIndicatorHooks {
                 if (i > 0 && centers[i] <= centers[i - 1]) return null;
             }
             return new LauncherPageIndicatorTouchController.Targets(indices, centers, bounds);
+        }
+
+        boolean isTouchOnItem(float rawX, float rawY) throws Exception {
+            int[] origin = new int[2];
+            container.getRootView().getLocationOnScreen(origin);
+            // getGlobalVisibleRect uses root coordinates; MotionEvent uses screen coordinates.
+            float x = rawX - origin[0];
+            float y = rawY - origin[1];
+            Rect visible = new Rect();
+            ViewGroup workspaceView = (ViewGroup) workspace;
+            for (int i = 0; i < screenIds.length; i++) {
+                if (isDesktopScreen(screenIds[i])
+                        && hasItemAt(workspaceView.getChildAt(i), x, y, visible)) return true;
+            }
+            return hasItemAt((View) binding.hotseat.invoke(activity), x, y, visible);
+        }
+
+        private boolean hasItemAt(View layout, float x, float y, Rect visible) throws Exception {
+            if (layout == null || !layout.isShown() || !layout.getGlobalVisibleRect(visible)) {
+                return false;
+            }
+            ViewGroup items = (ViewGroup) binding.shortcutsAndWidgets.invoke(layout);
+            for (int i = 0; i < items.getChildCount(); i++) {
+                View item = items.getChildAt(i);
+                // Inspect only direct items, keeping folder and widget contents intact.
+                if (item.isShown() && item.getGlobalVisibleRect(visible)
+                        && x >= visible.left && x < visible.right
+                        && y >= visible.top && y < visible.bottom) return true;
+            }
+            return false;
         }
 
         @Override public void showDots() throws Exception {
@@ -245,8 +284,8 @@ final class LauncherPageIndicatorHooks {
     private static final class Binding {
         final Class<?> dotsClass;
         final Object normalState;
-        final Method dispatch, pause, workspace, indicator, dots, pageCount, screenId,
-                stateManager, state, inTransition, editPanelOpen, workspaceLocked, switchingState,
+        final Method dispatch, pause, workspace, hotseat, shortcutsAndWidgets, indicator, dots,
+                pageCount, screenId, stateManager, state, inTransition, editPanelOpen, workspaceLocked, switchingState,
                 locationAnimation, overlayVisible, topOpenView, dragController, dragging, currentPage,
                 dotCoordinates, paramsAt, deferRemove, deferAdd,
                 showIndicator, showSearch, showSearchInternal, nextPage, snap;
@@ -258,6 +297,7 @@ final class LauncherPageIndicatorHooks {
             dotsClass = Class.forName(DOTS, false, loader);
             Class<?> dotParams = Class.forName("com.meizu.flyme.launcher.view.indicator.DotParams", false, loader);
             Class<?> workspaceClass = Class.forName("com.meizu.flyme.launcher.workspace.FlymeWorkspace", false, loader);
+            Class<?> cellLayout = Class.forName("com.android.launcher3.CellLayout", false, loader);
             Class<?> manager = Class.forName("com.android.launcher3.statemanager.StateManager", false, loader);
             Class<?> floating = Class.forName("com.android.launcher3.AbstractFloatingView", false, loader);
             Class<?> activityContext = Class.forName("com.android.launcher3.views.ActivityContext", false, loader);
@@ -268,6 +308,8 @@ final class LauncherPageIndicatorHooks {
             pause = launcher.getDeclaredMethod("onPause");
             pause.setAccessible(true);
             workspace = launcher.getMethod("getWorkspace");
+            hotseat = launcher.getMethod("getHotseat");
+            shortcutsAndWidgets = cellLayout.getMethod("getShortcutsAndWidgets");
             indicator = workspaceClass.getMethod("getMzPageIndicator");
             dots = indicatorClass.getMethod("getMzPageIndicatorView");
             pageCount = workspaceClass.getMethod("getPageCount");
