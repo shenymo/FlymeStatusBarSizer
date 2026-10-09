@@ -49,6 +49,9 @@ final class OneStepShell {
     final class Host {
         final SurfaceView view;
         final Object controller;
+        // UI-thread state belongs to this TaskView, including while it replaces Home.
+        private float appliedSurfaceRadius = -1;
+        private boolean surfaceCornersUnavailable;
         volatile RecentTaskCard card;
         PendingIntent launchIntent;
         IBinder launchCookie;
@@ -136,6 +139,18 @@ final class OneStepShell {
 
         void obscure(Rect rect) throws ReflectiveOperationException {
             OneStepReflection.call(view, "setObscuredTouchRect", new Class<?>[]{Rect.class}, rect);
+        }
+
+        void setCornerRadius(float radius) {
+            if (surfaceCornersUnavailable || appliedSurfaceRadius == radius) return;
+            try {
+                // SurfaceView rounds both the compositor crop and the window hole.
+                OneStepReflection.call(view, "setCornerRadius", new Class<?>[]{float.class}, radius);
+                appliedSurfaceRadius = radius;
+            } catch (ReflectiveOperationException | RuntimeException error) {
+                surfaceCornersUnavailable = true;
+                Log.w(TAG, "Task surface corner radius unavailable", error);
+            }
         }
     }
 

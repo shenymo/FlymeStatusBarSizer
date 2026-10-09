@@ -599,8 +599,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private void desktopUnavailable(Pane pane) {
         disconnectDesktop();
         desktopBusy = false;
-        pane.empty.setText("点击打开桌面");
-        pane.empty.setVisibility(View.VISIBLE);
+        pane.showEmpty();
         Toast.makeText(context, "暂时无法打开桌面，请稍后重试", Toast.LENGTH_SHORT).show();
         shell.focus(null);
         updateInput();
@@ -1270,8 +1269,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             }
         };
         float cornerRadius;
-        float appliedSurfaceRadius = -1;
-        boolean surfaceCornersUnavailable;
         RecentTaskCard card;
         OneStepShell.Host host;
         OneStepShell.Host launchHost;
@@ -1293,7 +1290,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             empty.setTextSize(12);
             empty.setLineSpacing(dp(4), 1f);
             empty.setShadowLayer(dp(2), 0, dp(1), 0x66000000);
-            empty.setText("＋\n点击打开桌面\n或拖入应用");
+            showEmpty();
             empty.setBackgroundColor(Color.TRANSPARENT);
             empty.setContentDescription("空白应用窗口，点击打开桌面，或长按上方应用图标拖入此处");
             empty.setOnClickListener(v -> { if (slot == mainSlot) enterDesktop(slot, true); else select(slot); });
@@ -1324,22 +1321,18 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             float prominence = Math.max(0f, Math.min(1f, scale / Math.max(0.01f, mainScale)));
             container.setElevation(dp(8 + 10 * prominence * prominence) / scale);
             container.invalidateOutline();
-            if (host != null) host.view.invalidateOutline();
+            if (host != null) {
+                host.view.invalidateOutline();
+                host.setCornerRadius(cornerRadius);
+            }
+            if (launchHost != null) {
+                launchHost.view.invalidateOutline();
+                launchHost.setCornerRadius(cornerRadius);
+            }
             // Counter-scale the centered label without requesting layout on every frame.
             empty.setScaleX(1f / scale);
             empty.setScaleY(1f / scale);
             empty.setAlpha(transitionProgress);
-            if (host != null && !surfaceCornersUnavailable && appliedSurfaceRadius != cornerRadius) {
-                try {
-                    // SurfaceView owns both the compositor crop and its rounded window hole.
-                    // Clipping only the FrameLayout would leave the live app square underneath.
-                    OneStepReflection.call(host.view, "setCornerRadius", new Class<?>[]{float.class}, cornerRadius);
-                    appliedSurfaceRadius = cornerRadius;
-                } catch (ReflectiveOperationException | RuntimeException error) {
-                    surfaceCornersUnavailable = true;
-                    Log.w(TAG, "Task surface corner radius unavailable", error);
-                }
-            }
         }
 
         boolean load(RecentTaskCard next) {
@@ -1356,8 +1349,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 empty.setVisibility(View.VISIBLE);
                 try {
                     host = shell.create(context, next, state == State.OPENING && slot == mainSlot);
-                    appliedSurfaceRadius = -1;
-                    surfaceCornersUnavailable = false;
                     mount(host);
                     updateAppearance();
                     if (Build.VERSION.SDK_INT >= 34) host.view.setAlpha(transitionProgress);
@@ -1375,6 +1366,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         void mount(OneStepShell.Host task) throws ReflectiveOperationException {
             task.view.setOutlineProvider(outline);
             task.view.setClipToOutline(true);
+            // Apply before attachment so the first app frame is rounded at launch handoff.
+            task.setCornerRadius(cornerRadius);
             task.view.setOnTouchListener((view, event) -> {
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN && slot != mainSlot) select(slot);
                 return true;
@@ -1384,7 +1377,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
 
         void showEmpty() {
-            empty.setText("＋\n点击打开桌面\n或拖入应用");
+            empty.setText("＋");
             empty.setVisibility(View.VISIBLE);
         }
 
