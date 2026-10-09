@@ -33,6 +33,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import java.util.ArrayList;
@@ -49,6 +50,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private static final int PANE_GAP_DP = 4;
     private static final int WORKSPACE_MARGIN_DP = 4;
     private static final int PANE_RADIUS_DP = 16;
+    private static final int PANE_TAP_HIGHLIGHT_MS = 350;
     private static final PathInterpolator EASING = new PathInterpolator(0.2f, 0f, 0f, 1f);
     private enum State { CLOSED, OPENING, RUNNING, CLOSING }
     private volatile State state = State.CLOSED;
@@ -72,6 +74,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     });
     private final Runnable check = this::checkTasks;
     private final Runnable taskChanged = () -> scheduleCheck(100);
+    private final Runnable clearTapHighlight = this::clearPaneTapHighlight;
     private final Runnable openingTimeout = () -> {
         if (state == State.OPENING) fail("应用窗口未能就绪", new IllegalStateException("Task attach timed out"));
     };
@@ -94,6 +97,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private int mainSlot;
     private int generation;
     private int highlightedSlot = -1;
+    private int tappedSlot = -1;
     private int imeBottom;
     private int imeOffset;
     private boolean imeAnimating;
@@ -479,8 +483,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (!running() || slot == mainSlot || animator != null || transitionAnimator != null
                 || imeAnimator != null || imeAnimating || dragSession != null || desktopBusy) return;
         Pane selected = panes[slot];
-        if (selected.host == null && !selected.replacing) { enterDesktop(slot); return; }
+        if (selected.host == null && !selected.replacing) { enterDesktop(slot, true); return; }
         if (selected.host == null || !selected.host.ready) return;
+        clearPaneTapHighlight();
+        haptic(HapticFeedbackConstants.CLOCK_TICK);
         Pane previous = panes[mainSlot];
         boolean leavingDesktop = previous.card != null && previous.card.home;
         if (leavingDesktop) { desktopBusy = true; disconnectDesktop(); }
@@ -538,11 +544,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         swap.start();
     }
 
-    private void enterDesktop(int slot) {
+    private void enterDesktop(int slot, boolean fromTap) {
         if (!running() || desktopBusy || animator != null || transitionAnimator != null
                 || imeAnimator != null || imeAnimating || dragSession != null || OneHandedTaskHooks.shadeOpen()) return;
         Pane target = panes[slot];
         if (target == null || target.host != null || target.replacing) return;
+        // A tap still needs acknowledgement when it reuses the visible desktop.
+        if (fromTap) showPaneTapFeedback(slot);
         Pane previous = panes[mainSlot];
         // Every empty pane opens the same desktop. Keep its live view and launcher
         // connection in place when the main pane is already showing that desktop.
@@ -755,6 +763,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             icon.setImageDrawable(context.getPackageManager().getDefaultActivityIcon());
             icon.setContentDescription(card.description + "，长按拖入侧边窗口");
             icon.setOnClickListener(v -> { });
+            // beginAppDrag handles feedback, including the windowless fallback.
+            icon.setHapticFeedbackEnabled(false);
             icon.setOnLongClickListener(v -> beginAppDrag(icon, card));
             row.addView(icon, new LinearLayout.LayoutParams(dp(56), dp(56)));
             recentIcons.add(icon);
@@ -797,6 +807,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 || imeAnimator != null || imeAnimating || desktopBusy
                 || dragSession != null || isHosted(card) || OneHandedTaskHooks.shadeOpen()
                 || backdrop == null || !backdrop.hasDragPointer()) return false;
+        clearPaneTapHighlight();
         blockInput(true);
         dragSession = new DragSession(card, generation);
         dragSource = icon;
@@ -814,7 +825,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             backdrop.addView(dragPreview, new FrameLayout.LayoutParams(dp(56), dp(56)));
             updateRecentIcons();
             moveAppDrag(backdrop.touchX, backdrop.touchY);
-            icon.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            haptic(HapticFeedbackConstants.LONG_PRESS);
             return true;
         } catch (RuntimeException e) { Log.w(TAG, "Cannot start app drag", e); }
         finishAppDrag(-1);
@@ -849,7 +860,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             handler.post(() -> {
                 if (!running() || generation != session.generation || targetSlot == mainSlot
                         || panes[targetSlot] == null || OneHandedTaskHooks.shadeOpen()) return;
-                panes[targetSlot].load(session.card);
+                if (panes[targetSlot].load(session.card)) haptic(HapticFeedbackConstants.CONFIRM);
             });
         }
     }
@@ -864,9 +875,25 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         return -1;
     }
 
+    private void showPaneTapFeedback(int slot) {
+        clearPaneTapHighlight();
+        tappedSlot = slot;
+        panes[slot].updateAppearance();
+        haptic(HapticFeedbackConstants.CLOCK_TICK);
+        handler.postDelayed(clearTapHighlight, PANE_TAP_HIGHLIGHT_MS);
+    }
+
+    private void clearPaneTapHighlight() {
+        handler.removeCallbacks(clearTapHighlight);
+        int previous = tappedSlot;
+        tappedSlot = -1;
+        if (previous >= 0 && panes[previous] != null) panes[previous].updateAppearance();
+    }
+
     private void highlightDropTarget(int slot) {
         if (highlightedSlot == slot) return;
         highlightedSlot = slot;
+        if (slot >= 0 && dragSession != null) haptic(HapticFeedbackConstants.CLOCK_TICK);
         for (Pane pane : panes) {
             if (pane == null) continue;
             pane.updateAppearance();
@@ -1159,7 +1186,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             handler.postDelayed(() -> returnToDesktop(pane, request), 100);
             return;
         }
-        enterDesktop(pane.slot);
+        enterDesktop(pane.slot, false);
     }
 
     @Override public void onFailure(String message, Exception error) { if (active()) fail(message, error); }
@@ -1174,7 +1201,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             }
             return;
         }
+        if (focusMain && running()) haptic(HapticFeedbackConstants.CONTEXT_CLICK);
         state = State.CLOSING;
+        clearPaneTapHighlight();
         disconnectDesktop();
         handler.removeCallbacks(openingTimeout);
         handler.removeCallbacks(check);
@@ -1224,6 +1253,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         close(false);
     }
 
+    private void haptic(int feedback) { HapticFeedbackUtils.perform(context, backdrop, feedback); }
+
     private int dp(float value) { return Math.round(value * context.getResources().getDisplayMetrics().density); }
 
     private final class Pane {
@@ -1265,7 +1296,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             empty.setText("＋\n点击打开桌面\n或拖入应用");
             empty.setBackgroundColor(Color.TRANSPARENT);
             empty.setContentDescription("空白应用窗口，点击打开桌面，或长按上方应用图标拖入此处");
-            empty.setOnClickListener(v -> { if (slot == mainSlot) enterDesktop(slot); else select(slot); });
+            empty.setOnClickListener(v -> { if (slot == mainSlot) enterDesktop(slot, true); else select(slot); });
             container.addView(empty, new FrameLayout.LayoutParams(-1, -1));
             container.setOnTouchListener((view, event) -> {
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN && slot != mainSlot) select(slot);
@@ -1282,7 +1313,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             fill.setCornerRadius(cornerRadius);
             fill.setAlpha(Math.round(255 * transitionProgress));
             border.setCornerRadius(cornerRadius);
-            boolean highlighted = highlightedSlot == slot;
+            boolean highlighted = highlightedSlot == slot || tappedSlot == slot;
             border.setColor(highlighted ? 0x225aaaff : Color.TRANSPARENT);
             border.setStroke(Math.max(1, Math.round(dp(highlighted ? 2 : 0.7f) / scale)),
                     highlighted ? 0xff9acbff : 0x40ffffff);
@@ -1311,8 +1342,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             }
         }
 
-        void load(RecentTaskCard next) {
-            if (!active() || replacing || isHosted(next)) return;
+        boolean load(RecentTaskCard next) {
+            if (!active() || replacing || isHosted(next)) return false;
             replacing = true;
             OneStepShell.Host previous = host;
             int request = generation;
@@ -1338,6 +1369,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             };
             if (previous != null) shell.release(previous, attach);
             else attach.run();
+            return active();
         }
 
         void mount(OneStepShell.Host task) throws ReflectiveOperationException {

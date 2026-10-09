@@ -13,6 +13,7 @@ import android.view.View;
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.config.SettingsStore;
+import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import java.lang.ref.WeakReference;
@@ -161,10 +162,8 @@ final class AssistantGestureHooks {
                 consumed = true;
                 handler.removeCallbacks(timeout);
                 Object panel = ReflectUtils.getField(target, "mEdgeBackPlugin");
-                action.execute(fromLeft, () -> {
-                    if (panel instanceof View) ((View) panel).post(() -> ((View) panel).performHapticFeedback(
-                            HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING));
-                });
+                action.execute(fromLeft, () -> handler.post(() -> HapticFeedbackUtils.perform(
+                        context, panel instanceof View ? (View) panel : null, HapticFeedbackConstants.LONG_PRESS)));
                 return true;
             } catch (Throwable t) {
                 AssistantHooks.warn("Cannot take over edge back", t);
