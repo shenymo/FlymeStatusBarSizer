@@ -85,7 +85,10 @@ final class OneStepShell {
         int height;
         boolean main;
         boolean borrowed;
+        boolean backIntercepted;
         boolean restoring;
+        boolean homeBehindPending;
+        boolean homeBehindReady;
         boolean notified;
         boolean collected;
         boolean requireFocused;
@@ -115,9 +118,8 @@ final class OneStepShell {
                         executor.execute(() -> taskRemoved(this));
                         break;
                     case "onBackPressedOnTaskRoot":
-                        // Only used on ROMs that intercept root back for embedded tasks.
                         executor.execute(() -> {
-                            if (current(this)) restoreOne(this,
+                            if (current(this) && ready && main && !home() && !closing) restoreOne(this,
                                     () -> { if (OneStepShell.this.listener != null)
                                         OneStepShell.this.listener.onRemoved(this); }, 0);
                         });
@@ -544,6 +546,13 @@ final class OneStepShell {
                 listeners.put(host.card.taskId, host.controller);
                 taskCallback(host.controller, "onTaskAppeared", info, host.leash);
             }
+            if (!host.home()) {
+                // TaskView skips this registration when Shell transitions are enabled.
+                // Root back must retire the pane even when Android keeps the task in recents.
+                OneStepReflection.call(organizer, "setInterceptBackPressedOnTaskRoot",
+                        new Class<?>[]{tokenClass, boolean.class}, host.token, true);
+                host.backIntercepted = true;
+            }
             Object wct = transaction();
             // HOME stays a fullscreen HOME task. Only its surface is fitted into the pane.
             if (!host.home()) {
@@ -562,14 +571,29 @@ final class OneStepShell {
             Host main = host;
             for (Host candidate : hosts) if (current(candidate) && candidate.borrowed && candidate.main) main = candidate;
             arrangeTasks(wct, main);
-            if (host.launchCookie != null) {
+            if (host.home()) {
+                // HOME retains fullscreen bounds. Commit its pane parent/crop before
+                // bringing it above the workspace, otherwise WM can expose it fullscreen
+                // while Shell is still collecting the opening transition.
+                SurfaceControl parent = (SurfaceControl) OneStepReflection.call(host.controller, "getSurfaceControl");
+                if (parent == null || !parent.isValid()) throw new IllegalStateException("HOME pane surface unavailable");
+                try (SurfaceControl.Transaction tx = new SurfaceControl.Transaction()) {
+                    place(host, parent, tx);
+                    tx.addTransactionCommittedListener(executor, () -> {
+                        if (!current(host) || host.closing) return;
+                        try { submit(wct); }
+                        catch (Exception error) { launchFailed(host, error); }
+                    });
+                    tx.apply();
+                }
+            } else if (host.launchCookie != null) {
                 // The launch already has a Shell transition. Make the task non-occluding
                 // before its start transaction can expose it above the opaque workspace.
                 OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
                 host.collected = true;
                 present(host, null, null);
             } else submit(wct);
-            // The surface is made visible by the collected Shell transition, after relayout.
+            // The pane becomes ready after its presentation transaction commits.
         } catch (Exception error) {
             if (host.launchCookie != null || host.home()) launchFailed(host, error);
             else fail("无法接管应用任务", error);
@@ -1035,6 +1059,7 @@ final class OneStepShell {
 
     private void observeTransition(Object[] args) throws Exception {
         if (!accepting) return;
+        ArrayList<Host> backgroundTasks = new ArrayList<>();
         for (Object change : (List<?>) OneStepReflection.call(args[1], "getChanges")) {
             Object info = OneStepReflection.call(change, "getTaskInfo");
             if (info == null) continue;
@@ -1060,7 +1085,15 @@ final class OneStepShell {
                 host.closing = true;
                 // A finished task can already have undefined bounds/mode. It is not a
                 // move to another display or an external fullscreen application.
+                // Retire it even when another Shell handler owns the closing animation.
+                later(() -> { if (current(host)) taskRemoved(host); }, 0);
                 continue;
+            }
+            if (host != null && current(host) && host.main && host.ready && !host.home()
+                    && !host.animationPending && !host.coveredByLaunch && mode == 4
+                    && !pending.containsKey(args[0])) {
+                // Apps may implement root back with moveTaskToBack instead of finishing.
+                backgroundTasks.add(host);
             }
             if (isRetiredTask(info) && taskEnded(info)) continue;
             int windowMode = ReflectUtils.invokeNoArgInt(info, "getWindowingMode", -1);
@@ -1087,6 +1120,13 @@ final class OneStepShell {
                 return;
             }
         }
+        // Check every change for an external app switch before returning to the desktop.
+        // Run after transition collection so restoration can also repair its finish surface.
+        for (Host host : backgroundTasks) later(() -> {
+            if (current(host) && host.main && !host.closing) {
+                restoreOne(host, () -> { if (listener != null) listener.onRemoved(host); }, 0);
+            }
+        }, 0);
     }
 
     private void requestExternalExit() {
@@ -1172,7 +1212,10 @@ final class OneStepShell {
     private void restoreOne(Host host, Runnable finished, int attempt) {
         host.restoring = true;
         try {
-            restore(host);
+            if (!restore(host)) {
+                later(() -> restoreOne(host, finished, attempt), 50);
+                return;
+            }
             hosts.remove(host);
             if (finished != null) ui.post(finished);
         } catch (Exception error) {
@@ -1199,7 +1242,10 @@ final class OneStepShell {
                     b.card != null && b.card.taskId == focusTask));
             for (Host host : order) {
                 host.restoring = true;
-                restore(host);
+                if (!restore(host)) {
+                    later(() -> restoreAll(focusTask, finished, attempt, request), 50);
+                    return;
+                }
                 hosts.remove(host);
             }
             int selectedFocus = focusTask >= 0 ? focusTask : retainFocus;
@@ -1216,8 +1262,47 @@ final class OneStepShell {
         }
     }
 
-    private void restore(Host host) throws Exception {
-        if (host.released) return;
+    private boolean moveHomeBehindWorkspace(Host host) throws Exception {
+        if (host.homeBehindReady) return true;
+        if (host.homeBehindPending) return false;
+        Object wct = transaction();
+        reorder(wct, host.token, false);
+        arrangeTasks(wct, mainHost());
+        Class<?> runnableClass = Class.forName(
+                "com.android.wm.shell.common.SyncTransactionQueue$TransactionRunnable", false, loader);
+        Object callback = Proxy.newProxyInstance(loader, new Class<?>[]{runnableClass}, (proxy, method, args) -> {
+            if (method.getDeclaringClass() == Object.class) return objectMethod(proxy, method.getName(), args);
+            if ("runWithTransaction".equals(method.getName())) {
+                SurfaceControl.Transaction tx = (SurfaceControl.Transaction) args[0];
+                tx.addTransactionCommittedListener(executor, () -> {
+                    host.homeBehindReady = true;
+                    host.homeBehindPending = false;
+                });
+            }
+            return null;
+        });
+        Object queue = OneStepReflection.get(syncQueue, "mQueue");
+        synchronized (queue) {
+            // runInSync joins the in-flight WCT, not the last queued one. Wait for
+            // an idle queue so this commit always belongs to HOME's own reorder.
+            if (!((List<?>) queue).isEmpty()) return false;
+            host.homeBehindPending = true;
+            try {
+                OneStepReflection.call(syncQueue, "queue", new Class<?>[]{wctClass}, wct);
+                OneStepReflection.call(syncQueue, "runInSync", new Class<?>[]{runnableClass}, callback);
+            } catch (Exception error) {
+                host.homeBehindPending = false;
+                throw error;
+            }
+        }
+        return false;
+    }
+
+    private boolean restore(Host host) throws Exception {
+        if (host.released) return true;
+        // A close can arrive during the reorder. Keep the pane and its recovery
+        // record alive until WM's layer changes have reached the compositor.
+        if (host.homeBehindPending) return false;
         if (waitingOpening != null && (waitingOpening.app == host || waitingOpening.app.launchHome == host))
             finishWaitingOpening(waitingOpening, true);
         if (openingAnimation != null && (openingAnimation.app == host || openingAnimation.home == host))
@@ -1234,6 +1319,16 @@ final class OneStepShell {
         if (host.borrowed) {
             Object appeared = appeared(host.card.taskId);
             Object info = appeared == null ? null : OneStepReflection.call(appeared, "getTaskInfo");
+            if (host.home() && accepting && host.session == session && !host.externalReturn
+                    && !host.closing && matches(host.card, info) && !taskEnded(info)
+                    && !moveHomeBehindWorkspace(host)) return false;
+            if (host.backIntercepted) {
+                if (matches(host.card, info)) {
+                    OneStepReflection.call(organizer, "setInterceptBackPressedOnTaskRoot",
+                            new Class<?>[]{tokenClass, boolean.class}, host.token, false);
+                }
+                host.backIntercepted = false;
+            }
             if (!host.closing && matches(host.card, info) && !taskEnded(info)) {
                 Object wct = transaction();
                 mode(wct, host.token, host.originalMode);
@@ -1323,6 +1418,7 @@ final class OneStepShell {
         }
         host.prepared = false;
         releaseView(host);
+        return true;
     }
 
     private void returnSurface(Host host, SurfaceControl leash, SurfaceControl.Transaction tx) throws Exception {
@@ -1461,6 +1557,7 @@ final class OneStepShell {
         item.put("imeInsetsExcluded", true);
         item.put("forceTranslucent", true);
         item.put("home", host.home());
+        item.put("rootBackIntercepted", !host.home());
         journal.put(host.card.taskId, item);
         persist();
     }
@@ -1485,6 +1582,10 @@ final class OneStepShell {
             if (base == null || !base.flattenToString().equals(item.optString("component"))
                     || ReflectUtils.getIntField(info, "userId", -1) != item.getInt("user")) continue;
             Object token = OneStepReflection.get(info, "token");
+            if (item.optBoolean("rootBackIntercepted", false)) {
+                OneStepReflection.call(organizer, "setInterceptBackPressedOnTaskRoot",
+                        new Class<?>[]{tokenClass, boolean.class}, token, false);
+            }
             Object wct = transaction();
             boolean imeInsetsExcluded = item.optBoolean("imeInsetsExcluded", false);
             if (imeInsetsExcluded) bool(wct, "setExcludeImeInsets", token, false);

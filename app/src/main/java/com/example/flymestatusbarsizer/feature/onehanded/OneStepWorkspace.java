@@ -544,6 +544,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         Pane target = panes[slot];
         if (target == null || target.host != null || target.replacing) return;
         Pane previous = panes[mainSlot];
+        // Every empty pane opens the same desktop. Keep its live view and launcher
+        // connection in place when the main pane is already showing that desktop.
+        if (desktopSession != null && previous != null && previous.host != null
+                && previous.host.home() && previous.host.ready && !previous.host.closing) return;
         desktopBusy = true;
         disconnectDesktop();
         target.empty.setText("正在打开桌面…");
@@ -1140,19 +1144,19 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             if (pane.slot == mainSlot) {
                 desktopBusy = false;
                 shell.focus(null);
-                if (!host.home()) returnToDesktop(pane, generation, 0);
+                if (!host.home()) returnToDesktop(pane, generation);
             }
         }
         updateRecentIcons();
         updateInput();
     }
 
-    private void returnToDesktop(Pane pane, int request, int attempt) {
-        if (!running() || generation != request || pane.slot != mainSlot || pane.host != null
-                || pane.launchHost != null || desktopBusy || attempt >= 30) return;
+    private void returnToDesktop(Pane pane, int request) {
+        if (!running() || generation != request || pane != panes[mainSlot] || pane.host != null
+                || pane.launchHost != null || pane.replacing || desktopBusy) return;
         if (animator != null || transitionAnimator != null || imeAnimator != null || imeAnimating
                 || dragSession != null || OneHandedTaskHooks.shadeOpen()) {
-            handler.postDelayed(() -> returnToDesktop(pane, request, attempt + 1), 100);
+            handler.postDelayed(() -> returnToDesktop(pane, request), 100);
             return;
         }
         enterDesktop(pane.slot);
