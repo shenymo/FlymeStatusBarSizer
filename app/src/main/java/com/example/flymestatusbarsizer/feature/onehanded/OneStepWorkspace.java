@@ -44,7 +44,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private static final String TAG = "FlymeOneStep";
     private static final int COUNT = 4;
     private static final int TOOLBAR_HEIGHT_DP = 56;
-    private static final int PANE_GAP_DP = 8;
+    private static final int PANE_GAP_DP = 4;
     private static final int WORKSPACE_MARGIN_DP = 12;
     private static final int PANE_RADIUS_DP = 16;
     private static final PathInterpolator EASING = new PathInterpolator(0.2f, 0f, 0f, 1f);
