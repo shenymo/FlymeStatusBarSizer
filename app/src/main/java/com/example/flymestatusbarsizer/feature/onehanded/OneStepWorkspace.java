@@ -17,6 +17,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.SystemClock;
 import android.util.Log;
 import android.view.Gravity;
@@ -562,9 +563,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                             @Override public void onConnected() {
                                 if (running() && generation == request && pane == panes[mainSlot]) pane.load(home);
                             }
-                            @Override public void onLaunch(PendingIntent intent) {
+                            @Override public void onLaunch(PendingIntent intent, IBinder animation) {
                                 if (running() && generation == request && pane == panes[mainSlot])
-                                    launchFromDesktop(pane, intent);
+                                    launchFromDesktop(pane, intent, animation);
+                                else OneStepLaunchAnimation.cancelRemote(animation);
                             }
                             @Override public void onUnavailable() {
                                 if (running() && generation == request) desktopUnavailable(pane);
@@ -612,7 +614,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         });
     }
 
-    private void launchFromDesktop(Pane pane, PendingIntent intent) {
+    private void launchFromDesktop(Pane pane, PendingIntent intent, IBinder animation) {
         if (desktopBusy || animator != null || transitionAnimator != null || imeAnimator != null || imeAnimating
                 || pane.host == null || !pane.host.home() || !pane.host.ready || OneHandedTaskHooks.shadeOpen()) {
             if (desktopSession != null) desktopSession.retry();
@@ -622,9 +624,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         desktopBusy = true;
         blockInput(true);
         pane.empty.setText("正在打开应用…");
-        pane.empty.setVisibility(View.VISIBLE);
+        pane.empty.setVisibility(animation == null ? View.VISIBLE : View.GONE);
         try {
-            pane.launchHost = shell.createLaunch(context, intent, screenBounds);
+            pane.launchHost = shell.createLaunch(context, intent, animation, pane.host, screenBounds);
             pane.mount(pane.launchHost);
             shell.geometry(pane.launchHost, logicalBounds, logicalBounds.width(), logicalBounds.height(), true);
         } catch (Exception error) {
@@ -973,6 +975,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (!OneHandedTaskHooks.workspaceAllowed(context)) { close(false); return; }
         checkInFlight = true;
         int request = generation;
+        // A task snapshot can return after its pane has been replaced/removed. Remember
+        // the identities present when the query started so one stale focus cannot exit.
+        ArrayList<RecentTaskCard> queriedCards = new ArrayList<>();
+        for (Pane pane : panes) if (pane != null) {
+            if (pane.card != null) queriedCards.add(pane.card);
+            if (pane.launchHost != null && pane.launchHost.card != null) queriedCards.add(pane.launchHost.card);
+        }
         taskWorker.execute(() -> {
             try {
                 List<?> roots = tasks.roots();
@@ -983,7 +992,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     if (running() && !OneHandedTaskHooks.shadeOpen()) {
                         for (Object root : roots) {
                             if (OneStepTaskAccess.display(root) != 0 || !ReflectUtils.getBooleanField(root, "isFocused", false)) continue;
+                            if (OneStepShell.taskEnded(root)) continue;
                             boolean hosted = shell.isActivityTask(root);
+                            for (RecentTaskCard card : queriedCards) if (card.taskId == OneStepTaskAccess.taskId(root)
+                                    && card.token.equals(OneStepTaskAccess.token(root))) hosted = true;
                             for (Pane pane : panes) if (pane != null && pane.card != null
                                     && pane.card.taskId == OneStepTaskAccess.taskId(root)
                                     && pane.card.token.equals(OneStepTaskAccess.token(root))) hosted = true;
@@ -993,7 +1005,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                                 if (launching != null && launching.taskId == OneStepTaskAccess.taskId(root)
                                         && launching.token.equals(OneStepTaskAccess.token(root))) hosted = true;
                             }
-                            if (!hosted) { close(false); return; }
+                            if (!hosted) {
+                                Log.i(TAG, "Leaving workspace for focused task=" + OneStepTaskAccess.taskId(root));
+                                close(false);
+                                return;
+                            }
                         }
                     }
                     scheduleCheck(taskNotifications ? 3000 : 700);
@@ -1111,14 +1127,35 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (!active()) return;
         for (Pane pane : panes) if (pane != null && pane.launchHost == host) { onLaunchFailed(host); return; }
         for (Pane pane : panes) if (pane != null && pane.host == host) {
-            if (pane.slot == mainSlot) { close(false); return; }
+            if (host.home()) disconnectDesktop();
+            if (pane.launchHost != null) {
+                OneStepShell.Host launching = pane.launchHost;
+                pane.launchHost = null;
+                shell.release(launching, () -> pane.container.removeView(launching.view));
+            }
             pane.container.removeView(host.view);
             pane.host = null;
             pane.card = null;
             pane.showEmpty();
+            if (pane.slot == mainSlot) {
+                desktopBusy = false;
+                shell.focus(null);
+                if (!host.home()) returnToDesktop(pane, generation, 0);
+            }
         }
         updateRecentIcons();
         updateInput();
+    }
+
+    private void returnToDesktop(Pane pane, int request, int attempt) {
+        if (!running() || generation != request || pane.slot != mainSlot || pane.host != null
+                || pane.launchHost != null || desktopBusy || attempt >= 30) return;
+        if (animator != null || transitionAnimator != null || imeAnimator != null || imeAnimating
+                || dragSession != null || OneHandedTaskHooks.shadeOpen()) {
+            handler.postDelayed(() -> returnToDesktop(pane, request, attempt + 1), 100);
+            return;
+        }
+        enterDesktop(pane.slot);
     }
 
     @Override public void onFailure(String message, Exception error) { if (active()) fail(message, error); }

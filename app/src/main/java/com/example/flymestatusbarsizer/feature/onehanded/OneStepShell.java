@@ -13,6 +13,8 @@ import android.os.Handler;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
@@ -51,6 +53,9 @@ final class OneStepShell {
         PendingIntent launchIntent;
         IBinder launchCookie;
         IBinder launchTransition;
+        Host launchHome;
+        OneStepLaunchAnimation.Remote launchAnimation;
+        volatile boolean animationPending;
         long launchStartedAt;
         Rect launchRestoreBounds;
         final Map<Integer, Object> launchSnapshots = new HashMap<>();
@@ -84,6 +89,9 @@ final class OneStepShell {
         boolean notified;
         boolean collected;
         boolean requireFocused;
+        boolean coveredByLaunch;
+        boolean openingRevealed;
+        volatile boolean closing;
 
         boolean home() { return card != null && card.home; }
 
@@ -108,7 +116,11 @@ final class OneStepShell {
                         break;
                     case "onBackPressedOnTaskRoot":
                         // Only used on ROMs that intercept root back for embedded tasks.
-                        requestExternalExit();
+                        executor.execute(() -> {
+                            if (current(this)) restoreOne(this,
+                                    () -> { if (OneStepShell.this.listener != null)
+                                        OneStepShell.this.listener.onRemoved(this); }, 0);
+                        });
                         break;
                     default: break;
                 }
@@ -156,6 +168,8 @@ final class OneStepShell {
     // Shell owns these transactions. Keep merged finishes too: they are applied after the
     // observer's onTransitionFinished callback and may otherwise undo the hosted parent.
     private final Map<IBinder, ArrayList<SurfaceControl.Transaction>> finishes = new HashMap<>();
+    private OpeningAnimation openingAnimation;
+    private WaitingOpening waitingOpening;
     private final Map<Integer, JSONObject> journal = new HashMap<>();
     private volatile boolean initialized;
     private volatile boolean transitionBusy;
@@ -198,7 +212,15 @@ final class OneStepShell {
             if ("setTaskViewVisible".equals(method.getName())) {
                 executor.execute(() -> surfaceChanged(args[0], (Boolean) args[1]));
             } else if ("moveTaskViewToFullscreen".equals(method.getName()) || "removeTaskView".equals(method.getName())) {
-                requestExternalExit();
+                boolean fullscreen = "moveTaskViewToFullscreen".equals(method.getName());
+                executor.execute(() -> {
+                    for (Host host : new ArrayList<>(hosts)) {
+                        if (host.controller != args[0] || !current(host)) continue;
+                        if (fullscreen) requestExternalExit("TaskView requested fullscreen");
+                        else restoreOne(host, () -> { if (listener != null) listener.onRemoved(host); }, 0);
+                        break;
+                    }
+                });
             }
             // Bounds belong to the workspace's stable logical viewport, not the thumbnail size.
             // Tasks are borrowed by identity; startActivity/removeTask are never used here.
@@ -213,16 +235,33 @@ final class OneStepShell {
                         int type = ((Number) OneStepReflection.call(args[1], "getType")).intValue();
                         Host requested = find(trigger);
                         // Leave PiP, split-screen, keyguard and mode-change requests to Flyme.
+                        if (requested != null && current(requested) && type == 2 && taskEnded(trigger)) {
+                            requested.closing = true;
+                            pending.put((IBinder) args[0], session);
+                            transitionBusy = true;
+                            Object wct = transaction();
+                            arrangeTasks(wct, mainHost());
+                            Log.i(TAG, "Hosted task closing: task=" + requested.card.taskId);
+                            return wct;
+                        }
                         return requested != null && current(requested) && (type == 2 || type == 4)
                                 ? transaction() : null;
                     case "startAnimation": return animate(args);
                     case "onTransitionConsumed":
+                        if (waitingOpening != null && waitingOpening.args[0].equals(args[0]))
+                            finishWaitingOpening(waitingOpening, false);
+                        if (openingAnimation != null && openingAnimation.transition.equals(args[0]))
+                            finishOpeningAnimation(openingAnimation, true, false);
+                        for (Host host : hosts) if (host.launchAnimation != null && args[0].equals(host.launchTransition)) {
+                            cancelLaunchAnimation(host);
+                            present(host, null, null);
+                        }
                         pending.remove(args[0]);
                         transitionBusy = !pending.isEmpty();
                         if (args[2] != null) reattach((SurfaceControl.Transaction) args[2]);
                         if (pending.isEmpty()) retired.clear();
                         break;
-                    // Our transitions finish synchronously; merges are left to the normal queue.
+                    // Let Shell queue other transitions until the native opening animation finishes.
                     default: break;
                 }
             } catch (Exception error) { fail("应用窗口转场失败", error); }
@@ -353,18 +392,24 @@ final class OneStepShell {
         return host;
     }
 
-    Host createLaunch(Context context, PendingIntent intent, Rect restoreBounds) throws ReflectiveOperationException {
+    Host createLaunch(Context context, PendingIntent intent, IBinder animation, Host home, Rect restoreBounds)
+            throws ReflectiveOperationException {
         if (!accepting) throw new IllegalStateException("Workspace is closing");
         Host host = new Host(context, null, session, false);
         host.launchIntent = intent;
         host.launchCookie = new Binder();
+        host.launchHome = home;
+        host.launchAnimation = animation == null ? null : new OneStepLaunchAnimation.Remote(animation);
+        host.animationPending = animation != null;
         host.launchRestoreBounds = new Rect(restoreBounds);
         executor.execute(() -> {
             hosts.add(host);
             if (!current(host)) releaseView(host);
             else later(() -> {
-                if (current(host) && !host.ready) launchFailed(host,
-                        new IllegalStateException("Launcher task attach timed out"));
+                if (!current(host) || host.ready) return;
+                if (openingAnimation != null && openingAnimation.app == host)
+                    finishOpeningAnimation(openingAnimation, true, true);
+                else launchFailed(host, new IllegalStateException("Launcher task attach timed out"));
             }, 10000);
         });
         return host;
@@ -400,7 +445,7 @@ final class OneStepShell {
                 // Separate disable/enable transitions can briefly focus Home or another app.
                 Object wct = transaction();
                 for (Host candidate : hosts) {
-                    if (!current(candidate) || !candidate.borrowed) continue;
+                    if (!current(candidate) || !candidate.borrowed || candidate.closing) continue;
                     candidate.main = candidate == host;
                     bool(wct, "setFocusable", candidate.token, candidate.main);
                 }
@@ -433,7 +478,7 @@ final class OneStepShell {
     }
 
     private void acquire(Host host) {
-        if (!current(host) || host.borrowed || !host.initialized || host.logicalBounds.isEmpty()) return;
+        if (!current(host) || host.closing || host.borrowed || !host.initialized || host.logicalBounds.isEmpty()) return;
         try {
             if (host.card == null) {
                 if (!host.launching) launch(host);
@@ -467,6 +512,11 @@ final class OneStepShell {
                 return;
             }
             Object info = OneStepReflection.call(appeared, "getTaskInfo");
+            if (taskEnded(info)) {
+                host.closing = true;
+                taskRemoved(host);
+                return;
+            }
             boolean eligible = host.home() ? OneStepTaskAccess.home(info) : OneStepTaskAccess.application(info);
             if (host.launchCookie != null) eligible = activityType(info) == 1
                     && (windowMode(info) == 1 || windowMode(info) == 6);
@@ -537,6 +587,8 @@ final class OneStepShell {
                 host.launchSnapshots.put(OneStepTaskAccess.taskId(info), info);
             }
         }
+        // Shell owns the transition; Flyme's native icon runner animates our pane-local
+        // wrappers below. Do not also run WindowManager's fullscreen fallback animation.
         ActivityOptions options = ActivityOptions.makeCustomAnimation(context, 0, 0);
         options.setLaunchDisplayId(0);
         options.setLaunchBounds(host.logicalBounds);
@@ -617,6 +669,11 @@ final class OneStepShell {
     private void launchFailed(Host host, Exception error) {
         if (!current(host)) return;
         Log.w(TAG, "Cannot attach launcher application", error);
+        for (Host candidate : hosts) if (current(candidate) && candidate.coveredByLaunch) {
+            candidate.coveredByLaunch = false;
+            try { present(candidate, null, null); }
+            catch (Exception restoreError) { Log.w(TAG, "Cannot uncover desktop", restoreError); }
+        }
         restoreOne(host, () -> { if (listener != null) listener.onLaunchFailed(host); }, 0);
     }
 
@@ -634,7 +691,7 @@ final class OneStepShell {
 
     private void surfaceChanged(Object controller, boolean visible) {
         for (Host host : new ArrayList<>(hosts)) {
-            if (host.controller != controller || !current(host)) continue;
+            if (host.controller != controller || !current(host) || host.closing) continue;
             if (!visible) {
                 fail("应用窗口表面已断开", new IllegalStateException("TaskView surface destroyed"));
             } else if (host.borrowed) {
@@ -650,11 +707,12 @@ final class OneStepShell {
         try {
             Object appeared = appeared(host.card.taskId);
             Object info = appeared == null ? null : OneStepReflection.call(appeared, "getTaskInfo");
-            if (matches(host.card, info)) {
+            if (!host.closing && matches(host.card, info) && !taskEnded(info)) {
                 // A listener handoff or window-mode conversion is not an application death.
-                requestExternalExit();
+                requestExternalExit("hosted task listener changed: task=" + host.card.taskId);
                 return;
             }
+            host.closing = true;
             restoreOne(host, () -> { if (listener != null) listener.onRemoved(host); }, 0);
         } catch (Exception error) { fail("无法处理应用退出", error); }
     }
@@ -665,7 +723,7 @@ final class OneStepShell {
         boolean allOurs = true;
         for (Object change : changes) {
             Object info = OneStepReflection.call(change, "getTaskInfo");
-            if (info != null && find(info) == null) allOurs = false;
+            if (info != null && find(info) == null && !isActivityTask(info) && !isRetiredTask(info)) allOurs = false;
         }
         if (!ours && (!allOurs || hosts.isEmpty())) return false;
         SurfaceControl.Transaction start = (SurfaceControl.Transaction) args[2];
@@ -689,16 +747,24 @@ final class OneStepShell {
             }
             if (host == null && ours) {
                 for (Host returned : retired) if (matches(returned.card, info)) {
-                    SurfaceControl surface = (SurfaceControl) OneStepReflection.call(change, "getLeash");
-                    returnSurface(returned, surface, start);
-                    returnSurface(returned, surface, finish);
+                    if (!returned.closing) {
+                        SurfaceControl surface = (SurfaceControl) OneStepReflection.call(change, "getLeash");
+                        returnSurface(returned, surface, start);
+                        returnSurface(returned, surface, finish);
+                    }
                     handled = true;
                     break;
                 }
             }
             if (host == null) continue;
             int changeMode = ((Number) OneStepReflection.call(change, "getMode")).intValue();
-            if (changeMode == 2) continue; // Let WindowManager finish removing this task.
+            if (changeMode == 2 && taskEnded(info)) {
+                host.closing = true;
+                // WindowManager removes the task; only this pane is retired after the transition.
+                executor.execute(() -> taskRemoved(host));
+                handled = true;
+                continue;
+            }
             if (!current(host)) continue;
             host.info = info;
             host.collected = true;
@@ -707,11 +773,264 @@ final class OneStepShell {
             handled = true;
         }
         if (!ours && !handled) return false;
+        for (Host host : hosts) {
+            if (current(host) && host.animationPending && args[0].equals(host.launchTransition)) {
+                if (!host.borrowed && current(host.launchHome)) {
+                    waitingOpening = new WaitingOpening(host, args);
+                    Log.i(TAG, "Waiting for opening task surface: task="
+                            + (host.card == null ? -1 : host.card.taskId));
+                    start.apply();
+                    WaitingOpening waiting = waitingOpening;
+                    later(() -> resumeOpening(waiting), 50);
+                    return true;
+                }
+                if (startOpeningAnimation(host, args)) return true;
+                cancelLaunchAnimation(host);
+                present(host, start, finish);
+                break;
+            }
+        }
         pending.remove(args[0]);
         transitionBusy = !pending.isEmpty();
         start.apply();
         OneStepReflection.call(args[4], "onTransitionFinished", new Class<?>[]{wctClass}, (Object) null);
         return true;
+    }
+
+    private final class WaitingOpening {
+        final Host app;
+        final Object[] args;
+        final long deadline = SystemClock.uptimeMillis() + 2000;
+
+        WaitingOpening(Host app, Object[] args) {
+            this.app = app;
+            this.args = args.clone();
+        }
+    }
+
+    private void resumeOpening(WaitingOpening waiting) {
+        if (waitingOpening != waiting) return;
+        Host app = waiting.app;
+        if (!current(app) || app.closing || !current(app.launchHome)) {
+            finishWaitingOpening(waiting, true);
+            return;
+        }
+        if (app.borrowed) {
+            waitingOpening = null;
+            // Shell's start transaction was applied to allow onTaskAppeared to arrive.
+            // Keep its finish callback pending and animate using the organizer-owned leash.
+            try (SurfaceControl.Transaction start = new SurfaceControl.Transaction()) {
+                Object[] args = waiting.args.clone();
+                args[2] = start;
+                if (startOpeningAnimation(app, args)) return;
+                start.apply();
+            }
+            waitingOpening = waiting;
+            finishWaitingOpening(waiting, true);
+        } else if (SystemClock.uptimeMillis() >= waiting.deadline) {
+            Log.w(TAG, "Opening surface wait timed out; completing without animation");
+            finishWaitingOpening(waiting, true);
+        } else later(() -> resumeOpening(waiting), 50);
+    }
+
+    private void finishWaitingOpening(WaitingOpening waiting, boolean finishTransition) {
+        if (waitingOpening != waiting) return;
+        waitingOpening = null;
+        cancelLaunchAnimation(waiting.app);
+        try {
+            present(waiting.app, null, (SurfaceControl.Transaction) waiting.args[3]);
+        } catch (Exception error) { Log.w(TAG, "Cannot present waiting application", error); }
+        pending.remove(waiting.args[0]);
+        transitionBusy = !pending.isEmpty();
+        if (finishTransition) {
+            try { OneStepReflection.call(waiting.args[4], "onTransitionFinished",
+                    new Class<?>[]{wctClass}, (Object) null); }
+            catch (Exception error) { Log.w(TAG, "Cannot finish waiting opening transition", error); }
+        }
+    }
+
+    private final class OpeningAnimation {
+        final Host app;
+        final Host home;
+        final IBinder transition;
+        final Object callback;
+        final OneStepLaunchAnimation.Remote remote;
+        final ArrayList<SurfaceControl> surfaces = new ArrayList<>();
+        SurfaceControl stage;
+        SurfaceControl icons;
+
+        OpeningAnimation(Host app, Host home, IBinder transition, Object callback) {
+            this.app = app;
+            this.home = home;
+            this.transition = transition;
+            this.callback = callback;
+            remote = app.launchAnimation;
+        }
+
+        SurfaceControl layer(String name, SurfaceControl parent) throws Exception {
+            SurfaceControl.Builder builder = new SurfaceControl.Builder().setName("OneStep " + name).setParent(parent);
+            OneStepReflection.call(builder, "setContainerLayer");
+            SurfaceControl surface = builder.build();
+            surfaces.add(surface);
+            return surface;
+        }
+    }
+
+    private boolean startOpeningAnimation(Host app, Object[] args) {
+        Host home = app.launchHome;
+        if (openingAnimation != null || !current(home) || !home.borrowed || !app.borrowed
+                || app.launchAnimation == null) {
+            Log.w(TAG, "Opening animation not ready: task=" + (app.card == null ? -1 : app.card.taskId)
+                    + " borrowed=" + app.borrowed + " home=" + current(home)
+                    + " running=" + (openingAnimation != null));
+            return false;
+        }
+        OpeningAnimation animation = new OpeningAnimation(app, home, (IBinder) args[0], args[4]);
+        SurfaceControl.Transaction start = (SurfaceControl.Transaction) args[2];
+        try {
+            SurfaceControl parent = (SurfaceControl) OneStepReflection.call(home.controller, "getSurfaceControl");
+            if (parent == null || !parent.isValid() || home.leash == null || !home.leash.isValid()
+                    || app.leash == null || !app.leash.isValid()) {
+                Log.w(TAG, "Opening animation surface unavailable: task=" + app.card.taskId);
+                return false;
+            }
+            animation.stage = animation.layer("opening viewport", parent);
+            SurfaceControl coordinates = animation.layer("launcher coordinates", animation.stage);
+            SurfaceControl homeLeash = animation.layer("desktop animation", coordinates);
+            SurfaceControl appLeash = animation.layer("application animation", coordinates);
+            animation.icons = animation.layer("floating icons", coordinates);
+            // The native animator works in full desktop coordinates. The enclosing viewport
+            // removes system insets, then the existing pane View supplies its screen scale.
+            Rect viewport = new Rect(0, 0, app.logicalBounds.width(), app.logicalBounds.height());
+            start.setLayer(animation.stage, 1).setVisibility(animation.stage, true);
+            crop(start, animation.stage, viewport);
+            start.setPosition(coordinates, -app.logicalBounds.left, -app.logicalBounds.top).setVisibility(coordinates, true);
+            start.setLayer(homeLeash, 0).setPosition(homeLeash, home.originalBounds.left, home.originalBounds.top)
+                    .setVisibility(homeLeash, true);
+            // Flyme keeps the expanding floating icon opaque. The opening application
+            // fades in ABOVE it, as it does above the launcher's window on the desktop.
+            start.setLayer(appLeash, 2).setPosition(appLeash, app.logicalBounds.left, app.logicalBounds.top)
+                    .setAlpha(appLeash, 0f).setVisibility(appLeash, true);
+            start.setLayer(animation.icons, 1).setVisibility(animation.icons, true);
+            start.reparent(home.leash, homeLeash).setPosition(home.leash, 0, 0).setScale(home.leash, 1, 1)
+                    .setLayer(home.leash, 0).setAlpha(home.leash, 1f).setVisibility(home.leash, true);
+            crop(start, home.leash, null);
+            start.reparent(app.leash, appLeash).setPosition(app.leash, 0, 0).setScale(app.leash, 1, 1)
+                    .setLayer(app.leash, 0).setAlpha(app.leash, 1f).setVisibility(app.leash, true);
+            crop(start, app.leash, viewport);
+            Parcelable[] targets = new Parcelable[]{animationTarget(app, appLeash, 1, 1),
+                    animationTarget(home, homeLeash, 4, 0)};
+            openingAnimation = animation;
+            start.addTransactionCommittedListener(executor, () -> {
+                if (openingAnimation != animation) return;
+                try {
+                    Log.i(TAG, "Starting native launcher animation: task=" + app.card.taskId);
+                    animation.remote.start(targets, animation.icons, executor,
+                            () -> finishOpeningAnimation(animation, false, true));
+                } catch (Exception error) {
+                    Log.w(TAG, "Cannot start native launcher animation", error);
+                    finishOpeningAnimation(animation, true, true);
+                }
+            });
+            start.apply();
+            later(() -> {
+                if (openingAnimation == animation) {
+                    Log.w(TAG, "Native launcher animation timed out; completing application launch");
+                    finishOpeningAnimation(animation, true, true);
+                }
+            }, 4000);
+            return true;
+        } catch (Exception error) {
+            Log.w(TAG, "Cannot prepare native launcher animation", error);
+            openingAnimation = null;
+            // Undo every queued reparent in the same start transaction before falling back.
+            try {
+                place(app, (SurfaceControl) OneStepReflection.call(app.controller, "getSurfaceControl"), start);
+                place(home, (SurfaceControl) OneStepReflection.call(home.controller, "getSurfaceControl"), start);
+                removeAnimationSurfaces(animation, start);
+            } catch (Exception cleanupError) { Log.w(TAG, "Cannot reset opening surfaces", cleanupError); }
+            return false;
+        }
+    }
+
+    private Parcelable animationTarget(Host host, SurfaceControl leash, int mode, int order) throws Exception {
+        // Copy TaskInfo: native code may retain or modify it, but the organizer owns the original.
+        Parcel parcel = Parcel.obtain();
+        ActivityManager.RunningTaskInfo info;
+        try {
+            ((Parcelable) host.info).writeToParcel(parcel, 0);
+            parcel.setDataPosition(0);
+            Parcelable.Creator<?> creator = (Parcelable.Creator<?>) OneStepReflection.field(
+                    ActivityManager.RunningTaskInfo.class, "CREATOR").get(null);
+            info = (ActivityManager.RunningTaskInfo) creator.createFromParcel(parcel);
+        } finally { parcel.recycle(); }
+        Object window = OneStepReflection.get(OneStepReflection.get(info, "configuration"), "windowConfiguration");
+        OneStepReflection.call(window, "setBounds", new Class<?>[]{Rect.class},
+                host.home() ? host.originalBounds : host.logicalBounds);
+        Class<?> util = Class.forName("com.android.wm.shell.shared.TransitionUtil", false, loader);
+        return (Parcelable) OneStepReflection.method(util, "newSyntheticTarget", ActivityManager.RunningTaskInfo.class,
+                SurfaceControl.class, int.class, int.class, boolean.class).invoke(null, info, leash, mode, order, false);
+    }
+
+    private void finishOpeningAnimation(OpeningAnimation animation, boolean cancel, boolean finishTransition) {
+        if (openingAnimation != animation) return;
+        openingAnimation = null;
+        Log.i(TAG, "Finishing native launcher animation: task=" + animation.app.card.taskId + " cancel=" + cancel);
+        animation.remote.close(cancel);
+        animation.app.launchAnimation = null;
+        animation.app.openingRevealed = true;
+        // The application's TaskView is mounted underneath Home. Hide Home in this same
+        // transaction so its reset content cannot flash between animation end and UI removal.
+        if (current(animation.app) && !animation.app.closing && current(animation.home)) animation.home.coveredByLaunch = true;
+        try (SurfaceControl.Transaction tx = new SurfaceControl.Transaction()) {
+            for (Host host : new Host[]{animation.home, animation.app}) {
+                if (host.closing) continue;
+                SurfaceControl parent = (SurfaceControl) OneStepReflection.call(host.controller, "getSurfaceControl");
+                if (parent == null || !parent.isValid() || !host.leash.isValid()) continue;
+                place(host, parent, tx);
+                for (ArrayList<SurfaceControl.Transaction> transactions : finishes.values())
+                    for (SurfaceControl.Transaction finish : transactions) place(host, parent, finish);
+            }
+            removeAnimationSurfaces(animation, tx);
+            tx.addTransactionCommittedListener(executor, () -> {
+                animation.app.animationPending = false;
+                // Signal readiness only after the final surface handoff has committed.
+                try { present(animation.app, null, null); }
+                catch (Exception error) { launchFailed(animation.app, error); }
+            });
+            tx.apply();
+        } catch (Exception error) {
+            animation.app.animationPending = false;
+            launchFailed(animation.app, error);
+        }
+        finally {
+            pending.remove(animation.transition);
+            transitionBusy = !pending.isEmpty();
+            if (finishTransition) {
+                try { OneStepReflection.call(animation.callback, "onTransitionFinished",
+                        new Class<?>[]{wctClass}, (Object) null); }
+                catch (Exception error) { Log.w(TAG, "Cannot finish opening transition", error); }
+            }
+        }
+    }
+
+    private void cancelLaunchAnimation(Host host) {
+        if (host.launchAnimation != null) host.launchAnimation.close(true);
+        host.launchAnimation = null;
+        host.animationPending = false;
+    }
+
+    private void removeAnimationSurfaces(OpeningAnimation animation, SurfaceControl.Transaction tx) {
+        for (int i = animation.surfaces.size() - 1; i >= 0; i--) {
+            SurfaceControl surface = animation.surfaces.get(i);
+            if (surface.isValid()) tx.reparent(surface, null);
+            surface.release();
+        }
+        animation.surfaces.clear();
+    }
+
+    private void crop(SurfaceControl.Transaction tx, SurfaceControl surface, Rect bounds) throws Exception {
+        OneStepReflection.call(tx, "setWindowCrop", new Class<?>[]{SurfaceControl.class, Rect.class}, surface, bounds);
     }
 
     private void observeTransition(Object[] args) throws Exception {
@@ -737,6 +1056,13 @@ final class OneStepShell {
             }
             if (acquiring) continue;
             int mode = ((Number) OneStepReflection.call(change, "getMode")).intValue();
+            if (host != null && mode == 2 && taskEnded(info)) {
+                host.closing = true;
+                // A finished task can already have undefined bounds/mode. It is not a
+                // move to another display or an external fullscreen application.
+                continue;
+            }
+            if (isRetiredTask(info) && taskEnded(info)) continue;
             int windowMode = ReflectUtils.invokeNoArgInt(info, "getWindowingMode", -1);
             if (host != null && (windowMode != (host.home() ? 1 : 6) || OneStepTaskAccess.display(info) != 0
                     || ReflectUtils.getIntField(info, "parentTaskId", -1) != -1)) {
@@ -750,21 +1076,26 @@ final class OneStepShell {
                     host.originalAlwaysOnTop = Boolean.TRUE.equals(OneStepReflection.call(config, "isAlwaysOnTop"));
                     host.returnParent = ReflectUtils.getIntField(info, "parentTaskId", -1);
                     host.returnDisplay = OneStepTaskAccess.display(info);
-                    requestExternalExit();
+                    requestExternalExit("hosted task changed container: task=" + host.card.taskId + " mode=" + windowMode);
                     return;
                 }
             }
             if (!pending.containsKey(args[0]) && host == null && OneStepTaskAccess.display(info) == 0
                     && (mode == 1 || mode == 3)) {
                 // A separately launched task (including external pickers) continues normally.
-                requestExternalExit();
+                requestExternalExit("external task opened: task=" + OneStepTaskAccess.taskId(info));
                 return;
             }
         }
     }
 
     private void requestExternalExit() {
+        requestExternalExit("TaskView requested external transition");
+    }
+
+    private void requestExternalExit(String reason) {
         if (!accepting) return;
+        Log.i(TAG, "Leaving workspace: " + reason);
         accepting = false;
         int request = closeRequest.incrementAndGet();
         executor.execute(() -> restoreAll(-1, () -> {
@@ -774,7 +1105,7 @@ final class OneStepShell {
 
     private void reattach(SurfaceControl.Transaction tx) throws Exception {
         for (Host host : hosts) {
-            if (!current(host) || !host.borrowed || !host.collected) continue;
+            if (!current(host) || host.closing || !host.borrowed || !host.collected) continue;
             SurfaceControl parent = (SurfaceControl) OneStepReflection.call(host.controller, "getSurfaceControl");
             if (parent != null && parent.isValid() && host.leash != null && host.leash.isValid()) {
                 place(host, parent, tx);
@@ -783,7 +1114,7 @@ final class OneStepShell {
     }
 
     private void present(Host host, SurfaceControl.Transaction start, SurfaceControl.Transaction finish) throws Exception {
-        if (!current(host) || !host.borrowed || !host.collected || host.width <= 0 || host.height <= 0) return;
+        if (!current(host) || host.closing || !host.borrowed || !host.collected || host.width <= 0 || host.height <= 0) return;
         SurfaceControl parent = (SurfaceControl) OneStepReflection.call(host.controller, "getSurfaceControl");
         if (parent == null || !parent.isValid() || host.leash == null || !host.leash.isValid()) return;
         OneStepReflection.call(host.controller, "prepareOpen",
@@ -802,7 +1133,8 @@ final class OneStepShell {
                 // This signals transaction commitment, not measured content FPS or presentation.
                 tx.addTransactionCommittedListener(command -> ui.post(command), () -> {
                     host.commitPending = false;
-                    if (accepting && session == host.session && !host.released && !host.restoring) {
+                    if (accepting && session == host.session && !host.released && !host.restoring && !host.ready
+                            && !host.closing && !host.animationPending) {
                         host.ready = true;
                         if (listener != null) listener.onReady(host);
                     }
@@ -818,6 +1150,8 @@ final class OneStepShell {
 
     private void placeSurface(Host host, SurfaceControl surface, SurfaceControl parent, SurfaceControl.Transaction tx)
             throws Exception {
+        // Only the native animator may transform these temporary wrappers until it finishes.
+        if (openingAnimation != null && (openingAnimation.app == host || openingAnimation.home == host)) return;
         Rect crop = new Rect(0, 0, host.logicalBounds.width(), host.logicalBounds.height());
         if (host.home()) crop.offset(host.logicalBounds.left - host.originalBounds.left,
                 host.logicalBounds.top - host.originalBounds.top);
@@ -825,7 +1159,10 @@ final class OneStepShell {
         float sy = host.height / (float) crop.height();
         tx.reparent(surface, parent).setPosition(surface, -crop.left * sx, -crop.top * sy)
                 .setScale(surface, sx, sy)
-                .setAlpha(surface, 1f).setVisibility(surface, true);
+                // Keep a newly appeared app hidden until the native stage takes over,
+                // even if SurfaceView relayout temporarily changes sibling surface order.
+                .setAlpha(surface, host.coveredByLaunch || (host.animationPending && !host.openingRevealed) ? 0f : 1f)
+                .setVisibility(surface, true);
         OneStepReflection.call(tx, "setWindowCrop", new Class<?>[]{SurfaceControl.class, Rect.class},
                 surface, crop);
         // A Surface frame-rate vote is a scheduling preference, not a per-app FPS cap.
@@ -881,6 +1218,11 @@ final class OneStepShell {
 
     private void restore(Host host) throws Exception {
         if (host.released) return;
+        if (waitingOpening != null && (waitingOpening.app == host || waitingOpening.app.launchHome == host))
+            finishWaitingOpening(waitingOpening, true);
+        if (openingAnimation != null && (openingAnimation.app == host || openingAnimation.home == host))
+            finishOpeningAnimation(openingAnimation, true, true);
+        cancelLaunchAnimation(host);
         if (host.launchCookie != null && host.launching && host.card == null) {
             // A close can race the organizer callback. Resolve the cookie before dropping
             // the placeholder, so a late application cannot be stranded in multiwindow.
@@ -892,7 +1234,7 @@ final class OneStepShell {
         if (host.borrowed) {
             Object appeared = appeared(host.card.taskId);
             Object info = appeared == null ? null : OneStepReflection.call(appeared, "getTaskInfo");
-            if (matches(host.card, info)) {
+            if (!host.closing && matches(host.card, info) && !taskEnded(info)) {
                 Object wct = transaction();
                 mode(wct, host.token, host.originalMode);
                 bounds(wct, host.token, host.originalBounds);
@@ -943,7 +1285,7 @@ final class OneStepShell {
             host.borrowed = false;
             if (!pending.isEmpty() && !retired.contains(host)) retired.add(host);
         } else {
-            if (host.prepared) {
+            if (host.prepared && !host.closing) {
                 Object wct = transaction();
                 bool(wct, "setForceTranslucent", host.token, false);
                 if (host.launchCookie != null) {
@@ -1002,6 +1344,7 @@ final class OneStepShell {
 
     private void releaseView(Host host) {
         if (host.released) return;
+        cancelLaunchAnimation(host);
         host.released = true;
         host.ready = false;
         // Reset before surfaceDestroyed can enqueue a hide for a task already returned to Android.
@@ -1044,10 +1387,15 @@ final class OneStepShell {
         // occludes unrelated apps and Home without hiding or freezing those processes.
         reorder(wct, activityToken, true);
         for (Host candidate : hosts) {
-            if (current(candidate) && candidate.borrowed && candidate != focused)
+            if (current(candidate) && candidate.borrowed && !candidate.closing && candidate != focused)
                 reorder(wct, candidate.token, true);
         }
-        if (focused != null) reorder(wct, focused.token, true);
+        if (current(focused) && focused.borrowed && !focused.closing) reorder(wct, focused.token, true);
+    }
+
+    private Host mainHost() {
+        for (Host host : hosts) if (current(host) && host.borrowed && !host.closing && host.main) return host;
+        return null;
     }
 
     @SuppressWarnings("unchecked")
@@ -1074,6 +1422,14 @@ final class OneStepShell {
     private Host find(Object info) {
         for (Host host : hosts) if (host.borrowed && !host.released && matches(host.card, info)) return host;
         return null;
+    }
+    private boolean isRetiredTask(Object info) {
+        for (Host host : retired) if (matches(host.card, info)) return true;
+        return false;
+    }
+    static boolean taskEnded(Object info) {
+        return info != null && (!ReflectUtils.getBooleanField(info, "isRunning", true)
+                || ReflectUtils.getIntField(info, "numActivities", -1) == 0);
     }
     private static boolean matches(RecentTaskCard card, Object info) {
         return card != null && info != null && card.taskId == OneStepTaskAccess.taskId(info)

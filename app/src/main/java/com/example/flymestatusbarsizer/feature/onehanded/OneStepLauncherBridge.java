@@ -40,13 +40,14 @@ public final class OneStepLauncherBridge {
     // Launcher-process state, accessed on its main thread.
     private static IBinder launcherControl;
     private static IBinder.DeathRecipient launcherDeath;
+    private static int launcherOwnerUid = -1;
     private static boolean registered;
 
     private OneStepLauncherBridge() {}
 
     interface Listener {
         void onConnected();
-        void onLaunch(PendingIntent intent);
+        void onLaunch(PendingIntent intent, IBinder animation);
         void onUnavailable();
     }
 
@@ -57,6 +58,7 @@ public final class OneStepLauncherBridge {
         private volatile boolean enabled;
         private volatile boolean pending;
         private boolean connected;
+        private IBinder animation;
         private final Runnable timeout;
 
         Session(Context context, Handler handler, int userId, Listener listener) throws Exception {
@@ -91,16 +93,23 @@ public final class OneStepLauncherBridge {
                     } else {
                         PendingIntent intent = data.readTypedObject(PendingIntent.CREATOR);
                         int targetUser = data.readInt();
+                        IBinder launchAnimation = data.readStrongBinder();
                         accepted &= enabled && !pending && intent != null && targetUser == userId;
                         if (accepted) {
                             pending = true;
                             handler.post(() -> {
-                                if (!closed) listener.onLaunch(intent);
+                                if (!closed) {
+                                    animation = launchAnimation;
+                                    listener.onLaunch(intent, launchAnimation);
+                                } else OneStepLaunchAnimation.cancelRemote(launchAnimation);
                             });
                         }
                     }
                     reply.writeNoException();
                     reply.writeInt(accepted ? 1 : 0);
+                    // Flyme can run SystemUI under its own application UID. Return the
+                    // actual owner of this permission-protected workspace connection.
+                    if (code == ATTACH && accepted) reply.writeInt(Process.myUid());
                     return true;
                 }
             };
@@ -115,13 +124,18 @@ public final class OneStepLauncherBridge {
         }
 
         void enable(boolean value) { enabled = value && !closed; }
-        void retry() { pending = false; }
-        void close() { closed = true; enabled = false; handler.removeCallbacks(timeout); }
+        void retry() {
+            OneStepLaunchAnimation.cancelRemote(animation);
+            animation = null;
+            pending = false;
+        }
+        void close() { closed = true; enabled = false; retry(); handler.removeCallbacks(timeout); }
     }
 
     public static void install(FlymeStatusBarSizer module, ClassLoader loader) {
         if (Build.VERSION.SDK_INT < 33) return;
         try {
+            OneStepLaunchAnimation.install(module, loader);
             Class<?> launcher = Class.forName("com.android.launcher3.uioverrides.QuickstepLauncher", false, loader);
             Method onCreate = OneStepReflection.method(launcher, "onCreate", Bundle.class);
             module.intercept(onCreate, chain -> {
@@ -136,6 +150,7 @@ public final class OneStepLauncherBridge {
                 IBinder control = launcherControl;
                 if (control == null) return chain.proceed();
                 Context context = (Context) chain.getThisObject();
+                OneStepLaunchAnimation.Launch animation = null;
                 try {
                     int state = transact(control, ACTIVE, null);
                     if (state == 0) return chain.proceed();
@@ -150,15 +165,25 @@ public final class OneStepLauncherBridge {
                         return null;
                     }
                     PendingIntent pending = pendingIntent(context, intent, info, target);
+                    animation = OneStepLaunchAnimation.prepare(context, (View) chain.getArg(0), info, item,
+                            launcherOwnerUid);
+                    OneStepLaunchAnimation.Launch preparedAnimation = animation;
                     int accepted = transact(control, LAUNCH, data -> {
                         data.writeTypedObject(pending, 0);
                         data.writeInt(Process.myUid() / 100000);
+                        data.writeStrongBinder(preparedAnimation);
                     });
-                    if (accepted != 1) return null;
+                    if (accepted != 1) {
+                        if (animation != null) animation.cancel();
+                        pending.cancel();
+                        return null;
+                    }
+                    if (animation != null) return animation.callbacks;
                     Object callbacks = launch.getReturnType().getConstructor().newInstance();
                     OneStepReflection.call(callbacks, "executeAllAndDestroy");
                     return callbacks;
                 } catch (Exception error) {
+                    if (animation != null) animation.cancel();
                     Log.w(OneHandedTaskHooks.TAG, "Cannot launch into workspace", error);
                     Toast.makeText(context, "无法在工作台中打开应用", Toast.LENGTH_SHORT).show();
                     return null;
@@ -201,12 +226,18 @@ public final class OneStepLauncherBridge {
                 IBinder control = extras == null ? null : extras.getBinder("control");
                 if (control == null) return;
                 try {
-                    if (transact(control, ATTACH, null) != 1) return;
+                    int ownerUid = transact(control, ATTACH, null);
+                    if (ownerUid <= 0) return;
                     if (launcherControl != null && launcherDeath != null)
                         launcherControl.unlinkToDeath(launcherDeath, 0);
                     launcherControl = control;
+                    launcherOwnerUid = ownerUid;
                     launcherDeath = () -> main.post(() -> {
-                        if (launcherControl == control) { launcherControl = null; launcherDeath = null; }
+                        if (launcherControl == control) {
+                            launcherControl = null;
+                            launcherDeath = null;
+                            launcherOwnerUid = -1;
+                        }
                     });
                     control.linkToDeath(launcherDeath, 0);
                 } catch (RemoteException | RuntimeException error) {
@@ -224,9 +255,11 @@ public final class OneStepLauncherBridge {
         try {
             data.writeInterfaceToken(DESCRIPTOR);
             if (writer != null) writer.write(data);
-            if (!control.transact(code, data, reply, 0)) return 0;
+            if (!control.transact(code, data, reply, 0)) return code == ATTACH ? -1 : 0;
             reply.readException();
-            return reply.readInt();
+            int result = reply.readInt();
+            if (code == ATTACH) return result == 1 && reply.dataAvail() >= Integer.BYTES ? reply.readInt() : -1;
+            return result;
         } finally { data.recycle(); reply.recycle(); }
     }
 }
