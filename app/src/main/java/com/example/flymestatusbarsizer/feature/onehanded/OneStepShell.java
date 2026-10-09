@@ -104,6 +104,8 @@ final class OneStepShell {
         boolean replacement;
         Navigation navigation;
         boolean surfaceMissing;
+        String lastImeTaskState;
+        String lastImeModeRequest;
 
         boolean home() { return card != null && card.home; }
 
@@ -367,6 +369,53 @@ final class OneStepShell {
     void setListener(Listener listener) { this.listener = listener; }
     boolean available() { return initialized && !accepting && !transitionBusy; }
 
+    private void logImeTask(Host host, String event, Object info, boolean force) {
+        try {
+            String snapshot = "main=" + host.main + " " + OneStepImeDiagnostics.taskInfo(info);
+            if (!force && snapshot.equals(host.lastImeTaskState)) return;
+            host.lastImeTaskState = snapshot;
+            Log.i(OneStepImeDiagnostics.TAG, "task session=" + host.session + " event=" + event
+                    + " expectedMode=" + (host.home() ? 1 : 6) + " " + snapshot);
+        } catch (Throwable error) { OneStepImeDiagnostics.unavailable(error); }
+    }
+
+    private void logImeModeRequest(Host host, String event, Object info) {
+        try {
+            String snapshot = "event=" + event + " requestedMode=" + (host.home() ? 1 : 6)
+                    + " requestedBounds=" + host.logicalBounds + " before={" + OneStepImeDiagnostics.taskInfo(info) + "}";
+            if (snapshot.equals(host.lastImeModeRequest)) return;
+            host.lastImeModeRequest = snapshot;
+            Log.i(OneStepImeDiagnostics.TAG, "mode-request session=" + host.session + " " + snapshot);
+            // applyTransaction returning does not establish that WM accepted the mode.
+            // Read fresh server TaskInfo after the transaction, not the organizer cache.
+            later(() -> {
+                if (!current(host) || host.closing || host.restoring) return;
+                try {
+                    for (Object actual : tasks.roots()) {
+                        if (matches(host.card, actual)) {
+                            logImeTask(host, "after-" + event, actual, true);
+                            return;
+                        }
+                    }
+                    logImeTask(host, "after-" + event, null, true);
+                } catch (Throwable error) { OneStepImeDiagnostics.unavailable(error); }
+            }, 500);
+        } catch (Throwable error) { OneStepImeDiagnostics.unavailable(error); }
+    }
+
+    void logImeTasks(int request, String event) {
+        executor.execute(() -> {
+            if (!accepting || request != session) return;
+            try {
+                for (Object info : tasks.roots()) {
+                    Host host = find(info);
+                    if (host != null && current(host) && !host.closing)
+                        logImeTask(host, event, info, host.main);
+                }
+            } catch (Throwable error) { OneStepImeDiagnostics.unavailable(error); }
+        });
+    }
+
     private void initialize(Class<?> observerClass) {
         try {
             if (rootSurface() == null || !Boolean.TRUE.equals(OneStepReflection.call(transitions, "isRegistered"))) {
@@ -393,6 +442,7 @@ final class OneStepShell {
         covered = false;
         declined.clear();
         accepting = true;
+        Log.i(OneStepImeDiagnostics.TAG, "workspace-begin session=" + session + " user=" + userId);
     }
 
     void attachActivity(int taskId, Runnable ready) {
@@ -640,6 +690,7 @@ final class OneStepShell {
             Object wct = transaction();
             // HOME stays a fullscreen HOME task. Only its surface is fitted into the pane.
             if (!host.home()) {
+                logImeModeRequest(host, "acquire", info);
                 mode(wct, host.token, 6);
                 bounds(wct, host.token, host.logicalBounds);
             }
@@ -846,6 +897,7 @@ final class OneStepShell {
                         taskCallback(host.controller, "onTaskAppeared", info, host.leash);
                     }
                     Object wct = transaction();
+                    if (!host.home()) logImeModeRequest(host, "reclaim", info);
                     if (!host.home()) { mode(wct, host.token, 6); bounds(wct, host.token, host.logicalBounds); }
                     bool(wct, "setForceTranslucent", host.token, true);
                     bool(wct, "setFocusable", host.token, host.main);
@@ -1301,6 +1353,8 @@ final class OneStepShell {
                 for (Object info : tasks.roots()) {
                     if (OneStepTaskAccess.display(info) != 0 || taskEnded(info)) continue;
                     Host host = find(info);
+                    if (host != null && current(host) && !host.closing)
+                        logImeTask(host, "task-state", info, false);
                     if (host != null && current(host) && !host.home()) {
                         RecentTaskCard next = OneStepTaskAccess.runningCard(info);
                         if (next != null && !next.temporary && host.card.component != null
@@ -1398,6 +1452,7 @@ final class OneStepShell {
                 // Some cross-app launches reset the containing task to fullscreen.
                 // Keep the hosted viewport; explicit TaskView fullscreen still exits.
                 Object wct = transaction();
+                logImeModeRequest(host, "fullscreen-repair", info);
                 mode(wct, host.token, 6);
                 bounds(wct, host.token, host.logicalBounds);
                 bool(wct, "setForceTranslucent", host.token, true);

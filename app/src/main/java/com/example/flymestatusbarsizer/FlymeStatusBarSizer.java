@@ -232,6 +232,16 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static long WIFI_PERF_EVENT_SEQ;
     private static int ONEMIND_HOOK_INTERCEPT_COUNT;
     private static long ONEMIND_HOOK_LAST_WRITE_UPTIME_MS;
+
+    @Override
+    public void onSystemServerStarting(XposedModuleInterface.SystemServerStartingParam param) {
+        MODULE = this;
+        android.util.Log.i("FlymeOneStepIme", "server lifecycle=onSystemServerStarting pid="
+                + android.os.Process.myPid());
+        com.example.flymestatusbarsizer.feature.onehanded.OneStepImeDiagnostics.install(
+                this, param.getClassLoader());
+    }
+
     @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
         String packageName = param.getPackageName();

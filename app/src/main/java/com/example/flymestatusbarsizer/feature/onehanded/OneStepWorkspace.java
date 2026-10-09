@@ -203,11 +203,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
             @Override public void onImeChanged(int bottom, boolean animating) {
                 if (generation != request || !active()) return;
+                boolean diagnosticBoundary = (bottom > 0) != (activityImeBottom > 0)
+                        || animating != activityImeAnimating || (!animating && bottom != activityImeBottom);
                 activityImeBottom = bottom;
                 activityImeAnimating = animating;
                 // Flyme keeps Activity insets visible until Shell's hide animation ends.
                 // They cannot drive movement while Shell owns the actual IME surface.
                 if (!shellImeControlled) applyActivityIme();
+                if (diagnosticBoundary) logImeEvent("activity-insets");
             }
 
             @Override public void onClosed(boolean focusMain) {
@@ -334,6 +337,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             // Preserve the current position at start, including reversals mid-animation.
             // The following Shell frame supplies the actual surface position.
             blockInput(true);
+            logImeEvent("shell-start showing=" + showing + " shownTop=" + shownTop + " floating=" + floating);
         });
     }
 
@@ -357,6 +361,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 positionForIme();
             }
             imeAnimating = false;
+            logImeEvent("shell-end cancelled=" + cancelled);
             workspace.post(this::updateInput);
         });
     }
@@ -367,7 +372,25 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             shellImeControlled = false;
             shellImePositioning = false;
             applyActivityIme();
+            logImeEvent("shell-control-lost");
         });
+    }
+
+    private void logImeEvent(String event) {
+        try {
+            Pane main = panes[mainSlot];
+            RecentTaskCard card = main != null ? main.card : null;
+            Log.i(OneStepImeDiagnostics.TAG, "workspace session=" + generation + " event=" + event
+                    + " mainTask=" + (card != null ? card.taskId : -1)
+                    + " source=" + (shellImeControlled ? "shell" : "activity")
+                    + " activityBottom=" + activityImeBottom + " activityAnimating=" + activityImeAnimating
+                    + " imeBottom=" + imeBottom + " imeAnimating=" + imeAnimating
+                    + " shellTargetBottom=" + shellImeTargetBottom + " shellFloating=" + shellImeFloating
+                    + " avoidOffset=" + imeOffset
+                    + " translationY=" + (workspace != null ? workspace.getTranslationY() : 0)
+                    + " screen=" + screenBounds + " content=" + contentBounds);
+            shell.logImeTasks(generation, event);
+        } catch (Throwable error) { OneStepImeDiagnostics.unavailable(error); }
     }
 
     private void dispatchShellIme(Runnable update) {
@@ -428,6 +451,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             @Override public void onAnimationEnd(Animator animation) {
                 if (imeAnimator != animation) return;
                 imeAnimator = null;
+                logImeEvent("fallback-end");
                 workspace.post(OneStepWorkspace.this::updateInput);
             }
         });
