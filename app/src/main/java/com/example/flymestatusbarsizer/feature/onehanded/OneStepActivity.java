@@ -108,8 +108,8 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         params.windowAnimations = 0;
         getWindow().setAttributes(params);
         FrameLayout root = new FrameLayout(this);
-        // Dim the wallpaper once, below every workspace/task surface, including the bars.
-        root.setBackgroundColor(0x14000000);
+        // SystemUI's workspace root animates wallpaper dimming with the task surfaces.
+        root.setBackgroundColor(Color.TRANSPARENT);
         surface = new SurfaceView(this);
         // The embedded window and its TaskView children receive input above the Activity's
         // own window. The Activity stays opaque in the task visibility calculation.

@@ -90,6 +90,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private final Runnable openingTimeout = () -> {
         if (state == State.OPENING) fail("应用窗口未能就绪", new IllegalStateException("Task attach timed out"));
     };
+    private final Runnable exitAnimationTimeout = () -> {
+        if (state == State.CLOSING && (this.transitionHandoff || this.transitionAnimator != null)) close(false);
+    };
     private WorkspaceRoot backdrop;
     private FrameLayout workspace;
     private View recentStrip;
@@ -131,6 +134,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private Runnable onSuccess;
     private RecentTaskCard openingTask;
     private boolean initialTaskStarted;
+    private boolean entryAnimationStarted;
+    private boolean transitionHandoff;
+    private int closeGeneration;
     private boolean rebinding;
     private OneStepPerf perf;
 
@@ -202,6 +208,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         onSuccess = success;
         openingTask = main;
         initialTaskStarted = false;
+        entryAnimationStarted = false;
+        transitionHandoff = false;
         shell.begin(request, main.userId);
         shell.setSuspended(suspended);
         activitySession = new OneStepActivitySession(context, handler, main.userId, workspaceOwnerUserId, new OneStepActivitySession.Listener() {
@@ -231,11 +239,16 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             }
 
             @Override public void onResized(Rect bounds, Rect insets) {
+                if (generation == request && state == State.CLOSING
+                        && (transitionAnimator != null || transitionHandoff)) { close(false); return; }
                 if (generation == request && active()) resizeWorkspace(bounds, insets);
             }
 
             @Override public void onReattaching(int taskId, Rect bounds, Rect insets, Runnable mount) {
+                if (generation == request && state == State.CLOSING
+                        && (transitionAnimator != null || transitionHandoff)) { close(false); return; }
                 if (generation != request || !active()) return;
+                if (state == State.OPENING) { close(false); return; }
                 rebinding = true;
                 hostVisible = false;
                 shell.setHostVisible(false);
@@ -260,7 +273,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             }
 
             @Override public void onClosed(boolean focusMain) {
-                if (generation == request) close(false);
+                if (generation == request) close(focusMain);
             }
 
             @Override public void onBarColorsChanged(boolean darkIcons) {
@@ -268,6 +281,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             }
 
             @Override public void onVisibilityChanged(boolean visible) {
+                if (generation == request && !visible && state == State.CLOSING
+                        && (transitionAnimator != null || transitionHandoff)) { close(false); return; }
                 if (generation != request || !active()) return;
                 hostVisible = visible;
                 shell.setHostVisible(visible);
@@ -278,7 +293,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             }
         });
         if (!suspended) handler.postDelayed(openingTimeout, 12000);
-        activitySession.start();
+        shell.prepareWorkspaceEntry(main, () -> {
+            if (generation != request || state != State.OPENING) return;
+            try { activitySession.start(); }
+            catch (Exception error) { fail("无法打开工作台窗口", error); }
+        });
         scheduleCheck(300);
     }
 
@@ -288,12 +307,60 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         initialTaskStarted = panes[0].load(openingTask);
         if (!initialTaskStarted) return;
         applyTransition(0f);
+    }
+
+    private void startEntryAnimation() {
+        if (state != State.OPENING || entryAnimationStarted || suspended || rebinding || !hostVisible
+                || backdrop == null || panes[mainSlot].host == null || !panes[mainSlot].host.ready) return;
+        entryAnimationStarted = true;
         int request = generation;
-        backdrop.postOnAnimation(() -> { if (active() && generation == request) animateWorkspace(true, null); });
+        backdrop.postOnAnimation(new Runnable() {
+            @Override public void run() {
+                if (state != State.OPENING || generation != request || backdrop == null) return;
+                if (backdrop.isLayoutRequested() || !panes[mainSlot].container.isLaidOut()) {
+                    backdrop.postOnAnimation(this);
+                    return;
+                }
+                animateWorkspace(true, () -> finishEntryAnimation(request));
+            }
+        });
+    }
+
+    private void finishEntryAnimation(int request) {
+        if (state != State.OPENING || generation != request || backdrop == null) return;
+        transitionHandoff = true;
+        // The TaskView must have drawn its final transform before the real task leaves
+        // the independent animation layer. Posting a single frame is not a draw fence.
+        Runnable handoff = () -> handler.post(() -> {
+            if (state != State.OPENING || generation != request) return;
+            shell.finishWorkspaceEntry(panes[mainSlot].host, () -> {
+                if (state != State.OPENING || generation != request) return;
+                transitionHandoff = false;
+                state = State.RUNNING;
+                handler.removeCallbacks(openingTimeout);
+                openingTask = null;
+                Runnable callback = onSuccess;
+                onSuccess = null;
+                if (callback != null) callback.run();
+                if (perf != null) perf.phase("steady");
+                updateInput();
+                positionForIme();
+            });
+        });
+        if (backdrop.isHardwareAccelerated()) {
+            backdrop.getViewTreeObserver().registerFrameCommitCallback(handoff);
+            backdrop.invalidate();
+        } else backdrop.postOnAnimation(handoff);
     }
 
     private void resizeWorkspace(Rect screen, Rect insets) {
         if (!active() || workspace == null) return;
+        if (state == State.OPENING) {
+            if (!screenBounds.equals(screen)
+                    || !logicalBounds.equals(new Rect(screen.left + insets.left, screen.top + insets.top,
+                            screen.right - insets.right, screen.bottom - insets.bottom))) close(false);
+            return;
+        }
         finishAppDrag(-1);
         if (animator != null) animator.end();
         if (transitionAnimator != null) transitionAnimator.end();
@@ -387,6 +454,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             position(pane.container, frames[i]);
             pane.updateAppearance();
         }
+        applyTransition(0f);
         activitySession.setView(backdrop);
         perf = new OneStepPerf(backdrop, handler, generation);
         touchMode.enable();
@@ -543,7 +611,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void positionForIme() {
-        if (!active() || workspace == null) return;
+        if (!running() || workspace == null || transitionAnimator != null || transitionHandoff) return;
         int nextOffset = Math.max(0, contentBounds.bottom - (screenBounds.bottom - imeBottom));
         // Parent translation composes with pane swaps and the workspace enter animation.
         // System animation frames already include the IME's easing; do not animate them again.
@@ -614,39 +682,108 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void applyTransition(float progress) {
         transitionProgress = progress;
-        if (recentStrip != null) recentStrip.setAlpha(progress);
         for (Pane pane : panes) if (pane != null) {
-            Rect frame = frames[pane.slot];
-            float entryScale = 0.97f + 0.03f * progress;
-            float scale = scaleForFrame(frame) * entryScale;
-            pane.container.setScaleX(scale);
-            pane.container.setScaleY(scale);
-            pane.container.setTranslationX(frame.width() * (1f - entryScale) / 2f);
-            pane.container.setTranslationY(dp(16) * (1f - progress)
-                    + frame.height() * (1f - entryScale) / 2f);
+            RectF start = transitionFrame(pane.slot, false);
+            RectF end = transitionFrame(pane.slot, true);
+            setTransitionFrame(pane, start, end, progress);
+        }
+        updateTransitionAppearance();
+    }
+
+    private RectF transitionFrame(int slot, boolean opened) {
+        if (!opened && slot == mainSlot) return new RectF(0, 0, logicalBounds.width(), logicalBounds.height());
+        Rect frame = frames[slot];
+        float scale = scaleForFrame(frame);
+        float w = logicalBounds.width() * scale;
+        float h = logicalBounds.height() * scale;
+        float x = frame.left, y = frame.top;
+        if (!opened) {
+            x += (mainOnLeft ? -dp(24) : dp(24)) + w * 0.03f;
+            y += dp(12) + h * 0.03f;
+            w *= 0.94f;
+            h *= 0.94f;
+        }
+        return new RectF(x, y, x + w, y + h);
+    }
+
+    private RectF currentPaneFrame(Pane pane) {
+        float x = pane.container.getX(), y = pane.container.getY();
+        return new RectF(x, y, x + logicalBounds.width() * pane.container.getScaleX(),
+                y + logicalBounds.height() * pane.container.getScaleY());
+    }
+
+    private RectF mainScreenFrame() {
+        RectF frame = currentPaneFrame(panes[mainSlot]);
+        frame.offset(contentBounds.left, contentBounds.top + workspace.getTranslationY());
+        return frame;
+    }
+
+    private void setTransitionFrame(Pane pane, RectF start, RectF end, float progress) {
+        float x = start.left + (end.left - start.left) * progress;
+        float y = start.top + (end.top - start.top) * progress;
+        float w = start.width() + (end.width() - start.width()) * progress;
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) pane.container.getLayoutParams();
+        pane.container.setTranslationX(x - params.leftMargin);
+        pane.container.setTranslationY(y - params.topMargin);
+        pane.container.setScaleX(w / logicalBounds.width());
+        pane.container.setScaleY(w / logicalBounds.width());
+    }
+
+    private static float segment(float progress, float start, float end) {
+        return Math.max(0f, Math.min(1f, (progress - start) / (end - start)));
+    }
+
+    private void updateTransitionAppearance() {
+        float toolbar = segment(transitionProgress, 0.2f, 1f);
+        if (recentStrip != null) {
+            recentStrip.setAlpha(toolbar);
+            int top = ((FrameLayout.LayoutParams) recentStrip.getLayoutParams()).topMargin;
+            recentStrip.setTranslationY(Math.max(0f, -workspace.getTranslationY() - top) - dp(8) * (1f - toolbar));
+        }
+        backdrop.setBackgroundColor(Math.round(20 * transitionProgress) << 24);
+        for (Pane pane : panes) if (pane != null) {
+            int order = sideOrder.indexOf(pane.slot);
+            pane.appearanceProgress = pane.slot == mainSlot ? transitionProgress
+                    : segment(transitionProgress, 0.08f + Math.max(0, order) * 0.06f, 1f);
             pane.updateAppearance();
+            if (pane.host != null && Build.VERSION.SDK_INT >= 34)
+                pane.host.view.setAlpha(pane.slot == mainSlot ? 1f : pane.appearanceProgress);
         }
-        // Keep task alpha on each SurfaceView, outside parent alpha layers.
-        for (Pane pane : panes) if (pane != null && pane.host != null && Build.VERSION.SDK_INT >= 34) {
-            pane.host.view.setAlpha(progress);
-        }
+        Pane main = panes[mainSlot];
+        if (main != null && main.host != null)
+            shell.workspaceFrame(main.host, mainScreenFrame(), dp(PANE_RADIUS_DP) * transitionProgress);
     }
 
     private void animateWorkspace(boolean entering, Runnable done) {
         cancelAnimator(false);
         blockInput(true);
+        transitionHandoff = false;
         float target = entering ? 1f : 0f;
+        float startProgress = transitionProgress;
+        float startOffset = workspace.getTranslationY();
+        RectF[] start = new RectF[COUNT], end = new RectF[COUNT];
+        for (Pane pane : panes) if (pane != null) {
+            start[pane.slot] = currentPaneFrame(pane);
+            end[pane.slot] = transitionFrame(pane.slot, entering);
+        }
+        java.util.function.Consumer<Float> frame = fraction -> {
+            transitionProgress = startProgress + (target - startProgress) * fraction;
+            workspace.setTranslationY(entering ? startOffset : startOffset * (1f - fraction));
+            for (Pane pane : panes) if (pane != null)
+                setTransitionFrame(pane, start[pane.slot], end[pane.slot], fraction);
+            updateTransitionAppearance();
+        };
         if (!ValueAnimator.areAnimatorsEnabled()) {
-            applyTransition(target);
+            frame.accept(1f);
             if (done != null) done.run();
             else { updateInput(); positionForIme(); }
             return;
         }
-        ValueAnimator transition = ValueAnimator.ofFloat(transitionProgress, target);
+        ValueAnimator transition = ValueAnimator.ofFloat(0f, 1f);
         transitionAnimator = transition;
-        transition.setDuration(entering ? 250 : 160);
+        transition.setDuration(Math.max(1L, Math.round((entering ? 320 : 260) * Math.abs(target - startProgress))));
         transition.setInterpolator(EASING);
-        transition.addUpdateListener(value -> applyTransition((float) value.getAnimatedValue()));
+        transition.addUpdateListener(value -> frame.accept((float) value.getAnimatedValue()));
         transition.addListener(new AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(Animator animation) {
                 if (transitionAnimator != animation) return;
@@ -856,7 +993,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void updateInput() {
         if (!shellImeControlled) applyActivityIme();
-        boolean blocked = !running() || suspended || rebinding || covered || !hostVisible || panesBusy() || desktopBusy || animator != null || transitionAnimator != null
+        boolean blocked = !running() || transitionHandoff || suspended || rebinding || covered || !hostVisible || panesBusy() || desktopBusy || animator != null || transitionAnimator != null
                 || imeAnimator != null || imeAnimating || dragSession != null;
         blockInput(blocked);
         Pane main = panes[mainSlot];
@@ -1285,7 +1422,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     void refresh() {
-        handler.post(() -> { if (active()) { refreshEnvironment(); scheduleCheck(100); } });
+        handler.post(() -> {
+            if (state == State.CLOSING && !OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId)) close(false);
+            else if (active()) { refreshEnvironment(); scheduleCheck(100); }
+        });
     }
 
     boolean blocksNavigation() {
@@ -1301,6 +1441,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (suspended == next) return;
         suspended = next;
         shell.setSuspended(next);
+        if (suspended && state == State.OPENING) { close(false); return; }
         OneStepStatusBar.setVisible(!suspended && !covered && hostVisible);
         if (backdrop != null) backdrop.setVisibility(suspended ? View.INVISIBLE : View.VISIBLE);
         if (suspended) {
@@ -1443,12 +1584,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             pane.empty.setVisibility(View.GONE);
             if (pane.slot == mainSlot) {
                 if (state == State.OPENING) {
-                    state = State.RUNNING;
-                    handler.removeCallbacks(openingTimeout);
-                    Runnable callback = onSuccess;
-                    onSuccess = null;
-                    if (callback != null) callback.run();
-                    if (perf != null) perf.phase("steady");
+                    startEntryAnimation();
                 }
                 if (!OneHandedTaskHooks.shadeOpen()) shell.focus(host);
             } else {
@@ -1525,6 +1661,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     @Override public void onRemoved(OneStepShell.Host host) {
+        if (state == State.OPENING || state == State.CLOSING) { close(false); return; }
         if (!active()) return;
         for (Pane pane : panes) if (pane != null && pane.launchHost == host) { onLaunchFailed(host); return; }
         for (Pane pane : panes) if (pane != null && pane.host == host) {
@@ -1580,19 +1717,29 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     @Override public void onFailure(String message, Exception error) { if (active()) fail(message, error); }
 
+    @Override public void onWorkspaceTransitionCancelled() {
+        if (state == State.OPENING || state == State.CLOSING || transitionHandoff) close(false);
+    }
+
     private void close(boolean focusMain) {
         if (state == State.CLOSED) return;
         if (state == State.CLOSING) {
             if (!focusMain) {
+                closeGeneration++;
+                handler.removeCallbacks(exitAnimationTimeout);
                 cancelAnimator(false);
+                transitionHandoff = false;
                 shell.close(-1, this::finishClose);
             }
             return;
         }
         if (focusMain && running()) haptic(HapticFeedbackConstants.CONTEXT_CLICK);
+        Pane main = panes[mainSlot];
+        boolean animated = focusMain && backdrop != null && hostVisible && !suspended && !covered
+                && main != null && main.host != null && main.host.ready && !rebinding && !panesBusy();
+        int closing = ++closeGeneration;
         state = State.CLOSING;
         if (exitButton != null) exitButton.setEnabled(false);
-        releaseNavigation();
         clearPaneTapHighlight();
         disconnectDesktop();
         handler.removeCallbacks(openingTimeout);
@@ -1610,14 +1757,26 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         finishAppDrag(-1);
         int focusTask = focusMain && panes[mainSlot] != null && panes[mainSlot].card != null
                 ? panes[mainSlot].card.taskId : -1;
-        Runnable restore = () -> shell.close(focusTask, this::finishClose);
+        Runnable restore = () -> {
+            handler.removeCallbacks(exitAnimationTimeout);
+            shell.close(focusTask, this::finishClose);
+        };
         if (perf != null) perf.phase("closing");
-        if (focusMain && backdrop != null) animateWorkspace(false, restore);
+        if (animated) {
+            transitionHandoff = true;
+            handler.postDelayed(exitAnimationTimeout, 2000);
+            shell.prepareWorkspaceExit(main.host, mainScreenFrame(),
+                    dp(PANE_RADIUS_DP) * transitionProgress, () -> {
+                        if (state != State.CLOSING || closing != closeGeneration) return;
+                        animateWorkspace(false, restore);
+                    });
+        }
         else restore.run();
     }
 
     private void finishClose() {
         if (state == State.CLOSED) return;
+        handler.removeCallbacks(exitAnimationTimeout);
         cancelAnimator(true);
         cancelAnimator(false);
         cancelImeAnimator();
@@ -1644,6 +1803,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         suspended = false;
         rebinding = false;
         initialTaskStarted = false;
+        entryAnimationStarted = false;
+        transitionHandoff = false;
         releaseNavigation();
     }
 
@@ -1676,10 +1837,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         final ViewOutlineProvider outline = new ViewOutlineProvider() {
             @Override public void getOutline(View view, Outline out) {
                 out.setRoundRect(0, 0, view.getWidth(), view.getHeight(), cornerRadius);
-                out.setAlpha(transitionProgress);
+                out.setAlpha(appearanceProgress);
             }
         };
         float cornerRadius;
+        float appearanceProgress = 1f;
         RecentTaskCard card;
         OneStepShell.Host host;
         OneStepShell.Host launchHost;
@@ -1717,20 +1879,20 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             float scale = Math.max(0.01f, container.getScaleX());
             // Pane views retain the full app viewport. Compensate their decorations for
             // scaling so all four windows keep the same on-screen corner/stroke/text size.
-            cornerRadius = dp(PANE_RADIUS_DP) / scale;
+            cornerRadius = dp(PANE_RADIUS_DP) * (slot == mainSlot ? transitionProgress : 1f) / scale;
             fill.setCornerRadius(cornerRadius);
-            fill.setAlpha(Math.round(255 * transitionProgress));
+            fill.setAlpha(Math.round(255 * appearanceProgress));
             border.setCornerRadius(cornerRadius);
             boolean highlighted = highlightedSlot == slot || tappedSlot == slot;
             border.setColor(highlighted ? 0x225aaaff : Color.TRANSPARENT);
             border.setStroke(Math.max(1, Math.round(dp(highlighted ? 2 : 0.7f) / scale)),
                     highlighted ? 0xff9acbff : 0x40ffffff);
-            border.setAlpha(Math.round(255 * transitionProgress));
+            border.setAlpha(Math.round(255 * appearanceProgress));
             float mainScale = 0.01f;
             for (Rect frame : frames) mainScale = Math.max(mainScale, scaleForFrame(frame));
             // During swaps the larger pane carries the stronger shadow throughout the motion.
             float prominence = Math.max(0f, Math.min(1f, scale / Math.max(0.01f, mainScale)));
-            container.setElevation(dp(8 + 10 * prominence * prominence) / scale);
+            container.setElevation(dp(8 + 10 * prominence * prominence) * appearanceProgress / scale);
             container.invalidateOutline();
             if (host != null) {
                 host.view.invalidateOutline();
@@ -1743,7 +1905,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             // Counter-scale the centered label without requesting layout on every frame.
             empty.setScaleX(1f / scale);
             empty.setScaleY(1f / scale);
-            empty.setAlpha(transitionProgress);
+            empty.setAlpha(appearanceProgress);
         }
 
         boolean load(RecentTaskCard next) {
@@ -1789,7 +1951,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                         else launchHost = created;
                         mount(created);
                         created.view.bringToFront();
-                        if (Build.VERSION.SDK_INT >= 34) created.view.setAlpha(transitionProgress);
+                        if (Build.VERSION.SDK_INT >= 34) created.view.setAlpha(slot == mainSlot ? 1f : appearanceProgress);
                         shell.geometry(created, logicalBounds, logicalBounds.width(), logicalBounds.height(), slot == mainSlot);
                         updateAppearance();
                         updateInput();
