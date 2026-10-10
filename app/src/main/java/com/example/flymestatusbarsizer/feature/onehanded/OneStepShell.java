@@ -100,6 +100,7 @@ final class OneStepShell {
         int width;
         int height;
         boolean main;
+        boolean parked;
         boolean borrowed;
         boolean backIntercepted;
         boolean restoring;
@@ -857,7 +858,8 @@ final class OneStepShell {
 
     void focus(Host host) {
         executor.execute(() -> {
-            if (!accepting || suspended || !hostVisible || covered || (host != null && (!current(host) || !host.borrowed))) return;
+            if (!accepting || suspended || !hostVisible || covered
+                    || (host != null && (!current(host) || !host.borrowed || host.parked))) return;
             try {
                 updateLifecyclePolicy();
                 // Focusability also controls Activity RESUMED eligibility. Keep visible
@@ -878,6 +880,26 @@ final class OneStepShell {
 
     void release(Host host, Runnable finished) {
         executor.execute(() -> restoreOne(host, finished, 0));
+    }
+
+    void parkDesktop(Host host, boolean parked) {
+        executor.execute(() -> {
+            if (!current(host) || !host.home() || host.closing) return;
+            host.parked = parked;
+            if (parked) host.main = false;
+            else host.coveredByLaunch = false;
+            try {
+                Object wct = transaction();
+                Host main = mainHost();
+                bool(wct, "setFocusable", host.token, hostedFocusable(host, main));
+                arrangeTasks(wct, main);
+                OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
+                present(host, null, null);
+                // A previous transition must not reveal a desktop parked after collection.
+                for (ArrayList<SurfaceControl.Transaction> transactions : finishes.values())
+                    for (SurfaceControl.Transaction tx : transactions) reattach(tx);
+            } catch (Exception error) { fail("无法切换桌面显示状态", error); }
+        });
     }
 
     void close(int focusTask, Runnable finished) {
@@ -929,7 +951,7 @@ final class OneStepShell {
     private boolean hostedFocusable(Host host, Host main) {
         // An empty main pane must leave focus with the workspace until its replacement
         // is ready. HOME retains its existing lifecycle behavior when shown at the side.
-        return !suspended && (host == main || (main != null && !host.home()));
+        return !suspended && !host.parked && (host == main || (main != null && !host.home()));
     }
 
     private void updateLifecyclePolicy() throws android.os.RemoteException {
@@ -2010,11 +2032,12 @@ final class OneStepShell {
                 // Keep a newly appeared app hidden until the native stage takes over,
                 // even if SurfaceView relayout temporarily changes sibling surface order.
                 .setAlpha(surface, host.coveredByLaunch || (host.animationPending && !host.openingRevealed) ? 0f : 1f)
-                .setVisibility(surface, !suspended);
+                .setVisibility(surface, !suspended && !host.parked);
         OneStepReflection.call(tx, "setWindowCrop", new Class<?>[]{SurfaceControl.class, Rect.class},
                 surface, crop);
         // A Surface frame-rate vote is a scheduling preference, not a per-app FPS cap.
-        tx.setFrameRate(surface, host.main ? 120f : 30f, android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
+        tx.setFrameRate(surface, host.parked ? 0f : host.main ? 120f : 30f,
+                android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
     }
 
     private Rect surfaceCrop(Host host) {
@@ -2289,7 +2312,7 @@ final class OneStepShell {
         if (parent == null || !parent.isValid()) throw new IllegalStateException("Task display area unavailable");
         tx.reparent(leash, parent).setScale(leash, 1, 1)
                 .setPosition(leash, host.originalPosition.x, host.originalPosition.y).setAlpha(leash, 1);
-        if (host.surfaceMissing) tx.setVisibility(leash, true);
+        if (host.surfaceMissing || host.parked) tx.setVisibility(leash, true);
         OneStepReflection.call(tx, "setWindowCrop", new Class<?>[]{SurfaceControl.class, Rect.class}, leash, null);
         tx.setFrameRate(leash, 0f, android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
     }
@@ -2439,16 +2462,20 @@ final class OneStepShell {
         // Only the workspace panes are above this opaque fullscreen task. Their logical
         // viewports overlap, so they stay translucent to WM; the Activity below them
         // occludes unrelated apps and Home without hiding or freezing those processes.
+        for (Host candidate : hosts) {
+            if (current(candidate) && candidate.borrowed && !candidate.closing && candidate.parked)
+                reorder(wct, candidate.token, false);
+        }
         reorder(wct, activityToken, true);
         for (Host candidate : hosts) {
-            if (current(candidate) && candidate.borrowed && !candidate.closing && candidate != focused)
+            if (current(candidate) && candidate.borrowed && !candidate.closing && !candidate.parked && candidate != focused)
                 reorder(wct, candidate.token, true);
         }
-        if (current(focused) && focused.borrowed && !focused.closing) reorder(wct, focused.token, true);
+        if (current(focused) && focused.borrowed && !focused.closing && !focused.parked) reorder(wct, focused.token, true);
     }
 
     private Host mainHost() {
-        for (Host host : hosts) if (current(host) && host.borrowed && !host.closing && host.main) return host;
+        for (Host host : hosts) if (current(host) && host.borrowed && !host.closing && !host.parked && host.main) return host;
         return null;
     }
 

@@ -108,6 +108,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private final Rect screenBounds = new Rect();
     private OneStepActivitySession activitySession;
     private OneStepLauncherBridge.Session desktopSession;
+    private OneStepShell.Host desktopHost;
+    private FrameLayout desktopContainer;
+    private GradientDrawable desktopBorder;
+    private int desktopRequest;
     private boolean desktopBusy;
     private int workspaceUserId;
     private int workspaceOwnerUserId;
@@ -894,9 +898,16 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         haptic(HapticFeedbackConstants.CLOCK_TICK);
         Pane previous = panes[mainSlot];
         boolean leavingDesktop = previous.card != null && previous.card.home;
-        if (leavingDesktop) { desktopBusy = true; disconnectDesktop(); }
+        if (leavingDesktop) {
+            desktopBusy = true;
+            if (desktopSession != null) desktopSession.enable(false);
+        }
         swapTo(slot, () -> {
-            if (leavingDesktop) clearDesktop(previous, () -> { desktopBusy = false; updateInput(); });
+            if (leavingDesktop) {
+                hideDesktop(previous);
+                desktopBusy = false;
+                updateInput();
+            }
         });
     }
 
@@ -962,31 +973,69 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (desktopSession != null && previous != null && previous.host != null
                 && previous.host.home() && previous.host.ready && !previous.host.closing) return;
         desktopBusy = true;
-        disconnectDesktop();
-        target.empty.setText("正在打开桌面…");
-        swapTo(slot, () -> clearDesktop(previous, () -> connectDesktop(target)));
+        if (!reusableDesktop()) target.empty.setText("正在打开桌面…");
+        swapTo(slot, () -> {
+            hideDesktop(previous);
+            if (reusableDesktop()) {
+                try {
+                    target.host = desktopHost;
+                    target.card = desktopHost.card;
+                    target.mount(desktopHost);
+                    target.empty.setVisibility(View.GONE);
+                    target.updateAppearance();
+                    target.updateGeometry();
+                    shell.parkDesktop(desktopHost, false);
+                    shell.focus(desktopHost);
+                    desktopBusy = false;
+                    updateInput();
+                } catch (Exception error) { fail("无法恢复桌面窗口", error); }
+            } else {
+                // Only a lost HOME task needs a new connection and TaskView.
+                OneStepShell.Host stale = desktopHost;
+                disconnectDesktop();
+                if (stale == null) connectDesktop(target);
+                else {
+                    int request = generation;
+                    shell.release(stale, () -> {
+                        if (!running() || generation != request) return;
+                        removeHostView(stale);
+                        if (desktopHost == stale) desktopHost = null;
+                        connectDesktop(target);
+                    });
+                }
+            }
+        });
+    }
+
+    private boolean reusableDesktop() {
+        return desktopSession != null && desktopHost != null && desktopHost.ready
+                && !desktopHost.closing && !desktopHost.released;
     }
 
     private void connectDesktop(Pane pane) {
         int request = generation;
+        int connection = ++desktopRequest;
         taskWorker.execute(() -> {
             try {
                 RecentTaskCard home = tasks.homeTask(workspaceUserId);
                 handler.post(() -> {
-                    if (!running() || generation != request || pane != panes[mainSlot]) return;
+                    if (!running() || generation != request || desktopRequest != connection || pane != panes[mainSlot]) return;
                     try {
                         desktopSession = new OneStepLauncherBridge.Session(context, handler, workspaceUserId,
                                 new OneStepLauncherBridge.Listener() {
                             @Override public void onConnected() {
-                                if (running() && generation == request && pane == panes[mainSlot]) pane.load(home);
+                                if (running() && generation == request && desktopRequest == connection
+                                        && pane == panes[mainSlot]) pane.load(home);
                             }
                             @Override public void onLaunch(PendingIntent intent, IBinder animation) {
-                                if (running() && generation == request && pane == panes[mainSlot])
-                                    launchFromDesktop(pane, intent, animation);
+                                Pane main = panes[mainSlot];
+                                if (running() && generation == request && desktopRequest == connection
+                                        && main != null && main.host == desktopHost && desktopHost != null)
+                                    launchFromDesktop(main, intent, animation);
                                 else OneStepLaunchAnimation.cancelRemote(animation);
                             }
                             @Override public void onUnavailable() {
-                                if (running() && generation == request) desktopUnavailable(pane);
+                                if (running() && generation == request && desktopRequest == connection) desktopUnavailable(pane);
                             }
                         });
                     } catch (Exception error) {
@@ -996,7 +1045,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 });
             } catch (Exception error) {
                 Log.w(TAG, "Cannot find HOME task", error);
-                handler.post(() -> { if (running() && generation == request) desktopUnavailable(pane); });
+                handler.post(() -> {
+                    if (running() && generation == request && desktopRequest == connection) desktopUnavailable(pane);
+                });
             }
         });
     }
@@ -1011,23 +1062,58 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void disconnectDesktop() {
+        desktopRequest++;
         if (desktopSession != null) { desktopSession.close(); desktopSession = null; }
     }
 
-    private void clearDesktop(Pane pane, Runnable done) {
-        if (pane == null || pane.card == null || !pane.card.home || pane.host == null) { done.run(); return; }
-        OneStepShell.Host previous = pane.host;
-        int request = generation;
-        shell.release(previous, () -> {
-            if (!running() || generation != request) return;
-            pane.container.removeView(previous.view);
-            if (pane.host == previous) {
-                pane.host = null;
-                pane.card = null;
-                pane.showEmpty();
-            }
-            done.run();
-        });
+    private void hideDesktop(Pane pane) {
+        if (pane == null || pane.host == null || !pane.host.home()) return;
+        parkDesktop(pane.host);
+        pane.host = null;
+        pane.card = null;
+        pane.showEmpty();
+    }
+
+    private void parkDesktop(OneStepShell.Host host) {
+        if (desktopSession != null) { desktopSession.enable(false); desktopSession.retry(); }
+        shell.parkDesktop(host, true);
+        // Keep the SurfaceView attached, including on Android 13 where INVISIBLE
+        // would destroy its surface. Offscreen placement also closes its input hole.
+        if (desktopContainer != null) {
+            desktopContainer.setAlpha(0f);
+            desktopContainer.setTranslationX(width + logicalBounds.width());
+            desktopContainer.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        }
+        try { host.obscure(new Rect(screenBounds)); }
+        catch (Exception error) { fail("无法隐藏桌面触摸区域", error); }
+    }
+
+    private void positionDesktop(Pane pane) {
+        if (desktopContainer == null || pane.host != desktopHost || desktopHost == null) return;
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) desktopContainer.getLayoutParams();
+        if (params.width != logicalBounds.width() || params.height != logicalBounds.height()) {
+            desktopContainer.setLayoutParams(new FrameLayout.LayoutParams(logicalBounds.width(), logicalBounds.height()));
+        }
+        desktopContainer.setTranslationX(pane.container.getX());
+        desktopContainer.setTranslationY(pane.container.getY());
+        desktopContainer.setScaleX(pane.container.getScaleX());
+        desktopContainer.setScaleY(pane.container.getScaleY());
+        desktopContainer.setElevation(pane.container.getElevation());
+        desktopContainer.setAlpha(desktopHost.ready ? 1f : 0f);
+        desktopContainer.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        float scale = Math.max(0.01f, pane.container.getScaleX());
+        boolean highlighted = highlightedSlot == pane.slot || tappedSlot == pane.slot;
+        desktopBorder.setCornerRadius(pane.cornerRadius);
+        desktopBorder.setColor(highlighted ? 0x225aaaff : Color.TRANSPARENT);
+        desktopBorder.setStroke(Math.max(1, Math.round(dp(highlighted ? 2 : 0.7f) / scale)),
+                highlighted ? 0xff9acbff : 0x40ffffff);
+        desktopBorder.setAlpha(Math.round(255 * pane.appearanceProgress));
+    }
+
+    private void removeHostView(OneStepShell.Host host) {
+        if (host.view.getParent() instanceof android.view.ViewGroup)
+            ((android.view.ViewGroup) host.view.getParent()).removeView(host.view);
+        if (desktopContainer != null && desktopContainer.getChildCount() == 0) desktopContainer.setAlpha(0f);
     }
 
     private void launchFromDesktop(Pane pane, PendingIntent intent, IBinder animation) {
@@ -1309,8 +1395,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 pane.updateGeometry();
             }
             if (target.host != null && target.host.home() && target.slot != mainSlot) {
-                disconnectDesktop();
-                clearDesktop(target, this::updateInput);
+                hideDesktop(target);
             }
             shell.focus(panes[mainSlot].host);
             updateRecentIcons();
@@ -1647,7 +1732,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             pane.host = host;
             pane.card = host.card;
             pane.empty.setVisibility(View.GONE);
-            if (previous != null && previous.home()) disconnectDesktop();
+            boolean retainDesktop = previous != null && previous.home();
+            if (retainDesktop) parkDesktop(previous);
             if (host.navigation != null && previousCard != null && !previousCard.home) {
                 pane.history.removeIf(card -> card.sameTask(previousCard));
                 pane.history.add(0, previousCard);
@@ -1665,14 +1751,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             int request = generation;
             Runnable finished = () -> {
                 if (!running() || generation != request) return;
-                if (previous != null) pane.container.removeView(previous.view);
+                if (previous != null && !retainDesktop) removeHostView(previous);
                 pane.replacing = false;
                 desktopBusy = false;
                 pane.updateAppearance();
                 updateRecentIcons();
                 updateInput();
             };
-            if (previous != null) shell.release(previous, finished);
+            if (previous != null && !retainDesktop) shell.release(previous, finished);
             else finished.run();
             return;
         }
@@ -1681,7 +1767,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             pane.replacing = false;
             rememberRecent(host.card);
             updateRecentIcons();
-            if (host.home()) desktopBusy = false;
+            if (host.home()) {
+                desktopBusy = false;
+                positionDesktop(pane);
+            }
             pane.empty.setVisibility(View.GONE);
             if (pane.slot == mainSlot) {
                 if (state == State.OPENING) {
@@ -1699,13 +1788,19 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     @Override public void onLaunchFailed(OneStepShell.Host host) {
         if (!active()) return;
+        if (host == desktopHost) {
+            disconnectDesktop();
+            removeHostView(host);
+            desktopHost = null;
+        }
         for (Pane pane : panes) if (pane != null) {
             if (pane.launchHost == host) {
-                pane.container.removeView(host.view);
+                removeHostView(host);
                 pane.launchHost = null;
                 pane.replacing = false;
                 desktopBusy = false;
                 if (desktopSession != null) desktopSession.retry();
+                if (pane.host != null && pane.host.home()) shell.parkDesktop(pane.host, false);
                 pane.empty.setVisibility(pane.host == null ? View.VISIBLE : View.GONE);
                 shell.focus(panes[mainSlot].host);
                 Toast.makeText(context, "应用未能打开，请重试", Toast.LENGTH_SHORT).show();
@@ -1713,7 +1808,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 return;
             }
             if (pane.host == host) {
-                pane.container.removeView(host.view);
+                removeHostView(host);
                 pane.host = null;
                 pane.card = null;
                 pane.replacing = false;
@@ -1764,18 +1859,23 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     @Override public void onRemoved(OneStepShell.Host host) {
         if (state == State.OPENING || state == State.CLOSING) { close(false); return; }
         if (!active()) return;
+        if (host == desktopHost) {
+            disconnectDesktop();
+            removeHostView(host);
+            desktopHost = null;
+        }
         for (Pane pane : panes) if (pane != null && pane.launchHost == host) { onLaunchFailed(host); return; }
         for (Pane pane : panes) if (pane != null && pane.host == host) {
             if (host.home()) disconnectDesktop();
             if (pane.launchHost != null) {
                 // The source may finish as part of a successful redirect. Its successor
                 // still owns this pane's pending handoff and must be allowed to mount.
-                pane.container.removeView(host.view);
+                removeHostView(host);
                 pane.host = null;
                 pane.card = null;
                 return;
             }
-            pane.container.removeView(host.view);
+            removeHostView(host);
             pane.host = null;
             pane.card = null;
             pane.replacing = false;
@@ -1894,6 +1994,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         OneStepStatusBar.setBackgroundOwned(false);
         backdrop = null;
         workspace = null;
+        desktopHost = null;
+        desktopContainer = null;
+        desktopBorder = null;
         recentStrip = null;
         recentScroll = null;
         exitButton = null;
@@ -2019,6 +2122,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             empty.setScaleX(1f / scale);
             empty.setScaleY(1f / scale);
             empty.setAlpha(appearanceProgress);
+            positionDesktop(this);
         }
 
         boolean load(RecentTaskCard next) {
@@ -2099,7 +2203,23 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 return true;
             });
             task.obscure(new Rect(screenBounds));
-            container.addView(task.view, 0, new FrameLayout.LayoutParams(-1, -1));
+            if (task.home()) {
+                desktopHost = task;
+                if (desktopContainer == null) {
+                    desktopContainer = new FrameLayout(context);
+                    desktopContainer.setPivotX(0);
+                    desktopContainer.setPivotY(0);
+                    desktopBorder = new GradientDrawable();
+                    desktopContainer.setForeground(desktopBorder);
+                    desktopContainer.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateInput());
+                    workspace.addView(desktopContainer,
+                            new FrameLayout.LayoutParams(logicalBounds.width(), logicalBounds.height()));
+                }
+                // Reusing another empty pane changes only geometry and input ownership.
+                if (task.view.getParent() != desktopContainer)
+                    desktopContainer.addView(task.view, new FrameLayout.LayoutParams(-1, -1));
+                positionDesktop(this);
+            } else container.addView(task.view, 0, new FrameLayout.LayoutParams(-1, -1));
         }
 
         void showEmpty() {
