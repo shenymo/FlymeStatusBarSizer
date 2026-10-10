@@ -240,6 +240,8 @@ final class OneStepShell {
     private volatile int activityTaskId = -1;
     private volatile Object activityToken;
     private volatile int activityUserId;
+    private volatile IBinder activityLaunchCookie;
+    private IBinder activityLaunchTransition;
     private OneStepImePolicy.Session imeSession;
     private Listener listener;
     private int initAttempts;
@@ -326,6 +328,8 @@ final class OneStepShell {
                                 ? transaction() : null;
                     case "startAnimation": return animate(args);
                     case "onTransitionConsumed":
+                        if (args[0].equals(activityLaunchTransition) && Boolean.TRUE.equals(args[1]))
+                            activityLaunchTransition = null;
                         if (waitingOpening != null && waitingOpening.args[0].equals(args[0]))
                             finishWaitingOpening(waitingOpening, false);
                         if (openingAnimation != null && openingAnimation.transition.equals(args[0]))
@@ -357,6 +361,7 @@ final class OneStepShell {
                     observeTransition(args);
                 }
                 else if ("onTransitionFinished".equals(method.getName())) {
+                    if (args[0].equals(activityLaunchTransition)) activityLaunchTransition = null;
                     pending.remove(args[0]);
                     transitionBusy = !pending.isEmpty();
                     ArrayList<SurfaceControl.Transaction> transactions = finishes.remove(args[0]);
@@ -365,6 +370,7 @@ final class OneStepShell {
                     }
                     if (pending.isEmpty()) retired.clear();
                 } else if ("onTransitionMerged".equals(method.getName())) {
+                    if (args[0].equals(activityLaunchTransition)) activityLaunchTransition = (IBinder) args[1];
                     Integer value = pending.remove(args[0]);
                     if (value != null) pending.put((IBinder) args[1], value);
                     ArrayList<SurfaceControl.Transaction> transactions = finishes.remove(args[0]);
@@ -481,6 +487,8 @@ final class OneStepShell {
         session = value;
         activityTaskId = -1;
         activityToken = null;
+        activityLaunchCookie = null;
+        activityLaunchTransition = null;
         activityUserId = userId;
         covered = false;
         suspended = false;
@@ -491,7 +499,7 @@ final class OneStepShell {
         Log.i(OneStepImeDiagnostics.TAG, "workspace-begin session=" + session + " user=" + userId);
     }
 
-    void prepareWorkspaceEntry(RecentTaskCard card, Runnable ready) {
+    void prepareWorkspaceEntry(RecentTaskCard card, java.util.function.Consumer<Rect> ready) {
         int request = session;
         executor.execute(() -> {
             if (!accepting || request != session) return;
@@ -506,10 +514,15 @@ final class OneStepShell {
                 Point position = (Point) OneStepReflection.get(info, "positionInParent");
                 SurfaceControl leash = (SurfaceControl) OneStepReflection.call(appeared, "getLeash");
                 workspaceTransition = new OneStepWorkspaceTransition(card, request, leash, rootSurface(), bounds, position);
+                save(card, info, windowMode(info), bounds, position,
+                        ReflectUtils.getBooleanField(info, "isFocusable", true),
+                        Boolean.TRUE.equals(OneStepReflection.call(config, "isAlwaysOnTop")), false);
+                workspaceTransition.sourcePrepared = true;
+                Rect fullscreen = new Rect(bounds);
                 try (SurfaceControl.Transaction tx = new SurfaceControl.Transaction()) {
                     placeWorkspaceTransition(tx);
                     tx.addTransactionCommittedListener(executor, () -> ui.post(() -> {
-                        if (accepting && session == request && !suspended) ready.run();
+                        if (accepting && session == request && !suspended) ready.accept(fullscreen);
                     }));
                     tx.apply();
                 }
@@ -517,7 +530,38 @@ final class OneStepShell {
         });
     }
 
-    void prepareWorkspaceExit(Host host, RectF frame, float radius, Runnable ready) {
+    void startWorkspaceActivity(PendingIntent intent, Bundle options, IBinder cookie) {
+        int request = session;
+        executor.execute(() -> {
+            if (!accepting || request != session || suspended) { intent.cancel(); return; }
+            try {
+                Object wct = transaction();
+                OneStepWorkspaceTransition motion = workspaceTransition;
+                Object sourceToken = null;
+                if (motion != null && !motion.exiting) {
+                    Object appeared = appeared(motion.card.taskId);
+                    Object info = appeared == null ? null : OneStepReflection.call(appeared, "getTaskInfo");
+                    if (!matches(motion.card, info) || taskEnded(info)
+                            || tasks.defaultFocusedTaskId() != motion.card.taskId)
+                        throw new IllegalStateException("Entry task changed before workspace launch");
+                    sourceToken = OneStepReflection.get(info, "token");
+                    // Keep the live source above the host without occluding it. Both tasks
+                    // remain visible while the Activity builds its embedded TaskViews.
+                    bool(wct, "setForceTranslucent", sourceToken, true);
+                }
+                OneStepReflection.call(wct, "sendPendingIntent",
+                        new Class<?>[]{PendingIntent.class, Intent.class, Bundle.class}, intent, null, options);
+                if (sourceToken != null) reorder(wct, sourceToken, true);
+                activityLaunchCookie = cookie;
+                activityLaunchTransition = submit(wct, 1);
+            } catch (Exception error) {
+                intent.cancel();
+                fail("无法启动工作台转场", error);
+            }
+        });
+    }
+
+    void prepareWorkspaceExit(Host host, RectF frame, float radius, java.util.function.Consumer<Rect> ready) {
         int request = session;
         RectF start = new RectF(frame);
         executor.execute(() -> {
@@ -531,10 +575,11 @@ final class OneStepShell {
                 workspaceTransition.exiting = true;
                 workspaceTransition.frame.set(start);
                 workspaceTransition.radius = radius;
+                Rect fullscreen = new Rect(workspaceTransition.originalBounds);
                 try (SurfaceControl.Transaction tx = new SurfaceControl.Transaction()) {
                     placeWorkspaceTransition(tx);
                     tx.addTransactionCommittedListener(executor, () -> ui.post(() -> {
-                        if (accepting && session == request && !suspended) ready.run();
+                        if (accepting && session == request && !suspended) ready.accept(fullscreen);
                     }));
                     tx.apply();
                 }
@@ -605,7 +650,7 @@ final class OneStepShell {
         OneStepWorkspaceTransition motion = workspaceTransition;
         if (motion == null || motion.returning) return;
         Host owner = null;
-        for (Host host : hosts) if (motion.owns(host) && host.borrowed) { owner = host; break; }
+        for (Host host : hosts) if (motion.owns(host) && host.borrowed && host.collected) { owner = host; break; }
         Rect crop = owner == null ? new Rect(0, 0, motion.originalBounds.width(), motion.originalBounds.height())
                 : surfaceCrop(owner);
         motion.place(tx, owner == null ? motion.surface : owner.leash, crop,
@@ -650,6 +695,13 @@ final class OneStepShell {
             bool(wct, "setForceTranslucent", activityToken, false);
             bool(wct, "setAlwaysOnTop", activityToken, false);
             if (!suspended) reorder(wct, activityToken, true);
+            OneStepWorkspaceTransition motion = workspaceTransition;
+            if (!suspended && motion != null && !motion.exiting && motion.sourcePrepared) {
+                Object source = appeared(motion.card.taskId);
+                Object infoSource = source == null ? null : OneStepReflection.call(source, "getTaskInfo");
+                if (matches(motion.card, infoSource) && !taskEnded(infoSource))
+                    reorder(wct, OneStepReflection.get(infoSource, "token"), true);
+            }
             OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
             ui.post(() -> { if (accepting && request == session && binding == activityRequest.get()) ready.run(); });
         } catch (Exception error) { fail("无法接管工作台窗口", error); }
@@ -685,6 +737,9 @@ final class OneStepShell {
         Object component = ReflectUtils.getField(info, "baseActivity");
         if (!(component instanceof ComponentName)) component = ReflectUtils.getField(info, "topActivity");
         if (!(component instanceof ComponentName) || !OneStepActivityProtocol.isActivity((ComponentName) component)) return false;
+        Object cookies = ReflectUtils.getField(info, "launchCookies");
+        if (activityLaunchCookie != null && cookies instanceof List && ((List<?>) cookies).contains(activityLaunchCookie))
+            return true;
         return activityTaskId < 0 || (OneStepTaskAccess.taskId(info) == activityTaskId
                 && activityToken != null
                 && java.util.Objects.equals(ReflectUtils.invokeNoArg(activityToken, "asBinder"), OneStepTaskAccess.token(info)));
@@ -901,8 +956,6 @@ final class OneStepShell {
             host.runningInfo = info;
             host.leash = (SurfaceControl) OneStepReflection.call(appeared, "getLeash");
             if (!host.leash.isValid() || rootSurface() == null) throw new IllegalStateException("Task surface unavailable");
-            if (workspaceTransition != null && workspaceTransition.owns(host))
-                workspaceTransition.frame.set(host.logicalBounds);
             save(host, info);
             if (imeSession == null) throw new IllegalStateException("Workspace IME session unavailable");
             host.imeRegistered = true;
@@ -1145,20 +1198,69 @@ final class OneStepShell {
         } catch (Exception error) { fail("无法处理应用退出", error); }
     }
 
+    private boolean isWorkspaceEntryTransition(Object info, List<?> changes) throws Exception {
+        OneStepWorkspaceTransition motion = workspaceTransition;
+        if (!accepting || motion == null || motion.exiting || motion.returning || suspended) return false;
+        int type = ((Number) OneStepReflection.call(info, "getType")).intValue();
+        if (type != 1 && type != 3 && type != 6) return false;
+        if (Boolean.TRUE.equals(OneStepReflection.call(info, "isKeyguardGoingAway"))) return false;
+        boolean openingHost = false;
+        for (Object change : changes) {
+            Object task = OneStepReflection.call(change, "getTaskInfo");
+            int mode = ((Number) OneStepReflection.call(change, "getMode")).intValue();
+            if (task == null) continue;
+            if (isActivityTask(task)) openingHost |= mode == 1 || mode == 3;
+            else if (!matches(motion.card, task) && find(task) == null && (mode == 1 || mode == 3)) return false;
+        }
+        return openingHost;
+    }
+
+    private void showWorkspaceOpening(Object change, SurfaceControl.Transaction start,
+                                      SurfaceControl.Transaction finish) throws Exception {
+        // Shell initializes opening changes to alpha=0 after notifying observers.
+        // Our no-animation handler must establish the visible state itself.
+        SurfaceControl surface = (SurfaceControl) OneStepReflection.call(change, "getLeash");
+        start.setAlpha(surface, 1f).setScale(surface, 1f, 1f).setVisibility(surface, true);
+        finish.setAlpha(surface, 1f).setScale(surface, 1f, 1f).setVisibility(surface, true);
+    }
+
     private boolean animate(Object[] args) throws Exception {
         List<?> changes = (List<?>) OneStepReflection.call(args[1], "getChanges");
         boolean ours = pending.containsKey(args[0]);
+        boolean entry = isWorkspaceEntryTransition(args[1], changes);
         boolean allOurs = true;
         for (Object change : changes) {
             Object info = OneStepReflection.call(change, "getTaskInfo");
             if (info != null && find(info) == null && !isActivityTask(info) && !isRetiredTask(info)) allOurs = false;
         }
-        if (!ours && (!allOurs || hosts.isEmpty())) return false;
+        if (!ours && !entry && (!allOurs || hosts.isEmpty())) return false;
         SurfaceControl.Transaction start = (SurfaceControl.Transaction) args[2];
         SurfaceControl.Transaction finish = (SurfaceControl.Transaction) args[3];
         boolean handled = false;
         for (Object change : changes) {
             Object info = OneStepReflection.call(change, "getTaskInfo");
+            int mode = ((Number) OneStepReflection.call(change, "getMode")).intValue();
+            if (isActivityTask(info)) {
+                if (mode == 1 || mode == 3 || mode == 6) showWorkspaceOpening(change, start, finish);
+                handled = true;
+                continue;
+            }
+            if (info == null && (ours || entry) && (mode == 1 || mode == 3)
+                    && (((Number) OneStepReflection.call(change, "getFlags")).intValue() & 2) != 0) {
+                showWorkspaceOpening(change, start, finish);
+                continue;
+            }
+            if (workspaceTransition != null && !workspaceTransition.returning && matches(workspaceTransition.card, info)) {
+                // A staged source belongs to the session before its TaskView exists.
+                // Apply after setupAnimHierarchy, using the transition's surface handle too.
+                Host owner = find(info);
+                Rect crop = owner != null && owner.collected ? surfaceCrop(owner)
+                        : new Rect(0, 0, workspaceTransition.originalBounds.width(), workspaceTransition.originalBounds.height());
+                SurfaceControl surface = (SurfaceControl) OneStepReflection.call(change, "getLeash");
+                workspaceTransition.place(start, surface, crop, !suspended && !covered && hostVisible);
+                workspaceTransition.place(finish, surface, crop, !suspended && !covered && hostVisible);
+                handled = true;
+            }
             Host host = find(info);
             if (host == null && ours && info != null) {
                 Navigation navigation = incoming.get(OneStepTaskAccess.token(info));
@@ -1843,6 +1945,12 @@ final class OneStepShell {
 
     private void restoreAll(int focusTask, Runnable finished, int attempt, int request) {
         if (request != closeRequest.get()) return;
+        // A submitted launch can still apply its source reorder/translucency. Finish
+        // that transition before restoring the task or releasing its bridge surface.
+        if (activityLaunchTransition != null) {
+            later(() -> restoreAll(focusTask, finished, attempt, request), 50);
+            return;
+        }
         try {
             for (Navigation navigation : new ArrayList<>(incoming.values())) cancelNavigation(navigation);
             int retainFocus = -1;
@@ -2136,6 +2244,11 @@ final class OneStepShell {
                 Object appeared = appeared(motion.card.taskId);
                 Object info = appeared == null ? null : OneStepReflection.call(appeared, "getTaskInfo");
                 if (matches(motion.card, info) && !taskEnded(info)) {
+                    if (motion.sourcePrepared) {
+                        Object wct = transaction();
+                        bool(wct, "setForceTranslucent", OneStepReflection.get(info, "token"), false);
+                        OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
+                    }
                     int parentId = ReflectUtils.getIntField(info, "parentTaskId", -1);
                     SurfaceControl parent;
                     if (parentId >= 0) {
@@ -2156,6 +2269,7 @@ final class OneStepShell {
                     }
                 }
             }
+            if (motion.sourcePrepared) forget(motion.card.taskId);
             motion.returning = true;
             motion.remove(tx);
             tx.addTransactionCommittedListener(executor, () -> {
@@ -2298,19 +2412,26 @@ final class OneStepShell {
     }
 
     private void save(Host host, Object info) throws Exception {
+        save(host.card, info, host.originalMode, host.originalBounds, host.originalPosition,
+                host.originalFocusable, host.originalAlwaysOnTop, true);
+    }
+
+    private void save(RecentTaskCard card, Object info, int mode, Rect bounds, Point position,
+                      boolean focusable, boolean alwaysOnTop, boolean hosted) throws Exception {
         JSONObject item = new JSONObject();
-        item.put("task", host.card.taskId).put("user", host.card.userId).put("boot", bootCount);
+        item.put("task", card.taskId).put("user", card.userId).put("boot", bootCount);
         ComponentName base = baseComponent(info);
         if (base == null) throw new IllegalStateException("Cannot journal a task without its base component");
         item.put("component", base.flattenToString());
-        item.put("mode", host.originalMode).put("bounds", host.originalBounds.flattenToString());
-        item.put("focusable", host.originalFocusable).put("alwaysOnTop", host.originalAlwaysOnTop);
-        item.put("x", host.originalPosition.x).put("y", host.originalPosition.y);
-        item.put("imeInsetsExcluded", true);
+        item.put("mode", mode).put("bounds", bounds.flattenToString());
+        item.put("focusable", focusable).put("alwaysOnTop", alwaysOnTop);
+        item.put("x", position.x).put("y", position.y);
+        item.put("imeInsetsExcluded", hosted);
         item.put("forceTranslucent", true);
-        item.put("home", host.home());
-        item.put("rootBackIntercepted", !host.home());
-        journal.put(host.card.taskId, item);
+        item.put("home", card.home);
+        item.put("rootBackIntercepted", hosted && !card.home);
+        item.put("workspaceEntry", !hosted);
+        journal.put(card.taskId, item);
         persist();
     }
     private void forget(int taskId) throws Exception { journal.remove(taskId); persist(); }
@@ -2347,7 +2468,8 @@ final class OneStepShell {
             boolean home = item.optBoolean("home", false) && OneStepTaskAccess.home(info);
             if (OneStepTaskAccess.display(info) != 0
                     || (!home && ReflectUtils.invokeNoArgInt(info, "getWindowingMode", -1) != 6
-                    && !(item.optBoolean("stagedNavigation", false) && windowMode(info) == item.optInt("mode")))
+                    && !((item.optBoolean("stagedNavigation", false) || item.optBoolean("workspaceEntry", false))
+                            && windowMode(info) == item.optInt("mode")))
                     || bounds == null) {
                 // The task may have left the workspace, or SystemUI died between preparing
                 // a dormant task and acquiring it. Clear our flags without changing its mode.

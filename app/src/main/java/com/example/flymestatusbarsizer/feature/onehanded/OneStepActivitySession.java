@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.onehanded;
 
 import android.app.ActivityOptions;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.PixelFormat;
@@ -37,6 +38,7 @@ final class OneStepActivitySession {
     private final Context context;
     private final Handler handler;
     private final Listener listener;
+    private final OneStepShell shell;
     private final IBinder control;
     private final int userId;
     private final int ownerUserId;
@@ -56,15 +58,18 @@ final class OneStepActivitySession {
     private Rect stableInsets;
     private int revision;
     private int surfaceRequest;
+    private PendingIntent launchIntent;
     private final Runnable restart = this::restartHost;
     private final Runnable restartTimeout = this::checkRestartTimeout;
 
-    OneStepActivitySession(Context context, Handler handler, int userId, int ownerUserId, Listener listener) throws Exception {
+    OneStepActivitySession(Context context, Handler handler, int userId, int ownerUserId,
+                           OneStepShell shell, Listener listener) throws Exception {
         this.context = context;
         this.handler = handler;
         this.userId = userId;
         this.ownerUserId = ownerUserId;
         this.listener = listener;
+        this.shell = shell;
         clientUid = ((Number) OneStepReflection.call(context.getPackageManager(), "getPackageUidAsUser",
                 new Class<?>[]{String.class, int.class}, BuildConfig.APPLICATION_ID, userId)).intValue();
         control = new Binder() {
@@ -168,18 +173,31 @@ final class OneStepActivitySession {
     }
 
     void start() throws Exception {
+        if (closed) return;
         Bundle extras = new Bundle();
         extras.putBinder(OneStepActivityProtocol.EXTRA_CONTROL, control);
         extras.putInt(OneStepActivityProtocol.EXTRA_UID, Process.myUid());
         Intent intent = new Intent().setClassName(BuildConfig.APPLICATION_ID, OneStepActivityProtocol.ACTIVITY)
+                .setIdentifier(java.util.UUID.randomUUID().toString())
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK
                         | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS | Intent.FLAG_ACTIVITY_NO_ANIMATION)
                 .putExtras(extras);
         ActivityOptions options = ActivityOptions.makeCustomAnimation(context, 0, 0);
         options.setLaunchDisplayId(0);
+        IBinder cookie = new Binder();
+        OneStepReflection.call(options, "setLaunchCookie", new Class<?>[]{IBinder.class}, cookie);
+        if (android.os.Build.VERSION.SDK_INT >= 34)
+            options.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
+        ActivityOptions creator = ActivityOptions.makeBasic();
+        if (android.os.Build.VERSION.SDK_INT >= 35)
+            creator.setPendingIntentCreatorBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
         UserHandle user = UserHandle.getUserHandleForUid(userId * 100000);
-        OneStepReflection.call(context, "startActivityAsUser",
-                new Class<?>[]{Intent.class, Bundle.class, UserHandle.class}, intent, options.toBundle(), user);
+        if (launchIntent != null) launchIntent.cancel();
+        launchIntent = (PendingIntent) OneStepReflection.method(PendingIntent.class, "getActivityAsUser",
+                Context.class, int.class, Intent.class, int.class, Bundle.class, UserHandle.class)
+                .invoke(null, context, 0, intent, PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE,
+                        creator.toBundle(), user);
+        shell.startWorkspaceActivity(launchIntent, options.toBundle(), cookie);
     }
 
     private void attach(IBinder callback, IBinder token, int taskId, int w, int h, Rect insets, int surfaceRequest) {
@@ -336,6 +354,7 @@ final class OneStepActivitySession {
         revision++;
         handler.removeCallbacks(restart);
         handler.removeCallbacks(restartTimeout);
+        if (launchIntent != null) { launchIntent.cancel(); launchIntent = null; }
         if (client != null) {
             finish(client);
         }

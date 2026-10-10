@@ -102,6 +102,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private Rect[] frames;
     private Rect contentBounds;
     private final Rect logicalBounds = new Rect();
+    private final Rect transitionBounds = new Rect();
     private final Rect screenBounds = new Rect();
     private OneStepActivitySession activitySession;
     private OneStepLauncherBridge.Session desktopSession;
@@ -212,7 +213,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         transitionHandoff = false;
         shell.begin(request, main.userId);
         shell.setSuspended(suspended);
-        activitySession = new OneStepActivitySession(context, handler, main.userId, workspaceOwnerUserId, new OneStepActivitySession.Listener() {
+        activitySession = new OneStepActivitySession(context, handler, main.userId, workspaceOwnerUserId, shell, new OneStepActivitySession.Listener() {
             @Override public void onAttached(int taskId, Rect bounds, Rect insets) {
                 if (generation != request || state != State.OPENING) return;
                 shell.attachActivity(taskId, () -> {
@@ -293,8 +294,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             }
         });
         if (!suspended) handler.postDelayed(openingTimeout, 12000);
-        shell.prepareWorkspaceEntry(main, () -> {
+        shell.prepareWorkspaceEntry(main, bounds -> {
             if (generation != request || state != State.OPENING) return;
+            transitionBounds.set(bounds);
             try { activitySession.start(); }
             catch (Exception error) { fail("无法打开工作台窗口", error); }
         });
@@ -321,7 +323,15 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     backdrop.postOnAnimation(this);
                     return;
                 }
-                animateWorkspace(true, () -> finishEntryAnimation(request));
+                Runnable start = () -> handler.post(() -> {
+                    if (state == State.OPENING && generation == request && !suspended
+                            && !rebinding && hostVisible && backdrop != null)
+                        animateWorkspace(true, () -> finishEntryAnimation(request));
+                });
+                if (backdrop.isHardwareAccelerated()) {
+                    backdrop.getViewTreeObserver().registerFrameCommitCallback(start);
+                    backdrop.invalidate();
+                } else backdrop.postOnAnimation(start);
             }
         });
     }
@@ -691,7 +701,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private RectF transitionFrame(int slot, boolean opened) {
-        if (!opened && slot == mainSlot) return new RectF(0, 0, logicalBounds.width(), logicalBounds.height());
+        if (!opened && slot == mainSlot) {
+            RectF fullscreen = new RectF(transitionBounds);
+            fullscreen.offset(-contentBounds.left, -contentBounds.top);
+            return fullscreen;
+        }
         Rect frame = frames[slot];
         float scale = scaleForFrame(frame);
         float w = logicalBounds.width() * scale;
@@ -722,11 +736,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         float x = start.left + (end.left - start.left) * progress;
         float y = start.top + (end.top - start.top) * progress;
         float w = start.width() + (end.width() - start.width()) * progress;
+        float h = start.height() + (end.height() - start.height()) * progress;
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) pane.container.getLayoutParams();
         pane.container.setTranslationX(x - params.leftMargin);
         pane.container.setTranslationY(y - params.topMargin);
         pane.container.setScaleX(w / logicalBounds.width());
-        pane.container.setScaleY(w / logicalBounds.width());
+        pane.container.setScaleY(h / logicalBounds.height());
     }
 
     private static float segment(float progress, float start, float end) {
@@ -1766,8 +1781,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             transitionHandoff = true;
             handler.postDelayed(exitAnimationTimeout, 2000);
             shell.prepareWorkspaceExit(main.host, mainScreenFrame(),
-                    dp(PANE_RADIUS_DP) * transitionProgress, () -> {
+                    dp(PANE_RADIUS_DP) * transitionProgress, bounds -> {
                         if (state != State.CLOSING || closing != closeGeneration) return;
+                        transitionBounds.set(bounds);
                         animateWorkspace(false, restore);
                     });
         }

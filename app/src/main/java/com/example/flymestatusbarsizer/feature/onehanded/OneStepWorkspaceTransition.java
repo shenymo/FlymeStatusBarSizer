@@ -18,6 +18,7 @@ final class OneStepWorkspaceTransition {
     boolean exiting;
     boolean returning;
     boolean removing;
+    boolean sourcePrepared;
 
     OneStepWorkspaceTransition(RecentTaskCard card, int session, SurfaceControl surface,
                                SurfaceControl parent, Rect bounds, Point position) throws Exception {
