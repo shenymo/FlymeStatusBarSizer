@@ -22,6 +22,9 @@ import android.util.Log;
 import android.util.SparseArray;
 import android.view.SurfaceControl;
 import android.view.SurfaceView;
+import android.view.WindowInsets;
+import android.view.WindowManager;
+import android.view.WindowMetrics;
 
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
@@ -82,6 +85,7 @@ final class OneStepShell {
         Object oldListener;
         Object oldSpecificListener;
         SurfaceControl leash;
+        OneStepBarBackground barBackground;
         Rect originalBounds;
         Point originalPosition;
         int originalMode;
@@ -514,6 +518,12 @@ final class OneStepShell {
                 Point position = (Point) OneStepReflection.get(info, "positionInParent");
                 SurfaceControl leash = (SurfaceControl) OneStepReflection.call(appeared, "getLeash");
                 workspaceTransition = new OneStepWorkspaceTransition(card, request, leash, rootSurface(), bounds, position);
+                WindowMetrics metrics = context.getSystemService(WindowManager.class).getMaximumWindowMetrics();
+                Rect viewport = new Rect(metrics.getBounds());
+                android.graphics.Insets insets = metrics.getWindowInsets().getInsetsIgnoringVisibility(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                viewport.inset(insets.left, insets.top, insets.right, insets.bottom);
+                workspaceTransition.barBackground = OneStepBarBackground.capture(info, leash, bounds, viewport);
                 save(card, info, windowMode(info), bounds, position,
                         ReflectUtils.getBooleanField(info, "isFocusable", true),
                         Boolean.TRUE.equals(OneStepReflection.call(config, "isAlwaysOnTop")), false);
@@ -561,7 +571,7 @@ final class OneStepShell {
         });
     }
 
-    void prepareWorkspaceExit(Host host, RectF frame, float radius, java.util.function.Consumer<Rect> ready) {
+    void prepareWorkspaceExit(Host host, RectF frame, float radius, float progress, java.util.function.Consumer<Rect> ready) {
         int request = session;
         RectF start = new RectF(frame);
         executor.execute(() -> {
@@ -569,10 +579,14 @@ final class OneStepShell {
             try {
                 if (!current(host) || !host.ready || host.closing || suspended || covered || !hostVisible)
                     throw new IllegalStateException("Exit task is no longer visible");
-                if (workspaceTransition == null) workspaceTransition = new OneStepWorkspaceTransition(
-                        host.card, request, host.leash, rootSurface(), host.originalBounds, host.originalPosition);
+                if (workspaceTransition == null) {
+                    workspaceTransition = new OneStepWorkspaceTransition(
+                            host.card, request, host.leash, rootSurface(), host.originalBounds, host.originalPosition);
+                    if (host.barBackground != null) workspaceTransition.barBackground = host.barBackground.retain();
+                }
                 if (!workspaceTransition.owns(host)) throw new IllegalStateException("Another task owns the transition");
                 workspaceTransition.exiting = true;
+                workspaceTransition.progress = progress;
                 workspaceTransition.frame.set(start);
                 workspaceTransition.radius = radius;
                 Rect fullscreen = new Rect(workspaceTransition.originalBounds);
@@ -590,7 +604,7 @@ final class OneStepShell {
         });
     }
 
-    void workspaceFrame(Host host, RectF frame, float radius) {
+    void workspaceFrame(Host host, RectF frame, float radius, float progress) {
         RectF next = new RectF(frame);
         executor.execute(() -> {
             OneStepWorkspaceTransition motion = workspaceTransition;
@@ -601,6 +615,7 @@ final class OneStepShell {
             try {
                 motion.frame.set(next);
                 motion.radius = radius;
+                motion.progress = progress;
                 try (SurfaceControl.Transaction tx = new SurfaceControl.Transaction()) {
                     placeWorkspaceTransition(tx);
                     tx.apply();
@@ -873,7 +888,8 @@ final class OneStepShell {
             try {
                 if (workspaceTransition != null && suspended) {
                     try (SurfaceControl.Transaction tx = new SurfaceControl.Transaction()) {
-                        tx.setVisibility(workspaceTransition.stage, false).apply();
+                        workspaceTransition.hide(tx);
+                        tx.apply();
                     }
                     cancelWorkspaceMotion();
                 }
@@ -965,6 +981,12 @@ final class OneStepShell {
             host.runningInfo = info;
             host.leash = (SurfaceControl) OneStepReflection.call(appeared, "getLeash");
             if (!host.leash.isValid() || rootSurface() == null) throw new IllegalStateException("Task surface unavailable");
+            if (host.barBackground == null) {
+                if (workspaceTransition != null && workspaceTransition.owns(host) && workspaceTransition.barBackground != null)
+                    host.barBackground = workspaceTransition.barBackground.retain();
+                else host.barBackground = OneStepBarBackground.capture(info, windowMode(info) == 1 ? host.leash : null,
+                        host.originalBounds, host.logicalBounds);
+            }
             save(host, info);
             if (imeSession == null) throw new IllegalStateException("Workspace IME session unavailable");
             host.imeRegistered = true;
@@ -2298,6 +2320,7 @@ final class OneStepShell {
         cancelLaunchAnimation(host);
         host.released = true;
         host.ready = false;
+        if (host.barBackground != null) { host.barBackground.release(); host.barBackground = null; }
         // Reset before surfaceDestroyed can enqueue a hide for a task already returned to Android.
         try { OneStepReflection.call(host.controller, "resetTaskInfo"); }
         catch (Exception error) { Log.w(TAG, "Cannot clear TaskView controller", error); }

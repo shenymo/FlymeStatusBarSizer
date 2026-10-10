@@ -11,10 +11,14 @@ final class OneStepWorkspaceTransition {
     final int session;
     final SurfaceControl surface;
     final SurfaceControl stage;
+    private final SurfaceControl parent;
+    OneStepBarBackground barBackground;
+    private SurfaceControl barSurface;
     final Point originalPosition;
     final Rect originalBounds;
     final RectF frame;
     float radius;
+    float progress;
     boolean exiting;
     boolean returning;
     boolean removing;
@@ -26,6 +30,7 @@ final class OneStepWorkspaceTransition {
         this.card = card;
         this.session = session;
         this.surface = surface;
+        this.parent = parent;
         originalBounds = new Rect(bounds);
         originalPosition = new Point(position);
         frame = new RectF(bounds);
@@ -66,7 +71,7 @@ final class OneStepWorkspaceTransition {
         // input also covers the task while it is outside TaskView's obscured region.
         OneStepReflection.call(tx, "setDropInputMode",
                 new Class<?>[]{SurfaceControl.class, int.class}, stage, 1);
-        tx.setLayer(stage, Integer.MAX_VALUE).setPosition(stage, frame.left, frame.top)
+        tx.setLayer(stage, Integer.MAX_VALUE - 1).setPosition(stage, frame.left, frame.top)
                 .setScale(stage, sx, sy).setAlpha(stage, 1f).setVisibility(stage, visible);
         OneStepReflection.call(tx, "setWindowCrop", new Class<?>[]{SurfaceControl.class, Rect.class},
                 stage, new Rect(0, 0, crop.width(), crop.height()));
@@ -75,11 +80,33 @@ final class OneStepWorkspaceTransition {
         tx.reparent(leash, stage).setPosition(leash, -crop.left, -crop.top)
                 .setScale(leash, 1f, 1f).setAlpha(leash, 1f).setVisibility(leash, true);
         OneStepReflection.call(tx, "setWindowCrop", new Class<?>[]{SurfaceControl.class, Rect.class}, leash, crop);
+        if (barBackground != null) {
+            if (barSurface == null) barSurface = barBackground.createLayer(parent, tx);
+            barBackground.place(tx, barSurface, progress, visible);
+        }
     }
 
     void remove(SurfaceControl.Transaction tx) {
         if (stage.isValid()) tx.reparent(stage, null);
+        if (barSurface != null && barSurface.isValid()) {
+            if (exiting) {
+                SurfaceControl backdrop = barSurface;
+                // Transfer the final strip to SystemUI for a draw-synchronized
+                // handoff after the fullscreen app transaction has committed.
+                tx.addTransactionCommittedListener(Runnable::run, () -> OneStepStatusBar.finishBackground(backdrop));
+                barSurface = null;
+            } else tx.reparent(barSurface, null);
+        }
     }
 
-    void release() { stage.release(); }
+    void hide(SurfaceControl.Transaction tx) {
+        if (stage.isValid()) tx.setVisibility(stage, false);
+        if (barSurface != null && barSurface.isValid()) tx.setVisibility(barSurface, false);
+    }
+
+    void release() {
+        stage.release();
+        if (barSurface != null) { barSurface.release(); barSurface = null; }
+        if (barBackground != null) { barBackground.release(); barBackground = null; }
+    }
 }

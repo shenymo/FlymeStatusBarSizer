@@ -297,6 +297,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         shell.prepareWorkspaceEntry(main, bounds -> {
             if (generation != request || state != State.OPENING) return;
             transitionBounds.set(bounds);
+            OneStepStatusBar.setBackgroundOwned(true);
             try { activitySession.start(); }
             catch (Exception error) { fail("无法打开工作台窗口", error); }
         });
@@ -768,7 +769,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
         Pane main = panes[mainSlot];
         if (main != null && main.host != null)
-            shell.workspaceFrame(main.host, mainScreenFrame(), dp(PANE_RADIUS_DP) * transitionProgress);
+            shell.workspaceFrame(main.host, mainScreenFrame(), dp(PANE_RADIUS_DP) * transitionProgress, transitionProgress);
     }
 
     private void animateWorkspace(boolean entering, Runnable done) {
@@ -1783,7 +1784,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             transitionHandoff = true;
             handler.postDelayed(exitAnimationTimeout, 2000);
             shell.prepareWorkspaceExit(main.host, mainScreenFrame(),
-                    dp(PANE_RADIUS_DP) * transitionProgress, bounds -> {
+                    dp(PANE_RADIUS_DP) * transitionProgress, transitionProgress, bounds -> {
                         if (state != State.CLOSING || closing != closeGeneration) return;
                         transitionBounds.set(bounds);
                         animateWorkspace(false, restore);
@@ -1804,6 +1805,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (perf != null) { perf.stop(); perf = null; }
         OneStepStatusBar.setVisible(false);
         if (activitySession != null) { activitySession.close(); activitySession = null; }
+        OneStepStatusBar.setBackgroundOwned(false);
         backdrop = null;
         workspace = null;
         recentStrip = null;
