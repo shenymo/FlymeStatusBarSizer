@@ -125,6 +125,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private boolean shellImeFloating;
     private int shellImeTargetBottom;
     private IBinder imeInputTask;
+    private RectF imeInputRegion;
     private int imePlacement = OneStepImePolicy.UNKNOWN;
     private boolean mainOnLeft;
     private boolean taskNotifications;
@@ -376,8 +377,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (animator != null) animator.end();
         if (transitionAnimator != null) transitionAnimator.end();
         cancelImeAnimator();
+        Rect previousLogicalBounds = new Rect(logicalBounds);
         screenBounds.set(screen);
         updateLogicalBounds(screen, Insets.of(insets.left, insets.top, insets.right, insets.bottom));
+        if (!previousLogicalBounds.equals(logicalBounds)) imeInputRegion = null;
         contentBounds.set(logicalBounds);
         width = contentBounds.width();
         height = contentBounds.height();
@@ -432,6 +435,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         shellImeFloating = false;
         shellImeTargetBottom = 0;
         imeInputTask = null;
+        imeInputRegion = null;
         imePlacement = OneStepImePolicy.UNKNOWN;
         sideOrder.clear();
         for (int i = 1; i < COUNT; i++) sideOrder.add(i);
@@ -557,10 +561,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         });
     }
 
-    @Override public void onImeRoutingChanged(IBinder task, int placement) {
+    @Override public void onImeRoutingChanged(IBinder task, int placement, RectF inputRegion) {
         if (!active()) return;
+        boolean routingChanged = !java.util.Objects.equals(imeInputTask, task) || imePlacement != placement;
+        boolean regionAvailabilityChanged = (imeInputRegion == null) != (inputRegion == null);
         imeInputTask = task;
         imePlacement = placement;
+        imeInputRegion = inputRegion == null ? null : new RectF(inputRegion);
         if (placement == OneStepImePolicy.APP) {
             // Insets describe the logical display even when the keyboard is inside a pane.
             // Only a confirmed app parent revokes Shell positioning. Unknown routing during
@@ -569,7 +576,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             shellImePositioning = false;
         }
         if (!shellImeControlled) applyActivityIme();
-        logImeEvent("routing placement=" + placement);
+        // The requested input region can move without changing the IME insets.
+        positionForIme();
+        if (routingChanged) logImeEvent("routing placement=" + placement);
+        else if (regionAvailabilityChanged) logImeEvent(inputRegion == null ? "input-region-cleared" : "input-region-ready");
     }
 
     private boolean imeTargetsMain() {
@@ -589,6 +599,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     + " imeBottom=" + imeBottom + " imeAnimating=" + imeAnimating
                     + " shellTargetBottom=" + shellImeTargetBottom + " shellFloating=" + shellImeFloating
                     + " avoidOffset=" + imeOffset
+                    + " avoidance=" + (imeInputRegion == null ? "fallback" : "input-region")
+                    + " inputRegion=" + imeInputRegion
                     + " translationY=" + (workspace != null ? workspace.getTranslationY() : 0)
                     + " screen=" + screenBounds + " content=" + contentBounds);
             shell.logImeTasks(generation, event);
@@ -622,8 +634,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void positionForIme() {
-        if (!running() || workspace == null || transitionAnimator != null || transitionHandoff) return;
-        int nextOffset = Math.max(0, contentBounds.bottom - (screenBounds.bottom - imeBottom));
+        if (!running() || workspace == null || animator != null || transitionAnimator != null || transitionHandoff) return;
+        int nextOffset = offsetForIme();
         // Parent translation composes with pane swaps and the workspace enter animation.
         // System animation frames already include the IME's easing; do not animate them again.
         if (imeAnimating || !ValueAnimator.areAnimatorsEnabled()) {
@@ -665,6 +677,29 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         // Do not send setBounds here: even a position-only change triggers task relayout
         // and a Shell transition. SurfaceView moves the native task input with its surface.
         movement.start();
+    }
+
+    private int offsetForIme() {
+        if (imeBottom <= 0 || imePlacement == OneStepImePolicy.APP || !imeTargetsMain()) return 0;
+        Rect frame = frames[mainSlot];
+        float paneTop = contentBounds.top + frame.top;
+        float paneHeight = logicalBounds.height() * scaleForFrame(frame);
+        float keyboardTop = screenBounds.bottom - imeBottom;
+        float gap = dp(12);
+        // The recent-app strip pins to the top when lifted; reserve its height so
+        // it cannot cover the caret even with an unusually tall keyboard.
+        float visibleTop = contentBounds.top + dp(TOOLBAR_HEIGHT_DP + PANE_GAP_DP);
+        float targetBottom = paneTop + paneHeight;
+        float targetTop = paneTop;
+        if (imeInputRegion != null) {
+            targetTop = paneTop + imeInputRegion.top * paneHeight;
+            targetBottom = paneTop + imeInputRegion.bottom * paneHeight + gap;
+        }
+        float needed = Math.max(0f, targetBottom - keyboardTop);
+        float maximum = Math.max(0f, targetTop - visibleTop - gap);
+        // Without an input region, keep the main pane's top reachable. Otherwise
+        // lift only enough to expose the requested region above the keyboard.
+        return Math.max(0, (int) Math.min(Math.ceil(needed), Math.floor(maximum)));
     }
 
     private void cancelImeAnimator() {

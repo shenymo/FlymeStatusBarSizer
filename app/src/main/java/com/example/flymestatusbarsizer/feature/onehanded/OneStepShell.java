@@ -50,7 +50,7 @@ final class OneStepShell {
         void onNavigation(Navigation navigation);
         void onCoverageChanged(boolean covered);
         void onTaskChanged(Host host, RecentTaskCard previous);
-        void onImeRoutingChanged(IBinder task, int placement);
+        void onImeRoutingChanged(IBinder task, int placement, RectF inputRegion);
         void onWorkspaceTransitionCancelled();
     }
 
@@ -247,6 +247,7 @@ final class OneStepShell {
     private volatile IBinder activityLaunchCookie;
     private IBinder activityLaunchTransition;
     private OneStepImePolicy.Session imeSession;
+    private volatile int imeRoutingGeneration;
     private Listener listener;
     private int initAttempts;
 
@@ -708,10 +709,12 @@ final class OneStepShell {
             activityToken = OneStepReflection.get(info, "token");
             activityTaskId = taskId;
             if (imeSession != null) imeSession.close();
-            imeSession = new OneStepImePolicy.Session((IBinder) OneStepTaskAccess.token(info), (task, placement) ->
+            int routingGeneration = ++imeRoutingGeneration;
+            imeSession = new OneStepImePolicy.Session((IBinder) OneStepTaskAccess.token(info), (task, placement, inputRegion) ->
                     ui.post(() -> {
-                        if (accepting && request == session && listener != null)
-                            listener.onImeRoutingChanged(task, placement);
+                        // Reattaching the same Activity keeps this IME session alive.
+                        if (accepting && request == session && routingGeneration == imeRoutingGeneration && listener != null)
+                            listener.onImeRoutingChanged(task, placement, inputRegion);
                     }));
             for (Host host : hosts) if (current(host) && host.imeRegistered)
                 imeSession.add((IBinder) host.card.token);

@@ -285,6 +285,9 @@ public class FlymeStatusBarSizer extends XposedModule {
             MzSafeOptimizationHooks.install(this, loader);
         }
         ImeHooks.install(this, loader, packageName);
+        if (!"android".equals(packageName) && !"system".equals(packageName)) {
+            com.example.flymestatusbarsizer.feature.onehanded.OneStepImeRegionCollector.install(this, loader);
+        }
     }
 
     private void hookSystemUi(ClassLoader loader) {
