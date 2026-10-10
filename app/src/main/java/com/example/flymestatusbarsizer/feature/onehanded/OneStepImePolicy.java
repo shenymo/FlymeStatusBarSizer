@@ -38,7 +38,10 @@ public final class OneStepImePolicy {
     private static final int REMOVE = ADD + 1;
     private static final int CLOSE = ADD + 2;
     private static final int RESUMED = CLOSE + 1;
+    private static final int REFRESH_ORIENTATIONS = RESUMED + 1;
     private static final int ROUTING = IBinder.FIRST_CALL_TRANSACTION;
+    private static final int ORIENTATION = ROUTING + 1;
+    private static final int FOCUS = ORIENTATION + 1;
     private static final long PENDING_REGION_MAX_AGE_MS = 1500;
     static final int UNKNOWN = 0;
     static final int DISPLAY = 1;
@@ -70,6 +73,8 @@ public final class OneStepImePolicy {
             Class<?> display = Class.forName("com.android.server.wm.DisplayContent", false, loader);
             Class<?> task = Class.forName("com.android.server.wm.Task", false, loader);
             OneStepTaskLifecycle.install(module, loader);
+            installOrientationObserver(module, loader);
+            installFocusObserver(module, display);
             fromBinder = OneStepReflection.method(Class.forName("com.android.server.wm.WindowContainer", false, loader),
                     "fromBinder", IBinder.class);
             module.intercept(OneStepReflection.method(window, "shouldControlIme"), chain -> {
@@ -108,7 +113,9 @@ public final class OneStepImePolicy {
                         if (workspace != null) workspace.close();
                         ServerSession owner = OWNERS.remove(target);
                         if (owner != null) {
+                            IBinder token = owner.tokenForTask(target);
                             owner.tasks.values().removeIf(value -> value == target);
+                            owner.orientations.remove(token);
                             owner.refresh();
                         }
                     }
@@ -209,8 +216,11 @@ public final class OneStepImePolicy {
                 boolean imeVisible = Boolean.TRUE.equals(ReflectUtils.invokeNoArg(
                         ReflectUtils.getField(display, "mInputMethodWindow"), "isVisible"));
                 ServerSession owner = ownerOf(task);
+                Object focusedTask = ReflectUtils.invokeNoArg(ReflectUtils.getField(display, "mCurrentFocus"), "getTask");
                 for (ServerSession session : new ArrayList<>(WORKSPACES.values())) {
                     if (!session.live()) { session.close(); continue; }
+                    session.reportFocus(session.tokenForTask(focusedTask));
+                    session.reportOrientations(null);
                     IBinder token = null;
                     if (owner == session) {
                         for (Object current = task; current != null && token == null;
@@ -624,6 +634,51 @@ public final class OneStepImePolicy {
                 (clipped.right - bounds.left) / bounds.width(), (clipped.bottom - bounds.top) / bounds.height());
     }
 
+    private static void installOrientationObserver(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> activity = Class.forName("com.android.server.wm.ActivityRecord", false, loader);
+            module.intercept(OneStepReflection.method(activity, "setRequestedOrientation", int.class), chain -> {
+                Object result = chain.proceed();
+                if (!hasSessions) return result;
+                try {
+                    Object record = chain.getThisObject();
+                    Object service = OneStepReflection.get(record, "mWmService");
+                    synchronized (OneStepReflection.get(service, "mGlobalLock")) {
+                        ServerSession owner = ownerOf(OneStepReflection.call(record, "getTask"));
+                        if (owner != null && owner.live()) owner.reportOrientations(record);
+                    }
+                } catch (Exception error) { OneStepImeDiagnostics.unavailable(error); }
+                return result;
+            });
+        } catch (Exception error) {
+            Log.w(TAG, "Orientation request hook unavailable; task snapshots remain enabled", error);
+        }
+    }
+
+    private static void installFocusObserver(FlymeStatusBarSizer module, Class<?> display) {
+        try {
+            // Flyme versions add different parameters to this method. Observe its
+            // result so tapping either pane is reported even when no IME is showing.
+            for (Method method : display.getDeclaredMethods()) {
+                if (!"updateFocusedWindowLocked".equals(method.getName())) continue;
+                module.intercept(method, chain -> {
+                    Object result = chain.proceed();
+                    if (hasSessions) report(chain.getThisObject());
+                    return result;
+                });
+            }
+        } catch (Exception error) { Log.w(TAG, "Focus hook unavailable; task snapshots remain enabled", error); }
+    }
+
+    private static final class OrientationState {
+        final Object activity;
+        final int orientation;
+        OrientationState(Object activity, int orientation) {
+            this.activity = activity;
+            this.orientation = orientation;
+        }
+    }
+
     private static final class ServerSession extends Binder implements IBinder.DeathRecipient {
         final Object service;
         final Object workspace;
@@ -632,6 +687,8 @@ public final class OneStepImePolicy {
         final Handler handler;
         final Object lock;
         final Map<IBinder, Object> tasks = new HashMap<>();
+        final Map<IBinder, OrientationState> orientations = new HashMap<>();
+        IBinder focusedToken;
         volatile boolean closed;
         IBinder reportedToken;
         IBinder reportedWindow;
@@ -677,13 +734,21 @@ public final class OneStepImePolicy {
         }
 
         @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
-            if (code < ADD || code > RESUMED) return super.onTransact(code, data, reply, flags);
+            if (code < ADD || code > REFRESH_ORIENTATIONS) return super.onTransact(code, data, reply, flags);
             data.enforceInterface(DESCRIPTOR);
             if (Binder.getCallingUid() != uid) throw new SecurityException("Workspace owner mismatch");
             if (reply == null) return false;
             try {
                 synchronized (lock) {
                     if (code == CLOSE) close();
+                    else if (code == REFRESH_ORIENTATIONS) {
+                        if (live()) {
+                            reportOrientations(null);
+                            Object display = ReflectUtils.invokeNoArg(service, "getDefaultDisplayContentLocked");
+                            Object focus = ReflectUtils.getField(display, "mCurrentFocus");
+                            reportFocus(tokenForTask(ReflectUtils.invokeNoArg(focus, "getTask")));
+                        }
+                    }
                     else if (code == RESUMED) {
                         if (!live()) throw new IllegalStateException("Workspace expired");
                         boolean next = data.readInt() != 0;
@@ -692,7 +757,9 @@ public final class OneStepImePolicy {
                             refreshLifecycle();
                         }
                     } else if (code == REMOVE) {
-                        Object task = tasks.remove(data.readStrongBinder());
+                        IBinder token = data.readStrongBinder();
+                        Object task = tasks.remove(token);
+                        orientations.remove(token);
                         if (task != null && OWNERS.get(task) == this) OWNERS.remove(task);
                         refresh();
                         refreshLifecycle();
@@ -709,6 +776,7 @@ public final class OneStepImePolicy {
                         if (previous != null && previous != this) throw new IllegalStateException("Task already hosted");
                         tasks.put(token, task);
                         OWNERS.put(task, this);
+                        reportOrientations(null);
                         Log.i(TAG, "policy-register task=" + ReflectUtils.getIntField(task, "mTaskId", -1)
                                 + " build=" + BuildConfig.VERSION_NAME + " regionHook=" + inputRegionHook
                                 + " editorHook=" + editorHookInstalled);
@@ -721,6 +789,48 @@ public final class OneStepImePolicy {
                         : new IllegalStateException("Cannot update workspace IME policy", error));
             }
             return true;
+        }
+
+        void reportFocus(IBinder token) {
+            if (java.util.Objects.equals(focusedToken, token)) return;
+            focusedToken = token;
+            handler.post(() -> {
+                synchronized (lock) {
+                    if (closed || !java.util.Objects.equals(focusedToken, token)) return;
+                }
+                try {
+                    OneStepActivityProtocol.send(callback, DESCRIPTOR, FOCUS, data -> data.writeStrongBinder(token));
+                } catch (RemoteException error) { binderDied(); }
+            });
+        }
+
+        void reportOrientations(Object requestedActivity) {
+            for (Map.Entry<IBinder, Object> entry : tasks.entrySet()) {
+                Object activity = ReflectUtils.invokeNoArg(entry.getValue(), "topRunningActivity");
+                if (activity == null || (requestedActivity != null && activity != requestedActivity)) continue;
+                // Read the Activity's request, never Configuration.orientation (which our
+                // own bounds change). The override includes manifest and runtime requests.
+                int orientation = ReflectUtils.invokeNoArgInt(activity, "getOverrideOrientation", -1);
+                OrientationState previous = orientations.get(entry.getKey());
+                if (requestedActivity == null && previous != null && previous.activity == activity
+                        && previous.orientation == orientation) continue;
+                OrientationState next = new OrientationState(activity, orientation);
+                IBinder token = entry.getKey();
+                orientations.put(token, next);
+                handler.post(() -> {
+                    synchronized (lock) {
+                        if (closed || orientations.get(token) != next || !tasks.containsKey(token)
+                                || ReflectUtils.invokeNoArg(tasks.get(token), "topRunningActivity") != activity) return;
+                    }
+                    try {
+                        OneStepActivityProtocol.send(callback, DESCRIPTOR, ORIENTATION, data -> {
+                            data.writeStrongBinder(token);
+                            data.writeInt(orientation);
+                            data.writeInt(requestedActivity != null ? 1 : 0);
+                        });
+                    } catch (RemoteException error) { binderDied(); }
+                });
+            }
         }
 
         void refresh() {
@@ -869,6 +979,7 @@ public final class OneStepImePolicy {
             hasSessions = !WORKSPACES.isEmpty();
             for (Object task : tasks.values()) OWNERS.remove(task, this);
             tasks.clear();
+            orientations.clear();
             clearPendingInputRegion();
             editor = null;
             refresh();
@@ -884,7 +995,11 @@ public final class OneStepImePolicy {
         }
     }
 
-    interface Listener { void onRouting(IBinder task, int placement, RectF inputRegion); }
+    interface Listener {
+        void onRouting(IBinder task, int placement, RectF inputRegion);
+        void onOrientation(IBinder task, int orientation, boolean explicit);
+        void onFocus(IBinder task);
+    }
 
     /** SystemUI endpoint. Keep the callback alive until the last task has been restored. */
     static final class Session {
@@ -896,10 +1011,20 @@ public final class OneStepImePolicy {
         Session(IBinder workspace, Listener listener) throws Exception {
             callback = new Binder() {
                 @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
-                    if (code != ROUTING) return super.onTransact(code, data, reply, flags);
+                    if (code != ROUTING && code != ORIENTATION && code != FOCUS) return super.onTransact(code, data, reply, flags);
                     data.enforceInterface(DESCRIPTOR);
                     if (Binder.getCallingUid() != Process.SYSTEM_UID) throw new SecurityException("IME server mismatch");
                     IBinder task = data.readStrongBinder();
+                    if (code == FOCUS) {
+                        if (!closed) listener.onFocus(task);
+                        return true;
+                    }
+                    if (code == ORIENTATION) {
+                        int orientation = data.readInt();
+                        boolean explicit = data.readInt() != 0;
+                        if (!closed) listener.onOrientation(task, orientation, explicit);
+                        return true;
+                    }
                     int placement = data.readInt();
                     RectF inputRegion = data.readInt() != 0 ? RectF.CREATOR.createFromParcel(data) : null;
                     if (!closed) listener.onRouting(task, placement, inputRegion);
@@ -925,6 +1050,7 @@ public final class OneStepImePolicy {
 
         void add(IBinder task) throws RemoteException { send(ADD, task); }
         void remove(IBinder task) throws RemoteException { send(REMOVE, task); }
+        void refreshOrientations() throws RemoteException { send(REFRESH_ORIENTATIONS, null); }
         void setResumed(boolean value) throws RemoteException {
             if (Boolean.valueOf(value).equals(resumed)) return;
             send(RESUMED, null, value);

@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.app.PendingIntent;
 import android.content.Context;
+import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.Outline;
@@ -47,7 +48,8 @@ import java.util.concurrent.Executors;
 /** Workspace UI; task ownership, surfaces and restoration live in OneStepShell. */
 final class OneStepWorkspace implements OneStepShell.Listener {
     private static final String TAG = "FlymeOneStep";
-    private static final int COUNT = 4;
+    private static final int LANDSCAPE_SLOT = 4;
+    private static final int COUNT = LANDSCAPE_SLOT + 1;
     private static final int TOOLBAR_HEIGHT_DP = 56;
     private static final int PANE_GAP_DP = 4;
     private static final int WORKSPACE_MARGIN_DP = 4;
@@ -104,6 +106,15 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private Rect[] frames;
     private Rect contentBounds;
     private final Rect logicalBounds = new Rect();
+    private final Rect portraitBounds = new Rect();
+    private final Rect landscapeBounds = new Rect();
+    private final java.util.Map<OneStepShell.Host, Integer> pendingOrientations = new java.util.IdentityHashMap<>();
+    private final java.util.Map<OneStepShell.Host, Integer> requestedOrientations = new java.util.IdentityHashMap<>();
+    private final java.util.Map<OneStepShell.Host, Integer> manualOrientations = new java.util.IdentityHashMap<>();
+    private final Runnable routeOrientations = this::applyPendingOrientations;
+    private long orientationMoveAfter;
+    private boolean movingTask;
+    private int focusedSlot;
     private final Rect transitionBounds = new Rect();
     private final Rect screenBounds = new Rect();
     private OneStepActivitySession activitySession;
@@ -274,7 +285,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 refreshEnvironment();
                 startInitialTask();
                 if (running() && visible && !suspended && !covered && !OneHandedTaskHooks.shadeOpen())
-                    shell.focus(panes[mainSlot].host);
+                    focusActivePane();
                 updateInput();
                 scheduleCheck(300);
             }
@@ -442,7 +453,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         recentOrderDirty = true;
         updateRecentIcons();
         for (Pane pane : panes) if (pane != null) {
-            position(pane.container, frames[pane.slot]);
+            position(pane, frames[pane.slot]);
             pane.container.setTranslationX(0);
             pane.container.setTranslationY(0);
             pane.updateAppearance();
@@ -460,6 +471,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         height = contentBounds.height();
         if (width <= 0 || height <= 0) throw new IllegalStateException("Invalid workspace bounds");
         mainSlot = 0;
+        focusedSlot = 0;
+        pendingOrientations.clear();
+        requestedOrientations.clear();
+        manualOrientations.clear();
+        movingTask = false;
+        orientationMoveAfter = 0;
         covered = false;
         hostVisible = true;
         pinnedCards.clear();
@@ -478,7 +495,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         imeInputRegion = null;
         imePlacement = OneStepImePolicy.UNKNOWN;
         sideOrder.clear();
-        for (int i = 1; i < COUNT; i++) sideOrder.add(i);
+        for (int i = 1; i < LANDSCAPE_SLOT; i++) sideOrder.add(i);
         frames = layout();
         backdrop = new WorkspaceRoot();
         backdrop.setVisibility(suspended ? View.INVISIBLE : View.VISIBLE);
@@ -506,7 +523,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             Pane pane = new Pane(i);
             panes[i] = pane;
             workspace.addView(pane.container);
-            position(pane.container, frames[i]);
+            position(pane, frames[i]);
             pane.updateAppearance();
         }
         applyTransition(0f);
@@ -518,10 +535,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private Rect[] layout() {
         int margin = Math.min(dp(WORKSPACE_MARGIN_DP), Math.min(width, height) / 8);
-        Rect[] result = OneStepWindowLayout.calculateWorkspace(width - margin * 2,
+        Rect[] result = OneStepWindowLayout.calculateLandscapeWorkspace(width - margin * 2,
                 height - margin * 2, dp(PANE_GAP_DP),
-                dp(TOOLBAR_HEIGHT_DP + PANE_GAP_DP), logicalBounds.width(), logicalBounds.height(),
-                mainSlot, sideOrder, mainOnLeft);
+                dp(TOOLBAR_HEIGHT_DP), portraitBounds.width(), portraitBounds.height(),
+                mainSlot, sideOrder, mainOnLeft, LANDSCAPE_SLOT, landscapeVisible());
         for (Rect frame : result) frame.offset(margin, margin);
         return result;
     }
@@ -532,23 +549,38 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         logicalBounds.set(screen);
         logicalBounds.inset(insets.left, insets.top, insets.right, insets.bottom);
         if (logicalBounds.isEmpty()) throw new IllegalStateException("Invalid app viewport");
+        int shortSide = Math.min(logicalBounds.width(), logicalBounds.height());
+        int longSide = Math.max(logicalBounds.width(), logicalBounds.height());
+        portraitBounds.set(logicalBounds.left, logicalBounds.top,
+                logicalBounds.left + shortSide, logicalBounds.top + longSide);
+        landscapeBounds.set(0, 0, longSide, Math.max(1, Math.round(longSide * 9f / 16f)));
     }
 
     private float scaleForFrame(Rect frame) {
-        return Math.min(1f, Math.min(frame.width() / (float) logicalBounds.width(),
-                frame.height() / (float) logicalBounds.height()));
+        return scaleForFrame(frame, mainSlot);
     }
 
-    private void position(View view, Rect frame) {
-        // TaskViews keep the logical viewport in every slot. SurfaceView's render-thread
-        // transform moves both the task and its window hole together, without a buffer resize.
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(logicalBounds.width(), logicalBounds.height());
+    private float scaleForFrame(Rect frame, int slot) {
+        Rect viewport = viewport(slot);
+        return Math.min(1f, Math.min(frame.width() / (float) viewport.width(),
+                frame.height() / (float) viewport.height()));
+    }
+
+    private Rect viewport(int slot) { return slot == LANDSCAPE_SLOT ? landscapeBounds : portraitBounds; }
+
+    private void position(Pane pane, Rect frame) {
+        View view = pane.container;
+        Rect viewport = viewport(pane.slot);
+        // Portrait panes keep their viewport during swaps. Crossing into/out of the
+        // landscape slot changes app configuration; the surface transform also moves input.
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(viewport.width(), viewport.height());
         params.leftMargin = frame.left;
         params.topMargin = frame.top;
         view.setLayoutParams(params);
-        float scale = scaleForFrame(frame);
+        float scale = scaleForFrame(frame, pane.slot);
         view.setScaleX(scale);
         view.setScaleY(scale);
+        view.setVisibility(pane.slot != LANDSCAPE_SLOT || landscapeVisible() ? View.VISIBLE : View.INVISIBLE);
     }
 
     void onShellImeStart(int shownTop, boolean showing, boolean floating) {
@@ -622,10 +654,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         else if (regionAvailabilityChanged) logImeEvent(inputRegion == null ? "input-region-cleared" : "input-region-ready");
     }
 
-    private boolean imeTargetsMain() {
-        Pane main = panes[mainSlot];
-        return main != null && main.host != null && main.host.card != null
-                && imeInputTask != null && imeInputTask.equals(main.host.card.token);
+    private Pane imeTargetPane() {
+        for (Pane pane : panes) if (directlyInteractive(pane) && pane.host != null && pane.host.card != null
+                && imeInputTask != null && imeInputTask.equals(pane.host.card.token)) return pane;
+        return null;
     }
 
     private void logImeEvent(String event) {
@@ -664,7 +696,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void applyActivityIme() {
-        boolean displayIme = imePlacement == OneStepImePolicy.DISPLAY && imeTargetsMain();
+        boolean displayIme = imePlacement == OneStepImePolicy.DISPLAY && imeTargetPane() != null;
         int bottom = displayIme ? activityImeBottom : 0;
         boolean animating = displayIme && activityImeAnimating;
         if (imeBottom == bottom && imeAnimating == animating) return;
@@ -674,7 +706,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void positionForIme() {
-        if (!running() || workspace == null || animator != null || transitionAnimator != null || transitionHandoff) return;
+        if (!running() || workspace == null || animator != null || transitionAnimator != null
+                || transitionHandoff || dragSession != null) return;
         int nextOffset = offsetForIme();
         // Parent translation composes with pane swaps and the workspace enter animation.
         // System animation frames already include the IME's easing; do not animate them again.
@@ -720,15 +753,16 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private int offsetForIme() {
-        if (imeBottom <= 0 || imePlacement == OneStepImePolicy.APP || !imeTargetsMain()) return 0;
-        Rect frame = frames[mainSlot];
+        Pane target = imeTargetPane();
+        if (imeBottom <= 0 || imePlacement == OneStepImePolicy.APP || target == null) return 0;
+        Rect frame = frames[target.slot];
         float paneTop = contentBounds.top + frame.top;
-        float paneHeight = logicalBounds.height() * scaleForFrame(frame);
+        float paneHeight = viewport(target.slot).height() * scaleForFrame(frame, target.slot);
         float keyboardTop = screenBounds.bottom - imeBottom;
         float gap = dp(12);
         // The recent-app strip pins to the top when lifted; reserve its height so
         // it cannot cover the caret even with an unusually tall keyboard.
-        float visibleTop = contentBounds.top + dp(TOOLBAR_HEIGHT_DP + PANE_GAP_DP);
+        float visibleTop = contentBounds.top + (target.slot == LANDSCAPE_SLOT ? 0 : dp(TOOLBAR_HEIGHT_DP + PANE_GAP_DP));
         float targetBottom = paneTop + paneHeight;
         float targetTop = paneTop;
         if (imeInputRegion != null) {
@@ -785,9 +819,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             return fullscreen;
         }
         Rect frame = frames[slot];
-        float scale = scaleForFrame(frame);
-        float w = logicalBounds.width() * scale;
-        float h = logicalBounds.height() * scale;
+        Rect viewport = viewport(slot);
+        float scale = scaleForFrame(frame, slot);
+        float w = viewport.width() * scale;
+        float h = viewport.height() * scale;
         float x = frame.left, y = frame.top;
         if (!opened) {
             x += (mainOnLeft ? -dp(24) : dp(24)) + w * 0.03f;
@@ -800,8 +835,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private RectF currentPaneFrame(Pane pane) {
         float x = pane.container.getX(), y = pane.container.getY();
-        return new RectF(x, y, x + logicalBounds.width() * pane.container.getScaleX(),
-                y + logicalBounds.height() * pane.container.getScaleY());
+        return new RectF(x, y, x + viewport(pane.slot).width() * pane.container.getScaleX(),
+                y + viewport(pane.slot).height() * pane.container.getScaleY());
     }
 
     private RectF mainScreenFrame() {
@@ -818,8 +853,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) pane.container.getLayoutParams();
         pane.container.setTranslationX(x - params.leftMargin);
         pane.container.setTranslationY(y - params.topMargin);
-        pane.container.setScaleX(w / logicalBounds.width());
-        pane.container.setScaleY(h / logicalBounds.height());
+        pane.container.setScaleX(w / viewport(pane.slot).width());
+        pane.container.setScaleY(h / viewport(pane.slot).height());
     }
 
     private static float segment(float progress, float start, float end) {
@@ -889,7 +924,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void select(int slot) {
-        if (!running() || suspended || rebinding || covered || slot == mainSlot || animator != null || transitionAnimator != null
+        if (slot == mainSlot || slot == LANDSCAPE_SLOT) {
+            if (canChangeTask() && panes[slot] != null && panes[slot].host != null
+                    && panes[slot].host.ready) focusPane(panes[slot]);
+            return;
+        }
+        if (!running() || movingTask || suspended || rebinding || covered || panesBusy() || animator != null || transitionAnimator != null
                 || imeAnimator != null || imeAnimating || dragSession != null || desktopBusy) return;
         Pane selected = panes[slot];
         if (selected.host == null && !selected.replacing) { enterDesktop(slot, true); return; }
@@ -926,13 +966,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         Runnable finish = () -> {
             frames = end;
             for (Pane pane : panes) {
-                position(pane.container, frames[pane.slot]);
+                position(pane, frames[pane.slot]);
                 pane.container.setTranslationX(0);
                 pane.container.setTranslationY(0);
                 pane.updateAppearance();
                 pane.updateGeometry();
             }
-            shell.focus(selected.host);
+            focusPane(selected);
             workspace.post(this::updateInput);
             positionForIme();
             if (perf != null) perf.phase("steady");
@@ -961,7 +1001,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void enterDesktop(int slot, boolean fromTap) {
-        if (!running() || desktopBusy || animator != null || transitionAnimator != null
+        if (slot == LANDSCAPE_SLOT) return;
+        if (!running() || movingTask || desktopBusy || animator != null || transitionAnimator != null
                 || imeAnimator != null || imeAnimating || dragSession != null || OneHandedTaskHooks.shadeOpen()) return;
         Pane target = panes[slot];
         if (target == null || target.host != null || target.replacing) return;
@@ -985,7 +1026,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     target.updateAppearance();
                     target.updateGeometry();
                     shell.parkDesktop(desktopHost, false);
-                    shell.focus(desktopHost);
+                    focusLoadedPane(target);
                     desktopBusy = false;
                     updateInput();
                 } catch (Exception error) { fail("无法恢复桌面窗口", error); }
@@ -1057,7 +1098,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         desktopBusy = false;
         pane.showEmpty();
         Toast.makeText(context, "暂时无法打开桌面，请稍后重试", Toast.LENGTH_SHORT).show();
-        shell.focus(null);
+        pane.focusAfterLoad = null;
+        focusActivePane();
         updateInput();
     }
 
@@ -1091,8 +1133,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private void positionDesktop(Pane pane) {
         if (desktopContainer == null || pane.host != desktopHost || desktopHost == null) return;
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) desktopContainer.getLayoutParams();
-        if (params.width != logicalBounds.width() || params.height != logicalBounds.height()) {
-            desktopContainer.setLayoutParams(new FrameLayout.LayoutParams(logicalBounds.width(), logicalBounds.height()));
+        if (params.width != portraitBounds.width() || params.height != portraitBounds.height()) {
+            desktopContainer.setLayoutParams(new FrameLayout.LayoutParams(portraitBounds.width(), portraitBounds.height()));
         }
         desktopContainer.setTranslationX(pane.container.getX());
         desktopContainer.setTranslationY(pane.container.getY());
@@ -1111,6 +1153,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void removeHostView(OneStepShell.Host host) {
+        pendingOrientations.remove(host);
+        requestedOrientations.remove(host);
+        manualOrientations.remove(host);
         if (host.view.getParent() instanceof android.view.ViewGroup)
             ((android.view.ViewGroup) host.view.getParent()).removeView(host.view);
         if (desktopContainer != null && desktopContainer.getChildCount() == 0) desktopContainer.setAlpha(0f);
@@ -1130,7 +1175,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         try {
             pane.launchHost = shell.createLaunch(context, intent, animation, pane.host, screenBounds);
             pane.mount(pane.launchHost);
-            shell.geometry(pane.launchHost, logicalBounds, logicalBounds.width(), logicalBounds.height(), true);
+            pane.configureHost(pane.launchHost);
         } catch (Exception error) {
             Log.w(TAG, "Cannot prepare launcher application", error);
             if (pane.launchHost != null) {
@@ -1168,7 +1213,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void updateInput() {
         if (!shellImeControlled) applyActivityIme();
-        boolean blocked = !running() || transitionHandoff || suspended || rebinding || covered || !hostVisible || panesBusy() || desktopBusy || animator != null || transitionAnimator != null
+        boolean blocked = !running() || movingTask || transitionHandoff || suspended || rebinding || covered || !hostVisible || panesBusy() || desktopBusy || animator != null || transitionAnimator != null
                 || imeAnimator != null || imeAnimating || dragSession != null;
         blockInput(blocked);
         Pane main = panes[mainSlot];
@@ -1179,27 +1224,30 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private void blockInput(boolean block) {
         if (backdrop == null) return;
         // TaskView's native insets listener uses its unscaled width/height. Cover everything
-        // except the visible main pane so scaled side TaskViews cannot open oversized holes.
+        // except the two interactive panes. Native input follows each task's surface;
+        // the side thumbnails remain selection targets owned by the workspace.
         android.graphics.Region obscured = new android.graphics.Region();
         obscured.set(0, 0, Math.max(width, backdrop.getWidth()),
                 Math.max(height + contentBounds.top, backdrop.getHeight()));
-        Pane main = panes[mainSlot];
-        if (!block && main != null && main.host != null && main.host.ready) {
-            Rect visible = new Rect();
-            if (main.host.view.getGlobalVisibleRect(visible)) {
-                // Rounded corners belong to the workspace, not the application's rectangular
-                // logical viewport. Use the unclipped view bounds to retain the correct arc
-                // when the keyboard moves part of the main pane beyond the screen.
-                int[] location = new int[2];
-                main.host.view.getLocationOnScreen(location);
-                RectF bounds = new RectF(location[0], location[1],
-                        location[0] + main.host.view.getWidth() * main.container.getScaleX(),
-                        location[1] + main.host.view.getHeight() * main.container.getScaleY());
-                Path shape = new Path();
-                shape.addRoundRect(bounds, dp(PANE_RADIUS_DP), dp(PANE_RADIUS_DP), Path.Direction.CW);
-                Region touchable = new Region();
-                touchable.setPath(shape, new Region(visible));
-                obscured.op(touchable, Region.Op.DIFFERENCE);
+        for (int slot : new int[]{mainSlot, LANDSCAPE_SLOT}) {
+            Pane main = panes[slot];
+            if (!block && main != null && main.host != null && main.host.ready) {
+                Rect visible = new Rect();
+                if (main.host.view.getGlobalVisibleRect(visible)) {
+                    // Rounded corners belong to the workspace, not the application's rectangular
+                    // logical viewport. Use the unclipped view bounds to retain the correct arc
+                    // when the keyboard moves part of the main pane beyond the screen.
+                    int[] location = new int[2];
+                    main.host.view.getLocationOnScreen(location);
+                    RectF bounds = new RectF(location[0], location[1],
+                            location[0] + main.host.view.getWidth() * main.container.getScaleX(),
+                            location[1] + main.host.view.getHeight() * main.container.getScaleY());
+                    Path shape = new Path();
+                    shape.addRoundRect(bounds, dp(PANE_RADIUS_DP), dp(PANE_RADIUS_DP), Path.Direction.CW);
+                    Region touchable = new Region();
+                    touchable.setPath(shape, new Region(visible));
+                    obscured.op(touchable, Region.Op.DIFFERENCE);
+                }
             }
         }
         if (recentStrip != null) {
@@ -1311,7 +1359,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private boolean canChangeTask() {
-        return running() && !suspended && !rebinding && !covered && hostVisible && !panesBusy() && !desktopBusy && animator == null
+        return running() && !movingTask && !suspended && !rebinding && !covered && hostVisible && !panesBusy() && !desktopBusy && animator == null
                 && transitionAnimator == null && imeAnimator == null && !imeAnimating
                 && dragSession == null && !OneHandedTaskHooks.shadeOpen();
     }
@@ -1363,10 +1411,239 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
     }
 
+    private boolean landscapeVisible() {
+        Pane pane = panes[LANDSCAPE_SLOT];
+        return dragSession != null || (pane != null && (pane.host != null || pane.launchHost != null || pane.replacing));
+    }
+
+    private void relayoutPanes() {
+        if (workspace == null || recentStrip == null || !active()) return;
+        frames = layout();
+        int top = frames[mainSlot].top;
+        for (int slot : sideOrder) top = Math.min(top, frames[slot].top);
+        FrameLayout.LayoutParams strip = (FrameLayout.LayoutParams) recentStrip.getLayoutParams();
+        strip.topMargin = Math.max(0, top - dp(TOOLBAR_HEIGHT_DP + PANE_GAP_DP));
+        recentStrip.setLayoutParams(strip);
+        for (Pane pane : panes) if (pane != null) {
+            position(pane, frames[pane.slot]);
+            pane.container.setTranslationX(0);
+            pane.container.setTranslationY(0);
+            pane.updateAppearance();
+            pane.updateGeometry();
+        }
+        positionForIme();
+        workspace.post(this::updateInput);
+    }
+
+    private Pane paneForHost(OneStepShell.Host host) {
+        if (host == null) return null;
+        for (Pane pane : panes) if (pane != null && (pane.host == host || pane.launchHost == host)) return pane;
+        return null;
+    }
+
+    private boolean directlyInteractive(Pane pane) {
+        return pane != null && (pane.slot == mainSlot || pane.slot == LANDSCAPE_SLOT);
+    }
+
+    private boolean readyForFocus(Pane pane) {
+        return directlyInteractive(pane) && pane.host != null && pane.host.ready
+                && !pane.host.closing && !pane.host.restoring && !pane.host.released;
+    }
+
+    private Pane activePane() {
+        Pane pane = panes[focusedSlot];
+        if (readyForFocus(pane)) return pane;
+        Pane main = panes[mainSlot];
+        if (readyForFocus(main)) return main;
+        Pane landscape = panes[LANDSCAPE_SLOT];
+        return readyForFocus(landscape) ? landscape : null;
+    }
+
+    private void focusPane(Pane pane) {
+        if (!directlyInteractive(pane)) return;
+        focusedSlot = pane.slot;
+        shell.focus(pane.host);
+        scheduleOrientationRouting();
+    }
+
+    private void focusActivePane() {
+        Pane pane = activePane();
+        if (pane == null) shell.focus(null);
+        else focusPane(pane);
+    }
+
+    private void focusLoadedPane(Pane pane) {
+        Pane retained = paneForHost(pane.focusAfterLoad);
+        pane.focusAfterLoad = null;
+        if (readyForFocus(retained)) focusPane(retained);
+        else if (directlyInteractive(pane)) focusPane(pane);
+        else focusActivePane();
+    }
+
+    @Override public void onFocused(OneStepShell.Host host) {
+        Pane pane = paneForHost(host);
+        if (!active() || !readyForFocus(pane) || pane.host != host) return;
+        focusedSlot = pane.slot;
+        positionForIme();
+        scheduleOrientationRouting();
+    }
+
+    @Override public void onOrientationRequested(OneStepShell.Host host, int orientation, boolean explicit) {
+        if (!active() || paneForHost(host) == null || host.home()) return;
+        int direction = orientationDirection(orientation);
+        requestedOrientations.put(host, direction);
+        if (explicit) manualOrientations.remove(host);
+        else if (manualOrientations.containsKey(host)) {
+            Integer held = manualOrientations.get(host);
+            // Repeated configuration snapshots must not undo manual placement. Actual
+            // setRequestedOrientation calls above always return to automatic routing.
+            if (direction == 0) return;
+            if (held == null || held == 0) {
+                manualOrientations.put(host, direction);
+                return;
+            }
+            if (held == direction) return;
+            manualOrientations.remove(host);
+        }
+        pendingOrientations.put(host, orientation);
+        scheduleOrientationRouting();
+    }
+
+    private void scheduleOrientationRouting() {
+        handler.removeCallbacks(routeOrientations);
+        if (active() && !pendingOrientations.isEmpty()) handler.postDelayed(routeOrientations, 180);
+    }
+
+    private static int orientationDirection(int orientation) {
+        switch (orientation) {
+            case ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE:
+            case ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE:
+            case ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE:
+            case ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE: return 1;
+            case ActivityInfo.SCREEN_ORIENTATION_PORTRAIT:
+            case ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT:
+            case ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT:
+            case ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT: return -1;
+            default: return 0;
+        }
+    }
+
+    private void applyPendingOrientations() {
+        if (!active() || pendingOrientations.isEmpty() || suspended || covered || !hostVisible) return;
+        if (!canChangeTask() || movingTask || SystemClock.uptimeMillis() < orientationMoveAfter) {
+            scheduleOrientationRouting();
+            return;
+        }
+        for (OneStepShell.Host host : new ArrayList<>(pendingOrientations.keySet())) {
+            Pane pane = paneForHost(host);
+            if (pane == null || host.closing || host.released || host.restoring) { pendingOrientations.remove(host); continue; }
+            if (!host.ready || pane.launchHost != null) { scheduleOrientationRouting(); continue; }
+            int direction = orientationDirection(pendingOrientations.get(host));
+            if (!directlyInteractive(pane) && direction != 0) continue;
+            int destination = pane.slot == mainSlot && direction > 0 ? LANDSCAPE_SLOT
+                    : pane.slot == LANDSCAPE_SLOT && direction < 0 ? mainSlot : -1;
+            if (destination >= 0) {
+                if (!moveTask(pane, panes[destination], true)) scheduleOrientationRouting();
+                return;
+            }
+            pendingOrientations.remove(host);
+        }
+    }
+
+    private boolean moveTask(Pane source, Pane target, boolean automatic) {
+        if (!canChangeTask() || movingTask || source == target || source.host == null
+                || !source.host.ready || source.host.closing || source.host.restoring || source.host.released
+                || source.replacing || target.replacing || source.host.home()
+                || (target.host != null && (!target.host.ready || target.host.closing
+                        || target.host.restoring || target.host.released))) return false;
+        movingTask = true;
+        blockInput(true);
+        OneStepShell.Host moving = source.host;
+        OneStepShell.Host displaced = target.host;
+        int request = generation;
+        int sourceSlot = source.slot;
+        int targetSlot = target.slot;
+        ArrayList<RecentTaskCard> sourceHistory = new ArrayList<>(source.history);
+        ArrayList<RecentTaskCard> targetHistory = new ArrayList<>(target.history);
+        RecentTaskCard displacedCard = target.card;
+        if (displacedCard != null && !displacedCard.home) {
+            targetHistory.removeIf(card -> card.sameTask(displacedCard));
+            targetHistory.add(0, displacedCard);
+        }
+        pinRecent(target.card);
+        pendingOrientations.remove(moving);
+        if (!automatic) manualOrientations.put(moving, requestedOrientations.get(moving));
+        Runnable transfer = () -> {
+            if (!active() || generation != request) return;
+            if (displaced != null && !displaced.home()) removeHostView(displaced);
+            if (target.host == displaced) { target.host = null; target.card = null; }
+            target.replacing = false;
+            target.history.clear();
+            target.history.addAll(targetHistory);
+            target.showEmpty();
+            if (source.host != moving || moving.closing || moving.restoring || moving.released) {
+                movingTask = false;
+                relayoutPanes();
+                focusActivePane();
+                returnToPrevious(target, request);
+                scheduleOrientationRouting();
+                return;
+            }
+            // Move the owning Pane, keeping its TaskView attached and its task identity.
+            // The displaced task is restored to recents instead of put in the wrong orientation.
+            panes[targetSlot] = source;
+            panes[sourceSlot] = target;
+            source.slot = targetSlot;
+            target.slot = sourceSlot;
+            target.showEmpty();
+            // History belongs to the window being restored, not to the moved TaskView.
+            target.history.clear();
+            target.history.addAll(sourceHistory);
+            source.history.clear();
+            source.history.addAll(targetHistory);
+            source.history.removeIf(card -> card.sameTask(moving.card));
+            source.focusAfterLoad = null;
+            source.manualLandscapeLoad = false;
+            target.manualLandscapeLoad = false;
+            orientationMoveAfter = SystemClock.uptimeMillis() + 700;
+            focusedSlot = targetSlot;
+            movingTask = false;
+            relayoutPanes();
+            if (directlyInteractive(source)) focusPane(source); else focusPane(panes[mainSlot]);
+            updateRecentIcons();
+            if (!automatic) haptic(HapticFeedbackConstants.CONFIRM);
+            if (directlyInteractive(target)) {
+                target.focusAfterLoad = activePane() == null ? null : activePane().host;
+                returnToPrevious(target, request);
+            }
+            scheduleOrientationRouting();
+        };
+        if (displaced != null && displaced.home()) {
+            hideDesktop(target);
+            transfer.run();
+        } else if (displaced != null) {
+            pendingOrientations.remove(displaced);
+            requestedOrientations.remove(displaced);
+            manualOrientations.remove(displaced);
+            shell.release(displaced, transfer);
+        } else transfer.run();
+        return true;
+    }
+
     private void showTask(RecentTaskCard card, int slot) {
         if (!canChangeTask() || slot < 0 || slot >= COUNT || panes[slot] == null) return;
         Pane source = hostedPane(card);
         Pane target = panes[slot];
+        if (card.home && slot == LANDSCAPE_SLOT) return;
+        if (source != null && source != target && (source.slot == LANDSCAPE_SLOT || slot == LANDSCAPE_SLOT)) {
+            if (source.card.component == null || card.component == null
+                    || !source.card.component.getPackageName().equals(card.component.getPackageName())) {
+                Toast.makeText(context, "这两个页面属于同一任务，请使用应用内返回", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            moveTask(source, target, false);
+            return;
+        }
         if (source != null) {
             if (!source.card.component.getPackageName().equals(card.component.getPackageName())) {
                 // Activities sharing one task cannot be split into two TaskViews.
@@ -1381,7 +1658,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 } else restorePage(source, card);
                 return;
             }
-            if (source == target) return;
+            if (source == target) { focusPane(source); return; }
             if (source.host == null || !source.host.ready || (target.host != null && !target.host.ready)) return;
             int oldSlot = source.slot;
             pinRecent(target.card);
@@ -1390,20 +1667,23 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             source.slot = slot;
             target.slot = oldSlot;
             for (Pane pane : panes) {
-                position(pane.container, frames[pane.slot]);
+                position(pane, frames[pane.slot]);
                 pane.updateAppearance();
                 pane.updateGeometry();
             }
             if (target.host != null && target.host.home() && target.slot != mainSlot) {
                 hideDesktop(target);
             }
-            shell.focus(panes[mainSlot].host);
+            focusPane(panes[mainSlot]);
             updateRecentIcons();
             updateInput();
             haptic(HapticFeedbackConstants.CONFIRM);
             return;
         }
+        target.manualLandscapeLoad = slot == LANDSCAPE_SLOT;
+        target.focusAfterLoad = null;
         target.load(card);
+        if (slot == LANDSCAPE_SLOT) relayoutPanes();
     }
 
     private void restorePage(Pane pane, RecentTaskCard card) {
@@ -1432,6 +1712,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         clearPaneTapHighlight();
         blockInput(true);
         dragSession = new DragSession(card, generation);
+        relayoutPanes();
         dragSource = icon;
         try {
             // WindowlessWindowManager does not provide a normal window for system drag
@@ -1476,14 +1757,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         dragPreview = null;
         highlightDropTarget(-1);
         if (session == null) return;
+        // Commit the drop before collapsing the empty landscape target. Relayout can
+        // start IME avoidance, which would otherwise make canChangeTask reject the drop.
+        if (targetSlot >= 0 && targetSlot < COUNT && running() && generation == session.generation)
+            showTask(session.card, targetSlot);
+        relayoutPanes();
         updateRecentIcons();
         updateInput();
-        if (targetSlot >= 0 && targetSlot < COUNT) {
-            handler.post(() -> {
-                if (!running() || generation != session.generation) return;
-                showTask(session.card, targetSlot);
-            });
-        }
     }
 
     private int dropSlot(float pointerX, float pointerY) {
@@ -1641,7 +1921,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 handler.postDelayed(openingTimeout, 12000);
                 startInitialTask();
             }
-            if (hostVisible && !covered && !OneHandedTaskHooks.shadeOpen()) shell.focus(panes[mainSlot] == null ? null : panes[mainSlot].host);
+            if (hostVisible && !covered && !OneHandedTaskHooks.shadeOpen()) focusActivePane();
         }
         updateInput();
     }
@@ -1656,7 +1936,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (!active()) return;
         refreshEnvironment();
         if (!suspended && !rebinding) shell.checkFocus(generation);
-        scheduleCheck(suspended ? 700 : taskNotifications ? 3000 : 700);
+        scheduleOrientationRouting();
+        scheduleCheck(suspended || landscapeVisible() || !taskNotifications ? 700 : 1500);
     }
 
     @Override public void onCoverageChanged(boolean value) {
@@ -1666,7 +1947,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (value) {
             finishAppDrag(-1);
         } else if (running() && !suspended && !rebinding && hostVisible && !panesBusy() && !OneHandedTaskHooks.shadeOpen()) {
-            shell.focus(panes[mainSlot].host);
+            focusActivePane();
         }
         updateInput();
     }
@@ -1675,7 +1956,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (!active()) return;
         for (Pane pane : panes) if (pane != null && pane.host == host) {
             pane.card = host.card;
-            if (pane.slot == mainSlot) pinRecent(previous);
+            if (directlyInteractive(pane)) pinRecent(previous);
             rememberRecent(host.card);
             updateRecentIcons();
             return;
@@ -1688,18 +1969,20 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void acceptNavigation(OneStepShell.Navigation navigation, int attempt) {
         if (!active() || navigation.generation != generation || navigation.cancelled) return;
-        if (!running() || suspended || rebinding || animator != null || transitionAnimator != null || panesBusy()
+        if (!running() || movingTask || suspended || rebinding || animator != null || transitionAnimator != null || panesBusy()
                 || dragSession != null || desktopBusy || OneHandedTaskHooks.shadeOpen()) {
             if (attempt < 100) handler.postDelayed(() -> acceptNavigation(navigation, attempt + 1), 50);
             else shell.abandonNavigation(navigation);
             return;
         }
-        Pane pane = panes[mainSlot];
+        Pane pane = paneForHost(navigation.source);
+        if (!directlyInteractive(pane)) { shell.abandonNavigation(navigation); return; }
         Pane existing = hostedPane(navigation.card);
         if (existing != null) {
             // Focus/task reuse must use the same move path as an explicit icon selection.
             if (canChangeTask()) {
-                showTask(existing.card, mainSlot);
+                if (directlyInteractive(existing)) focusPane(existing);
+                else showTask(existing.card, pane.slot);
                 shell.completeNavigation(navigation);
             } else if (attempt < 100) handler.postDelayed(() -> acceptNavigation(navigation, attempt + 1), 50);
             else shell.abandonNavigation(navigation);
@@ -1711,7 +1994,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             pane.launchHost = shell.createNavigation(context, navigation);
             pane.mount(pane.launchHost);
             pane.launchHost.view.bringToFront();
-            shell.geometry(pane.launchHost, logicalBounds, logicalBounds.width(), logicalBounds.height(), true);
+            pane.configureHost(pane.launchHost);
         } catch (Exception error) {
             Log.w(TAG, "Cannot accept application navigation", error);
             if (pane.launchHost != null) {
@@ -1734,10 +2017,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             pane.empty.setVisibility(View.GONE);
             boolean retainDesktop = previous != null && previous.home();
             if (retainDesktop) parkDesktop(previous);
-            if (host.navigation != null && previousCard != null && !previousCard.home) {
+            if (previousCard != null && !previousCard.home && !previousCard.sameTask(host.card)) {
                 pane.history.removeIf(card -> card.sameTask(previousCard));
                 pane.history.add(0, previousCard);
-            } else pane.history.clear();
+            } else if (previousCard != null && previousCard.home) pane.history.clear();
             if (host.navigation != null) shell.completeNavigation(host.navigation);
             if (!host.card.temporary) {
                 RecentTaskCard pin = previousCard;
@@ -1747,7 +2030,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 pinRecent(pin);
             }
             rememberRecent(host.card);
-            shell.focus(panes[mainSlot].host);
+            focusLoadedPane(pane);
             int request = generation;
             Runnable finished = () -> {
                 if (!running() || generation != request) return;
@@ -1757,6 +2040,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 pane.updateAppearance();
                 updateRecentIcons();
                 updateInput();
+                scheduleOrientationRouting();
             };
             if (previous != null && !retainDesktop) shell.release(previous, finished);
             else finished.run();
@@ -1772,21 +2056,23 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 positionDesktop(pane);
             }
             pane.empty.setVisibility(View.GONE);
-            if (pane.slot == mainSlot) {
-                if (state == State.OPENING) {
-                    startEntryAnimation();
+            if (directlyInteractive(pane)) {
+                if (state == State.OPENING) startEntryAnimation();
+                if (!OneHandedTaskHooks.shadeOpen()) {
+                    focusLoadedPane(pane);
                 }
-                if (!OneHandedTaskHooks.shadeOpen()) shell.focus(host);
-            } else {
-                Pane main = panes[mainSlot];
-                if (main.host != null && !OneHandedTaskHooks.shadeOpen()) shell.focus(main.host);
-            }
+            } else if (!OneHandedTaskHooks.shadeOpen()) focusActivePane();
+            pane.focusAfterLoad = null;
             if (perf != null) perf.taskReady(pane.slot, host.card.taskId);
         }
         updateInput();
+        scheduleOrientationRouting();
     }
 
     @Override public void onLaunchFailed(OneStepShell.Host host) {
+        pendingOrientations.remove(host);
+        requestedOrientations.remove(host);
+        manualOrientations.remove(host);
         if (!active()) return;
         if (host == desktopHost) {
             disconnectDesktop();
@@ -1802,8 +2088,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 if (desktopSession != null) desktopSession.retry();
                 if (pane.host != null && pane.host.home()) shell.parkDesktop(pane.host, false);
                 pane.empty.setVisibility(pane.host == null ? View.VISIBLE : View.GONE);
-                shell.focus(panes[mainSlot].host);
+                focusActivePane();
                 Toast.makeText(context, "应用未能打开，请重试", Toast.LENGTH_SHORT).show();
+                if (pane.slot == LANDSCAPE_SLOT) relayoutPanes();
                 updateInput();
                 return;
             }
@@ -1817,7 +2104,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 else if (host.home()) desktopUnavailable(pane);
                 else {
                     Toast.makeText(context, "暂时无法打开应用", Toast.LENGTH_SHORT).show();
-                    if (pane.slot == mainSlot) returnToPrevious(pane, generation);
+                    if (directlyInteractive(pane)) returnToPrevious(pane, generation);
+                    if (pane.slot == LANDSCAPE_SLOT) relayoutPanes();
+                    focusActivePane();
                     updateInput();
                 }
                 return;
@@ -1829,8 +2118,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (!running()) return;
         for (Pane target : panes) if (target != null && target.host == existing && existing.ready) {
             for (Pane source : panes) if (source != null && source.launchHost == launching) {
-                source.container.removeView(launching.view);
+                removeHostView(launching);
                 source.launchHost = null;
+                source.replacing = false;
                 source.empty.setVisibility(View.GONE);
                 selectReusedTask(target, generation, 0);
                 return;
@@ -1844,7 +2134,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (target.host == null || !target.host.ready || attempt >= 30 || OneHandedTaskHooks.shadeOpen()) {
             desktopBusy = false;
             if (desktopSession != null) desktopSession.retry();
-            shell.focus(panes[mainSlot].host);
+            focusActivePane();
             updateInput();
             return;
         }
@@ -1857,6 +2147,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     @Override public void onRemoved(OneStepShell.Host host) {
+        pendingOrientations.remove(host);
+        requestedOrientations.remove(host);
+        manualOrientations.remove(host);
         if (state == State.OPENING || state == State.CLOSING) { close(false); return; }
         if (!active()) return;
         if (host == desktopHost) {
@@ -1866,6 +2159,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
         for (Pane pane : panes) if (pane != null && pane.launchHost == host) { onLaunchFailed(host); return; }
         for (Pane pane : panes) if (pane != null && pane.host == host) {
+            Pane focused = activePane();
+            pane.focusAfterLoad = focusedSlot != pane.slot && focused != null ? focused.host : null;
             if (host.home()) disconnectDesktop();
             if (pane.launchHost != null) {
                 // The source may finish as part of a successful redirect. Its successor
@@ -1880,18 +2175,19 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             pane.card = null;
             pane.replacing = false;
             pane.showEmpty();
-            if (pane.slot == mainSlot) {
-                desktopBusy = false;
-                shell.focus(null);
+            if (directlyInteractive(pane)) {
+                if (pane.slot == mainSlot) desktopBusy = false;
                 if (!host.home()) returnToPrevious(pane, generation);
             }
         }
         updateRecentIcons();
-        updateInput();
+        relayoutPanes();
+        focusActivePane();
     }
 
     private void returnToPrevious(Pane pane, int request) {
-        if (!running() || generation != request || pane != panes[mainSlot] || pane.host != null) return;
+        if (!running() || generation != request || !directlyInteractive(pane) || panes[pane.slot] != pane
+                || pane.host != null || pane.launchHost != null || pane.replacing) return;
         if (!canChangeTask()) {
             handler.postDelayed(() -> returnToPrevious(pane, request), 100);
             return;
@@ -1899,10 +2195,26 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         while (!pane.history.isEmpty()) {
             RecentTaskCard previous = pane.history.remove(0);
             Pane existing = hostedPane(previous);
-            if (existing != null) { showTask(existing.card, mainSlot); return; }
+            // Never pull the other directly operated window away to fill this vacancy.
+            if (existing != null && directlyInteractive(existing)) continue;
+            if (existing != null) {
+                OneStepShell.Host retained = pane.focusAfterLoad;
+                pane.focusAfterLoad = null;
+                showTask(existing.card, pane.slot);
+                Pane focused = paneForHost(retained);
+                if (directlyInteractive(focused)) focusPane(focused);
+                return;
+            }
+            pane.manualLandscapeLoad = pane.slot == LANDSCAPE_SLOT;
             if (pane.load(previous)) return;
         }
-        returnToDesktop(pane, request);
+        if (pane.slot == mainSlot) returnToDesktop(pane, request);
+        else {
+            pane.focusAfterLoad = null;
+            pane.manualLandscapeLoad = false;
+            relayoutPanes();
+            focusActivePane();
+        }
     }
 
     private void returnToDesktop(Pane pane, int request) {
@@ -1937,9 +2249,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             return;
         }
         if (focusMain && running()) haptic(HapticFeedbackConstants.CONTEXT_CLICK);
-        Pane main = panes[mainSlot];
+        Pane main = activePane();
         boolean animated = focusMain && backdrop != null && hostVisible && !suspended && !covered
-                && main != null && main.host != null && main.host.ready && !rebinding && !panesBusy();
+                && main != null && main.slot == mainSlot && main.host != null && main.host.ready && !rebinding && !panesBusy() && !movingTask;
         int closing = ++closeGeneration;
         state = State.CLOSING;
         releaseNavigation();
@@ -1949,6 +2261,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         handler.removeCallbacks(openingTimeout);
         handler.removeCallbacks(check);
         handler.removeCallbacks(taskChanged);
+        handler.removeCallbacks(routeOrientations);
+        pendingOrientations.clear();
+        requestedOrientations.clear();
+        manualOrientations.clear();
         onSuccess = null;
         openingTask = null;
         blockInput(true);
@@ -1959,8 +2275,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         shellImeControlled = false;
         shellImePositioning = false;
         finishAppDrag(-1);
-        int focusTask = focusMain && panes[mainSlot] != null && panes[mainSlot].card != null
-                ? panes[mainSlot].card.taskId : -1;
+        int focusTask = focusMain && main != null && main.card != null ? main.card.taskId : -1;
         Runnable restore = () -> {
             handler.removeCallbacks(exitAnimationTimeout);
             shell.close(focusTask, this::finishClose);
@@ -2062,6 +2377,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         OneStepShell.Host host;
         OneStepShell.Host launchHost;
         boolean replacing;
+        boolean manualLandscapeLoad;
+        OneStepShell.Host focusAfterLoad;
 
         Pane(int slot) {
             this.slot = slot;
@@ -2081,11 +2398,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             empty.setShadowLayer(dp(2), 0, dp(1), 0x66000000);
             showEmpty();
             empty.setBackgroundColor(Color.TRANSPARENT);
-            empty.setContentDescription("空白应用窗口，点击打开桌面，或长按上方应用图标拖入此处");
             empty.setOnClickListener(v -> { if (this.slot == mainSlot) enterDesktop(this.slot, true); else select(this.slot); });
             container.addView(empty, new FrameLayout.LayoutParams(-1, -1));
             container.setOnTouchListener((view, event) -> {
-                if (event.getActionMasked() == MotionEvent.ACTION_DOWN && this.slot != mainSlot) select(this.slot);
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) select(this.slot);
                 return true;
             });
             container.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateInput());
@@ -2105,7 +2421,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     highlighted ? 0xff9acbff : 0x40ffffff);
             border.setAlpha(Math.round(255 * appearanceProgress));
             float mainScale = 0.01f;
-            for (Rect frame : frames) mainScale = Math.max(mainScale, scaleForFrame(frame));
+            for (int i = 0; i < frames.length; i++) mainScale = Math.max(mainScale, scaleForFrame(frames[i], i));
             // During swaps the larger pane carries the stronger shadow throughout the motion.
             float prominence = Math.max(0f, Math.min(1f, scale / Math.max(0.01f, mainScale)));
             container.setElevation(dp(8 + 10 * prominence * prominence) * appearanceProgress / scale);
@@ -2152,28 +2468,33 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     if (!active() || generation != request || panes[slot] != this) return;
                     if (cardToLoad == null) {
                         replacing = false;
+                        manualLandscapeLoad = false;
                         pinnedCards.removeIf(card -> card.sameTask(next));
                         recentCards.removeIf(card -> card.sameTask(next));
                         recentOrderDirty = true;
                         updateRecentIcons();
                         Toast.makeText(context, "应用任务已结束", Toast.LENGTH_SHORT).show();
-                        if (host == null && slot == mainSlot) returnToPrevious(this, request);
+                        if (host == null && directlyInteractive(this)) returnToPrevious(this, request);
+                        if (slot == LANDSCAPE_SLOT) relayoutPanes();
                         updateInput();
                         return;
                     }
                     try {
                         OneStepShell.Host created = shell.create(context, cardToLoad,
                                 state == State.OPENING && slot == mainSlot, true);
+                        if (manualLandscapeLoad) manualOrientations.put(created, null);
+                        manualLandscapeLoad = false;
                         if (previous == null) { host = created; card = cardToLoad; }
                         else launchHost = created;
                         mount(created);
                         created.view.bringToFront();
                         if (Build.VERSION.SDK_INT >= 34) created.view.setAlpha(slot == mainSlot ? 1f : appearanceProgress);
-                        shell.geometry(created, logicalBounds, logicalBounds.width(), logicalBounds.height(), slot == mainSlot);
+                        configureHost(created);
                         updateAppearance();
                         updateInput();
                     } catch (Exception error) {
                         replacing = false;
+                        manualLandscapeLoad = false;
                         if (launchHost != null) {
                             OneStepShell.Host failed = launchHost;
                             shell.release(failed, () -> onLaunchFailed(failed));
@@ -2184,6 +2505,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                         else {
                             Log.w(TAG, "Cannot replace application", error);
                             Toast.makeText(context, "暂时无法打开应用", Toast.LENGTH_SHORT).show();
+                            if (host == null && directlyInteractive(this)) returnToPrevious(this, request);
+                            if (slot == LANDSCAPE_SLOT) relayoutPanes();
                             updateInput();
                         }
                     }
@@ -2199,7 +2522,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             // Apply before attachment so the first app frame is rounded at launch handoff.
             task.setCornerRadius(cornerRadius);
             task.view.setOnTouchListener((view, event) -> {
-                if (event.getActionMasked() == MotionEvent.ACTION_DOWN && this.slot != mainSlot) select(this.slot);
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) select(this.slot);
                 return true;
             });
             task.obscure(new Rect(screenBounds));
@@ -2213,7 +2536,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     desktopContainer.setForeground(desktopBorder);
                     desktopContainer.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateInput());
                     workspace.addView(desktopContainer,
-                            new FrameLayout.LayoutParams(logicalBounds.width(), logicalBounds.height()));
+                            new FrameLayout.LayoutParams(portraitBounds.width(), portraitBounds.height()));
                 }
                 // Reusing another empty pane changes only geometry and input ownership.
                 if (task.view.getParent() != desktopContainer)
@@ -2223,15 +2546,22 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
 
         void showEmpty() {
-            empty.setText("＋");
+            empty.setText(slot == LANDSCAPE_SLOT ? "拖入应用 · 横屏运行" : "＋");
+            empty.setContentDescription(slot == LANDSCAPE_SLOT ? "横屏窗口，长按应用图标拖入此处"
+                    : "空白应用窗口，点击打开桌面，或长按上方应用图标拖入此处");
             empty.setVisibility(View.VISIBLE);
         }
 
         void updateGeometry() {
             if (!active()) return;
             // Keep the task surface at 1:1 inside TaskView; only the container scales it.
-            if (host != null) shell.geometry(host, logicalBounds, logicalBounds.width(), logicalBounds.height(), slot == mainSlot);
-            if (launchHost != null) shell.geometry(launchHost, logicalBounds, logicalBounds.width(), logicalBounds.height(), slot == mainSlot);
+            if (host != null) configureHost(host);
+            if (launchHost != null) configureHost(launchHost);
+        }
+
+        void configureHost(OneStepShell.Host task) {
+            Rect bounds = viewport(slot);
+            shell.geometry(task, bounds, bounds.width(), bounds.height(), slot == mainSlot, slot == LANDSCAPE_SLOT);
         }
     }
 }

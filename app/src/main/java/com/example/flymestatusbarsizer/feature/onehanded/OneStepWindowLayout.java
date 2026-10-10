@@ -11,6 +11,29 @@ public final class OneStepWindowLayout {
     private OneStepWindowLayout() {
     }
 
+    public static Rect[] calculateLandscapeWorkspace(int width, int height, int divider,
+                                                     int toolbarHeight, int viewportWidth,
+                                                     int viewportHeight, int mainSlot,
+                                                     List<Integer> sideOrder, boolean mainOnLeft,
+                                                     int landscapeSlot, boolean showLandscape) {
+        int landscapeHeight = showLandscape
+                ? Math.max(1, Math.min(Math.round(width * 9f / 16f),
+                        Math.max(1, (height - toolbarHeight - divider * 2) / 3))) : 0;
+        Rect[] portrait = calculateWorkspace(width, height, divider,
+                toolbarHeight + divider + (showLandscape ? landscapeHeight + divider : 0),
+                viewportWidth, viewportHeight, mainSlot, sideOrder, mainOnLeft);
+        Rect[] result = java.util.Arrays.copyOf(portrait, landscapeSlot + 1);
+        int top = portrait[mainSlot].top;
+        for (int slot : sideOrder) top = Math.min(top, portrait[slot].top);
+        int bottom = Math.max(1, top - toolbarHeight - divider * 2);
+        int landscapeWidth = Math.max(1, Math.min(width, Math.round(landscapeHeight * 16f / 9f)));
+        int left = (width - landscapeWidth) / 2;
+        result[landscapeSlot] = showLandscape
+                ? new Rect(left, bottom - landscapeHeight, left + landscapeWidth, bottom)
+                : new Rect(0, 0, 1, 1);
+        return result;
+    }
+
     public static Rect[] calculateWorkspace(int workspaceWidth, int workspaceHeight,
                                             int divider, int topChromeHeight,
                                             int viewportWidth, int viewportHeight,

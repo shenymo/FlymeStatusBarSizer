@@ -50,6 +50,8 @@ final class OneStepShell {
         void onNavigation(Navigation navigation);
         void onCoverageChanged(boolean covered);
         void onTaskChanged(Host host, RecentTaskCard previous);
+        void onOrientationRequested(Host host, int orientation, boolean explicit);
+        void onFocused(Host host);
         void onImeRoutingChanged(IBinder task, int placement, RectF inputRegion);
         void onWorkspaceTransitionCancelled();
         void onHomeRequested();
@@ -100,10 +102,12 @@ final class OneStepShell {
         int width;
         int height;
         boolean main;
+        boolean interactive;
+        boolean portraitMain;
         boolean parked;
         boolean borrowed;
         boolean backIntercepted;
-        boolean restoring;
+        volatile boolean restoring;
         boolean homeBehindPending;
         boolean homeBehindReady;
         boolean notified;
@@ -129,6 +133,7 @@ final class OneStepShell {
             this.card = card;
             this.session = session;
             this.requireFocused = requireFocused;
+            main = requireFocused;
             controller = controllerClass.getConstructor(Context.class, organizerClass, controllerInterface,
                     syncQueue.getClass()).newInstance(context, organizer, taskViewController, syncQueue);
             view = (SurfaceView) taskViewClass.getConstructor(Context.class, controllerInterface, controllerClass)
@@ -145,7 +150,7 @@ final class OneStepShell {
                         break;
                     case "onBackPressedOnTaskRoot":
                         executor.execute(() -> {
-                            if (current(this) && ready && main && !home() && !closing) restoreOne(this,
+                            if (current(this) && ready && interactive && !home() && !closing) restoreOne(this,
                                     () -> { if (OneStepShell.this.listener != null)
                                         OneStepShell.this.listener.onRemoved(this); }, 0);
                         });
@@ -313,7 +318,7 @@ final class OneStepShell {
                             return transaction();
                         }
                         if (accepting && (type == 1 || type == 3)
-                                && (requested == null || (current(requested) && !requested.main))) {
+                                && (requested == null || (current(requested) && !requested.interactive))) {
                             Navigation navigation = offerNavigation(trigger);
                             if (navigation != null) {
                                 pending.put((IBinder) args[0], session);
@@ -714,12 +719,40 @@ final class OneStepShell {
             activityTaskId = taskId;
             if (imeSession != null) imeSession.close();
             int routingGeneration = ++imeRoutingGeneration;
-            imeSession = new OneStepImePolicy.Session((IBinder) OneStepTaskAccess.token(info), (task, placement, inputRegion) ->
+            imeSession = new OneStepImePolicy.Session((IBinder) OneStepTaskAccess.token(info), new OneStepImePolicy.Listener() {
+                @Override public void onFocus(IBinder task) {
+                    executor.execute(() -> {
+                        if (!accepting || request != session || routingGeneration != imeRoutingGeneration || task == null) return;
+                        if (suspended || covered || !hostVisible) return;
+                        for (Host host : hosts) if (current(host) && host.ready && host.interactive && host.card != null
+                                && task.equals(host.card.token) && !host.closing && !host.parked) {
+                            for (Host candidate : hosts) candidate.main = candidate == host;
+                            reportFocused(host);
+                            break;
+                        }
+                    });
+                }
+
+                @Override public void onRouting(IBinder task, int placement, RectF inputRegion) {
                     ui.post(() -> {
-                        // Reattaching the same Activity keeps this IME session alive.
                         if (accepting && request == session && routingGeneration == imeRoutingGeneration && listener != null)
                             listener.onImeRoutingChanged(task, placement, inputRegion);
-                    }));
+                    });
+                }
+
+                @Override public void onOrientation(IBinder task, int orientation, boolean explicit) {
+                    executor.execute(() -> {
+                        if (!accepting || request != session || routingGeneration != imeRoutingGeneration || task == null) return;
+                        for (Host host : hosts) if (current(host) && host.card != null && task.equals(host.card.token)) {
+                            ui.post(() -> {
+                                if (accepting && request == session && routingGeneration == imeRoutingGeneration && listener != null)
+                                    listener.onOrientationRequested(host, orientation, explicit);
+                            });
+                            break;
+                        }
+                    });
+                }
+            });
             for (Host host : hosts) if (current(host) && host.imeRegistered)
                 imeSession.add((IBinder) host.card.token);
             updateLifecyclePolicy();
@@ -835,6 +868,10 @@ final class OneStepShell {
     }
 
     void geometry(Host host, Rect logicalBounds, int width, int height, boolean main) {
+        geometry(host, logicalBounds, width, height, main, false);
+    }
+
+    void geometry(Host host, Rect logicalBounds, int width, int height, boolean portraitMain, boolean landscape) {
         Rect bounds = new Rect(logicalBounds);
         executor.execute(() -> {
             if (!current(host)) return;
@@ -842,7 +879,9 @@ final class OneStepShell {
             host.logicalBounds = bounds;
             host.width = width;
             host.height = height;
-            host.main = main;
+            host.portraitMain = portraitMain;
+            host.interactive = portraitMain || landscape;
+            if (!host.interactive) host.main = false;
             try {
                 if (host.borrowed) {
                     if (changed && !host.home() && !host.fullscreenCompat) {
@@ -859,12 +898,12 @@ final class OneStepShell {
     void focus(Host host) {
         executor.execute(() -> {
             if (!accepting || suspended || !hostVisible || covered
-                    || (host != null && (!current(host) || !host.borrowed || host.parked))) return;
+                    || (host != null && (!current(host) || !host.borrowed || host.parked
+                            || host.closing || !host.interactive))) return;
             try {
                 updateLifecyclePolicy();
-                // Focusability also controls Activity RESUMED eligibility. Keep visible
-                // side apps eligible; z-order selects the main task and the workspace's
-                // obscured touch region prevents direct input into side TaskViews.
+                // The focused task is independent of the portrait/landscape pane role.
+                // Visible side apps also stay eligible for multi-resume.
                 Object wct = transaction();
                 for (Host candidate : hosts) {
                     if (!current(candidate) || !candidate.borrowed || candidate.closing) continue;
@@ -873,6 +912,7 @@ final class OneStepShell {
                 }
                 arrangeTasks(wct, host);
                 OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
+                reportFocused(host);
             }
             catch (Exception error) { fail("无法聚焦应用窗口", error); }
         });
@@ -949,9 +989,9 @@ final class OneStepShell {
     }
 
     private boolean hostedFocusable(Host host, Host main) {
-        // An empty main pane must leave focus with the workspace until its replacement
-        // is ready. HOME retains its existing lifecycle behavior when shown at the side.
-        return !suspended && !host.parked && (host == main || (main != null && !host.home()));
+        // Both interactive panes remain eligible for RESUMED. A parked desktop and
+        // a desktop shown only as a side thumbnail must not take application focus.
+        return !suspended && !host.parked && (host.interactive || host == main || (main != null && !host.home()));
     }
 
     private void updateLifecyclePolicy() throws android.os.RemoteException {
@@ -1064,8 +1104,8 @@ final class OneStepShell {
                 if (current(candidate) && candidate.borrowed && !candidate.closing)
                     bool(wct, "setFocusable", candidate.token, hostedFocusable(candidate, main));
             }
-            // All panes keep one logical viewport. Their disjoint screen rectangles are Surface
-            // transforms, so WM must not occlude the other tasks at their overlapping bounds.
+            // App viewports overlap in WM coordinates. Their disjoint screen rectangles
+            // are surface transforms, so WM must not occlude the other hosted tasks.
             bool(wct, "setForceTranslucent", host.token, true);
             bool(wct, "setAlwaysOnTop", host.token, false);
             // Flyme's InsetsPolicy reports an empty IME frame to this task and its children,
@@ -1663,6 +1703,8 @@ final class OneStepShell {
 
     private Navigation offerNavigation(Object info) throws Exception {
         if (!accepting || suspended || workspaceTransition != null) return null;
+        Host existing = find(info);
+        if (existing != null && current(existing) && existing.interactive) return null;
         RecentTaskCard card = OneStepTaskAccess.runningCard(info);
         if (card == null || card.userId != activityUserId || declined.contains(card.token)
                 || !OneStepTaskAccess.externalTaskAllowed(info)) return null;
@@ -1797,6 +1839,7 @@ final class OneStepShell {
         executor.execute(() -> {
             if (!accepting || suspended || request != session) return;
             try {
+                if (imeSession != null) imeSession.refreshOrientations();
                 Object focused = null;
                 for (Object info : tasks.roots()) {
                     if (OneStepTaskAccess.display(info) != 0 || taskEnded(info)) continue;
@@ -1832,7 +1875,11 @@ final class OneStepShell {
                 }
                 Host host = find(focused);
                 if (isActivityTask(focused) || (host != null && current(host))) {
-                    if (host != null && host.ready && !host.main && pending.isEmpty()
+                    if (host != null && host.ready && host.interactive && !host.main) {
+                        for (Host candidate : hosts) candidate.main = candidate == host;
+                        reportFocused(host);
+                    }
+                    if (host != null && host.ready && !host.interactive && pending.isEmpty()
                             && incoming.isEmpty() && mainHost() != null && mainHost().ready) {
                         offerNavigation(focused);
                         return;
@@ -2027,7 +2074,15 @@ final class OneStepShell {
         Rect crop = surfaceCrop(host);
         float sx = host.width / (float) crop.width();
         float sy = host.height / (float) crop.height();
-        tx.reparent(surface, parent).setPosition(surface, -crop.left * sx, -crop.top * sy)
+        float x = -crop.left * sx, y = -crop.top * sy;
+        if (host.fullscreenCompat && host.logicalBounds.width() > host.logicalBounds.height()) {
+            // An app that refuses multiwindow still has its original display viewport.
+            // Fit that surface without stretching or discarding its lower content.
+            sx = sy = Math.min(sx, sy);
+            x = (host.width - crop.width() * sx) / 2f - crop.left * sx;
+            y = (host.height - crop.height() * sy) / 2f - crop.top * sy;
+        }
+        tx.reparent(surface, parent).setPosition(surface, x, y)
                 .setScale(surface, sx, sy)
                 // Keep a newly appeared app hidden until the native stage takes over,
                 // even if SurfaceView relayout temporarily changes sibling surface order.
@@ -2036,7 +2091,7 @@ final class OneStepShell {
         OneStepReflection.call(tx, "setWindowCrop", new Class<?>[]{SurfaceControl.class, Rect.class},
                 surface, crop);
         // A Surface frame-rate vote is a scheduling preference, not a per-app FPS cap.
-        tx.setFrameRate(surface, host.parked ? 0f : host.main ? 120f : 30f,
+        tx.setFrameRate(surface, host.parked ? 0f : host.interactive ? 120f : 30f,
                 android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
     }
 
@@ -2046,7 +2101,7 @@ final class OneStepShell {
                 host.logicalBounds.top - host.originalBounds.top);
         else if (host.fullscreenCompat) {
             Rect actual = host.actualBounds;
-            crop.set(host.logicalBounds);
+            crop.set(host.logicalBounds.width() > host.logicalBounds.height() ? actual : host.logicalBounds);
             if (!crop.intersect(actual)) throw new IllegalStateException("Fullscreen task has no visible viewport");
             crop.offset(-actual.left, -actual.top);
         }
@@ -2476,7 +2531,16 @@ final class OneStepShell {
 
     private Host mainHost() {
         for (Host host : hosts) if (current(host) && host.borrowed && !host.closing && !host.parked && host.main) return host;
+        for (Host host : hosts) if (current(host) && host.borrowed && !host.closing && !host.parked && host.portraitMain) return host;
+        for (Host host : hosts) if (current(host) && host.borrowed && !host.closing && !host.parked && host.interactive) return host;
         return null;
+    }
+
+    private void reportFocused(Host host) {
+        int request = session;
+        ui.post(() -> {
+            if (accepting && request == session && listener != null) listener.onFocused(host);
+        });
     }
 
     @SuppressWarnings("unchecked")

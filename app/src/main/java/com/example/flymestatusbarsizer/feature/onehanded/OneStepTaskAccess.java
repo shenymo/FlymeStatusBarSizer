@@ -197,6 +197,8 @@ final class OneStepTaskAccess {
                 case "onTaskCreated":
                 case "onTaskRemoved":
                 case "onTaskMovedToFront":
+                case "onTaskFocusChanged":
+                case "onActivityRequestedOrientationChanged":
                 case "onTaskDisplayChanged":
                 case "onRecentTaskListUpdated":
                 case "onTaskProfileLocked":
