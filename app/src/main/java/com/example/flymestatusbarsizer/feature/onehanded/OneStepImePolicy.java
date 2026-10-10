@@ -37,6 +37,7 @@ public final class OneStepImePolicy {
     private static final int ADD = IBinder.FIRST_CALL_TRANSACTION;
     private static final int REMOVE = ADD + 1;
     private static final int CLOSE = ADD + 2;
+    private static final int RESUMED = CLOSE + 1;
     private static final int ROUTING = IBinder.FIRST_CALL_TRANSACTION;
     private static final long PENDING_REGION_MAX_AGE_MS = 1500;
     static final int UNKNOWN = 0;
@@ -68,6 +69,7 @@ public final class OneStepImePolicy {
             Class<?> window = Class.forName("com.android.server.wm.WindowState", false, loader);
             Class<?> display = Class.forName("com.android.server.wm.DisplayContent", false, loader);
             Class<?> task = Class.forName("com.android.server.wm.Task", false, loader);
+            OneStepTaskLifecycle.install(module, loader);
             fromBinder = OneStepReflection.method(Class.forName("com.android.server.wm.WindowContainer", false, loader),
                     "fromBinder", IBinder.class);
             module.intercept(OneStepReflection.method(window, "shouldControlIme"), chain -> {
@@ -177,6 +179,16 @@ public final class OneStepImePolicy {
             if (owner != null) return standalone(current) ? owner : null;
         }
         return null;
+    }
+
+    static boolean hasResumedWorkspace() { return hasSessions; }
+
+    // Called under WMS's global lock. Only registered roots participate; descendants
+    // still use Android's normal in-task occlusion and Activity lifecycle rules.
+    static Object resumedWorkspace(Object task) {
+        ServerSession owner = OWNERS.get(task);
+        return owner != null && owner.resumed && owner.live() && standalone(task)
+                ? owner.workspace : null;
     }
 
     private static void report(Object display) {
@@ -642,6 +654,8 @@ public final class OneStepImePolicy {
         boolean reportedImeVisible;
         int reportedPlacement = -1;
         boolean reportPending;
+        boolean resumed;
+        boolean lifecyclePending;
 
         ServerSession(Object service, Object workspace, IBinder callback, int uid) throws ReflectiveOperationException {
             this.service = service;
@@ -663,17 +677,25 @@ public final class OneStepImePolicy {
         }
 
         @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
-            if (code < ADD || code > CLOSE) return super.onTransact(code, data, reply, flags);
+            if (code < ADD || code > RESUMED) return super.onTransact(code, data, reply, flags);
             data.enforceInterface(DESCRIPTOR);
             if (Binder.getCallingUid() != uid) throw new SecurityException("Workspace owner mismatch");
             if (reply == null) return false;
             try {
                 synchronized (lock) {
                     if (code == CLOSE) close();
-                    else if (code == REMOVE) {
+                    else if (code == RESUMED) {
+                        if (!live()) throw new IllegalStateException("Workspace expired");
+                        boolean next = data.readInt() != 0;
+                        if (resumed != next) {
+                            resumed = next;
+                            refreshLifecycle();
+                        }
+                    } else if (code == REMOVE) {
                         Object task = tasks.remove(data.readStrongBinder());
                         if (task != null && OWNERS.get(task) == this) OWNERS.remove(task);
                         refresh();
+                        refreshLifecycle();
                     } else {
                         if (!live()) throw new IllegalStateException("Workspace expired");
                         IBinder token = data.readStrongBinder();
@@ -709,6 +731,18 @@ public final class OneStepImePolicy {
                     OneStepImePolicy.report(display);
                 }
             } catch (Exception error) { OneStepImeDiagnostics.unavailable(error); }
+        }
+
+        void refreshLifecycle() {
+            if (lifecyclePending) return;
+            lifecyclePending = true;
+            handler.post(() -> {
+                synchronized (lock) {
+                    lifecyclePending = false;
+                    // Also run after close, so Android reevaluates formerly hosted tasks.
+                    OneStepTaskLifecycle.refresh(service);
+                }
+            });
         }
 
         void report(IBinder token, int placement, IBinder inputWindow, boolean imeVisible) {
@@ -828,6 +862,7 @@ public final class OneStepImePolicy {
         void close() {
             if (closed) return;
             closed = true;
+            resumed = false;
             callback.unlinkToDeath(this, 0);
             WORKSPACES.remove(workspace, this);
             inputSessions = WORKSPACES.values().toArray(new ServerSession[0]);
@@ -837,6 +872,7 @@ public final class OneStepImePolicy {
             clearPendingInputRegion();
             editor = null;
             refresh();
+            refreshLifecycle();
         }
 
         @Override public void binderDied() {
@@ -855,6 +891,7 @@ public final class OneStepImePolicy {
         private final IBinder callback;
         private final IBinder server;
         private volatile boolean closed;
+        private Boolean resumed;
 
         Session(IBinder workspace, Listener listener) throws Exception {
             callback = new Binder() {
@@ -888,6 +925,11 @@ public final class OneStepImePolicy {
 
         void add(IBinder task) throws RemoteException { send(ADD, task); }
         void remove(IBinder task) throws RemoteException { send(REMOVE, task); }
+        void setResumed(boolean value) throws RemoteException {
+            if (Boolean.valueOf(value).equals(resumed)) return;
+            send(RESUMED, null, value);
+            resumed = value;
+        }
         void close() throws RemoteException {
             if (closed) return;
             send(CLOSE, null);
@@ -895,12 +937,17 @@ public final class OneStepImePolicy {
         }
 
         private void send(int code, IBinder task) throws RemoteException {
+            send(code, task, false);
+        }
+
+        private void send(int code, IBinder task, boolean value) throws RemoteException {
             if (closed) throw new IllegalStateException("IME session closed");
             Parcel data = Parcel.obtain();
             Parcel reply = Parcel.obtain();
             try {
                 data.writeInterfaceToken(DESCRIPTOR);
-                data.writeStrongBinder(task);
+                if (code == RESUMED) data.writeInt(value ? 1 : 0);
+                else data.writeStrongBinder(task);
                 if (!server.transact(code, data, reply, 0)) throw new RemoteException("IME policy transaction rejected");
                 reply.readException();
             } finally { data.recycle(); reply.recycle(); }

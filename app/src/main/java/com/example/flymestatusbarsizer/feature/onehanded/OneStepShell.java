@@ -721,6 +721,7 @@ final class OneStepShell {
                     }));
             for (Host host : hosts) if (current(host) && host.imeRegistered)
                 imeSession.add((IBinder) host.card.token);
+            updateLifecyclePolicy();
             Object wct = transaction();
             bool(wct, "setForceTranslucent", activityToken, false);
             bool(wct, "setAlwaysOnTop", activityToken, false);
@@ -858,13 +859,15 @@ final class OneStepShell {
         executor.execute(() -> {
             if (!accepting || suspended || !hostVisible || covered || (host != null && (!current(host) || !host.borrowed))) return;
             try {
-                // Change both roles in one WM transaction, with the new main task on top.
-                // Separate disable/enable transitions can briefly focus Home or another app.
+                updateLifecyclePolicy();
+                // Focusability also controls Activity RESUMED eligibility. Keep visible
+                // side apps eligible; z-order selects the main task and the workspace's
+                // obscured touch region prevents direct input into side TaskViews.
                 Object wct = transaction();
                 for (Host candidate : hosts) {
                     if (!current(candidate) || !candidate.borrowed || candidate.closing) continue;
                     candidate.main = candidate == host;
-                    bool(wct, "setFocusable", candidate.token, candidate.main);
+                    bool(wct, "setFocusable", candidate.token, hostedFocusable(candidate, host));
                 }
                 arrangeTasks(wct, host);
                 OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
@@ -892,6 +895,7 @@ final class OneStepShell {
         executor.execute(() -> {
             if (!accepting || request != session) return;
             try {
+                updateLifecyclePolicy();
                 if (workspaceTransition != null && suspended) {
                     try (SurfaceControl.Transaction tx = new SurfaceControl.Transaction()) {
                         workspaceTransition.hide(tx);
@@ -900,8 +904,9 @@ final class OneStepShell {
                     cancelWorkspaceMotion();
                 }
                 Object wct = transaction();
+                Host main = mainHost();
                 for (Host host : hosts) if (current(host) && host.borrowed && !host.closing) {
-                    bool(wct, "setFocusable", host.token, !suspended && host.main);
+                    bool(wct, "setFocusable", host.token, hostedFocusable(host, main));
                     present(host, null, null);
                 }
                 OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
@@ -911,9 +916,24 @@ final class OneStepShell {
 
     void setHostVisible(boolean value) {
         hostVisible = value;
-        if (!value) executor.execute(() -> {
-            if (workspaceTransition != null && accepting) cancelWorkspaceMotion();
+        int request = session;
+        executor.execute(() -> {
+            if (!accepting || request != session) return;
+            try {
+                updateLifecyclePolicy();
+                if (!hostVisible && workspaceTransition != null) cancelWorkspaceMotion();
+            } catch (Exception error) { fail("无法更新应用活跃状态", error); }
         });
+    }
+
+    private boolean hostedFocusable(Host host, Host main) {
+        // An empty main pane must leave focus with the workspace until its replacement
+        // is ready. HOME retains its existing lifecycle behavior when shown at the side.
+        return !suspended && (host == main || (main != null && !host.home()));
+    }
+
+    private void updateLifecyclePolicy() throws android.os.RemoteException {
+        if (imeSession != null) imeSession.setResumed(accepting && !suspended && hostVisible && !covered);
     }
 
     private boolean current(Host host) {
@@ -1017,10 +1037,10 @@ final class OneStepShell {
             Object wct = transaction();
             // HOME stays a fullscreen HOME task. Only its surface is fitted into the pane.
             configureHostedMode(wct, host, "acquire", info);
-            bool(wct, "setFocusable", host.token, host.main);
-            if (host.main) for (Host other : hosts) {
-                if (other != host && current(other) && other.borrowed)
-                    bool(wct, "setFocusable", other.token, false);
+            Host main = host.main ? host : mainHost();
+            for (Host candidate : hosts) {
+                if (current(candidate) && candidate.borrowed && !candidate.closing)
+                    bool(wct, "setFocusable", candidate.token, hostedFocusable(candidate, main));
             }
             // All panes keep one logical viewport. Their disjoint screen rectangles are Surface
             // transforms, so WM must not occlude the other tasks at their overlapping bounds.
@@ -1030,8 +1050,6 @@ final class OneStepShell {
             // retaining keyboard visibility/control while avoiding app resize and adjustPan.
             // Keep this enabled throughout hosting, including main/side swaps.
             bool(wct, "setExcludeImeInsets", host.token, true);
-            Host main = host;
-            for (Host candidate : hosts) if (current(candidate) && candidate.borrowed && candidate.main) main = candidate;
             arrangeTasks(wct, main);
             if (host.home()) {
                 // HOME retains fullscreen bounds. Commit its pane parent/crop before
@@ -1221,7 +1239,8 @@ final class OneStepShell {
                     Object wct = transaction();
                     configureHostedMode(wct, host, "reclaim", info);
                     bool(wct, "setForceTranslucent", host.token, true);
-                    bool(wct, "setFocusable", host.token, host.main);
+                    bool(wct, "setFocusable", host.token, hostedFocusable(host, mainHost()));
+                    arrangeTasks(wct, mainHost());
                     OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
                     present(host, null, null);
                     return;
@@ -1266,11 +1285,21 @@ final class OneStepShell {
         boolean ours = pending.containsKey(args[0]);
         boolean entry = isWorkspaceEntryTransition(args[1], changes);
         boolean allOurs = true;
+        boolean navigating = false;
         for (Object change : changes) {
             Object info = OneStepReflection.call(change, "getTaskInfo");
-            if (info != null && find(info) == null && !isActivityTask(info) && !isRetiredTask(info)) allOurs = false;
+            Navigation navigation = incoming.get(OneStepTaskAccess.token(info));
+            boolean incomingTask = navigation != null && !navigation.cancelled
+                    && navigation.generation == session && current(navigation.source);
+            navigating |= incomingTask;
+            if (info != null && find(info) == null && !isActivityTask(info)
+                    && !isRetiredTask(info) && !incomingTask) allOurs = false;
         }
         if (!ours && !entry && (!allOurs || hosts.isEmpty())) return false;
+        // A redirect can add its new task after handleRequest saw only the source
+        // task. Claim the navigation discovered by the observer and place it again
+        // here, after Shell's setupAnimHierarchy has reset the fullscreen parent.
+        ours |= navigating && allOurs;
         SurfaceControl.Transaction start = (SurfaceControl.Transaction) args[2];
         SurfaceControl.Transaction finish = (SurfaceControl.Transaction) args[3];
         boolean handled = false;
@@ -1278,7 +1307,8 @@ final class OneStepShell {
             Object info = OneStepReflection.call(change, "getTaskInfo");
             int mode = ((Number) OneStepReflection.call(change, "getMode")).intValue();
             if (isActivityTask(info)) {
-                if (mode == 1 || mode == 3 || mode == 6) showWorkspaceOpening(change, start, finish);
+                if (mode == 1 || mode == 3 || mode == 6 || navigating)
+                    showWorkspaceOpening(change, start, finish);
                 handled = true;
                 continue;
             }
@@ -1301,7 +1331,7 @@ final class OneStepShell {
             if (host == null && ours && info != null) {
                 Navigation navigation = incoming.get(OneStepTaskAccess.token(info));
                 if (navigation != null) {
-                    stageNavigation(navigation, start, finish);
+                    stageNavigation(navigation, change, start, finish);
                     handled = true;
                 }
             }
@@ -1636,25 +1666,37 @@ final class OneStepShell {
         return navigation;
     }
 
-    private void stageNavigation(Navigation navigation, SurfaceControl.Transaction start,
+    private void stageNavigation(Navigation navigation, Object change, SurfaceControl.Transaction start,
                                  SurfaceControl.Transaction finish) throws Exception {
         if (find(navigation.info) != null) return;
         if (navigation.leash == null) {
             Object appeared = appeared(navigation.card.taskId);
             if (appeared != null) navigation.leash = (SurfaceControl) OneStepReflection.call(appeared, "getLeash");
         }
-        if (navigation.cancelled || (navigation.target != null && navigation.target.borrowed) || navigation.leash == null
-                || !navigation.leash.isValid() || !current(navigation.source)) return;
+        // Use the transition handle only in these transactions. The organizer's
+        // lifetime-owned leash may arrive later and is the only handle we retain.
+        SurfaceControl surface = change == null ? navigation.leash
+                : (SurfaceControl) OneStepReflection.call(change, "getLeash");
+        if (navigation.cancelled || (navigation.target != null && navigation.target.borrowed) || surface == null
+                || !surface.isValid() || !current(navigation.source)) return;
         SurfaceControl parent = (SurfaceControl) OneStepReflection.call(navigation.source.controller, "getSurfaceControl");
         if (parent == null || !parent.isValid()) return;
-        if (!navigation.staged) saveNavigation(navigation);
+        if (!navigation.staged) {
+            saveNavigation(navigation);
+            navigation.staged = true;
+            // Keep the workspace visible while its replacement TaskView is mounting.
+            Object wct = transaction();
+            bool(wct, "setForceTranslucent", OneStepReflection.get(navigation.info, "token"), true);
+            OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
+        }
         // Fit the first external frame into the source pane while the UI mounts its own
         // TaskView. No task/Activity is relaunched and the original result chain survives.
-        placeSurface(navigation.source, navigation.leash, parent, start);
-        placeSurface(navigation.source, navigation.leash, parent, finish);
-        start.setAlpha(navigation.leash, 1f).setLayer(navigation.leash, 1);
-        finish.setAlpha(navigation.leash, 1f).setLayer(navigation.leash, 1);
-        navigation.staged = true;
+        placeSurface(navigation.source, surface, parent, start);
+        start.setAlpha(surface, 1f).setLayer(surface, 1);
+        if (finish != null) {
+            placeSurface(navigation.source, surface, parent, finish);
+            finish.setAlpha(surface, 1f).setLayer(surface, 1);
+        }
     }
 
     void abandonNavigation(Navigation navigation) { executor.execute(() -> cancelNavigation(navigation)); }
@@ -1671,6 +1713,9 @@ final class OneStepShell {
         // Once acquired, restoreOne owns recovery, including its journal and finish surfaces.
         if (navigation.staged && (navigation.target == null || !navigation.target.borrowed)) {
             try {
+                Object wct = transaction();
+                bool(wct, "setForceTranslucent", OneStepReflection.get(navigation.info, "token"), false);
+                OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
                 for (ArrayList<SurfaceControl.Transaction> transactions : finishes.values())
                     for (SurfaceControl.Transaction tx : transactions) unstageNavigation(navigation, tx);
                 try (SurfaceControl.Transaction tx = new SurfaceControl.Transaction()) {
@@ -1684,6 +1729,10 @@ final class OneStepShell {
     }
 
     private void unstageNavigation(Navigation navigation, SurfaceControl.Transaction tx) throws Exception {
+        if (navigation.leash == null) {
+            Object appeared = appeared(navigation.card.taskId);
+            if (appeared != null) navigation.leash = (SurfaceControl) OneStepReflection.call(appeared, "getLeash");
+        }
         if (navigation.leash == null || !navigation.leash.isValid()) return;
         tx.reparent(navigation.leash, rootSurface()).setPosition(navigation.leash,
                 navigation.position.x, navigation.position.y).setScale(navigation.leash, 1f, 1f)
@@ -1704,6 +1753,7 @@ final class OneStepShell {
         item.put("x", navigation.position.x).put("y", navigation.position.y);
         item.put("focusable", ReflectUtils.getBooleanField(info, "isFocusable", true));
         item.put("alwaysOnTop", Boolean.TRUE.equals(OneStepReflection.call(window, "isAlwaysOnTop")));
+        item.put("forceTranslucent", true);
         item.put("stagedNavigation", true);
         journal.put(navigation.card.taskId, item);
         persist();
@@ -1712,6 +1762,8 @@ final class OneStepShell {
     private void setCovered(boolean value) {
         if (covered == value) return;
         covered = value;
+        try { updateLifecyclePolicy(); }
+        catch (Exception error) { fail("无法更新应用活跃状态", error); }
         if (value && workspaceTransition != null) cancelWorkspaceMotion();
         int request = session;
         ui.post(() -> {
@@ -1789,7 +1841,7 @@ final class OneStepShell {
         ArrayList<Host> backgroundTasks = new ArrayList<>();
         List<?> changes = (List<?>) OneStepReflection.call(args[1], "getChanges");
         boolean externalOpening = false;
-        if (!pending.containsKey(args[0])) for (Object change : changes) {
+        for (Object change : changes) {
             Object info = OneStepReflection.call(change, "getTaskInfo");
             int mode = ((Number) OneStepReflection.call(change, "getMode")).intValue();
             if (info == null || isActivityTask(info) || find(info) != null
@@ -1801,7 +1853,7 @@ final class OneStepShell {
             if (launching) continue;
             externalOpening = true;
             Navigation navigation = offerNavigation(info);
-            if (navigation != null) stageNavigation(navigation, (SurfaceControl.Transaction) args[2],
+            if (navigation != null) stageNavigation(navigation, change, (SurfaceControl.Transaction) args[2],
                     (SurfaceControl.Transaction) args[3]);
             else setCovered(true);
         }
@@ -1903,6 +1955,7 @@ final class OneStepShell {
                 place(host, parent, tx);
             }
         }
+        for (Navigation navigation : incoming.values()) stageNavigation(navigation, null, tx, null);
         placeWorkspaceTransition(tx);
     }
 
@@ -2001,6 +2054,7 @@ final class OneStepShell {
             return;
         }
         try {
+            updateLifecyclePolicy();
             for (Navigation navigation : new ArrayList<>(incoming.values())) cancelNavigation(navigation);
             int retainFocus = -1;
             if (focusTask < 0) {
@@ -2163,7 +2217,13 @@ final class OneStepShell {
                 }
             } else {
                 synchronized (OneStepReflection.get(organizer, "mLock")) {
-                    if (listeners().get(host.card.taskId) == host.controller) listeners().remove(host.card.taskId);
+                    // CLOSE/numActivities=0 can precede the organizer's final info and
+                    // vanished callbacks. Native removal delivers onTaskAppeared to
+                    // the fallback listener for tasks still in mTasks, keeping its
+                    // state ready for those callbacks before this TaskView is released.
+                    if (listeners().get(host.card.taskId) == host.controller)
+                        OneStepReflection.call(organizer, "removeListener",
+                                new Class<?>[]{taskListenerClass}, host.controller);
                 }
             }
             forget(host.card.taskId);
