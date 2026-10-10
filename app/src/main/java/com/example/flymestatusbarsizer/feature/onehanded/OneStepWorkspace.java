@@ -112,6 +112,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private boolean shellImePositioning;
     private boolean shellImeFloating;
     private int shellImeTargetBottom;
+    private IBinder imeInputTask;
+    private int imePlacement = OneStepImePolicy.UNKNOWN;
     private boolean mainOnLeft;
     private boolean taskNotifications;
     private float transitionProgress;
@@ -254,6 +256,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         shellImePositioning = false;
         shellImeFloating = false;
         shellImeTargetBottom = 0;
+        imeInputTask = null;
+        imePlacement = OneStepImePolicy.UNKNOWN;
         sideOrder.clear();
         for (int i = 1; i < COUNT; i++) sideOrder.add(i);
         frames = layout();
@@ -376,6 +380,27 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         });
     }
 
+    @Override public void onImeRoutingChanged(IBinder task, int placement) {
+        if (!active()) return;
+        imeInputTask = task;
+        imePlacement = placement;
+        if (placement == OneStepImePolicy.APP) {
+            // Insets describe the logical display even when the keyboard is inside a pane.
+            // Only a confirmed app parent revokes Shell positioning. Unknown routing during
+            // a focus handoff must not cancel a newer Shell animation already in flight.
+            shellImeControlled = false;
+            shellImePositioning = false;
+        }
+        if (!shellImeControlled) applyActivityIme();
+        logImeEvent("routing placement=" + placement);
+    }
+
+    private boolean imeTargetsMain() {
+        Pane main = panes[mainSlot];
+        return main != null && main.host != null && main.host.card != null
+                && imeInputTask != null && imeInputTask.equals(main.host.card.token);
+    }
+
     private void logImeEvent(String event) {
         try {
             Pane main = panes[mainSlot];
@@ -410,9 +435,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void applyActivityIme() {
-        if (imeBottom == activityImeBottom && imeAnimating == activityImeAnimating) return;
-        imeBottom = activityImeBottom;
-        imeAnimating = activityImeAnimating;
+        boolean displayIme = imePlacement == OneStepImePolicy.DISPLAY && imeTargetsMain();
+        int bottom = displayIme ? activityImeBottom : 0;
+        boolean animating = displayIme && activityImeAnimating;
+        if (imeBottom == bottom && imeAnimating == animating) return;
+        imeBottom = bottom;
+        imeAnimating = animating;
         positionForIme();
     }
 
@@ -714,6 +742,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void updateInput() {
+        if (!shellImeControlled) applyActivityIme();
         boolean blocked = !running() || covered || !hostVisible || panesBusy() || desktopBusy || animator != null || transitionAnimator != null
                 || imeAnimator != null || imeAnimating || dragSession != null;
         blockInput(blocked);

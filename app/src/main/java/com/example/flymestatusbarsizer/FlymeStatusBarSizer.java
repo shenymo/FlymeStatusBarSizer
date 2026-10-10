@@ -238,6 +238,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         MODULE = this;
         android.util.Log.i("FlymeOneStepIme", "server lifecycle=onSystemServerStarting pid="
                 + android.os.Process.myPid());
+        com.example.flymestatusbarsizer.feature.onehanded.OneStepImePolicy.install(
+                this, param.getClassLoader());
         com.example.flymestatusbarsizer.feature.onehanded.OneStepImeDiagnostics.install(
                 this, param.getClassLoader());
     }

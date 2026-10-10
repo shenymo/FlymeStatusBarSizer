@@ -47,6 +47,7 @@ final class OneStepShell {
         void onNavigation(Navigation navigation);
         void onCoverageChanged(boolean covered);
         void onTaskChanged(Host host, RecentTaskCard previous);
+        void onImeRoutingChanged(IBinder task, int placement);
     }
 
     final class Host {
@@ -72,7 +73,10 @@ final class OneStepShell {
         boolean launching;
         boolean prepared;
         int acquireAttempts;
-        Object info;
+        // TaskView and launcher animation APIs require the organizer's RunningTaskInfo.
+        ActivityManager.RunningTaskInfo runningInfo;
+        // RootTaskInfo queries only refresh the viewport/mode snapshot, never runningInfo.
+        final Rect actualBounds = new Rect();
         Object token;
         Object oldListener;
         Object oldSpecificListener;
@@ -104,6 +108,8 @@ final class OneStepShell {
         boolean replacement;
         Navigation navigation;
         boolean surfaceMissing;
+        boolean fullscreenCompat;
+        boolean imeRegistered;
         String lastImeTaskState;
         String lastImeModeRequest;
 
@@ -226,6 +232,7 @@ final class OneStepShell {
     private volatile int activityTaskId = -1;
     private volatile Object activityToken;
     private volatile int activityUserId;
+    private OneStepImePolicy.Session imeSession;
     private Listener listener;
     private int initAttempts;
 
@@ -375,11 +382,20 @@ final class OneStepShell {
             if (!force && snapshot.equals(host.lastImeTaskState)) return;
             host.lastImeTaskState = snapshot;
             Log.i(OneStepImeDiagnostics.TAG, "task session=" + host.session + " event=" + event
-                    + " expectedMode=" + (host.home() ? 1 : 6) + " " + snapshot);
+                    + " expectedMode=" + (host.home() || host.fullscreenCompat ? 1 : 6)
+                    + " fullscreenCompat=" + host.fullscreenCompat + " " + snapshot);
         } catch (Throwable error) { OneStepImeDiagnostics.unavailable(error); }
     }
 
-    private void logImeModeRequest(Host host, String event, Object info) {
+    private void configureHostedMode(Object wct, Host host, String event, Object info) throws Exception {
+        if (host.home()) return;
+        updateHostedConfiguration(host, info, false);
+        if (host.fullscreenCompat) {
+            logImeTask(host, "fullscreen-compatible", info, false);
+            return;
+        }
+        mode(wct, host.token, 6);
+        bounds(wct, host.token, host.logicalBounds);
         try {
             String snapshot = "event=" + event + " requestedMode=" + (host.home() ? 1 : 6)
                     + " requestedBounds=" + host.logicalBounds + " before={" + OneStepImeDiagnostics.taskInfo(info) + "}";
@@ -393,7 +409,9 @@ final class OneStepShell {
                 try {
                     for (Object actual : tasks.roots()) {
                         if (matches(host.card, actual)) {
+                            updateHostedConfiguration(host, actual, true);
                             logImeTask(host, "after-" + event, actual, true);
+                            present(host, null, null);
                             return;
                         }
                     }
@@ -401,6 +419,17 @@ final class OneStepShell {
                 } catch (Throwable error) { OneStepImeDiagnostics.unavailable(error); }
             }, 500);
         } catch (Throwable error) { OneStepImeDiagnostics.unavailable(error); }
+    }
+
+    private void updateHostedConfiguration(Host host, Object info, boolean modeApplied)
+            throws ReflectiveOperationException {
+        Object config = OneStepReflection.get(OneStepReflection.get(info, "configuration"), "windowConfiguration");
+        host.actualBounds.set((Rect) OneStepReflection.call(config, "getBounds"));
+        if (host.home()) return;
+        if (windowMode(info) == 6) host.fullscreenCompat = false;
+        else if (windowMode(info) == 1 && (modeApplied
+                || Boolean.FALSE.equals(ReflectUtils.getField(info, "supportsMultiWindow"))))
+            host.fullscreenCompat = true;
     }
 
     void logImeTasks(int request, String event) {
@@ -466,6 +495,11 @@ final class OneStepShell {
                 throw new IllegalStateException("Workspace must be an independent fullscreen Activity");
             activityToken = OneStepReflection.get(info, "token");
             activityTaskId = taskId;
+            imeSession = new OneStepImePolicy.Session((IBinder) OneStepTaskAccess.token(info), (task, placement) ->
+                    ui.post(() -> {
+                        if (accepting && request == session && listener != null)
+                            listener.onImeRoutingChanged(task, placement);
+                    }));
             Object wct = transaction();
             bool(wct, "setForceTranslucent", activityToken, false);
             bool(wct, "setAlwaysOnTop", activityToken, false);
@@ -553,7 +587,7 @@ final class OneStepShell {
             host.main = main;
             try {
                 if (host.borrowed) {
-                    if (changed && !host.home()) {
+                    if (changed && !host.home() && !host.fullscreenCompat) {
                         Object wct = transaction();
                         bounds(wct, host.token, bounds);
                         submit(wct);
@@ -636,7 +670,7 @@ final class OneStepShell {
                     // A dormant task can briefly resume fullscreen before its organizer
                     // callback arrives. Make it non-occluding before that launch, with a
                     // journal entry covering failure before any TaskView owns the task.
-                    save(host);
+                    save(host, recent);
                     host.prepared = true;
                     Object wct = transaction();
                     bool(wct, "setForceTranslucent", host.token, true);
@@ -647,7 +681,8 @@ final class OneStepShell {
                 later(() -> acquire(host), 50);
                 return;
             }
-            Object info = OneStepReflection.call(appeared, "getTaskInfo");
+            ActivityManager.RunningTaskInfo info = (ActivityManager.RunningTaskInfo)
+                    OneStepReflection.call(appeared, "getTaskInfo");
             if (taskEnded(info)) {
                 host.closing = true;
                 taskRemoved(host);
@@ -666,10 +701,13 @@ final class OneStepShell {
                     throw new IllegalStateException("Focused application changed before acquisition");
             }
             if (!host.prepared) remember(host, info);
-            else host.info = info;
+            host.runningInfo = info;
             host.leash = (SurfaceControl) OneStepReflection.call(appeared, "getLeash");
             if (!host.leash.isValid() || rootSurface() == null) throw new IllegalStateException("Task surface unavailable");
-            save(host);
+            save(host, info);
+            if (imeSession == null) throw new IllegalStateException("Workspace IME session unavailable");
+            host.imeRegistered = true;
+            imeSession.add((IBinder) host.card.token);
             synchronized (OneStepReflection.get(organizer, "mLock")) {
                 SparseArray<Object> listeners = listeners();
                 host.oldSpecificListener = listeners.get(host.card.taskId);
@@ -689,11 +727,7 @@ final class OneStepShell {
             }
             Object wct = transaction();
             // HOME stays a fullscreen HOME task. Only its surface is fitted into the pane.
-            if (!host.home()) {
-                logImeModeRequest(host, "acquire", info);
-                mode(wct, host.token, 6);
-                bounds(wct, host.token, host.logicalBounds);
-            }
+            configureHostedMode(wct, host, "acquire", info);
             bool(wct, "setFocusable", host.token, host.main);
             if (host.main) for (Host other : hosts) {
                 if (other != host && current(other) && other.borrowed)
@@ -807,9 +841,8 @@ final class OneStepShell {
             host.originalBounds = new Rect(host.launchRestoreBounds);
             host.originalPosition = new Point();
         }
-        host.info = info;
         host.prepared = true;
-        save(host);
+        save(host, info);
         host.launchSnapshots.clear();
         if (activityType(info) != 1 || OneStepTaskAccess.display(info) != 0
                 || ReflectUtils.getIntField(info, "parentTaskId", -2) != -1)
@@ -844,7 +877,6 @@ final class OneStepShell {
     }
 
     private void remember(Host host, Object info) throws ReflectiveOperationException {
-        host.info = info;
         host.token = OneStepReflection.get(info, "token");
         Object config = OneStepReflection.get(OneStepReflection.get(info, "configuration"), "windowConfiguration");
         host.originalBounds = new Rect((Rect) OneStepReflection.call(config, "getBounds"));
@@ -880,14 +912,15 @@ final class OneStepShell {
         if (host.card == null) { launchFailed(host, new IllegalStateException("Launching task disappeared")); return; }
         try {
             Object appeared = appeared(host.card.taskId);
-            Object info = appeared == null ? null : OneStepReflection.call(appeared, "getTaskInfo");
+            ActivityManager.RunningTaskInfo info = appeared == null ? null
+                    : (ActivityManager.RunningTaskInfo) OneStepReflection.call(appeared, "getTaskInfo");
             if (!host.closing && matches(host.card, info) && !taskEnded(info)) {
                 if (OneStepTaskAccess.display(info) == 0
                         && ReflectUtils.getIntField(info, "parentTaskId", -2) == -1
                         && (windowMode(info) == 1 || windowMode(info) == 6)) {
                     // A launch can hand a live task back to the fullscreen listener.
                     // Reclaim only the same standalone task, never PiP/split containers.
-                    host.info = info;
+                    host.runningInfo = info;
                     host.leash = (SurfaceControl) OneStepReflection.call(appeared, "getLeash");
                     synchronized (OneStepReflection.get(organizer, "mLock")) {
                         Object owner = OneStepReflection.call(organizer, "getTaskListener",
@@ -897,8 +930,7 @@ final class OneStepShell {
                         taskCallback(host.controller, "onTaskAppeared", info, host.leash);
                     }
                     Object wct = transaction();
-                    if (!host.home()) logImeModeRequest(host, "reclaim", info);
-                    if (!host.home()) { mode(wct, host.token, 6); bounds(wct, host.token, host.logicalBounds); }
+                    configureHostedMode(wct, host, "reclaim", info);
                     bool(wct, "setForceTranslucent", host.token, true);
                     bool(wct, "setFocusable", host.token, host.main);
                     OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
@@ -970,7 +1002,7 @@ final class OneStepShell {
                 continue;
             }
             if (!current(host)) continue;
-            host.info = info;
+            host.runningInfo = (ActivityManager.RunningTaskInfo) info;
             host.collected = true;
             // Keep the organizer's lifetime-owned leash. TransitionInfo handles are temporary.
             present(host, start, finish);
@@ -1119,9 +1151,10 @@ final class OneStepShell {
             start.reparent(home.leash, homeLeash).setPosition(home.leash, 0, 0).setScale(home.leash, 1, 1)
                     .setLayer(home.leash, 0).setAlpha(home.leash, 1f).setVisibility(home.leash, true);
             crop(start, home.leash, null);
-            start.reparent(app.leash, appLeash).setPosition(app.leash, 0, 0).setScale(app.leash, 1, 1)
+            Rect appCrop = surfaceCrop(app);
+            start.reparent(app.leash, appLeash).setPosition(app.leash, -appCrop.left, -appCrop.top).setScale(app.leash, 1, 1)
                     .setLayer(app.leash, 0).setAlpha(app.leash, 1f).setVisibility(app.leash, true);
-            crop(start, app.leash, viewport);
+            crop(start, app.leash, appCrop);
             Parcelable[] targets = new Parcelable[]{animationTarget(app, appLeash, 1, 1),
                     animationTarget(home, homeLeash, 4, 0)};
             openingAnimation = animation;
@@ -1162,7 +1195,7 @@ final class OneStepShell {
         Parcel parcel = Parcel.obtain();
         ActivityManager.RunningTaskInfo info;
         try {
-            ((Parcelable) host.info).writeToParcel(parcel, 0);
+            host.runningInfo.writeToParcel(parcel, 0);
             parcel.setDataPosition(0);
             Parcelable.Creator<?> creator = (Parcelable.Creator<?>) OneStepReflection.field(
                     ActivityManager.RunningTaskInfo.class, "CREATOR").get(null);
@@ -1353,8 +1386,10 @@ final class OneStepShell {
                 for (Object info : tasks.roots()) {
                     if (OneStepTaskAccess.display(info) != 0 || taskEnded(info)) continue;
                     Host host = find(info);
-                    if (host != null && current(host) && !host.closing)
+                    if (host != null && current(host) && !host.closing) {
+                        updateHostedConfiguration(host, info, false);
                         logImeTask(host, "task-state", info, false);
+                    }
                     if (host != null && current(host) && !host.home()) {
                         RecentTaskCard next = OneStepTaskAccess.runningCard(info);
                         if (next != null && !next.temporary && host.card.component != null
@@ -1446,20 +1481,26 @@ final class OneStepShell {
             }
             if (isRetiredTask(info) && taskEnded(info)) continue;
             int windowMode = ReflectUtils.invokeNoArgInt(info, "getWindowingMode", -1);
+            if (host != null && current(host)) updateHostedConfiguration(host, info, false);
             if (host != null && current(host) && !host.home() && windowMode == 1
+                    && !host.fullscreenCompat
                     && OneStepTaskAccess.display(info) == 0
                     && ReflectUtils.getIntField(info, "parentTaskId", -1) == -1) {
                 // Some cross-app launches reset the containing task to fullscreen.
                 // Keep the hosted viewport; explicit TaskView fullscreen still exits.
                 Object wct = transaction();
-                logImeModeRequest(host, "fullscreen-repair", info);
-                mode(wct, host.token, 6);
-                bounds(wct, host.token, host.logicalBounds);
+                configureHostedMode(wct, host, "fullscreen-repair", info);
                 bool(wct, "setForceTranslucent", host.token, true);
                 OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
-                windowMode = 6;
+                for (Object actual : tasks.roots()) if (matches(host.card, actual)) {
+                    updateHostedConfiguration(host, actual, true);
+                    windowMode = windowMode(actual);
+                    break;
+                }
             }
-            if (host != null && (windowMode != (host.home() ? 1 : 6) || OneStepTaskAccess.display(info) != 0
+            boolean compatibleMode = host != null && (host.home() ? windowMode == 1
+                    : windowMode == 6 || (host.fullscreenCompat && windowMode == 1));
+            if (host != null && (!compatibleMode || OneStepTaskAccess.display(info) != 0
                     || ReflectUtils.getIntField(info, "parentTaskId", -1) != -1)) {
                 // The system has already chosen a new container/mode. Preserve that choice.
                 if (!pending.containsKey(args[0])) {
@@ -1515,7 +1556,7 @@ final class OneStepShell {
         SurfaceControl parent = (SurfaceControl) OneStepReflection.call(host.controller, "getSurfaceControl");
         if (parent == null || !parent.isValid() || host.leash == null || !host.leash.isValid()) return;
         OneStepReflection.call(host.controller, "prepareOpen",
-                new Class<?>[]{ActivityManager.RunningTaskInfo.class, SurfaceControl.class}, host.info, host.leash);
+                new Class<?>[]{ActivityManager.RunningTaskInfo.class, SurfaceControl.class}, host.runningInfo, host.leash);
         boolean own = start == null;
         SurfaceControl.Transaction tx = own ? new SurfaceControl.Transaction() : start;
         try {
@@ -1549,9 +1590,7 @@ final class OneStepShell {
             throws Exception {
         // Only the native animator may transform these temporary wrappers until it finishes.
         if (openingAnimation != null && (openingAnimation.app == host || openingAnimation.home == host)) return;
-        Rect crop = new Rect(0, 0, host.logicalBounds.width(), host.logicalBounds.height());
-        if (host.home()) crop.offset(host.logicalBounds.left - host.originalBounds.left,
-                host.logicalBounds.top - host.originalBounds.top);
+        Rect crop = surfaceCrop(host);
         float sx = host.width / (float) crop.width();
         float sy = host.height / (float) crop.height();
         tx.reparent(surface, parent).setPosition(surface, -crop.left * sx, -crop.top * sy)
@@ -1564,6 +1603,19 @@ final class OneStepShell {
                 surface, crop);
         // A Surface frame-rate vote is a scheduling preference, not a per-app FPS cap.
         tx.setFrameRate(surface, host.main ? 120f : 30f, android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
+    }
+
+    private Rect surfaceCrop(Host host) {
+        Rect crop = new Rect(0, 0, host.logicalBounds.width(), host.logicalBounds.height());
+        if (host.home()) crop.offset(host.logicalBounds.left - host.originalBounds.left,
+                host.logicalBounds.top - host.originalBounds.top);
+        else if (host.fullscreenCompat) {
+            Rect actual = host.actualBounds;
+            crop.set(host.logicalBounds);
+            if (!crop.intersect(actual)) throw new IllegalStateException("Fullscreen task has no visible viewport");
+            crop.offset(-actual.left, -actual.top);
+        }
+        return crop;
     }
 
     private void restoreOne(Host host, Runnable finished, int attempt) {
@@ -1605,6 +1657,10 @@ final class OneStepShell {
                     return;
                 }
                 hosts.remove(host);
+            }
+            if (imeSession != null) {
+                imeSession.close();
+                imeSession = null;
             }
             int selectedFocus = focusTask >= 0 ? focusTask : retainFocus;
             if (selectedFocus >= 0) {
@@ -1774,6 +1830,10 @@ final class OneStepShell {
             }
             if (host.card != null && journal.containsKey(host.card.taskId)) forget(host.card.taskId);
         }
+        if (host.imeRegistered) {
+            imeSession.remove((IBinder) host.card.token);
+            host.imeRegistered = false;
+        }
         host.prepared = false;
         releaseView(host);
         return true;
@@ -1905,10 +1965,10 @@ final class OneStepShell {
         return "FlymeOneStepShell";
     }
 
-    private void save(Host host) throws Exception {
+    private void save(Host host, Object info) throws Exception {
         JSONObject item = new JSONObject();
         item.put("task", host.card.taskId).put("user", host.card.userId).put("boot", bootCount);
-        ComponentName base = baseComponent(host.info);
+        ComponentName base = baseComponent(info);
         if (base == null) throw new IllegalStateException("Cannot journal a task without its base component");
         item.put("component", base.flattenToString());
         item.put("mode", host.originalMode).put("bounds", host.originalBounds.flattenToString());
