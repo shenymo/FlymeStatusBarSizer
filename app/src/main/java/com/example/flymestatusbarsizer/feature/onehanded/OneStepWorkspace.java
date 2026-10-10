@@ -535,17 +535,33 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private Rect[] layout() {
         int margin = Math.min(dp(WORKSPACE_MARGIN_DP), Math.min(width, height) / 8);
+        int shortSide = Math.min(logicalBounds.width(), logicalBounds.height());
+        int longSide = Math.max(logicalBounds.width(), logicalBounds.height());
+        boolean showLandscape = landscapeVisible();
         Rect[] result = OneStepWindowLayout.calculateLandscapeWorkspace(width - margin * 2,
                 height - margin * 2, dp(PANE_GAP_DP),
-                dp(TOOLBAR_HEIGHT_DP), portraitBounds.width(), portraitBounds.height(),
-                mainSlot, sideOrder, mainOnLeft, LANDSCAPE_SLOT, landscapeVisible());
+                dp(TOOLBAR_HEIGHT_DP), shortSide, longSide,
+                mainSlot, sideOrder, mainOnLeft, LANDSCAPE_SLOT, showLandscape);
+        int viewportWidth = shortSide;
+        int viewportHeight = longSide;
+        if (showLandscape) {
+            Rect main = result[mainSlot];
+            viewportWidth = Math.max(shortSide, main.width());
+            viewportHeight = Math.max(1, Math.round(viewportWidth * (main.height() / (float) main.width())));
+        }
+        // Resize app content to the flatter panes instead of letterboxing the original
+        // phone viewport. All lower panes share these bounds, including during swaps.
+        if (portraitBounds.width() != viewportWidth || portraitBounds.height() != viewportHeight)
+            imeInputRegion = null;
+        portraitBounds.set(logicalBounds.left, logicalBounds.top,
+                logicalBounds.left + viewportWidth, logicalBounds.top + viewportHeight);
         for (Rect frame : result) frame.offset(margin, margin);
         return result;
     }
 
     private void updateLogicalBounds(Rect screen, Insets insets) {
-        // Capture the full usable display before reserving space for workspace chrome.
-        // Keep this viewport fixed for the session, including pane swaps and IME movement.
+        // Keep the full usable display separate from the app viewports, so relayout
+        // never feeds the shortened portrait bounds back into the layout calculation.
         logicalBounds.set(screen);
         logicalBounds.inset(insets.left, insets.top, insets.right, insets.bottom);
         if (logicalBounds.isEmpty()) throw new IllegalStateException("Invalid app viewport");
@@ -2561,7 +2577,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
         void configureHost(OneStepShell.Host task) {
             Rect bounds = viewport(slot);
-            shell.geometry(task, bounds, bounds.width(), bounds.height(), slot == mainSlot, slot == LANDSCAPE_SLOT);
+            // Home stays fullscreen in WM; retain its complete source viewport so
+            // shortening the pane does not crop away the dock or lower app icons.
+            shell.geometry(task, task.home() ? logicalBounds : bounds,
+                    bounds.width(), bounds.height(), slot == mainSlot, slot == LANDSCAPE_SLOT);
         }
     }
 }
