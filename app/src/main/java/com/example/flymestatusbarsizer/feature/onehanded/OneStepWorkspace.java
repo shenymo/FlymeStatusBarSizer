@@ -14,6 +14,8 @@ import android.graphics.RectF;
 import android.graphics.Region;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.content.res.ColorStateList;
 import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.os.Handler;
@@ -35,6 +37,7 @@ import android.widget.Toast;
 
 import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
+import com.example.flymestatusbarsizer.R;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -57,6 +60,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private final Handler handler;
     private final OneStepTaskAccess tasks;
     private final OneStepShell shell;
+    private final OneStepNavigation navigation;
     private final OneStepTouchMode touchMode = new OneStepTouchMode();
     private final Pane[] panes = new Pane[COUNT];
     private final ArrayList<Integer> sideOrder = new ArrayList<>();
@@ -64,9 +68,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private final ArrayList<RecentTaskCard> recentCards = new ArrayList<>();
     private final ArrayList<RecentTaskCard> pinnedCards = new ArrayList<>();
     private LinearLayout recentRow;
+    private HorizontalScrollView recentScroll;
+    private ImageView exitButton;
     private boolean recentOrderDirty;
     private boolean covered;
     private boolean hostVisible = true;
+    private volatile boolean suspended;
     private final Executor taskWorker = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "FlymeOneStepTasks");
         thread.setDaemon(true);
@@ -97,6 +104,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private OneStepLauncherBridge.Session desktopSession;
     private boolean desktopBusy;
     private int workspaceUserId;
+    private int workspaceOwnerUserId;
     private int width;
     private int height;
     private int mainSlot;
@@ -121,6 +129,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private ImageView dragSource;
     private ImageView dragPreview;
     private Runnable onSuccess;
+    private RecentTaskCard openingTask;
+    private boolean initialTaskStarted;
+    private boolean rebinding;
     private OneStepPerf perf;
 
     OneStepWorkspace(Context source, Handler handler, Object transitions, Object factory, Object displayAreas)
@@ -129,6 +140,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         DisplayManager displays = source.getSystemService(DisplayManager.class);
         context = source.createDisplayContext(displays.getDisplay(0));
         tasks = new OneStepTaskAccess(source);
+        navigation = new OneStepNavigation(source);
         shell = new OneStepShell(source, handler, transitions, factory, displayAreas, tasks);
         shell.setListener(this);
         try {
@@ -146,7 +158,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     boolean canTrigger() {
         if (state == State.OPENING || state == State.CLOSING || animator != null || dragSession != null
-                || !(running() ? OneHandedTaskHooks.workspaceAllowed(context)
+                || !(running() ? OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId)
                         : OneHandedTaskHooks.environmentAllowed(context))) return false;
         if (running()) return true;
         if (!shell.available()) return false;
@@ -156,7 +168,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     void toggle(boolean fromLeft, Runnable success) {
         handler.post(() -> {
-            if (running()) { close(true); return; }
+            if (active()) return;
             if (state != State.CLOSED || !shell.available() || !OneHandedTaskHooks.environmentAllowed(context)) return;
             state = State.OPENING;
             int request = ++generation;
@@ -183,24 +195,56 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             throws Exception {
         int request = generation;
         workspaceUserId = main.userId;
+        // A managed-profile task can belong to a different user than the visible system UI.
+        workspaceOwnerUserId = OneHandedTaskHooks.currentUserId();
+        suspended = !OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId);
+        navigation.setLocked(!suspended, workspaceOwnerUserId);
         onSuccess = success;
+        openingTask = main;
+        initialTaskStarted = false;
         shell.begin(request, main.userId);
-        activitySession = new OneStepActivitySession(context, handler, main.userId, new OneStepActivitySession.Listener() {
+        shell.setSuspended(suspended);
+        activitySession = new OneStepActivitySession(context, handler, main.userId, workspaceOwnerUserId, new OneStepActivitySession.Listener() {
             @Override public void onAttached(int taskId, Rect bounds, Rect insets) {
                 if (generation != request || state != State.OPENING) return;
                 shell.attachActivity(taskId, () -> {
                     if (generation != request || state != State.OPENING) return;
-                    try { open(recent, fromLeft, bounds, Insets.of(insets.left, insets.top, insets.right, insets.bottom)); }
+                    try {
+                        if (backdrop == null) open(recent, fromLeft, bounds, Insets.of(insets.left, insets.top, insets.right, insets.bottom));
+                        else resizeWorkspace(bounds, insets);
+                    }
                     catch (Exception error) { fail("无法连接工作台窗口", error); }
                 });
             }
 
-            @Override public void onMounted() {
-                if (generation != request || state != State.OPENING || backdrop == null) return;
-                panes[0].load(main);
-                applyTransition(0f);
-                backdrop.postOnAnimation(() -> { if (active() && generation == request) animateWorkspace(true, null); });
+            @Override public void onMounted(boolean visible) {
+                if (generation != request || !active() || backdrop == null) return;
+                rebinding = false;
+                hostVisible = visible;
+                shell.setHostVisible(visible);
+                refreshEnvironment();
+                startInitialTask();
+                if (running() && visible && !suspended && !covered && !OneHandedTaskHooks.shadeOpen())
+                    shell.focus(panes[mainSlot].host);
+                updateInput();
                 scheduleCheck(300);
+            }
+
+            @Override public void onResized(Rect bounds, Rect insets) {
+                if (generation == request && active()) resizeWorkspace(bounds, insets);
+            }
+
+            @Override public void onReattaching(int taskId, Rect bounds, Rect insets, Runnable mount) {
+                if (generation != request || !active()) return;
+                rebinding = true;
+                hostVisible = false;
+                shell.setHostVisible(false);
+                finishAppDrag(-1);
+                updateInput();
+                shell.rebindActivity(taskId, () -> {
+                    if (generation != request || !active()) return;
+                    mount.run();
+                });
             }
 
             @Override public void onImeChanged(int bottom, boolean animating) {
@@ -216,7 +260,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             }
 
             @Override public void onClosed(boolean focusMain) {
-                if (generation == request) close(focusMain);
+                if (generation == request) close(false);
             }
 
             @Override public void onBarColorsChanged(boolean darkIcons) {
@@ -226,12 +270,65 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             @Override public void onVisibilityChanged(boolean visible) {
                 if (generation != request || !active()) return;
                 hostVisible = visible;
+                shell.setHostVisible(visible);
+                OneStepStatusBar.setVisible(visible && !suspended && !covered);
+                if (visible) startInitialTask();
                 updateInput();
                 scheduleCheck(100);
             }
         });
-        handler.postDelayed(openingTimeout, 12000);
+        if (!suspended) handler.postDelayed(openingTimeout, 12000);
         activitySession.start();
+        scheduleCheck(300);
+    }
+
+    private void startInitialTask() {
+        if (state != State.OPENING || suspended || rebinding || !hostVisible || initialTaskStarted || openingTask == null
+                || backdrop == null || activitySession == null || !activitySession.isMounted()) return;
+        initialTaskStarted = panes[0].load(openingTask);
+        if (!initialTaskStarted) return;
+        applyTransition(0f);
+        int request = generation;
+        backdrop.postOnAnimation(() -> { if (active() && generation == request) animateWorkspace(true, null); });
+    }
+
+    private void resizeWorkspace(Rect screen, Rect insets) {
+        if (!active() || workspace == null) return;
+        finishAppDrag(-1);
+        if (animator != null) animator.end();
+        if (transitionAnimator != null) transitionAnimator.end();
+        cancelImeAnimator();
+        screenBounds.set(screen);
+        updateLogicalBounds(screen, Insets.of(insets.left, insets.top, insets.right, insets.bottom));
+        contentBounds.set(logicalBounds);
+        width = contentBounds.width();
+        height = contentBounds.height();
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, height);
+        params.leftMargin = contentBounds.left - screen.left;
+        params.topMargin = contentBounds.top - screen.top;
+        workspace.setLayoutParams(params);
+        frames = layout();
+        int panesTop = frames[mainSlot].top;
+        for (int slot : sideOrder) panesTop = Math.min(panesTop, frames[slot].top);
+        FrameLayout.LayoutParams strip = (FrameLayout.LayoutParams) recentStrip.getLayoutParams();
+        strip.height = dp(TOOLBAR_HEIGHT_DP);
+        strip.leftMargin = strip.rightMargin = dp(WORKSPACE_MARGIN_DP);
+        strip.topMargin = Math.max(0, panesTop - dp(TOOLBAR_HEIGHT_DP + PANE_GAP_DP));
+        recentStrip.setLayoutParams(strip);
+        exitButton.setPadding(dp(16), dp(16), dp(16), dp(16));
+        exitButton.setLayoutParams(new LinearLayout.LayoutParams(dp(56), dp(56)));
+        recentRow.setPadding(dp(8), 0, dp(8), 0);
+        recentOrderDirty = true;
+        updateRecentIcons();
+        for (Pane pane : panes) if (pane != null) {
+            position(pane.container, frames[pane.slot]);
+            pane.container.setTranslationX(0);
+            pane.container.setTranslationY(0);
+            pane.updateAppearance();
+            pane.updateGeometry();
+        }
+        positionForIme();
+        workspace.post(this::updateInput);
     }
 
     private void open(List<RecentTaskCard> recent, boolean fromLeft, Rect screen, Insets insets) throws Exception {
@@ -262,13 +359,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         for (int i = 1; i < COUNT; i++) sideOrder.add(i);
         frames = layout();
         backdrop = new WorkspaceRoot();
+        backdrop.setVisibility(suspended ? View.INVISIBLE : View.VISIBLE);
         backdrop.setClipChildren(false);
         backdrop.setClipToPadding(false);
-        backdrop.setOnClickListener(v -> { if (dragSession == null) close(true); });
+        backdrop.setOnClickListener(v -> { });
         workspace = new FrameLayout(context);
         workspace.setClipChildren(false);
         workspace.setClipToPadding(false);
-        workspace.setOnClickListener(v -> { if (dragSession == null) close(true); });
+        workspace.setOnClickListener(v -> { });
         if (Build.VERSION.SDK_INT >= 35) workspace.setRequestedFrameRate(120f);
         FrameLayout.LayoutParams workspaceParams = new FrameLayout.LayoutParams(width, height);
         workspaceParams.leftMargin = contentBounds.left - screen.left;
@@ -292,7 +390,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         activitySession.setView(backdrop);
         perf = new OneStepPerf(backdrop, handler, generation);
         touchMode.enable();
-        OneStepStatusBar.setVisible(true);
+        OneStepStatusBar.setVisible(!suspended);
     }
 
     private Rect[] layout() {
@@ -453,7 +551,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             cancelImeAnimator();
             imeOffset = nextOffset;
             blockInput(true);
-            workspace.setTranslationY(-nextOffset);
+            translateForIme(nextOffset);
             OneStepStatusBar.setImeVisible(imeBottom > 0);
             if (!imeAnimating) workspace.post(this::updateInput);
             return;
@@ -464,6 +562,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         OneStepStatusBar.setImeVisible(imeBottom > 0);
         float startOffset = -workspace.getTranslationY();
         if (startOffset == nextOffset) {
+            translateForIme(nextOffset);
             workspace.post(this::updateInput);
             return;
         }
@@ -474,7 +573,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         imeAnimator = movement;
         movement.setDuration(nextOffset > startOffset ? 280 : 220);
         movement.setInterpolator(EASING);
-        movement.addUpdateListener(value -> workspace.setTranslationY(-(float) value.getAnimatedValue()));
+        movement.addUpdateListener(value -> translateForIme((float) value.getAnimatedValue()));
         movement.addListener(new AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(Animator animation) {
                 if (imeAnimator != animation) return;
@@ -496,6 +595,20 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             current.removeAllListeners();
             current.removeAllUpdateListeners();
             current.cancel();
+        }
+    }
+
+    private void translateForIme(float offset) {
+        workspace.setTranslationY(-offset);
+        if (recentStrip != null) {
+            int top = ((FrameLayout.LayoutParams) recentStrip.getLayoutParams()).topMargin;
+            // The only exit control must remain reachable when the keyboard lifts the panes.
+            recentStrip.setTranslationY(Math.max(0f, offset - top));
+            float elevation = 0f;
+            if (offset > top) for (Pane pane : panes) if (pane != null)
+                elevation = Math.max(elevation, pane.container.getElevation());
+            recentStrip.setTranslationZ(elevation);
+            recentStrip.bringToFront();
         }
     }
 
@@ -546,7 +659,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private void select(int slot) {
-        if (!running() || covered || slot == mainSlot || animator != null || transitionAnimator != null
+        if (!running() || suspended || rebinding || covered || slot == mainSlot || animator != null || transitionAnimator != null
                 || imeAnimator != null || imeAnimating || dragSession != null || desktopBusy) return;
         Pane selected = panes[slot];
         if (selected.host == null && !selected.replacing) { enterDesktop(slot, true); return; }
@@ -743,7 +856,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void updateInput() {
         if (!shellImeControlled) applyActivityIme();
-        boolean blocked = !running() || covered || !hostVisible || panesBusy() || desktopBusy || animator != null || transitionAnimator != null
+        boolean blocked = !running() || suspended || rebinding || covered || !hostVisible || panesBusy() || desktopBusy || animator != null || transitionAnimator != null
                 || imeAnimator != null || imeAnimating || dragSession != null;
         blockInput(blocked);
         Pane main = panes[mainSlot];
@@ -777,6 +890,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 obscured.op(touchable, Region.Op.DIFFERENCE);
             }
         }
+        if (recentStrip != null) {
+            Rect toolbar = new Rect();
+            if (recentStrip.getGlobalVisibleRect(toolbar)) obscured.op(toolbar, Region.Op.UNION);
+        }
         try {
             boolean changed = false;
             for (Pane pane : panes) if (pane != null && pane.host != null) {
@@ -801,7 +918,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private View createRecentStrip(List<RecentTaskCard> recent) {
+        LinearLayout toolbar = new LinearLayout(context);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        toolbar.setOnClickListener(v -> { });
         HorizontalScrollView strip = new HorizontalScrollView(context);
+        recentScroll = strip;
         strip.setHorizontalScrollBarEnabled(false);
         strip.setFillViewport(true);
         strip.setContentDescription("应用选择栏，点击切换主窗口，长按拖入任意窗口");
@@ -809,9 +930,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         background.setColor(0x80171c25);
         background.setCornerRadius(dp(18));
         background.setStroke(Math.max(1, dp(0.7f)), 0x30ffffff);
-        strip.setBackground(background);
-        strip.setClipToOutline(true);
-        strip.setElevation(dp(4));
+        toolbar.setBackground(background);
+        toolbar.setClipToOutline(true);
+        toolbar.setElevation(dp(4));
         recentRow = new LinearLayout(context);
         recentRow.setGravity(Gravity.CENTER_VERTICAL);
         recentRow.setPadding(dp(8), 0, dp(8), 0);
@@ -820,8 +941,29 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         recentCards.addAll(recent);
         recentOrderDirty = true;
         strip.addView(recentRow, new HorizontalScrollView.LayoutParams(-2, -1));
+        toolbar.addView(strip, new LinearLayout.LayoutParams(0, -1, 1f));
+        View divider = new View(context);
+        divider.setBackgroundColor(0x30ffffff);
+        toolbar.addView(divider, new LinearLayout.LayoutParams(Math.max(1, dp(0.7f)), dp(28)));
+        exitButton = new ImageView(context);
+        exitButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        exitButton.setPadding(dp(16), dp(16), dp(16), dp(16));
+        // The workspace uses SystemUI's Context; resolve module resources explicitly.
+        try {
+            Context module = context.createPackageContext(com.example.flymestatusbarsizer.BuildConfig.APPLICATION_ID, 0);
+            exitButton.setImageDrawable(module.getDrawable(R.drawable.ic_workspace_exit));
+        } catch (Exception error) {
+            exitButton.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
+            exitButton.setColorFilter(Color.WHITE);
+        }
+        exitButton.setBackground(new RippleDrawable(ColorStateList.valueOf(0x30ffffff), null, null));
+        exitButton.setContentDescription("退出工作台");
+        exitButton.setTooltipText("退出工作台");
+        exitButton.setFocusable(true);
+        exitButton.setOnClickListener(v -> { if (active() && dragSession == null) close(true); });
+        toolbar.addView(exitButton, new LinearLayout.LayoutParams(dp(56), dp(56)));
         updateRecentIcons();
-        return strip;
+        return toolbar;
     }
 
     private static boolean sameEntry(RecentTaskCard a, RecentTaskCard b) {
@@ -857,7 +999,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private boolean canChangeTask() {
-        return running() && !covered && hostVisible && !panesBusy() && !desktopBusy && animator == null
+        return running() && !suspended && !rebinding && !covered && hostVisible && !panesBusy() && !desktopBusy && animator == null
                 && transitionAnimator == null && imeAnimator == null && !imeAnimating
                 && dragSession == null && !OneHandedTaskHooks.shadeOpen();
     }
@@ -897,8 +1039,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     });
                 });
             }
-            if (!pinnedCards.isEmpty() && recentStrip instanceof HorizontalScrollView)
-                ((HorizontalScrollView) recentStrip).scrollTo(0, 0);
+            if (!pinnedCards.isEmpty() && recentScroll != null) recentScroll.scrollTo(0, 0);
         }
         for (ImageView icon : recentIcons) {
             RecentTaskCard card = (RecentTaskCard) icon.getTag();
@@ -1144,24 +1285,38 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     void refresh() {
-        handler.post(() -> { if (active() && !OneHandedTaskHooks.workspaceAllowed(context)) close(false); });
+        handler.post(() -> { if (active()) { refreshEnvironment(); scheduleCheck(100); } });
     }
 
-    void stop(String reason) {
-        Runnable action = () -> {
-            if (state != State.CLOSED) {
-                Log.i(TAG, "Closing workspace: " + reason);
-                close(false);
+    boolean blocksNavigation() {
+        return active() && !suspended
+                && OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId);
+    }
+
+    private void refreshEnvironment() {
+        if (!active()) return;
+        boolean next = !OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId);
+        try { navigation.setLocked(!next, workspaceOwnerUserId); }
+        catch (Exception error) { fail("无法更新工作台导航状态", error); return; }
+        if (suspended == next) return;
+        suspended = next;
+        shell.setSuspended(next);
+        OneStepStatusBar.setVisible(!suspended && !covered && hostVisible);
+        if (backdrop != null) backdrop.setVisibility(suspended ? View.INVISIBLE : View.VISIBLE);
+        if (suspended) {
+            handler.removeCallbacks(openingTimeout);
+            finishAppDrag(-1);
+            if (animator != null) animator.end();
+            if (transitionAnimator != null) transitionAnimator.end();
+        } else {
+            if (state == State.OPENING) {
+                handler.removeCallbacks(openingTimeout);
+                handler.postDelayed(openingTimeout, 12000);
+                startInitialTask();
             }
-        };
-        if (android.os.Looper.myLooper() == handler.getLooper()) action.run();
-        else handler.post(action);
-    }
-
-    void beforeRecents() {
-        if (state == State.CLOSED) return;
-        shell.beforeRecents();
-        stop("recents started");
+            if (hostVisible && !covered && !OneHandedTaskHooks.shadeOpen()) shell.focus(panes[mainSlot] == null ? null : panes[mainSlot].host);
+        }
+        updateInput();
     }
 
     private void scheduleCheck(long delay) {
@@ -1172,18 +1327,18 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void checkTasks() {
         if (!active()) return;
-        if (!OneHandedTaskHooks.workspaceAllowed(context)) { close(false); return; }
-        shell.checkFocus(generation);
-        scheduleCheck(taskNotifications ? 3000 : 700);
+        refreshEnvironment();
+        if (!suspended && !rebinding) shell.checkFocus(generation);
+        scheduleCheck(suspended ? 700 : taskNotifications ? 3000 : 700);
     }
 
     @Override public void onCoverageChanged(boolean value) {
         if (!active()) return;
         covered = value;
-        OneStepStatusBar.setVisible(!value);
+        OneStepStatusBar.setVisible(!value && !suspended && hostVisible);
         if (value) {
             finishAppDrag(-1);
-        } else if (running() && !panesBusy() && !OneHandedTaskHooks.shadeOpen()) {
+        } else if (running() && !suspended && !rebinding && hostVisible && !panesBusy() && !OneHandedTaskHooks.shadeOpen()) {
             shell.focus(panes[mainSlot].host);
         }
         updateInput();
@@ -1206,7 +1361,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void acceptNavigation(OneStepShell.Navigation navigation, int attempt) {
         if (!active() || navigation.generation != generation || navigation.cancelled) return;
-        if (!running() || animator != null || transitionAnimator != null || panesBusy()
+        if (!running() || suspended || rebinding || animator != null || transitionAnimator != null || panesBusy()
                 || dragSession != null || desktopBusy || OneHandedTaskHooks.shadeOpen()) {
             if (attempt < 100) handler.postDelayed(() -> acceptNavigation(navigation, attempt + 1), 50);
             else shell.abandonNavigation(navigation);
@@ -1424,7 +1579,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     @Override public void onFailure(String message, Exception error) { if (active()) fail(message, error); }
-    @Override public void onExternalTransition() { close(false); }
 
     private void close(boolean focusMain) {
         if (state == State.CLOSED) return;
@@ -1437,12 +1591,15 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
         if (focusMain && running()) haptic(HapticFeedbackConstants.CONTEXT_CLICK);
         state = State.CLOSING;
+        if (exitButton != null) exitButton.setEnabled(false);
+        releaseNavigation();
         clearPaneTapHighlight();
         disconnectDesktop();
         handler.removeCallbacks(openingTimeout);
         handler.removeCallbacks(check);
         handler.removeCallbacks(taskChanged);
         onSuccess = null;
+        openingTask = null;
         blockInput(true);
         cancelAnimator(true);
         cancelAnimator(false);
@@ -1473,6 +1630,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         backdrop = null;
         workspace = null;
         recentStrip = null;
+        recentScroll = null;
+        exitButton = null;
         recentIcons.clear();
         recentCards.clear();
         pinnedCards.clear();
@@ -1482,6 +1641,19 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         generation++;
         desktopBusy = false;
         state = State.CLOSED;
+        suspended = false;
+        rebinding = false;
+        initialTaskStarted = false;
+        releaseNavigation();
+    }
+
+    private void releaseNavigation() {
+        if (active()) return;
+        try { navigation.setLocked(false, workspaceOwnerUserId); }
+        catch (Exception error) {
+            Log.w(TAG, "Navigation release will retry", error);
+            handler.postDelayed(this::releaseNavigation, 500);
+        }
     }
 
     private void fail(String message, Exception error) {
@@ -1661,9 +1833,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
 
         void updateGeometry() {
-            if (host == null || !active()) return;
+            if (!active()) return;
             // Keep the task surface at 1:1 inside TaskView; only the container scales it.
-            shell.geometry(host, logicalBounds, logicalBounds.width(), logicalBounds.height(), slot == mainSlot);
+            if (host != null) shell.geometry(host, logicalBounds, logicalBounds.width(), logicalBounds.height(), slot == mainSlot);
+            if (launchHost != null) shell.geometry(launchHost, logicalBounds, logicalBounds.width(), logicalBounds.height(), slot == mainSlot);
         }
     }
 }

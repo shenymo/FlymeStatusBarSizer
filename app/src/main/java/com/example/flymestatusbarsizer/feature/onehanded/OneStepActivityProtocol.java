@@ -21,6 +21,7 @@ final class OneStepActivityProtocol {
     static final int BAR_COLORS = ATTACH + 4;
     static final int VISIBILITY = ATTACH + 5;
     static final int REMOUNT = ATTACH + 6;
+    static final int DETACH = ATTACH + 7;
     static final int SURFACE = IBinder.FIRST_CALL_TRANSACTION;
     static final int FINISH = SURFACE + 1;
 

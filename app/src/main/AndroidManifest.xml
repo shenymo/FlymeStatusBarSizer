@@ -56,6 +56,7 @@
             android:name=".feature.onehanded.OneStepActivity"
             android:theme="@style/OneStepTheme"
             android:label="应用工作台"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode|density|fontScale|locale|layoutDirection|colorMode"
             android:exported="true"
             android:permission="android.permission.STATUS_BAR_SERVICE"
             android:taskAffinity="${applicationId}.workspace"

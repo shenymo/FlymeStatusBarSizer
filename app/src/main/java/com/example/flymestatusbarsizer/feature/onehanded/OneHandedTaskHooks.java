@@ -13,7 +13,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
-import android.view.Display;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
@@ -24,6 +23,7 @@ import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
@@ -92,13 +92,38 @@ public final class OneHandedTaskHooks {
         // Optional lifecycle hooks must not prevent initialization on another Flyme release.
         installImePositionObserver(module, loader);
         try {
+            Method home = Class.forName("com.flyme.systemui.navigationbar.MBackButtonController", false, loader)
+                    .getDeclaredMethod("toHome");
+            home.setAccessible(true);
+            module.intercept(home, chain -> {
+                OneStepWorkspace current = controller;
+                return current != null && current.blocksNavigation() ? null : chain.proceed();
+            });
+        } catch (Throwable error) { Log.w(TAG, "mBack Home guard unavailable", error); }
+        try {
             Class<?> recents = Class.forName("com.android.wm.shell.recents.RecentsTransitionHandler", false, loader);
+            Class<?> runner = Class.forName("android.view.IRecentsAnimationRunner", false, loader);
+            Class<?> snapshots = Array.newInstance(Class.forName("android.window.TaskSnapshot", false, loader), 0).getClass();
             for (Method method : recents.getDeclaredMethods()) {
                 if (!"startRecentsTransition".equals(method.getName())) continue;
+                int runnerIndex = -1;
+                Class<?>[] parameters = method.getParameterTypes();
+                for (int i = 0; i < parameters.length; i++) if (parameters[i] == runner) runnerIndex = i;
+                if (runnerIndex < 0) continue;
+                int callbackIndex = runnerIndex;
                 method.setAccessible(true);
                 module.intercept(method, chain -> {
                     OneStepWorkspace current = controller;
-                    if (current != null) current.beforeRecents();
+                    if (current != null && current.blocksNavigation()) {
+                        // Normally disabled SysUiState flags prevent the launcher from starting.
+                        // Complete an already queued request as cancelled, without starting a WCT.
+                        try {
+                            Object callback = chain.getArg(callbackIndex);
+                            if (callback != null) OneStepReflection.call(callback, "onAnimationCanceled",
+                                    new Class<?>[]{int[].class, snapshots}, new int[0], Array.newInstance(snapshots.getComponentType(), 0));
+                        } catch (Exception error) { Log.w(TAG, "Cannot cancel workspace recents request", error); }
+                        return null;
+                    }
                     return chain.proceed();
                 });
             }
@@ -179,48 +204,60 @@ public final class OneHandedTaskHooks {
 
     private static void registerEnvironment(Context context, Handler handler) {
         IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_OFF);
+        filter.addAction(Intent.ACTION_SCREEN_ON);
+        filter.addAction(Intent.ACTION_USER_PRESENT);
         filter.addAction(Intent.ACTION_CLOSE_SYSTEM_DIALOGS);
         filter.addAction("android.intent.action.USER_SWITCHED");
         context.registerReceiver(new BroadcastReceiver() {
             @Override public void onReceive(Context c, Intent intent) {
-                if (Intent.ACTION_CLOSE_SYSTEM_DIALOGS.equals(intent.getAction())) {
-                    String reason = intent.getStringExtra("reason");
-                    if ("homekey".equals(reason) || "recentapps".equals(reason)
-                            || "globalactions".equals(reason)) stop(reason);
-                } else stop(intent.getAction());
+                refresh();
             }
         }, filter, null, handler, Context.RECEIVER_EXPORTED);
         context.registerComponentCallbacks(new ComponentCallbacks() {
-            @Override public void onConfigurationChanged(Configuration config) { stop("configuration changed"); }
-            @Override public void onLowMemory() { stop("low memory"); }
+            @Override public void onConfigurationChanged(Configuration config) { refresh(); }
+            @Override public void onLowMemory() { }
         });
         DisplayManager manager = context.getSystemService(DisplayManager.class);
         manager.registerDisplayListener(new DisplayManager.DisplayListener() {
-            int rotation = manager.getDisplay(0).getRotation();
-            @Override public void onDisplayAdded(int displayId) {}
-            @Override public void onDisplayRemoved(int displayId) { if (displayId == 0) stop("display removed"); }
+            @Override public void onDisplayAdded(int displayId) { if (displayId == 0) refresh(); }
+            @Override public void onDisplayRemoved(int displayId) { if (displayId == 0) refresh(); }
             @Override public void onDisplayChanged(int displayId) {
-                if (displayId != 0) return;
-                Display display = manager.getDisplay(0);
-                if (display == null || display.getRotation() != rotation) {
-                    stop("rotation changed");
-                    if (display != null) rotation = display.getRotation();
-                }
+                if (displayId == 0) refresh();
             }
         }, handler);
     }
 
-    private static void stop(String reason) {
-        OneStepWorkspace current = controller;
-        if (current != null) current.stop(reason);
-    }
-
     static boolean environmentAllowed(Context context) {
-        return environmentAllowed(context, false);
+        if (!installed) return false;
+        ModuleConfig config = ModuleConfig.load(context);
+        if (!config.enabled || !config.assistantGestureEnabled
+                || config.sideGestureAction != SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE
+                || (config.assistantGestureScenes & SettingsStore.ASSISTANT_GESTURE_SCENE_NORMAL) == 0) return false;
+        Object edge = edgeHandler.get();
+        Object flags = ReflectUtils.invokeNoArg(ReflectUtils.getField(edge, "mSysUiState"), "getFlags");
+        long blocked = BLOCKED_FLAGS & ~262144L;
+        return flags instanceof Number && (((Number) flags).longValue() & blocked) == 0
+                && AssistantGestureScenes.current(edge) == SettingsStore.ASSISTANT_GESTURE_SCENE_NORMAL
+                && workspaceAllowed(context, -1);
     }
 
-    static boolean workspaceAllowed(Context context) {
-        return environmentAllowed(context, true);
+    static boolean workspaceAllowed(Context context, int userId) {
+        KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
+        PowerManager power = context.getSystemService(PowerManager.class);
+        DisplayManager displays = context.getSystemService(DisplayManager.class);
+        if (!installed || keyguard == null || keyguard.isKeyguardLocked()
+                || power == null || !power.isInteractive() || displays == null || displays.getDisplay(0) == null)
+            return false;
+        if (userId >= 0) {
+            try {
+                if (currentUserId() != userId) return false;
+            } catch (Exception error) { return false; }
+        }
+        return true;
+    }
+
+    static int currentUserId() throws ReflectiveOperationException {
+        return (Integer) Class.forName("android.app.ActivityManager").getMethod("getCurrentUser").invoke(null);
     }
 
     static boolean shadeOpen() {
@@ -232,23 +269,4 @@ public final class OneHandedTaskHooks {
                 || (flags instanceof Number && (((Number) flags).longValue() & (4L | 2048L | 1073741824L)) != 0);
     }
 
-    private static boolean environmentAllowed(Context context, boolean continuing) {
-        if (!installed) return false;
-        ModuleConfig config = ModuleConfig.load(context);
-        if (!config.enabled || !config.assistantGestureEnabled
-                || config.sideGestureAction != SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE
-                || (config.assistantGestureScenes & SettingsStore.ASSISTANT_GESTURE_SCENE_NORMAL) == 0) return false;
-        Object edge = edgeHandler.get();
-        Object flags = ReflectUtils.invokeNoArg(ReflectUtils.getField(edge, "mSysUiState"), "getFlags");
-        // Opening still requires the normal app scene. A running workspace survives the shade,
-        // control center and their dialogs, while keyguard/sleep/user-switch protection remains.
-        long blocked = BLOCKED_FLAGS & ~262144L;
-        if (continuing) blocked &= ~(4L | 2048L | 32768L);
-        if (!(flags instanceof Number) || (((Number) flags).longValue() & blocked) != 0
-                || (!continuing && AssistantGestureScenes.current(edge)
-                != SettingsStore.ASSISTANT_GESTURE_SCENE_NORMAL)) return false;
-        KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
-        PowerManager power = context.getSystemService(PowerManager.class);
-        return keyguard != null && !keyguard.isKeyguardLocked() && power != null && power.isInteractive();
-    }
 }

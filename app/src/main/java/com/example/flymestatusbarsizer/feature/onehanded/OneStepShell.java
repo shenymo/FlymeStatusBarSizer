@@ -41,7 +41,6 @@ final class OneStepShell {
         void onReady(Host host);
         void onRemoved(Host host);
         void onFailure(String message, Exception error);
-        void onExternalTransition();
         void onLaunchFailed(Host host);
         void onTaskReused(Host launching, Host existing);
         void onNavigation(Navigation navigation);
@@ -215,6 +214,7 @@ final class OneStepShell {
     private final ArrayList<Host> hosts = new ArrayList<>();
     private final ArrayList<Host> retired = new ArrayList<>();
     private final java.util.concurrent.atomic.AtomicInteger closeRequest = new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger activityRequest = new java.util.concurrent.atomic.AtomicInteger();
     private final Map<IBinder, Integer> pending = new HashMap<>();
     private final Map<Object, Navigation> incoming = new HashMap<>();
     private final java.util.HashSet<Object> declined = new java.util.HashSet<>();
@@ -228,6 +228,8 @@ final class OneStepShell {
     private volatile boolean transitionBusy;
     private volatile boolean accepting;
     private volatile boolean covered;
+    private volatile boolean suspended;
+    private volatile boolean hostVisible = true;
     private volatile int session;
     private volatile int activityTaskId = -1;
     private volatile Object activityToken;
@@ -271,7 +273,7 @@ final class OneStepShell {
                 executor.execute(() -> {
                     for (Host host : new ArrayList<>(hosts)) {
                         if (host.controller != args[0] || !current(host)) continue;
-                        if (fullscreen) requestExternalExit("TaskView requested fullscreen");
+                        if (fullscreen) focus(mainHost());
                         else restoreOne(host, () -> { if (listener != null) listener.onRemoved(host); }, 0);
                         break;
                     }
@@ -469,6 +471,8 @@ final class OneStepShell {
         activityToken = null;
         activityUserId = userId;
         covered = false;
+        suspended = false;
+        hostVisible = true;
         declined.clear();
         accepting = true;
         Log.i(OneStepImeDiagnostics.TAG, "workspace-begin session=" + session + " user=" + userId);
@@ -476,16 +480,21 @@ final class OneStepShell {
 
     void attachActivity(int taskId, Runnable ready) {
         int request = session;
-        executor.execute(() -> attachActivity(taskId, ready, request, 0));
+        int binding = activityRequest.incrementAndGet();
+        executor.execute(() -> attachActivity(taskId, ready, request, binding, 0));
     }
 
-    private void attachActivity(int taskId, Runnable ready, int request, int attempt) {
-        if (!accepting || request != session) return;
+    private void attachActivity(int taskId, Runnable ready, int request, int binding, int attempt) {
+        if (!accepting || request != session || binding != activityRequest.get()) return;
         try {
+            if (activityTaskId == taskId && activityToken != null && imeSession != null) {
+                ui.post(() -> { if (accepting && request == session && binding == activityRequest.get()) ready.run(); });
+                return;
+            }
             Object appeared = appeared(taskId);
             if (appeared == null) {
                 if (attempt >= 100) throw new IllegalStateException("Workspace task did not appear");
-                later(() -> attachActivity(taskId, ready, request, attempt + 1), 50);
+                later(() -> attachActivity(taskId, ready, request, binding, attempt + 1), 50);
                 return;
             }
             Object info = OneStepReflection.call(appeared, "getTaskInfo");
@@ -495,18 +504,46 @@ final class OneStepShell {
                 throw new IllegalStateException("Workspace must be an independent fullscreen Activity");
             activityToken = OneStepReflection.get(info, "token");
             activityTaskId = taskId;
+            if (imeSession != null) imeSession.close();
             imeSession = new OneStepImePolicy.Session((IBinder) OneStepTaskAccess.token(info), (task, placement) ->
                     ui.post(() -> {
                         if (accepting && request == session && listener != null)
                             listener.onImeRoutingChanged(task, placement);
                     }));
+            for (Host host : hosts) if (current(host) && host.imeRegistered)
+                imeSession.add((IBinder) host.card.token);
             Object wct = transaction();
             bool(wct, "setForceTranslucent", activityToken, false);
             bool(wct, "setAlwaysOnTop", activityToken, false);
-            reorder(wct, activityToken, true);
+            if (!suspended) reorder(wct, activityToken, true);
             OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
-            ui.post(() -> { if (accepting && request == session) ready.run(); });
+            ui.post(() -> { if (accepting && request == session && binding == activityRequest.get()) ready.run(); });
         } catch (Exception error) { fail("无法接管工作台窗口", error); }
+    }
+
+    void rebindActivity(int taskId, Runnable ready) {
+        int request = session;
+        int binding = activityRequest.incrementAndGet();
+        executor.execute(() -> {
+            if (!accepting || request != session || binding != activityRequest.get()) return;
+            try {
+                if (waitingOpening != null) finishWaitingOpening(waitingOpening, true);
+                if (openingAnimation != null) finishOpeningAnimation(openingAnimation, true, true);
+                try (SurfaceControl.Transaction tx = new SurfaceControl.Transaction()) {
+                    for (Host host : hosts) if (current(host) && host.borrowed) {
+                        host.surfaceMissing = true;
+                        if (host.leash != null && host.leash.isValid())
+                            tx.reparent(host.leash, rootSurface()).setVisibility(host.leash, false);
+                    }
+                    tx.apply();
+                }
+                if (activityTaskId != taskId) {
+                    activityTaskId = -1;
+                    activityToken = null;
+                }
+                attachActivity(taskId, ready, request, binding, 0);
+            } catch (Exception error) { fail("无法重新连接工作台窗口", error); }
+        });
     }
 
     boolean isActivityTask(Object info) {
@@ -530,7 +567,7 @@ final class OneStepShell {
         executor.execute(() -> {
             hosts.add(host);
             if (!current(host)) releaseView(host);
-            else if (host.home()) later(() -> {
+            else if (host.home()) afterResume(() -> {
                 if (current(host) && !host.ready) launchFailed(host,
                         new IllegalStateException("HOME surface attach timed out"));
             }, 10000);
@@ -566,7 +603,7 @@ final class OneStepShell {
         executor.execute(() -> {
             hosts.add(host);
             if (!current(host)) releaseView(host);
-            else later(() -> {
+            else afterResume(() -> {
                 if (!current(host) || host.ready) return;
                 if (openingAnimation != null && openingAnimation.app == host)
                     finishOpeningAnimation(openingAnimation, true, true);
@@ -600,7 +637,7 @@ final class OneStepShell {
 
     void focus(Host host) {
         executor.execute(() -> {
-            if (!accepting || covered || (host != null && (!current(host) || !host.borrowed))) return;
+            if (!accepting || suspended || !hostVisible || covered || (host != null && (!current(host) || !host.borrowed))) return;
             try {
                 // Change both roles in one WM transaction, with the new main task on top.
                 // Separate disable/enable transitions can briefly focus Home or another app.
@@ -627,12 +664,23 @@ final class OneStepShell {
         executor.execute(() -> restoreAll(focusTask, finished, 0, request));
     }
 
-    /** Called before native recents starts, on the same Shell executor as its transition handler. */
-    void beforeRecents() {
-        accepting = false;
-        int request = closeRequest.incrementAndGet();
-        executor.execute(() -> restoreAll(-1, null, 0, request));
+    void setSuspended(boolean value) {
+        suspended = value;
+        int request = session;
+        executor.execute(() -> {
+            if (!accepting || request != session) return;
+            try {
+                Object wct = transaction();
+                for (Host host : hosts) if (current(host) && host.borrowed && !host.closing) {
+                    bool(wct, "setFocusable", host.token, !suspended && host.main);
+                    present(host, null, null);
+                }
+                OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
+            } catch (Exception error) { fail("无法暂停或恢复应用窗口", error); }
+        });
     }
+
+    void setHostVisible(boolean value) { hostVisible = value; }
 
     private boolean current(Host host) {
         return host != null && accepting && session == host.session && !host.released && !host.restoring;
@@ -640,6 +688,7 @@ final class OneStepShell {
 
     private void acquire(Host host) {
         if (!current(host) || host.closing || host.borrowed || !host.initialized || host.logicalBounds.isEmpty()) return;
+        if (suspended) { later(() -> acquire(host), 250); return; }
         if (host.navigation != null && host.navigation.cancelled) {
             restoreOne(host, () -> { if (listener != null) listener.onLaunchFailed(host); }, 0);
             return;
@@ -938,7 +987,7 @@ final class OneStepShell {
                     return;
                 }
                 // A listener handoff or window-mode conversion is not an application death.
-                requestExternalExit("hosted task listener changed: task=" + host.card.taskId);
+                releaseExternalHost(host, info);
                 return;
             }
             host.closing = true;
@@ -1271,6 +1320,7 @@ final class OneStepShell {
     }
 
     private Navigation offerNavigation(Object info) throws Exception {
+        if (!accepting || suspended) return null;
         RecentTaskCard card = OneStepTaskAccess.runningCard(info);
         if (card == null || card.userId != activityUserId || declined.contains(card.token)
                 || !OneStepTaskAccess.externalTaskAllowed(info)) return null;
@@ -1287,7 +1337,7 @@ final class OneStepShell {
             if (accepting && session == navigation.generation && !navigation.cancelled && listener != null)
                 listener.onNavigation(navigation);
         });
-        later(() -> {
+        afterResume(() -> {
             if (incoming.get(card.token) != navigation) return;
             if (navigation.target != null && current(navigation.target))
                 launchFailed(navigation.target, new IllegalStateException("Navigation attach timed out"));
@@ -1380,7 +1430,7 @@ final class OneStepShell {
 
     void checkFocus(int request) {
         executor.execute(() -> {
-            if (!accepting || request != session) return;
+            if (!accepting || suspended || request != session) return;
             try {
                 Object focused = null;
                 for (Object info : tasks.roots()) {
@@ -1473,7 +1523,7 @@ final class OneStepShell {
                 later(() -> { if (current(host)) taskRemoved(host); }, 0);
                 continue;
             }
-            if (host != null && current(host) && host.main && host.ready && !host.home()
+            if (!suspended && hostVisible && host != null && current(host) && host.main && host.ready && !host.home()
                     && !host.animationPending && !host.coveredByLaunch && mode == 4
                     && !externalOpening && !covered && incoming.isEmpty() && !pending.containsKey(args[0])) {
                 // Apps may implement root back with moveTaskToBack instead of finishing.
@@ -1504,16 +1554,8 @@ final class OneStepShell {
                     || ReflectUtils.getIntField(info, "parentTaskId", -1) != -1)) {
                 // The system has already chosen a new container/mode. Preserve that choice.
                 if (!pending.containsKey(args[0])) {
-                    host.externalReturn = true;
-                    host.originalMode = windowMode;
-                    Object config = OneStepReflection.get(OneStepReflection.get(info, "configuration"), "windowConfiguration");
-                    host.originalBounds = new Rect((Rect) OneStepReflection.call(config, "getBounds"));
-                    host.originalPosition = new Point((Point) OneStepReflection.get(info, "positionInParent"));
-                    host.originalAlwaysOnTop = Boolean.TRUE.equals(OneStepReflection.call(config, "isAlwaysOnTop"));
-                    host.returnParent = ReflectUtils.getIntField(info, "parentTaskId", -1);
-                    host.returnDisplay = OneStepTaskAccess.display(info);
-                    requestExternalExit("hosted task changed container: task=" + host.card.taskId + " mode=" + windowMode);
-                    return;
+                    releaseExternalHost(host, info);
+                    continue;
                 }
             }
 
@@ -1527,18 +1569,19 @@ final class OneStepShell {
         }, 0);
     }
 
-    private void requestExternalExit() {
-        requestExternalExit("TaskView requested external transition");
-    }
-
-    private void requestExternalExit(String reason) {
-        if (!accepting) return;
-        Log.i(TAG, "Leaving workspace: " + reason);
-        accepting = false;
-        int request = closeRequest.incrementAndGet();
-        executor.execute(() -> restoreAll(-1, () -> {
-            if (listener != null) listener.onExternalTransition();
-        }, 0, request));
+    private void releaseExternalHost(Host host, Object info) throws Exception {
+        if (!current(host) || host.restoring) return;
+        // A task moved to PiP/another container no longer belongs to this pane.
+        // Release just that task while keeping every other pane and the workspace alive.
+        host.externalReturn = true;
+        host.originalMode = windowMode(info);
+        Object config = OneStepReflection.get(OneStepReflection.get(info, "configuration"), "windowConfiguration");
+        host.originalBounds = new Rect((Rect) OneStepReflection.call(config, "getBounds"));
+        host.originalPosition = new Point((Point) OneStepReflection.get(info, "positionInParent"));
+        host.originalAlwaysOnTop = Boolean.TRUE.equals(OneStepReflection.call(config, "isAlwaysOnTop"));
+        host.returnParent = ReflectUtils.getIntField(info, "parentTaskId", -1);
+        host.returnDisplay = OneStepTaskAccess.display(info);
+        restoreOne(host, () -> { if (listener != null) listener.onRemoved(host); }, 0);
     }
 
     private void reattach(SurfaceControl.Transaction tx) throws Exception {
@@ -1598,7 +1641,7 @@ final class OneStepShell {
                 // Keep a newly appeared app hidden until the native stage takes over,
                 // even if SurfaceView relayout temporarily changes sibling surface order.
                 .setAlpha(surface, host.coveredByLaunch || (host.animationPending && !host.openingRevealed) ? 0f : 1f)
-                .setVisibility(surface, true);
+                .setVisibility(surface, !suspended);
         OneStepReflection.call(tx, "setWindowCrop", new Class<?>[]{SurfaceControl.class, Rect.class},
                 surface, crop);
         // A Surface frame-rate vote is a scheduling preference, not a per-app FPS cap.
@@ -1896,8 +1939,8 @@ final class OneStepShell {
     private void reorder(Object wct, Object token, boolean top) throws ReflectiveOperationException { bool(wct, "reorder", token, top); }
 
     private void arrangeTasks(Object wct, Host focused) throws ReflectiveOperationException {
+        if (covered || suspended || !hostVisible) return;
         if (activityToken == null) throw new IllegalStateException("Workspace Activity is not attached");
-        if (covered) return;
         // Only the workspace panes are above this opaque fullscreen task. Their logical
         // viewports overlap, so they stay translucent to WM; the Activity below them
         // occludes unrelated apps and Home without hiding or freezing those processes.
@@ -1956,8 +1999,26 @@ final class OneStepShell {
         try { OneStepReflection.call(executor, "executeDelayed", new Class<?>[]{Runnable.class, long.class}, action, delay); }
         catch (Exception error) { Log.w(TAG, "Shell executor stopped", error); }
     }
+
+    private void afterResume(Runnable action, long delay) {
+        int request = session;
+        later(() -> {
+            if (!accepting || request != session) return;
+            if (suspended) waitForResume(action, delay, request);
+            else action.run();
+        }, delay);
+    }
+
+    private void waitForResume(Runnable action, long delay, int request) {
+        if (!accepting || request != session) return;
+        if (suspended) later(() -> waitForResume(action, delay, request), 500);
+        else afterResume(action, delay);
+    }
     private void fail(String message, Exception error) {
-        ui.post(() -> { if (listener != null) listener.onFailure(message, error); });
+        int request = session;
+        ui.post(() -> {
+            if (accepting && request == session && listener != null) listener.onFailure(message, error);
+        });
     }
     private static Object objectMethod(Object proxy, String name, Object[] args) {
         if ("equals".equals(name)) return proxy == args[0];

@@ -1,8 +1,10 @@
 package com.example.flymestatusbarsizer.feature.onehanded;
 
 import android.app.Activity;
+import android.app.KeyguardManager;
 import android.app.WallpaperColors;
 import android.app.WallpaperManager;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.PixelFormat;
@@ -14,6 +16,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Parcel;
+import android.os.PowerManager;
 import android.os.RemoteException;
 import android.util.Log;
 import android.view.SurfaceControlViewHost;
@@ -47,13 +50,17 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
     private boolean remountPending;
     private boolean closing;
     private boolean finished;
+    private boolean started;
     private int surfaceWidth;
     private int surfaceHeight;
+    private IBinder lastHostToken;
+    private Rect lastStableInsets;
+    private int surfaceRequest;
     private final HashSet<WindowInsetsAnimation> imeAnimations = new HashSet<>();
     private int imeBottom;
     private int sentImeBottom = -1;
     private boolean sentImeAnimating;
-    private final Runnable timeout = () -> closeWorkspace(true);
+    private final Runnable timeout = this::onAttachmentTimeout;
     private final Runnable forceFinish = this::finishHost;
 
     @Override public void onCreate(Bundle state) {
@@ -61,8 +68,8 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         Bundle extras = getIntent().getExtras();
         control = extras == null ? null : extras.getBinder(OneStepActivityProtocol.EXTRA_CONTROL);
         int serverUid = extras == null ? -1 : extras.getInt(OneStepActivityProtocol.EXTRA_UID, -1);
-        // A restored Activity must never reconnect to a session whose surfaces were destroyed.
-        if (Build.VERSION.SDK_INT < 33 || state != null || control == null || serverUid < 0) {
+        // A recreation may reconnect only to the still-live session capability.
+        if (Build.VERSION.SDK_INT < 33 || control == null || !control.isBinderAlive() || serverUid < 0) {
             finishHost();
             return;
         }
@@ -74,9 +81,10 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
                 if (Binder.getCallingUid() != serverUid) throw new SecurityException("Workspace owner mismatch");
                 data.enforceInterface(OneStepActivityProtocol.CALLBACK);
                 if (code == OneStepActivityProtocol.SURFACE) {
+                    int request = data.readInt();
                     SurfaceControlViewHost.SurfacePackage pack = data.readTypedObject(
                             SurfaceControlViewHost.SurfacePackage.CREATOR);
-                    handler.post(() -> mount(pack));
+                    handler.post(() -> mount(pack, request));
                 } else handler.post(OneStepActivity.this::finishHost);
                 return true;
             }
@@ -115,6 +123,7 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
             // Layout receives the final insets before the first animation frame.
             // Forward only animated insets until the IME has finished moving.
             if (imeAnimations.isEmpty()) sendInsets(insets);
+            surface.post(this::updateSurfaceLayout);
             return insets;
         });
         root.setWindowInsetsAnimationCallback(new WindowInsetsAnimation.Callback(
@@ -147,7 +156,7 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         }
         watchWallpaperColors();
         getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> closeWorkspace(true));
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> { });
         handler.postDelayed(timeout, 12000);
     }
 
@@ -191,35 +200,80 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
 
     @Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         if (closing || finished || width <= 0 || height <= 0) return;
-        if (attached) {
-            if (width != surfaceWidth || height != surfaceHeight) { closeWorkspace(false); return; }
-            if (!mounted && !remountPending) {
-                remountPending = true;
-                send(OneStepActivityProtocol.REMOUNT, data -> data.writeStrongBinder(surface.getHostToken()));
-            }
-            return;
-        }
         IBinder hostToken = surface.getHostToken();
         WindowInsets insets = surface.getRootWindowInsets();
         if (hostToken == null || insets == null) {
-            surface.postOnAnimation(() -> surfaceChanged(holder, format, surface.getWidth(), surface.getHeight()));
+            surface.postOnAnimation(this::updateSurfaceLayout);
+            return;
+        }
+        Insets stable = insets.getInsetsIgnoringVisibility(
+                WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+        Rect stableRect = new Rect(stable.left, stable.top, stable.right, stable.bottom);
+        if (attached && width == surfaceWidth && height == surfaceHeight
+                && hostToken.equals(lastHostToken) && stableRect.equals(lastStableInsets)) {
+            if (!mounted && !remountPending) {
+                remountPending = true;
+                scheduleAttachmentTimeout();
+                int request = ++surfaceRequest;
+                send(OneStepActivityProtocol.REMOUNT, data -> {
+                    data.writeStrongBinder(hostToken);
+                    data.writeInt(request);
+                });
+            }
             return;
         }
         attached = true;
+        mounted = false;
+        remountPending = true;
+        scheduleAttachmentTimeout();
         surfaceWidth = width;
         surfaceHeight = height;
-        Insets stable = insets.getInsetsIgnoringVisibility(
-                WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+        lastHostToken = hostToken;
+        lastStableInsets = stableRect;
+        int request = ++surfaceRequest;
         send(OneStepActivityProtocol.ATTACH, data -> {
             data.writeStrongBinder(hostToken);
             data.writeInt(getTaskId());
             data.writeInt(width);
             data.writeInt(height);
-            data.writeTypedObject(new Rect(stable.left, stable.top, stable.right, stable.bottom), 0);
+            data.writeTypedObject(stableRect, 0);
+            data.writeInt(request);
         });
     }
 
-    private void mount(SurfaceControlViewHost.SurfacePackage pack) {
+    private void updateSurfaceLayout() {
+        if (surface != null && surface.getHolder().getSurface().isValid())
+            surfaceChanged(surface.getHolder(), PixelFormat.TRANSLUCENT, surface.getWidth(), surface.getHeight());
+    }
+
+    private void scheduleAttachmentTimeout() {
+        handler.removeCallbacks(timeout);
+        handler.postDelayed(timeout, 12000);
+    }
+
+    private void onAttachmentTimeout() {
+        if (closing || finished || mounted) return;
+        PowerManager power = getSystemService(PowerManager.class);
+        KeyguardManager keyguard = getSystemService(KeyguardManager.class);
+        if (power != null && !power.isInteractive() || keyguard != null && keyguard.isKeyguardLocked()) {
+            handler.postDelayed(timeout, 700);
+            return;
+        }
+        closeWorkspace(false);
+    }
+
+    @Override public void onConfigurationChanged(Configuration config) {
+        super.onConfigurationChanged(config);
+        surface.requestApplyInsets();
+        surface.post(this::updateSurfaceLayout);
+        sendBarColors();
+    }
+
+    private void mount(SurfaceControlViewHost.SurfacePackage pack, int request) {
+        if (request != surfaceRequest) {
+            if (pack != null) pack.release();
+            return;
+        }
         remountPending = false;
         if (pack == null) { closeWorkspace(true); return; }
         if (closing || finished || !attached || mounted || !surface.getHolder().getSurface().isValid()) {
@@ -236,8 +290,11 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         }
         mounted = true;
         handler.removeCallbacks(timeout);
-        send(OneStepActivityProtocol.MOUNTED, data -> {});
-        send(OneStepActivityProtocol.VISIBILITY, data -> data.writeBoolean(true));
+        send(OneStepActivityProtocol.MOUNTED, data -> {
+            data.writeInt(request);
+            data.writeBoolean(started);
+        });
+        send(OneStepActivityProtocol.VISIBILITY, data -> data.writeBoolean(started));
         sendBarColors();
         if (imeAnimations.isEmpty()) sendInsets(surface.getRootWindowInsets());
         else sendImeInsets(imeBottom);
@@ -289,18 +346,21 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
 
     @Override protected void onStart() {
         super.onStart();
+        started = true;
         if (attached && !closing && !finished)
             send(OneStepActivityProtocol.VISIBILITY, data -> data.writeBoolean(true));
     }
 
     @Override protected void onStop() {
+        started = false;
         super.onStop();
         if (!closing && !finished)
             send(OneStepActivityProtocol.VISIBILITY, data -> data.writeBoolean(false));
     }
 
     @Override protected void onDestroy() {
-        if (!finished) closeWorkspace(false);
+        if (!finished && !closing) send(OneStepActivityProtocol.DETACH,
+                data -> data.writeBoolean(!isChangingConfigurations()));
         handler.removeCallbacks(timeout);
         handler.removeCallbacks(forceFinish);
         if (control != null && death != null) control.unlinkToDeath(death, 0);

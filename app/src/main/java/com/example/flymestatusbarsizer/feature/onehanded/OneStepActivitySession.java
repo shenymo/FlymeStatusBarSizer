@@ -17,6 +17,7 @@ import android.util.Log;
 import android.view.SurfaceControlViewHost;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 
 import com.example.flymestatusbarsizer.BuildConfig;
 
@@ -24,7 +25,9 @@ import com.example.flymestatusbarsizer.BuildConfig;
 final class OneStepActivitySession {
     interface Listener {
         void onAttached(int taskId, Rect bounds, Rect insets);
-        void onMounted();
+        void onReattaching(int taskId, Rect bounds, Rect insets, Runnable mount);
+        void onResized(Rect bounds, Rect insets);
+        void onMounted(boolean visible);
         void onImeChanged(int bottom, boolean animating);
         void onBarColorsChanged(boolean darkIcons);
         void onClosed(boolean focusMain);
@@ -36,27 +39,38 @@ final class OneStepActivitySession {
     private final Listener listener;
     private final IBinder control;
     private final int userId;
+    private final int ownerUserId;
     private final int clientUid;
     private IBinder client;
     private IBinder hostToken;
     private IBinder.DeathRecipient death;
     private SurfaceControlViewHost host;
+    private FrameLayout content;
+    private View view;
     private boolean closed;
     private boolean mounted;
+    private boolean attaching;
     private int width;
     private int height;
+    private int activityTaskId = -1;
+    private Rect stableInsets;
+    private int revision;
+    private int surfaceRequest;
+    private final Runnable restart = this::restartHost;
+    private final Runnable restartTimeout = this::checkRestartTimeout;
 
-    OneStepActivitySession(Context context, Handler handler, int userId, Listener listener) throws Exception {
+    OneStepActivitySession(Context context, Handler handler, int userId, int ownerUserId, Listener listener) throws Exception {
         this.context = context;
         this.handler = handler;
         this.userId = userId;
+        this.ownerUserId = ownerUserId;
         this.listener = listener;
         clientUid = ((Number) OneStepReflection.call(context.getPackageManager(), "getPackageUidAsUser",
                 new Class<?>[]{String.class, int.class}, BuildConfig.APPLICATION_ID, userId)).intValue();
         control = new Binder() {
             @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
                     throws RemoteException {
-                if (code < OneStepActivityProtocol.ATTACH || code > OneStepActivityProtocol.REMOUNT)
+                if (code < OneStepActivityProtocol.ATTACH || code > OneStepActivityProtocol.DETACH)
                     return super.onTransact(code, data, reply, flags);
                 if (Binder.getCallingUid() != clientUid) throw new SecurityException("Workspace client mismatch");
                 data.enforceInterface(OneStepActivityProtocol.CONTROL);
@@ -69,13 +83,17 @@ final class OneStepActivitySession {
                         int w = data.readInt();
                         int h = data.readInt();
                         Rect insets = data.readTypedObject(Rect.CREATOR);
-                        handler.post(() -> attach(callback, token, taskId, w, h, insets));
+                        int attachRequest = data.readInt();
+                        handler.post(() -> attach(callback, token, taskId, w, h, insets, attachRequest));
                         break;
                     case OneStepActivityProtocol.MOUNTED:
+                        int mountedRequest = data.readInt();
+                        boolean mountedVisible = data.readBoolean();
                         handler.post(() -> {
-                            if (!closed && callback.equals(client) && host != null && !mounted) {
+                            if (!closed && callback.equals(client) && host != null && !mounted
+                                    && mountedRequest == surfaceRequest) {
                                 mounted = true;
-                                listener.onMounted();
+                                listener.onMounted(mountedVisible);
                             }
                         });
                         break;
@@ -112,19 +130,34 @@ final class OneStepActivitySession {
                         break;
                     case OneStepActivityProtocol.REMOUNT:
                         IBinder newToken = data.readStrongBinder();
+                        int remountRequest = data.readInt();
                         handler.post(() -> {
                             if (closed || !callback.equals(client) || host == null) return;
-                            // A recreated SurfaceView can mount a fresh parcel of the same
-                            // embedded hierarchy; its window/input capability must still match.
                             if (!java.util.Objects.equals(hostToken, newToken)) {
-                                listener.onClosed(false);
+                                attach(callback, newToken, activityTaskId, width, height, stableInsets, remountRequest);
                                 return;
                             }
+                            surfaceRequest = remountRequest;
+                            mounted = false;
                             try { sendSurface(); }
                             catch (Exception error) {
                                 Log.w(OneHandedTaskHooks.TAG, "Cannot remount workspace", error);
                                 listener.onClosed(false);
                             }
+                        });
+                        break;
+                    case OneStepActivityProtocol.DETACH:
+                        boolean restartActivity = data.readBoolean();
+                        handler.post(() -> {
+                            if (closed || !callback.equals(client)) return;
+                            disconnectClient();
+                            if (view == null) attaching = false;
+                            revision++;
+                            mounted = false;
+                            listener.onVisibilityChanged(false);
+                            // Config recreation will attach itself; a finished host needs a new task.
+                            handler.removeCallbacks(restart);
+                            handler.postDelayed(restart, restartActivity ? 100 : 2000);
                         });
                         break;
                     default: break;
@@ -149,23 +182,72 @@ final class OneStepActivitySession {
                 new Class<?>[]{Intent.class, Bundle.class, UserHandle.class}, intent, options.toBundle(), user);
     }
 
-    private void attach(IBinder callback, IBinder token, int taskId, int w, int h, Rect insets) {
-        if (closed || client != null || token == null || taskId < 0 || insets == null
-                || w <= 0 || h <= 0 || w > 16384 || h > 16384
-                || insets.left < 0 || insets.top < 0 || insets.right < 0 || insets.bottom < 0
-                || insets.left + insets.right >= w || insets.top + insets.bottom >= h) {
+    private void attach(IBinder callback, IBinder token, int taskId, int w, int h, Rect insets, int surfaceRequest) {
+        if (closed) {
             finish(callback);
             return;
         }
-        client = callback;
-        hostToken = token;
+        if (token == null || taskId < 0 || insets == null
+                || w <= 0 || h <= 0 || w > 16384 || h > 16384
+                || insets.left < 0 || insets.top < 0 || insets.right < 0 || insets.bottom < 0
+                || insets.left + insets.right >= w || insets.top + insets.bottom >= h) {
+            // Rotation can deliver old insets with the new surface size for one frame.
+            // Keep the current host until a coherent layout arrives.
+            return;
+        }
+        if (client != null && !client.equals(callback) && taskId != activityTaskId) {
+            finish(callback);
+            return;
+        }
+        boolean sameHost = callback.equals(client) && token.equals(hostToken);
+        if (!callback.equals(client)) {
+            disconnectClient();
+            client = callback;
+            death = () -> handler.post(() -> {
+                if (!closed && callback.equals(client)) listener.onClosed(false);
+            });
+            try { callback.linkToDeath(death, 0); }
+            catch (RemoteException error) { listener.onClosed(false); return; }
+        }
+        handler.removeCallbacks(restart);
+        handler.removeCallbacks(restartTimeout);
+        activityTaskId = taskId;
         width = w;
         height = h;
-        death = () -> handler.post(() -> { if (!closed) listener.onClosed(false); });
+        stableInsets = new Rect(insets);
+        this.surfaceRequest = surfaceRequest;
+        mounted = false;
+        int request = ++revision;
         try {
-            callback.linkToDeath(death, 0);
-            listener.onAttached(taskId, new Rect(0, 0, w, h), insets);
-        } catch (RemoteException | RuntimeException error) {
+            if (view == null) {
+                hostToken = token;
+                if (!attaching) {
+                    attaching = true;
+                    listener.onAttached(taskId, new Rect(0, 0, w, h), insets);
+                }
+            } else if (sameHost && host != null) {
+                host.relayout(width, height);
+                listener.onResized(new Rect(0, 0, w, h), insets);
+                sendSurface();
+            } else {
+                listener.onVisibilityChanged(false);
+                listener.onReattaching(taskId, new Rect(0, 0, w, h), insets, () -> {
+                    if (closed || request != revision || !callback.equals(client)) return;
+                    try {
+                        listener.onResized(new Rect(0, 0, width, height), stableInsets);
+                        // Shell has moved task leashes out of the old surface tree first.
+                        if (content != null) content.removeAllViews();
+                        if (host != null) host.release();
+                        host = null;
+                        hostToken = token;
+                        createHost();
+                    } catch (Exception error) {
+                        Log.w(OneHandedTaskHooks.TAG, "Cannot reattach workspace", error);
+                        listener.onClosed(false);
+                    }
+                });
+            }
+        } catch (Exception error) {
             Log.w(OneHandedTaskHooks.TAG, "Workspace Activity disconnected", error);
             listener.onClosed(false);
         }
@@ -173,7 +255,17 @@ final class OneStepActivitySession {
 
     void setView(View view) throws Exception {
         if (closed || client == null || host != null) throw new IllegalStateException("No workspace Activity");
+        this.view = view;
+        createHost();
+        listener.onResized(new Rect(0, 0, width, height), stableInsets);
+    }
+
+    boolean isMounted() { return mounted && !closed; }
+
+    private void createHost() throws Exception {
         host = new SurfaceControlViewHost(context, context.getDisplay(), hostToken);
+        content = new FrameLayout(context);
+        content.addView(view, new FrameLayout.LayoutParams(-1, -1));
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(width, height,
                 WindowManager.LayoutParams.TYPE_APPLICATION,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
@@ -184,8 +276,44 @@ final class OneStepActivitySession {
         // This embedded window is a child of the Activity's SurfaceView.
         // TaskView opens input holes for cross-UID application windows inside this surface tree.
         OneStepReflection.call(params, "setTrustedOverlay");
-        OneStepReflection.call(host, "setView", new Class<?>[]{View.class, WindowManager.LayoutParams.class}, view, params);
+        OneStepReflection.call(host, "setView", new Class<?>[]{View.class, WindowManager.LayoutParams.class}, content, params);
         sendSurface();
+    }
+
+    private void disconnectClient() {
+        if (client != null && death != null) {
+            try { client.unlinkToDeath(death, 0); }
+            catch (RuntimeException error) { Log.w(OneHandedTaskHooks.TAG, "Workspace client already disconnected", error); }
+        }
+        client = null;
+        death = null;
+    }
+
+    private void restartHost() {
+        if (closed || client != null) return;
+        if (!OneHandedTaskHooks.workspaceAllowed(context, ownerUserId)) {
+            handler.postDelayed(restart, 500);
+            return;
+        }
+        try {
+            start();
+            handler.removeCallbacks(restartTimeout);
+            handler.postDelayed(restartTimeout, 12000);
+        }
+        catch (Exception error) {
+            Log.w(OneHandedTaskHooks.TAG, "Cannot recreate workspace Activity", error);
+            listener.onClosed(false);
+        }
+    }
+
+    private void checkRestartTimeout() {
+        if (closed || client != null) return;
+        if (!OneHandedTaskHooks.workspaceAllowed(context, ownerUserId)) {
+            handler.postDelayed(restartTimeout, 700);
+            return;
+        }
+        Log.w(OneHandedTaskHooks.TAG, "Workspace Activity did not reconnect");
+        listener.onClosed(false);
     }
 
     private void sendSurface() throws RemoteException {
@@ -193,7 +321,10 @@ final class OneStepActivitySession {
         if (pack == null) throw new IllegalStateException("Workspace surface is unavailable");
         try {
             if (!OneStepActivityProtocol.send(client, OneStepActivityProtocol.CALLBACK,
-                    OneStepActivityProtocol.SURFACE, data -> data.writeTypedObject(pack, 0))) {
+                    OneStepActivityProtocol.SURFACE, data -> {
+                        data.writeInt(surfaceRequest);
+                        data.writeTypedObject(pack, 0);
+                    })) {
                 throw new RemoteException("Workspace Activity rejected its surface");
             }
         } finally { pack.release(); }
@@ -202,16 +333,20 @@ final class OneStepActivitySession {
     void close() {
         if (closed) return;
         closed = true;
+        revision++;
+        handler.removeCallbacks(restart);
+        handler.removeCallbacks(restartTimeout);
         if (client != null) {
-            if (death != null) client.unlinkToDeath(death, 0);
             finish(client);
         }
+        disconnectClient();
         if (host != null) {
             try { host.release(); }
             catch (RuntimeException error) { Log.w(OneHandedTaskHooks.TAG, "Cannot release workspace surface", error); }
             host = null;
         }
-        client = null;
+        view = null;
+        content = null;
         hostToken = null;
     }
 
