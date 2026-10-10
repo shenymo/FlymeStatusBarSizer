@@ -19,6 +19,7 @@ final class OneStepWorkspaceTransition {
     boolean returning;
     boolean removing;
     boolean sourcePrepared;
+    private boolean contentPlaced;
 
     OneStepWorkspaceTransition(RecentTaskCard card, int session, SurfaceControl surface,
                                SurfaceControl parent, Rect bounds, Point position) throws Exception {
@@ -37,6 +38,22 @@ final class OneStepWorkspaceTransition {
     boolean owns(OneStepShell.Host host) {
         return host != null && host.session == session && host.card != null
                 && card.sameTask(host.card);
+    }
+
+    static Rect contentBounds(Rect taskBounds, Rect viewport) {
+        Rect bounds = new Rect(taskBounds);
+        if (!bounds.intersect(viewport))
+            throw new IllegalStateException("Workspace task has no usable content bounds");
+        return bounds;
+    }
+
+    void placeContent(Rect viewport) {
+        if (exiting || contentPlaced) return;
+        // The original surface includes system-bar insets; the hosted surface does
+        // not. Change its destination together with the first hosted crop, so the
+        // content stays below the status bar instead of stretching to task bounds.
+        frame.set(contentBounds(originalBounds, viewport));
+        contentPlaced = true;
     }
 
     void place(SurfaceControl.Transaction tx, SurfaceControl leash, Rect crop, boolean visible)

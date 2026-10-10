@@ -702,7 +702,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private RectF transitionFrame(int slot, boolean opened) {
         if (!opened && slot == mainSlot) {
-            RectF fullscreen = new RectF(transitionBounds);
+            // Task bounds include system bars. The animated pane contains only the
+            // stable content viewport, which must return to the same screen region.
+            RectF fullscreen = new RectF(OneStepWorkspaceTransition.contentBounds(transitionBounds, logicalBounds));
             fullscreen.offset(-contentBounds.left, -contentBounds.top);
             return fullscreen;
         }

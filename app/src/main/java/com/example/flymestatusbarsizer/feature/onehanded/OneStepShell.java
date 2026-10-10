@@ -597,6 +597,7 @@ final class OneStepShell {
             // close() can run on UI immediately after the last frame was queued. Let
             // that frame reach the fullscreen endpoint before the queued restoration.
             if (motion == null || !motion.owns(host) || motion.returning) return;
+            if (!motion.exiting && !host.ready) return;
             try {
                 motion.frame.set(next);
                 motion.radius = radius;
@@ -651,10 +652,18 @@ final class OneStepShell {
         if (motion == null || motion.returning) return;
         Host owner = null;
         for (Host host : hosts) if (motion.owns(host) && host.borrowed && host.collected) { owner = host; break; }
-        Rect crop = owner == null ? new Rect(0, 0, motion.originalBounds.width(), motion.originalBounds.height())
-                : surfaceCrop(owner);
+        Rect crop = workspaceTransitionCrop(owner);
         motion.place(tx, owner == null ? motion.surface : owner.leash, crop,
                 !suspended && !covered && hostVisible);
+    }
+
+    private Rect workspaceTransitionCrop(Host host) {
+        OneStepWorkspaceTransition motion = workspaceTransition;
+        if (host != null && host.borrowed && host.collected) {
+            motion.placeContent(host.logicalBounds);
+            return surfaceCrop(host);
+        }
+        return new Rect(0, 0, motion.originalBounds.width(), motion.originalBounds.height());
     }
 
     void attachActivity(int taskId, Runnable ready) {
@@ -1254,8 +1263,7 @@ final class OneStepShell {
                 // A staged source belongs to the session before its TaskView exists.
                 // Apply after setupAnimHierarchy, using the transition's surface handle too.
                 Host owner = find(info);
-                Rect crop = owner != null && owner.collected ? surfaceCrop(owner)
-                        : new Rect(0, 0, workspaceTransition.originalBounds.width(), workspaceTransition.originalBounds.height());
+                Rect crop = workspaceTransitionCrop(owner);
                 SurfaceControl surface = (SurfaceControl) OneStepReflection.call(change, "getLeash");
                 workspaceTransition.place(start, surface, crop, !suspended && !covered && hostVisible);
                 workspaceTransition.place(finish, surface, crop, !suspended && !covered && hostVisible);
@@ -1895,7 +1903,7 @@ final class OneStepShell {
     private void placeSurface(Host host, SurfaceControl surface, SurfaceControl parent, SurfaceControl.Transaction tx)
             throws Exception {
         if (workspaceTransition != null && workspaceTransition.owns(host) && !workspaceTransition.returning) {
-            workspaceTransition.place(tx, surface, surfaceCrop(host), !suspended && !covered && hostVisible);
+            workspaceTransition.place(tx, surface, workspaceTransitionCrop(host), !suspended && !covered && hostVisible);
             return;
         }
         // Only the native animator may transform these temporary wrappers until it finishes.
