@@ -41,6 +41,8 @@ public final class OneHandedTaskHooks {
     private static volatile Object shellTransitions;
     private static volatile Object taskViewFactory;
     private static volatile Object taskDisplayAreas;
+    private static volatile boolean imeVisible;
+    private static volatile boolean imePositioning;
 
     public static final SideGestureActions.Action ACTION = new SideGestureActions.Action() {
         @Override public boolean isReady() {
@@ -146,7 +148,28 @@ public final class OneHandedTaskHooks {
                             }
                         }
                         OneStepWorkspace current = controller;
-                        if (current != null && args != null && args.length > 0 && Integer.valueOf(0).equals(args[0])) {
+                        if (args != null && args.length > 0 && Integer.valueOf(0).equals(args[0])) {
+                            // Entry needs IME state before the workspace has a window.
+                            switch (method.getName()) {
+                                case "onImeVisibilityChanged":
+                                    imeVisible = (Boolean) args[1];
+                                    break;
+                                case "onImeStartPositioning":
+                                    imePositioning = true;
+                                    imeVisible = (Boolean) args[3];
+                                    break;
+                                case "onImeEndPositioning":
+                                    imePositioning = false;
+                                    break;
+                                case "onImeControlTargetChanged":
+                                    if (!(Boolean) args[1]) {
+                                        imePositioning = false;
+                                        imeVisible = false;
+                                    }
+                                    break;
+                                default: break;
+                            }
+                            if (current == null) return method.getReturnType() == int.class ? 0 : null;
                             switch (method.getName()) {
                                 case "onImeStartPositioning":
                                     current.onShellImeStart((Integer) args[2], (Boolean) args[3], (Boolean) args[4]);
@@ -210,6 +233,13 @@ public final class OneHandedTaskHooks {
         filter.addAction("android.intent.action.USER_SWITCHED");
         context.registerReceiver(new BroadcastReceiver() {
             @Override public void onReceive(Context c, Intent intent) {
+                if (Intent.ACTION_CLOSE_SYSTEM_DIALOGS.equals(intent.getAction())
+                        && "homekey".equals(intent.getStringExtra("reason"))) {
+                    // Pressure Home injects keys through NavBarExt, bypassing toHome().
+                    OneStepWorkspace current = controller;
+                    if (current != null) current.exitToHome();
+                    return;
+                }
                 refresh();
             }
         }, filter, null, handler, Context.RECEIVER_EXPORTED);
@@ -267,6 +297,13 @@ public final class OneHandedTaskHooks {
         return scene == SettingsStore.ASSISTANT_GESTURE_SCENE_NOTIFICATION
                 || scene == SettingsStore.ASSISTANT_GESTURE_SCENE_CONTROL_CENTER
                 || (flags instanceof Number && (((Number) flags).longValue() & (4L | 2048L | 1073741824L)) != 0);
+    }
+
+    static boolean imeBusy() {
+        Object edge = edgeHandler.get();
+        Object flags = ReflectUtils.invokeNoArg(ReflectUtils.getField(edge, "mSysUiState"), "getFlags");
+        return imeVisible || imePositioning
+                || (flags instanceof Number && (((Number) flags).longValue() & 262144L) != 0);
     }
 
 }

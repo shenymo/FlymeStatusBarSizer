@@ -53,6 +53,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private static final int WORKSPACE_MARGIN_DP = 4;
     private static final int PANE_RADIUS_DP = 16;
     private static final int PANE_TAP_HIGHLIGHT_MS = 350;
+    private static final long IME_HIDE_TIMEOUT_MS = 2500;
+    private static final long IME_SETTLE_MS = 100;
     private static final PathInterpolator EASING = new PathInterpolator(0.2f, 0f, 0f, 1f);
     private enum State { CLOSED, OPENING, RUNNING, CLOSING }
     private volatile State state = State.CLOSED;
@@ -138,6 +140,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private boolean initialTaskStarted;
     private boolean entryAnimationStarted;
     private boolean transitionHandoff;
+    private volatile boolean entryStarted;
+    private boolean homeRequested;
     private int closeGeneration;
     private boolean rebinding;
     private OneStepPerf perf;
@@ -178,8 +182,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         handler.post(() -> {
             if (active()) return;
             if (state != State.CLOSED || !shell.available() || !OneHandedTaskHooks.environmentAllowed(context)) return;
+            try { workspaceOwnerUserId = OneHandedTaskHooks.currentUserId(); }
+            catch (Exception error) { Log.w(TAG, "Cannot resolve workspace user", error); return; }
             state = State.OPENING;
             int request = ++generation;
+            handler.postDelayed(openingTimeout, 12000);
             taskWorker.execute(() -> {
                 try {
                     RecentTaskCard main = tasks.focusedTask();
@@ -187,7 +194,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     handler.post(() -> {
                         if (state != State.OPENING || generation != request) return;
                         if (main == null || !OneHandedTaskHooks.environmentAllowed(context)) { close(false); return; }
-                        try { startActivity(main, recent, fromLeft, success); }
+                        try {
+                            if (OneHandedTaskHooks.imeBusy()) {
+                                navigation.hideIme();
+                                awaitEntryImeHidden(main, recent, fromLeft, success, request,
+                                        SystemClock.uptimeMillis() + IME_HIDE_TIMEOUT_MS, 0);
+                            } else startActivity(main, recent, fromLeft, success);
+                        }
                         catch (Exception error) { fail("无法打开应用工作台", error); }
                     });
                 } catch (Exception error) {
@@ -199,6 +212,27 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         });
     }
 
+    private void awaitEntryImeHidden(RecentTaskCard main, List<RecentTaskCard> recent,
+                                    boolean fromLeft, Runnable success, int request,
+                                    long deadline, long hiddenSince) {
+        if (state != State.OPENING || generation != request) return;
+        if (!OneHandedTaskHooks.environmentAllowed(context)) { close(false); return; }
+        long now = SystemClock.uptimeMillis();
+        long settledSince = OneHandedTaskHooks.imeBusy() ? 0 : (hiddenSince == 0 ? now : hiddenSince);
+        if (settledSince != 0 && now - settledSince >= IME_SETTLE_MS) {
+            try { startActivity(main, recent, fromLeft, success); }
+            catch (Exception error) { fail("无法打开应用工作台", error); }
+            return;
+        }
+        if (now >= deadline) {
+            // No task surfaces or navigation locks have been acquired yet.
+            fail("输入法未能收起，请稍后重试", new IllegalStateException("Entry IME hide timed out"));
+            return;
+        }
+        handler.postDelayed(() -> awaitEntryImeHidden(main, recent, fromLeft, success,
+                request, deadline, settledSince), 32);
+    }
+
     private void startActivity(RecentTaskCard main, List<RecentTaskCard> recent, boolean fromLeft, Runnable success)
             throws Exception {
         int request = generation;
@@ -206,6 +240,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         // A managed-profile task can belong to a different user than the visible system UI.
         workspaceOwnerUserId = OneHandedTaskHooks.currentUserId();
         suspended = !OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId);
+        entryStarted = true;
         navigation.setLocked(!suspended, workspaceOwnerUserId);
         onSuccess = success;
         openingTask = main;
@@ -294,6 +329,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 scheduleCheck(100);
             }
         });
+        handler.removeCallbacks(openingTimeout);
         if (!suspended) handler.postDelayed(openingTimeout, 12000);
         shell.prepareWorkspaceEntry(main, bounds -> {
             if (generation != request || state != State.OPENING) return;
@@ -1482,14 +1518,26 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     boolean blocksNavigation() {
-        return active() && !suspended
+        return active() && entryStarted && !suspended
                 && OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId);
+    }
+
+    void exitToHome() {
+        int request = generation;
+        Runnable exit = () -> {
+            if (request != generation || state == State.CLOSED
+                    || !OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId)) return;
+            homeRequested = true;
+            close(false);
+        };
+        if (android.os.Looper.myLooper() == handler.getLooper()) exit.run();
+        else handler.post(exit);
     }
 
     private void refreshEnvironment() {
         if (!active()) return;
         boolean next = !OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId);
-        try { navigation.setLocked(!next, workspaceOwnerUserId); }
+        try { navigation.setLocked(entryStarted && !next, workspaceOwnerUserId); }
         catch (Exception error) { fail("无法更新工作台导航状态", error); return; }
         if (suspended == next) return;
         suspended = next;
@@ -1774,6 +1822,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (state == State.OPENING || state == State.CLOSING || transitionHandoff) close(false);
     }
 
+    @Override public void onHomeRequested() { exitToHome(); }
+
     private void close(boolean focusMain) {
         if (state == State.CLOSED) return;
         if (state == State.CLOSING) {
@@ -1792,6 +1842,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 && main != null && main.host != null && main.host.ready && !rebinding && !panesBusy();
         int closing = ++closeGeneration;
         state = State.CLOSING;
+        releaseNavigation();
         if (exitButton != null) exitButton.setEnabled(false);
         clearPaneTapHighlight();
         disconnectDesktop();
@@ -1859,8 +1910,15 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         rebinding = false;
         initialTaskStarted = false;
         entryAnimationStarted = false;
+        entryStarted = false;
         transitionHandoff = false;
         releaseNavigation();
+        boolean returnHome = homeRequested;
+        homeRequested = false;
+        if (returnHome && OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId)) {
+            try { tasks.startHome(workspaceOwnerUserId); }
+            catch (Exception error) { Log.w(TAG, "Cannot return to Home after restoring workspace", error); }
+        }
     }
 
     private void releaseNavigation() {

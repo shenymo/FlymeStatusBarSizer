@@ -52,6 +52,7 @@ final class OneStepShell {
         void onTaskChanged(Host host, RecentTaskCard previous);
         void onImeRoutingChanged(IBinder task, int placement, RectF inputRegion);
         void onWorkspaceTransitionCancelled();
+        void onHomeRequested();
     }
 
     final class Host {
@@ -509,6 +510,8 @@ final class OneStepShell {
         executor.execute(() -> {
             if (!accepting || request != session) return;
             try {
+                if (OneHandedTaskHooks.imeBusy())
+                    throw new IllegalStateException("IME reopened before workspace entry");
                 Object appeared = appeared(card.taskId);
                 Object info = appeared == null ? null : OneStepReflection.call(appeared, "getTaskInfo");
                 if (!matches(card, info) || taskEnded(info) || suspended
@@ -1743,6 +1746,12 @@ final class OneStepShell {
                     if (ReflectUtils.getBooleanField(info, "isFocused", false)) focused = info;
                 }
                 if (focused == null || OneHandedTaskHooks.shadeOpen()) return;
+                // An embedded desktop keeps the host visible. A fullscreen Home
+                // replacing the host must also close the session if its broadcast was missed.
+                if (!hostVisible && OneStepTaskAccess.home(focused)) {
+                    reportHomeRequested();
+                    return;
+                }
                 if (workspaceTransition != null && matches(workspaceTransition.card, focused)) {
                     setCovered(false);
                     return;
@@ -1763,6 +1772,13 @@ final class OneStepShell {
                 // A focus notification can precede or replace the Shell OPEN callback.
                 if (offerNavigation(focused) == null) setCovered(true);
             } catch (Exception error) { Log.w(TAG, "Cannot inspect workspace focus", error); }
+        });
+    }
+
+    private void reportHomeRequested() {
+        int request = session;
+        ui.post(() -> {
+            if (accepting && request == session && listener != null) listener.onHomeRequested();
         });
     }
 

@@ -152,6 +152,16 @@ final class OneStepTaskAccess {
 
     void focusTask(int id) throws ReflectiveOperationException { focusTask.invoke(service, id); }
 
+    void startHome(int userId) throws ReflectiveOperationException {
+        ActivityOptions options = ActivityOptions.makeBasic();
+        options.setLaunchDisplayId(0);
+        Intent intent = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        OneStepReflection.call(context, "startActivityAsUser",
+                new Class<?>[]{Intent.class, Bundle.class, android.os.UserHandle.class}, intent, options.toBundle(),
+                android.os.UserHandle.getUserHandleForUid(userId * 100000));
+    }
+
     void returnToPage(RecentTaskCard requested) throws ReflectiveOperationException {
         boolean exists = false;
         for (Object info : roots()) if (requested.taskId == taskId(info) && requested.token.equals(token(info))

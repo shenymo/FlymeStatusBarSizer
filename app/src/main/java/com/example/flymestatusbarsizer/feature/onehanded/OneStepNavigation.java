@@ -37,6 +37,18 @@ final class OneStepNavigation {
         }
     }
 
+    void hideIme() throws Exception {
+        // SystemUI has no application window token. Use the same system request as
+        // Shell bubbles, which dismisses the IME belonging to the focused app.
+        try {
+            OneStepReflection.method(service.getClass(), "hideCurrentInputMethodForBubbles", int.class);
+        } catch (NoSuchMethodException legacy) {
+            OneStepReflection.call(service, "hideCurrentInputMethodForBubbles");
+            return;
+        }
+        OneStepReflection.call(service, "hideCurrentInputMethodForBubbles", new Class<?>[]{int.class}, 0);
+    }
+
     private void disable(int flags, int userId) throws Exception {
         // A separate token lets Android combine this with keyguard/pinning/other clients.
         // Clearing our request never clears another client's disabled flags.
