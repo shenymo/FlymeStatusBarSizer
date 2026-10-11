@@ -15,8 +15,9 @@ public final class OneStepWindowLayout {
                                                      int toolbarHeight, int viewportWidth,
                                                      int viewportHeight, int mainSlot,
                                                      List<Integer> sideOrder, boolean mainOnLeft,
-                                                     int landscapeSlot, boolean showLandscape) {
-        if (!showLandscape) {
+                                                     int landscapeSlot, boolean showLandscape,
+                                                     boolean showSideWindows) {
+        if (!showLandscape && showSideWindows) {
             Rect[] portrait = calculateWorkspace(width, height, divider,
                     toolbarHeight + divider,
                     viewportWidth, viewportHeight, mainSlot, sideOrder, mainOnLeft);
@@ -26,17 +27,27 @@ public final class OneStepWindowLayout {
         }
 
         int reservedHeight = toolbarHeight + divider * 2;
-        int landscapeHeight = Math.max(1, Math.min(Math.round(width * 9f / 16f),
-                Math.max(1, (height - reservedHeight) / 3)));
-        int contentTop = landscapeHeight + reservedHeight;
+        int landscapeHeight = showLandscape ? Math.max(1, Math.min(Math.round(width * 9f / 16f),
+                Math.max(1, (height - reservedHeight) / 3))) : 0;
+        int contentTop = Math.min(Math.max(0, height - 1), showLandscape
+                ? landscapeHeight + reservedHeight : toolbarHeight + divider);
         Rect[] result = new Rect[landscapeSlot + 1];
         // Keep the landscape pane large, then fill the lower area with fixed gaps.
         // The workspace derives a shared app viewport from the resulting main frame.
-        calculateHorizontal(result, width, height, contentTop, Math.max(1, height - contentTop),
-                divider, true, mainSlot, sideOrder, sideOrder.size(), mainOnLeft, 0);
-        int landscapeWidth = Math.max(1, Math.min(width, Math.round(landscapeHeight * 16f / 9f)));
-        int left = (width - landscapeWidth) / 2;
-        result[landscapeSlot] = new Rect(left, 0, left + landscapeWidth, landscapeHeight);
+        if (showSideWindows) {
+            calculateHorizontal(result, width, height, contentTop, Math.max(1, height - contentTop),
+                    divider, true, mainSlot, sideOrder, sideOrder.size(), mainOnLeft, 0);
+        } else {
+            result[mainSlot] = new Rect(0, contentTop, width, height);
+            for (int slot : sideOrder) {
+                result[slot] = hiddenRect(width, height, divider);
+            }
+        }
+        if (showLandscape) {
+            int landscapeWidth = Math.max(1, Math.min(width, Math.round(landscapeHeight * 16f / 9f)));
+            int left = (width - landscapeWidth) / 2;
+            result[landscapeSlot] = new Rect(left, 0, left + landscapeWidth, landscapeHeight);
+        } else result[landscapeSlot] = new Rect(0, 0, 1, 1);
         return result;
     }
 
