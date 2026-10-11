@@ -58,5 +58,6 @@ com.android.systemui_dumpdex_jadx/
 /com.android.intentresolver/
 /com.meizu.flyme.launcher/
 /com.meizu.assistant/
-/docs
-/com.flyme.systemuitools
+/docs/
+/com.flyme.systemuitools/
+.yceignore
