@@ -603,7 +603,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         for (int slot : sideOrder) {
             Pane pane = panes[slot];
             // Pending loads count as occupied until they succeed or fail.
-            if (pane != null && (pane.host != null || pane.launchHost != null || pane.replacing)) return false;
+            if (hasPaneContent(pane)) return false;
         }
         return true;
     }
@@ -620,9 +620,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         float scale = scaleForFrame(frame, pane.slot);
         view.setScaleX(scale);
         view.setScaleY(scale);
-        boolean visible = !isSideWindowHidden(pane.slot)
-                && (pane.slot != LANDSCAPE_SLOT || landscapeVisible());
-        view.setVisibility(visible ? View.VISIBLE : View.INVISIBLE);
+        view.setVisibility(isPaneVisible(pane) ? View.VISIBLE : View.INVISIBLE);
     }
 
     void onShellImeStart(int shownTop, boolean showing, boolean floating) {
@@ -1472,7 +1470,16 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private boolean landscapeVisible() {
         Pane pane = panes[LANDSCAPE_SLOT];
-        return dragSession != null || (pane != null && (pane.host != null || pane.launchHost != null || pane.replacing));
+        return dragSession != null || hasPaneContent(pane);
+    }
+
+    private boolean hasPaneContent(Pane pane) {
+        return pane != null && (pane.host != null || pane.launchHost != null || pane.replacing);
+    }
+
+    private boolean isPaneVisible(Pane pane) {
+        return pane != null && !isSideWindowHidden(pane.slot)
+                && (pane.slot != LANDSCAPE_SLOT || landscapeVisible());
     }
 
     private void relayoutPanes() {
@@ -1503,8 +1510,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         boolean changed = Math.abs(startStripY - endStripY) > 0.5f;
         for (Pane pane : panes) if (pane != null) {
             int slot = pane.slot;
-            boolean visible = !isSideWindowHidden(slot)
-                    && (slot != LANDSCAPE_SLOT || landscapeVisible());
+            boolean visible = isPaneVisible(pane);
             endAlpha[slot] = visible ? 1f : 0f;
             if (visible) {
                 end[slot] = transitionFrame(slot, true);
@@ -1945,7 +1951,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         for (int slot = 0; slot < COUNT; slot++) {
             if (isSideWindowHidden(slot)) continue;
             Pane pane = panes[slot];
-            if (pane != null && !pane.replacing && pane.container.getVisibility() == View.VISIBLE
+            if (pane != null && !pane.replacing && isPaneVisible(pane)
+                    && pane.container.getVisibility() == View.VISIBLE
                     && pane.container.getAlpha() > 0.1f && currentPaneFrame(pane).contains(x, y)) return slot;
         }
         return -1;
@@ -2364,7 +2371,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void returnToPrevious(Pane pane, int request) {
         if (!running() || generation != request || !directlyInteractive(pane) || panes[pane.slot] != pane
-                || pane.host != null || pane.launchHost != null || pane.replacing) return;
+                || hasPaneContent(pane)) return;
         if (!canChangeTask()) {
             handler.postDelayed(() -> returnToPrevious(pane, request), 100);
             return;
