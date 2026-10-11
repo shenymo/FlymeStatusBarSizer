@@ -112,6 +112,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private Rect contentBounds;
     private final Rect logicalBounds = new Rect();
     private final Rect portraitBounds = new Rect();
+    private final Rect desktopBounds = new Rect();
     private final Rect landscapeBounds = new Rect();
     private final java.util.Map<OneStepShell.Host, Integer> pendingOrientations = new java.util.IdentityHashMap<>();
     private final java.util.Map<OneStepShell.Host, Integer> requestedOrientations = new java.util.IdentityHashMap<>();
@@ -559,13 +560,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 mainSlot, sideOrder, mainOnLeft, LANDSCAPE_SLOT, showLandscape, !sideWindowsCollapsed);
         int viewportWidth = shortSide;
         int viewportHeight = longSide;
-        if (showLandscape || sideWindowsCollapsed) {
-            Rect main = result[mainSlot];
-            viewportWidth = Math.max(shortSide, main.width());
-            viewportHeight = Math.max(1, Math.round(viewportWidth * (main.height() / (float) main.width())));
-        }
-        // Resize app content to fill the lower area, including when empty side panes
-        // collapse. All lower panes share these bounds.
+        Rect main = result[mainSlot];
+        viewportWidth = Math.max(shortSide, main.width());
+        viewportHeight = Math.max(1, Math.round(viewportWidth
+                * (main.height() / (float) Math.max(1, main.width()))));
         if (portraitBounds.width() != viewportWidth || portraitBounds.height() != viewportHeight)
             imeInputRegion = null;
         portraitBounds.set(logicalBounds.left, logicalBounds.top,
@@ -582,6 +580,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (logicalBounds.isEmpty()) throw new IllegalStateException("Invalid app viewport");
         int shortSide = Math.min(logicalBounds.width(), logicalBounds.height());
         int longSide = Math.max(logicalBounds.width(), logicalBounds.height());
+        desktopBounds.set(logicalBounds.left, logicalBounds.top,
+                logicalBounds.left + shortSide, logicalBounds.top + longSide);
         portraitBounds.set(logicalBounds.left, logicalBounds.top,
                 logicalBounds.left + shortSide, logicalBounds.top + longSide);
         landscapeBounds.set(0, 0, longSide, Math.max(1, Math.round(longSide * 9f / 16f)));
@@ -1181,7 +1181,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private void positionDesktop(Pane pane) {
         if (desktopContainer == null || pane.host != desktopHost || desktopHost == null) return;
         updateDesktopTransform(pane);
-        float scale = Math.max(0.01f, pane.container.getScaleX());
+        float scale = Math.max(0.01f, desktopContainer.getScaleX());
         boolean highlighted = highlightedSlot == pane.slot || tappedSlot == pane.slot;
         desktopBorder.setCornerRadius(pane.cornerRadius);
         desktopBorder.setColor(highlighted ? 0x225aaaff : Color.TRANSPARENT);
@@ -1192,15 +1192,24 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void updateDesktopTransform(Pane pane) {
         if (desktopContainer == null || pane.host != desktopHost || desktopHost == null) return;
+        int desktopWidth = Math.max(1, desktopBounds.width());
+        int desktopHeight = Math.max(1, desktopBounds.height());
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) desktopContainer.getLayoutParams();
-        if (params.width != portraitBounds.width() || params.height != portraitBounds.height()) {
-            desktopContainer.setLayoutParams(new FrameLayout.LayoutParams(portraitBounds.width(), portraitBounds.height()));
+        if (params.width != desktopWidth || params.height != desktopHeight) {
+            desktopContainer.setLayoutParams(new FrameLayout.LayoutParams(desktopWidth, desktopHeight));
         }
         FrameLayout.LayoutParams paneParams = (FrameLayout.LayoutParams) pane.container.getLayoutParams();
-        desktopContainer.setTranslationX(paneParams.leftMargin + pane.container.getTranslationX());
-        desktopContainer.setTranslationY(paneParams.topMargin + pane.container.getTranslationY());
-        desktopContainer.setScaleX(pane.container.getScaleX());
-        desktopContainer.setScaleY(pane.container.getScaleY());
+        float baseWidth = pane.container.getWidth() > 0 ? pane.container.getWidth() : paneParams.width;
+        float baseHeight = pane.container.getHeight() > 0 ? pane.container.getHeight() : paneParams.height;
+        float paneWidth = baseWidth * Math.abs(pane.container.getScaleX());
+        float paneHeight = baseHeight * Math.abs(pane.container.getScaleY());
+        float scale = Math.min(1f, Math.min(paneWidth / desktopWidth, paneHeight / desktopHeight));
+        desktopContainer.setTranslationX(paneParams.leftMargin + pane.container.getTranslationX()
+                + (paneWidth - desktopWidth * scale) / 2f);
+        desktopContainer.setTranslationY(paneParams.topMargin + pane.container.getTranslationY()
+                + (paneHeight - desktopHeight * scale) / 2f);
+        desktopContainer.setScaleX(scale);
+        desktopContainer.setScaleY(scale);
         desktopContainer.setElevation(pane.container.getElevation());
         desktopContainer.setAlpha(desktopHost.ready ? 1f : 0f);
     }
@@ -2769,7 +2778,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     desktopContainer.setForeground(desktopBorder);
                     desktopContainer.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateInput());
                     workspace.addView(desktopContainer,
-                            new FrameLayout.LayoutParams(portraitBounds.width(), portraitBounds.height()));
+                            new FrameLayout.LayoutParams(desktopBounds.width(), desktopBounds.height()));
                 }
                 // Reusing another empty pane changes only geometry and input ownership.
                 if (task.view.getParent() != desktopContainer)
@@ -2793,7 +2802,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
 
         void configureHost(OneStepShell.Host task) {
-            Rect bounds = viewport(slot);
+            Rect bounds = task.home() ? desktopBounds : viewport(slot);
             // Home stays fullscreen in WM; retain its complete source viewport so
             // shortening the pane does not crop away the dock or lower app icons.
             shell.forceLandscape(task, slot == LANDSCAPE_SLOT);
