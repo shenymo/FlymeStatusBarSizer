@@ -103,6 +103,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private WorkspaceRoot backdrop;
     private FrameLayout workspace;
     private View recentStrip;
+    private ImageView sideWindowsButton;
     private ValueAnimator animator;
     private ValueAnimator layoutAnimator;
     private ValueAnimator transitionAnimator;
@@ -150,6 +151,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private int imePlacement = OneStepImePolicy.UNKNOWN;
     private boolean mainOnLeft;
     private boolean sideWindowsCollapsed;
+    private boolean sideWindowsExpanded;
+    private boolean sideWindowsHidden;
     private boolean taskNotifications;
     private float transitionProgress;
     private DragSession dragSession;
@@ -505,6 +508,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         imePlacement = OneStepImePolicy.UNKNOWN;
         sideOrder.clear();
         for (int i = 1; i < LANDSCAPE_SLOT; i++) sideOrder.add(i);
+        sideWindowsExpanded = false;
+        sideWindowsHidden = false;
         frames = layout();
         backdrop = new WorkspaceRoot();
         backdrop.setVisibility(suspended ? View.INVISIBLE : View.VISIBLE);
@@ -600,6 +605,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private boolean shouldCollapseSideWindows() {
         if (dragSession != null) return false;
+        if (sideWindowsHidden) return true;
+        if (sideWindowsExpanded) return false;
         for (int slot : sideOrder) {
             Pane pane = panes[slot];
             // Pending loads count as occupied until they succeed or fail.
@@ -1269,6 +1276,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 || imeAnimator != null || imeAnimating || dragSession != null
                 || (activitySession != null && !activitySession.isMounted());
         blockInput(blocked);
+        if (sideWindowsButton != null) {
+            sideWindowsButton.setEnabled(!blocked);
+            sideWindowsButton.setAlpha(blocked ? 0.45f : 1f);
+            sideWindowsButton.setContentDescription(sideWindowsCollapsed
+                    ? "显示侧边窗口" : "隐藏侧边窗口");
+            sideWindowsButton.setTooltipText(sideWindowsCollapsed
+                    ? "显示侧边窗口" : "隐藏侧边窗口");
+        }
         Pane main = panes[mainSlot];
         if (desktopSession != null) desktopSession.enable(!blocked && !OneHandedTaskHooks.shadeOpen()
                 && main != null && main.host != null && main.host.ready && main.host.home());
@@ -1355,6 +1370,24 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         recentOrderDirty = true;
         strip.addView(recentRow, new HorizontalScrollView.LayoutParams(-2, -1));
         toolbar.addView(strip, new LinearLayout.LayoutParams(0, -1, 1f));
+        sideWindowsButton = new ImageView(context);
+        sideWindowsButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        sideWindowsButton.setPadding(dp(TOOLBAR_EXIT_PADDING_DP), dp(TOOLBAR_EXIT_PADDING_DP),
+                dp(TOOLBAR_EXIT_PADDING_DP), dp(TOOLBAR_EXIT_PADDING_DP));
+        try {
+            Context module = context.createPackageContext(com.example.flymestatusbarsizer.BuildConfig.APPLICATION_ID, 0);
+            sideWindowsButton.setImageDrawable(module.getDrawable(R.drawable.ic_workspace_side_windows));
+        } catch (Exception error) {
+            sideWindowsButton.setImageResource(android.R.drawable.ic_menu_view);
+            sideWindowsButton.setColorFilter(Color.WHITE);
+        }
+        sideWindowsButton.setBackground(new RippleDrawable(ColorStateList.valueOf(0x30ffffff), null, null));
+        sideWindowsButton.setContentDescription("显示侧边窗口");
+        sideWindowsButton.setTooltipText("显示侧边窗口");
+        sideWindowsButton.setFocusable(true);
+        sideWindowsButton.setOnClickListener(v -> toggleSideWindows());
+        toolbar.addView(sideWindowsButton, new LinearLayout.LayoutParams(dp(TOOLBAR_ICON_SIZE_DP),
+                dp(TOOLBAR_ICON_SIZE_DP)));
         View divider = new View(context);
         divider.setBackgroundColor(0x30ffffff);
         toolbar.addView(divider, new LinearLayout.LayoutParams(Math.max(1, dp(0.7f)), dp(28)));
@@ -1379,6 +1412,19 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 dp(TOOLBAR_ICON_SIZE_DP)));
         updateRecentIcons();
         return toolbar;
+    }
+
+    private void toggleSideWindows() {
+        if (!active() || !canChangeTask()) return;
+        if (sideWindowsCollapsed) {
+            sideWindowsHidden = false;
+            sideWindowsExpanded = true;
+        } else {
+            sideWindowsHidden = true;
+            sideWindowsExpanded = false;
+        }
+        relayoutPanes();
+        updateInput();
     }
 
     private static boolean sameEntry(RecentTaskCard a, RecentTaskCard b) {
@@ -2500,6 +2546,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         desktopBorder = null;
         recentStrip = null;
         recentScroll = null;
+        sideWindowsButton = null;
         exitButton = null;
         recentIcons.clear();
         recentCards.clear();
