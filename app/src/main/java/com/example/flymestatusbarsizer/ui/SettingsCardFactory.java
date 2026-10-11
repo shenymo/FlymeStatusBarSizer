@@ -458,12 +458,30 @@ public final class SettingsCardFactory {
         scaleHelp.setTextColor(activity.subtextColor());
         scaleHelp.setPadding(0, activity.dp(8), 0, activity.dp(8));
         page.addView(scaleHelp, activity.matchWrap());
+        LinearLayout workspaceOptions = new LinearLayout(activity);
+        workspaceOptions.setOrientation(LinearLayout.VERTICAL);
+        activity.addSliderRow(workspaceOptions, "图标栏高度",
+                "调整多应用工作台顶部应用图标栏的高度，修改后立即应用。",
+                SettingsStore.KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                SettingsStore.MIN_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                SettingsStore.MAX_WORKSPACE_TOOLBAR_HEIGHT_DP, "dp");
+        activity.addSliderRow(workspaceOptions, "无横屏窗口时的图标栏位置",
+                "调整没有横屏窗口时图标栏距离工作台顶部的位置，修改后立即应用。",
+                SettingsStore.KEY_WORKSPACE_TOOLBAR_POSITION_DP,
+                SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP,
+                SettingsStore.MIN_WORKSPACE_TOOLBAR_POSITION_DP,
+                SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP, "dp");
+        View workspaceCard = activity.buildSectionCard("多应用工作台", null, workspaceOptions, true);
+        workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
+        page.addView(workspaceCard, activity.matchWrapWithTop(8));
         java.util.function.IntConsumer updateAction = value -> {
             boolean scale = value == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
             summary.setText(scale ? "从屏幕侧边向内滑动并按住，打开多应用工作台。"
                     : "从屏幕侧边向内滑动并按住，打开全局负一屏。");
             appearanceCard.setVisibility(scale ? View.GONE : View.VISIBLE);
             scaleHelp.setVisibility(scale ? View.VISIBLE : View.GONE);
+            workspaceCard.setVisibility(scale ? View.VISIBLE : View.GONE);
         };
         activity.addChoiceRow(actionOptions, "触发动作", "选择侧边长滑手势执行的功能。",
                 SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION,

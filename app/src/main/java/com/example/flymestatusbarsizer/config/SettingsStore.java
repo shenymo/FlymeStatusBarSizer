@@ -141,6 +141,8 @@ public final class SettingsStore {
     public static final String KEY_ASSISTANT_GESTURE_HOLD_MS = "assistant_gesture_hold_ms";
     public static final String KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED = "assistant_gesture_vertical_limit_enabled";
     public static final String KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = "assistant_gesture_vertical_limit_dp";
+    public static final String KEY_WORKSPACE_TOOLBAR_HEIGHT_DP = "workspace_toolbar_height_dp";
+    public static final String KEY_WORKSPACE_TOOLBAR_POSITION_DP = "workspace_toolbar_position_dp";
     public static final boolean DEFAULT_ASSISTANT_GESTURE_ENABLED = false;
     public static final int DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP = 140;
     public static final int DEFAULT_ASSISTANT_GESTURE_HOLD_MS = 600;
@@ -148,6 +150,12 @@ public final class SettingsStore {
     public static final int DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = 48;
     public static final int MIN_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = 8;
     public static final int MAX_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = 240;
+    public static final int DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP = 48;
+    public static final int MIN_WORKSPACE_TOOLBAR_HEIGHT_DP = 32;
+    public static final int MAX_WORKSPACE_TOOLBAR_HEIGHT_DP = 80;
+    public static final int DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP = 0;
+    public static final int MIN_WORKSPACE_TOOLBAR_POSITION_DP = 0;
+    public static final int MAX_WORKSPACE_TOOLBAR_POSITION_DP = 240;
     public static final String KEY_MBACK_LONG_TOUCH_ACTION = "mback_long_touch_action";
     public static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
     public static final String KEY_WINDOWMODE_SIDE_GESTURE_ENABLED = "windowmode_side_gesture_enabled";
@@ -612,6 +620,8 @@ public final class SettingsStore {
             KEY_ASSISTANT_GESTURE_DISTANCE_DP,
             KEY_ASSISTANT_GESTURE_HOLD_MS,
             KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
+            KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
+            KEY_WORKSPACE_TOOLBAR_POSITION_DP,
             CircleBatteryAnimationConfig.NORMAL,
             CircleBatteryAnimationConfig.CHARGING,
             CircleBatteryAnimationConfig.PALETTE,
@@ -1022,6 +1032,8 @@ public final class SettingsStore {
             case KEY_ASSISTANT_GESTURE_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
             case KEY_ASSISTANT_GESTURE_HOLD_MS: return DEFAULT_ASSISTANT_GESTURE_HOLD_MS;
             case KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP: return DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP;
+            case KEY_WORKSPACE_TOOLBAR_HEIGHT_DP: return DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;
+            case KEY_WORKSPACE_TOOLBAR_POSITION_DP: return DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP;
             case KEY_POSITION_OFFSET_STORAGE_VERSION:
                 return POSITION_OFFSET_STORAGE_VERSION_CAMERA_HUNDREDTH_DP;
             case KEY_BATTERY_ICON_STYLE:

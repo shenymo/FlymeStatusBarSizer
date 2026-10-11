@@ -39,6 +39,8 @@ import android.widget.Toast;
 import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 import com.example.flymestatusbarsizer.R;
+import com.example.flymestatusbarsizer.config.ModuleConfig;
+import com.example.flymestatusbarsizer.config.SettingsStore;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,7 +52,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private static final String TAG = "FlymeOneStep";
     private static final int LANDSCAPE_SLOT = 4;
     private static final int COUNT = LANDSCAPE_SLOT + 1;
-    private static final int TOOLBAR_HEIGHT_DP = 48;
     private static final int TOOLBAR_ICON_SIZE_DP = 48;
     private static final int TOOLBAR_ICON_PADDING_DP = 6;
     private static final int TOOLBAR_EXIT_PADDING_DP = 12;
@@ -134,6 +135,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private int workspaceOwnerUserId;
     private int width;
     private int height;
+    private int layoutToolbarHeightDp = -1;
+    private int layoutToolbarPositionDp = -1;
     private int mainSlot;
     private volatile int generation;
     private int highlightedSlot = -1;
@@ -159,6 +162,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private DragSession dragSession;
     private ImageView dragSource;
     private ImageView dragPreview;
+    private boolean inputRegionRefreshPending;
     private Runnable onSuccess;
     private RecentTaskCard openingTask;
     private boolean initialTaskStarted;
@@ -191,6 +195,83 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private boolean active() { return state == State.OPENING || state == State.RUNNING; }
     private boolean running() { return state == State.RUNNING; }
+
+    private int toolbarHeightDp() {
+        ModuleConfig config = ModuleConfig.load(context);
+        return Math.max(SettingsStore.MIN_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                        config.workspaceToolbarHeightDp));
+    }
+
+    private int toolbarPositionDp() {
+        ModuleConfig config = ModuleConfig.load(context);
+        return Math.max(SettingsStore.MIN_WORKSPACE_TOOLBAR_POSITION_DP,
+                Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP,
+                        config.workspaceToolbarPositionDp));
+    }
+
+    private int toolbarIconSizeDp() {
+        return Math.min(TOOLBAR_ICON_SIZE_DP, toolbarHeightDp());
+    }
+
+    private int toolbarIconPaddingDp() {
+        return Math.min(TOOLBAR_ICON_PADDING_DP, Math.max(2, toolbarIconSizeDp() / 8));
+    }
+
+    private int toolbarExitPaddingDp() {
+        return Math.min(TOOLBAR_EXIT_PADDING_DP, Math.max(4, toolbarIconSizeDp() / 4));
+    }
+
+    private int toolbarHeightPx() {
+        return dp(toolbarHeightDp());
+    }
+
+    private int toolbarIconSizePx() {
+        return dp(toolbarIconSizeDp());
+    }
+
+    private int toolbarIconPaddingPx() {
+        return dp(toolbarIconPaddingDp());
+    }
+
+    private int toolbarExitPaddingPx() {
+        return dp(toolbarExitPaddingDp());
+    }
+
+    private int toolbarTopGapPx() {
+        return toolbarHeightPx() + dp(PANE_GAP_DP);
+    }
+
+    private void updateToolbarControls() {
+        int height = toolbarHeightPx();
+        int iconSize = toolbarIconSizePx();
+        int iconPadding = toolbarIconPaddingPx();
+        int exitPadding = toolbarExitPaddingPx();
+        if (recentStrip != null) {
+            FrameLayout.LayoutParams strip = (FrameLayout.LayoutParams) recentStrip.getLayoutParams();
+            strip.height = height;
+            recentStrip.setLayoutParams(strip);
+        }
+        if (sideWindowsButton != null) {
+            sideWindowsButton.setPadding(exitPadding, exitPadding, exitPadding, exitPadding);
+            sideWindowsButton.setLayoutParams(new LinearLayout.LayoutParams(iconSize, iconSize));
+        }
+        if (exitButton != null) {
+            exitButton.setPadding(exitPadding, exitPadding, exitPadding, exitPadding);
+            exitButton.setLayoutParams(new LinearLayout.LayoutParams(iconSize, iconSize));
+        }
+        for (ImageView icon : recentIcons) {
+            icon.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
+            icon.setLayoutParams(new LinearLayout.LayoutParams(iconSize, iconSize));
+        }
+        if (dragPreview != null) {
+            dragPreview.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
+            FrameLayout.LayoutParams preview = (FrameLayout.LayoutParams) dragPreview.getLayoutParams();
+            preview.width = iconSize;
+            preview.height = iconSize;
+            dragPreview.setLayoutParams(preview);
+        }
+    }
 
     boolean canTrigger() {
         if (state == State.OPENING || state == State.CLOSING || animator != null || layoutAnimator != null || dragSession != null
@@ -454,14 +535,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         int panesTop = frames[mainSlot].top;
         for (int slot : sideOrder) panesTop = Math.min(panesTop, frames[slot].top);
         FrameLayout.LayoutParams strip = (FrameLayout.LayoutParams) recentStrip.getLayoutParams();
-        strip.height = dp(TOOLBAR_HEIGHT_DP);
+        strip.height = toolbarHeightPx();
         strip.leftMargin = strip.rightMargin = dp(WORKSPACE_MARGIN_DP);
-        strip.topMargin = Math.max(0, panesTop - dp(TOOLBAR_HEIGHT_DP + PANE_GAP_DP));
+        strip.topMargin = Math.max(0, panesTop - toolbarTopGapPx());
         recentStrip.setLayoutParams(strip);
-        exitButton.setPadding(dp(TOOLBAR_EXIT_PADDING_DP), dp(TOOLBAR_EXIT_PADDING_DP),
-                dp(TOOLBAR_EXIT_PADDING_DP), dp(TOOLBAR_EXIT_PADDING_DP));
-        exitButton.setLayoutParams(new LinearLayout.LayoutParams(dp(TOOLBAR_ICON_SIZE_DP),
-                dp(TOOLBAR_ICON_SIZE_DP)));
+        updateToolbarControls();
         recentRow.setPadding(dp(8), 0, dp(8), 0);
         recentOrderDirty = true;
         updateRecentIcons();
@@ -473,7 +551,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             pane.updateGeometry();
         }
         positionForIme();
-        workspace.post(this::updateInput);
+        refreshInputRegion();
     }
 
     private void open(List<RecentTaskCard> recent, boolean fromLeft, Rect screen, Insets insets) throws Exception {
@@ -529,10 +607,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         recentStrip = createRecentStrip(recent);
         int panesTop = frames[mainSlot].top;
         for (int slot : sideOrder) panesTop = Math.min(panesTop, frames[slot].top);
-        FrameLayout.LayoutParams stripParams = new FrameLayout.LayoutParams(-1, dp(TOOLBAR_HEIGHT_DP));
+        FrameLayout.LayoutParams stripParams = new FrameLayout.LayoutParams(-1, toolbarHeightPx());
         stripParams.leftMargin = dp(WORKSPACE_MARGIN_DP);
         stripParams.rightMargin = dp(WORKSPACE_MARGIN_DP);
-        stripParams.topMargin = Math.max(0, panesTop - dp(TOOLBAR_HEIGHT_DP + PANE_GAP_DP));
+        stripParams.topMargin = Math.max(0, panesTop - toolbarTopGapPx());
         workspace.addView(recentStrip, stripParams);
         for (int i = 0; i < COUNT; i++) {
             Pane pane = new Pane(i);
@@ -554,10 +632,15 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         int longSide = Math.max(logicalBounds.width(), logicalBounds.height());
         boolean showLandscape = landscapeVisible();
         sideWindowsCollapsed = shouldCollapseSideWindows();
+        int toolbarHeight = toolbarHeightDp();
+        layoutToolbarHeightDp = toolbarHeight;
+        int toolbarPosition = toolbarPositionDp();
+        layoutToolbarPositionDp = toolbarPosition;
         Rect[] result = OneStepWindowLayout.calculateLandscapeWorkspace(width - margin * 2,
                 height - margin * 2, dp(PANE_GAP_DP),
-                dp(TOOLBAR_HEIGHT_DP), shortSide, longSide,
-                mainSlot, sideOrder, mainOnLeft, LANDSCAPE_SLOT, showLandscape, !sideWindowsCollapsed);
+                dp(toolbarHeight), shortSide, longSide,
+                mainSlot, sideOrder, mainOnLeft, LANDSCAPE_SLOT, showLandscape, !sideWindowsCollapsed,
+                dp(toolbarPosition));
         int viewportWidth = shortSide;
         int viewportHeight = longSide;
         Rect main = result[mainSlot];
@@ -809,7 +892,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         float gap = dp(12);
         // The recent-app strip pins to the top when lifted; reserve its height so
         // it cannot cover the caret even with an unusually tall keyboard.
-        float visibleTop = contentBounds.top + (target.slot == LANDSCAPE_SLOT ? 0 : dp(TOOLBAR_HEIGHT_DP + PANE_GAP_DP));
+        float visibleTop = contentBounds.top + (target.slot == LANDSCAPE_SLOT ? 0 : toolbarTopGapPx());
         float targetBottom = paneTop + paneHeight;
         float targetTop = paneTop;
         if (imeInputRegion != null) {
@@ -1298,6 +1381,15 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 && main != null && main.host != null && main.host.ready && main.host.home());
     }
 
+    private void refreshInputRegion() {
+        inputRegionRefreshPending = true;
+        if (workspace == null) return;
+        int request = generation;
+        workspace.postOnAnimation(() -> {
+            if (request == generation && active()) updateInput();
+        });
+    }
+
     private void blockInput(boolean block) {
         if (backdrop == null) return;
         // TaskView's native insets listener uses its unscaled width/height. Cover everything
@@ -1332,12 +1424,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             if (recentStrip.getGlobalVisibleRect(toolbar)) obscured.op(toolbar, Region.Op.UNION);
         }
         try {
-            boolean changed = false;
+            boolean changed = inputRegionRefreshPending;
             for (Pane pane : panes) if (pane != null && pane.host != null) {
                 // setObscuredTouchRect cannot represent several disjoint side panes during swaps.
                 java.lang.reflect.Field field = OneStepReflection.field(pane.host.view.getClass(), "mObscuredTouchRegion");
                 Object previous = field.get(pane.host.view);
-                if (!obscured.equals(previous)) {
+                if (inputRegionRefreshPending || !obscured.equals(previous)) {
                     field.set(pane.host.view, new android.graphics.Region(obscured));
                     changed = true;
                 }
@@ -1348,6 +1440,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 // a new measure/layout pass for every workspace movement.
                 backdrop.invalidate();
             }
+            inputRegionRefreshPending = false;
         } catch (Exception error) {
             if (active()) handler.post(() -> fail("无法设置应用触摸区域", error));
             else Log.w(TAG, "Cannot close task input regions", error);
@@ -1381,8 +1474,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         toolbar.addView(strip, new LinearLayout.LayoutParams(0, -1, 1f));
         sideWindowsButton = new ImageView(context);
         sideWindowsButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        sideWindowsButton.setPadding(dp(TOOLBAR_EXIT_PADDING_DP), dp(TOOLBAR_EXIT_PADDING_DP),
-                dp(TOOLBAR_EXIT_PADDING_DP), dp(TOOLBAR_EXIT_PADDING_DP));
+        sideWindowsButton.setPadding(toolbarExitPaddingPx(), toolbarExitPaddingPx(),
+                toolbarExitPaddingPx(), toolbarExitPaddingPx());
         try {
             Context module = context.createPackageContext(com.example.flymestatusbarsizer.BuildConfig.APPLICATION_ID, 0);
             sideWindowsButton.setImageDrawable(module.getDrawable(R.drawable.ic_workspace_side_windows));
@@ -1395,15 +1488,15 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         sideWindowsButton.setTooltipText("显示侧边窗口");
         sideWindowsButton.setFocusable(true);
         sideWindowsButton.setOnClickListener(v -> toggleSideWindows());
-        toolbar.addView(sideWindowsButton, new LinearLayout.LayoutParams(dp(TOOLBAR_ICON_SIZE_DP),
-                dp(TOOLBAR_ICON_SIZE_DP)));
+        toolbar.addView(sideWindowsButton, new LinearLayout.LayoutParams(toolbarIconSizePx(),
+                toolbarIconSizePx()));
         View divider = new View(context);
         divider.setBackgroundColor(0x30ffffff);
         toolbar.addView(divider, new LinearLayout.LayoutParams(Math.max(1, dp(0.7f)), dp(28)));
         exitButton = new ImageView(context);
         exitButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        exitButton.setPadding(dp(TOOLBAR_EXIT_PADDING_DP), dp(TOOLBAR_EXIT_PADDING_DP),
-                dp(TOOLBAR_EXIT_PADDING_DP), dp(TOOLBAR_EXIT_PADDING_DP));
+        exitButton.setPadding(toolbarExitPaddingPx(), toolbarExitPaddingPx(),
+                toolbarExitPaddingPx(), toolbarExitPaddingPx());
         // The workspace uses SystemUI's Context; resolve module resources explicitly.
         try {
             Context module = context.createPackageContext(com.example.flymestatusbarsizer.BuildConfig.APPLICATION_ID, 0);
@@ -1417,8 +1510,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         exitButton.setTooltipText("退出工作台");
         exitButton.setFocusable(true);
         exitButton.setOnClickListener(v -> { if (active() && dragSession == null) close(true); });
-        toolbar.addView(exitButton, new LinearLayout.LayoutParams(dp(TOOLBAR_ICON_SIZE_DP),
-                dp(TOOLBAR_ICON_SIZE_DP)));
+        toolbar.addView(exitButton, new LinearLayout.LayoutParams(toolbarIconSizePx(),
+                toolbarIconSizePx()));
         updateRecentIcons();
         return toolbar;
     }
@@ -1491,14 +1584,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 ImageView icon = new ImageView(context);
                 icon.setTag(card);
                 icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                icon.setPadding(dp(TOOLBAR_ICON_PADDING_DP), dp(TOOLBAR_ICON_PADDING_DP),
-                        dp(TOOLBAR_ICON_PADDING_DP), dp(TOOLBAR_ICON_PADDING_DP));
+                icon.setPadding(toolbarIconPaddingPx(), toolbarIconPaddingPx(),
+                        toolbarIconPaddingPx(), toolbarIconPaddingPx());
                 icon.setImageDrawable(context.getPackageManager().getDefaultActivityIcon());
                 icon.setOnClickListener(v -> showTask(card, mainSlot));
                 icon.setHapticFeedbackEnabled(false);
                 icon.setOnLongClickListener(v -> beginAppDrag(icon, card));
-                recentRow.addView(icon, new LinearLayout.LayoutParams(dp(TOOLBAR_ICON_SIZE_DP),
-                        dp(TOOLBAR_ICON_SIZE_DP)));
+                recentRow.addView(icon, new LinearLayout.LayoutParams(toolbarIconSizePx(),
+                        toolbarIconSizePx()));
                 recentIcons.add(icon);
                 iconLoader.execute(() -> {
                     Drawable drawable;
@@ -1559,7 +1652,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         for (int slot : sideOrder) top = Math.min(top, frames[slot].top);
         FrameLayout.LayoutParams strip = (FrameLayout.LayoutParams) recentStrip.getLayoutParams();
         float startStripY = strip.topMargin + recentStrip.getTranslationY();
-        strip.topMargin = Math.max(0, top - dp(TOOLBAR_HEIGHT_DP + PANE_GAP_DP));
+        strip.height = toolbarHeightPx();
+        strip.topMargin = Math.max(0, top - toolbarTopGapPx());
+        updateToolbarControls();
         float endStripY = Math.max(strip.topMargin, -workspace.getTranslationY());
         recentStrip.setLayoutParams(strip);
         boolean changed = Math.abs(startStripY - endStripY) > 0.5f;
@@ -1607,7 +1702,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (!animate) {
             translateForIme(-workspace.getTranslationY());
             positionForIme();
-            workspace.post(this::updateInput);
+            refreshInputRegion();
             return;
         }
         recentStrip.setTranslationY(startStripY - strip.topMargin);
@@ -1642,7 +1737,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 }
                 translateForIme(-workspace.getTranslationY());
                 positionForIme();
-                workspace.post(OneStepWorkspace.this::updateInput);
+                refreshInputRegion();
             }
         });
         movement.start();
@@ -1720,6 +1815,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     @Override public void onOrientationRequested(OneStepShell.Host host, int orientation, boolean explicit) {
         if (!active() || paneForHost(host) == null || host.home()) return;
+        refreshInputRegion();
         int direction = orientationDirection(orientation);
         requestedOrientations.put(host, direction);
         if (explicit) manualOrientations.remove(host);
@@ -1950,11 +2046,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             Drawable.ConstantState constant = drawable == null ? null : drawable.getConstantState();
             dragPreview.setImageDrawable(constant == null ? drawable : constant.newDrawable(context.getResources()).mutate());
             dragPreview.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            dragPreview.setPadding(dp(TOOLBAR_ICON_PADDING_DP), dp(TOOLBAR_ICON_PADDING_DP),
-                    dp(TOOLBAR_ICON_PADDING_DP), dp(TOOLBAR_ICON_PADDING_DP));
+            dragPreview.setPadding(toolbarIconPaddingPx(), toolbarIconPaddingPx(),
+                    toolbarIconPaddingPx(), toolbarIconPaddingPx());
             dragPreview.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            backdrop.addView(dragPreview, new FrameLayout.LayoutParams(dp(TOOLBAR_ICON_SIZE_DP),
-                    dp(TOOLBAR_ICON_SIZE_DP)));
+            backdrop.addView(dragPreview, new FrameLayout.LayoutParams(toolbarIconSizePx(),
+                    toolbarIconSizePx()));
             updateRecentIcons();
             moveAppDrag(backdrop.touchX, backdrop.touchY);
             haptic(HapticFeedbackConstants.LONG_PRESS);
@@ -1972,8 +2068,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             return;
         }
         if (dragPreview != null) {
-            dragPreview.setTranslationX(x - dp(TOOLBAR_ICON_SIZE_DP / 2f));
-            dragPreview.setTranslationY(y - dp(TOOLBAR_ICON_SIZE_DP / 2f));
+            dragPreview.setTranslationX(x - toolbarIconSizePx() / 2f);
+            dragPreview.setTranslationY(y - toolbarIconSizePx() / 2f);
         }
         highlightDropTarget(dropSlot(x, y));
     }
@@ -2115,7 +2211,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     void refresh() {
         handler.post(() -> {
             if (state == State.CLOSING && !OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId)) close(false);
-            else if (active()) { refreshEnvironment(); scheduleCheck(100); }
+            else if (active()) {
+                int previousToolbarHeight = layoutToolbarHeightDp;
+                int previousToolbarPosition = layoutToolbarPositionDp;
+                refreshEnvironment();
+                if (previousToolbarHeight != toolbarHeightDp()
+                        || previousToolbarPosition != toolbarPositionDp()) relayoutPanes();
+                scheduleCheck(100);
+            }
         });
     }
 

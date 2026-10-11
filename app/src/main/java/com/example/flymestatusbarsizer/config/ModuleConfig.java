@@ -132,6 +132,8 @@ public final class ModuleConfig {
     public int assistantGestureHoldMs = SettingsStore.DEFAULT_ASSISTANT_GESTURE_HOLD_MS;
     public boolean assistantGestureVerticalLimitEnabled = SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED;
     public int assistantGestureVerticalLimitDp = SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP;
+    public int workspaceToolbarHeightDp = SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;
+    public int workspaceToolbarPositionDp = SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP;
     public int mbackLongTouchAction = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION;
     public String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
     public boolean windowModeSideGestureEnabled = SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED;
@@ -721,6 +723,16 @@ public final class ModuleConfig {
             config.assistantGestureVerticalLimitDp = SettingsStore.normalizeAssistantGestureVerticalLimitDp(
                     SettingsStore.readInt(prefs, SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
                             SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP));
+            config.workspaceToolbarHeightDp = Math.max(
+                    SettingsStore.MIN_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                    Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_HEIGHT_DP, SettingsStore.readInt(prefs,
+                            SettingsStore.KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                            SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP)));
+            config.workspaceToolbarPositionDp = Math.max(
+                    SettingsStore.MIN_WORKSPACE_TOOLBAR_POSITION_DP,
+                    Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP, SettingsStore.readInt(prefs,
+                            SettingsStore.KEY_WORKSPACE_TOOLBAR_POSITION_DP,
+                            SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP)));
             config.mbackLongTouchAction = SettingsStore.normalizeMBackLongTouchAction(
                     SettingsStore.readInt(
                             prefs,

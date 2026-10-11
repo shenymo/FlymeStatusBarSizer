@@ -16,12 +16,13 @@ public final class OneStepWindowLayout {
                                                      int viewportHeight, int mainSlot,
                                                      List<Integer> sideOrder, boolean mainOnLeft,
                                                      int landscapeSlot, boolean showLandscape,
-                                                     boolean showSideWindows) {
+                                                     boolean showSideWindows,
+                                                     int toolbarPosition) {
         int reservedHeight = toolbarHeight + divider * 2;
         int landscapeHeight = showLandscape ? Math.max(1, Math.min(Math.round(width * 9f / 16f),
                 Math.max(1, (height - reservedHeight) / 3))) : 0;
         int contentTop = Math.min(Math.max(0, height - 1), showLandscape
-                ? landscapeHeight + reservedHeight : toolbarHeight + divider);
+                ? landscapeHeight + reservedHeight : toolbarHeight + divider + Math.max(0, toolbarPosition));
         Rect[] result = new Rect[landscapeSlot + 1];
         // Keep the landscape pane large, then fill the lower area with fixed gaps.
         // The workspace derives a shared app viewport from the resulting main frame.
