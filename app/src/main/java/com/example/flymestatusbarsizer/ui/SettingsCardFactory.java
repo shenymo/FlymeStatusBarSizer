@@ -367,24 +367,25 @@ public final class SettingsCardFactory {
 
     public View createWindowModeSideGestureSettingsCard() {
         return activity.buildSectionCard(
-                "小窗侧边手势",
-                "接管 Flyme 小窗的左右侧边触发手势，改为执行模块动作。",
+                "小窗选择器",
+                "调整 Flyme 原生小窗选择面板和它的侧边触发行为。",
                 buildWindowModeSideGesturePage());
     }
 
     public View createSideGestureSettingsCard() {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
-        activity.addSwitchRow(page, "启用侧边手势", null,
+        activity.addSwitchRow(page, "启用侧边手势", "从屏幕侧边向内滑动并按住，执行下方选择的动作。锁屏时不触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED, SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
-        TextView summary = new TextView(activity);
-        summary.setTextColor(activity.subtextColor());
-        summary.setTextSize(13);
-        summary.setPadding(0, 0, 0, activity.dp(8));
-        page.addView(summary, activity.matchWrap());
         LinearLayout actionOptions = new LinearLayout(activity);
         actionOptions.setOrientation(LinearLayout.VERTICAL);
         page.addView(actionOptions, activity.matchWrap());
+
+        TextView summary = new TextView(activity);
+        summary.setTextColor(activity.subtextColor());
+        summary.setTextSize(13);
+        summary.setPadding(0, activity.dp(2), 0, activity.dp(8));
+        page.addView(summary, activity.matchWrap());
 
         AssistantGesturePreviewLayout gestureOptions = new AssistantGesturePreviewLayout(
                 activity, activity.prefs(), activity.primaryColor());
@@ -439,66 +440,61 @@ public final class SettingsCardFactory {
         LinearLayout assistantOptions = new LinearLayout(activity);
         assistantOptions.setOrientation(LinearLayout.VERTICAL);
         AssistantBackgroundSettings.addRows(activity, assistantOptions);
-        View appearanceCard = activity.buildSectionCard("负一屏外观",
-                "下次打开全局负一屏时生效，不影响桌面负一屏。", assistantOptions);
+        View appearanceCard = activity.buildSectionCard("全局负一屏",
+                "下次打开时生效，不影响桌面负一屏。", assistantOptions, true);
         appearanceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
         page.addView(appearanceCard, activity.matchWrapWithTop(8));
-        TextView scaleHelp = new TextView(activity);
-        scaleHelp.setText("进入时仅将当前应用放入主窗口。三个侧窗全空时自动收起，主窗口占满应用栏下方的可用区域。"
-                + "工作台使用不透明纯色背景，不露出下层桌面或应用。"
-                + "上方长条显示最近使用的应用图标，可横向滚动，点击图标切换主窗口应用。"
-                + "长按拖动图标时自动展开侧窗，拖入后在该窗口运行；取消拖动且侧窗仍全空时自动收起。点击已运行的侧窗与主窗口交换。"
-                + "侧窗展开时，从左侧触发则主窗口在左，从右侧触发则主窗口在右。"
-                + "主窗口支持触摸和多指操作。键盘弹出时整个工作台上移，收起后复位，应用窗口尺寸保持不变。"
-                + "屏幕顶部保留原生状态栏，下拉通知栏或控制中心后，收起仍保持当前主应用和窗口布局。"
-                + "再次触发侧边手势或点击留白可退出，并将应用恢复到主屏。"
-                + "进入最近任务、回到桌面、旋转或锁屏时退出工作台。"
-                + "使用 SystemUI 权限实现，无需额外安装 KernelSU 模块。");
-        scaleHelp.setTextSize(13);
-        scaleHelp.setTextColor(activity.subtextColor());
-        scaleHelp.setPadding(0, activity.dp(8), 0, activity.dp(8));
-        page.addView(scaleHelp, activity.matchWrap());
-        LinearLayout workspaceOptions = new LinearLayout(activity);
-        workspaceOptions.setOrientation(LinearLayout.VERTICAL);
-        activity.addSliderRow(workspaceOptions, "图标栏高度",
-                "调整多应用工作台顶部应用图标栏的高度，修改后立即应用。",
-                SettingsStore.KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
-                SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP,
-                SettingsStore.MIN_WORKSPACE_TOOLBAR_HEIGHT_DP,
-                SettingsStore.MAX_WORKSPACE_TOOLBAR_HEIGHT_DP, "dp");
-        activity.addSliderRow(workspaceOptions, "无横屏窗口时的图标栏位置",
-                "调整没有横屏窗口时图标栏距离工作台顶部的位置，修改后立即应用。",
-                SettingsStore.KEY_WORKSPACE_TOOLBAR_POSITION_DP,
-                SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP,
-                SettingsStore.MIN_WORKSPACE_TOOLBAR_POSITION_DP,
-                SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP, "dp");
-        activity.addSwitchRow(workspaceOptions, "无横屏窗口时保持主应用比例",
-                "保持主应用原来的屏幕比例，主窗口两侧可能留出空白。",
-                SettingsStore.KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
-                SettingsStore.DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO);
-        View workspaceCard = activity.buildSectionCard("多应用工作台", null, workspaceOptions, true);
+        View workspaceCard = activity.buildSectionCard("任务工作台",
+                "从侧边进入多应用工作台，在主窗口和侧窗之间快速切换。",
+                buildTaskWorkbenchOptions(), true);
         workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
         page.addView(workspaceCard, activity.matchWrapWithTop(8));
         java.util.function.IntConsumer updateAction = value -> {
             boolean scale = value == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
-            summary.setText(scale ? "从屏幕侧边向内滑动并按住，打开多应用工作台。"
-                    : "从屏幕侧边向内滑动并按住，打开全局负一屏。");
+            summary.setText(scale ? "当前动作：任务工作台 · 侧边长滑进入，重复触发或点击留白退出。"
+                    : "当前动作：全局负一屏 · 侧边长滑进入，左右滑动或返回退出。");
             appearanceCard.setVisibility(scale ? View.GONE : View.VISIBLE);
-            scaleHelp.setVisibility(scale ? View.VISIBLE : View.GONE);
             workspaceCard.setVisibility(scale ? View.VISIBLE : View.GONE);
         };
         activity.addChoiceRow(actionOptions, "触发动作", "选择侧边长滑手势执行的功能。",
                 SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION,
                 new int[]{SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT, SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE},
-                new String[]{"全局负一屏", "多应用工作台"}, updateAction);
+                new String[]{"全局负一屏", "任务工作台"}, updateAction);
         updateAction.accept(SettingsStore.normalizeSideGestureAction(SettingsStore.readInt(activity.prefs(),
                 SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION)));
         return activity.buildSectionCard("侧边手势",
-                "首次使用\n在 LSPosed 中勾选系统界面，更新模块后重启 SystemUI 或手机。"
-                        + "全局负一屏还需勾选 Aicy 纵览并重启，再从桌面打开一次负一屏。\n\n"
-                        + "使用方法\n选择触发动作，从所选侧边的返回区域向内滑动并按住。"
-                        + "多应用工作台可再次触发或点击留白退出；全局负一屏可左右滑动或返回关闭。"
-                        + "未达到触发条件时正常返回，锁屏时不触发。", page);
+                "先启用 SystemUI 作用域并重启 SystemUI，再选择要执行的动作。", page);
+    }
+
+    private LinearLayout buildTaskWorkbenchOptions() {
+        LinearLayout options = new LinearLayout(activity);
+        options.setOrientation(LinearLayout.VERTICAL);
+
+        TextView behavior = new TextView(activity);
+        behavior.setText("进入后当前应用作为主窗口，顶部图标栏用于切换最近应用；长按图标可拖入侧窗。"
+                + "侧窗为空时自动收起，点击留白或再次触发手势退出。");
+        behavior.setTextSize(13);
+        behavior.setTextColor(activity.subtextColor());
+        behavior.setLineSpacing(activity.dp(2), 1.0f);
+        behavior.setPadding(0, 0, 0, activity.dp(8));
+        options.addView(behavior, activity.matchWrap());
+
+        activity.addProfileSectionHeader(options, "工作台布局", "调整顶部图标栏和主窗口比例，修改后立即应用。");
+        activity.addSliderRow(options, "图标栏高度", null,
+                SettingsStore.KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                SettingsStore.MIN_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                SettingsStore.MAX_WORKSPACE_TOOLBAR_HEIGHT_DP, "dp");
+        activity.addSliderRow(options, "图标栏顶部位置", null,
+                SettingsStore.KEY_WORKSPACE_TOOLBAR_POSITION_DP,
+                SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP,
+                SettingsStore.MIN_WORKSPACE_TOOLBAR_POSITION_DP,
+                SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP, "dp");
+        activity.addSwitchRow(options, "保持主应用比例",
+                "没有横屏窗口时保持原比例，两侧可能留出空白。",
+                SettingsStore.KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
+                SettingsStore.DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO);
+        return options;
     }
 
     public View createShareTargetsSettingsCard() {
@@ -1285,8 +1281,8 @@ public final class SettingsCardFactory {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
 
-        activity.addProfileSectionHeader(page, "侧边手势",
-                "只接管 Flyme 小窗侧边触发回调。关闭后恢复原来的小窗面板。");
+        activity.addProfileSectionHeader(page, "小窗选择器",
+                "这里的设置只影响 Flyme 原生小窗面板，不影响任务工作台。");
         activity.addSwitchRow(page, "预热原生小窗面板",
                 "提前准备 Flyme 原生小窗选择面板，降低首次触发卡顿。",
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
@@ -1331,7 +1327,7 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
                 SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED);
         sideGestureOptions.setVisibility(sideGestureEnabled ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(page, "接管侧边小窗手势",
+        activity.addSwitchRow(page, "接管小窗侧边手势",
                 "拦截屏幕左右侧边的小窗触发手势，改为执行这里配置的动作。",
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
                 SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED,
