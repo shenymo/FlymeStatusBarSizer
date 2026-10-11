@@ -1268,7 +1268,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
         if (!shellImeControlled) applyActivityIme();
         boolean blocked = !running() || movingTask || transitionHandoff || suspended || rebinding || covered || !hostVisible || panesBusy() || desktopBusy || animator != null || layoutAnimator != null || transitionAnimator != null
-                || imeAnimator != null || imeAnimating || dragSession != null;
+                || imeAnimator != null || imeAnimating || dragSession != null
+                || (activitySession != null && !activitySession.isMounted());
         blockInput(blocked);
         Pane main = panes[mainSlot];
         if (desktopSession != null) desktopSession.enable(!blocked && !OneHandedTaskHooks.shadeOpen()

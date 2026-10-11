@@ -2072,13 +2072,19 @@ final class OneStepShell {
         // Only the native animator may transform these temporary wrappers until it finishes.
         if (openingAnimation != null && (openingAnimation.app == host || openingAnimation.home == host)) return;
         Rect crop = surfaceCrop(host);
+        if (host.fullscreenCompat && host.logicalBounds.width() > host.logicalBounds.height()
+                && !host.actualBounds.isEmpty()) {
+            crop = landscapeFullscreenCrop(host);
+        }
         float sx = host.width / (float) crop.width();
         float sy = host.height / (float) crop.height();
         float x = -crop.left * sx, y = -crop.top * sy;
         if (host.fullscreenCompat && host.logicalBounds.width() > host.logicalBounds.height()) {
             // An app that refuses multiwindow still has its original display viewport.
-            // Fit that surface without stretching or discarding its lower content.
-            sx = sy = Math.min(sx, sy);
+            // The landscape pane is a video-shaped viewport: use the same cover scale as
+            // its centered crop so a portrait fullscreen surface does not become a tiny
+            // letterboxed thumbnail.
+            sx = sy = Math.max(sx, sy);
             x = (host.width - crop.width() * sx) / 2f - crop.left * sx;
             y = (host.height - crop.height() * sy) / 2f - crop.top * sy;
         }
@@ -2104,6 +2110,31 @@ final class OneStepShell {
             crop.set(host.logicalBounds.width() > host.logicalBounds.height() ? actual : host.logicalBounds);
             if (!crop.intersect(actual)) throw new IllegalStateException("Fullscreen task has no visible viewport");
             crop.offset(-actual.left, -actual.top);
+        }
+        return crop;
+    }
+
+    private static Rect landscapeFullscreenCrop(Host host) {
+        Rect actual = host.actualBounds;
+        Rect crop = centerCrop(actual, host.width / (float) Math.max(1, host.height));
+        crop.offset(-actual.left, -actual.top);
+        return crop;
+    }
+
+    private static Rect centerCrop(Rect source, float targetAspect) {
+        Rect crop = new Rect(source);
+        if (source.isEmpty() || targetAspect <= 0f) return crop;
+        float sourceAspect = source.width() / (float) source.height();
+        if (sourceAspect > targetAspect) {
+            int width = Math.max(1, Math.min(source.width(),
+                    Math.round(source.height() * targetAspect)));
+            int left = source.left + (source.width() - width) / 2;
+            crop.set(left, source.top, left + width, source.bottom);
+        } else if (sourceAspect < targetAspect) {
+            int height = Math.max(1, Math.min(source.height(),
+                    Math.round(source.width() / targetAspect)));
+            int top = source.top + (source.height() - height) / 2;
+            crop.set(source.left, top, source.right, top + height);
         }
         return crop;
     }

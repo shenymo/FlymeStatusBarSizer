@@ -196,7 +196,12 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
             send(OneStepActivityProtocol.BAR_COLORS, data -> data.writeBoolean(darkBarIcons));
     }
 
-    @Override public void surfaceCreated(SurfaceHolder holder) {}
+    @Override public void surfaceCreated(SurfaceHolder holder) {
+        // A keyguard transition can recreate the SurfaceView without changing its
+        // size. Give the existing workspace session a chance to remount its child.
+        if (started && attached && !mounted && !closing && !finished)
+            surface.postOnAnimation(this::updateSurfaceLayout);
+    }
 
     @Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         if (closing || finished || width <= 0 || height <= 0) return;
@@ -347,8 +352,16 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
     @Override protected void onStart() {
         super.onStart();
         started = true;
-        if (attached && !closing && !finished)
-            send(OneStepActivityProtocol.VISIBILITY, data -> data.writeBoolean(true));
+        if (attached && !closing && !finished) {
+            if (mounted) {
+                send(OneStepActivityProtocol.VISIBILITY, data -> data.writeBoolean(true));
+            } else {
+                // Visibility alone is insufficient after the child SurfacePackage was
+                // dropped while the screen was locked. Re-run the attach/remount path.
+                remountPending = false;
+                surface.postOnAnimation(this::updateSurfaceLayout);
+            }
+        }
     }
 
     @Override protected void onStop() {
