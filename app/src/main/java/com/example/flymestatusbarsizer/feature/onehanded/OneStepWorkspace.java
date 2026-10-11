@@ -2749,6 +2749,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             Rect bounds = viewport(slot);
             // Home stays fullscreen in WM; retain its complete source viewport so
             // shortening the pane does not crop away the dock or lower app icons.
+            shell.forceLandscape(task, slot == LANDSCAPE_SLOT);
             shell.geometry(task, task.home() ? logicalBounds : bounds,
                     bounds.width(), bounds.height(), slot == mainSlot, slot == LANDSCAPE_SLOT);
         }

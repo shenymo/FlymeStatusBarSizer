@@ -120,6 +120,7 @@ final class OneStepShell {
         Navigation navigation;
         boolean surfaceMissing;
         boolean fullscreenCompat;
+        boolean landscapeForced;
         boolean imeRegistered;
         boolean workspaceRestorePending;
         boolean workspaceRestoreCommitted;
@@ -869,6 +870,19 @@ final class OneStepShell {
 
     void geometry(Host host, Rect logicalBounds, int width, int height, boolean main) {
         geometry(host, logicalBounds, width, height, main, false);
+    }
+
+    void forceLandscape(Host host, boolean enabled) {
+        executor.execute(() -> {
+            if (!current(host) || host.home() || host.card == null || !host.imeRegistered
+                    || imeSession == null || host.landscapeForced == enabled) return;
+            try {
+                imeSession.setLandscape((IBinder) host.card.token, enabled);
+                host.landscapeForced = enabled;
+            } catch (Exception error) {
+                Log.w(TAG, "Cannot update hosted app orientation", error);
+            }
+        });
     }
 
     void geometry(Host host, Rect logicalBounds, int width, int height, boolean portraitMain, boolean landscape) {
@@ -2072,19 +2086,14 @@ final class OneStepShell {
         // Only the native animator may transform these temporary wrappers until it finishes.
         if (openingAnimation != null && (openingAnimation.app == host || openingAnimation.home == host)) return;
         Rect crop = surfaceCrop(host);
-        if (host.fullscreenCompat && host.logicalBounds.width() > host.logicalBounds.height()
-                && !host.actualBounds.isEmpty()) {
-            crop = landscapeFullscreenCrop(host);
-        }
         float sx = host.width / (float) crop.width();
         float sy = host.height / (float) crop.height();
         float x = -crop.left * sx, y = -crop.top * sy;
         if (host.fullscreenCompat && host.logicalBounds.width() > host.logicalBounds.height()) {
-            // An app that refuses multiwindow still has its original display viewport.
-            // The landscape pane is a video-shaped viewport: use the same cover scale as
-            // its centered crop so a portrait fullscreen surface does not become a tiny
-            // letterboxed thumbnail.
-            sx = sy = Math.max(sx, sy);
+            // Keep the complete surface when a fullscreen-compatible app has not yet
+            // accepted the forced landscape request. A cover transform would crop
+            // portrait UIs and video edges; contain it until WM reports new bounds.
+            sx = sy = Math.min(sx, sy);
             x = (host.width - crop.width() * sx) / 2f - crop.left * sx;
             y = (host.height - crop.height() * sy) / 2f - crop.top * sy;
         }
@@ -2110,31 +2119,6 @@ final class OneStepShell {
             crop.set(host.logicalBounds.width() > host.logicalBounds.height() ? actual : host.logicalBounds);
             if (!crop.intersect(actual)) throw new IllegalStateException("Fullscreen task has no visible viewport");
             crop.offset(-actual.left, -actual.top);
-        }
-        return crop;
-    }
-
-    private static Rect landscapeFullscreenCrop(Host host) {
-        Rect actual = host.actualBounds;
-        Rect crop = centerCrop(actual, host.width / (float) Math.max(1, host.height));
-        crop.offset(-actual.left, -actual.top);
-        return crop;
-    }
-
-    private static Rect centerCrop(Rect source, float targetAspect) {
-        Rect crop = new Rect(source);
-        if (source.isEmpty() || targetAspect <= 0f) return crop;
-        float sourceAspect = source.width() / (float) source.height();
-        if (sourceAspect > targetAspect) {
-            int width = Math.max(1, Math.min(source.width(),
-                    Math.round(source.height() * targetAspect)));
-            int left = source.left + (source.width() - width) / 2;
-            crop.set(left, source.top, left + width, source.bottom);
-        } else if (sourceAspect < targetAspect) {
-            int height = Math.max(1, Math.min(source.height(),
-                    Math.round(source.width() / targetAspect)));
-            int top = source.top + (source.height() - height) / 2;
-            crop.set(source.left, top, source.right, top + height);
         }
         return crop;
     }
@@ -2376,6 +2360,14 @@ final class OneStepShell {
             if (host.card != null && journal.containsKey(host.card.taskId)) forget(host.card.taskId);
         }
         if (host.imeRegistered) {
+            if (host.landscapeForced) {
+                try {
+                    imeSession.setLandscape((IBinder) host.card.token, false);
+                } catch (Exception error) {
+                    Log.w(TAG, "Cannot restore hosted app orientation", error);
+                }
+                host.landscapeForced = false;
+            }
             imeSession.remove((IBinder) host.card.token);
             host.imeRegistered = false;
         }

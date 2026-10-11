@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer.feature.onehanded;
 
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.pm.ActivityInfo;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.Binder;
@@ -39,6 +40,7 @@ public final class OneStepImePolicy {
     private static final int CLOSE = ADD + 2;
     private static final int RESUMED = CLOSE + 1;
     private static final int REFRESH_ORIENTATIONS = RESUMED + 1;
+    private static final int FORCE_LANDSCAPE = REFRESH_ORIENTATIONS + 1;
     private static final int ROUTING = IBinder.FIRST_CALL_TRANSACTION;
     private static final int ORIENTATION = ROUTING + 1;
     private static final int FOCUS = ORIENTATION + 1;
@@ -114,6 +116,7 @@ public final class OneStepImePolicy {
                         ServerSession owner = OWNERS.remove(target);
                         if (owner != null) {
                             IBinder token = owner.tokenForTask(target);
+                            owner.clearForcedLandscape(token);
                             owner.tasks.values().removeIf(value -> value == target);
                             owner.orientations.remove(token);
                             owner.refresh();
@@ -638,10 +641,13 @@ public final class OneStepImePolicy {
         try {
             Class<?> activity = Class.forName("com.android.server.wm.ActivityRecord", false, loader);
             module.intercept(OneStepReflection.method(activity, "setRequestedOrientation", int.class), chain -> {
-                Object result = chain.proceed();
+                Object record = chain.getThisObject();
+                Integer forced = forcedOrientation(record);
+                Object result = forced == null
+                        ? chain.proceed()
+                        : chain.proceed(new Object[]{forced});
                 if (!hasSessions) return result;
                 try {
-                    Object record = chain.getThisObject();
                     Object service = OneStepReflection.get(record, "mWmService");
                     synchronized (OneStepReflection.get(service, "mGlobalLock")) {
                         ServerSession owner = ownerOf(OneStepReflection.call(record, "getTask"));
@@ -652,6 +658,19 @@ public final class OneStepImePolicy {
             });
         } catch (Exception error) {
             Log.w(TAG, "Orientation request hook unavailable; task snapshots remain enabled", error);
+        }
+    }
+
+    private static Integer forcedOrientation(Object activity) {
+        if (activity == null) return null;
+        try {
+            Object task = OneStepReflection.call(activity, "getTask");
+            if (task == null) return null;
+            ServerSession owner = ownerOf(task);
+            return owner == null ? null : owner.forcedOrientation(task, activity);
+        } catch (Exception error) {
+            OneStepImeDiagnostics.unavailable(error);
+            return null;
         }
     }
 
@@ -688,6 +707,7 @@ public final class OneStepImePolicy {
         final Object lock;
         final Map<IBinder, Object> tasks = new HashMap<>();
         final Map<IBinder, OrientationState> orientations = new HashMap<>();
+        final Map<IBinder, ForcedOrientation> forcedOrientations = new HashMap<>();
         IBinder focusedToken;
         volatile boolean closed;
         IBinder reportedToken;
@@ -734,7 +754,7 @@ public final class OneStepImePolicy {
         }
 
         @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
-            if (code < ADD || code > REFRESH_ORIENTATIONS) return super.onTransact(code, data, reply, flags);
+            if (code < ADD || code > FORCE_LANDSCAPE) return super.onTransact(code, data, reply, flags);
             data.enforceInterface(DESCRIPTOR);
             if (Binder.getCallingUid() != uid) throw new SecurityException("Workspace owner mismatch");
             if (reply == null) return false;
@@ -748,6 +768,11 @@ public final class OneStepImePolicy {
                             Object focus = ReflectUtils.getField(display, "mCurrentFocus");
                             reportFocus(tokenForTask(ReflectUtils.invokeNoArg(focus, "getTask")));
                         }
+                    } else if (code == FORCE_LANDSCAPE) {
+                        if (!live()) throw new IllegalStateException("Workspace expired");
+                        IBinder token = data.readStrongBinder();
+                        boolean enabled = data.readInt() != 0;
+                        setForcedLandscape(token, enabled);
                     }
                     else if (code == RESUMED) {
                         if (!live()) throw new IllegalStateException("Workspace expired");
@@ -758,6 +783,7 @@ public final class OneStepImePolicy {
                         }
                     } else if (code == REMOVE) {
                         IBinder token = data.readStrongBinder();
+                        clearForcedLandscape(token);
                         Object task = tasks.remove(token);
                         orientations.remove(token);
                         if (task != null && OWNERS.get(task) == this) OWNERS.remove(task);
@@ -791,6 +817,39 @@ public final class OneStepImePolicy {
             return true;
         }
 
+        Integer forcedOrientation(Object task, Object activity) {
+            ForcedOrientation forced = forcedOrientations.get(tokenForTask(task));
+            if (forced == null) return null;
+            forced.remember(activity);
+            return ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+        }
+
+        private void setForcedLandscape(IBinder token, boolean enabled)
+                throws ReflectiveOperationException {
+            Object task = resolveTask(token);
+            if (task == workspace || !tasks.containsKey(token) || !standalone(task))
+                throw new IllegalStateException("Task is outside this workspace");
+            if (enabled) {
+                ForcedOrientation forced = forcedOrientations.get(token);
+                if (forced == null) {
+                    forced = new ForcedOrientation();
+                    forcedOrientations.put(token, forced);
+                }
+                Object activity = ReflectUtils.invokeNoArg(task, "topRunningActivity");
+                if (activity != null) {
+                    forced.apply(activity);
+                }
+            } else {
+                clearForcedLandscape(token);
+            }
+        }
+
+        private void clearForcedLandscape(IBinder token) throws ReflectiveOperationException {
+            ForcedOrientation forced = forcedOrientations.remove(token);
+            if (forced == null) return;
+            forced.restore();
+        }
+
         void reportFocus(IBinder token) {
             if (java.util.Objects.equals(focusedToken, token)) return;
             focusedToken = token;
@@ -808,6 +867,8 @@ public final class OneStepImePolicy {
             for (Map.Entry<IBinder, Object> entry : tasks.entrySet()) {
                 Object activity = ReflectUtils.invokeNoArg(entry.getValue(), "topRunningActivity");
                 if (activity == null || (requestedActivity != null && activity != requestedActivity)) continue;
+                try { ensureForcedOrientation(entry.getKey(), activity); }
+                catch (ReflectiveOperationException error) { OneStepImeDiagnostics.unavailable(error); }
                 // Read the Activity's request, never Configuration.orientation (which our
                 // own bounds change). The override includes manifest and runtime requests.
                 int orientation = ReflectUtils.invokeNoArgInt(activity, "getOverrideOrientation", -1);
@@ -830,6 +891,18 @@ public final class OneStepImePolicy {
                         });
                     } catch (RemoteException error) { binderDied(); }
                 });
+            }
+        }
+
+        private void ensureForcedOrientation(IBinder token, Object activity)
+                throws ReflectiveOperationException {
+            ForcedOrientation forced = forcedOrientations.get(token);
+            if (forced == null) return;
+            if (forced.applying) return;
+            forced.remember(activity);
+            if (ReflectUtils.invokeNoArgInt(activity, "getOverrideOrientation", -1)
+                    != ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
+                forced.apply(activity);
             }
         }
 
@@ -980,6 +1053,12 @@ public final class OneStepImePolicy {
             for (Object task : tasks.values()) OWNERS.remove(task, this);
             tasks.clear();
             orientations.clear();
+            ArrayList<ForcedOrientation> restoring = new ArrayList<>(forcedOrientations.values());
+            forcedOrientations.clear();
+            for (ForcedOrientation forced : restoring) {
+                try { forced.restore(); }
+                catch (Exception error) { OneStepImeDiagnostics.unavailable(error); }
+            }
             clearPendingInputRegion();
             editor = null;
             refresh();
@@ -992,6 +1071,34 @@ public final class OneStepImePolicy {
                     synchronized (lock) { close(); }
                 } catch (Exception error) { OneStepImeDiagnostics.unavailable(error); }
             });
+        }
+
+        final class ForcedOrientation {
+            private final IdentityHashMap<Object, Integer> originals = new IdentityHashMap<>();
+            boolean applying;
+
+            void remember(Object activity) {
+                if (activity == null || originals.containsKey(activity)) return;
+                originals.put(activity, ReflectUtils.invokeNoArgInt(activity, "getOverrideOrientation", -1));
+            }
+
+            void apply(Object activity) throws ReflectiveOperationException {
+                remember(activity);
+                if (applying) return;
+                applying = true;
+                try {
+                    OneStepReflection.call(activity, "setRequestedOrientation",
+                            new Class<?>[]{int.class}, ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+                } finally { applying = false; }
+            }
+
+            void restore() throws ReflectiveOperationException {
+                for (Map.Entry<Object, Integer> entry : originals.entrySet()) {
+                    OneStepReflection.call(entry.getKey(), "setRequestedOrientation",
+                            new Class<?>[]{int.class}, entry.getValue());
+                }
+                originals.clear();
+            }
         }
     }
 
@@ -1051,6 +1158,19 @@ public final class OneStepImePolicy {
         void add(IBinder task) throws RemoteException { send(ADD, task); }
         void remove(IBinder task) throws RemoteException { send(REMOVE, task); }
         void refreshOrientations() throws RemoteException { send(REFRESH_ORIENTATIONS, null); }
+        void setLandscape(IBinder task, boolean enabled) throws RemoteException {
+            if (closed) throw new IllegalStateException("IME session closed");
+            Parcel data = Parcel.obtain();
+            Parcel reply = Parcel.obtain();
+            try {
+                data.writeInterfaceToken(DESCRIPTOR);
+                data.writeStrongBinder(task);
+                data.writeInt(enabled ? 1 : 0);
+                if (!server.transact(FORCE_LANDSCAPE, data, reply, 0))
+                    throw new RemoteException("IME orientation transaction rejected");
+                reply.readException();
+            } finally { data.recycle(); reply.recycle(); }
+        }
         void setResumed(boolean value) throws RemoteException {
             if (Boolean.valueOf(value).equals(resumed)) return;
             send(RESUMED, null, value);
