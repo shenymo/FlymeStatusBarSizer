@@ -17,7 +17,8 @@ public final class OneStepWindowLayout {
                                                      List<Integer> sideOrder, boolean mainOnLeft,
                                                      int landscapeSlot, boolean showLandscape,
                                                      boolean showSideWindows,
-                                                     int toolbarPosition) {
+                                                     int toolbarPosition,
+                                                     boolean keepMainAspectRatio) {
         int reservedHeight = toolbarHeight + divider * 2;
         int landscapeHeight = showLandscape ? Math.max(1, Math.min(Math.round(width * 9f / 16f),
                 Math.max(1, (height - reservedHeight) / 3))) : 0;
@@ -30,7 +31,15 @@ public final class OneStepWindowLayout {
             calculateLowerPanes(result, width, height, contentTop,
                     Math.max(1, height - contentTop), divider, mainSlot, sideOrder, mainOnLeft);
         } else {
-            result[mainSlot] = new Rect(0, contentTop, width, height);
+            int mainLeft = 0;
+            int mainWidth = width;
+            if (!showLandscape && keepMainAspectRatio) {
+                int availableHeight = Math.max(1, height - contentTop);
+                mainWidth = Math.max(1, Math.min(width,
+                        Math.round(availableHeight * viewportWidth / (float) Math.max(1, viewportHeight))));
+                mainLeft = Math.max(0, (width - mainWidth) / 2);
+            }
+            result[mainSlot] = new Rect(mainLeft, contentTop, mainLeft + mainWidth, height);
             for (int slot : sideOrder) {
                 result[slot] = hiddenRect(width, height, divider);
             }

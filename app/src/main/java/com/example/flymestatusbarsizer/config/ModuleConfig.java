@@ -134,6 +134,7 @@ public final class ModuleConfig {
     public int assistantGestureVerticalLimitDp = SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP;
     public int workspaceToolbarHeightDp = SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;
     public int workspaceToolbarPositionDp = SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP;
+    public boolean workspaceKeepMainAspectRatio = SettingsStore.DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO;
     public int mbackLongTouchAction = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION;
     public String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
     public boolean windowModeSideGestureEnabled = SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED;
@@ -733,6 +734,10 @@ public final class ModuleConfig {
                     Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP, SettingsStore.readInt(prefs,
                             SettingsStore.KEY_WORKSPACE_TOOLBAR_POSITION_DP,
                             SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP)));
+            config.workspaceKeepMainAspectRatio = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
+                    SettingsStore.DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO);
             config.mbackLongTouchAction = SettingsStore.normalizeMBackLongTouchAction(
                     SettingsStore.readInt(
                             prefs,

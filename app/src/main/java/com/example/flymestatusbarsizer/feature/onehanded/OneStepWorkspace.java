@@ -137,6 +137,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private int height;
     private int layoutToolbarHeightDp = -1;
     private int layoutToolbarPositionDp = -1;
+    private boolean layoutKeepMainAspectRatio;
     private int mainSlot;
     private volatile int generation;
     private int highlightedSlot = -1;
@@ -636,17 +637,21 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         layoutToolbarHeightDp = toolbarHeight;
         int toolbarPosition = toolbarPositionDp();
         layoutToolbarPositionDp = toolbarPosition;
+        boolean keepMainAspectRatio = ModuleConfig.load(context).workspaceKeepMainAspectRatio;
+        layoutKeepMainAspectRatio = keepMainAspectRatio;
         Rect[] result = OneStepWindowLayout.calculateLandscapeWorkspace(width - margin * 2,
                 height - margin * 2, dp(PANE_GAP_DP),
                 dp(toolbarHeight), shortSide, longSide,
                 mainSlot, sideOrder, mainOnLeft, LANDSCAPE_SLOT, showLandscape, !sideWindowsCollapsed,
-                dp(toolbarPosition));
+                dp(toolbarPosition), keepMainAspectRatio);
         int viewportWidth = shortSide;
         int viewportHeight = longSide;
         Rect main = result[mainSlot];
-        viewportWidth = Math.max(shortSide, main.width());
-        viewportHeight = Math.max(1, Math.round(viewportWidth
-                * (main.height() / (float) Math.max(1, main.width()))));
+        if (showLandscape || !keepMainAspectRatio || !sideWindowsCollapsed) {
+            viewportWidth = Math.max(shortSide, main.width());
+            viewportHeight = Math.max(1, Math.round(viewportWidth
+                    * (main.height() / (float) Math.max(1, main.width()))));
+        }
         if (portraitBounds.width() != viewportWidth || portraitBounds.height() != viewportHeight)
             imeInputRegion = null;
         portraitBounds.set(logicalBounds.left, logicalBounds.top,
@@ -2214,9 +2219,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             else if (active()) {
                 int previousToolbarHeight = layoutToolbarHeightDp;
                 int previousToolbarPosition = layoutToolbarPositionDp;
+                boolean previousKeepMainAspectRatio = layoutKeepMainAspectRatio;
+                boolean currentKeepMainAspectRatio = ModuleConfig.load(context).workspaceKeepMainAspectRatio;
                 refreshEnvironment();
                 if (previousToolbarHeight != toolbarHeightDp()
-                        || previousToolbarPosition != toolbarPositionDp()) relayoutPanes();
+                        || previousToolbarPosition != toolbarPositionDp()
+                        || previousKeepMainAspectRatio != currentKeepMainAspectRatio) relayoutPanes();
                 scheduleCheck(100);
             }
         });

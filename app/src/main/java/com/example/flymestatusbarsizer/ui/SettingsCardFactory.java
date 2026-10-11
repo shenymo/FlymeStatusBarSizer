@@ -472,6 +472,10 @@ public final class SettingsCardFactory {
                 SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP,
                 SettingsStore.MIN_WORKSPACE_TOOLBAR_POSITION_DP,
                 SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP, "dp");
+        activity.addSwitchRow(workspaceOptions, "无横屏窗口时保持主应用比例",
+                "保持主应用原来的屏幕比例，主窗口两侧可能留出空白。",
+                SettingsStore.KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
+                SettingsStore.DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO);
         View workspaceCard = activity.buildSectionCard("多应用工作台", null, workspaceOptions, true);
         workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
         page.addView(workspaceCard, activity.matchWrapWithTop(8));

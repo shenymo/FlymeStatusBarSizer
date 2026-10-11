@@ -143,6 +143,7 @@ public final class SettingsStore {
     public static final String KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = "assistant_gesture_vertical_limit_dp";
     public static final String KEY_WORKSPACE_TOOLBAR_HEIGHT_DP = "workspace_toolbar_height_dp";
     public static final String KEY_WORKSPACE_TOOLBAR_POSITION_DP = "workspace_toolbar_position_dp";
+    public static final String KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO = "workspace_keep_main_aspect_ratio";
     public static final boolean DEFAULT_ASSISTANT_GESTURE_ENABLED = false;
     public static final int DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP = 140;
     public static final int DEFAULT_ASSISTANT_GESTURE_HOLD_MS = 600;
@@ -156,6 +157,7 @@ public final class SettingsStore {
     public static final int DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP = 0;
     public static final int MIN_WORKSPACE_TOOLBAR_POSITION_DP = 0;
     public static final int MAX_WORKSPACE_TOOLBAR_POSITION_DP = 240;
+    public static final boolean DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO = false;
     public static final String KEY_MBACK_LONG_TOUCH_ACTION = "mback_long_touch_action";
     public static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
     public static final String KEY_WINDOWMODE_SIDE_GESTURE_ENABLED = "windowmode_side_gesture_enabled";
@@ -756,6 +758,7 @@ public final class SettingsStore {
             KEY_ASSISTANT_BACKGROUND_BLUR,
             KEY_ASSISTANT_GESTURE_ENABLED,
             KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
+            KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
             CircleBatteryAnimationConfig.ENABLED,
             CircleBatteryAnimationConfig.CHARGING_ONLY,
             CircleBatteryAnimationConfig.EVENTS,
@@ -1263,6 +1266,7 @@ public final class SettingsStore {
             case KEY_ASSISTANT_BACKGROUND_BLUR: return DEFAULT_ASSISTANT_BACKGROUND_BLUR;
             case KEY_ASSISTANT_GESTURE_ENABLED: return DEFAULT_ASSISTANT_GESTURE_ENABLED;
             case KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED: return DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED;
+            case KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO: return DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO;
             case KEY_ENABLED:
                 return DEFAULT_ENABLED;
             case KEY_STATUS_BAR_TINT_ENABLED:
