@@ -50,7 +50,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private static final String TAG = "FlymeOneStep";
     private static final int LANDSCAPE_SLOT = 4;
     private static final int COUNT = LANDSCAPE_SLOT + 1;
-    private static final int TOOLBAR_HEIGHT_DP = 56;
+    private static final int TOOLBAR_HEIGHT_DP = 48;
+    private static final int TOOLBAR_ICON_SIZE_DP = 48;
+    private static final int TOOLBAR_ICON_PADDING_DP = 6;
+    private static final int TOOLBAR_EXIT_PADDING_DP = 12;
     private static final int PANE_GAP_DP = 4;
     private static final int WORKSPACE_MARGIN_DP = 4;
     private static final int PANE_RADIUS_DP = 16;
@@ -451,8 +454,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         strip.leftMargin = strip.rightMargin = dp(WORKSPACE_MARGIN_DP);
         strip.topMargin = Math.max(0, panesTop - dp(TOOLBAR_HEIGHT_DP + PANE_GAP_DP));
         recentStrip.setLayoutParams(strip);
-        exitButton.setPadding(dp(16), dp(16), dp(16), dp(16));
-        exitButton.setLayoutParams(new LinearLayout.LayoutParams(dp(56), dp(56)));
+        exitButton.setPadding(dp(TOOLBAR_EXIT_PADDING_DP), dp(TOOLBAR_EXIT_PADDING_DP),
+                dp(TOOLBAR_EXIT_PADDING_DP), dp(TOOLBAR_EXIT_PADDING_DP));
+        exitButton.setLayoutParams(new LinearLayout.LayoutParams(dp(TOOLBAR_ICON_SIZE_DP),
+                dp(TOOLBAR_ICON_SIZE_DP)));
         recentRow.setPadding(dp(8), 0, dp(8), 0);
         recentOrderDirty = true;
         updateRecentIcons();
@@ -1170,6 +1175,18 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void positionDesktop(Pane pane) {
         if (desktopContainer == null || pane.host != desktopHost || desktopHost == null) return;
+        updateDesktopTransform(pane);
+        float scale = Math.max(0.01f, pane.container.getScaleX());
+        boolean highlighted = highlightedSlot == pane.slot || tappedSlot == pane.slot;
+        desktopBorder.setCornerRadius(pane.cornerRadius);
+        desktopBorder.setColor(highlighted ? 0x225aaaff : Color.TRANSPARENT);
+        desktopBorder.setStroke(Math.max(1, Math.round(dp(highlighted ? 2 : 0.7f) / scale)),
+                highlighted ? 0xff9acbff : 0x40ffffff);
+        desktopBorder.setAlpha(Math.round(255 * pane.appearanceProgress));
+    }
+
+    private void updateDesktopTransform(Pane pane) {
+        if (desktopContainer == null || pane.host != desktopHost || desktopHost == null) return;
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) desktopContainer.getLayoutParams();
         if (params.width != portraitBounds.width() || params.height != portraitBounds.height()) {
             desktopContainer.setLayoutParams(new FrameLayout.LayoutParams(portraitBounds.width(), portraitBounds.height()));
@@ -1181,14 +1198,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         desktopContainer.setScaleY(pane.container.getScaleY());
         desktopContainer.setElevation(pane.container.getElevation());
         desktopContainer.setAlpha(desktopHost.ready ? 1f : 0f);
-        desktopContainer.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
-        float scale = Math.max(0.01f, pane.container.getScaleX());
-        boolean highlighted = highlightedSlot == pane.slot || tappedSlot == pane.slot;
-        desktopBorder.setCornerRadius(pane.cornerRadius);
-        desktopBorder.setColor(highlighted ? 0x225aaaff : Color.TRANSPARENT);
-        desktopBorder.setStroke(Math.max(1, Math.round(dp(highlighted ? 2 : 0.7f) / scale)),
-                highlighted ? 0xff9acbff : 0x40ffffff);
-        desktopBorder.setAlpha(Math.round(255 * pane.appearanceProgress));
     }
 
     private void removeHostView(OneStepShell.Host host) {
@@ -1333,7 +1342,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         strip.setContentDescription("应用选择栏，点击切换主窗口，长按拖入任意窗口");
         GradientDrawable background = new GradientDrawable();
         background.setColor(0x80171c25);
-        background.setCornerRadius(dp(18));
+        background.setCornerRadius(dp(16));
         background.setStroke(Math.max(1, dp(0.7f)), 0x30ffffff);
         toolbar.setBackground(background);
         toolbar.setClipToOutline(true);
@@ -1352,7 +1361,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         toolbar.addView(divider, new LinearLayout.LayoutParams(Math.max(1, dp(0.7f)), dp(28)));
         exitButton = new ImageView(context);
         exitButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        exitButton.setPadding(dp(16), dp(16), dp(16), dp(16));
+        exitButton.setPadding(dp(TOOLBAR_EXIT_PADDING_DP), dp(TOOLBAR_EXIT_PADDING_DP),
+                dp(TOOLBAR_EXIT_PADDING_DP), dp(TOOLBAR_EXIT_PADDING_DP));
         // The workspace uses SystemUI's Context; resolve module resources explicitly.
         try {
             Context module = context.createPackageContext(com.example.flymestatusbarsizer.BuildConfig.APPLICATION_ID, 0);
@@ -1366,7 +1376,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         exitButton.setTooltipText("退出工作台");
         exitButton.setFocusable(true);
         exitButton.setOnClickListener(v -> { if (active() && dragSession == null) close(true); });
-        toolbar.addView(exitButton, new LinearLayout.LayoutParams(dp(56), dp(56)));
+        toolbar.addView(exitButton, new LinearLayout.LayoutParams(dp(TOOLBAR_ICON_SIZE_DP),
+                dp(TOOLBAR_ICON_SIZE_DP)));
         updateRecentIcons();
         return toolbar;
     }
@@ -1426,12 +1437,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 ImageView icon = new ImageView(context);
                 icon.setTag(card);
                 icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                icon.setPadding(dp(8), dp(8), dp(8), dp(8));
+                icon.setPadding(dp(TOOLBAR_ICON_PADDING_DP), dp(TOOLBAR_ICON_PADDING_DP),
+                        dp(TOOLBAR_ICON_PADDING_DP), dp(TOOLBAR_ICON_PADDING_DP));
                 icon.setImageDrawable(context.getPackageManager().getDefaultActivityIcon());
                 icon.setOnClickListener(v -> showTask(card, mainSlot));
                 icon.setHapticFeedbackEnabled(false);
                 icon.setOnLongClickListener(v -> beginAppDrag(icon, card));
-                recentRow.addView(icon, new LinearLayout.LayoutParams(dp(56), dp(56)));
+                recentRow.addView(icon, new LinearLayout.LayoutParams(dp(TOOLBAR_ICON_SIZE_DP),
+                        dp(TOOLBAR_ICON_SIZE_DP)));
                 recentIcons.add(icon);
                 iconLoader.execute(() -> {
                     Drawable drawable;
@@ -1525,8 +1538,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 pane.container.setAlpha(startAlpha[slot]);
             }
             pane.updateAppearance();
-            // Configure task bounds once; animation frames only transform their surfaces.
-            pane.updateGeometry();
+            // Configure task bounds after the motion settles. Sending WCT bounds updates
+            // here makes WM relayout compete with every frame of the visual transition.
+            if (!animate) pane.updateGeometry();
         }
         if (!animate) {
             translateForIme(-workspace.getTranslationY());
@@ -1545,7 +1559,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 if (startAlpha[slot] == 0f && endAlpha[slot] == 0f) continue;
                 setTransitionFrame(pane, start[slot], end[slot], progress);
                 pane.container.setAlpha(startAlpha[slot] + (endAlpha[slot] - startAlpha[slot]) * progress);
-                pane.updateAppearance();
+                // Keep the desktop surface moving with its pane without rebuilding
+                // outlines or issuing SurfaceView corner-radius calls on every frame.
+                updateDesktopTransform(pane);
             }
             if (dragSession != null && backdrop != null)
                 highlightDropTarget(dropSlot(backdrop.touchX, backdrop.touchY));
@@ -1560,6 +1576,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     pane.container.setTranslationY(0);
                     pane.container.setAlpha(1f);
                     pane.updateAppearance();
+                    pane.updateGeometry();
                 }
                 translateForIme(-workspace.getTranslationY());
                 positionForIme();
@@ -1871,9 +1888,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             Drawable.ConstantState constant = drawable == null ? null : drawable.getConstantState();
             dragPreview.setImageDrawable(constant == null ? drawable : constant.newDrawable(context.getResources()).mutate());
             dragPreview.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            dragPreview.setPadding(dp(8), dp(8), dp(8), dp(8));
+            dragPreview.setPadding(dp(TOOLBAR_ICON_PADDING_DP), dp(TOOLBAR_ICON_PADDING_DP),
+                    dp(TOOLBAR_ICON_PADDING_DP), dp(TOOLBAR_ICON_PADDING_DP));
             dragPreview.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            backdrop.addView(dragPreview, new FrameLayout.LayoutParams(dp(56), dp(56)));
+            backdrop.addView(dragPreview, new FrameLayout.LayoutParams(dp(TOOLBAR_ICON_SIZE_DP),
+                    dp(TOOLBAR_ICON_SIZE_DP)));
             updateRecentIcons();
             moveAppDrag(backdrop.touchX, backdrop.touchY);
             haptic(HapticFeedbackConstants.LONG_PRESS);
@@ -1891,8 +1910,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             return;
         }
         if (dragPreview != null) {
-            dragPreview.setTranslationX(x - dp(28));
-            dragPreview.setTranslationY(y - dp(28));
+            dragPreview.setTranslationX(x - dp(TOOLBAR_ICON_SIZE_DP / 2f));
+            dragPreview.setTranslationY(y - dp(TOOLBAR_ICON_SIZE_DP / 2f));
         }
         highlightDropTarget(dropSlot(x, y));
     }
