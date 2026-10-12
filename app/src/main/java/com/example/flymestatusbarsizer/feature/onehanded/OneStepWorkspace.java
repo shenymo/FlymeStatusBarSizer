@@ -1416,42 +1416,16 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private void blockInput(boolean block) {
         if (backdrop == null) return;
         // TaskView's native insets listener uses its unscaled width/height. Cover everything
-        // except the two interactive panes. Native input follows each task's surface;
-        // the side thumbnails remain selection targets owned by the workspace.
-        android.graphics.Region obscured = new android.graphics.Region();
-        obscured.set(0, 0, Math.max(width, backdrop.getWidth()),
-                Math.max(height + contentBounds.top, backdrop.getHeight()));
-        for (int slot : new int[]{mainSlot, LANDSCAPE_SLOT}) {
-            Pane main = panes[slot];
-            if (!block && main != null && main.host != null && main.host.ready) {
-                Rect visible = new Rect();
-                if (main.host.view.getGlobalVisibleRect(visible)) {
-                    // Rounded corners belong to the workspace, not the application's rectangular
-                    // logical viewport. Use the unclipped view bounds to retain the correct arc
-                    // when the keyboard moves part of the main pane beyond the screen.
-                    int[] location = new int[2];
-                    main.host.view.getLocationOnScreen(location);
-                    RectF bounds = new RectF(location[0], location[1],
-                            location[0] + main.host.view.getWidth() * main.container.getScaleX(),
-                            location[1] + main.host.view.getHeight() * main.container.getScaleY());
-                    Path shape = new Path();
-                    shape.addRoundRect(bounds, dp(PANE_RADIUS_DP), dp(PANE_RADIUS_DP), Path.Direction.CW);
-                    Region touchable = new Region();
-                    touchable.setPath(shape, new Region(visible));
-                    obscured.op(touchable, Region.Op.DIFFERENCE);
-                }
-            }
-        }
-        if (recentStrip != null) {
-            Rect toolbar = new Rect();
-            if (recentStrip.getGlobalVisibleRect(toolbar)) obscured.op(toolbar, Region.Op.UNION);
-        }
+        // except that task's own interactive pane. Task window bounds overlap in WM even
+        // though their surfaces are disjoint, so sharing both input holes lets the focused
+        // task intercept touches intended for the other pane.
         try {
             boolean changed = inputRegionRefreshPending;
             for (Pane pane : panes) if (pane != null && pane.host != null) {
                 // setObscuredTouchRect cannot represent several disjoint side panes during swaps.
                 java.lang.reflect.Field field = OneStepReflection.field(pane.host.view.getClass(), "mObscuredTouchRegion");
                 Object previous = field.get(pane.host.view);
+                Region obscured = obscuredTouchRegion(pane, block);
                 if (inputRegionRefreshPending || !obscured.equals(previous)) {
                     field.set(pane.host.view, new android.graphics.Region(obscured));
                     changed = true;
@@ -1468,6 +1442,34 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             if (active()) handler.post(() -> fail("无法设置应用触摸区域", error));
             else OneStepFlowLog.w(TAG, "Cannot close task input regions", error);
         }
+    }
+
+    private Region obscuredTouchRegion(Pane pane, boolean block) {
+        Region obscured = new Region();
+        obscured.set(0, 0, Math.max(width, backdrop.getWidth()),
+                Math.max(height + contentBounds.top, backdrop.getHeight()));
+        if (!block && (pane.slot == mainSlot || pane.slot == LANDSCAPE_SLOT)
+                && pane.host.ready) {
+            Rect visible = new Rect();
+            if (pane.host.view.getGlobalVisibleRect(visible)) {
+                // Use the transformed view bounds so the task input hole matches its pane.
+                int[] location = new int[2];
+                pane.host.view.getLocationOnScreen(location);
+                RectF bounds = new RectF(location[0], location[1],
+                        location[0] + pane.host.view.getWidth() * pane.container.getScaleX(),
+                        location[1] + pane.host.view.getHeight() * pane.container.getScaleY());
+                Path shape = new Path();
+                shape.addRoundRect(bounds, dp(PANE_RADIUS_DP), dp(PANE_RADIUS_DP), Path.Direction.CW);
+                Region touchable = new Region();
+                touchable.setPath(shape, new Region(visible));
+                obscured.op(touchable, Region.Op.DIFFERENCE);
+            }
+        }
+        if (recentStrip != null) {
+            Rect toolbar = new Rect();
+            if (recentStrip.getGlobalVisibleRect(toolbar)) obscured.op(toolbar, Region.Op.UNION);
+        }
+        return obscured;
     }
 
     private View createRecentStrip(List<RecentTaskCard> recent) {
