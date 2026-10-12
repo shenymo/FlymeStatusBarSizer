@@ -24,7 +24,7 @@ import java.util.concurrent.Executor;
 
 /** Runs Flyme's actual icon animator against temporary, pane-local animation surfaces. */
 final class OneStepLaunchAnimation {
-    private static final String TAG = "FlymeOneStepAnimation";
+    private static final String TAG = OneStepFlowLog.TAG;
     private static final String DESCRIPTOR = "flyme.onestep.launch.animation";
     private static final int START = IBinder.FIRST_CALL_TRANSACTION;
     private static final int CANCEL = START + 1;
@@ -48,7 +48,7 @@ final class OneStepLaunchAnimation {
             });
             installWallpaperZoomHooks(module, loader);
             supported = true;
-        } catch (Exception error) { Log.w(TAG, "Native workspace animation hooks unavailable", error); }
+        } catch (Exception error) { OneStepFlowLog.w(TAG, "Native workspace animation hooks unavailable", error); }
     }
 
     private static void installWallpaperZoomHooks(FlymeStatusBarSizer module, ClassLoader loader)
@@ -77,7 +77,7 @@ final class OneStepLaunchAnimation {
 
     static Launch prepare(Context launcher, View view, Object item, Class<?> itemClass, int ownerUid) {
         if (!supported || view == null || !view.isAttachedToWindow() || ownerUid <= 0) {
-            Log.i(TAG, "Native animation unavailable: supported=" + supported
+            OneStepFlowLog.i(TAG, "Native animation unavailable: supported=" + supported
                     + " attached=" + (view != null && view.isAttachedToWindow()) + " owner=" + ownerUid);
             return null;
         }
@@ -90,14 +90,14 @@ final class OneStepLaunchAnimation {
             Object runner = OneStepReflection.call(adapter, "getRunner");
             Object factory = OneStepReflection.call(runner, "getFactory");
             Launch launch = new Launch(launcher, factory, OneStepReflection.get(wrapper, "onEndCallback"), ownerUid);
-            Log.i(TAG, "Native icon animation prepared");
+            OneStepFlowLog.i(TAG, "Native icon animation prepared");
             return launch;
         } catch (Exception error) {
             if (wrapper != null) {
                 try { OneStepReflection.call(OneStepReflection.get(wrapper, "onEndCallback"), "executeAllAndDestroy"); }
                 catch (Exception ignored) { }
             }
-            Log.w(TAG, "Opening without native launcher animation", error);
+            OneStepFlowLog.w(TAG, "Opening without native launcher animation", error);
             return null;
         }
     }
@@ -160,7 +160,7 @@ final class OneStepLaunchAnimation {
             }
             started = true;
             startedAt = SystemClock.uptimeMillis();
-            Log.i(TAG, "Native icon animation started");
+            OneStepFlowLog.i(TAG, "Native icon animation started");
             finished = completion;
             iconParent = parent;
             main.removeCallbacks(timeout);
@@ -181,7 +181,7 @@ final class OneStepLaunchAnimation {
                 OneStepReflection.call(factory, "onAnimationStart", new Class<?>[]{int.class,
                         targetsClass, targetsClass, targetsClass, resultClass}, 0, apps, empty, empty, result);
             } catch (Exception error) {
-                Log.w(TAG, "Native icon animation failed", error);
+                OneStepFlowLog.w(TAG, "Native icon animation failed", error);
                 finish(true);
             }
         }
@@ -200,7 +200,7 @@ final class OneStepLaunchAnimation {
                 Rect local = new Rect(screen);
                 local.offset(-origin[0], -origin[1]);
                 OneStepReflection.field(target.getClass(), "localBounds").set(target, local);
-                Log.i(TAG, "Opening coordinates: screen=" + screen + " launcherLocal=" + local
+                OneStepFlowLog.i(TAG, "Opening coordinates: screen=" + screen + " launcherLocal=" + local
                         + " origin=" + origin[0] + "," + origin[1]);
             }
             try (SurfaceControl.Transaction tx = new SurfaceControl.Transaction()) {
@@ -213,7 +213,7 @@ final class OneStepLaunchAnimation {
         private void finish(boolean cancel) {
             if (closed) return;
             closed = true;
-            Log.i(TAG, "Native icon animation finished: started=" + started + " cancel=" + cancel
+            OneStepFlowLog.i(TAG, "Native icon animation finished: started=" + started + " cancel=" + cancel
                     + " durationMs=" + (started ? SystemClock.uptimeMillis() - startedAt : 0));
             main.removeCallbacks(timeout);
             if (cancel) {
@@ -224,10 +224,10 @@ final class OneStepLaunchAnimation {
                         if (animator != null) OneStepReflection.call(animator, "end");
                     }
                     OneStepReflection.call(factory, "onAnimationCancelled");
-                } catch (Exception error) { Log.w(TAG, "Cannot cancel native animation", error); }
+                } catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot cancel native animation", error); }
             }
             try { OneStepReflection.call(callbacks, "executeAllAndDestroy"); }
-            catch (Exception error) { Log.w(TAG, "Cannot complete launcher callbacks", error); }
+            catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot complete launcher callbacks", error); }
             if (active == this) active = null;
             if (finished != null && death != null) {
                 try { finished.unlinkToDeath(death, 0); }
@@ -288,7 +288,7 @@ final class OneStepLaunchAnimation {
         try {
             data.writeInterfaceToken(DESCRIPTOR);
             endpoint.transact(CANCEL, data, null, IBinder.FLAG_ONEWAY);
-        } catch (RemoteException | RuntimeException error) { Log.w(TAG, "Launcher animation disconnected", error); }
+        } catch (RemoteException | RuntimeException error) { OneStepFlowLog.w(TAG, "Launcher animation disconnected", error); }
         finally { data.recycle(); }
     }
 
@@ -298,7 +298,7 @@ final class OneStepLaunchAnimation {
         try {
             data.writeInterfaceToken(DESCRIPTOR);
             endpoint.transact(FINISHED, data, null, IBinder.FLAG_ONEWAY);
-        } catch (RemoteException | RuntimeException error) { Log.w(TAG, "Animation owner disconnected", error); }
+        } catch (RemoteException | RuntimeException error) { OneStepFlowLog.w(TAG, "Animation owner disconnected", error); }
         finally { data.recycle(); }
     }
 }

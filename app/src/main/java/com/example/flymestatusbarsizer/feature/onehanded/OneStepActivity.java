@@ -169,7 +169,7 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
             watchingWallpaper = true;
             updateBarColors(wallpaper.getWallpaperColors(WallpaperManager.FLAG_SYSTEM));
         } catch (RuntimeException error) {
-            Log.w("FlymeOneStepActivity", "Cannot read wallpaper colors", error);
+            OneStepFlowLog.w(OneStepFlowLog.TAG, "Cannot read wallpaper colors", error);
         }
     }
 
@@ -288,7 +288,7 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         // SurfaceView takes ownership of this parcelled SurfacePackage.
         try { surface.setChildSurfacePackage(pack); }
         catch (RuntimeException error) {
-            Log.w("FlymeOneStepActivity", "Cannot embed workspace surface", error);
+            OneStepFlowLog.w(OneStepFlowLog.TAG, "Cannot embed workspace surface", error);
             pack.release();
             closeWorkspace(true);
             return;
@@ -380,7 +380,7 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         if (surface != null) surface.getHolder().removeCallback(this);
         if (watchingWallpaper) {
             try { wallpaper.removeOnColorsChangedListener(wallpaperColors); }
-            catch (RuntimeException error) { Log.w("FlymeOneStepActivity", "Cannot remove wallpaper listener", error); }
+            catch (RuntimeException error) { OneStepFlowLog.w(OneStepFlowLog.TAG, "Cannot remove wallpaper listener", error); }
             watchingWallpaper = false;
         }
         super.onDestroy();

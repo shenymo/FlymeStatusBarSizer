@@ -146,7 +146,7 @@ final class OneStepActivitySession {
                             mounted = false;
                             try { sendSurface(); }
                             catch (Exception error) {
-                                Log.w(OneHandedTaskHooks.TAG, "Cannot remount workspace", error);
+                                OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot remount workspace", error);
                                 listener.onClosed(false);
                             }
                         });
@@ -260,13 +260,13 @@ final class OneStepActivitySession {
                         hostToken = token;
                         createHost();
                     } catch (Exception error) {
-                        Log.w(OneHandedTaskHooks.TAG, "Cannot reattach workspace", error);
+                        OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot reattach workspace", error);
                         listener.onClosed(false);
                     }
                 });
             }
         } catch (Exception error) {
-            Log.w(OneHandedTaskHooks.TAG, "Workspace Activity disconnected", error);
+            OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Workspace Activity disconnected", error);
             listener.onClosed(false);
         }
     }
@@ -301,7 +301,7 @@ final class OneStepActivitySession {
     private void disconnectClient() {
         if (client != null && death != null) {
             try { client.unlinkToDeath(death, 0); }
-            catch (RuntimeException error) { Log.w(OneHandedTaskHooks.TAG, "Workspace client already disconnected", error); }
+            catch (RuntimeException error) { OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Workspace client already disconnected", error); }
         }
         client = null;
         death = null;
@@ -319,7 +319,7 @@ final class OneStepActivitySession {
             handler.postDelayed(restartTimeout, 12000);
         }
         catch (Exception error) {
-            Log.w(OneHandedTaskHooks.TAG, "Cannot recreate workspace Activity", error);
+            OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot recreate workspace Activity", error);
             listener.onClosed(false);
         }
     }
@@ -330,7 +330,7 @@ final class OneStepActivitySession {
             handler.postDelayed(restartTimeout, 700);
             return;
         }
-        Log.w(OneHandedTaskHooks.TAG, "Workspace Activity did not reconnect");
+        OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Workspace Activity did not reconnect");
         listener.onClosed(false);
     }
 
@@ -361,7 +361,7 @@ final class OneStepActivitySession {
         disconnectClient();
         if (host != null) {
             try { host.release(); }
-            catch (RuntimeException error) { Log.w(OneHandedTaskHooks.TAG, "Cannot release workspace surface", error); }
+            catch (RuntimeException error) { OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot release workspace surface", error); }
             host = null;
         }
         view = null;
@@ -373,6 +373,6 @@ final class OneStepActivitySession {
         try {
             OneStepActivityProtocol.send(callback, OneStepActivityProtocol.CALLBACK,
                     OneStepActivityProtocol.FINISH, data -> {});
-        } catch (RemoteException error) { Log.w(OneHandedTaskHooks.TAG, "Workspace Activity already gone", error); }
+        } catch (RemoteException error) { OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Workspace Activity already gone", error); }
     }
 }

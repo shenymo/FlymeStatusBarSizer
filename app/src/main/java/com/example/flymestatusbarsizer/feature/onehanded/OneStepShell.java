@@ -40,7 +40,7 @@ import java.util.concurrent.Executor;
 
 /** Borrows existing tasks from Flyme's organizer. Never registers another organizer or a display. */
 final class OneStepShell {
-    private static final String TAG = "FlymeOneStepShell";
+    private static final String TAG = OneStepFlowLog.TAG;
     interface Listener {
         void onReady(Host host);
         void onRemoved(Host host);
@@ -178,7 +178,7 @@ final class OneStepShell {
                 appliedSurfaceRadius = radius;
             } catch (ReflectiveOperationException | RuntimeException error) {
                 surfaceCornersUnavailable = true;
-                Log.w(TAG, "Task surface corner radius unavailable", error);
+                OneStepFlowLog.w(TAG, "Task surface corner radius unavailable", error);
             }
         }
     }
@@ -334,7 +334,7 @@ final class OneStepShell {
                             transitionBusy = true;
                             Object wct = transaction();
                             arrangeTasks(wct, mainHost());
-                            Log.i(TAG, "Hosted task closing: task=" + requested.card.taskId);
+                            OneStepFlowLog.i(TAG, "Hosted task closing: task=" + requested.card.taskId);
                             return wct;
                         }
                         return requested != null && current(requested) && (type == 2 || type == 4)
@@ -414,7 +414,7 @@ final class OneStepShell {
             String snapshot = "main=" + host.main + " " + OneStepImeDiagnostics.taskInfo(info);
             if (!force && snapshot.equals(host.lastImeTaskState)) return;
             host.lastImeTaskState = snapshot;
-            Log.i(OneStepImeDiagnostics.TAG, "task session=" + host.session + " event=" + event
+            OneStepFlowLog.i(OneStepImeDiagnostics.TAG, "task session=" + host.session + " event=" + event
                     + " expectedMode=" + (host.home() || host.fullscreenCompat ? 1 : 6)
                     + " fullscreenCompat=" + host.fullscreenCompat + " " + snapshot);
         } catch (Throwable error) { OneStepImeDiagnostics.unavailable(error); }
@@ -434,7 +434,7 @@ final class OneStepShell {
                     + " requestedBounds=" + host.logicalBounds + " before={" + OneStepImeDiagnostics.taskInfo(info) + "}";
             if (snapshot.equals(host.lastImeModeRequest)) return;
             host.lastImeModeRequest = snapshot;
-            Log.i(OneStepImeDiagnostics.TAG, "mode-request session=" + host.session + " " + snapshot);
+            OneStepFlowLog.i(OneStepImeDiagnostics.TAG, "mode-request session=" + host.session + " " + snapshot);
             // applyTransaction returning does not establish that WM accepted the mode.
             // Read fresh server TaskInfo after the transaction, not the organizer cache.
             later(() -> {
@@ -489,7 +489,7 @@ final class OneStepShell {
             OneStepReflection.call(transitions, "registerObserver", new Class<?>[]{observerClass}, observer);
             initialized = true;
         } catch (Exception error) {
-            Log.w(TAG, "Shell task hosting is unavailable", error);
+            OneStepFlowLog.w(TAG, "Shell task hosting is unavailable", error);
             if (++initAttempts < 100) later(() -> initialize(observerClass), 500);
         }
     }
@@ -509,7 +509,7 @@ final class OneStepShell {
         declined.clear();
         accepting = true;
         closingFocusTask = -1;
-        Log.i(OneStepImeDiagnostics.TAG, "workspace-begin session=" + session + " user=" + userId);
+        OneStepFlowLog.info("shell_session_started", session, "user=" + userId);
     }
 
     void prepareWorkspaceEntry(RecentTaskCard card, java.util.function.Consumer<Rect> ready) {
@@ -609,7 +609,7 @@ final class OneStepShell {
                     tx.apply();
                 }
             } catch (Exception error) {
-                Log.w(TAG, "Cannot stage workspace exit", error);
+                OneStepFlowLog.w(TAG, "Cannot stage workspace exit", error);
                 cancelWorkspaceMotion();
             }
         });
@@ -632,7 +632,7 @@ final class OneStepShell {
                     tx.apply();
                 }
             } catch (Exception error) {
-                Log.w(TAG, "Cannot move workspace surface", error);
+                OneStepFlowLog.w(TAG, "Cannot move workspace surface", error);
                 cancelWorkspaceMotion();
             }
         });
@@ -880,7 +880,7 @@ final class OneStepShell {
                 imeSession.setLandscape((IBinder) host.card.token, enabled);
                 host.landscapeForced = enabled;
             } catch (Exception error) {
-                Log.w(TAG, "Cannot update hosted app orientation", error);
+                OneStepFlowLog.w(TAG, "Cannot update hosted app orientation", error);
             }
         });
     }
@@ -959,6 +959,8 @@ final class OneStepShell {
     void close(int focusTask, Runnable finished) {
         accepting = false;
         int request = closeRequest.incrementAndGet();
+        OneStepFlowLog.info("shell_restore_started", session,
+                "focusTask=" + focusTask);
         executor.execute(() -> {
             closingFocusTask = focusTask;
             restoreAll(focusTask, finished, 0, request);
@@ -1161,6 +1163,10 @@ final class OneStepShell {
     private void launch(Host host) throws Exception {
         host.launching = true;
         host.launchStartedAt = SystemClock.uptimeMillis();
+        OneStepFlowLog.info("app_launch_started", host.session,
+                "task=" + (host.card == null ? -1 : host.card.taskId)
+                        + " package=" + (host.card == null || host.card.component == null
+                                ? "unknown" : host.card.component.getPackageName()));
         for (Object info : tasks.roots()) host.launchSnapshots.put(OneStepTaskAccess.taskId(info), info);
         synchronized (OneStepReflection.get(organizer, "mLock")) {
             SparseArray<?> all = (SparseArray<?>) OneStepReflection.get(organizer, "mTasks");
@@ -1216,6 +1222,9 @@ final class OneStepShell {
         ComponentName component = baseComponent(info);
         host.card = new RecentTaskCard(OneStepTaskAccess.taskId(info), activityUserId,
                 OneStepTaskAccess.token(info), component.getPackageName(), component);
+        OneStepFlowLog.info("app_launch_attached", host.session,
+                "task=" + host.card.taskId + " package="
+                        + (host.card.component == null ? "unknown" : host.card.component.getPackageName()));
         Object previous = host.launchSnapshots.get(host.card.taskId);
         if (previous != null && !matches(host.card, previous)) previous = null;
         remember(host, previous == null ? info : previous);
@@ -1249,12 +1258,13 @@ final class OneStepShell {
 
     private void launchFailed(Host host, Exception error) {
         if (!current(host)) return;
-        Log.w(TAG, "Cannot attach launcher application", error);
+        OneStepFlowLog.warn("app_launch_failed", host.session,
+                "task=" + (host.card == null ? -1 : host.card.taskId), error);
         if (host.navigation != null) cancelNavigation(host.navigation);
         for (Host candidate : hosts) if (current(candidate) && candidate.coveredByLaunch) {
             candidate.coveredByLaunch = false;
             try { present(candidate, null, null); }
-            catch (Exception restoreError) { Log.w(TAG, "Cannot uncover desktop", restoreError); }
+            catch (Exception restoreError) { OneStepFlowLog.w(TAG, "Cannot uncover desktop", restoreError); }
         }
         restoreOne(host, () -> { if (listener != null) listener.onLaunchFailed(host); }, 0);
     }
@@ -1456,7 +1466,7 @@ final class OneStepShell {
             if (current(host) && host.animationPending && args[0].equals(host.launchTransition)) {
                 if (!host.borrowed && current(host.launchHome)) {
                     waitingOpening = new WaitingOpening(host, args);
-                    Log.i(TAG, "Waiting for opening task surface: task="
+                    OneStepFlowLog.i(TAG, "Waiting for opening task surface: task="
                             + (host.card == null ? -1 : host.card.taskId));
                     start.apply();
                     WaitingOpening waiting = waitingOpening;
@@ -1509,7 +1519,7 @@ final class OneStepShell {
             waitingOpening = waiting;
             finishWaitingOpening(waiting, true);
         } else if (SystemClock.uptimeMillis() >= waiting.deadline) {
-            Log.w(TAG, "Opening surface wait timed out; completing without animation");
+            OneStepFlowLog.w(TAG, "Opening surface wait timed out; completing without animation");
             finishWaitingOpening(waiting, true);
         } else later(() -> resumeOpening(waiting), 50);
     }
@@ -1520,13 +1530,13 @@ final class OneStepShell {
         cancelLaunchAnimation(waiting.app);
         try {
             present(waiting.app, null, (SurfaceControl.Transaction) waiting.args[3]);
-        } catch (Exception error) { Log.w(TAG, "Cannot present waiting application", error); }
+        } catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot present waiting application", error); }
         pending.remove(waiting.args[0]);
         transitionBusy = !pending.isEmpty();
         if (finishTransition) {
             try { OneStepReflection.call(waiting.args[4], "onTransitionFinished",
                     new Class<?>[]{wctClass}, (Object) null); }
-            catch (Exception error) { Log.w(TAG, "Cannot finish waiting opening transition", error); }
+            catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot finish waiting opening transition", error); }
         }
     }
 
@@ -1561,7 +1571,7 @@ final class OneStepShell {
         Host home = app.launchHome;
         if (openingAnimation != null || !current(home) || !home.borrowed || !app.borrowed
                 || app.launchAnimation == null) {
-            Log.w(TAG, "Opening animation not ready: task=" + (app.card == null ? -1 : app.card.taskId)
+            OneStepFlowLog.w(TAG, "Opening animation not ready: task=" + (app.card == null ? -1 : app.card.taskId)
                     + " borrowed=" + app.borrowed + " home=" + current(home)
                     + " running=" + (openingAnimation != null));
             return false;
@@ -1572,7 +1582,7 @@ final class OneStepShell {
             SurfaceControl parent = (SurfaceControl) OneStepReflection.call(home.controller, "getSurfaceControl");
             if (parent == null || !parent.isValid() || home.leash == null || !home.leash.isValid()
                     || app.leash == null || !app.leash.isValid()) {
-                Log.w(TAG, "Opening animation surface unavailable: task=" + app.card.taskId);
+                OneStepFlowLog.w(TAG, "Opening animation surface unavailable: task=" + app.card.taskId);
                 return false;
             }
             animation.stage = animation.layer("opening viewport", parent);
@@ -1606,31 +1616,31 @@ final class OneStepShell {
             start.addTransactionCommittedListener(executor, () -> {
                 if (openingAnimation != animation) return;
                 try {
-                    Log.i(TAG, "Starting native launcher animation: task=" + app.card.taskId);
+                    OneStepFlowLog.i(TAG, "Starting native launcher animation: task=" + app.card.taskId);
                     animation.remote.start(targets, animation.icons, executor,
                             () -> finishOpeningAnimation(animation, false, true));
                 } catch (Exception error) {
-                    Log.w(TAG, "Cannot start native launcher animation", error);
+                    OneStepFlowLog.w(TAG, "Cannot start native launcher animation", error);
                     finishOpeningAnimation(animation, true, true);
                 }
             });
             start.apply();
             later(() -> {
                 if (openingAnimation == animation) {
-                    Log.w(TAG, "Native launcher animation timed out; completing application launch");
+                    OneStepFlowLog.w(TAG, "Native launcher animation timed out; completing application launch");
                     finishOpeningAnimation(animation, true, true);
                 }
             }, 4000);
             return true;
         } catch (Exception error) {
-            Log.w(TAG, "Cannot prepare native launcher animation", error);
+            OneStepFlowLog.w(TAG, "Cannot prepare native launcher animation", error);
             openingAnimation = null;
             // Undo every queued reparent in the same start transaction before falling back.
             try {
                 place(app, (SurfaceControl) OneStepReflection.call(app.controller, "getSurfaceControl"), start);
                 place(home, (SurfaceControl) OneStepReflection.call(home.controller, "getSurfaceControl"), start);
                 removeAnimationSurfaces(animation, start);
-            } catch (Exception cleanupError) { Log.w(TAG, "Cannot reset opening surfaces", cleanupError); }
+            } catch (Exception cleanupError) { OneStepFlowLog.w(TAG, "Cannot reset opening surfaces", cleanupError); }
             return false;
         }
     }
@@ -1657,7 +1667,7 @@ final class OneStepShell {
     private void finishOpeningAnimation(OpeningAnimation animation, boolean cancel, boolean finishTransition) {
         if (openingAnimation != animation) return;
         openingAnimation = null;
-        Log.i(TAG, "Finishing native launcher animation: task=" + animation.app.card.taskId + " cancel=" + cancel);
+        OneStepFlowLog.i(TAG, "Finishing native launcher animation: task=" + animation.app.card.taskId + " cancel=" + cancel);
         animation.remote.close(cancel);
         animation.app.launchAnimation = null;
         animation.app.openingRevealed = true;
@@ -1691,7 +1701,7 @@ final class OneStepShell {
             if (finishTransition) {
                 try { OneStepReflection.call(animation.callback, "onTransitionFinished",
                         new Class<?>[]{wctClass}, (Object) null); }
-                catch (Exception error) { Log.w(TAG, "Cannot finish opening transition", error); }
+                catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot finish opening transition", error); }
             }
         }
     }
@@ -1801,7 +1811,7 @@ final class OneStepShell {
                     tx.apply();
                 }
                 if (navigation.target == null || !navigation.target.prepared) forget(navigation.card.taskId);
-            } catch (Exception error) { Log.w(TAG, "Cannot return navigation surface", error); }
+            } catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot return navigation surface", error); }
         }
         if (accepting) setCovered(true);
     }
@@ -1906,7 +1916,7 @@ final class OneStepShell {
                 if (incoming.containsKey(OneStepTaskAccess.token(focused))) return;
                 // A focus notification can precede or replace the Shell OPEN callback.
                 if (offerNavigation(focused) == null) setCovered(true);
-            } catch (Exception error) { Log.w(TAG, "Cannot inspect workspace focus", error); }
+            } catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot inspect workspace focus", error); }
         });
     }
 
@@ -2133,7 +2143,9 @@ final class OneStepShell {
             hosts.remove(host);
             if (finished != null) ui.post(finished);
         } catch (Exception error) {
-            Log.w(TAG, "Task restoration will retry", error);
+            OneStepFlowLog.warn("task_restore_retry", host.session,
+                    "task=" + (host.card == null ? -1 : host.card.taskId)
+                            + " attempt=" + (attempt + 1), error);
             later(() -> restoreOne(host, finished, attempt + 1), Math.min(5000, 200 + attempt * 400));
         }
     }
@@ -2156,7 +2168,7 @@ final class OneStepShell {
                     boolean owned = false;
                     for (Host host : hosts) owned |= host.card != null && host.card.taskId == focused;
                     if (!owned && focused != activityTaskId) retainFocus = focused;
-                } catch (Exception error) { Log.w(TAG, "Cannot remember external task focus", error); }
+                } catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot remember external task focus", error); }
             }
             // Restore the selected task last, without stealing focus from Home/Recents/external apps.
             ArrayList<Host> order = new ArrayList<>(hosts);
@@ -2177,13 +2189,16 @@ final class OneStepShell {
             int selectedFocus = focusTask >= 0 ? focusTask : retainFocus;
             if (selectedFocus >= 0) {
                 try { tasks.focusTask(selectedFocus); }
-                catch (Exception error) { Log.w(TAG, "Restored task no longer accepts focus", error); }
+                catch (Exception error) { OneStepFlowLog.w(TAG, "Restored task no longer accepts focus", error); }
             }
             finishWorkspaceRestoration(() -> {
+                OneStepFlowLog.info("shell_restore_finished", session,
+                        "focusTask=" + selectedFocus + " attempt=" + attempt);
                 if (finished != null && request == closeRequest.get()) finished.run();
             });
         } catch (Exception error) {
-            Log.w(TAG, "Workspace restoration will retry", error);
+            OneStepFlowLog.warn("workspace_restore_retry", session,
+                    "attempt=" + (attempt + 1) + " focusTask=" + focusTask, error);
             later(() -> restoreAll(focusTask, finished, attempt + 1, request), Math.min(5000, 200 + attempt * 400));
         }
     }
@@ -2364,7 +2379,7 @@ final class OneStepShell {
                 try {
                     imeSession.setLandscape((IBinder) host.card.token, false);
                 } catch (Exception error) {
-                    Log.w(TAG, "Cannot restore hosted app orientation", error);
+                    OneStepFlowLog.w(TAG, "Cannot restore hosted app orientation", error);
                 }
                 host.landscapeForced = false;
             }
@@ -2418,7 +2433,7 @@ final class OneStepShell {
                     });
                 } catch (Exception error) {
                     host.workspaceRestorePending = false;
-                    Log.w(TAG, "Fullscreen surface handoff will retry", error);
+                    OneStepFlowLog.w(TAG, "Fullscreen surface handoff will retry", error);
                 }
             }
             return null;
@@ -2443,7 +2458,7 @@ final class OneStepShell {
         if (motion.removing) {
             later(() -> {
                 try { finishWorkspaceRestoration(finished); }
-                catch (Exception error) { Log.w(TAG, "Cannot finish workspace restoration", error); }
+                catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot finish workspace restoration", error); }
             }, 50);
             return;
         }
@@ -2503,10 +2518,10 @@ final class OneStepShell {
         if (host.barBackground != null) { host.barBackground.release(); host.barBackground = null; }
         // Reset before surfaceDestroyed can enqueue a hide for a task already returned to Android.
         try { OneStepReflection.call(host.controller, "resetTaskInfo"); }
-        catch (Exception error) { Log.w(TAG, "Cannot clear TaskView controller", error); }
+        catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot clear TaskView controller", error); }
         ui.post(() -> {
             try { OneStepReflection.call(host.view, "release"); }
-            catch (Exception error) { Log.w(TAG, "Cannot release TaskView", error); }
+            catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot release TaskView", error); }
         });
     }
 
@@ -2606,7 +2621,7 @@ final class OneStepShell {
     }
     private void later(Runnable action, long delay) {
         try { OneStepReflection.call(executor, "executeDelayed", new Class<?>[]{Runnable.class, long.class}, action, delay); }
-        catch (Exception error) { Log.w(TAG, "Shell executor stopped", error); }
+        catch (Exception error) { OneStepFlowLog.w(TAG, "Shell executor stopped", error); }
     }
 
     private void afterResume(Runnable action, long delay) {

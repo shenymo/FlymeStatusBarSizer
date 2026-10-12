@@ -24,18 +24,18 @@ final class OneStepPerf {
         this.session = session;
         view.getViewTreeObserver().addOnDrawListener(onDraw);
         handler.postDelayed(report, 3000);
-        Log.i("FlymeOneStepPerf", "session=" + session + " renderer=ShellTaskView input=native"
+        OneStepFlowLog.info("performance_started", session, "renderer=ShellTaskView input=native"
                 + " contentFps=unavailable; host draws are not app frame rate; Surface rates are hints");
     }
 
     void phase(String next) { phase = next; }
     void taskReady(int slot, int taskId) {
-        Log.i("FlymeOneStepPerf", "session=" + session + " taskAttached=" + taskId + " slot=" + slot);
+        OneStepFlowLog.info("task_attached", session, "task=" + taskId + " slot=" + slot);
     }
     private void report() {
         if (stopped) return;
         long now = SystemClock.uptimeMillis();
-        Log.i("FlymeOneStepPerf", "session=" + session + " phase=" + phase
+        OneStepFlowLog.info("performance_sample", session, "phase=" + phase
                 + " hostDrawHz=" + draws * 1000f / Math.max(1, now - since));
         draws = 0;
         since = now;

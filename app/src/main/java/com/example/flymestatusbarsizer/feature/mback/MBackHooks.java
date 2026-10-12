@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.mback;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
+import com.example.flymestatusbarsizer.feature.onehanded.OneStepFlowLog;
 import com.example.flymestatusbarsizer.feature.clock.ClockDetailPopupBridge;
 
 import android.content.Context;
@@ -111,9 +112,7 @@ public final class MBackHooks {
             launchContext.startActivity(intent);
             return true;
         } catch (Throwable t) {
-            FlymeStatusBarSizer.logMBackWarning(
-                    "Failed to launch mBack long touch intent: " + intentUri,
-                    t);
+            OneStepFlowLog.warn("gesture_intent_dispatch_failed", "source=mback", t);
             return false;
         }
     }

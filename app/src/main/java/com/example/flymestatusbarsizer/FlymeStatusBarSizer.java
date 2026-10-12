@@ -33,6 +33,7 @@ import com.example.flymestatusbarsizer.feature.wifi.WifiIconDrawable;
 import com.example.flymestatusbarsizer.feature.wifi.WifiIconRenderer;
 import com.example.flymestatusbarsizer.feature.wifi.WifiIconStyles;
 import com.example.flymestatusbarsizer.feature.windowmode.WindowModeSideGestureHooks;
+import com.example.flymestatusbarsizer.feature.onehanded.OneStepFlowLog;
 import com.example.flymestatusbarsizer.feature.assistant.AssistantHooks;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
@@ -236,8 +237,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     @Override
     public void onSystemServerStarting(XposedModuleInterface.SystemServerStartingParam param) {
         MODULE = this;
-        android.util.Log.i("FlymeOneStepIme", "server lifecycle=onSystemServerStarting pid="
-                + android.os.Process.myPid());
+        OneStepFlowLog.info("server_lifecycle",
+                "phase=onSystemServerStarting pid=" + android.os.Process.myPid());
         com.example.flymestatusbarsizer.feature.onehanded.OneStepImePolicy.install(
                 this, param.getClassLoader());
         com.example.flymestatusbarsizer.feature.onehanded.OneStepImeDiagnostics.install(
@@ -615,9 +616,13 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     public static void logWindowModeWarning(String message, Throwable throwable) {
+        if (!OneStepFlowLog.isEnabled()) {
+            return;
+        }
         FlymeStatusBarSizer module = MODULE;
         if (module != null) {
-            module.log(android.util.Log.WARN, TAG, message, throwable);
+            module.log(android.util.Log.WARN, OneStepFlowLog.TAG,
+                    "flow=side-workbench event=windowmode_warning " + message, throwable);
         }
     }
 

@@ -124,6 +124,10 @@ public final class SettingsStore {
     public static final int SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT = 0;
     public static final int SIDE_GESTURE_ACTION_TASK_SCALE = 1;
     public static final int DEFAULT_SIDE_GESTURE_ACTION = SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
+    public static final String KEY_ONE_HANDED_MODE_ACTION = "one_handed_mode_action";
+    public static final int ONE_HANDED_MODE_ACTION_SYSTEM = 0;
+    public static final int ONE_HANDED_MODE_ACTION_TASK_SCALE = 1;
+    public static final int DEFAULT_ONE_HANDED_MODE_ACTION = ONE_HANDED_MODE_ACTION_SYSTEM;
     // Keep the original gesture keys so upgrades and old backups retain their settings.
     public static final String KEY_ASSISTANT_GESTURE_ENABLED = "assistant_gesture_enabled";
     public static final String KEY_ASSISTANT_GESTURE_SCENES = "assistant_gesture_scenes";
@@ -144,6 +148,8 @@ public final class SettingsStore {
     public static final String KEY_WORKSPACE_TOOLBAR_HEIGHT_DP = "workspace_toolbar_height_dp";
     public static final String KEY_WORKSPACE_TOOLBAR_POSITION_DP = "workspace_toolbar_position_dp";
     public static final String KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO = "workspace_keep_main_aspect_ratio";
+    public static final String KEY_WORKSPACE_FLOW_LOGGING_ENABLED =
+            "workspace_flow_logging_enabled";
     public static final boolean DEFAULT_ASSISTANT_GESTURE_ENABLED = false;
     public static final int DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP = 140;
     public static final int DEFAULT_ASSISTANT_GESTURE_HOLD_MS = 600;
@@ -158,6 +164,7 @@ public final class SettingsStore {
     public static final int MIN_WORKSPACE_TOOLBAR_POSITION_DP = 0;
     public static final int MAX_WORKSPACE_TOOLBAR_POSITION_DP = 240;
     public static final boolean DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO = false;
+    public static final boolean DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED = false;
     public static final String KEY_MBACK_LONG_TOUCH_ACTION = "mback_long_touch_action";
     public static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
     public static final String KEY_WINDOWMODE_SIDE_GESTURE_ENABLED = "windowmode_side_gesture_enabled";
@@ -616,6 +623,7 @@ public final class SettingsStore {
     public static final int DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL = 2;
     public static final String[] INT_KEYS = {
             KEY_SIDE_GESTURE_ACTION,
+            KEY_ONE_HANDED_MODE_ACTION,
             KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE,
             KEY_ASSISTANT_GESTURE_SCENES,
             KEY_ASSISTANT_GESTURE_SIDE,
@@ -759,6 +767,7 @@ public final class SettingsStore {
             KEY_ASSISTANT_GESTURE_ENABLED,
             KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
             KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
+            KEY_WORKSPACE_FLOW_LOGGING_ENABLED,
             CircleBatteryAnimationConfig.ENABLED,
             CircleBatteryAnimationConfig.CHARGING_ONLY,
             CircleBatteryAnimationConfig.EVENTS,
@@ -1030,6 +1039,7 @@ public final class SettingsStore {
             case KEY_ANIP_ICON_COLOR_MODE: return DEFAULT_ANIP_ICON_COLOR_MODE;
             case KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE: return ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR;
             case KEY_SIDE_GESTURE_ACTION: return DEFAULT_SIDE_GESTURE_ACTION;
+            case KEY_ONE_HANDED_MODE_ACTION: return DEFAULT_ONE_HANDED_MODE_ACTION;
             case KEY_ASSISTANT_GESTURE_SCENES: return DEFAULT_ASSISTANT_GESTURE_SCENES;
             case KEY_ASSISTANT_GESTURE_SIDE: return DEFAULT_ASSISTANT_GESTURE_SIDE;
             case KEY_ASSISTANT_GESTURE_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
@@ -1367,6 +1377,8 @@ public final class SettingsStore {
                 return DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR;
             case KEY_TELEPHONY_DEBUG_ENABLED:
                 return DEFAULT_TELEPHONY_DEBUG_ENABLED;
+            case KEY_WORKSPACE_FLOW_LOGGING_ENABLED:
+                return DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED;
             case KEY_WIFI_PERF_LOGGING_ENABLED:
                 return DEFAULT_WIFI_PERF_LOGGING_ENABLED;
             case KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED:
@@ -1450,6 +1462,11 @@ public final class SettingsStore {
             default:
                 return DEFAULT_SIDE_GESTURE_ACTION;
         }
+    }
+
+    public static int normalizeOneHandedModeAction(int value) {
+        return value == ONE_HANDED_MODE_ACTION_TASK_SCALE
+                ? value : DEFAULT_ONE_HANDED_MODE_ACTION;
     }
 
     public static int normalizeAssistantGestureScenes(int value) {

@@ -63,7 +63,7 @@ final class OneStepStatusBar {
                     return result;
                 });
             }
-        } catch (Throwable e) { Log.w(OneHandedTaskHooks.TAG, "Native status bar visibility hook unavailable", e); }
+        } catch (Throwable e) { OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Native status bar visibility hook unavailable", e); }
     }
 
     private static void installBackground(FlymeStatusBarSizer module, ClassLoader loader) {
@@ -98,7 +98,7 @@ final class OneStepStatusBar {
                     return result;
                 });
             }
-        } catch (Throwable error) { Log.w(OneHandedTaskHooks.TAG, "Workspace status bar background hook unavailable", error); }
+        } catch (Throwable error) { OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Workspace status bar background hook unavailable", error); }
     }
 
     private static boolean rememberBackground(Object owner) {
@@ -140,11 +140,11 @@ final class OneStepStatusBar {
                 if (root != null && root.applyTransactionOnDraw(tx)) view.invalidate();
                 else tx.apply();
             } catch (RuntimeException error) {
-                Log.w(OneHandedTaskHooks.TAG, "Cannot synchronize status bar backdrop removal", error);
+                OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot synchronize status bar backdrop removal", error);
                 try (SurfaceControl.Transaction tx = new SurfaceControl.Transaction()) {
                     tx.reparent(backdrop, null).apply();
                 } catch (RuntimeException cleanupError) {
-                    Log.w(OneHandedTaskHooks.TAG, "Cannot remove status bar backdrop", cleanupError);
+                    OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot remove status bar backdrop", cleanupError);
                 }
             } finally { backdrop.release(); }
         });
@@ -168,7 +168,7 @@ final class OneStepStatusBar {
                     -1, mode, false);
             OneStepReflection.call(owner, "finishAnimations");
         } catch (ReflectiveOperationException | RuntimeException error) {
-            Log.w(OneHandedTaskHooks.TAG, "Cannot update workspace status bar background", error);
+            OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot update workspace status bar background", error);
         }
     }
 
@@ -199,7 +199,7 @@ final class OneStepStatusBar {
                                     new Class<?>[]{boolean.class, boolean.class}, darkIcons, true);
                             return null;
                         } catch (ReflectiveOperationException | RuntimeException error) {
-                            Log.w(OneHandedTaskHooks.TAG, "Cannot tint workspace status bar", error);
+                            OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot tint workspace status bar", error);
                             return chain.proceed();
                         }
                     });
@@ -216,7 +216,7 @@ final class OneStepStatusBar {
                     });
                 }
             }
-        } catch (Throwable e) { Log.w(OneHandedTaskHooks.TAG, "Wallpaper system bar tint hook unavailable", e); }
+        } catch (Throwable e) { OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Wallpaper system bar tint hook unavailable", e); }
     }
 
     private static boolean rememberLightBar(Object owner) {
@@ -259,7 +259,7 @@ final class OneStepStatusBar {
             OneStepReflection.call(owner, "reevaluate");
             OneStepReflection.call(owner, "updateNavigation");
         } catch (ReflectiveOperationException | RuntimeException e) {
-            Log.w(OneHandedTaskHooks.TAG, "Cannot refresh workspace system bar colors", e);
+            OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot refresh workspace system bar colors", e);
         }
     }
 
@@ -279,7 +279,7 @@ final class OneStepStatusBar {
             if (owner == null || method == null) return;
             try { method.invoke(owner, ReflectUtils.getField(owner, "mCurrentState")); }
             catch (ReflectiveOperationException | RuntimeException e) {
-                Log.w(OneHandedTaskHooks.TAG, "Cannot update native status bar visibility", e);
+                OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot update native status bar visibility", e);
             }
         };
         if (Looper.myLooper() == Looper.getMainLooper()) update.run();

@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /** A task-token capability scopes IME policy to a live workspace, including fullscreen tasks. */
 public final class OneStepImePolicy {
-    private static final String TAG = "FlymeOneStepIme";
+    private static final String TAG = OneStepFlowLog.TAG;
     private static final String DESCRIPTOR = BuildConfig.APPLICATION_ID + ".workspace.ime";
     private static final int CONNECT = 0x00534f49;
     private static final int ADD = IBinder.FIRST_CALL_TRANSACTION;
@@ -163,8 +163,8 @@ public final class OneStepImePolicy {
             });
             installed = true;
             installInputRegionHooks(module, loader);
-            Log.i(TAG, "workspace IME policy installed build=" + BuildConfig.VERSION_NAME);
-        } catch (Throwable error) { Log.w(TAG, "Workspace IME policy unavailable", error); }
+            OneStepFlowLog.i(TAG, "workspace IME policy installed build=" + BuildConfig.VERSION_NAME);
+        } catch (Throwable error) { OneStepFlowLog.w(TAG, "Workspace IME policy unavailable", error); }
     }
 
     private static Object resolveTask(IBinder token) throws ReflectiveOperationException {
@@ -283,10 +283,10 @@ public final class OneStepImePolicy {
                 return chain.proceed();
             });
             inputRegionHook = "session-binder";
-            Log.i(TAG, "workspace input-region hook installed entry=" + inputRegionHook
+            OneStepFlowLog.i(TAG, "workspace input-region hook installed entry=" + inputRegionHook
                     + " transaction=" + rectangleTransaction);
         } catch (Throwable error) {
-            Log.w(TAG, "Workspace input-region Binder observer unavailable", error);
+            OneStepFlowLog.w(TAG, "Workspace input-region Binder observer unavailable", error);
             try {
                 Class<?> session = Class.forName("com.android.server.wm.Session", false, loader);
                 module.intercept(OneStepReflection.method(session, "onRectangleOnScreenRequested",
@@ -296,9 +296,9 @@ public final class OneStepImePolicy {
                     return chain.proceed();
                 });
                 inputRegionHook = "session-method";
-                Log.i(TAG, "workspace input-region hook installed entry=" + inputRegionHook);
+                OneStepFlowLog.i(TAG, "workspace input-region hook installed entry=" + inputRegionHook);
             } catch (Throwable fallbackError) {
-                Log.w(TAG, "Workspace input regions unavailable", fallbackError);
+                OneStepFlowLog.w(TAG, "Workspace input regions unavailable", fallbackError);
             }
         }
 
@@ -334,8 +334,8 @@ public final class OneStepImePolicy {
                 return result;
             });
             editorHookInstalled = true;
-            Log.i(TAG, "workspace editor-change hook installed entry=" + start.getName());
-        } catch (Throwable error) { Log.w(TAG, "Workspace editor-change observer unavailable", error); }
+            OneStepFlowLog.i(TAG, "workspace editor-change hook installed entry=" + start.getName());
+        } catch (Throwable error) { OneStepFlowLog.w(TAG, "Workspace editor-change observer unavailable", error); }
     }
 
     private static void receiveInputRegion(Object session, IBinder window, Rect rectangle) {
@@ -347,7 +347,7 @@ public final class OneStepImePolicy {
 
     private static void inputRegionError(Throwable error) {
         if (INPUT_REGION_ERROR.compareAndSet(false, true))
-            Log.w(TAG, "Workspace input-region callback failed", error);
+            OneStepFlowLog.w(TAG, "Workspace input-region callback failed", error);
     }
 
     private static void reportInputRegion(Object windowSession, IBinder windowToken, Rect requested,
@@ -552,7 +552,7 @@ public final class OneStepImePolicy {
             }
             if (!reason.equals(lastReason)) {
                 lastReason = reason;
-                Log.i(TAG, "ime-region policy-state reason=" + reason);
+                OneStepFlowLog.i(TAG, "ime-region policy-state reason=" + reason);
             }
             long sequence = next == null ? 0 : next.editorSequence;
             Rect nextBounds = next == null ? null : next.reportedBounds;
@@ -562,7 +562,7 @@ public final class OneStepImePolicy {
             editorSequence = sequence;
             bounds = nextBounds == null ? null : new Rect(nextBounds);
             epoch = next == null ? 0 : INPUT_EVENTS.incrementAndGet();
-            Log.i(TAG, "ime-region policy epoch=" + epoch + " active=" + (next != null));
+            OneStepFlowLog.i(TAG, "ime-region policy epoch=" + epoch + " active=" + (next != null));
             long notifiedEpoch = epoch;
             // Never call into the IME while holding the window-manager lock.
             handler.post(() -> {
@@ -657,7 +657,7 @@ public final class OneStepImePolicy {
                 return result;
             });
         } catch (Exception error) {
-            Log.w(TAG, "Orientation request hook unavailable; task snapshots remain enabled", error);
+            OneStepFlowLog.w(TAG, "Orientation request hook unavailable; task snapshots remain enabled", error);
         }
     }
 
@@ -686,7 +686,7 @@ public final class OneStepImePolicy {
                     return result;
                 });
             }
-        } catch (Exception error) { Log.w(TAG, "Focus hook unavailable; task snapshots remain enabled", error); }
+        } catch (Exception error) { OneStepFlowLog.w(TAG, "Focus hook unavailable; task snapshots remain enabled", error); }
     }
 
     private static final class OrientationState {
@@ -803,7 +803,7 @@ public final class OneStepImePolicy {
                         tasks.put(token, task);
                         OWNERS.put(task, this);
                         reportOrientations(null);
-                        Log.i(TAG, "policy-register task=" + ReflectUtils.getIntField(task, "mTaskId", -1)
+                        OneStepFlowLog.i(TAG, "policy-register task=" + ReflectUtils.getIntField(task, "mTaskId", -1)
                                 + " build=" + BuildConfig.VERSION_NAME + " regionHook=" + inputRegionHook
                                 + " editorHook=" + editorHookInstalled);
                         refresh();
@@ -1008,7 +1008,7 @@ public final class OneStepImePolicy {
             if (reason.equals(regionLogReason) && now - regionLogTime < 1000) return;
             regionLogTime = now;
             regionLogReason = reason;
-            Log.i(TAG, "input-region event=" + reason + " requests=" + regionRequests
+            OneStepFlowLog.i(TAG, "input-region event=" + reason + " requests=" + regionRequests
                     + " updates=" + regionUpdates + " callbacks=" + REGION_CALLBACKS.get()
                     + " hook=" + inputRegionHook + " task="
                     + ReflectUtils.getIntField(tasks.get(reportedToken), "mTaskId", -1)

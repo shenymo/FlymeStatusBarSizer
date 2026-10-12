@@ -449,6 +449,15 @@ public final class SettingsCardFactory {
                 buildTaskWorkbenchOptions(), true);
         workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
         page.addView(workspaceCard, activity.matchWrapWithTop(8));
+        LinearLayout oneHandedOptions = new LinearLayout(activity);
+        oneHandedOptions.setOrientation(LinearLayout.VERTICAL);
+        activity.addChoiceRow(oneHandedOptions, "触发动作", "选择从屏幕底部上滑触发的功能，不影响侧边手势。",
+                SettingsStore.KEY_ONE_HANDED_MODE_ACTION, SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION,
+                new int[]{SettingsStore.ONE_HANDED_MODE_ACTION_SYSTEM, SettingsStore.ONE_HANDED_MODE_ACTION_TASK_SCALE},
+                new String[]{"系统单手缩放", "应用工作台"});
+        View oneHandedCard = activity.buildSectionCard("下拉单手模式", null, oneHandedOptions, true);
+        oneHandedCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
+        page.addView(oneHandedCard, activity.matchWrapWithTop(8));
         java.util.function.IntConsumer updateAction = value -> {
             boolean scale = value == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
             summary.setText(scale ? "当前动作：任务工作台 · 侧边长滑进入，重复触发或点击留白退出。"
@@ -774,6 +783,11 @@ public final class SettingsCardFactory {
     public View createPerformanceDebugCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
+        activity.addSwitchRow(content, "应用工作台日志",
+                "控制侧边手势和应用工作台的流程、任务恢复与异常日志输出。",
+                SettingsStore.KEY_WORKSPACE_FLOW_LOGGING_ENABLED,
+                SettingsStore.DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED);
+        activity.addDivider(content);
         activity.addSwitchRow(content, "启用 WIFI 性能打点",
                 "打开后会给 Wi-Fi 更新链路输出详细耗时日志，方便在 logcat 里分析刷新开销。",
                 SettingsStore.KEY_WIFI_PERF_LOGGING_ENABLED,
@@ -790,7 +804,7 @@ public final class SettingsCardFactory {
                 SettingsStore.DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED);
         return activity.buildSectionCard(
                 "性能调试",
-                "只保留和现有模块实现直接相关的性能打点开关。",
+                "管理应用工作台流程日志和性能打点输出。",
                 content);
     }
 

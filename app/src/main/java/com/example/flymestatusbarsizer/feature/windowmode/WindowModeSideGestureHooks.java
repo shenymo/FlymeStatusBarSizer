@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer.feature.windowmode;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.feature.mback.MBackHooks;
+import com.example.flymestatusbarsizer.feature.onehanded.OneStepFlowLog;
 
 import android.app.ActivityManager;
 import android.content.ComponentName;
@@ -1111,9 +1112,11 @@ public final class WindowModeSideGestureHooks {
         FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
                 FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
         if (!config.enabled || !config.sideGestureEnabled) {
+            OneStepFlowLog.info("gesture_ignored", "reason=disabled");
             return false;
         }
         boolean handled = MBackHooks.launchConfiguredIntent(context, config.sideGestureIntentUri);
+        OneStepFlowLog.info("gesture_dispatch", "result=" + (handled ? "launched" : "not_handled"));
         if (handled && target != null) {
             synchronized (ACTIVE_ACTIONS) {
                 ACTIVE_ACTIONS.put(target, Boolean.TRUE);

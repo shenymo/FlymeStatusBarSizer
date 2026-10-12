@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Reconciles WM visibility with the disjoint surfaces of a live workspace. */
 final class OneStepTaskLifecycle {
-    private static final String TAG = "FlymeOneStepLifecycle";
+    private static final String TAG = OneStepFlowLog.TAG;
     private static final AtomicBoolean REPORTED_ERROR = new AtomicBoolean();
     private static boolean installed;
 
@@ -33,7 +33,7 @@ final class OneStepTaskLifecycle {
             return result;
         });
         installed = true;
-        Log.i(TAG, "Workspace multi-resume visibility policy installed");
+        OneStepFlowLog.i(TAG, "Workspace multi-resume visibility policy installed");
     }
 
     private static boolean onlyWorkspaceAbove(Object task) throws ReflectiveOperationException {
@@ -71,6 +71,6 @@ final class OneStepTaskLifecycle {
     }
 
     private static void unavailable(Exception error) {
-        if (REPORTED_ERROR.compareAndSet(false, true)) Log.w(TAG, "Cannot update workspace lifecycle", error);
+        if (REPORTED_ERROR.compareAndSet(false, true)) OneStepFlowLog.w(TAG, "Cannot update workspace lifecycle", error);
     }
 }

@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Read-only diagnostics; no input text, Intent extras or window titles are recorded. */
 public final class OneStepImeDiagnostics {
-    static final String TAG = "FlymeOneStepIme";
+    static final String TAG = OneStepFlowLog.TAG;
     private static final WeakHashMap<Object, String> SERVER_STATES = new WeakHashMap<>();
     private static final AtomicBoolean INSTALL_STARTED = new AtomicBoolean();
     private static final AtomicBoolean REPORTED_SERVER_CALLBACK = new AtomicBoolean();
@@ -42,15 +42,15 @@ public final class OneStepImeDiagnostics {
                         return result;
                     });
                     installed++;
-                    Log.i(TAG, "server hook installed=" + name);
+                    OneStepFlowLog.i(TAG, "server hook installed=" + name);
                 } catch (Throwable error) {
-                    Log.w(TAG, "server hook unavailable=" + name, error);
+                    OneStepFlowLog.w(TAG, "server hook unavailable=" + name, error);
                 }
             }
         } catch (Throwable error) {
-            Log.w(TAG, "server IME diagnostics unavailable", error);
+            OneStepFlowLog.w(TAG, "server IME diagnostics unavailable", error);
         } finally {
-            Log.i(TAG, "server hooks ready=" + installed + "/3");
+            OneStepFlowLog.i(TAG, "server hooks ready=" + installed + "/3");
         }
     }
 
@@ -85,7 +85,7 @@ public final class OneStepImeDiagnostics {
     private static void recordServerState(Object display, String event) {
         try {
             if (REPORTED_SERVER_CALLBACK.compareAndSet(false, true)) {
-                Log.i(TAG, "server observer-active event=" + event
+                OneStepFlowLog.i(TAG, "server observer-active event=" + event
                         + " display=" + call(display, "getDisplayId"));
             }
             Object input = field(display, "mImeInputTarget");
@@ -96,7 +96,7 @@ public final class OneStepImeDiagnostics {
             if (!excludesIme(inputWindow) && !excludesIme(layering)) {
                 synchronized (SERVER_STATES) {
                     if (SERVER_STATES.remove(display) != null)
-                        Log.i(TAG, "server event=" + event + " display=" + call(display, "getDisplayId")
+                        OneStepFlowLog.i(TAG, "server event=" + event + " display=" + call(display, "getDisplayId")
                                 + " excludedImeTarget=false");
                 }
                 return;
@@ -122,7 +122,7 @@ public final class OneStepImeDiagnostics {
             synchronized (SERVER_STATES) {
                 if (snapshot.equals(SERVER_STATES.put(display, snapshot))) return;
             }
-            Log.i(TAG, "server event=" + event + " " + snapshot);
+            OneStepFlowLog.i(TAG, "server event=" + event + " " + snapshot);
         } catch (Throwable error) {
             unavailable(error);
         }
@@ -175,6 +175,6 @@ public final class OneStepImeDiagnostics {
     private static Object call(Object target, String name) { return ReflectUtils.invokeNoArg(target, name); }
 
     static void unavailable(Throwable error) {
-        if (REPORTED_ERROR.compareAndSet(false, true)) Log.w(TAG, "Diagnostic snapshot unavailable", error);
+        if (REPORTED_ERROR.compareAndSet(false, true)) OneStepFlowLog.w(TAG, "Diagnostic snapshot unavailable", error);
     }
 }

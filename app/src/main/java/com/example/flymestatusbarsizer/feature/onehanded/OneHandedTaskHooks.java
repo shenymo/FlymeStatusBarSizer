@@ -12,7 +12,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
-import android.util.Log;
+import android.provider.Settings;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
@@ -29,7 +29,7 @@ import java.lang.reflect.Proxy;
 
 /** Initializes the live OneStep workspace through LSPosed in SystemUI. */
 public final class OneHandedTaskHooks {
-    static final String TAG = "FlymeTaskScale";
+    static final String TAG = OneStepFlowLog.TAG;
     // Values verified against this ROM's QuickStepContract.getSystemUiStateString().
     private static final long BLOCKED_FLAGS = 1L | 4L | 8L | 64L | 512L | 2048L
             | 16384L | 32768L | 65536L | 262144L | 524288L | 2097152L
@@ -86,11 +86,13 @@ public final class OneHandedTaskHooks {
                 attach();
             });
             installed = true;
-            Log.i(TAG, "OneStep Shell task workspace hooks installed");
+            OneStepFlowLog.i(TAG, "OneStep Shell task workspace hooks installed");
         } catch (Throwable e) {
-            Log.w(TAG, "Cannot install OneStep workspace", e);
+            OneStepFlowLog.w(TAG, "Cannot install OneStep workspace", e);
             return;
         }
+        installOneHandedActivationHook(module, loader);
+        installOneHandedStartHook(module, loader);
         // Optional lifecycle hooks must not prevent initialization on another Flyme release.
         installImePositionObserver(module, loader);
         try {
@@ -101,7 +103,7 @@ public final class OneHandedTaskHooks {
                 OneStepWorkspace current = controller;
                 return current != null && current.blocksNavigation() ? null : chain.proceed();
             });
-        } catch (Throwable error) { Log.w(TAG, "mBack Home guard unavailable", error); }
+        } catch (Throwable error) { OneStepFlowLog.w(TAG, "mBack Home guard unavailable", error); }
         try {
             Class<?> recents = Class.forName("com.android.wm.shell.recents.RecentsTransitionHandler", false, loader);
             Class<?> runner = Class.forName("android.view.IRecentsAnimationRunner", false, loader);
@@ -123,13 +125,103 @@ public final class OneHandedTaskHooks {
                             Object callback = chain.getArg(callbackIndex);
                             if (callback != null) OneStepReflection.call(callback, "onAnimationCanceled",
                                     new Class<?>[]{int[].class, snapshots}, new int[0], Array.newInstance(snapshots.getComponentType(), 0));
-                        } catch (Exception error) { Log.w(TAG, "Cannot cancel workspace recents request", error); }
+                        } catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot cancel workspace recents request", error); }
                         return null;
                     }
                     return chain.proceed();
                 });
             }
-        } catch (Throwable e) { Log.w(TAG, "Recents lifecycle hook unavailable", e); }
+        } catch (Throwable e) { OneStepFlowLog.w(TAG, "Recents lifecycle hook unavailable", e); }
+    }
+
+    private static void installOneHandedActivationHook(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> controllerClass = Class.forName(
+                    "com.android.wm.shell.onehanded.OneHandedController", false, loader);
+            Method method = controllerClass.getDeclaredMethod("onActivatedActionChanged");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object target = chain.getThisObject();
+                if (consumeOneHandedActivation(target)) return null;
+                return chain.proceed();
+            });
+            OneStepFlowLog.i(TAG, "One-handed activation routed to workspace");
+        } catch (Throwable error) {
+            OneStepFlowLog.w(TAG, "One-handed activation hook unavailable", error);
+        }
+    }
+
+    private static void installOneHandedStartHook(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> controllerClass = Class.forName(
+                    "com.android.wm.shell.onehanded.OneHandedController", false, loader);
+            Method method = controllerClass.getDeclaredMethod("startOneHanded");
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object target = chain.getThisObject();
+                if (consumeOneHandedStart(target)) return null;
+                return chain.proceed();
+            });
+            OneStepFlowLog.i(TAG, "One-handed start routed to workspace");
+        } catch (Throwable error) {
+            OneStepFlowLog.w(TAG, "One-handed start hook unavailable", error);
+        }
+    }
+
+    private static boolean consumeOneHandedActivation(Object target) {
+        OneStepWorkspace current = controller;
+        if (current == null || !installed || !current.canTrigger()) return false;
+        Object source = ReflectUtils.getField(target, "mContext");
+        if (!(source instanceof Context)) return false;
+        Context context = (Context) source;
+        ModuleConfig config = ModuleConfig.load(context);
+        if (!config.enabled
+                || config.oneHandedModeAction != SettingsStore.ONE_HANDED_MODE_ACTION_TASK_SCALE
+                || !ReflectUtils.getBooleanField(target, "mIsShortcutEnabled", false)
+                || ReflectUtils.getBooleanField(target, "mIsSwipeToNotificationEnabled", false)) {
+            return false;
+        }
+        int userId = ReflectUtils.getIntField(target, "mUserId", 0);
+        if (getSecureIntForUser(context, "one_handed_mode_activated", 0, userId) != 1) return false;
+        putSecureIntForUser(context, "one_handed_mode_activated", 0, userId);
+        current.toggle(false, null);
+        OneStepFlowLog.i(TAG, "Native one-handed gesture opened workspace");
+        return true;
+    }
+
+    private static boolean consumeOneHandedStart(Object target) {
+        OneStepWorkspace current = controller;
+        if (current == null || !installed) return false;
+        Object source = ReflectUtils.getField(target, "mContext");
+        if (!(source instanceof Context)) return false;
+        ModuleConfig config = ModuleConfig.load((Context) source);
+        if (!config.enabled || config.oneHandedModeAction != SettingsStore.ONE_HANDED_MODE_ACTION_TASK_SCALE
+                || !current.canTrigger()) return false;
+        current.toggle(false, null);
+        OneStepFlowLog.i(TAG, "Native one-handed start opened workspace");
+        return true;
+    }
+
+    private static int getSecureIntForUser(Context context, String key, int fallback, int userId) {
+        try {
+            Method method = Settings.Secure.class.getMethod("getIntForUser",
+                    android.content.ContentResolver.class, String.class, int.class, int.class);
+            Object value = method.invoke(null, context.getContentResolver(), key, fallback, userId);
+            return value instanceof Integer ? (Integer) value : fallback;
+        } catch (Throwable ignored) {
+            return Settings.Secure.getInt(context.getContentResolver(), key, fallback);
+        }
+    }
+
+    private static boolean putSecureIntForUser(Context context, String key, int value, int userId) {
+        try {
+            Method method = Settings.Secure.class.getMethod("putIntForUser",
+                    android.content.ContentResolver.class, String.class, int.class, int.class);
+            Object result = method.invoke(null, context.getContentResolver(), key, value, userId);
+            return Boolean.TRUE.equals(result);
+        } catch (Throwable ignored) {
+            return Settings.Secure.putInt(context.getContentResolver(), key, value);
+        }
     }
 
     private static void installImePositionObserver(FlymeStatusBarSizer module, ClassLoader loader) {
@@ -190,9 +282,9 @@ public final class OneHandedTaskHooks {
                         return method.getReturnType() == int.class ? 0 : null;
                     });
                     OneStepReflection.call(ime, "addPositionProcessor", new Class<?>[]{processor}, observer);
-                } catch (Exception error) { Log.w(TAG, "Cannot observe Shell IME positioning", error); }
+                } catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot observe Shell IME positioning", error); }
             });
-        } catch (Throwable error) { Log.w(TAG, "Shell IME positioning unavailable", error); }
+        } catch (Throwable error) { OneStepFlowLog.w(TAG, "Shell IME positioning unavailable", error); }
     }
 
     private static void hookConstruction(FlymeStatusBarSizer module, ClassLoader loader, String name,
@@ -220,8 +312,8 @@ public final class OneHandedTaskHooks {
                         shellTransitions, taskViewFactory, taskDisplayAreas);
                 registerEnvironment(context, handler);
                 controller = current;
-                Log.i(TAG, "OneStep Shell workspace ready in SystemUI");
-            } catch (Throwable e) { Log.w(TAG, "Cannot initialize OneStep workspace", e); }
+                OneStepFlowLog.i(TAG, "OneStep Shell workspace ready in SystemUI");
+            } catch (Throwable e) { OneStepFlowLog.w(TAG, "Cannot initialize OneStep workspace", e); }
         });
     }
 
@@ -260,10 +352,9 @@ public final class OneHandedTaskHooks {
     static boolean environmentAllowed(Context context) {
         if (!installed) return false;
         ModuleConfig config = ModuleConfig.load(context);
-        if (!config.enabled || !config.assistantGestureEnabled
-                || config.sideGestureAction != SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE
-                || (config.assistantGestureScenes & SettingsStore.ASSISTANT_GESTURE_SCENE_NORMAL) == 0) return false;
+        if (!config.enabled) return false;
         Object edge = edgeHandler.get();
+        if (edge == null) return workspaceAllowed(context, -1);
         Object flags = ReflectUtils.invokeNoArg(ReflectUtils.getField(edge, "mSysUiState"), "getFlags");
         long blocked = BLOCKED_FLAGS & ~262144L;
         return flags instanceof Number && (((Number) flags).longValue() & blocked) == 0

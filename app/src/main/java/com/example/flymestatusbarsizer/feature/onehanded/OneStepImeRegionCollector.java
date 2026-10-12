@@ -30,7 +30,7 @@ import java.util.WeakHashMap;
 
 /** IME-side geometry only. Cursor subscriptions are enabled by a live workspace capability. */
 public final class OneStepImeRegionCollector {
-    private static final String TAG = "FlymeOneStepIme";
+    private static final String TAG = OneStepFlowLog.TAG;
     private static final int MODES = InputConnection.CURSOR_UPDATE_IMMEDIATE | InputConnection.CURSOR_UPDATE_MONITOR;
     private static final int FILTERS = InputConnection.CURSOR_UPDATE_FILTER_INSERTION_MARKER
             | InputConnection.CURSOR_UPDATE_FILTER_EDITOR_BOUNDS;
@@ -125,7 +125,7 @@ public final class OneStepImeRegionCollector {
                 Class<?> stub = Class.forName("com.android.internal.inputmethod.IInputMethodSession$Stub", false, loader);
                 module.deoptimize(OneStepReflection.method(stub, "onTransact",
                         int.class, Parcel.class, Parcel.class, int.class));
-            } catch (Throwable error) { Log.w(TAG, "ime-region Binder dispatch deoptimization unavailable", error); }
+            } catch (Throwable error) { OneStepFlowLog.w(TAG, "ime-region Binder dispatch deoptimization unavailable", error); }
             // Observe the message before it calls the overridable IME callback.
             module.intercept(OneStepReflection.method(session, "executeMessage", Message.class), chain -> {
                 Message message = (Message) chain.getArg(0);
@@ -138,13 +138,13 @@ public final class OneStepImeRegionCollector {
                             && stamp != null && stamp.collector == active && stamp.epoch == active.epoch
                             && !Boolean.FALSE.equals(ReflectUtils.invokeNoArg(receiver, "isEnabled"))) {
                         try { active.onAnchor((CursorAnchorInfo) message.obj); }
-                        catch (Throwable error) { Log.w(TAG, "ime-region geometry unavailable", error); }
+                        catch (Throwable error) { OneStepFlowLog.w(TAG, "ime-region geometry unavailable", error); }
                     }
                 }
                 return chain.proceed();
             });
-            Log.i(TAG, "ime-region hooks installed entry=session-dispatch");
-        } catch (Throwable error) { Log.w(TAG, "ime-region hooks unavailable", error); }
+            OneStepFlowLog.i(TAG, "ime-region hooks installed entry=session-dispatch");
+        } catch (Throwable error) { OneStepFlowLog.w(TAG, "ime-region hooks unavailable", error); }
     }
 
     private static void begin(InputMethodService service) {
@@ -173,7 +173,7 @@ public final class OneStepImeRegionCollector {
             Collector next = new Collector(service, connection, ((IInterface) remote).asBinder(), token, info);
             current = next;
             next.attach();
-        } catch (Throwable error) { Log.w(TAG, "ime-region input connection unavailable", error); }
+        } catch (Throwable error) { OneStepFlowLog.w(TAG, "ime-region input connection unavailable", error); }
     }
 
     private static void stop(InputMethodService service) {
@@ -302,17 +302,17 @@ public final class OneStepImeRegionCollector {
                             }
                         } finally { data.recycle(); reply.recycle(); }
                     }
-                } catch (Throwable error) { Log.w(TAG, "ime-region attach unavailable", error); }
+                } catch (Throwable error) { OneStepFlowLog.w(TAG, "ime-region attach unavailable", error); }
                 IBinder attached = observer;
                 main.post(() -> {
                     attaching = false;
                     if (!live()) { if (attached != null) worker.post(() -> closeServer(attached)); return; }
                     server = attached;
                     if (attached != null) {
-                        Log.i(TAG, "ime-region attached field=" + fieldId);
+                        OneStepFlowLog.i(TAG, "ime-region attached field=" + fieldId);
                         setEpoch(pendingEpoch);
                     } else if (attempts < 5) main.postDelayed(retry, attempts * 150L);
-                    else Log.i(TAG, "ime-region attach rejected; waiting for next input/visibility event");
+                    else OneStepFlowLog.i(TAG, "ime-region attach rejected; waiting for next input/visibility event");
                 });
             });
         }
@@ -324,7 +324,7 @@ public final class OneStepImeRegionCollector {
             lastRegion = null;
             anchorCount = 0;
             filtered = true;
-            Log.i(TAG, "ime-region event=" + (value == 0 ? "inactive" : "request") + " epoch=" + value);
+            OneStepFlowLog.i(TAG, "ime-region event=" + (value == 0 ? "inactive" : "request") + " epoch=" + value);
             worker.post(() -> {
                 if (stopped || epoch != value) return;
                 if (value == 0) { restoreSubscription(); return; }
@@ -341,10 +341,10 @@ public final class OneStepImeRegionCollector {
                 boolean result = accepted;
                 main.post(() -> {
                     if (!live() || epoch != value) return;
-                    Log.i(TAG, "ime-region request-result epoch=" + value + " accepted=" + result + " filtered=" + filtered);
+                    OneStepFlowLog.i(TAG, "ime-region request-result epoch=" + value + " accepted=" + result + " filtered=" + filtered);
                     if (result) main.postDelayed(() -> {
                         if (live() && epoch == value && anchorCount == 0)
-                            Log.i(TAG, "ime-region no-callback epoch=" + value);
+                            OneStepFlowLog.i(TAG, "ime-region no-callback epoch=" + value);
                     }, 1200);
                 });
             });
@@ -365,7 +365,7 @@ public final class OneStepImeRegionCollector {
                     || (editor.height() <= caret.height() * 4f && caret.top >= editor.top && caret.bottom <= editor.bottom));
             RectF region = useEditor ? editor : caret;
             int source = useEditor ? OneStepImeRegionProtocol.EDITOR : OneStepImeRegionProtocol.CARET;
-            if (region == null && anchorCount == 1) Log.i(TAG, "ime-region invalid-anchor epoch=" + epoch);
+            if (region == null && anchorCount == 1) OneStepFlowLog.i(TAG, "ime-region invalid-anchor epoch=" + epoch);
             if (lastSource == source && java.util.Objects.equals(region, lastRegion)) return;
             lastRegion = region == null ? null : new RectF(region);
             lastSource = source;
@@ -381,13 +381,13 @@ public final class OneStepImeRegionCollector {
                                 data.writeInt(source);
                                 OneStepImeRegionProtocol.writeRegion(data, region);
                             });
-                } catch (RemoteException error) { Log.w(TAG, "ime-region report unavailable", error); }
+                } catch (RemoteException error) { OneStepFlowLog.w(TAG, "ime-region report unavailable", error); }
             };
             worker.post(upload);
             long now = SystemClock.uptimeMillis();
             if (anchorCount == 1 || now - logTime >= 1000) {
                 logTime = now;
-                Log.i(TAG, "ime-region anchor epoch=" + generation + " source=" + (useEditor ? "editor" : "caret")
+                OneStepFlowLog.i(TAG, "ime-region anchor epoch=" + generation + " source=" + (useEditor ? "editor" : "caret")
                         + " region=" + region);
             }
         }
@@ -408,7 +408,7 @@ public final class OneStepImeRegionCollector {
                         : connection.requestCursorUpdates(value.mode, value.filter);
             }
             catch (Throwable error) {
-                Log.w(TAG, "ime-region cursor request unavailable", error);
+                OneStepFlowLog.w(TAG, "ime-region cursor request unavailable", error);
                 return false;
             } finally { INTERNAL_REQUEST.remove(); }
         }

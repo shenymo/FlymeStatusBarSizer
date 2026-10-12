@@ -126,6 +126,7 @@ public final class ModuleConfig {
     public boolean assistantBackgroundBlur = SettingsStore.DEFAULT_ASSISTANT_BACKGROUND_BLUR;
     public boolean assistantGestureEnabled = SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED;
     public int sideGestureAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
+    public int oneHandedModeAction = SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION;
     public int assistantGestureScenes = SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES;
     public int assistantGestureSide = SettingsStore.DEFAULT_ASSISTANT_GESTURE_SIDE;
     public int assistantGestureDistanceDp = SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
@@ -135,6 +136,7 @@ public final class ModuleConfig {
     public int workspaceToolbarHeightDp = SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;
     public int workspaceToolbarPositionDp = SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP;
     public boolean workspaceKeepMainAspectRatio = SettingsStore.DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO;
+    public boolean workspaceFlowLoggingEnabled = SettingsStore.DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED;
     public int mbackLongTouchAction = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION;
     public String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
     public boolean windowModeSideGestureEnabled = SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED;
@@ -710,6 +712,8 @@ public final class ModuleConfig {
                     SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED, SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
             config.sideGestureAction = SettingsStore.normalizeSideGestureAction(SettingsStore.readInt(prefs,
                     SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION));
+            config.oneHandedModeAction = SettingsStore.normalizeOneHandedModeAction(SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ONE_HANDED_MODE_ACTION, SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION));
             config.assistantGestureScenes = SettingsStore.normalizeAssistantGestureScenes(SettingsStore.readInt(prefs,
                     SettingsStore.KEY_ASSISTANT_GESTURE_SCENES, SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES));
             config.assistantGestureSide = SettingsStore.normalizeAssistantGestureSide(SettingsStore.readInt(prefs,
@@ -1099,6 +1103,10 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WIFI_PERF_LOGGING_ENABLED,
                     SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED);
+            config.workspaceFlowLoggingEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_WORKSPACE_FLOW_LOGGING_ENABLED,
+                    SettingsStore.DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED);
             config.launcherRecentsPerfLoggingEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED,

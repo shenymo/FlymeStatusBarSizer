@@ -49,7 +49,7 @@ import java.util.concurrent.Executors;
 
 /** Workspace UI; task ownership, surfaces and restoration live in OneStepShell. */
 final class OneStepWorkspace implements OneStepShell.Listener {
-    private static final String TAG = "FlymeOneStep";
+    private static final String TAG = OneStepFlowLog.TAG;
     private static final int LANDSCAPE_SLOT = 4;
     private static final int COUNT = LANDSCAPE_SLOT + 1;
     private static final int TOOLBAR_ICON_SIZE_DP = 48;
@@ -191,7 +191,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 handler.post(taskChanged);
             });
             taskNotifications = true;
-        } catch (Exception error) { Log.w(TAG, "Task notifications unavailable", error); }
+        } catch (Exception error) { OneStepFlowLog.w(TAG, "Task notifications unavailable", error); }
     }
 
     private boolean active() { return state == State.OPENING || state == State.RUNNING; }
@@ -289,14 +289,19 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             if (active()) return;
             if (state != State.CLOSED || !shell.available() || !OneHandedTaskHooks.environmentAllowed(context)) return;
             try { workspaceOwnerUserId = OneHandedTaskHooks.currentUserId(); }
-            catch (Exception error) { Log.w(TAG, "Cannot resolve workspace user", error); return; }
+            catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot resolve workspace user", error); return; }
             state = State.OPENING;
             int request = ++generation;
+            OneStepFlowLog.info("workspace_open_requested", request,
+                    "side=" + (fromLeft ? "left" : "right"));
             handler.postDelayed(openingTimeout, 12000);
             taskWorker.execute(() -> {
                 try {
                     RecentTaskCard main = tasks.focusedTask();
                     List<RecentTaskCard> recent = tasks.candidates();
+                    OneStepFlowLog.info("entry_tasks_resolved", request,
+                            "mainTask=" + (main == null ? -1 : main.taskId)
+                                    + " recentCount=" + (recent == null ? 0 : recent.size()));
                     handler.post(() -> {
                         if (state != State.OPENING || generation != request) return;
                         if (main == null || !OneHandedTaskHooks.environmentAllowed(context)) { close(false); return; }
@@ -354,6 +359,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         entryAnimationStarted = false;
         transitionHandoff = false;
         shell.begin(request, main.userId);
+        OneStepFlowLog.info("workspace_entry_started", request,
+                "task=" + main.taskId + " user=" + main.userId + " suspended=" + suspended);
         shell.setSuspended(suspended);
         activitySession = new OneStepActivitySession(context, handler, main.userId, workspaceOwnerUserId, shell, new OneStepActivitySession.Listener() {
             @Override public void onAttached(int taskId, Rect bounds, Rect insets) {
@@ -492,6 +499,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 if (state != State.OPENING || generation != request) return;
                 transitionHandoff = false;
                 state = State.RUNNING;
+                OneStepFlowLog.info("workspace_ready", request,
+                        "task=" + (panes[mainSlot] == null || panes[mainSlot].card == null
+                                ? -1 : panes[mainSlot].card.taskId));
                 handler.removeCallbacks(openingTimeout);
                 openingTask = null;
                 Runnable callback = onSuccess;
@@ -562,6 +572,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         width = contentBounds.width();
         height = contentBounds.height();
         if (width <= 0 || height <= 0) throw new IllegalStateException("Invalid workspace bounds");
+        OneStepFlowLog.info("workspace_view_created", generation,
+                "task=" + (openingTask == null ? -1 : openingTask.taskId)
+                        + " recentCount=" + (recent == null ? 0 : recent.size())
+                        + " side=" + (fromLeft ? "left" : "right"));
         mainSlot = 0;
         focusedSlot = 0;
         pendingOrientations.clear();
@@ -799,7 +813,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         try {
             Pane main = panes[mainSlot];
             RecentTaskCard card = main != null ? main.card : null;
-            Log.i(OneStepImeDiagnostics.TAG, "workspace session=" + generation + " event=" + event
+            OneStepFlowLog.i(OneStepImeDiagnostics.TAG, "workspace session=" + generation + " event=" + event
                     + " mainTask=" + (card != null ? card.taskId : -1)
                     + " source=" + (shellImeControlled ? "shell" : "activity")
                     + " activityBottom=" + activityImeBottom + " activityAnimating=" + activityImeAnimating
@@ -1077,6 +1091,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         haptic(HapticFeedbackConstants.CLOCK_TICK);
         Pane previous = panes[mainSlot];
         boolean leavingDesktop = previous.card != null && previous.card.home;
+        OneStepFlowLog.info("app_selected", generation,
+                "fromTask=" + (previous.card == null ? -1 : previous.card.taskId)
+                        + " toTask=" + (selected.card == null ? -1 : selected.card.taskId)
+                        + " slot=" + slot);
         if (leavingDesktop) {
             desktopBusy = true;
             if (desktopSession != null) desktopSession.enable(false);
@@ -1216,12 +1234,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                             }
                         });
                     } catch (Exception error) {
-                        Log.w(TAG, "Cannot connect launcher", error);
+                        OneStepFlowLog.w(TAG, "Cannot connect launcher", error);
                         desktopUnavailable(pane);
                     }
                 });
             } catch (Exception error) {
-                Log.w(TAG, "Cannot find HOME task", error);
+                OneStepFlowLog.w(TAG, "Cannot find HOME task", error);
                 handler.post(() -> {
                     if (running() && generation == request && desktopRequest == connection) desktopUnavailable(pane);
                 });
@@ -1327,7 +1345,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             pane.mount(pane.launchHost);
             pane.configureHost(pane.launchHost);
         } catch (Exception error) {
-            Log.w(TAG, "Cannot prepare launcher application", error);
+            OneStepFlowLog.w(TAG, "Cannot prepare launcher application", error);
             if (pane.launchHost != null) {
                 OneStepShell.Host failed = pane.launchHost;
                 shell.release(failed, () -> onLaunchFailed(failed));
@@ -1448,7 +1466,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             inputRegionRefreshPending = false;
         } catch (Exception error) {
             if (active()) handler.post(() -> fail("无法设置应用触摸区域", error));
-            else Log.w(TAG, "Cannot close task input regions", error);
+            else OneStepFlowLog.w(TAG, "Cannot close task input regions", error);
         }
     }
 
@@ -2022,7 +2040,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             if (!active() || generation != request) return;
             boolean restored = false;
             try { tasks.returnToPage(card); restored = true; }
-            catch (Exception error) { Log.w(TAG, "Cannot return to source Activity", error); }
+            catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot return to source Activity", error); }
             boolean success = restored;
             handler.post(() -> {
                 if (!active() || generation != request) return;
@@ -2060,7 +2078,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             moveAppDrag(backdrop.touchX, backdrop.touchY);
             haptic(HapticFeedbackConstants.LONG_PRESS);
             return true;
-        } catch (RuntimeException e) { Log.w(TAG, "Cannot start app drag", e); }
+        } catch (RuntimeException e) { OneStepFlowLog.w(TAG, "Cannot start app drag", e); }
         finishAppDrag(-1);
         return false;
     }
@@ -2346,7 +2364,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             pane.launchHost.view.bringToFront();
             pane.configureHost(pane.launchHost);
         } catch (Exception error) {
-            Log.w(TAG, "Cannot accept application navigation", error);
+            OneStepFlowLog.w(TAG, "Cannot accept application navigation", error);
             if (pane.launchHost != null) {
                 OneStepShell.Host failed = pane.launchHost;
                 shell.abandonNavigation(navigation);
@@ -2358,6 +2376,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     @Override public void onReady(OneStepShell.Host host) {
         if (!active()) return;
+        OneStepFlowLog.info("task_ready", host.session,
+                "task=" + (host.card == null ? -1 : host.card.taskId)
+                        + " package=" + (host.card == null || host.card.component == null
+                                ? "unknown" : host.card.component.getPackageName())
+                        + " home=" + host.home());
         for (Pane pane : panes) if (pane != null && pane.launchHost == host) {
             OneStepShell.Host previous = pane.host;
             RecentTaskCard previousCard = pane.card;
@@ -2420,6 +2443,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     @Override public void onLaunchFailed(OneStepShell.Host host) {
+        OneStepFlowLog.info("app_launch_failure_received", host.session,
+                "task=" + (host.card == null ? -1 : host.card.taskId));
         pendingOrientations.remove(host);
         requestedOrientations.remove(host);
         manualOrientations.remove(host);
@@ -2466,6 +2491,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     @Override public void onTaskReused(OneStepShell.Host launching, OneStepShell.Host existing) {
         if (!running()) return;
+        OneStepFlowLog.info("task_reused", generation,
+                "task=" + (existing.card == null ? -1 : existing.card.taskId));
         for (Pane target : panes) if (target != null && target.host == existing && existing.ready) {
             for (Pane source : panes) if (source != null && source.launchHost == launching) {
                 removeHostView(launching);
@@ -2497,6 +2524,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     @Override public void onRemoved(OneStepShell.Host host) {
+        OneStepFlowLog.info("task_removed", host.session,
+                "task=" + (host.card == null ? -1 : host.card.taskId)
+                        + " home=" + host.home());
         pendingOrientations.remove(host);
         requestedOrientations.remove(host);
         manualOrientations.remove(host);
@@ -2588,6 +2618,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void close(boolean focusMain) {
         if (state == State.CLOSED) return;
+        OneStepFlowLog.info("workspace_close_requested", generation,
+                "focusMain=" + focusMain + " state=" + state.name().toLowerCase(java.util.Locale.ROOT));
         if (state == State.CLOSING) {
             if (!focusMain) {
                 closeGeneration++;
@@ -2647,6 +2679,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void finishClose() {
         if (state == State.CLOSED) return;
+        int closedSession = generation;
+        boolean returnHomeAfterClose = homeRequested;
         handler.removeCallbacks(exitAnimationTimeout);
         cancelAnimator(true);
         cancelLayoutAnimator();
@@ -2677,6 +2711,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         generation++;
         desktopBusy = false;
         state = State.CLOSED;
+        OneStepFlowLog.info("workspace_closed", closedSession,
+                "returnHome=" + returnHomeAfterClose);
         suspended = false;
         rebinding = false;
         initialTaskStarted = false;
@@ -2688,7 +2724,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         homeRequested = false;
         if (returnHome && OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId)) {
             try { tasks.startHome(workspaceOwnerUserId); }
-            catch (Exception error) { Log.w(TAG, "Cannot return to Home after restoring workspace", error); }
+            catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot return to Home after restoring workspace", error); }
         }
     }
 
@@ -2696,13 +2732,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (active()) return;
         try { navigation.setLocked(false, workspaceOwnerUserId); }
         catch (Exception error) {
-            Log.w(TAG, "Navigation release will retry", error);
+            OneStepFlowLog.w(TAG, "Navigation release will retry", error);
             handler.postDelayed(this::releaseNavigation, 500);
         }
     }
 
     private void fail(String message, Exception error) {
-        Log.w(TAG, message, error);
+        OneStepFlowLog.warn("workspace_failed", generation, "reason=" + message, error);
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show();
         close(false);
     }
@@ -2815,7 +2851,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                         }
                         if (resolved == null) resolved = tasks.findCandidate(next);
                     }
-                } catch (Exception error) { Log.w(TAG, "Cannot resolve selected task", error); }
+                } catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot resolve selected task", error); }
                 RecentTaskCard cardToLoad = resolved;
                 handler.post(() -> {
                     if (!active() || generation != request || panes[slot] != this) return;
@@ -2856,7 +2892,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                             shell.release(failed, () -> onLaunchFailed(failed));
                         } else if (state == State.OPENING) fail("无法创建应用窗口", error);
                         else {
-                            Log.w(TAG, "Cannot replace application", error);
+                            OneStepFlowLog.w(TAG, "Cannot replace application", error);
                             Toast.makeText(context, "暂时无法打开应用", Toast.LENGTH_SHORT).show();
                             if (host == null && directlyInteractive(this)) returnToPrevious(this, request);
                             if (slot == LANDSCAPE_SLOT) relayoutPanes();

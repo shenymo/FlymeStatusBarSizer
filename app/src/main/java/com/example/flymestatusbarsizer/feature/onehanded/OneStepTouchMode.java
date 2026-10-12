@@ -23,9 +23,9 @@ final class OneStepTouchMode {
         worker.execute(() -> {
             try {
                 writeEnabled();
-                Log.i(TAG, "Touch game mode write completed: requested=1");
+                OneStepFlowLog.i(TAG, "Touch game mode write completed: requested=1");
             } catch (IOException | RuntimeException e) {
-                Log.w(TAG, "Touch game mode write failed: " + NODE, e);
+                OneStepFlowLog.w(TAG, "Touch game mode write failed: " + NODE, e);
             }
         });
     }

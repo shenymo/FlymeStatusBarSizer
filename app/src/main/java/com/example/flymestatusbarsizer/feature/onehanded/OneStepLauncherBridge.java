@@ -141,7 +141,7 @@ public final class OneStepLauncherBridge {
             module.intercept(onCreate, chain -> {
                 Object result = chain.proceed();
                 try { register((Context) chain.getThisObject()); }
-                catch (RuntimeException error) { Log.w(OneHandedTaskHooks.TAG, "Cannot register workspace receiver", error); }
+                catch (RuntimeException error) { OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot register workspace receiver", error); }
                 return result;
             });
             Class<?> item = Class.forName("com.android.launcher3.model.data.ItemInfo", false, loader);
@@ -184,12 +184,12 @@ public final class OneStepLauncherBridge {
                     return callbacks;
                 } catch (Exception error) {
                     if (animation != null) animation.cancel();
-                    Log.w(OneHandedTaskHooks.TAG, "Cannot launch into workspace", error);
+                    OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot launch into workspace", error);
                     Toast.makeText(context, "无法在工作台中打开应用", Toast.LENGTH_SHORT).show();
                     return null;
                 }
             });
-        } catch (Exception error) { Log.w(OneHandedTaskHooks.TAG, "Launcher workspace hook unavailable", error); }
+        } catch (Exception error) { OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Launcher workspace hook unavailable", error); }
     }
 
     private static PendingIntent pendingIntent(Context context, Intent intent, Object item, UserHandle user)
@@ -241,7 +241,7 @@ public final class OneStepLauncherBridge {
                     });
                     control.linkToDeath(launcherDeath, 0);
                 } catch (RemoteException | RuntimeException error) {
-                    Log.w(OneHandedTaskHooks.TAG, "Workspace disconnected", error);
+                    OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Workspace disconnected", error);
                 }
             }
         }, new IntentFilter(CONNECT), "android.permission.STATUS_BAR_SERVICE", main, Context.RECEIVER_EXPORTED);

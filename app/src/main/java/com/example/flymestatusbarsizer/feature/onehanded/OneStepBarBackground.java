@@ -63,7 +63,7 @@ final class OneStepBarBackground {
         } catch (Exception error) {
             if (result.buffer != null) result.buffer.close();
             result.buffer = null;
-            Log.w(OneHandedTaskHooks.TAG, "Using task color for workspace status bar backdrop", error);
+            OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Using task color for workspace status bar backdrop", error);
         }
         return result;
     }
