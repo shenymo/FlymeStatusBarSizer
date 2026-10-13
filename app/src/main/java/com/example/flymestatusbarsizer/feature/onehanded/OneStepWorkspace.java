@@ -2874,11 +2874,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             // Keep the task surface at 1:1 inside TaskView; only the container scales it.
             if (host != null) {
                 configureHost(host);
-                syncTaskBounds(host);
             }
             if (launchHost != null) {
                 configureHost(launchHost);
-                syncTaskBounds(launchHost);
             }
         }
 
@@ -2893,8 +2891,21 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             // Home stays fullscreen in WM; retain its complete source viewport so
             // shortening the pane does not crop away the dock or lower app icons.
             shell.forceLandscape(task, slot == LANDSCAPE_SLOT);
+            Rect surfaceBounds = null;
+            if (!task.home()) {
+                surfaceBounds = new Rect();
+                if (!task.view.getGlobalVisibleRect(surfaceBounds) || surfaceBounds.isEmpty()) {
+                    RectF frame = currentPaneFrame(this);
+                    surfaceBounds.set(Math.round(contentBounds.left + workspace.getTranslationX() + frame.left),
+                            Math.round(contentBounds.top + workspace.getTranslationY() + frame.top),
+                            Math.round(contentBounds.left + workspace.getTranslationX() + frame.right),
+                            Math.round(contentBounds.top + workspace.getTranslationY() + frame.bottom));
+                }
+            }
             shell.geometry(task, task.home() ? logicalBounds : bounds,
-                    bounds.width(), bounds.height(), slot == mainSlot, slot == LANDSCAPE_SLOT);
+                    bounds.width(), bounds.height(), slot == mainSlot, slot == LANDSCAPE_SLOT,
+                    surfaceBounds);
+            syncTaskBounds(task);
         }
     }
 }

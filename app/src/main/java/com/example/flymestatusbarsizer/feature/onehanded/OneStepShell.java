@@ -99,6 +99,9 @@ final class OneStepShell {
         int returnDisplay;
         boolean externalReturn;
         Rect logicalBounds = new Rect();
+        // Physical task bounds published by the TaskView. The hosted surface is
+        // rendered in logical viewport coordinates, then fitted to this frame.
+        final Rect surfaceBounds = new Rect();
         int width;
         int height;
         boolean main;
@@ -121,6 +124,7 @@ final class OneStepShell {
         boolean surfaceMissing;
         boolean fullscreenCompat;
         boolean landscapeForced;
+        volatile boolean landscapeRequested;
         boolean imeRegistered;
         boolean workspaceRestorePending;
         boolean workspaceRestoreCommitted;
@@ -301,8 +305,8 @@ final class OneStepShell {
                     }
                 });
             }
-            // Bounds belong to the workspace's stable logical viewport, not the thumbnail size.
-            // Tasks are borrowed by identity; startActivity/removeTask are never used here.
+            // TaskView owns the physical task bounds; this shell only borrows task identity
+            // and fits the resulting surface into the logical pane viewport.
             return null;
         });
         transitionHandler = Proxy.newProxyInstance(loader, new Class<?>[]{transitionHandlerClass}, (proxy, method, args) -> {
@@ -872,10 +876,42 @@ final class OneStepShell {
         geometry(host, logicalBounds, width, height, main, false);
     }
 
-    void forceLandscape(Host host, boolean enabled) {
+    void geometry(Host host, Rect logicalBounds, int width, int height, boolean portraitMain,
+                  boolean landscape, Rect surfaceBounds) {
+        Rect bounds = new Rect(logicalBounds);
+        Rect frame = surfaceBounds == null ? new Rect() : new Rect(surfaceBounds);
         executor.execute(() -> {
-            if (!current(host) || host.home() || host.card == null || !host.imeRegistered
-                    || imeSession == null || host.landscapeForced == enabled) return;
+            if (!current(host)) return;
+            host.logicalBounds = bounds;
+            host.surfaceBounds.set(frame);
+            host.landscapeRequested = landscape;
+            host.width = width;
+            host.height = height;
+            host.portraitMain = portraitMain;
+            host.interactive = portraitMain || landscape;
+            if (!host.interactive) host.main = false;
+            try {
+                if (!host.home() && host.imeRegistered && imeSession != null
+                        && host.landscapeForced != landscape) {
+                    imeSession.setLandscape((IBinder) host.card.token, landscape);
+                    host.landscapeForced = landscape;
+                }
+                if (host.borrowed) {
+                    present(host, null, null);
+                } else if (host.initialized) acquire(host);
+            } catch (Exception error) { fail("无法调整应用窗口", error); }
+        });
+    }
+
+    void forceLandscape(Host host, boolean enabled) {
+        host.landscapeRequested = enabled;
+        executor.execute(() -> {
+            if (!current(host) || host.home() || host.card == null) return;
+            // Pane configuration can arrive before acquire() registers the task
+            // with the workspace IME session. Remember the desired role so the
+            // first registration applies it instead of silently dropping it.
+            host.landscapeRequested = enabled;
+            if (!host.imeRegistered || imeSession == null || host.landscapeForced == enabled) return;
             try {
                 imeSession.setLandscape((IBinder) host.card.token, enabled);
                 host.landscapeForced = enabled;
@@ -886,21 +922,7 @@ final class OneStepShell {
     }
 
     void geometry(Host host, Rect logicalBounds, int width, int height, boolean portraitMain, boolean landscape) {
-        Rect bounds = new Rect(logicalBounds);
-        executor.execute(() -> {
-            if (!current(host)) return;
-            host.logicalBounds = bounds;
-            host.width = width;
-            host.height = height;
-            host.portraitMain = portraitMain;
-            host.interactive = portraitMain || landscape;
-            if (!host.interactive) host.main = false;
-            try {
-                if (host.borrowed) {
-                    present(host, null, null);
-                } else if (host.initialized) acquire(host);
-            } catch (Exception error) { fail("无法调整应用窗口", error); }
-        });
+        geometry(host, logicalBounds, width, height, portraitMain, landscape, null);
     }
 
     void syncTaskBounds(Host host) {
@@ -1101,6 +1123,9 @@ final class OneStepShell {
             if (imeSession == null) throw new IllegalStateException("Workspace IME session unavailable");
             host.imeRegistered = true;
             imeSession.add((IBinder) host.card.token);
+            if (host.landscapeRequested && !host.landscapeForced)
+                imeSession.setLandscape((IBinder) host.card.token, true);
+            host.landscapeForced = host.landscapeRequested;
             synchronized (OneStepReflection.get(organizer, "mLock")) {
                 SparseArray<Object> listeners = listeners();
                 host.oldSpecificListener = listeners.get(host.card.taskId);
@@ -2102,14 +2127,18 @@ final class OneStepShell {
         // Only the native animator may transform these temporary wrappers until it finishes.
         if (openingAnimation != null && (openingAnimation.app == host || openingAnimation.home == host)) return;
         Rect crop = surfaceCrop(host);
+        if (host.fullscreenCompat && host.logicalBounds.width() > host.logicalBounds.height()
+                && !host.actualBounds.isEmpty()) {
+            crop = landscapeFullscreenCrop(host);
+        }
         float sx = host.width / (float) crop.width();
         float sy = host.height / (float) crop.height();
         float x = -crop.left * sx, y = -crop.top * sy;
         if (host.fullscreenCompat && host.logicalBounds.width() > host.logicalBounds.height()) {
-            // Keep the complete surface when a fullscreen-compatible app has not yet
-            // accepted the forced landscape request. A cover transform would crop
-            // portrait UIs and video edges; contain it until WM reports new bounds.
-            sx = sy = Math.min(sx, sy);
+            // A fullscreen-compatible app can keep a portrait task buffer while
+            // its orientation request is settling. Crop that buffer to the pane's
+            // aspect ratio and cover the pane, rather than leaving letterbox space.
+            sx = sy = Math.max(sx, sy);
             x = (host.width - crop.width() * sx) / 2f - crop.left * sx;
             y = (host.height - crop.height() * sy) / 2f - crop.top * sy;
         }
@@ -2135,6 +2164,37 @@ final class OneStepShell {
             crop.set(host.logicalBounds.width() > host.logicalBounds.height() ? actual : host.logicalBounds);
             if (!crop.intersect(actual)) throw new IllegalStateException("Fullscreen task has no visible viewport");
             crop.offset(-actual.left, -actual.top);
+        } else if (!host.surfaceBounds.isEmpty()) {
+            // TaskView.setTaskBounds() resizes the WM task to the pane's physical
+            // frame. Crop in that task-local size before scaling it into the
+            // unscaled viewport; using logicalBounds here leaves blank space after
+            // the parent view is scaled down to a side or landscape pane.
+            crop.set(0, 0, host.surfaceBounds.width(), host.surfaceBounds.height());
+        }
+        return crop;
+    }
+
+    private static Rect landscapeFullscreenCrop(Host host) {
+        Rect actual = host.actualBounds;
+        Rect crop = centerCrop(actual, host.width / (float) Math.max(1, host.height));
+        crop.offset(-actual.left, -actual.top);
+        return crop;
+    }
+
+    private static Rect centerCrop(Rect source, float targetAspect) {
+        Rect crop = new Rect(source);
+        if (source.isEmpty() || targetAspect <= 0f) return crop;
+        float sourceAspect = source.width() / (float) source.height();
+        if (sourceAspect > targetAspect) {
+            int width = Math.max(1, Math.min(source.width(),
+                    Math.round(source.height() * targetAspect)));
+            int left = source.left + (source.width() - width) / 2;
+            crop.set(left, source.top, left + width, source.bottom);
+        } else if (sourceAspect < targetAspect) {
+            int height = Math.max(1, Math.min(source.height(),
+                    Math.round(source.width() / targetAspect)));
+            int top = source.top + (source.height() - height) / 2;
+            crop.set(source.left, top, source.right, top + height);
         }
         return crop;
     }
