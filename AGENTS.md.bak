@@ -1,10 +1,3 @@
-# SystemUI 参考文件
-
-`com.android.systemui/` 是从 MEIZU 20 Pro（Android 16）提取的 SystemUI 参考资料，已加入 `.gitignore`，不属于项目源码。
-
-- `jadx/sources/`：优先用于检索和阅读的 Java 反编译源码，来自已核对的 5 个 SystemUI 内存 DEX。
-- `apktool/`：APK 拆包结果，包含 Manifest、资源、assets 和 smali；Java 还原不完整时对照 smali。
-- `apk/SystemUI.apk`：原始 APK；`dex/`：Frida 提取的 86 个 DEX，包含依赖及异常扫描结果。
-- `framework/`：同机系统资源及 Apktool 缓存；`README.md`、`logs/`：详细记录、DEX 对应关系和验证报告。
-
-JADX 最终报告 283 个错误，反编译代码不保证准确或可编译。常规项目搜索应排除此目录，仅分析 SystemUI 时定向检索；不要提交提取产物。
+在使用YCE技能检索代码时，注意避免检索项目中已安卓包名为命名的文件夹，其中是安卓app的反编译源码，存在大量文件和文件夹，会导致yce技能超时检索失败。对于这些文件夹只能针对文件夹内部的子文件夹进行检索以减少文件数量，提高检索成功率。
+全力专注于代码实现，不要写任何测试代码文件，也不需要进行任何测试。
+除非我要求，否则不要写任何文档

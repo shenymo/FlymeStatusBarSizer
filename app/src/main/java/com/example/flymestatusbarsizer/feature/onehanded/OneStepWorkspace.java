@@ -755,7 +755,18 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     void onShellImeEnd(boolean cancelled) {
         dispatchShellIme(() -> {
-            if (!shellImeControlled || !shellImePositioning) return;
+            if (!shellImeControlled || !shellImePositioning) {
+                // Routing may have handed the IME back to an app before Shell's
+                // stale end callback arrives. Do not leave imeAnimating latched,
+                // because updateInput treats it as a global touch block.
+                shellImePositioning = false;
+                if (!shellImeControlled) {
+                    imeAnimating = false;
+                    applyActivityIme();
+                }
+                workspace.post(this::updateInput);
+                return;
+            }
             shellImePositioning = false;
             if (!cancelled) {
                 imeBottom = shellImeTargetBottom;
@@ -774,8 +785,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             if (!shellImeControlled) return;
             shellImeControlled = false;
             shellImePositioning = false;
+            imeAnimating = false;
             applyActivityIme();
             logImeEvent("shell-control-lost");
+            workspace.post(this::updateInput);
         });
     }
 
@@ -792,10 +805,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             // a focus handoff must not cancel a newer Shell animation already in flight.
             shellImeControlled = false;
             shellImePositioning = false;
+            imeAnimating = false;
         }
         if (!shellImeControlled) applyActivityIme();
         // The requested input region can move without changing the IME insets.
         positionForIme();
+        if (placement == OneStepImePolicy.APP) workspace.post(this::updateInput);
         if (routingChanged) logImeEvent("routing placement=" + placement);
         else if (regionAvailabilityChanged) logImeEvent(inputRegion == null ? "input-region-cleared" : "input-region-ready");
     }
@@ -1384,13 +1399,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             relayoutPanes();
         }
         if (!shellImeControlled) applyActivityIme();
-        boolean blocked = !running() || movingTask || transitionHandoff || suspended || rebinding || covered || !hostVisible || panesBusy() || desktopBusy || animator != null || layoutAnimator != null || transitionAnimator != null
+        boolean blocked = !running() || movingTask || transitionHandoff || suspended || rebinding || covered || !hostVisible || animator != null || layoutAnimator != null || transitionAnimator != null
                 || imeAnimator != null || imeAnimating || dragSession != null
                 || (activitySession != null && !activitySession.isMounted());
         blockInput(blocked);
-        recentApps.setSideWindowsEnabled(!blocked, sideWindowsCollapsed);
+        boolean controlsBlocked = blocked || panesBusy() || desktopBusy;
+        recentApps.setSideWindowsEnabled(!controlsBlocked, sideWindowsCollapsed);
         Pane main = panes[mainSlot];
-        if (desktopSession != null) desktopSession.enable(!blocked && !OneHandedTaskHooks.shadeOpen()
+        if (desktopSession != null) desktopSession.enable(!controlsBlocked && !OneHandedTaskHooks.shadeOpen()
                 && main != null && main.host != null && main.host.ready && main.host.home());
     }
 
@@ -1415,10 +1431,18 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 // setObscuredTouchRect cannot represent several disjoint side panes during swaps.
                 java.lang.reflect.Field field = OneStepReflection.field(pane.host.view.getClass(), "mObscuredTouchRegion");
                 Object previous = field.get(pane.host.view);
-                Region obscured = obscuredTouchRegion(pane, block);
+                boolean paneBlocked = block || !directlyInteractive(pane) || pane.replacing
+                        || pane.launchHost != null || !pane.host.ready || pane.host.closing
+                        || pane.host.restoring || pane.host.released
+                        || (desktopBusy && pane.host.home());
+                Region obscured = obscuredTouchRegion(pane, paneBlocked);
                 if (inputRegionRefreshPending || !obscured.equals(previous)) {
                     field.set(pane.host.view, new android.graphics.Region(obscured));
                     changed = true;
+                    // The field is private on this ROM and changing it directly does
+                    // not invalidate ViewRoot's internal-insets result. A layout pass
+                    // is required after a pane move so TaskView publishes the new hole.
+                    pane.host.view.requestLayout();
                 }
                 if (pane.launchHost != null) pane.launchHost.obscure(new Rect(screenBounds));
             }
@@ -1436,30 +1460,53 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private Region obscuredTouchRegion(Pane pane, boolean block) {
         Region obscured = new Region();
-        obscured.set(0, 0, Math.max(width, backdrop.getWidth()),
-                Math.max(height + contentBounds.top, backdrop.getHeight()));
-        if (!block && (pane.slot == mainSlot || pane.slot == LANDSCAPE_SLOT)
-                && pane.host.ready) {
-            Rect visible = new Rect();
-            if (pane.host.view.getGlobalVisibleRect(visible)) {
-                // Use the transformed view bounds so the task input hole matches its pane.
-                int[] location = new int[2];
-                pane.host.view.getLocationOnScreen(location);
-                RectF bounds = new RectF(location[0], location[1],
-                        location[0] + pane.host.view.getWidth() * pane.container.getScaleX(),
-                        location[1] + pane.host.view.getHeight() * pane.container.getScaleY());
-                Path shape = new Path();
-                shape.addRoundRect(bounds, dp(PANE_RADIUS_DP), dp(PANE_RADIUS_DP), Path.Direction.CW);
-                Region touchable = new Region();
-                touchable.setPath(shape, new Region(visible));
-                obscured.op(touchable, Region.Op.DIFFERENCE);
-            }
+        // TaskView already removes its transformed bounds from the host window's
+        // touchable region. Once the main task settles in the landscape slot, adding a
+        // second hand-built region can cover that hole due to SurfaceView's final scale.
+        // Leave both directly interactive TaskViews to the platform's own calculation.
+        if (!block && directlyInteractive(pane) && pane.host != null && pane.host.ready) {
+            addToolbarObscuredRegion(obscured);
+            return obscured;
         }
-        if (recentStrip != null) {
-            Rect toolbar = new Rect();
-            if (recentStrip.getGlobalVisibleRect(toolbar)) obscured.op(toolbar, Region.Op.UNION);
-        }
+        // TaskView publishes this region from onComputeInternalInsets(), where all
+        // coordinates are relative to the embedded window. Screen coordinates happen
+        // to match in the common portrait case, but diverge after the landscape pane
+        // is moved and scaled inside the workspace.
+        int[] rootWindow = new int[2];
+        backdrop.getLocationInWindow(rootWindow);
+        obscured.set(rootWindow[0], rootWindow[1],
+                rootWindow[0] + backdrop.getWidth(), rootWindow[1] + backdrop.getHeight());
+        addToolbarObscuredRegion(obscured);
         return obscured;
+    }
+
+    private void addToolbarObscuredRegion(Region region) {
+        if (recentStrip == null) return;
+        Rect toolbar = new Rect();
+        if (recentStrip.getGlobalVisibleRect(toolbar))
+            region.op(toWindowRegion(toolbar), Region.Op.UNION);
+    }
+
+    private int windowOffsetX() {
+        int[] screen = new int[2];
+        int[] window = new int[2];
+        backdrop.getLocationOnScreen(screen);
+        backdrop.getLocationInWindow(window);
+        return window[0] - screen[0];
+    }
+
+    private int windowOffsetY() {
+        int[] screen = new int[2];
+        int[] window = new int[2];
+        backdrop.getLocationOnScreen(screen);
+        backdrop.getLocationInWindow(window);
+        return window[1] - screen[1];
+    }
+
+    private Rect toWindowRegion(Rect screenRect) {
+        Rect result = new Rect(screenRect);
+        result.offset(windowOffsetX(), windowOffsetY());
+        return result;
     }
 
     private void toggleSideWindows() {
@@ -1697,6 +1744,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (!active() || !readyForFocus(pane) || pane.host != host) return;
         focusedSlot = pane.slot;
         positionForIme();
+        refreshInputRegion();
         scheduleOrientationRouting();
     }
 
@@ -2766,7 +2814,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             task.setCornerRadius(cornerRadius);
             task.view.setOnTouchListener((view, event) -> {
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN) select(this.slot);
-                return true;
+                // TaskView owns the embedded application's input surface. The listener
+                // only observes the first touch to update focus; consuming the stream
+                // prevents the app from receiving touches when its input hole is rebuilt
+                // after an automatic portrait-to-landscape move.
+                return false;
             });
             task.obscure(new Rect(screenBounds));
             if (task.home()) {

@@ -256,6 +256,7 @@ final class OneStepShell {
     private IBinder activityLaunchTransition;
     private OneStepImePolicy.Session imeSession;
     private volatile int imeRoutingGeneration;
+    private volatile long focusRequest;
     private Listener listener;
     private int initAttempts;
 
@@ -910,7 +911,9 @@ final class OneStepShell {
     }
 
     void focus(Host host) {
+        long request = ++focusRequest;
         executor.execute(() -> {
+            if (request != focusRequest) return;
             if (!accepting || suspended || !hostVisible || covered
                     || (host != null && (!current(host) || !host.borrowed || host.parked
                             || host.closing || !host.interactive))) return;
@@ -924,6 +927,7 @@ final class OneStepShell {
                     candidate.main = candidate == host;
                     bool(wct, "setFocusable", candidate.token, hostedFocusable(candidate, host));
                 }
+                if (request != focusRequest) return;
                 arrangeTasks(wct, host);
                 OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
                 reportFocused(host);
