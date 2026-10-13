@@ -429,10 +429,9 @@ final class OneStepShell {
             return;
         }
         mode(wct, host.token, 6);
-        bounds(wct, host.token, host.logicalBounds);
         try {
             String snapshot = "event=" + event + " requestedMode=" + (host.home() ? 1 : 6)
-                    + " requestedBounds=" + host.logicalBounds + " before={" + OneStepImeDiagnostics.taskInfo(info) + "}";
+                    + " taskBoundsFromTaskView=true before={" + OneStepImeDiagnostics.taskInfo(info) + "}";
             if (snapshot.equals(host.lastImeModeRequest)) return;
             host.lastImeModeRequest = snapshot;
             OneStepFlowLog.i(OneStepImeDiagnostics.TAG, "mode-request session=" + host.session + " " + snapshot);
@@ -890,7 +889,6 @@ final class OneStepShell {
         Rect bounds = new Rect(logicalBounds);
         executor.execute(() -> {
             if (!current(host)) return;
-            boolean changed = !host.logicalBounds.equals(bounds);
             host.logicalBounds = bounds;
             host.width = width;
             host.height = height;
@@ -899,15 +897,19 @@ final class OneStepShell {
             if (!host.interactive) host.main = false;
             try {
                 if (host.borrowed) {
-                    if (changed && !host.home() && !host.fullscreenCompat) {
-                        Object wct = transaction();
-                        bounds(wct, host.token, bounds);
-                        submit(wct);
-                    }
                     present(host, null, null);
                 } else if (host.initialized) acquire(host);
             } catch (Exception error) { fail("无法调整应用窗口", error); }
         });
+    }
+
+    void syncTaskBounds(Host host) {
+        if (!current(host) || host.view == null) return;
+        try {
+            OneStepReflection.call(host.view, "onLocationChanged");
+        } catch (Exception error) {
+            OneStepFlowLog.w(TAG, "Cannot synchronize TaskView bounds", error);
+        }
     }
 
     void focus(Host host) {

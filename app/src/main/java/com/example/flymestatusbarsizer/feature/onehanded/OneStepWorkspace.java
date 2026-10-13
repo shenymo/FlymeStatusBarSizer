@@ -1436,14 +1436,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private void blockInput(boolean block) {
         if (backdrop == null) return;
         // TaskView's native insets listener uses its unscaled width/height. Cover everything
-        // except that task's own interactive pane. Task window bounds overlap in WM even
-        // though their surfaces are disjoint, so sharing both input holes lets the focused
-        // task intercept touches intended for the other pane.
+        // except the interactive panes. All TaskViews publish into the same host window,
+        // so they must receive one identical touch region.
         try {
             boolean changed = inputRegionRefreshPending;
             Region obscured = obscuredTouchRegion(block);
             for (Pane pane : panes) if (pane != null && pane.host != null) {
-                // setObscuredTouchRect cannot represent several disjoint side panes during swaps.
                 java.lang.reflect.Field field = OneStepReflection.field(pane.host.view.getClass(), "mObscuredTouchRegion");
                 Object previous = field.get(pane.host.view);
                 if (inputRegionRefreshPending || !obscured.equals(previous)) {
@@ -1470,9 +1468,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private Region obscuredTouchRegion(boolean block) {
         Region obscured = new Region();
-        // TaskView listeners all mutate one host-window touch region. Publish one shared
-        // region: the host owns the workspace outside the interactive task panes, while
-        // each TaskView's own input surface receives touches through its hole.
         int[] rootWindow = new int[2];
         backdrop.getLocationInWindow(rootWindow);
         obscured.set(rootWindow[0], rootWindow[1],
@@ -1480,7 +1475,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (!block) {
             for (Pane pane : panes) if (directlyInteractive(pane)
                     && pane.host != null && pane.host.ready && !pane.replacing
-                    && !pane.host.closing && !pane.host.restoring && !pane.host.released) {
+                    && pane.launchHost == null && !pane.host.closing
+                    && !pane.host.restoring && !pane.host.released
+                    && !(desktopBusy && pane.host.home())) {
                 Rect visible = new Rect();
                 if (pane.host.view.getGlobalVisibleRect(visible)) {
                     Rect visibleInWindow = toWindowRegion(visible);
@@ -2875,8 +2872,20 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         void updateGeometry() {
             if (!active()) return;
             // Keep the task surface at 1:1 inside TaskView; only the container scales it.
-            if (host != null) configureHost(host);
-            if (launchHost != null) configureHost(launchHost);
+            if (host != null) {
+                configureHost(host);
+                syncTaskBounds(host);
+            }
+            if (launchHost != null) {
+                configureHost(launchHost);
+                syncTaskBounds(launchHost);
+            }
+        }
+
+        private void syncTaskBounds(OneStepShell.Host task) {
+            task.view.post(() -> {
+                if (active() && (host == task || launchHost == task)) shell.syncTaskBounds(task);
+            });
         }
 
         void configureHost(OneStepShell.Host task) {
