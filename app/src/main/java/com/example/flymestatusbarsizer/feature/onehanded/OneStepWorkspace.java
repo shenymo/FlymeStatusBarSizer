@@ -162,6 +162,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private int closeGeneration;
     private boolean rebinding;
     private OneStepPerf perf;
+    private volatile boolean oneHandedProfile;
 
     OneStepWorkspace(Context source, Handler handler, Object transitions, Object factory, Object displayAreas)
             throws Exception {
@@ -209,14 +210,16 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         ModuleConfig config = ModuleConfig.load(context);
         return Math.max(SettingsStore.MIN_WORKSPACE_TOOLBAR_HEIGHT_DP,
                 Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_HEIGHT_DP,
-                        config.workspaceToolbarHeightDp));
+                        oneHandedProfile ? config.oneHandedWorkspaceToolbarHeightDp
+                                : config.workspaceToolbarHeightDp));
     }
 
     private int toolbarPositionDp() {
         ModuleConfig config = ModuleConfig.load(context);
         return Math.max(SettingsStore.MIN_WORKSPACE_TOOLBAR_POSITION_DP,
                 Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP,
-                        config.workspaceToolbarPositionDp));
+                        oneHandedProfile ? config.oneHandedWorkspaceToolbarPositionDp
+                                : config.workspaceToolbarPositionDp));
     }
 
     private int toolbarIconSizeDp() {
@@ -281,6 +284,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         catch (Exception error) { return false; }
     }
 
+    void useSideGestureProfile() {
+        if (!active()) oneHandedProfile = false;
+    }
+
+    void useOneHandedProfile() {
+        if (!active()) oneHandedProfile = true;
+    }
+
     void toggle(boolean fromLeft, Runnable success) {
         handler.post(() -> {
             if (active()) return;
@@ -290,7 +301,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             state = State.OPENING;
             int request = ++generation;
             OneStepFlowLog.info("workspace_open_requested", request,
-                    "side=" + (fromLeft ? "left" : "right"));
+                    "side=" + (fromLeft ? "left" : "right")
+                            + " profile=" + (oneHandedProfile ? "one-handed" : "side-gesture"));
             handler.postDelayed(openingTimeout, 12000);
             taskWorker.execute(() -> {
                 try {
@@ -648,7 +660,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         layoutToolbarHeightDp = toolbarHeight;
         int toolbarPosition = toolbarPositionDp();
         layoutToolbarPositionDp = toolbarPosition;
-        boolean keepMainAspectRatio = ModuleConfig.load(context).workspaceKeepMainAspectRatio;
+        ModuleConfig config = ModuleConfig.load(context);
+        boolean keepMainAspectRatio = oneHandedProfile
+                ? config.oneHandedWorkspaceKeepMainAspectRatio : config.workspaceKeepMainAspectRatio;
         layoutKeepMainAspectRatio = keepMainAspectRatio;
         Rect[] result = OneStepWindowLayout.calculateLandscapeWorkspace(width - margin * 2,
                 height - margin * 2, dp(PANE_GAP_DP),
@@ -1427,15 +1441,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         // task intercept touches intended for the other pane.
         try {
             boolean changed = inputRegionRefreshPending;
+            Region obscured = obscuredTouchRegion(block);
             for (Pane pane : panes) if (pane != null && pane.host != null) {
                 // setObscuredTouchRect cannot represent several disjoint side panes during swaps.
                 java.lang.reflect.Field field = OneStepReflection.field(pane.host.view.getClass(), "mObscuredTouchRegion");
                 Object previous = field.get(pane.host.view);
-                boolean paneBlocked = block || !directlyInteractive(pane) || pane.replacing
-                        || pane.launchHost != null || !pane.host.ready || pane.host.closing
-                        || pane.host.restoring || pane.host.released
-                        || (desktopBusy && pane.host.home());
-                Region obscured = obscuredTouchRegion(pane, paneBlocked);
                 if (inputRegionRefreshPending || !obscured.equals(previous)) {
                     field.set(pane.host.view, new android.graphics.Region(obscured));
                     changed = true;
@@ -1458,24 +1468,37 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
     }
 
-    private Region obscuredTouchRegion(Pane pane, boolean block) {
+    private Region obscuredTouchRegion(boolean block) {
         Region obscured = new Region();
-        // TaskView already removes its transformed bounds from the host window's
-        // touchable region. Once the main task settles in the landscape slot, adding a
-        // second hand-built region can cover that hole due to SurfaceView's final scale.
-        // Leave both directly interactive TaskViews to the platform's own calculation.
-        if (!block && directlyInteractive(pane) && pane.host != null && pane.host.ready) {
-            addToolbarObscuredRegion(obscured);
-            return obscured;
-        }
-        // TaskView publishes this region from onComputeInternalInsets(), where all
-        // coordinates are relative to the embedded window. Screen coordinates happen
-        // to match in the common portrait case, but diverge after the landscape pane
-        // is moved and scaled inside the workspace.
+        // TaskView listeners all mutate one host-window touch region. Publish one shared
+        // region: the host owns the workspace outside the interactive task panes, while
+        // each TaskView's own input surface receives touches through its hole.
         int[] rootWindow = new int[2];
         backdrop.getLocationInWindow(rootWindow);
         obscured.set(rootWindow[0], rootWindow[1],
                 rootWindow[0] + backdrop.getWidth(), rootWindow[1] + backdrop.getHeight());
+        if (!block) {
+            for (Pane pane : panes) if (directlyInteractive(pane)
+                    && pane.host != null && pane.host.ready && !pane.replacing
+                    && !pane.host.closing && !pane.host.restoring && !pane.host.released) {
+                Rect visible = new Rect();
+                if (pane.host.view.getGlobalVisibleRect(visible)) {
+                    Rect visibleInWindow = toWindowRegion(visible);
+                    int[] location = new int[2];
+                    pane.host.view.getLocationOnScreen(location);
+                    RectF bounds = new RectF(
+                            location[0], location[1],
+                            location[0] + pane.host.view.getWidth() * pane.container.getScaleX(),
+                            location[1] + pane.host.view.getHeight() * pane.container.getScaleY());
+                    bounds.offset(windowOffsetX(), windowOffsetY());
+                    Path shape = new Path();
+                    shape.addRoundRect(bounds, dp(PANE_RADIUS_DP), dp(PANE_RADIUS_DP), Path.Direction.CW);
+                    Region touchable = new Region();
+                    touchable.setPath(shape, new Region(visibleInWindow));
+                    obscured.op(touchable, Region.Op.DIFFERENCE);
+                }
+            }
+        }
         addToolbarObscuredRegion(obscured);
         return obscured;
     }
@@ -2150,7 +2173,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 int previousToolbarHeight = layoutToolbarHeightDp;
                 int previousToolbarPosition = layoutToolbarPositionDp;
                 boolean previousKeepMainAspectRatio = layoutKeepMainAspectRatio;
-                boolean currentKeepMainAspectRatio = ModuleConfig.load(context).workspaceKeepMainAspectRatio;
+                ModuleConfig config = ModuleConfig.load(context);
+                boolean currentKeepMainAspectRatio = oneHandedProfile
+                        ? config.oneHandedWorkspaceKeepMainAspectRatio : config.workspaceKeepMainAspectRatio;
                 refreshEnvironment();
                 if (previousToolbarHeight != toolbarHeightDp()
                         || previousToolbarPosition != toolbarPositionDp()

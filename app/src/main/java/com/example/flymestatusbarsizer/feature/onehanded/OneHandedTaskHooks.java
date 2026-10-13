@@ -52,7 +52,10 @@ public final class OneHandedTaskHooks {
 
         @Override public void execute(boolean fromLeft, Runnable onSuccess) {
             OneStepWorkspace current = controller;
-            if (installed && current != null) current.toggle(fromLeft, onSuccess);
+            if (installed && current != null) {
+                current.useSideGestureProfile();
+                current.toggle(fromLeft, onSuccess);
+            }
         }
     };
 
@@ -184,6 +187,7 @@ public final class OneHandedTaskHooks {
         int userId = ReflectUtils.getIntField(target, "mUserId", 0);
         if (getSecureIntForUser(context, "one_handed_mode_activated", 0, userId) != 1) return false;
         putSecureIntForUser(context, "one_handed_mode_activated", 0, userId);
+        current.useOneHandedProfile();
         current.toggle(false, null);
         OneStepFlowLog.i(TAG, "Native one-handed gesture opened workspace");
         return true;
@@ -197,6 +201,7 @@ public final class OneHandedTaskHooks {
         ModuleConfig config = ModuleConfig.load((Context) source);
         if (!config.enabled || config.oneHandedModeAction != SettingsStore.ONE_HANDED_MODE_ACTION_TASK_SCALE
                 || !current.canTrigger()) return false;
+        current.useOneHandedProfile();
         current.toggle(false, null);
         OneStepFlowLog.i(TAG, "Native one-handed start opened workspace");
         return true;

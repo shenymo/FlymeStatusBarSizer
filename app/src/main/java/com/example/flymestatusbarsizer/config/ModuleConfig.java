@@ -136,6 +136,12 @@ public final class ModuleConfig {
     public int workspaceToolbarHeightDp = SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;
     public int workspaceToolbarPositionDp = SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP;
     public boolean workspaceKeepMainAspectRatio = SettingsStore.DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO;
+    public int oneHandedWorkspaceToolbarHeightDp =
+            SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP;
+    public int oneHandedWorkspaceToolbarPositionDp =
+            SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP;
+    public boolean oneHandedWorkspaceKeepMainAspectRatio =
+            SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO;
     public boolean workspaceFlowLoggingEnabled = SettingsStore.DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED;
     public int mbackLongTouchAction = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION;
     public String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
@@ -742,6 +748,20 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
                     SettingsStore.DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO);
+            config.oneHandedWorkspaceToolbarHeightDp = Math.max(
+                    SettingsStore.MIN_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                    Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_HEIGHT_DP, SettingsStore.readInt(prefs,
+                            SettingsStore.KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                            SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP)));
+            config.oneHandedWorkspaceToolbarPositionDp = Math.max(
+                    SettingsStore.MIN_WORKSPACE_TOOLBAR_POSITION_DP,
+                    Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP, SettingsStore.readInt(prefs,
+                            SettingsStore.KEY_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP,
+                            SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP)));
+            config.oneHandedWorkspaceKeepMainAspectRatio = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
+                    SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO);
             config.mbackLongTouchAction = SettingsStore.normalizeMBackLongTouchAction(
                     SettingsStore.readInt(
                             prefs,

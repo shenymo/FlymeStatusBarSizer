@@ -2638,6 +2638,10 @@ public class MainActivity extends Activity {
         return settingsCardFactory.createSideGestureSettingsCard();
     }
 
+    public View createOneHandedModeSettingsCard() {
+        return settingsCardFactory.createOneHandedModeSettingsCard();
+    }
+
     public View createShareTargetsSettingsCard() {
         return settingsCardFactory.createShareTargetsSettingsCard();
     }

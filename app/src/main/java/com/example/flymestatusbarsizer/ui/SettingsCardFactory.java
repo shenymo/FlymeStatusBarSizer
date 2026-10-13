@@ -449,15 +449,6 @@ public final class SettingsCardFactory {
                 buildTaskWorkbenchOptions(), true);
         workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
         page.addView(workspaceCard, activity.matchWrapWithTop(8));
-        LinearLayout oneHandedOptions = new LinearLayout(activity);
-        oneHandedOptions.setOrientation(LinearLayout.VERTICAL);
-        activity.addChoiceRow(oneHandedOptions, "触发动作", "选择从屏幕底部上滑触发的功能，不影响侧边手势。",
-                SettingsStore.KEY_ONE_HANDED_MODE_ACTION, SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION,
-                new int[]{SettingsStore.ONE_HANDED_MODE_ACTION_SYSTEM, SettingsStore.ONE_HANDED_MODE_ACTION_TASK_SCALE},
-                new String[]{"系统单手缩放", "应用工作台"});
-        View oneHandedCard = activity.buildSectionCard("下拉单手模式", null, oneHandedOptions, true);
-        oneHandedCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
-        page.addView(oneHandedCard, activity.matchWrapWithTop(8));
         java.util.function.IntConsumer updateAction = value -> {
             boolean scale = value == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
             summary.setText(scale ? "当前动作：任务工作台 · 侧边长滑进入，重复触发或点击留白退出。"
@@ -475,7 +466,39 @@ public final class SettingsCardFactory {
                 "先启用 SystemUI 作用域并重启 SystemUI，再选择要执行的动作。", page);
     }
 
+    public View createOneHandedModeSettingsCard() {
+        LinearLayout options = new LinearLayout(activity);
+        options.setOrientation(LinearLayout.VERTICAL);
+        activity.addChoiceRow(options, "触发动作", "选择从屏幕底部上滑触发的功能，不影响侧边手势。",
+                SettingsStore.KEY_ONE_HANDED_MODE_ACTION, SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION,
+                new int[]{SettingsStore.ONE_HANDED_MODE_ACTION_SYSTEM,
+                        SettingsStore.ONE_HANDED_MODE_ACTION_TASK_SCALE},
+                new String[]{"系统单手缩放", "应用工作台"}, value ->
+                        updateOneHandedWorkbenchVisibility(options, value));
+        updateOneHandedWorkbenchVisibility(options,
+                SettingsStore.normalizeOneHandedModeAction(SettingsStore.readInt(activity.prefs(),
+                        SettingsStore.KEY_ONE_HANDED_MODE_ACTION,
+                        SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION)));
+        return activity.buildSectionCard("下拉单手模式",
+                "把底部单手手势单独配置；选择应用工作台后，可设置它自己的布局参数。", options, true);
+    }
+
+    private void updateOneHandedWorkbenchVisibility(LinearLayout options, int action) {
+        View existing = options.findViewWithTag("one_handed_workbench_options");
+        if (existing == null) {
+            existing = buildTaskWorkbenchOptions(true);
+            existing.setTag("one_handed_workbench_options");
+            options.addView(existing, activity.matchWrapWithTop(8));
+        }
+        existing.setVisibility(action == SettingsStore.ONE_HANDED_MODE_ACTION_TASK_SCALE
+                ? View.VISIBLE : View.GONE);
+    }
+
     private LinearLayout buildTaskWorkbenchOptions() {
+        return buildTaskWorkbenchOptions(false);
+    }
+
+    private LinearLayout buildTaskWorkbenchOptions(boolean oneHanded) {
         LinearLayout options = new LinearLayout(activity);
         options.setOrientation(LinearLayout.VERTICAL);
 
@@ -490,19 +513,25 @@ public final class SettingsCardFactory {
 
         activity.addProfileSectionHeader(options, "工作台布局", "调整顶部图标栏和主窗口比例，修改后立即应用。");
         activity.addSliderRow(options, "图标栏高度", null,
-                SettingsStore.KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
-                SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP
+                        : SettingsStore.KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
+                oneHanded ? SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP
+                        : SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP,
                 SettingsStore.MIN_WORKSPACE_TOOLBAR_HEIGHT_DP,
                 SettingsStore.MAX_WORKSPACE_TOOLBAR_HEIGHT_DP, "dp");
         activity.addSliderRow(options, "图标栏顶部位置", null,
-                SettingsStore.KEY_WORKSPACE_TOOLBAR_POSITION_DP,
-                SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP,
+                oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP
+                        : SettingsStore.KEY_WORKSPACE_TOOLBAR_POSITION_DP,
+                oneHanded ? SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP
+                        : SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP,
                 SettingsStore.MIN_WORKSPACE_TOOLBAR_POSITION_DP,
                 SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP, "dp");
         activity.addSwitchRow(options, "保持主应用比例",
                 "没有横屏窗口时保持原比例，两侧可能留出空白。",
-                SettingsStore.KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
-                SettingsStore.DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO);
+                oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO
+                        : SettingsStore.KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
+                oneHanded ? SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO
+                        : SettingsStore.DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO);
         return options;
     }
 
