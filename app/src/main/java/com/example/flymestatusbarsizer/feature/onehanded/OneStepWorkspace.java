@@ -15,8 +15,6 @@ import android.graphics.RectF;
 import android.graphics.Region;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.RippleDrawable;
-import android.content.res.ColorStateList;
 import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.os.Handler;
@@ -30,15 +28,12 @@ import android.view.View;
 import android.view.ViewOutlineProvider;
 import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
-import com.example.flymestatusbarsizer.R;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 
@@ -72,13 +67,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private final OneStepTouchMode touchMode = new OneStepTouchMode();
     private final Pane[] panes = new Pane[COUNT];
     private final ArrayList<Integer> sideOrder = new ArrayList<>();
-    private final ArrayList<ImageView> recentIcons = new ArrayList<>();
-    private final ArrayList<RecentTaskCard> recentCards = new ArrayList<>();
-    private final ArrayList<RecentTaskCard> pinnedCards = new ArrayList<>();
-    private LinearLayout recentRow;
-    private HorizontalScrollView recentScroll;
-    private ImageView exitButton;
-    private boolean recentOrderDirty;
+    private final OneStepRecentAppsBar recentApps;
     private boolean covered;
     private boolean hostVisible = true;
     private volatile boolean suspended;
@@ -104,7 +93,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private WorkspaceRoot backdrop;
     private FrameLayout workspace;
     private View recentStrip;
-    private ImageView sideWindowsButton;
     private ValueAnimator animator;
     private ValueAnimator layoutAnimator;
     private ValueAnimator transitionAnimator;
@@ -184,6 +172,26 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         navigation = new OneStepNavigation(source);
         shell = new OneStepShell(source, handler, transitions, factory, displayAreas, tasks);
         shell.setListener(this);
+        recentApps = new OneStepRecentAppsBar(context, handler, iconLoader,
+                new OneStepRecentAppsBar.Actions() {
+                    @Override public int iconSizePx() { return toolbarIconSizePx(); }
+                    @Override public int iconPaddingPx() { return toolbarIconPaddingPx(); }
+                    @Override public int exitPaddingPx() { return toolbarExitPaddingPx(); }
+                    @Override public int dp(float value) { return OneStepWorkspace.this.dp(value); }
+                    @Override public boolean active() { return OneStepWorkspace.this.active(); }
+                    @Override public boolean dragging() { return dragSession != null; }
+                    @Override public boolean isHosted(RecentTaskCard card) { return OneStepWorkspace.this.isHosted(card); }
+                    @Override public ImageView dragSource() { return OneStepWorkspace.this.dragSource; }
+                    @Override public void select(RecentTaskCard card) { showTask(card, mainSlot); }
+                    @Override public boolean beginDrag(ImageView icon, RecentTaskCard card) {
+                        return OneStepWorkspace.this.beginAppDrag(icon, card);
+                    }
+                    @Override public void toggleSideWindows() { OneStepWorkspace.this.toggleSideWindows(); }
+                    @Override public void close() {
+                        if (OneStepWorkspace.this.active() && dragSession == null)
+                            OneStepWorkspace.this.close(true);
+                    }
+                });
         try {
             tasks.registerTaskChanges(() -> {
                 if (!active()) return;
@@ -246,25 +254,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private void updateToolbarControls() {
         int height = toolbarHeightPx();
         int iconSize = toolbarIconSizePx();
-        int iconPadding = toolbarIconPaddingPx();
         int exitPadding = toolbarExitPaddingPx();
         if (recentStrip != null) {
             FrameLayout.LayoutParams strip = (FrameLayout.LayoutParams) recentStrip.getLayoutParams();
             strip.height = height;
             recentStrip.setLayoutParams(strip);
         }
-        if (sideWindowsButton != null) {
-            sideWindowsButton.setPadding(exitPadding, exitPadding, exitPadding, exitPadding);
-            sideWindowsButton.setLayoutParams(new LinearLayout.LayoutParams(iconSize, iconSize));
-        }
-        if (exitButton != null) {
-            exitButton.setPadding(exitPadding, exitPadding, exitPadding, exitPadding);
-            exitButton.setLayoutParams(new LinearLayout.LayoutParams(iconSize, iconSize));
-        }
-        for (ImageView icon : recentIcons) {
-            icon.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
-            icon.setLayoutParams(new LinearLayout.LayoutParams(iconSize, iconSize));
-        }
+        recentApps.updateToolbarControls(iconSize, exitPadding, sideWindowsCollapsed);
+        int iconPadding = toolbarIconPaddingPx();
         if (dragPreview != null) {
             dragPreview.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
             FrameLayout.LayoutParams preview = (FrameLayout.LayoutParams) dragPreview.getLayoutParams();
@@ -551,9 +548,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         strip.topMargin = Math.max(0, panesTop - toolbarTopGapPx());
         recentStrip.setLayoutParams(strip);
         updateToolbarControls();
-        recentRow.setPadding(dp(8), 0, dp(8), 0);
-        recentOrderDirty = true;
-        updateRecentIcons();
+        recentApps.setRecentRowPadding(dp(8));
+        recentApps.markOrderDirty();
+        recentApps.refresh();
         for (Pane pane : panes) if (pane != null) {
             position(pane, frames[pane.slot]);
             pane.container.setTranslationX(0);
@@ -585,7 +582,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         orientationMoveAfter = 0;
         covered = false;
         hostVisible = true;
-        pinnedCards.clear();
+        recentApps.clearPins();
         mainOnLeft = fromLeft;
         transitionProgress = 0;
         imeBottom = 0;
@@ -619,7 +616,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         workspaceParams.leftMargin = contentBounds.left - screen.left;
         workspaceParams.topMargin = contentBounds.top - screen.top;
         backdrop.addView(workspace, workspaceParams);
-        recentStrip = createRecentStrip(recent);
+        recentStrip = recentApps.create(recent, generation);
         int panesTop = frames[mainSlot].top;
         for (int slot : sideOrder) panesTop = Math.min(panesTop, frames[slot].top);
         FrameLayout.LayoutParams stripParams = new FrameLayout.LayoutParams(-1, toolbarHeightPx());
@@ -1391,14 +1388,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 || imeAnimator != null || imeAnimating || dragSession != null
                 || (activitySession != null && !activitySession.isMounted());
         blockInput(blocked);
-        if (sideWindowsButton != null) {
-            sideWindowsButton.setEnabled(!blocked);
-            sideWindowsButton.setAlpha(blocked ? 0.45f : 1f);
-            sideWindowsButton.setContentDescription(sideWindowsCollapsed
-                    ? "显示侧边窗口" : "隐藏侧边窗口");
-            sideWindowsButton.setTooltipText(sideWindowsCollapsed
-                    ? "显示侧边窗口" : "隐藏侧边窗口");
-        }
+        recentApps.setSideWindowsEnabled(!blocked, sideWindowsCollapsed);
         Pane main = panes[mainSlot];
         if (desktopSession != null) desktopSession.enable(!blocked && !OneHandedTaskHooks.shadeOpen()
                 && main != null && main.host != null && main.host.ready && main.host.home());
@@ -1472,75 +1462,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         return obscured;
     }
 
-    private View createRecentStrip(List<RecentTaskCard> recent) {
-        LinearLayout toolbar = new LinearLayout(context);
-        toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setOnClickListener(v -> { });
-        HorizontalScrollView strip = new HorizontalScrollView(context);
-        recentScroll = strip;
-        strip.setHorizontalScrollBarEnabled(false);
-        strip.setFillViewport(true);
-        strip.setContentDescription("应用选择栏，点击切换主窗口，长按拖入任意窗口");
-        GradientDrawable background = new GradientDrawable();
-        background.setColor(0x80171c25);
-        background.setCornerRadius(dp(16));
-        background.setStroke(Math.max(1, dp(0.7f)), 0x30ffffff);
-        toolbar.setBackground(background);
-        toolbar.setClipToOutline(true);
-        toolbar.setElevation(dp(4));
-        recentRow = new LinearLayout(context);
-        recentRow.setGravity(Gravity.CENTER_VERTICAL);
-        recentRow.setPadding(dp(8), 0, dp(8), 0);
-        recentRow.setOnClickListener(v -> { });
-        recentCards.clear();
-        recentCards.addAll(recent);
-        recentOrderDirty = true;
-        strip.addView(recentRow, new HorizontalScrollView.LayoutParams(-2, -1));
-        toolbar.addView(strip, new LinearLayout.LayoutParams(0, -1, 1f));
-        sideWindowsButton = new ImageView(context);
-        sideWindowsButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        sideWindowsButton.setPadding(toolbarExitPaddingPx(), toolbarExitPaddingPx(),
-                toolbarExitPaddingPx(), toolbarExitPaddingPx());
-        try {
-            Context module = context.createPackageContext(com.example.flymestatusbarsizer.BuildConfig.APPLICATION_ID, 0);
-            sideWindowsButton.setImageDrawable(module.getDrawable(R.drawable.ic_workspace_side_windows));
-        } catch (Exception error) {
-            sideWindowsButton.setImageResource(android.R.drawable.ic_menu_view);
-            sideWindowsButton.setColorFilter(Color.WHITE);
-        }
-        sideWindowsButton.setBackground(new RippleDrawable(ColorStateList.valueOf(0x30ffffff), null, null));
-        sideWindowsButton.setContentDescription("显示侧边窗口");
-        sideWindowsButton.setTooltipText("显示侧边窗口");
-        sideWindowsButton.setFocusable(true);
-        sideWindowsButton.setOnClickListener(v -> toggleSideWindows());
-        toolbar.addView(sideWindowsButton, new LinearLayout.LayoutParams(toolbarIconSizePx(),
-                toolbarIconSizePx()));
-        View divider = new View(context);
-        divider.setBackgroundColor(0x30ffffff);
-        toolbar.addView(divider, new LinearLayout.LayoutParams(Math.max(1, dp(0.7f)), dp(28)));
-        exitButton = new ImageView(context);
-        exitButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        exitButton.setPadding(toolbarExitPaddingPx(), toolbarExitPaddingPx(),
-                toolbarExitPaddingPx(), toolbarExitPaddingPx());
-        // The workspace uses SystemUI's Context; resolve module resources explicitly.
-        try {
-            Context module = context.createPackageContext(com.example.flymestatusbarsizer.BuildConfig.APPLICATION_ID, 0);
-            exitButton.setImageDrawable(module.getDrawable(R.drawable.ic_workspace_exit));
-        } catch (Exception error) {
-            exitButton.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
-            exitButton.setColorFilter(Color.WHITE);
-        }
-        exitButton.setBackground(new RippleDrawable(ColorStateList.valueOf(0x30ffffff), null, null));
-        exitButton.setContentDescription("退出工作台");
-        exitButton.setTooltipText("退出工作台");
-        exitButton.setFocusable(true);
-        exitButton.setOnClickListener(v -> { if (active() && dragSession == null) close(true); });
-        toolbar.addView(exitButton, new LinearLayout.LayoutParams(toolbarIconSizePx(),
-                toolbarIconSizePx()));
-        updateRecentIcons();
-        return toolbar;
-    }
-
     private void toggleSideWindows() {
         if (!active() || !canChangeTask()) return;
         if (sideWindowsCollapsed) {
@@ -1554,24 +1475,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         updateInput();
     }
 
-    private static boolean sameEntry(RecentTaskCard a, RecentTaskCard b) {
-        return a.sameTask(b) && a.component != null && b.component != null
-                && a.component.getPackageName().equals(b.component.getPackageName());
-    }
-
     private void pinRecent(RecentTaskCard card) {
-        if (card == null || card.home || card.component == null || card.temporary) return;
-        pinnedCards.removeIf(item -> sameEntry(item, card));
-        pinnedCards.add(0, card);
-        recentOrderDirty = true;
-        updateRecentIcons();
+        recentApps.pin(card);
     }
 
     private void rememberRecent(RecentTaskCard card) {
-        if (card == null || card.home || card.component == null || card.temporary) return;
-        for (RecentTaskCard item : recentCards) if (sameEntry(item, card)) return;
-        recentCards.add(0, card);
-        recentOrderDirty = true;
+        recentApps.remember(card);
     }
 
     private Pane hostedPane(RecentTaskCard card) {
@@ -1592,54 +1501,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 && dragSession == null && !OneHandedTaskHooks.shadeOpen();
     }
 
-    private void updateRecentIcons() {
-        if (recentOrderDirty && dragSession == null && recentRow != null) {
-            recentOrderDirty = false;
-            recentRow.removeAllViews();
-            recentIcons.clear();
-            ArrayList<RecentTaskCard> ordered = new ArrayList<>(pinnedCards);
-            for (RecentTaskCard card : recentCards) {
-                boolean duplicate = false;
-                for (RecentTaskCard item : ordered) if (sameEntry(item, card)) { duplicate = true; break; }
-                if (!duplicate && !card.home && !card.temporary) ordered.add(card);
-            }
-            final int request = generation;
-            for (RecentTaskCard card : ordered) {
-                if (card.component == null) continue;
-                ImageView icon = new ImageView(context);
-                icon.setTag(card);
-                icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                icon.setPadding(toolbarIconPaddingPx(), toolbarIconPaddingPx(),
-                        toolbarIconPaddingPx(), toolbarIconPaddingPx());
-                icon.setImageDrawable(context.getPackageManager().getDefaultActivityIcon());
-                icon.setOnClickListener(v -> showTask(card, mainSlot));
-                icon.setHapticFeedbackEnabled(false);
-                icon.setOnLongClickListener(v -> beginAppDrag(icon, card));
-                recentRow.addView(icon, new LinearLayout.LayoutParams(toolbarIconSizePx(),
-                        toolbarIconSizePx()));
-                recentIcons.add(icon);
-                iconLoader.execute(() -> {
-                    Drawable drawable;
-                    try { drawable = context.getPackageManager().getActivityIcon(card.component); }
-                    catch (Exception error) { drawable = context.getPackageManager().getDefaultActivityIcon(); }
-                    Drawable result = drawable;
-                    handler.post(() -> {
-                        if (active() && generation == request && icon.getParent() == recentRow)
-                            icon.setImageDrawable(result);
-                    });
-                });
-            }
-            if (!pinnedCards.isEmpty() && recentScroll != null) recentScroll.scrollTo(0, 0);
-        }
-        for (ImageView icon : recentIcons) {
-            RecentTaskCard card = (RecentTaskCard) icon.getTag();
-            Pane pane = hostedPane(card);
-            icon.setAlpha(icon == dragSource ? 0.4f : pane == null ? 1f : 0.65f);
-            icon.setLongClickable(true);
-            icon.setContentDescription(card.description + (pane == null ? "" : "，已在工作台中")
-                    + "，点击切换主窗口，长按拖入任意窗口");
-        }
-    }
+    private void updateRecentIcons() { recentApps.refresh(); }
 
     private boolean landscapeVisible() {
         Pane pane = panes[LANDSCAPE_SLOT];
@@ -2639,7 +2501,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         int closing = ++closeGeneration;
         state = State.CLOSING;
         releaseNavigation();
-        if (exitButton != null) exitButton.setEnabled(false);
+        recentApps.setExitEnabled(false);
         clearPaneTapHighlight();
         disconnectDesktop();
         handler.removeCallbacks(openingTimeout);
@@ -2701,14 +2563,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         desktopContainer = null;
         desktopBorder = null;
         recentStrip = null;
-        recentScroll = null;
-        sideWindowsButton = null;
-        exitButton = null;
-        recentIcons.clear();
-        recentCards.clear();
-        pinnedCards.clear();
-        recentRow = null;
-        recentOrderDirty = false;
+        recentApps.clear();
         for (int i = 0; i < COUNT; i++) panes[i] = null;
         generation++;
         desktopBusy = false;
@@ -2860,10 +2715,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     if (cardToLoad == null) {
                         replacing = false;
                         manualLandscapeLoad = false;
-                        pinnedCards.removeIf(card -> card.sameTask(next));
-                        recentCards.removeIf(card -> card.sameTask(next));
-                        recentOrderDirty = true;
-                        updateRecentIcons();
+                        recentApps.remove(next);
                         Toast.makeText(context, "应用任务已结束", Toast.LENGTH_SHORT).show();
                         if (host == null && directlyInteractive(this)) returnToPrevious(this, request);
                         if (slot == LANDSCAPE_SLOT) relayoutPanes();
