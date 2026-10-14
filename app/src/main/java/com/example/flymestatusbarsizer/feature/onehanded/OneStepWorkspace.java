@@ -672,7 +672,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         int viewportWidth = shortSide;
         int viewportHeight = longSide;
         Rect main = result[mainSlot];
-        if (showLandscape || !keepMainAspectRatio || !sideWindowsCollapsed) {
+        // A collapsed workspace still renders the app from the full portrait
+        // viewport. The main frame may reserve a different amount of space for
+        // the toolbar, but using that frame ratio as the app viewport would make
+        // Shell apply non-uniform X/Y scaling on the first workspace entry.
+        if (showLandscape || !sideWindowsCollapsed) {
             viewportWidth = Math.max(shortSide, main.width());
             viewportHeight = Math.max(1, Math.round(viewportWidth
                     * (main.height() / (float) Math.max(1, main.width()))));
