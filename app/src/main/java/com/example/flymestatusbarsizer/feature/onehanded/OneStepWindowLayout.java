@@ -27,7 +27,16 @@ public final class OneStepWindowLayout {
         Rect[] result = new Rect[landscapeSlot + 1];
         // Keep the landscape pane large, then fill the lower area with fixed gaps.
         // The workspace derives a shared app viewport from the resulting main frame.
-        if (showSideWindows) {
+        if (!showLandscape && showSideWindows) {
+            // Portrait panes must keep the app viewport's aspect ratio. The generic
+            // lower-pane splitter fills the column height, then uniform TaskView
+            // scaling leaves a large unused strip below every side window.
+            Rect[] portrait = calculateWorkspace(width, height, divider, contentTop,
+                    viewportWidth, viewportHeight, mainSlot, sideOrder, mainOnLeft);
+            result = java.util.Arrays.copyOf(portrait, landscapeSlot + 1);
+            result[landscapeSlot] = new Rect(0, 0, 1, 1);
+            return result;
+        } else if (showSideWindows) {
             calculateLowerPanes(result, width, height, contentTop,
                     Math.max(1, height - contentTop), divider, mainSlot, sideOrder, mainOnLeft);
         } else {

@@ -691,6 +691,14 @@ final class OneStepShell {
         OneStepWorkspaceTransition motion = workspaceTransition;
         if (host != null && host.borrowed && host.collected) {
             motion.placeContent(host.logicalBounds);
+            if (!motion.exiting && !motion.originalBounds.isEmpty()) {
+                // During entry the leash still uses the original fullscreen task
+                // coordinates. Crop the content viewport relative to that origin;
+                // using the TaskView's pane bounds here reintroduces the status bar.
+                Rect crop = new Rect(host.logicalBounds);
+                crop.offset(-motion.originalBounds.left, -motion.originalBounds.top);
+                if (!crop.isEmpty()) return crop;
+            }
             return surfaceCrop(host);
         }
         return new Rect(0, 0, motion.originalBounds.width(), motion.originalBounds.height());
@@ -921,7 +929,8 @@ final class OneStepShell {
         });
     }
 
-    void geometry(Host host, Rect logicalBounds, int width, int height, boolean portraitMain, boolean landscape) {
+    void geometry(Host host, Rect logicalBounds, int width, int height, boolean portraitMain,
+                  boolean landscape) {
         geometry(host, logicalBounds, width, height, portraitMain, landscape, null);
     }
 
@@ -2169,7 +2178,15 @@ final class OneStepShell {
             // frame. Crop in that task-local size before scaling it into the
             // unscaled viewport; using logicalBounds here leaves blank space after
             // the parent view is scaled down to a side or landscape pane.
-            crop.set(0, 0, host.surfaceBounds.width(), host.surfaceBounds.height());
+            // Until that resize commits, actualBounds still describes the original
+            // fullscreen task. Keep the content-relative crop for that handoff so
+            // the original status-bar strip is not copied into the pane.
+            if (!host.actualBounds.isEmpty() && host.actualBounds.contains(host.logicalBounds)) {
+                crop.offset(host.logicalBounds.left - host.actualBounds.left,
+                        host.logicalBounds.top - host.actualBounds.top);
+            } else {
+                crop.set(0, 0, host.surfaceBounds.width(), host.surfaceBounds.height());
+            }
         }
         return crop;
     }

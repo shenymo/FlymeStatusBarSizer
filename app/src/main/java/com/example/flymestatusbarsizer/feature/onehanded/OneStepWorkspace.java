@@ -706,8 +706,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private float scaleForFrame(Rect frame, int slot) {
         Rect viewport = viewport(slot);
-        return Math.min(1f, Math.min(frame.width() / (float) viewport.width(),
-                frame.height() / (float) viewport.height()));
+        return Math.min(1f, Math.min(frame.width() / (float) Math.max(1, viewport.width()),
+                frame.height() / (float) Math.max(1, viewport.height())));
     }
 
     private Rect viewport(int slot) { return slot == LANDSCAPE_SLOT ? landscapeBounds : portraitBounds; }
@@ -2888,6 +2888,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
         void configureHost(OneStepShell.Host task) {
             Rect bounds = task.home() ? desktopBounds : viewport(slot);
+            Rect sourceBounds = slot == LANDSCAPE_SLOT ? bounds : logicalBounds;
             // Home stays fullscreen in WM; retain its complete source viewport so
             // shortening the pane does not crop away the dock or lower app icons.
             shell.forceLandscape(task, slot == LANDSCAPE_SLOT);
@@ -2902,7 +2903,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                             Math.round(contentBounds.top + workspace.getTranslationY() + frame.bottom));
                 }
             }
-            shell.geometry(task, task.home() ? logicalBounds : bounds,
+            shell.geometry(task, task.home() ? logicalBounds : sourceBounds,
                     bounds.width(), bounds.height(), slot == mainSlot, slot == LANDSCAPE_SLOT,
                     surfaceBounds);
             syncTaskBounds(task);
