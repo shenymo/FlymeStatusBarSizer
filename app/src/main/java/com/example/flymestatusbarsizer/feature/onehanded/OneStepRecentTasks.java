@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Rect;
 
+import com.example.flymestatusbarsizer.BuildConfig;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import java.lang.reflect.Method;
@@ -57,7 +58,6 @@ final class OneStepRecentTasks {
         Object token = ReflectUtils.invokeNoArg(ReflectUtils.getField(info, "token"), "asBinder");
         int taskId = ReflectUtils.getIntField(info, "taskId", -1);
         if (taskId < 0 || token == null || !(bounds instanceof Rect) || ((Rect) bounds).isEmpty()
-                || ((Rect) bounds).height() <= ((Rect) bounds).width()
                 || ReflectUtils.getIntField(info, "userId", -1) != userId
                 || ReflectUtils.getIntField(info, "displayId", -1) != 0
                 || ReflectUtils.getIntField(info, "parentTaskId", -2) != -1
@@ -71,6 +71,8 @@ final class OneStepRecentTasks {
         if (!(component instanceof ComponentName) && intent instanceof Intent) component = ((Intent) intent).getComponent();
         if (!(component instanceof ComponentName)) return null;
         if (OneStepActivityProtocol.isActivity((ComponentName) component)) return null;
+        String packageName = ((ComponentName) component).getPackageName();
+        if ("com.android.systemui".equals(packageName) || BuildConfig.APPLICATION_ID.equals(packageName)) return null;
         Object label = ReflectUtils.invokeNoArg(ReflectUtils.getField(info, "taskDescription"), "getLabel");
         String description = label instanceof String && !((String) label).isEmpty()
                 ? (String) label : ((ComponentName) component).getPackageName();

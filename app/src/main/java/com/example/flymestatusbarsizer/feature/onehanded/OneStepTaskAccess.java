@@ -6,6 +6,8 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Bundle;
 
+import com.example.flymestatusbarsizer.BuildConfig;
+
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import java.lang.reflect.Method;
@@ -68,6 +70,10 @@ final class OneStepTaskAccess {
         RecentTaskCard card = runningCard(info);
         if (card == null || display(info) != 0 || OneStepShell.taskEnded(info)
                 || ReflectUtils.getIntField(info, "parentTaskId", -2) != -1) return false;
+        // The workspace itself is hosted by SystemUI. Re-entering the SystemUI
+        // root task would make Shell and the workspace own the same task graph.
+        if ("com.android.systemui".equals(card.component.getPackageName())
+                || BuildConfig.APPLICATION_ID.equals(card.component.getPackageName())) return false;
         Object window = ReflectUtils.getField(ReflectUtils.getField(info, "configuration"), "windowConfiguration");
         int mode = ReflectUtils.invokeNoArgInt(window, "getWindowingMode", -1);
         String name = card.component.getClassName();
@@ -113,7 +119,8 @@ final class OneStepTaskAccess {
     private static RecentTaskCard focusedTask(List<?> rootTasks) {
         for (Object root : rootTasks) {
             if (display(root) == 0 && application(root)
-                    && ReflectUtils.getBooleanField(root, "isFocused", false)) {
+                    && ReflectUtils.getBooleanField(root, "isFocused", false)
+                    && externalTaskAllowed(root)) {
                 return OneStepRecentTasks.candidate(root, ReflectUtils.getIntField(root, "userId", -1));
             }
         }

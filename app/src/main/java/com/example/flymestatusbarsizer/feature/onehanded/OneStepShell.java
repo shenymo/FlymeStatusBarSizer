@@ -699,7 +699,7 @@ final class OneStepShell {
                 crop.offset(-motion.originalBounds.left, -motion.originalBounds.top);
                 if (!crop.isEmpty()) return crop;
             }
-            return surfaceCrop(host);
+            return OneStepSurfaceGeometry.crop(host);
         }
         return new Rect(0, 0, motion.originalBounds.width(), motion.originalBounds.height());
     }
@@ -908,24 +908,6 @@ final class OneStepShell {
                     present(host, null, null);
                 } else if (host.initialized) acquire(host);
             } catch (Exception error) { fail("无法调整应用窗口", error); }
-        });
-    }
-
-    void forceLandscape(Host host, boolean enabled) {
-        host.landscapeRequested = enabled;
-        executor.execute(() -> {
-            if (!current(host) || host.home() || host.card == null) return;
-            // Pane configuration can arrive before acquire() registers the task
-            // with the workspace IME session. Remember the desired role so the
-            // first registration applies it instead of silently dropping it.
-            host.landscapeRequested = enabled;
-            if (!host.imeRegistered || imeSession == null || host.landscapeForced == enabled) return;
-            try {
-                imeSession.setLandscape((IBinder) host.card.token, enabled);
-                host.landscapeForced = enabled;
-            } catch (Exception error) {
-                OneStepFlowLog.w(TAG, "Cannot update hosted app orientation", error);
-            }
         });
     }
 
@@ -1646,7 +1628,7 @@ final class OneStepShell {
             start.reparent(home.leash, homeLeash).setPosition(home.leash, 0, 0).setScale(home.leash, 1, 1)
                     .setLayer(home.leash, 0).setAlpha(home.leash, 1f).setVisibility(home.leash, true);
             crop(start, home.leash, null);
-            Rect appCrop = surfaceCrop(app);
+            Rect appCrop = OneStepSurfaceGeometry.crop(app);
             start.reparent(app.leash, appLeash).setPosition(app.leash, -appCrop.left, -appCrop.top).setScale(app.leash, 1, 1)
                     .setLayer(app.leash, 0).setAlpha(app.leash, 1f).setVisibility(app.leash, true);
             crop(start, app.leash, appCrop);
@@ -2135,85 +2117,22 @@ final class OneStepShell {
         }
         // Only the native animator may transform these temporary wrappers until it finishes.
         if (openingAnimation != null && (openingAnimation.app == host || openingAnimation.home == host)) return;
-        Rect crop = surfaceCrop(host);
+        Rect crop = OneStepSurfaceGeometry.crop(host);
         if (host.fullscreenCompat && host.logicalBounds.width() > host.logicalBounds.height()
-                && !host.actualBounds.isEmpty()) {
-            crop = landscapeFullscreenCrop(host);
+                && !host.actualBounds.isEmpty() && host.actualBounds.width() > host.actualBounds.height()) {
+            crop = OneStepSurfaceGeometry.landscapeCrop(host);
         }
-        float sx = host.width / (float) crop.width();
-        float sy = host.height / (float) crop.height();
-        float x = -crop.left * sx, y = -crop.top * sy;
-        if (host.fullscreenCompat && host.logicalBounds.width() > host.logicalBounds.height()) {
-            // A fullscreen-compatible app can keep a portrait task buffer while
-            // its orientation request is settling. Crop that buffer to the pane's
-            // aspect ratio and cover the pane, rather than leaving letterbox space.
-            sx = sy = Math.max(sx, sy);
-            x = (host.width - crop.width() * sx) / 2f - crop.left * sx;
-            y = (host.height - crop.height() * sy) / 2f - crop.top * sy;
-        }
-        tx.reparent(surface, parent).setPosition(surface, x, y)
-                .setScale(surface, sx, sy)
+        tx.reparent(surface, parent)
                 // Keep a newly appeared app hidden until the native stage takes over,
                 // even if SurfaceView relayout temporarily changes sibling surface order.
                 .setAlpha(surface, host.coveredByLaunch || (host.animationPending && !host.openingRevealed) ? 0f : 1f)
                 .setVisibility(surface, !suspended && !host.parked);
+        OneStepSurfaceGeometry.apply(host, surface, tx, crop);
         OneStepReflection.call(tx, "setWindowCrop", new Class<?>[]{SurfaceControl.class, Rect.class},
                 surface, crop);
         // A Surface frame-rate vote is a scheduling preference, not a per-app FPS cap.
         tx.setFrameRate(surface, host.parked ? 0f : host.interactive ? 120f : 30f,
                 android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
-    }
-
-    private Rect surfaceCrop(Host host) {
-        Rect crop = new Rect(0, 0, host.logicalBounds.width(), host.logicalBounds.height());
-        if (host.home()) crop.offset(host.logicalBounds.left - host.originalBounds.left,
-                host.logicalBounds.top - host.originalBounds.top);
-        else if (host.fullscreenCompat) {
-            Rect actual = host.actualBounds;
-            crop.set(host.logicalBounds.width() > host.logicalBounds.height() ? actual : host.logicalBounds);
-            if (!crop.intersect(actual)) throw new IllegalStateException("Fullscreen task has no visible viewport");
-            crop.offset(-actual.left, -actual.top);
-        } else if (!host.surfaceBounds.isEmpty()) {
-            // TaskView.setTaskBounds() resizes the WM task to the pane's physical
-            // frame. Crop in that task-local size before scaling it into the
-            // unscaled viewport; using logicalBounds here leaves blank space after
-            // the parent view is scaled down to a side or landscape pane.
-            // Until that resize commits, actualBounds still describes the original
-            // fullscreen task. Keep the content-relative crop for that handoff so
-            // the original status-bar strip is not copied into the pane.
-            if (!host.actualBounds.isEmpty() && host.actualBounds.contains(host.logicalBounds)) {
-                crop.offset(host.logicalBounds.left - host.actualBounds.left,
-                        host.logicalBounds.top - host.actualBounds.top);
-            } else {
-                crop.set(0, 0, host.surfaceBounds.width(), host.surfaceBounds.height());
-            }
-        }
-        return crop;
-    }
-
-    private static Rect landscapeFullscreenCrop(Host host) {
-        Rect actual = host.actualBounds;
-        Rect crop = centerCrop(actual, host.width / (float) Math.max(1, host.height));
-        crop.offset(-actual.left, -actual.top);
-        return crop;
-    }
-
-    private static Rect centerCrop(Rect source, float targetAspect) {
-        Rect crop = new Rect(source);
-        if (source.isEmpty() || targetAspect <= 0f) return crop;
-        float sourceAspect = source.width() / (float) source.height();
-        if (sourceAspect > targetAspect) {
-            int width = Math.max(1, Math.min(source.width(),
-                    Math.round(source.height() * targetAspect)));
-            int left = source.left + (source.width() - width) / 2;
-            crop.set(left, source.top, left + width, source.bottom);
-        } else if (sourceAspect < targetAspect) {
-            int height = Math.max(1, Math.min(source.height(),
-                    Math.round(source.width() / targetAspect)));
-            int top = source.top + (source.height() - height) / 2;
-            crop.set(source.left, top, source.right, top + height);
-        }
-        return crop;
     }
 
     private void restoreOne(Host host, Runnable finished, int attempt) {
