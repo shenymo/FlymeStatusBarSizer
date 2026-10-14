@@ -649,6 +649,7 @@ public final class OneStepImePolicy {
         Method taskMultiWindow = OneStepReflection.method(fragment, "supportsMultiWindowInDisplayArea", displayArea);
         Method activityMultiWindow = OneStepReflection.method(activity, "supportsMultiWindowInDisplayArea", displayArea);
         Method orientation = OneStepReflection.method(activity, "getOverrideOrientation");
+        Method compatScale = OneStepReflection.method(activity, "getCompatScale");
         for (Method method : new Method[]{taskResize, activityResize, taskMultiWindow, activityMultiWindow}) {
             module.intercept(method, chain -> {
                 // These exceptions expire with the pane's task-token capability;
@@ -659,6 +660,13 @@ public final class OneStepImePolicy {
         }
         module.intercept(orientation, chain -> {
             if (hasForcedLandscape(chain.getThisObject())) return ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+            return chain.proceed();
+        });
+        module.intercept(compatScale, chain -> {
+            // AppCompatSizeCompatModePolicy can retain a portrait scale after the
+            // task has entered the horizontal pane. That scale is applied to the
+            // app window before the TaskView leash and creates side gutters.
+            if (hasForcedLandscape(chain.getThisObject())) return 1.0f;
             return chain.proceed();
         });
     }
