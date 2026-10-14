@@ -124,6 +124,7 @@ final class OneStepShell {
         boolean surfaceMissing;
         boolean fullscreenCompat;
         boolean landscapeForced;
+        final Rect landscapeFrame = new Rect();
         volatile boolean landscapeRequested;
         boolean imeRegistered;
         boolean workspaceRestorePending;
@@ -305,8 +306,8 @@ final class OneStepShell {
                     }
                 });
             }
-            // TaskView owns the physical task bounds; this shell only borrows task identity
-            // and fits the resulting surface into the logical pane viewport.
+            // Pane geometry owns the viewport. Landscape bounds and orientation
+            // are applied together by the server policy, outside view callbacks.
             return null;
         });
         transitionHandler = Proxy.newProxyInstance(loader, new Class<?>[]{transitionHandlerClass}, (proxy, method, args) -> {
@@ -427,15 +428,17 @@ final class OneStepShell {
 
     private void configureHostedMode(Object wct, Host host, String event, Object info) throws Exception {
         if (host.home()) return;
-        updateHostedConfiguration(host, info, false);
-        if (host.fullscreenCompat) {
+        if (!host.landscapeRequested) updateHostedConfiguration(host, info, false);
+        if (host.fullscreenCompat && !host.landscapeRequested) {
             logImeTask(host, "fullscreen-compatible", info, false);
             return;
         }
         mode(wct, host.token, 6);
+        if (host.landscapeRequested) bounds(wct, host.token, host.landscapeFrame);
         try {
             String snapshot = "event=" + event + " requestedMode=" + (host.home() ? 1 : 6)
-                    + " taskBoundsFromTaskView=true before={" + OneStepImeDiagnostics.taskInfo(info) + "}";
+                    + " landscape=" + host.landscapeRequested
+                    + " before={" + OneStepImeDiagnostics.taskInfo(info) + "}";
             if (snapshot.equals(host.lastImeModeRequest)) return;
             host.lastImeModeRequest = snapshot;
             OneStepFlowLog.i(OneStepImeDiagnostics.TAG, "mode-request session=" + host.session + " " + snapshot);
@@ -464,9 +467,30 @@ final class OneStepShell {
         host.actualBounds.set((Rect) OneStepReflection.call(config, "getBounds"));
         if (host.home()) return;
         if (windowMode(info) == 6) host.fullscreenCompat = false;
-        else if (windowMode(info) == 1 && (modeApplied
+        else if (!host.landscapeRequested && windowMode(info) == 1 && (modeApplied
                 || Boolean.FALSE.equals(ReflectUtils.getField(info, "supportsMultiWindow"))))
             host.fullscreenCompat = true;
+    }
+
+    private void updateLandscapePolicy(Host host) throws Exception {
+        if (host.home() || !host.imeRegistered || imeSession == null) return;
+        boolean landscape = host.landscapeRequested;
+        Rect frame = host.surfaceBounds;
+        if (host.landscapeForced == landscape && (!landscape
+                || (host.landscapeFrame.width() == frame.width()
+                        && host.landscapeFrame.height() == frame.height()))) return;
+        imeSession.setLandscape((IBinder) host.card.token, landscape ? new Rect(frame) : null);
+        host.landscapeForced = landscape;
+        if (landscape) {
+            host.landscapeFrame.set(frame);
+            host.fullscreenCompat = false;
+        } else host.landscapeFrame.setEmpty();
+        // The Binder reply confirms configuration, not buffer presentation. Use
+        // fresh task bounds so the arriving frame is fitted without distortion.
+        for (Object info : tasks.roots()) if (matches(host.card, info)) {
+            updateHostedConfiguration(host, info, true);
+            break;
+        }
     }
 
     void logImeTasks(int request, String event) {
@@ -766,8 +790,14 @@ final class OneStepShell {
                     });
                 }
             });
-            for (Host host : hosts) if (current(host) && host.imeRegistered)
+            for (Host host : hosts) if (current(host) && host.imeRegistered) {
                 imeSession.add((IBinder) host.card.token);
+                // A replacement server session has no pane overrides. Reapply
+                // them even when the visible frame has not changed.
+                host.landscapeForced = false;
+                host.landscapeFrame.setEmpty();
+                updateLandscapePolicy(host);
+            }
             updateLifecyclePolicy();
             Object wct = transaction();
             bool(wct, "setForceTranslucent", activityToken, false);
@@ -899,11 +929,7 @@ final class OneStepShell {
             host.interactive = portraitMain || landscape;
             if (!host.interactive) host.main = false;
             try {
-                if (!host.home() && host.imeRegistered && imeSession != null
-                        && host.landscapeForced != landscape) {
-                    imeSession.setLandscape((IBinder) host.card.token, landscape);
-                    host.landscapeForced = landscape;
-                }
+                updateLandscapePolicy(host);
                 if (host.borrowed) {
                     present(host, null, null);
                 } else if (host.initialized) acquire(host);
@@ -1114,9 +1140,7 @@ final class OneStepShell {
             if (imeSession == null) throw new IllegalStateException("Workspace IME session unavailable");
             host.imeRegistered = true;
             imeSession.add((IBinder) host.card.token);
-            if (host.landscapeRequested && !host.landscapeForced)
-                imeSession.setLandscape((IBinder) host.card.token, true);
-            host.landscapeForced = host.landscapeRequested;
+            updateLandscapePolicy(host);
             synchronized (OneStepReflection.get(organizer, "mLock")) {
                 SparseArray<Object> listeners = listeners();
                 host.oldSpecificListener = listeners.get(host.card.taskId);
@@ -2118,10 +2142,6 @@ final class OneStepShell {
         // Only the native animator may transform these temporary wrappers until it finishes.
         if (openingAnimation != null && (openingAnimation.app == host || openingAnimation.home == host)) return;
         Rect crop = OneStepSurfaceGeometry.crop(host);
-        if (host.fullscreenCompat && host.logicalBounds.width() > host.logicalBounds.height()
-                && !host.actualBounds.isEmpty() && host.actualBounds.width() > host.actualBounds.height()) {
-            crop = OneStepSurfaceGeometry.landscapeCrop(host);
-        }
         tx.reparent(surface, parent)
                 // Keep a newly appeared app hidden until the native stage takes over,
                 // even if SurfaceView relayout temporarily changes sibling surface order.
@@ -2260,6 +2280,13 @@ final class OneStepShell {
                     || SystemClock.uptimeMillis() - host.launchStartedAt < 1500))
                 throw new IllegalStateException("Waiting for launching task to settle");
         }
+        // Release the forced pane configuration before the final restoration
+        // transaction, so it cannot overwrite an external/fullscreen destination.
+        if (host.imeRegistered && host.landscapeForced) {
+            imeSession.setLandscape((IBinder) host.card.token, null);
+            host.landscapeForced = false;
+            host.landscapeFrame.setEmpty();
+        }
         if (host.borrowed) {
             Object appeared = appeared(host.card.taskId);
             Object info = appeared == null ? null : OneStepReflection.call(appeared, "getTaskInfo");
@@ -2377,14 +2404,6 @@ final class OneStepShell {
             if (host.card != null && journal.containsKey(host.card.taskId)) forget(host.card.taskId);
         }
         if (host.imeRegistered) {
-            if (host.landscapeForced) {
-                try {
-                    imeSession.setLandscape((IBinder) host.card.token, false);
-                } catch (Exception error) {
-                    OneStepFlowLog.w(TAG, "Cannot restore hosted app orientation", error);
-                }
-                host.landscapeForced = false;
-            }
             imeSession.remove((IBinder) host.card.token);
             host.imeRegistered = false;
         }

@@ -2905,10 +2905,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             // shortening the pane does not crop away the dock or lower app icons.
             Rect surfaceBounds = null;
             if (!task.home()) {
-                // Derive the physical frame from the staged LayoutParams. A global
-                // visible-rect query can still return the previous frame during the
-                // same traversal that shrinks the main pane.
-                RectF frame = currentPaneFrame(this);
+                // New landscape tasks can arrive while their pane animates from
+                // a hidden/portrait frame. Configure the final horizontal bounds
+                // once; the animation only scales the resulting app surface.
+                RectF frame = landscapeWindow.isSlot(slot)
+                        ? new RectF(frames[slot]) : currentPaneFrame(this);
                 surfaceBounds = new Rect(
                         Math.round(contentBounds.left + workspace.getTranslationX() + frame.left),
                         Math.round(contentBounds.top + workspace.getTranslationY() + frame.top),
