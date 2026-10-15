@@ -187,6 +187,18 @@ final class OneStepShell {
                 OneStepFlowLog.w(TAG, "Task surface corner radius unavailable", error);
             }
         }
+
+        void refreshCornerRadius(float radius) {
+            // The first call can happen before TaskView creates its child surface.
+            // Force one retry after the launch handoff instead of trusting the
+            // pre-attachment cache.
+            // A runtime failure can mean the child surface was not attached yet;
+            // allow the post-handoff call to retry. Reflection failures remain
+            // harmless and are cached again by setCornerRadius().
+            surfaceCornersUnavailable = false;
+            appliedSurfaceRadius = -1;
+            setCornerRadius(radius);
+        }
     }
 
     final class Navigation {

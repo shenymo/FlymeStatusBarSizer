@@ -1142,6 +1142,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         int previousMain = mainSlot;
         int index = sideOrder.indexOf(slot);
         if (index < 0) return;
+        // This is an explicit placement. A queued orientation snapshot from the
+        // side pane must not immediately route it back to the landscape role after
+        // the swap has committed.
+        holdManualPlacement(selected);
         blockInput(true);
         sideOrder.set(index, previousMain);
         mainSlot = slot;
@@ -1481,27 +1485,45 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     && !pane.host.restoring && !pane.host.released
                     && !(desktopBusy && pane.host.home())) {
                 Rect visible = new Rect();
-                // TaskView is a SurfaceView. Its view-level visible rectangle can
-                // lag behind the parent transform while a desktop/task replacement
-                // is being committed. The pane container is the geometry that owns
-                // the actual input hole, including the swap scale and clipping.
+                // SurfaceView can report a stale visible rectangle for one frame
+                // while its parent is being resized. Derive the hole from the
+                // pane's staged frame and use the root bounds as a clip, so
+                // a newly opened side/landscape task cannot leave half of the main
+                // pane covered by the old input region.
                 if (pane.container.getGlobalVisibleRect(visible)) {
-                    Rect visibleInWindow = toWindowRegion(visible);
-                    // getGlobalVisibleRect is already clipped and includes the
-                    // complete parent transform. Reconstructing the rectangle from
-                    // the unscaled TaskView size loses that transform after a pane
-                    // swap and can leave the landscape input hole covered.
-                    RectF bounds = new RectF(visibleInWindow);
+                    Rect paneWindow = paneWindowRect(pane);
+                    RectF bounds = new RectF(toWindowRegion(paneWindow));
                     Path shape = new Path();
                     shape.addRoundRect(bounds, dp(PANE_RADIUS_DP), dp(PANE_RADIUS_DP), Path.Direction.CW);
                     Region touchable = new Region();
-                    touchable.setPath(shape, new Region(visibleInWindow));
+                    touchable.setPath(shape, new Region(toWindowRegion(paneWindow)));
                     obscured.op(touchable, Region.Op.DIFFERENCE);
                 }
             }
         }
         addToolbarObscuredRegion(obscured);
         return obscured;
+    }
+
+    private Rect paneWindowRect(Pane pane) {
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) pane.container.getLayoutParams();
+        float left = params.leftMargin + pane.container.getTranslationX();
+        float top = params.topMargin + pane.container.getTranslationY();
+        float right = left + params.width * Math.abs(pane.container.getScaleX());
+        float bottom = top + params.height * Math.abs(pane.container.getScaleY());
+        int[] backdropOnScreen = new int[2];
+        backdrop.getLocationOnScreen(backdropOnScreen);
+        float workspaceLeft = workspace.getLeft() + workspace.getTranslationX();
+        float workspaceTop = workspace.getTop() + workspace.getTranslationY();
+        Rect expected = new Rect(Math.round(backdropOnScreen[0] + workspaceLeft + left),
+                Math.round(backdropOnScreen[1] + workspaceTop + top),
+                Math.round(backdropOnScreen[0] + workspaceLeft + right),
+                Math.round(backdropOnScreen[1] + workspaceTop + bottom));
+        // Keep the hole inside the rectangle that is actually visible in the host
+        // window. This also handles IME translation and display cutout clipping.
+        Rect rootVisible = new Rect();
+        if (backdrop.getGlobalVisibleRect(rootVisible)) expected.intersect(rootVisible);
+        return expected;
     }
 
     private void addToolbarObscuredRegion(Region region) {
@@ -1858,7 +1880,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
         pinRecent(target.card);
         pendingOrientations.remove(moving);
-        if (!automatic) manualOrientations.put(moving, requestedOrientations.get(moving));
+        if (!automatic) holdManualPlacement(source);
         Runnable transfer = () -> {
             if (!active() || generation != request) return;
             if (displaced != null && !displaced.home()) removeHostView(displaced);
@@ -1948,6 +1970,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             }
             if (source == target) { focusPane(source); return; }
             if (source.host == null || !source.host.ready || (target.host != null && !target.host.ready)) return;
+            holdManualPlacement(source);
             int oldSlot = source.slot;
             pinRecent(target.card);
             panes[slot] = source;
@@ -2054,6 +2077,15 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         relayoutPanes();
         updateRecentIcons();
         updateInput();
+    }
+
+    private void holdManualPlacement(Pane pane) {
+        if (pane == null || pane.host == null || pane.host.home()) return;
+        pendingOrientations.remove(pane.host);
+        requestedOrientations.remove(pane.host);
+        // A null marker consumes the first post-swap orientation report and keeps
+        // the explicit placement until the app changes its request again.
+        manualOrientations.put(pane.host, null);
     }
 
     private int dropSlot(float pointerX, float pointerY) {
@@ -2351,6 +2383,17 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 pane.replacing = false;
                 desktopBusy = false;
                 pane.updateAppearance();
+                // Launcher handoff replaces a SurfaceView after the pane has already
+                // been laid out. Reapply the decoration once the new view has its
+                // final scale; otherwise the first frame can retain the desktop's
+                // larger radius until another pane operation triggers a relayout.
+                pane.container.postOnAnimation(() -> {
+                    if (active() && generation == request && pane.host == host) {
+                        pane.updateAppearance();
+                        host.refreshCornerRadius(pane.cornerRadius);
+                        refreshInputRegion();
+                    }
+                });
                 updateRecentIcons();
                 updateInput();
                 scheduleOrientationRouting();
@@ -2884,6 +2927,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             if (launchHost != null) {
                 configureHost(launchHost);
             }
+            updateAppearance();
         }
 
         private void syncTaskBounds(OneStepShell.Host task) {
