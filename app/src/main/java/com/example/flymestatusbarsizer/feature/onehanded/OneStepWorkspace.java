@@ -668,22 +668,15 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 dp(toolbarHeight), shortSide, longSide,
                 mainSlot, sideOrder, mainOnLeft, showLandscape, !sideWindowsCollapsed,
                 dp(toolbarPosition), keepMainAspectRatio);
-        int viewportWidth = shortSide;
-        int viewportHeight = longSide;
-        Rect main = result[mainSlot];
-        // A collapsed workspace still renders the app from the full portrait
-        // viewport. The main frame may reserve a different amount of space for
-        // the toolbar, but using that frame ratio as the app viewport would make
-        // Shell apply non-uniform X/Y scaling on the first workspace entry.
-        if (showLandscape || !sideWindowsCollapsed) {
-            viewportWidth = Math.max(shortSide, main.width());
-            viewportHeight = Math.max(1, Math.round(viewportWidth
-                    * (main.height() / (float) Math.max(1, main.width()))));
-        }
-        if (portraitBounds.width() != viewportWidth || portraitBounds.height() != viewportHeight)
+        // Keep the hosted portrait task's logical canvas tied to the display. The
+        // lower main pane can be shorter while the landscape pane is visible, but
+        // that is only a presentation scale. Feeding the pane's aspect ratio into
+        // WM makes SurfaceGeometry apply different X/Y scales and squashes a newly
+        // launched portrait app.
+        if (portraitBounds.width() != shortSide || portraitBounds.height() != longSide)
             imeInputRegion = null;
         portraitBounds.set(logicalBounds.left, logicalBounds.top,
-                logicalBounds.left + viewportWidth, logicalBounds.top + viewportHeight);
+                logicalBounds.left + shortSide, logicalBounds.top + longSide);
         for (Rect frame : result) frame.offset(margin, margin);
         return result;
     }
@@ -1488,15 +1481,17 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     && !pane.host.restoring && !pane.host.released
                     && !(desktopBusy && pane.host.home())) {
                 Rect visible = new Rect();
-                if (pane.host.view.getGlobalVisibleRect(visible)) {
+                // TaskView is a SurfaceView. Its view-level visible rectangle can
+                // lag behind the parent transform while a desktop/task replacement
+                // is being committed. The pane container is the geometry that owns
+                // the actual input hole, including the swap scale and clipping.
+                if (pane.container.getGlobalVisibleRect(visible)) {
                     Rect visibleInWindow = toWindowRegion(visible);
-                    int[] location = new int[2];
-                    pane.host.view.getLocationOnScreen(location);
-                    RectF bounds = new RectF(
-                            location[0], location[1],
-                            location[0] + pane.host.view.getWidth() * pane.container.getScaleX(),
-                            location[1] + pane.host.view.getHeight() * pane.container.getScaleY());
-                    bounds.offset(windowOffsetX(), windowOffsetY());
+                    // getGlobalVisibleRect is already clipped and includes the
+                    // complete parent transform. Reconstructing the rectangle from
+                    // the unscaled TaskView size loses that transform after a pane
+                    // swap and can leave the landscape input hole covered.
+                    RectF bounds = new RectF(visibleInWindow);
                     Path shape = new Path();
                     shape.addRoundRect(bounds, dp(PANE_RADIUS_DP), dp(PANE_RADIUS_DP), Path.Direction.CW);
                     Region touchable = new Region();
