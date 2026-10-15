@@ -1658,9 +1658,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 pane.container.setAlpha(startAlpha[slot]);
             }
             pane.updateAppearance();
-            // Configure task bounds after the motion settles. Sending WCT bounds updates
-            // here makes WM relayout compete with every frame of the visual transition.
-            if (!animate) pane.updateGeometry();
+            // A change of orientation needs its final logical canvas immediately.
+            // The animation only transforms that canvas; ordinary portrait pane
+            // resizing can still wait until the motion settles.
+            if (!animate || landscapeWindow.isSlot(slot)
+                    || (pane.host != null && pane.host.landscapeRequested)) pane.updateGeometry();
         }
         if (!animate) {
             translateForIme(-workspace.getTranslationY());

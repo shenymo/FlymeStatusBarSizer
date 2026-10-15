@@ -76,6 +76,7 @@ public final class OneStepImePolicy {
             Class<?> task = Class.forName("com.android.server.wm.Task", false, loader);
             OneStepTaskLifecycle.install(module, loader);
             installLandscapeResizePolicy(module, loader);
+            OneStepLandscapeConfiguration.install(module, loader, OneStepImePolicy::hasForcedLandscape);
             installOrientationObserver(module, loader);
             installFocusObserver(module, display);
             fromBinder = OneStepReflection.method(Class.forName("com.android.server.wm.WindowContainer", false, loader),
@@ -117,6 +118,7 @@ public final class OneStepImePolicy {
                         ServerSession owner = OWNERS.remove(target);
                         if (owner != null) {
                             IBinder token = owner.tokenForTask(target);
+                            owner.autoLandscapeBounds.remove(token);
                             owner.clearForcedLandscape(token);
                             owner.tasks.values().removeIf(value -> value == target);
                             owner.orientations.remove(token);
@@ -649,7 +651,6 @@ public final class OneStepImePolicy {
         Method taskMultiWindow = OneStepReflection.method(fragment, "supportsMultiWindowInDisplayArea", displayArea);
         Method activityMultiWindow = OneStepReflection.method(activity, "supportsMultiWindowInDisplayArea", displayArea);
         Method orientation = OneStepReflection.method(activity, "getOverrideOrientation");
-        Method compatScale = OneStepReflection.method(activity, "getCompatScale");
         for (Method method : new Method[]{taskResize, activityResize, taskMultiWindow, activityMultiWindow}) {
             module.intercept(method, chain -> {
                 // These exceptions expire with the pane's task-token capability;
@@ -662,13 +663,8 @@ public final class OneStepImePolicy {
             if (hasForcedLandscape(chain.getThisObject())) return ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
             return chain.proceed();
         });
-        module.intercept(compatScale, chain -> {
-            // AppCompatSizeCompatModePolicy can retain a portrait scale after the
-            // task has entered the horizontal pane. That scale is applied to the
-            // app window before the TaskView leash and creates side gutters.
-            if (hasForcedLandscape(chain.getThisObject())) return 1.0f;
-            return chain.proceed();
-        });
+        // Keep WM's compatibility scale paired with its app bounds. Forcing 1:1
+        // here enlarges size-compatible app content beyond the enclosing task.
     }
 
     private static boolean hasForcedLandscape(Object container) {
@@ -711,12 +707,17 @@ public final class OneStepImePolicy {
     }
 
     private static Integer forcedOrientation(Object activity, int requested) {
-        if (activity == null) return null;
+        if (activity == null || !hasSessions) return null;
         try {
-            Object task = OneStepReflection.call(activity, "getTask");
-            if (task == null) return null;
-            ServerSession owner = ownerOf(task);
-            return owner == null || !owner.live() ? null : owner.forcedOrientation(task, activity, requested);
+            Object service = OneStepReflection.get(activity, "mWmService");
+            synchronized (OneStepReflection.get(service, "mGlobalLock")) {
+                Object task = OneStepReflection.call(activity, "getTask");
+                if (task == null) return null;
+                ServerSession owner = ownerOf(task);
+                if (owner == null || !owner.live()) return null;
+                owner.prepareLandscapeRequest(task, activity, requested);
+                return owner.forcedOrientation(task, activity, requested);
+            }
         } catch (Exception error) {
             OneStepImeDiagnostics.unavailable(error);
             return null;
@@ -757,6 +758,7 @@ public final class OneStepImePolicy {
         final Map<IBinder, Object> tasks = new HashMap<>();
         final Map<IBinder, OrientationState> orientations = new HashMap<>();
         final Map<IBinder, ForcedOrientation> forcedOrientations = new HashMap<>();
+        final Map<IBinder, Rect> autoLandscapeBounds = new HashMap<>();
         int orientationChanges;
         IBinder focusedToken;
         volatile boolean closed;
@@ -822,7 +824,17 @@ public final class OneStepImePolicy {
                         if (!live()) throw new IllegalStateException("Workspace expired");
                         IBinder token = data.readStrongBinder();
                         boolean enabled = data.readInt() != 0;
-                        setForcedLandscape(token, enabled ? Rect.CREATOR.createFromParcel(data) : null);
+                        Rect bounds = enabled ? Rect.CREATOR.createFromParcel(data) : null;
+                        Rect autoBounds = data.readInt() != 0 ? Rect.CREATOR.createFromParcel(data) : null;
+                        if ((bounds != null || autoBounds != null) && !tasks.containsKey(token))
+                            throw new IllegalStateException("Task is outside this workspace");
+                        if (autoBounds != null && (autoBounds.isEmpty() || autoBounds.width() <= autoBounds.height()))
+                            throw new IllegalArgumentException("Automatic landscape requires horizontal bounds");
+                        // Publish the routing target only after the explicit pane
+                        // policy succeeds, so restoration cannot re-arm itself.
+                        autoLandscapeBounds.remove(token);
+                        setForcedLandscape(token, bounds);
+                        if (autoBounds != null) autoLandscapeBounds.put(token, autoBounds);
                     }
                     else if (code == RESUMED) {
                         if (!live()) throw new IllegalStateException("Workspace expired");
@@ -833,6 +845,7 @@ public final class OneStepImePolicy {
                         }
                     } else if (code == REMOVE) {
                         IBinder token = data.readStrongBinder();
+                        autoLandscapeBounds.remove(token);
                         clearForcedLandscape(token);
                         Object task = tasks.remove(token);
                         orientations.remove(token);
@@ -865,6 +878,27 @@ public final class OneStepImePolicy {
                         : new IllegalStateException("Cannot update workspace IME policy", error));
             }
             return true;
+        }
+
+        void prepareLandscapeRequest(Object task, Object activity, int requested)
+                throws ReflectiveOperationException {
+            if (!resumed || orientationChanges != 0) return;
+            IBinder token = tokenForTask(task);
+            Rect target = autoLandscapeBounds.get(token);
+            if (target == null || activity != ReflectUtils.invokeNoArg(tasks.get(token), "topRunningActivity")) return;
+            boolean landscape = requested == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                    || requested == ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                    || requested == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    || requested == ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE;
+            if (landscape) {
+                // This runs before ActivityRecord.setRequestedOrientation. Its first
+                // landscape configuration must already have the destination's size;
+                // moving the TaskView later cannot undo a player's initial layout.
+                if (!forcedOrientations.containsKey(token)) setForcedLandscape(token, target);
+            } else {
+                // The app can cancel its request while the pane move is still queued.
+                clearForcedLandscape(token);
+            }
         }
 
         Integer forcedOrientation(Object task, Object activity, int requested) {
@@ -929,9 +963,12 @@ public final class OneStepImePolicy {
                 if (activity == null || (requestedActivity != null && activity != requestedActivity)) continue;
                 try { ensureForcedOrientation(entry.getKey(), activity); }
                 catch (ReflectiveOperationException error) { OneStepImeDiagnostics.unavailable(error); }
-                // Read the Activity's request, never Configuration.orientation (which our
-                // own bounds change). The override includes manifest and runtime requests.
-                int orientation = ReflectUtils.invokeNoArgInt(activity, "getOverrideOrientation", -1);
+                // Route by the app's saved request while forcing landscape. Reading
+                // getOverrideOrientation then would hide requests to return to portrait.
+                ForcedOrientation forced = forcedOrientations.get(entry.getKey());
+                Integer original = forced == null ? null : forced.originals.get(activity);
+                int orientation = original != null ? original
+                        : ReflectUtils.invokeNoArgInt(activity, "getOverrideOrientation", -1);
                 OrientationState previous = orientations.get(entry.getKey());
                 if (requestedActivity == null && previous != null && previous.activity == activity
                         && previous.orientation == orientation) continue;
@@ -1112,6 +1149,7 @@ public final class OneStepImePolicy {
             for (Object task : tasks.values()) OWNERS.remove(task, this);
             tasks.clear();
             orientations.clear();
+            autoLandscapeBounds.clear();
             ArrayList<ForcedOrientation> restoring = new ArrayList<>(forcedOrientations.values());
             forcedOrientations.clear();
             for (ForcedOrientation forced : restoring) {
@@ -1164,11 +1202,6 @@ public final class OneStepImePolicy {
                 applying = true;
                 orientationChanges++;
                 try {
-                    if (first) {
-                        Object compat = OneStepReflection.call(
-                                OneStepReflection.get(activity, "mAppCompatController"), "getSizeCompatModePolicy");
-                        OneStepReflection.call(compat, "clearSizeCompatModeAttributes");
-                    }
                     // Fullscreen roots discard setBounds. Enter native multiwindow
                     // before resizing, then deliver landscape to the Activity.
                     if (ReflectUtils.invokeNoArgInt(task, "getWindowingMode", -1) != 6)
@@ -1176,6 +1209,14 @@ public final class OneStepImePolicy {
                     if (!bounds.equals(OneStepReflection.call(task, "getRequestedOverrideBounds")))
                         OneStepReflection.call(task, "setBounds", new Class<?>[]{Rect.class}, new Rect(bounds));
                     if (activity != null) {
+                        if (first) {
+                            Object compat = OneStepReflection.call(
+                                    OneStepReflection.get(activity, "mAppCompatController"), "getSizeCompatModePolicy");
+                            // Clear the cached override configuration too, after the
+                            // task has its logical canvas. Attributes alone retain old
+                            // portrait density/rotation and smallest-width overrides.
+                            OneStepReflection.call(compat, "clearSizeCompatMode");
+                        }
                         OneStepReflection.call(activity, "setRequestedOrientation",
                                 new Class<?>[]{int.class}, ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
                         if (first) {
@@ -1218,6 +1259,17 @@ public final class OneStepImePolicy {
                         try {
                             OneStepReflection.call(task, "setWindowingMode", new Class<?>[]{int.class}, originalMode);
                             OneStepReflection.call(task, "setBounds", new Class<?>[]{Rect.class}, originalBounds);
+                        } catch (ReflectiveOperationException error) {
+                            if (failure == null) failure = error; else failure.addSuppressed(error);
+                        }
+                    }
+                    // The original orientation can equal the forced request. Refresh
+                    // every remembered Activity so pane-only maxBounds also expire.
+                    for (Object activity : originals.keySet()) {
+                        if (!Boolean.TRUE.equals(ReflectUtils.invokeNoArg(activity, "isAttached"))) continue;
+                        try {
+                            OneStepReflection.call(activity, "recomputeConfiguration");
+                            OneStepReflection.call(activity, "ensureActivityConfiguration");
                         } catch (ReflectiveOperationException error) {
                             if (failure == null) failure = error; else failure.addSuppressed(error);
                         }
@@ -1289,6 +1341,9 @@ public final class OneStepImePolicy {
         void remove(IBinder task) throws RemoteException { send(REMOVE, task); }
         void refreshOrientations() throws RemoteException { send(REFRESH_ORIENTATIONS, null); }
         void setLandscape(IBinder task, Rect bounds) throws RemoteException {
+            setLandscape(task, bounds, null);
+        }
+        void setLandscape(IBinder task, Rect bounds, Rect autoBounds) throws RemoteException {
             if (closed) throw new IllegalStateException("IME session closed");
             Parcel data = Parcel.obtain();
             Parcel reply = Parcel.obtain();
@@ -1297,6 +1352,8 @@ public final class OneStepImePolicy {
                 data.writeStrongBinder(task);
                 data.writeInt(bounds != null ? 1 : 0);
                 if (bounds != null) bounds.writeToParcel(data, 0);
+                data.writeInt(autoBounds != null ? 1 : 0);
+                if (autoBounds != null) autoBounds.writeToParcel(data, 0);
                 if (!server.transact(FORCE_LANDSCAPE, data, reply, 0))
                     throw new RemoteException("IME orientation transaction rejected");
                 reply.readException();

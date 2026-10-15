@@ -18,8 +18,12 @@ final class OneStepLandscapeWindow {
     private final Rect viewport = new Rect();
 
     void updateViewport(Rect logicalBounds) {
+        viewport.set(viewportFor(logicalBounds));
+    }
+
+    static Rect viewportFor(Rect logicalBounds) {
         int longSide = Math.max(logicalBounds.width(), logicalBounds.height());
-        viewport.set(0, 0, longSide, Math.max(1, Math.round(longSide * 9f / 16f)));
+        return new Rect(0, 0, longSide, Math.max(1, Math.round(longSide * 9f / 16f)));
     }
 
     Rect viewport() {

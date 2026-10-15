@@ -13,8 +13,8 @@ final class OneStepSurfaceGeometry {
             crop.offset(host.logicalBounds.left - host.originalBounds.left,
                     host.logicalBounds.top - host.originalBounds.top);
         } else if (host.landscapeRequested && !host.actualBounds.isEmpty()) {
-            // Keep the complete task frame while WM settles the forced orientation.
-            // The cover transform below removes any resulting side gutters.
+            // WM may enlarge the requested frame to satisfy minimum task dimensions.
+            // Keep its complete task-local bounds, including during orientation changes.
             crop.set(0, 0, host.actualBounds.width(), host.actualBounds.height());
         } else if (host.fullscreenCompat) {
             Rect actual = host.actualBounds;
@@ -39,10 +39,9 @@ final class OneStepSurfaceGeometry {
     static void apply(OneStepShell.Host host, SurfaceControl surface,
                       SurfaceControl.Transaction transaction, Rect crop) {
         if (host.landscapeRequested) {
-            // Fixed rotation is already supplied by WM for a portrait buffer.
-            // Fit the resulting task frame with a cover scale; contain scaling
-            // leaves the frame as a narrow rounded rectangle with side gutters.
-            float scale = Math.max(host.width / (float) Math.max(1, crop.width()),
+            // Fit the whole WM task frame into the pane. Its aspect ratio can differ
+            // from the requested 16:9 frame; filling the pane would crop app content.
+            float scale = Math.min(host.width / (float) Math.max(1, crop.width()),
                     host.height / (float) Math.max(1, crop.height()));
             transaction.setPosition(surface,
                     (host.width - crop.width() * scale) / 2f - crop.left * scale,

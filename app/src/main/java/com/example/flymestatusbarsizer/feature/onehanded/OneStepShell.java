@@ -125,6 +125,7 @@ final class OneStepShell {
         boolean fullscreenCompat;
         boolean landscapeForced;
         final Rect landscapeFrame = new Rect();
+        final Rect autoLandscapeFrame = new Rect();
         volatile boolean landscapeRequested;
         boolean imeRegistered;
         boolean workspaceRestorePending;
@@ -461,25 +462,36 @@ final class OneStepShell {
         } catch (Throwable error) { OneStepImeDiagnostics.unavailable(error); }
     }
 
-    private void updateHostedConfiguration(Host host, Object info, boolean modeApplied)
+    private boolean updateHostedConfiguration(Host host, Object info, boolean modeApplied)
             throws ReflectiveOperationException {
         Object config = OneStepReflection.get(OneStepReflection.get(info, "configuration"), "windowConfiguration");
-        host.actualBounds.set((Rect) OneStepReflection.call(config, "getBounds"));
-        if (host.home()) return;
+        Rect bounds = (Rect) OneStepReflection.call(config, "getBounds");
+        boolean boundsChanged = !host.actualBounds.equals(bounds);
+        host.actualBounds.set(bounds);
+        if (host.home()) return boundsChanged;
         if (windowMode(info) == 6) host.fullscreenCompat = false;
         else if (!host.landscapeRequested && windowMode(info) == 1 && (modeApplied
                 || Boolean.FALSE.equals(ReflectUtils.getField(info, "supportsMultiWindow"))))
             host.fullscreenCompat = true;
+        return boundsChanged;
     }
 
     private void updateLandscapePolicy(Host host) throws Exception {
         if (host.home() || !host.imeRegistered || imeSession == null) return;
         boolean landscape = host.landscapeRequested;
-        Rect frame = host.surfaceBounds;
-        if (host.landscapeForced == landscape && (!landscape
-                || (host.landscapeFrame.width() == frame.width()
-                        && host.landscapeFrame.height() == frame.height()))) return;
-        imeSession.setLandscape((IBinder) host.card.token, landscape ? new Rect(frame) : null);
+        // App layout uses the full landscape canvas. The physical pane bounds are
+        // only a presentation target; using them here makes apps lay out at thumbnail size.
+        Rect frame = host.logicalBounds;
+        Rect autoFrame = host.portraitMain && !landscape
+                ? OneStepLandscapeWindow.viewportFor(frame) : new Rect();
+        if (host.landscapeForced == landscape && (!landscape || host.landscapeFrame.equals(frame))
+                && host.autoLandscapeFrame.equals(autoFrame)) return;
+        boolean modeApplied = landscape || host.landscapeForced;
+        // Let WM prepare this same canvas inside setRequestedOrientation, before
+        // a player receives a landscape configuration sized for the portrait pane.
+        imeSession.setLandscape((IBinder) host.card.token, landscape ? new Rect(frame) : null,
+                autoFrame.isEmpty() ? null : autoFrame);
+        host.autoLandscapeFrame.set(autoFrame);
         host.landscapeForced = landscape;
         if (landscape) {
             host.landscapeFrame.set(frame);
@@ -488,7 +500,7 @@ final class OneStepShell {
         // The Binder reply confirms configuration, not buffer presentation. Use
         // fresh task bounds so the arriving frame is fitted without distortion.
         for (Object info : tasks.roots()) if (matches(host.card, info)) {
-            updateHostedConfiguration(host, info, true);
+            updateHostedConfiguration(host, info, modeApplied);
             break;
         }
     }
@@ -796,6 +808,7 @@ final class OneStepShell {
                 // them even when the visible frame has not changed.
                 host.landscapeForced = false;
                 host.landscapeFrame.setEmpty();
+                host.autoLandscapeFrame.setEmpty();
                 updateLandscapePolicy(host);
             }
             updateLifecyclePolicy();
@@ -1915,7 +1928,10 @@ final class OneStepShell {
                     if (OneStepTaskAccess.display(info) != 0 || taskEnded(info)) continue;
                     Host host = find(info);
                     if (host != null && current(host) && !host.closing) {
-                        updateHostedConfiguration(host, info, false);
+                        boolean boundsChanged = updateHostedConfiguration(host, info, false);
+                        // A size/configuration update need not start a Shell transition.
+                        // Refit the landscape surface when fresh WM bounds arrive.
+                        if (boundsChanged && host.landscapeRequested) present(host, null, null);
                         logImeTask(host, "task-state", info, false);
                     }
                     if (host != null && current(host) && !host.home()) {
@@ -2282,10 +2298,13 @@ final class OneStepShell {
         }
         // Release the forced pane configuration before the final restoration
         // transaction, so it cannot overwrite an external/fullscreen destination.
-        if (host.imeRegistered && host.landscapeForced) {
+        if (host.imeRegistered && !host.home()) {
+            // WM may already have prepared an automatic move before its Shell
+            // callback arrives. Clear that state before restoring task bounds too.
             imeSession.setLandscape((IBinder) host.card.token, null);
             host.landscapeForced = false;
             host.landscapeFrame.setEmpty();
+            host.autoLandscapeFrame.setEmpty();
         }
         if (host.borrowed) {
             Object appeared = appeared(host.card.taskId);
