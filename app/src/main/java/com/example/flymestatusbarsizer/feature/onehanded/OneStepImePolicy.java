@@ -996,6 +996,8 @@ public final class OneStepImePolicy {
             ForcedOrientation forced = forcedOrientations.get(token);
             if (forced == null || forced.applying || !standalone(forced.task)) return;
             if (forced.configuredActivity != activity
+                    || ReflectUtils.invokeNoArgInt(activity, "getRequestedOrientation", -1)
+                            != ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                     || ReflectUtils.invokeNoArgInt(forced.task, "getWindowingMode", -1) != 6
                     || !forced.bounds.equals(OneStepReflection.call(forced.task, "getRequestedOverrideBounds"))) {
                 forced.apply(activity);
@@ -1189,19 +1191,25 @@ public final class OneStepImePolicy {
 
             void remember(Object activity) {
                 if (activity == null || originals.containsKey(activity)) return;
-                // getOverrideOrientation is the effective pane policy. Preserve
-                // the app's own request so leaving the pane can restore it.
+                // Preserve the app's stored request before the pane changes it.
                 originals.put(activity, ReflectUtils.invokeNoArgInt(activity, "getRequestedOrientation", -1));
             }
 
             void apply(Object activity) throws ReflectiveOperationException {
                 if (applying) return;
-                boolean first = activity != null && configuredActivity != activity;
                 remember(activity);
                 OneStepReflection.call(taskService, "deferWindowLayout");
                 applying = true;
                 orientationChanges++;
                 try {
+                    if (activity != null) {
+                        // WindowContainer.setOrientation compares the effective getter,
+                        // which already reports the pane's landscape policy. Store the
+                        // actual request too, then dispatch the complete configuration
+                        // below; otherwise the native setter treats this change as a no-op.
+                        OneStepReflection.call(activity, "setOverrideOrientation",
+                                new Class<?>[]{int.class}, ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+                    }
                     // Fullscreen roots discard setBounds. Enter native multiwindow
                     // before resizing, then deliver landscape to the Activity.
                     if (ReflectUtils.invokeNoArgInt(task, "getWindowingMode", -1) != 6)
@@ -1209,22 +1217,17 @@ public final class OneStepImePolicy {
                     if (!bounds.equals(OneStepReflection.call(task, "getRequestedOverrideBounds")))
                         OneStepReflection.call(task, "setBounds", new Class<?>[]{Rect.class}, new Rect(bounds));
                     if (activity != null) {
-                        if (first) {
-                            Object compat = OneStepReflection.call(
-                                    OneStepReflection.get(activity, "mAppCompatController"), "getSizeCompatModePolicy");
-                            // Clear the cached override configuration too, after the
-                            // task has its logical canvas. Attributes alone retain old
-                            // portrait density/rotation and smallest-width overrides.
-                            OneStepReflection.call(compat, "clearSizeCompatMode");
-                        }
+                        Object compat = OneStepReflection.call(
+                                OneStepReflection.get(activity, "mAppCompatController"), "getSizeCompatModePolicy");
+                        // Automatic routing prepares this Activity before its request
+                        // finishes, then commits the same Activity into the new pane.
+                        // Rebuild its configuration on both passes; Activity identity
+                        // does not establish that its old portrait layout has expired.
+                        OneStepReflection.call(compat, "clearSizeCompatMode");
                         OneStepReflection.call(activity, "setRequestedOrientation",
                                 new Class<?>[]{int.class}, ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-                        if (first) {
-                            // An unchanged request can otherwise leave the old
-                            // size-compat configuration cached on this Activity.
-                            OneStepReflection.call(activity, "recomputeConfiguration");
-                            OneStepReflection.call(activity, "ensureActivityConfiguration");
-                        }
+                        OneStepReflection.call(activity, "recomputeConfiguration");
+                        OneStepReflection.call(activity, "ensureActivityConfiguration");
                     }
                     Rect actual = (Rect) OneStepReflection.call(task, "getBounds");
                     if (ReflectUtils.invokeNoArgInt(task, "getWindowingMode", -1) != 6
