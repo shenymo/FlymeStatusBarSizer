@@ -49,8 +49,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private static final int TOOLBAR_ICON_SIZE_DP = 48;
     private static final int TOOLBAR_ICON_PADDING_DP = 6;
     private static final int TOOLBAR_EXIT_PADDING_DP = 12;
-    private static final int PANE_GAP_DP = 4;
-    private static final int WORKSPACE_MARGIN_DP = 4;
+    private static final int PANE_GAP_DP = 3;
+    private static final int WORKSPACE_MARGIN_DP = 2;
     private static final int PANE_RADIUS_DP = 16;
     private static final int PANE_TAP_HIGHLIGHT_MS = 350;
     private static final long IME_HIDE_TIMEOUT_MS = 2500;
@@ -125,7 +125,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private int width;
     private int height;
     private int layoutToolbarHeightDp = -1;
-    private int layoutToolbarPositionDp = -1;
     private int mainSlot;
     private volatile int generation;
     private int highlightedSlot = -1;
@@ -220,14 +219,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_HEIGHT_DP,
                         oneHandedProfile ? config.oneHandedWorkspaceToolbarHeightDp
                                 : config.workspaceToolbarHeightDp));
-    }
-
-    private int toolbarPositionDp() {
-        ModuleConfig config = ModuleConfig.load(context);
-        return Math.max(SettingsStore.MIN_WORKSPACE_TOOLBAR_POSITION_DP,
-                Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP,
-                        oneHandedProfile ? config.oneHandedWorkspaceToolbarPositionDp
-                                : config.workspaceToolbarPositionDp));
     }
 
     private int toolbarIconSizeDp() {
@@ -587,6 +578,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             pane.updateAppearance();
             pane.updateGeometry();
         }
+        bringLandscapePaneToFront();
         positionForIme();
         refreshInputRegion();
     }
@@ -663,6 +655,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             position(pane, frames[i]);
             pane.updateAppearance();
         }
+        bringLandscapePaneToFront();
         applyTransition(0f);
         activitySession.setView(backdrop);
         perf = new OneStepPerf(backdrop, handler, generation);
@@ -678,13 +671,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         sideWindowsCollapsed = shouldCollapseSideWindows();
         int toolbarHeight = toolbarHeightDp();
         layoutToolbarHeightDp = toolbarHeight;
-        int toolbarPosition = toolbarPositionDp();
-        layoutToolbarPositionDp = toolbarPosition;
         Rect[] result = landscapeWindow.calculate(width - margin * 2,
                 height - margin * 2, dp(PANE_GAP_DP),
                 dp(toolbarHeight), shortSide, longSide,
-                mainSlot, sideOrder, mainOnLeft, showLandscape, !sideWindowsCollapsed,
-                dp(toolbarPosition));
+                mainSlot, sideOrder, mainOnLeft, showLandscape, !sideWindowsCollapsed);
         // Keep the hosted portrait task's logical canvas tied to the display. The
         // lower main pane can be shorter while the landscape pane is visible, but
         // that is only a presentation scale. Feeding the pane's aspect ratio into
@@ -1498,6 +1488,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         });
     }
 
+    private void bringLandscapePaneToFront() {
+        if (workspace == null) return;
+        Pane landscape = panes[OneStepLandscapeWindow.SLOT];
+        if (landscape != null && landscape.container.getParent() == workspace)
+            landscape.container.bringToFront();
+    }
+
     private void blockInput(boolean block) {
         if (backdrop == null) return;
         // TaskView's native insets listener uses its unscaled width/height. Cover everything
@@ -1741,6 +1738,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             if (!animate || landscapeWindow.isSlot(slot)
                     || (pane.host != null && pane.host.landscapeRequested)) pane.updateGeometry();
         }
+        bringLandscapePaneToFront();
         if (!animate) {
             translateForIme(-workspace.getTranslationY());
             positionForIme();
@@ -1777,6 +1775,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     pane.updateAppearance();
                     pane.updateGeometry();
                 }
+                bringLandscapePaneToFront();
                 translateForIme(-workspace.getTranslationY());
                 positionForIme();
                 refreshInputRegion();
@@ -2267,10 +2266,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             else if (state == State.CLOSING && !OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId)) close(false);
             else if (active()) {
                 int previousToolbarHeight = layoutToolbarHeightDp;
-                int previousToolbarPosition = layoutToolbarPositionDp;
                 refreshEnvironment();
-                if (previousToolbarHeight != toolbarHeightDp()
-                        || previousToolbarPosition != toolbarPositionDp()) relayoutPanes();
+                if (previousToolbarHeight != toolbarHeightDp()) relayoutPanes();
                 scheduleCheck(100);
             }
         });

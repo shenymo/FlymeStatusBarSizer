@@ -51,18 +51,18 @@ final class OneStepLandscapeWindow {
     Rect[] calculate(int width, int height, int divider, int toolbarHeight,
                      int viewportWidth, int viewportHeight, int mainSlot,
                      List<Integer> sideOrder, boolean mainOnLeft,
-                     boolean showLandscape, boolean showSideWindows,
-                     int toolbarPosition) {
+                     boolean showLandscape, boolean showSideWindows) {
         int reservedHeight = toolbarHeight + divider * 2;
         int landscapeHeight = showLandscape ? Math.max(1, Math.min(Math.round(width * 9f / 16f),
                 Math.max(1, (height - reservedHeight) / 3))) : 0;
         int contentTop = Math.min(Math.max(0, height - 1), showLandscape
                 ? landscapeHeight + reservedHeight
-                : toolbarHeight + divider + Math.max(0, toolbarPosition));
+                : toolbarHeight + divider);
         Rect[] result = new Rect[SLOT + 1];
         if (showSideWindows) {
-            calculateLowerPanes(result, width, height, contentTop,
-                    Math.max(1, height - contentTop), divider, mainSlot, sideOrder, mainOnLeft);
+            calculateLowerPanes(result, width, contentTop,
+                    Math.max(1, height - contentTop), divider, mainSlot, sideOrder, mainOnLeft,
+                    viewportWidth, viewportHeight);
         } else {
             int mainLeft = 0;
             int mainWidth = width;
@@ -92,10 +92,9 @@ final class OneStepLandscapeWindow {
     }
 
     private static void calculateLowerPanes(Rect[] rects, int workspaceWidth,
-                                             int workspaceHeight, int contentTop,
-                                             int contentHeight, int divider,
+                                             int contentTop, int contentHeight, int divider,
                                              int activeMainSlot, List<Integer> sideSlotOrder,
-                                             boolean mainOnLeft) {
+                                             boolean mainOnLeft, int viewportWidth, int viewportHeight) {
         int visibleSideCount = sideSlotOrder.size();
         int availableWidth = Math.max(2, workspaceWidth - divider);
         int sideHeight = Math.max(1,
@@ -105,14 +104,25 @@ final class OneStepLandscapeWindow {
                 / (float) Math.max(1, contentHeight + sideHeight));
         sideWidth = Math.max(1, Math.min(availableWidth - 1, sideWidth));
         int mainWidth = availableWidth - sideWidth;
+        int mainHeight = Math.max(1, Math.min(contentHeight,
+                Math.round(mainWidth * viewportHeight
+                        / (float) Math.max(1, viewportWidth))));
+        int groupTop = contentTop + contentHeight - mainHeight;
+        int sideContentHeight = Math.max(1,
+                mainHeight - divider * Math.max(0, visibleSideCount - 1));
+        sideHeight = Math.max(1, sideContentHeight / Math.max(1, visibleSideCount));
+        int sideRemainder = Math.max(0, sideContentHeight - sideHeight * visibleSideCount);
         int sideLeft = mainOnLeft ? mainWidth + divider : 0;
         int mainLeft = mainOnLeft ? 0 : sideWidth + divider;
 
-        rects[activeMainSlot] = new Rect(mainLeft, contentTop, mainLeft + mainWidth, workspaceHeight);
+        rects[activeMainSlot] = new Rect(mainLeft, contentTop, mainLeft + mainWidth,
+                groupTop + mainHeight);
+        rects[activeMainSlot].top = groupTop;
         for (int index = 0; index < visibleSideCount; index++) {
             int slot = sideSlotOrder.get(index);
-            int top = contentTop + index * (sideHeight + divider);
-            rects[slot] = new Rect(sideLeft, top, sideLeft + sideWidth, top + sideHeight);
+            int top = groupTop + index * (sideHeight + divider);
+            int paneHeight = sideHeight + (index == visibleSideCount - 1 ? sideRemainder : 0);
+            rects[slot] = new Rect(sideLeft, top, sideLeft + sideWidth, top + paneHeight);
         }
     }
 

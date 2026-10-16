@@ -144,6 +144,7 @@ public final class ModuleConfig {
             SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP;
     public boolean oneHandedWorkspaceDefaultSidebarEnabled =
             SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED;
+    public int workspaceSidebarWidthPercent = SettingsStore.DEFAULT_WORKSPACE_SIDEBAR_WIDTH_PERCENT;
     public boolean workspaceFlowLoggingEnabled = SettingsStore.DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED;
     public int mbackLongTouchAction = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION;
     public String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
@@ -766,6 +767,11 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
                     SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED);
+            config.workspaceSidebarWidthPercent = Math.max(
+                    SettingsStore.MIN_WORKSPACE_SIDEBAR_WIDTH_PERCENT,
+                    Math.min(SettingsStore.MAX_WORKSPACE_SIDEBAR_WIDTH_PERCENT,
+                            SettingsStore.readInt(prefs, SettingsStore.KEY_WORKSPACE_SIDEBAR_WIDTH_PERCENT,
+                                    SettingsStore.DEFAULT_WORKSPACE_SIDEBAR_WIDTH_PERCENT)));
             config.mbackLongTouchAction = SettingsStore.normalizeMBackLongTouchAction(
                     SettingsStore.readInt(
                             prefs,

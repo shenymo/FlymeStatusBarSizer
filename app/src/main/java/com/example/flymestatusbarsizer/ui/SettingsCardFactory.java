@@ -513,7 +513,7 @@ public final class SettingsCardFactory {
         behavior.setPadding(0, 0, 0, activity.dp(8));
         options.addView(behavior, activity.matchWrap());
 
-        activity.addProfileSectionHeader(options, "工作台布局", "调整顶部图标栏和主窗口比例，修改后立即应用。");
+        activity.addProfileSectionHeader(options, "工作台布局", "图标栏位置和主窗口大小会根据可用空间自动安排。");
         activity.addSliderRow(options, "图标栏高度", null,
                 oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP
                         : SettingsStore.KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
@@ -521,13 +521,6 @@ public final class SettingsCardFactory {
                         : SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP,
                 SettingsStore.MIN_WORKSPACE_TOOLBAR_HEIGHT_DP,
                 SettingsStore.MAX_WORKSPACE_TOOLBAR_HEIGHT_DP, "dp");
-        activity.addSliderRow(options, "图标栏顶部位置", null,
-                oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP
-                        : SettingsStore.KEY_WORKSPACE_TOOLBAR_POSITION_DP,
-                oneHanded ? SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP
-                        : SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP,
-                SettingsStore.MIN_WORKSPACE_TOOLBAR_POSITION_DP,
-                SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP, "dp");
         activity.addSwitchRow(options, "默认显示侧边栏",
                 "进入应用工作台时默认显示侧边的 3 个小窗；关闭后侧窗为空时自动收起。",
                 oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED

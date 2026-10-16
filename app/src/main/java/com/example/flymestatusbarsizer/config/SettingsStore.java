@@ -157,6 +157,8 @@ public final class SettingsStore {
             "one_handed_workspace_toolbar_position_dp";
     public static final String KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED =
             "one_handed_workspace_default_sidebar_enabled";
+    public static final String KEY_WORKSPACE_SIDEBAR_WIDTH_PERCENT =
+            "workspace_sidebar_width_percent";
     public static final String KEY_WORKSPACE_FLOW_LOGGING_ENABLED =
             "workspace_flow_logging_enabled";
     public static final boolean DEFAULT_ASSISTANT_GESTURE_ENABLED = false;
@@ -166,7 +168,7 @@ public final class SettingsStore {
     public static final int DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = 48;
     public static final int MIN_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = 8;
     public static final int MAX_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = 240;
-    public static final int DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP = 48;
+    public static final int DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP = 40;
     public static final int MIN_WORKSPACE_TOOLBAR_HEIGHT_DP = 32;
     public static final int MAX_WORKSPACE_TOOLBAR_HEIGHT_DP = 80;
     public static final int DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP = 0;
@@ -176,6 +178,9 @@ public final class SettingsStore {
     public static final int DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP = DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;
     public static final int DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP = DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP;
     public static final boolean DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED = false;
+    public static final int DEFAULT_WORKSPACE_SIDEBAR_WIDTH_PERCENT = 22;
+    public static final int MIN_WORKSPACE_SIDEBAR_WIDTH_PERCENT = 18;
+    public static final int MAX_WORKSPACE_SIDEBAR_WIDTH_PERCENT = 32;
     public static final boolean DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED = false;
     public static final String KEY_MBACK_LONG_TOUCH_ACTION = "mback_long_touch_action";
     public static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
@@ -646,6 +651,7 @@ public final class SettingsStore {
             KEY_WORKSPACE_TOOLBAR_POSITION_DP,
             KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP,
             KEY_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP,
+            KEY_WORKSPACE_SIDEBAR_WIDTH_PERCENT,
             CircleBatteryAnimationConfig.NORMAL,
             CircleBatteryAnimationConfig.CHARGING,
             CircleBatteryAnimationConfig.PALETTE,
@@ -1067,6 +1073,8 @@ public final class SettingsStore {
                 return DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP;
             case KEY_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP:
                 return DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP;
+            case KEY_WORKSPACE_SIDEBAR_WIDTH_PERCENT:
+                return DEFAULT_WORKSPACE_SIDEBAR_WIDTH_PERCENT;
             case KEY_POSITION_OFFSET_STORAGE_VERSION:
                 return POSITION_OFFSET_STORAGE_VERSION_CAMERA_HUNDREDTH_DP;
             case KEY_BATTERY_ICON_STYLE:
