@@ -126,7 +126,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private int height;
     private int layoutToolbarHeightDp = -1;
     private int layoutToolbarPositionDp = -1;
-    private boolean layoutKeepMainAspectRatio;
     private int mainSlot;
     private volatile int generation;
     private int highlightedSlot = -1;
@@ -681,15 +680,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         layoutToolbarHeightDp = toolbarHeight;
         int toolbarPosition = toolbarPositionDp();
         layoutToolbarPositionDp = toolbarPosition;
-        ModuleConfig config = ModuleConfig.load(context);
-        boolean keepMainAspectRatio = oneHandedProfile
-                ? config.oneHandedWorkspaceKeepMainAspectRatio : config.workspaceKeepMainAspectRatio;
-        layoutKeepMainAspectRatio = keepMainAspectRatio;
         Rect[] result = landscapeWindow.calculate(width - margin * 2,
                 height - margin * 2, dp(PANE_GAP_DP),
                 dp(toolbarHeight), shortSide, longSide,
                 mainSlot, sideOrder, mainOnLeft, showLandscape, !sideWindowsCollapsed,
-                dp(toolbarPosition), keepMainAspectRatio);
+                dp(toolbarPosition));
         // Keep the hosted portrait task's logical canvas tied to the display. The
         // lower main pane can be shorter while the landscape pane is visible, but
         // that is only a presentation scale. Feeding the pane's aspect ratio into
@@ -737,7 +732,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private RectF visualFrame(Rect frame, int slot) {
         Rect viewport = viewport(slot);
         if (frame == null || frame.isEmpty()) return new RectF(frame == null ? new Rect() : frame);
-        boolean keepAspect = layoutKeepMainAspectRatio && slot == mainSlot;
+        boolean keepAspect = slot == mainSlot;
         if (!keepAspect) return new RectF(frame);
         float scale = Math.min(frame.width() / (float) Math.max(1, viewport.width()),
                 frame.height() / (float) Math.max(1, viewport.height()));
@@ -1376,7 +1371,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         float baseHeight = pane.container.getHeight() > 0 ? pane.container.getHeight() : paneParams.height;
         float paneWidth = baseWidth * Math.abs(pane.container.getScaleX());
         float paneHeight = baseHeight * Math.abs(pane.container.getScaleY());
-        boolean fill = pane.slot != mainSlot || !layoutKeepMainAspectRatio;
+        boolean fill = pane.slot != mainSlot;
         if (fill) {
             desktopContainer.setTranslationX(paneParams.leftMargin + pane.container.getTranslationX());
             desktopContainer.setTranslationY(paneParams.topMargin + pane.container.getTranslationY());
@@ -2273,14 +2268,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             else if (active()) {
                 int previousToolbarHeight = layoutToolbarHeightDp;
                 int previousToolbarPosition = layoutToolbarPositionDp;
-                boolean previousKeepMainAspectRatio = layoutKeepMainAspectRatio;
-                ModuleConfig config = ModuleConfig.load(context);
-                boolean currentKeepMainAspectRatio = oneHandedProfile
-                        ? config.oneHandedWorkspaceKeepMainAspectRatio : config.workspaceKeepMainAspectRatio;
                 refreshEnvironment();
                 if (previousToolbarHeight != toolbarHeightDp()
-                        || previousToolbarPosition != toolbarPositionDp()
-                        || previousKeepMainAspectRatio != currentKeepMainAspectRatio) relayoutPanes();
+                        || previousToolbarPosition != toolbarPositionDp()) relayoutPanes();
                 scheduleCheck(100);
             }
         });

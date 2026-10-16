@@ -534,12 +534,6 @@ public final class SettingsCardFactory {
                         : SettingsStore.KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
                 oneHanded ? SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED
                         : SettingsStore.DEFAULT_WORKSPACE_DEFAULT_SIDEBAR_ENABLED);
-        activity.addSwitchRow(options, "保持主应用窗口等比缩放",
-                "没有横屏窗口时保持原比例，两侧可能留出空白。",
-                oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO
-                        : SettingsStore.KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
-                oneHanded ? SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO
-                        : SettingsStore.DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO);
         return options;
     }
 

@@ -136,15 +136,12 @@ public final class ModuleConfig {
     public int assistantGestureVerticalLimitDp = SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP;
     public int workspaceToolbarHeightDp = SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;
     public int workspaceToolbarPositionDp = SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP;
-    public boolean workspaceKeepMainAspectRatio = SettingsStore.DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO;
     public boolean workspaceDefaultSidebarEnabled =
             SettingsStore.DEFAULT_WORKSPACE_DEFAULT_SIDEBAR_ENABLED;
     public int oneHandedWorkspaceToolbarHeightDp =
             SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP;
     public int oneHandedWorkspaceToolbarPositionDp =
             SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP;
-    public boolean oneHandedWorkspaceKeepMainAspectRatio =
-            SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO;
     public boolean oneHandedWorkspaceDefaultSidebarEnabled =
             SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED;
     public boolean workspaceFlowLoggingEnabled = SettingsStore.DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED;
@@ -751,10 +748,6 @@ public final class ModuleConfig {
                     Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP, SettingsStore.readInt(prefs,
                             SettingsStore.KEY_WORKSPACE_TOOLBAR_POSITION_DP,
                             SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP)));
-            config.workspaceKeepMainAspectRatio = SettingsStore.readBoolean(
-                    prefs,
-                    SettingsStore.KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
-                    SettingsStore.DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO);
             config.workspaceDefaultSidebarEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
@@ -769,10 +762,6 @@ public final class ModuleConfig {
                     Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP, SettingsStore.readInt(prefs,
                             SettingsStore.KEY_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP,
                             SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP)));
-            config.oneHandedWorkspaceKeepMainAspectRatio = SettingsStore.readBoolean(
-                    prefs,
-                    SettingsStore.KEY_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
-                    SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO);
             config.oneHandedWorkspaceDefaultSidebarEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,

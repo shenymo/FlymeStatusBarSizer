@@ -52,7 +52,7 @@ final class OneStepLandscapeWindow {
                      int viewportWidth, int viewportHeight, int mainSlot,
                      List<Integer> sideOrder, boolean mainOnLeft,
                      boolean showLandscape, boolean showSideWindows,
-                     int toolbarPosition, boolean keepMainAspectRatio) {
+                     int toolbarPosition) {
         int reservedHeight = toolbarHeight + divider * 2;
         int landscapeHeight = showLandscape ? Math.max(1, Math.min(Math.round(width * 9f / 16f),
                 Math.max(1, (height - reservedHeight) / 3))) : 0;
@@ -66,7 +66,7 @@ final class OneStepLandscapeWindow {
         } else {
             int mainLeft = 0;
             int mainWidth = width;
-            if (!showLandscape && keepMainAspectRatio) {
+            if (!showLandscape) {
                 int availableHeight = Math.max(1, height - contentTop);
                 mainWidth = Math.max(1, Math.min(width,
                         Math.round(availableHeight * viewportWidth
