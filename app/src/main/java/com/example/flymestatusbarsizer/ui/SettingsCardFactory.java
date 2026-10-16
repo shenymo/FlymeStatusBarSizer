@@ -469,6 +469,8 @@ public final class SettingsCardFactory {
     public View createOneHandedModeSettingsCard() {
         LinearLayout options = new LinearLayout(activity);
         options.setOrientation(LinearLayout.VERTICAL);
+        activity.addSwitchRow(options, "启用下拉单手模式", "关闭时不接管系统单手手势，系统原生单手缩放照常工作。",
+                SettingsStore.KEY_ONE_HANDED_MODE_ENABLED, SettingsStore.DEFAULT_ONE_HANDED_MODE_ENABLED);
         activity.addChoiceRow(options, "触发动作", "选择从屏幕底部上滑触发的功能，不影响侧边手势。",
                 SettingsStore.KEY_ONE_HANDED_MODE_ACTION, SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION,
                 new int[]{SettingsStore.ONE_HANDED_MODE_ACTION_SYSTEM,

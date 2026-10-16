@@ -61,6 +61,13 @@ public final class OneHandedTaskHooks {
 
     private OneHandedTaskHooks() {}
 
+    static boolean oneHandedWorkspaceEnabled(Context context) {
+        if (context == null) return false;
+        ModuleConfig config = ModuleConfig.load(context);
+        return config.enabled && config.oneHandedModeEnabled
+                && config.oneHandedModeAction == SettingsStore.ONE_HANDED_MODE_ACTION_TASK_SCALE;
+    }
+
     public static void trackEdgeHandler(Object edge) {
         if (edgeHandler.get() != edge && ReflectUtils.getIntField(edge, "mDisplayId", -1) == 0) {
             edgeHandler = new WeakReference<>(edge);
@@ -177,9 +184,7 @@ public final class OneHandedTaskHooks {
         Object source = ReflectUtils.getField(target, "mContext");
         if (!(source instanceof Context)) return false;
         Context context = (Context) source;
-        ModuleConfig config = ModuleConfig.load(context);
-        if (!config.enabled
-                || config.oneHandedModeAction != SettingsStore.ONE_HANDED_MODE_ACTION_TASK_SCALE
+        if (!oneHandedWorkspaceEnabled(context)
                 || !ReflectUtils.getBooleanField(target, "mIsShortcutEnabled", false)
                 || ReflectUtils.getBooleanField(target, "mIsSwipeToNotificationEnabled", false)) {
             return false;
@@ -198,8 +203,7 @@ public final class OneHandedTaskHooks {
         if (current == null || !installed) return false;
         Object source = ReflectUtils.getField(target, "mContext");
         if (!(source instanceof Context)) return false;
-        ModuleConfig config = ModuleConfig.load((Context) source);
-        if (!config.enabled || config.oneHandedModeAction != SettingsStore.ONE_HANDED_MODE_ACTION_TASK_SCALE
+        if (!oneHandedWorkspaceEnabled((Context) source)
                 || !current.canTrigger()) return false;
         current.useOneHandedProfile();
         current.toggle(false, null);

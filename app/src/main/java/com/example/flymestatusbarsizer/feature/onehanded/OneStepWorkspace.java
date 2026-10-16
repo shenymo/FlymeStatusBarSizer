@@ -304,7 +304,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     void toggle(boolean fromLeft, Runnable success) {
         handler.post(() -> {
             if (active()) return;
-            if (state != State.CLOSED || !shell.available() || !OneHandedTaskHooks.environmentAllowed(context)) return;
+            if (state != State.CLOSED || !shell.available() || !OneHandedTaskHooks.environmentAllowed(context)
+                    || (oneHandedProfile && !OneHandedTaskHooks.oneHandedWorkspaceEnabled(context))) return;
             try { workspaceOwnerUserId = OneHandedTaskHooks.currentUserId(); }
             catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot resolve workspace user", error); return; }
             state = State.OPENING;
@@ -322,7 +323,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                                     + " recentCount=" + (recent == null ? 0 : recent.size()));
                     handler.post(() -> {
                         if (state != State.OPENING || generation != request) return;
-                        if (main == null || !OneHandedTaskHooks.environmentAllowed(context)) { close(false); return; }
+                        if (main == null || !OneHandedTaskHooks.environmentAllowed(context)
+                                || (oneHandedProfile && !OneHandedTaskHooks.oneHandedWorkspaceEnabled(context))) {
+                            close(false);
+                            return;
+                        }
                         try {
                             if (OneHandedTaskHooks.imeBusy()) {
                                 navigation.hideIme();
@@ -345,7 +350,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                                     boolean fromLeft, Runnable success, int request,
                                     long deadline, long hiddenSince) {
         if (state != State.OPENING || generation != request) return;
-        if (!OneHandedTaskHooks.environmentAllowed(context)) { close(false); return; }
+        if (!OneHandedTaskHooks.environmentAllowed(context)
+                || (oneHandedProfile && !OneHandedTaskHooks.oneHandedWorkspaceEnabled(context))) {
+            close(false);
+            return;
+        }
         long now = SystemClock.uptimeMillis();
         long settledSince = OneHandedTaskHooks.imeBusy() ? 0 : (hiddenSince == 0 ? now : hiddenSince);
         if (settledSince != 0 && now - settledSince >= IME_SETTLE_MS) {
@@ -2225,7 +2234,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     void refresh() {
         handler.post(() -> {
-            if (state == State.CLOSING && !OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId)) close(false);
+            if (oneHandedProfile && !OneHandedTaskHooks.oneHandedWorkspaceEnabled(context)) close(false);
+            else if (state == State.CLOSING && !OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId)) close(false);
             else if (active()) {
                 int previousToolbarHeight = layoutToolbarHeightDp;
                 int previousToolbarPosition = layoutToolbarPositionDp;

@@ -124,6 +124,8 @@ public final class SettingsStore {
     public static final int SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT = 0;
     public static final int SIDE_GESTURE_ACTION_TASK_SCALE = 1;
     public static final int DEFAULT_SIDE_GESTURE_ACTION = SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
+    public static final String KEY_ONE_HANDED_MODE_ENABLED = "one_handed_mode_enabled";
+    public static final boolean DEFAULT_ONE_HANDED_MODE_ENABLED = false;
     public static final String KEY_ONE_HANDED_MODE_ACTION = "one_handed_mode_action";
     public static final int ONE_HANDED_MODE_ACTION_SYSTEM = 0;
     public static final int ONE_HANDED_MODE_ACTION_TASK_SCALE = 1;
@@ -778,6 +780,7 @@ public final class SettingsStore {
             KEY_ASSISTANT_BACKGROUND_BLUR,
             KEY_ASSISTANT_GESTURE_ENABLED,
             KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
+            KEY_ONE_HANDED_MODE_ENABLED,
             KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
             KEY_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
             KEY_WORKSPACE_FLOW_LOGGING_ENABLED,
@@ -1293,6 +1296,7 @@ public final class SettingsStore {
             case KEY_ASSISTANT_BACKGROUND_BLUR: return DEFAULT_ASSISTANT_BACKGROUND_BLUR;
             case KEY_ASSISTANT_GESTURE_ENABLED: return DEFAULT_ASSISTANT_GESTURE_ENABLED;
             case KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED: return DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED;
+            case KEY_ONE_HANDED_MODE_ENABLED: return DEFAULT_ONE_HANDED_MODE_ENABLED;
             case KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO: return DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO;
             case KEY_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO:
                 return DEFAULT_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO;
