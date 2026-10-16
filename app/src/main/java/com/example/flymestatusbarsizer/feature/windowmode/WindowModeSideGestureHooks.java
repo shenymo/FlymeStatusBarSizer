@@ -5,6 +5,7 @@ import com.example.flymestatusbarsizer.feature.mback.MBackHooks;
 import com.example.flymestatusbarsizer.feature.onehanded.OneStepFlowLog;
 
 import android.app.ActivityManager;
+import android.animation.ValueAnimator;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -204,6 +205,7 @@ public final class WindowModeSideGestureHooks {
                     "com.flyme.systemuitools.windowmode.widget.GestureAppLauncher",
                     false,
                     loader);
+            installNativeLauncherAnimationGuard(module, loader);
             Method layoutMethod = gestureClass.getDeclaredMethod(
                     "onLayout",
                     boolean.class,
@@ -255,6 +257,74 @@ public final class WindowModeSideGestureHooks {
                     "Failed to hook Flyme native app launcher two-ring layout",
                     t);
         }
+    }
+
+    private static void installNativeLauncherAnimationGuard(
+            FlymeStatusBarSizer module,
+            ClassLoader loader) {
+        try {
+            Class<?> listenerClass = Class.forName(
+                    "com.flyme.systemuitools.windowmode.widget.GestureAppLauncher$k",
+                    false,
+                    loader);
+            Method method = listenerClass.getDeclaredMethod(
+                    "onAnimationUpdate",
+                    ValueAnimator.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object listener = chain.getThisObject();
+                Object target = readField(listener, "a");
+                Context context = target instanceof View ? ((View) target).getContext() : null;
+                if (isTwoRingLauncherEnabled(context)) {
+                    ensureNativeAnimationCoordinates(target);
+                }
+                return chain.proceed();
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logWindowModeWarning(
+                    "Failed to guard Flyme native two-ring animation coordinates",
+                    t);
+        }
+    }
+
+    private static void ensureNativeAnimationCoordinates(Object target) {
+        if (!(target instanceof ViewGroup)) {
+            return;
+        }
+        ArrayList<Object> topValues = resolveAnimationCoordinates(target, "y");
+        ArrayList<Object> leftValues = resolveAnimationCoordinates(target, "z");
+        if (topValues == null || leftValues == null) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) target;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child == null) {
+                continue;
+            }
+            putAnimationCoordinate(topValues, i, child.getTop());
+            putAnimationCoordinate(leftValues, i, child.getLeft());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ArrayList<Object> resolveAnimationCoordinates(Object target, String name) {
+        Object value = readField(target, name);
+        if (value instanceof ArrayList) {
+            return (ArrayList<Object>) value;
+        }
+        ArrayList<Object> replacement = new ArrayList<>();
+        return writeField(target, name, replacement) ? replacement : null;
+    }
+
+    private static void putAnimationCoordinate(
+            ArrayList<Object> values,
+            int index,
+            int coordinate) {
+        while (values.size() <= index) {
+            values.add(Float.valueOf(0f));
+        }
+        values.set(index, Float.valueOf(coordinate));
     }
 
     private static void installNativeAppLauncherListHook(
