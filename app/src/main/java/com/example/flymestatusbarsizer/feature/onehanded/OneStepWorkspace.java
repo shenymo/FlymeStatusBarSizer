@@ -1435,7 +1435,18 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (workspace == null) return;
         int request = generation;
         workspace.postOnAnimation(() -> {
-            if (request == generation && active()) updateInput();
+            if (request != generation || !active()) return;
+            updateInput();
+            // TaskView is a SurfaceView. Its child surface and internal-insets
+            // listener can become ready one traversal after the pane itself has
+            // been laid out, especially after a launcher handoff or orientation
+            // move. Publish the same region once more after that traversal.
+            workspace.postOnAnimation(() -> {
+                if (request == generation && active()) {
+                    inputRegionRefreshPending = true;
+                    updateInput();
+                }
+            });
         });
     }
 
@@ -1461,8 +1472,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 if (pane.launchHost != null) pane.launchHost.obscure(new Rect(screenBounds));
             }
             if (changed) {
-                // Schedule a traversal to publish the input region without requesting
-                // a new measure/layout pass for every workspace movement.
+                // The region is consumed by TaskView's internal-insets listener.
+                // Invalidate alone can leave the ViewRoot traversal behind a
+                // SurfaceView replacement, so explicitly request one traversal.
+                backdrop.requestLayout();
                 backdrop.invalidate();
             }
             inputRegionRefreshPending = false;
@@ -1484,21 +1497,20 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     && pane.launchHost == null && !pane.host.closing
                     && !pane.host.restoring && !pane.host.released
                     && !(desktopBusy && pane.host.home())) {
-                Rect visible = new Rect();
-                // SurfaceView can report a stale visible rectangle for one frame
-                // while its parent is being resized. Derive the hole from the
-                // pane's staged frame and use the root bounds as a clip, so
-                // a newly opened side/landscape task cannot leave half of the main
-                // pane covered by the old input region.
-                if (pane.container.getGlobalVisibleRect(visible)) {
-                    Rect paneWindow = paneWindowRect(pane);
-                    RectF bounds = new RectF(toWindowRegion(paneWindow));
-                    Path shape = new Path();
-                    shape.addRoundRect(bounds, dp(PANE_RADIUS_DP), dp(PANE_RADIUS_DP), Path.Direction.CW);
-                    Region touchable = new Region();
-                    touchable.setPath(shape, new Region(toWindowRegion(paneWindow)));
-                    obscured.op(touchable, Region.Op.DIFFERENCE);
-                }
+                // SurfaceView can report a stale or empty visible rectangle for
+                // one frame while its parent is being resized or replaced. The
+                // pane frame is the authoritative input geometry here; relying on
+                // getGlobalVisibleRect() can leave the whole host window obscured
+                // just after a new app is moved to a side/landscape pane.
+                if (pane.container.getVisibility() != View.VISIBLE || pane.container.getAlpha() <= 0f) continue;
+                Rect paneWindow = paneWindowRect(pane);
+                if (paneWindow.isEmpty()) continue;
+                RectF bounds = new RectF(toWindowRegion(paneWindow));
+                Path shape = new Path();
+                shape.addRoundRect(bounds, dp(PANE_RADIUS_DP), dp(PANE_RADIUS_DP), Path.Direction.CW);
+                Region touchable = new Region();
+                touchable.setPath(shape, new Region(toWindowRegion(paneWindow)));
+                obscured.op(touchable, Region.Op.DIFFERENCE);
             }
         }
         addToolbarObscuredRegion(obscured);
