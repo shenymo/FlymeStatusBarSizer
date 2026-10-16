@@ -60,13 +60,6 @@ final class OneStepLandscapeWindow {
                 ? landscapeHeight + reservedHeight
                 : toolbarHeight + divider + Math.max(0, toolbarPosition));
         Rect[] result = new Rect[SLOT + 1];
-        if (!showLandscape && showSideWindows) {
-            Rect[] portrait = OneStepWindowLayout.calculateWorkspace(width, height, divider,
-                    contentTop, viewportWidth, viewportHeight, mainSlot, sideOrder, mainOnLeft);
-            result = java.util.Arrays.copyOf(portrait, SLOT + 1);
-            result[SLOT] = new Rect(0, 0, 1, 1);
-            return result;
-        }
         if (showSideWindows) {
             calculateLowerPanes(result, width, height, contentTop,
                     Math.max(1, height - contentTop), divider, mainSlot, sideOrder, mainOnLeft);

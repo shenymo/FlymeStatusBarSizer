@@ -723,13 +723,29 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private float scaleForFrame(Rect frame, int slot) {
+        RectF visual = visualFrame(frame, slot);
         Rect viewport = viewport(slot);
-        return Math.min(1f, Math.min(frame.width() / (float) Math.max(1, viewport.width()),
-                frame.height() / (float) Math.max(1, viewport.height())));
+        return Math.min(visual.width() / Math.max(1f, viewport.width()),
+                visual.height() / Math.max(1f, viewport.height()));
     }
 
     private Rect viewport(int slot) {
         return landscapeWindow.isSlot(slot) ? landscapeWindow.viewport() : portraitBounds;
+    }
+
+    /** Returns the rectangle visible on screen after fitting a logical task viewport. */
+    private RectF visualFrame(Rect frame, int slot) {
+        Rect viewport = viewport(slot);
+        if (frame == null || frame.isEmpty()) return new RectF(frame == null ? new Rect() : frame);
+        boolean keepAspect = layoutKeepMainAspectRatio && slot == mainSlot;
+        if (!keepAspect) return new RectF(frame);
+        float scale = Math.min(frame.width() / (float) Math.max(1, viewport.width()),
+                frame.height() / (float) Math.max(1, viewport.height()));
+        float width = viewport.width() * scale;
+        float height = viewport.height() * scale;
+        float left = frame.left + (frame.width() - width) / 2f;
+        float top = frame.top + (frame.height() - height) / 2f;
+        return new RectF(left, top, left + width, top + height);
     }
 
     private boolean isSideWindowHidden(int slot) {
@@ -751,18 +767,15 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private void position(Pane pane, Rect frame) {
         View view = pane.container;
         Rect viewport = viewport(pane.slot);
-        // Keep the task surface at its logical aspect ratio. When the display and
-        // app orientations differ, the fitted surface can be narrower than the
-        // pane; place that surface in the pane center instead of anchoring it left.
+        RectF visual = visualFrame(frame, pane.slot);
+        // Keep the TaskView at its stable logical viewport. Pane filling is an
+        // outer-container transform so WM never receives a thumbnail-sized task.
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(viewport.width(), viewport.height());
-        float scale = scaleForFrame(frame, pane.slot);
-        int fittedWidth = Math.max(1, Math.round(viewport.width() * scale));
-        int fittedHeight = Math.max(1, Math.round(viewport.height() * scale));
-        params.leftMargin = frame.left + Math.max(0, (frame.width() - fittedWidth) / 2);
-        params.topMargin = frame.top + Math.max(0, (frame.height() - fittedHeight) / 2);
+        params.leftMargin = Math.round(visual.left);
+        params.topMargin = Math.round(visual.top);
         view.setLayoutParams(params);
-        view.setScaleX(scale);
-        view.setScaleY(scale);
+        view.setScaleX(visual.width() / Math.max(1f, viewport.width()));
+        view.setScaleY(visual.height() / Math.max(1f, viewport.height()));
         view.setVisibility(isPaneVisible(pane) ? View.VISIBLE : View.INVISIBLE);
     }
 
@@ -955,7 +968,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (imeBottom <= 0 || imePlacement == OneStepImePolicy.APP || target == null) return 0;
         Rect frame = frames[target.slot];
         float paneTop = contentBounds.top + frame.top;
-        float paneHeight = viewport(target.slot).height() * scaleForFrame(frame, target.slot);
+        float paneHeight = visualFrame(frame, target.slot).height();
         float keyboardTop = screenBounds.bottom - imeBottom;
         float gap = dp(12);
         // The recent-app strip pins to the top when lifted; reserve its height so
@@ -1017,12 +1030,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             return fullscreen;
         }
         Rect frame = frames[slot];
-        Rect viewport = viewport(slot);
-        float scale = scaleForFrame(frame, slot);
-        float w = viewport.width() * scale;
-        float h = viewport.height() * scale;
-        float x = frame.left + Math.max(0f, (frame.width() - w) / 2f);
-        float y = frame.top + Math.max(0f, (frame.height() - h) / 2f);
+        RectF fitted = visualFrame(frame, slot);
+        float x = fitted.left;
+        float y = fitted.top;
+        float w = fitted.width();
+        float h = fitted.height();
         if (!opened) {
             x += (mainOnLeft ? -dp(24) : dp(24)) + w * 0.03f;
             y += dp(12) + h * 0.03f;
@@ -1055,8 +1067,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) pane.container.getLayoutParams();
         pane.container.setTranslationX(x - params.leftMargin);
         pane.container.setTranslationY(y - params.topMargin);
-        pane.container.setScaleX(w / viewport(pane.slot).width());
-        pane.container.setScaleY(h / viewport(pane.slot).height());
+        Rect viewport = viewport(pane.slot);
+        pane.container.setScaleX(w / Math.max(1f, viewport.width()));
+        pane.container.setScaleY(h / Math.max(1f, viewport.height()));
     }
 
     private static float segment(float progress, float start, float end) {
@@ -1171,8 +1184,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         blockInput(true);
         sideOrder.set(index, previousMain);
         mainSlot = slot;
-        Rect[] start = frames;
-        Rect previousViewport = new Rect(portraitBounds);
+        RectF[] start = new RectF[COUNT];
+        for (Pane pane : panes) if (pane != null) start[pane.slot] = currentPaneFrame(pane);
         Rect[] end = layout();
         if (perf != null) perf.phase("swap");
         Runnable finish = () -> {
@@ -1181,9 +1194,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             if (perf != null) perf.phase("steady");
             after.run();
         };
-        // Let the layout animation handle viewport changes as well as pane movement.
-        if (!previousViewport.equals(portraitBounds) || !ValueAnimator.areAnimatorsEnabled()) {
-            portraitBounds.set(previousViewport);
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            for (Pane pane : panes) if (pane != null)
+                setTransitionFrame(pane, start[pane.slot], visualFrame(end[pane.slot], pane.slot), 1f);
             finish.run();
             return;
         }
@@ -1193,8 +1206,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         swap.setInterpolator(EASING);
         swap.addUpdateListener(value -> {
             float f = (float) value.getAnimatedValue();
-            transform(panes[previousMain].container, start[previousMain], end[previousMain], f);
-            transform(selected.container, start[slot], end[slot], f);
+            transform(panes[previousMain].container, start[previousMain], visualFrame(end[previousMain], previousMain), f);
+            transform(selected.container, start[slot], visualFrame(end[slot], slot), f);
             panes[previousMain].updateAppearance();
             selected.updateAppearance();
         });
@@ -1363,13 +1376,21 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         float baseHeight = pane.container.getHeight() > 0 ? pane.container.getHeight() : paneParams.height;
         float paneWidth = baseWidth * Math.abs(pane.container.getScaleX());
         float paneHeight = baseHeight * Math.abs(pane.container.getScaleY());
-        float scale = Math.min(1f, Math.min(paneWidth / desktopWidth, paneHeight / desktopHeight));
-        desktopContainer.setTranslationX(paneParams.leftMargin + pane.container.getTranslationX()
-                + (paneWidth - desktopWidth * scale) / 2f);
-        desktopContainer.setTranslationY(paneParams.topMargin + pane.container.getTranslationY()
-                + (paneHeight - desktopHeight * scale) / 2f);
-        desktopContainer.setScaleX(scale);
-        desktopContainer.setScaleY(scale);
+        boolean fill = pane.slot != mainSlot || !layoutKeepMainAspectRatio;
+        if (fill) {
+            desktopContainer.setTranslationX(paneParams.leftMargin + pane.container.getTranslationX());
+            desktopContainer.setTranslationY(paneParams.topMargin + pane.container.getTranslationY());
+            desktopContainer.setScaleX(paneWidth / desktopWidth);
+            desktopContainer.setScaleY(paneHeight / desktopHeight);
+        } else {
+            float scale = Math.min(1f, Math.min(paneWidth / desktopWidth, paneHeight / desktopHeight));
+            desktopContainer.setTranslationX(paneParams.leftMargin + pane.container.getTranslationX()
+                    + (paneWidth - desktopWidth * scale) / 2f);
+            desktopContainer.setTranslationY(paneParams.topMargin + pane.container.getTranslationY()
+                    + (paneHeight - desktopHeight * scale) / 2f);
+            desktopContainer.setScaleX(scale);
+            desktopContainer.setScaleY(scale);
+        }
         desktopContainer.setElevation(pane.container.getElevation());
         desktopContainer.setAlpha(desktopHost.ready ? 1f : 0f);
     }
@@ -1413,13 +1434,23 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
     }
 
-    private void transform(View view, Rect start, Rect end, float fraction) {
-        view.setTranslationX((end.left - start.left) * fraction);
-        view.setTranslationY((end.top - start.top) * fraction);
-        float startScale = scaleForFrame(start);
-        float scale = startScale + (scaleForFrame(end) - startScale) * fraction;
-        view.setScaleX(scale);
-        view.setScaleY(scale);
+    private void transform(View view, RectF start, RectF end, float fraction) {
+        float left = start.left + (end.left - start.left) * fraction;
+        float top = start.top + (end.top - start.top) * fraction;
+        float width = start.width() + (end.width() - start.width()) * fraction;
+        float height = start.height() + (end.height() - start.height()) * fraction;
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) view.getLayoutParams();
+        Rect viewport = null;
+        // The caller passes the pane view; derive its stable viewport from the pane slot.
+        for (Pane pane : panes) if (pane != null && pane.container == view) {
+            viewport = viewport(pane.slot);
+            break;
+        }
+        if (viewport == null) return;
+        view.setTranslationX(left - params.leftMargin);
+        view.setTranslationY(top - params.topMargin);
+        view.setScaleX(width / Math.max(1f, viewport.width()));
+        view.setScaleY(height / Math.max(1f, viewport.height()));
     }
 
     private void cancelAnimator(boolean swap) {
@@ -2812,7 +2843,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
 
         void updateAppearance() {
-            float scale = Math.max(0.01f, container.getScaleX());
+            float scale = Math.max(0.01f, Math.min(Math.abs(container.getScaleX()),
+                    Math.abs(container.getScaleY())));
             // Pane views retain the full app viewport. Compensate their decorations for
             // scaling so all four windows keep the same on-screen corner/stroke/text size.
             cornerRadius = dp(PANE_RADIUS_DP) * (slot == mainSlot ? transitionProgress : 1f) / scale;
@@ -2981,6 +3013,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         void configureHost(OneStepShell.Host task) {
             Rect bounds = task.home() ? desktopBounds : viewport(slot);
             Rect sourceBounds = landscapeWindow.isSlot(slot) ? bounds : logicalBounds;
+            int surfaceWidth = bounds.width();
+            int surfaceHeight = bounds.height();
             // Home stays fullscreen in WM; retain its complete source viewport so
             // shortening the pane does not crop away the dock or lower app icons.
             Rect surfaceBounds = null;
@@ -2988,8 +3022,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 // New landscape tasks can arrive while their pane animates from
                 // a hidden/portrait frame. Configure the final horizontal bounds
                 // once; the animation only scales the resulting app surface.
-                RectF frame = landscapeWindow.isSlot(slot)
-                        ? new RectF(frames[slot]) : currentPaneFrame(this);
+                RectF frame = currentPaneFrame(this);
                 surfaceBounds = new Rect(
                         Math.round(contentBounds.left + workspace.getTranslationX() + frame.left),
                         Math.round(contentBounds.top + workspace.getTranslationY() + frame.top),
@@ -2997,7 +3030,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                         Math.round(contentBounds.top + workspace.getTranslationY() + frame.bottom));
             }
             shell.geometry(task, task.home() ? logicalBounds : sourceBounds,
-                    bounds.width(), bounds.height(), slot == mainSlot, landscapeWindow.isSlot(slot),
+                    surfaceWidth, surfaceHeight, slot == mainSlot, landscapeWindow.isSlot(slot),
                     surfaceBounds);
             syncTaskBounds(task);
         }
