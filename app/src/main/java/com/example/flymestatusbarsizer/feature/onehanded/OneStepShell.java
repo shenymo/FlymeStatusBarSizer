@@ -1037,6 +1037,51 @@ final class OneStepShell {
         });
     }
 
+    /**
+     * Breaks a close deadlock after the normal organizer/transition callbacks stop arriving.
+     * The normal restore path remains authoritative; this path only releases the workspace
+     * ownership and leaves the recovery journal intact for anything that could not be restored.
+     */
+    void forceClose(Runnable finished) {
+        accepting = false;
+        int request = closeRequest.incrementAndGet();
+        executor.execute(() -> {
+            OneStepFlowLog.warn("shell_force_restore", session,
+                    "hosts=" + hosts.size() + " pending=" + pending.size(),
+                    new IllegalStateException("Workspace close watchdog fired"));
+            try {
+                activityLaunchTransition = null;
+                pending.clear();
+                finishes.clear();
+                incoming.clear();
+                transitionBusy = false;
+                if (imeSession != null) {
+                    try { imeSession.close(); }
+                    catch (RuntimeException error) {
+                        OneStepFlowLog.w(TAG, "Cannot close forced workspace IME session", error);
+                    }
+                    imeSession = null;
+                }
+                for (Host host : new ArrayList<>(hosts)) forceRestoreHost(host);
+                hosts.clear();
+                retired.clear();
+                OneStepWorkspaceTransition motion = workspaceTransition;
+                workspaceTransition = null;
+                if (motion != null) {
+                    try { motion.release(); }
+                    catch (RuntimeException error) {
+                        OneStepFlowLog.w(TAG, "Cannot release forced workspace transition", error);
+                    }
+                }
+            } catch (Throwable error) {
+                OneStepFlowLog.w(TAG, "Forced workspace restore failed", error);
+            } finally {
+                transitionBusy = false;
+                if (finished != null && request == closeRequest.get()) ui.post(finished);
+            }
+        });
+    }
+
     void setSuspended(boolean value) {
         suspended = value;
         int request = session;
@@ -2251,6 +2296,68 @@ final class OneStepShell {
                     "attempt=" + (attempt + 1) + " focusTask=" + focusTask, error);
             later(() -> restoreAll(focusTask, finished, attempt + 1, request), Math.min(5000, 200 + attempt * 400));
         }
+    }
+
+    private void forceRestoreHost(Host host) {
+        boolean restored = false;
+        try {
+            cancelLaunchAnimation(host);
+            if (host.borrowed && host.token != null && host.originalMode > 0 && !host.originalBounds.isEmpty()) {
+                Object wct = transaction();
+                mode(wct, host.token, host.originalMode);
+                bounds(wct, host.token, host.originalBounds);
+                bool(wct, "setFocusable", host.token, host.originalFocusable);
+                bool(wct, "setForceTranslucent", host.token, false);
+                bool(wct, "setAlwaysOnTop", host.token, host.originalAlwaysOnTop);
+                bool(wct, "setExcludeImeInsets", host.token, false);
+                OneStepReflection.call(organizer, "applyTransaction", new Class<?>[]{wctClass}, wct);
+                restored = true;
+            }
+        } catch (Throwable error) {
+            OneStepFlowLog.warn("forced_task_restore", host.session,
+                    "task=" + (host.card == null ? -1 : host.card.taskId), error);
+        }
+        try {
+            if (host.imeRegistered && host.card != null && imeSession != null) {
+                imeSession.remove((IBinder) host.card.token);
+                host.imeRegistered = false;
+            }
+        } catch (Throwable error) {
+            OneStepFlowLog.w(TAG, "Cannot remove forced workspace IME task", error);
+        }
+        try {
+            synchronized (OneStepReflection.get(organizer, "mLock")) {
+                if (host.token != null && host.card != null
+                        && listeners().get(host.card.taskId) == host.controller) {
+                    SparseArray<Object> taskListeners = listeners();
+                    if (host.oldSpecificListener != null && !host.externalReturn) {
+                        taskListeners.put(host.card.taskId, host.oldSpecificListener);
+                        Object appeared = appeared(host.card.taskId);
+                        Object info = appeared == null ? null
+                                : OneStepReflection.call(appeared, "getTaskInfo");
+                        if (info != null) {
+                            SurfaceControl leash = (SurfaceControl) OneStepReflection.call(appeared, "getLeash");
+                            taskCallback(host.oldSpecificListener, "onTaskAppeared", info, leash);
+                        }
+                    } else
+                        OneStepReflection.call(organizer, "removeListener",
+                                new Class<?>[]{taskListenerClass}, host.controller);
+                }
+            }
+        } catch (Throwable error) {
+            OneStepFlowLog.w(TAG, "Cannot detach forced workspace task listener", error);
+        }
+        if (restored && host.card != null) {
+            try { forget(host.card.taskId); }
+            catch (Exception error) {
+                OneStepFlowLog.w(TAG, "Cannot clear restored task recovery record", error);
+            }
+        }
+        host.borrowed = false;
+        host.prepared = false;
+        host.workspaceRestorePending = false;
+        host.workspaceRestoreCommitted = false;
+        releaseView(host);
     }
 
     private boolean moveHomeBehindWorkspace(Host host) throws Exception {

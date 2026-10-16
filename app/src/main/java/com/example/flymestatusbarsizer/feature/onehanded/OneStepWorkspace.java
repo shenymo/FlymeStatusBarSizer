@@ -55,6 +55,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private static final int PANE_TAP_HIGHLIGHT_MS = 350;
     private static final long IME_HIDE_TIMEOUT_MS = 2500;
     private static final long IME_SETTLE_MS = 100;
+    private static final long CLOSE_WATCHDOG_MS = 8000;
     private static final PathInterpolator EASING = new PathInterpolator(0.2f, 0f, 0f, 1f);
     private enum State { CLOSED, OPENING, RUNNING, CLOSING }
     private volatile State state = State.CLOSED;
@@ -90,6 +91,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private final Runnable exitAnimationTimeout = () -> {
         if (state == State.CLOSING && (this.transitionHandoff || this.transitionAnimator != null)) close(false);
     };
+    private final Runnable closeWatchdog = this::onCloseWatchdog;
     private WorkspaceRoot backdrop;
     private FrameLayout workspace;
     private View recentStrip;
@@ -162,6 +164,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private boolean rebinding;
     private OneStepPerf perf;
     private volatile boolean oneHandedProfile;
+
+    private void onCloseWatchdog() {
+        if (state != State.CLOSING) return;
+        OneStepFlowLog.warn("workspace_close_timeout", generation,
+                "closeGeneration=" + closeGeneration,
+                new IllegalStateException("Workspace close exceeded " + CLOSE_WATCHDOG_MS + "ms"));
+        shell.forceClose(this::finishClose);
+    }
 
     OneStepWorkspace(Context source, Handler handler, Object transitions, Object factory, Object displayAreas)
             throws Exception {
@@ -2622,6 +2632,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 cancelAnimator(false);
                 transitionHandoff = false;
                 shell.close(-1, this::finishClose);
+                handler.removeCallbacks(closeWatchdog);
+                handler.postDelayed(closeWatchdog, CLOSE_WATCHDOG_MS);
             }
             return;
         }
@@ -2631,6 +2643,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 && main != null && main.slot == mainSlot && main.host != null && main.host.ready && !rebinding && !panesBusy() && !movingTask;
         int closing = ++closeGeneration;
         state = State.CLOSING;
+        handler.removeCallbacks(closeWatchdog);
+        handler.postDelayed(closeWatchdog, CLOSE_WATCHDOG_MS);
         releaseNavigation();
         recentApps.setExitEnabled(false);
         clearPaneTapHighlight();
@@ -2677,6 +2691,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         int closedSession = generation;
         boolean returnHomeAfterClose = homeRequested;
         handler.removeCallbacks(exitAnimationTimeout);
+        handler.removeCallbacks(closeWatchdog);
         cancelAnimator(true);
         cancelLayoutAnimator();
         cancelAnimator(false);
@@ -2685,9 +2700,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         shellImeControlled = false;
         shellImePositioning = false;
         if (perf != null) { perf.stop(); perf = null; }
-        OneStepStatusBar.setVisible(false);
+        OneStepStatusBar.reset();
         if (activitySession != null) { activitySession.close(); activitySession = null; }
-        OneStepStatusBar.setBackgroundOwned(false);
         backdrop = null;
         workspace = null;
         desktopHost = null;

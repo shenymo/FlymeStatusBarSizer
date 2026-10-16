@@ -127,6 +127,29 @@ final class OneStepStatusBar {
         refreshBackground();
     }
 
+    static void reset() {
+        Runnable update = () -> {
+            visible = false;
+            backgroundVisible = false;
+            backgroundOwned = false;
+            imeVisible = false;
+            // Refresh while the old override marker is still set. Clearing it first
+            // would make refreshBackground() incorrectly skip the native redraw.
+            refreshBackground();
+            backgroundOverridden = false;
+            refreshColors();
+            Object owner = primary.get();
+            Method method = apply;
+            if (owner == null || method == null) return;
+            try { method.invoke(owner, ReflectUtils.getField(owner, "mCurrentState")); }
+            catch (ReflectiveOperationException | RuntimeException error) {
+                OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot reset native status bar visibility", error);
+            }
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) update.run();
+        else new Handler(Looper.getMainLooper()).post(update);
+    }
+
     static void finishBackground(SurfaceControl backdrop) {
         new Handler(Looper.getMainLooper()).post(() -> {
             setBackgroundOwned(false);
