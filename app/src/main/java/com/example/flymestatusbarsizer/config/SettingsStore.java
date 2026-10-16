@@ -150,12 +150,16 @@ public final class SettingsStore {
     public static final String KEY_WORKSPACE_TOOLBAR_HEIGHT_DP = "workspace_toolbar_height_dp";
     public static final String KEY_WORKSPACE_TOOLBAR_POSITION_DP = "workspace_toolbar_position_dp";
     public static final String KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO = "workspace_keep_main_aspect_ratio";
+    public static final String KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED =
+            "workspace_default_sidebar_enabled";
     public static final String KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP =
             "one_handed_workspace_toolbar_height_dp";
     public static final String KEY_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP =
             "one_handed_workspace_toolbar_position_dp";
     public static final String KEY_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO =
             "one_handed_workspace_keep_main_aspect_ratio";
+    public static final String KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED =
+            "one_handed_workspace_default_sidebar_enabled";
     public static final String KEY_WORKSPACE_FLOW_LOGGING_ENABLED =
             "workspace_flow_logging_enabled";
     public static final boolean DEFAULT_ASSISTANT_GESTURE_ENABLED = false;
@@ -172,10 +176,12 @@ public final class SettingsStore {
     public static final int MIN_WORKSPACE_TOOLBAR_POSITION_DP = 0;
     public static final int MAX_WORKSPACE_TOOLBAR_POSITION_DP = 240;
     public static final boolean DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO = false;
+    public static final boolean DEFAULT_WORKSPACE_DEFAULT_SIDEBAR_ENABLED = false;
     public static final int DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP = DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;
     public static final int DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP = DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP;
     public static final boolean DEFAULT_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO =
             DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO;
+    public static final boolean DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED = false;
     public static final boolean DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED = false;
     public static final String KEY_MBACK_LONG_TOUCH_ACTION = "mback_long_touch_action";
     public static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
@@ -782,7 +788,9 @@ public final class SettingsStore {
             KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
             KEY_ONE_HANDED_MODE_ENABLED,
             KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
+            KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
             KEY_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO,
+            KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
             KEY_WORKSPACE_FLOW_LOGGING_ENABLED,
             CircleBatteryAnimationConfig.ENABLED,
             CircleBatteryAnimationConfig.CHARGING_ONLY,
@@ -1298,8 +1306,12 @@ public final class SettingsStore {
             case KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED: return DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED;
             case KEY_ONE_HANDED_MODE_ENABLED: return DEFAULT_ONE_HANDED_MODE_ENABLED;
             case KEY_WORKSPACE_KEEP_MAIN_ASPECT_RATIO: return DEFAULT_WORKSPACE_KEEP_MAIN_ASPECT_RATIO;
+            case KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED:
+                return DEFAULT_WORKSPACE_DEFAULT_SIDEBAR_ENABLED;
             case KEY_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO:
                 return DEFAULT_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO;
+            case KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED:
+                return DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED;
             case KEY_ENABLED:
                 return DEFAULT_ENABLED;
             case KEY_STATUS_BAR_TINT_ENABLED:

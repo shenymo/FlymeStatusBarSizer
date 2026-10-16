@@ -629,7 +629,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         imePlacement = OneStepImePolicy.UNKNOWN;
         sideOrder.clear();
         for (int i = 1; i < OneStepLandscapeWindow.SLOT; i++) sideOrder.add(i);
-        sideWindowsExpanded = false;
+        ModuleConfig config = ModuleConfig.load(context);
+        sideWindowsExpanded = oneHandedProfile
+                ? config.oneHandedWorkspaceDefaultSidebarEnabled
+                : config.workspaceDefaultSidebarEnabled;
         sideWindowsHidden = false;
         frames = layout();
         backdrop = new WorkspaceRoot();

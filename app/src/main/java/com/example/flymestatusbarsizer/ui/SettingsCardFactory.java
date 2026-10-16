@@ -528,6 +528,12 @@ public final class SettingsCardFactory {
                         : SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP,
                 SettingsStore.MIN_WORKSPACE_TOOLBAR_POSITION_DP,
                 SettingsStore.MAX_WORKSPACE_TOOLBAR_POSITION_DP, "dp");
+        activity.addSwitchRow(options, "默认显示侧边栏",
+                "进入应用工作台时默认显示侧边的 3 个小窗；关闭后侧窗为空时自动收起。",
+                oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED
+                        : SettingsStore.KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
+                oneHanded ? SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED
+                        : SettingsStore.DEFAULT_WORKSPACE_DEFAULT_SIDEBAR_ENABLED);
         activity.addSwitchRow(options, "保持主应用比例",
                 "没有横屏窗口时保持原比例，两侧可能留出空白。",
                 oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_KEEP_MAIN_ASPECT_RATIO
