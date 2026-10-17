@@ -94,7 +94,8 @@ public final class OneStepLauncherBridge {
                         PendingIntent intent = data.readTypedObject(PendingIntent.CREATOR);
                         int targetUser = data.readInt();
                         IBinder launchAnimation = data.readStrongBinder();
-                        accepted &= enabled && !pending && intent != null && targetUser == userId;
+                        accepted &= enabled && !pending && intent != null
+                                && (targetUser == userId || (userId == 0 && targetUser == 999));
                         if (accepted) {
                             pending = true;
                             handler.post(() -> {
@@ -160,7 +161,8 @@ public final class OneStepLauncherBridge {
                     Object user = ReflectUtils.getField(info, "user");
                     UserHandle target = user instanceof UserHandle ? (UserHandle) user : Process.myUserHandle();
                     // Workspace task ownership currently stays within the foreground Android user.
-                    if (!target.equals(Process.myUserHandle())) {
+                    int targetUserId = ReflectUtils.invokeNoArgInt(target, "getIdentifier", -1);
+                    if (!target.equals(Process.myUserHandle()) && targetUserId != 999) {
                         Toast.makeText(context, "暂不支持在工作台中打开其他用户的应用", Toast.LENGTH_SHORT).show();
                         return null;
                     }
@@ -170,7 +172,7 @@ public final class OneStepLauncherBridge {
                     OneStepLaunchAnimation.Launch preparedAnimation = animation;
                     int accepted = transact(control, LAUNCH, data -> {
                         data.writeTypedObject(pending, 0);
-                        data.writeInt(Process.myUid() / 100000);
+                        data.writeInt(targetUserId);
                         data.writeStrongBinder(preparedAnimation);
                     });
                     if (accepted != 1) {
@@ -212,8 +214,10 @@ public final class OneStepLauncherBridge {
             return shortcut;
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        return PendingIntent.getActivity(context, requestCodes.incrementAndGet(), intent,
-                PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE, options);
+        return (PendingIntent) OneStepReflection.method(PendingIntent.class, "getActivityAsUser",
+                Context.class, int.class, Intent.class, int.class, Bundle.class, UserHandle.class)
+                .invoke(null, context, requestCodes.incrementAndGet(), intent,
+                        PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE, options, user);
     }
 
     private static void register(Context activity) {

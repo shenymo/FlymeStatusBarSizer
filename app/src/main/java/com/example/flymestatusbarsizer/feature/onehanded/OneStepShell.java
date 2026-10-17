@@ -1347,11 +1347,12 @@ final class OneStepShell {
             restoreOne(host, () -> { if (listener != null) listener.onTaskReused(host, existing); }, 0);
             return;
         }
+        int launchedUserId = ReflectUtils.getIntField(info, "userId", -1);
         if (OneStepTaskAccess.token(info) == null || baseComponent(info) == null
-                || ReflectUtils.getIntField(info, "userId", -1) != activityUserId)
+                || !acceptsWorkspaceUser(launchedUserId))
             throw new IllegalStateException("Launched application cannot be hosted");
         ComponentName component = baseComponent(info);
-        host.card = new RecentTaskCard(OneStepTaskAccess.taskId(info), activityUserId,
+        host.card = new RecentTaskCard(OneStepTaskAccess.taskId(info), launchedUserId,
                 OneStepTaskAccess.token(info), component.getPackageName(), component);
         OneStepFlowLog.info("app_launch_attached", host.session,
                 "task=" + host.card.taskId + " package="
@@ -1861,7 +1862,7 @@ final class OneStepShell {
         Host existing = find(info);
         if (existing != null && current(existing) && existing.interactive) return null;
         RecentTaskCard card = OneStepTaskAccess.runningCard(info);
-        if (card == null || card.userId != activityUserId || declined.contains(card.token)
+        if (card == null || !acceptsWorkspaceUser(card.userId) || declined.contains(card.token)
                 || !OneStepTaskAccess.externalTaskAllowed(info)) return null;
         Navigation previous = incoming.get(card.token);
         if (previous != null) return previous;
@@ -1883,6 +1884,10 @@ final class OneStepShell {
             else cancelNavigation(navigation);
         }, 8000);
         return navigation;
+    }
+
+    private boolean acceptsWorkspaceUser(int userId) {
+        return userId == activityUserId || (activityUserId == 0 && userId == 999);
     }
 
     private void stageNavigation(Navigation navigation, Object change, SurfaceControl.Transaction start,
