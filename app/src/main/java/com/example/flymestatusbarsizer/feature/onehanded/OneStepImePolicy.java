@@ -49,6 +49,12 @@ public final class OneStepImePolicy {
     static final int DISPLAY = 1;
     static final int APP = 2;
 
+    private static boolean taskBelongsToWorkspace(Object task, Object workspace) {
+        int taskUser = ReflectUtils.getIntField(task, "mUserId", -1);
+        int workspaceUser = ReflectUtils.getIntField(workspace, "mUserId", -2);
+        return taskUser == workspaceUser || (workspaceUser == 0 && taskUser == 999);
+    }
+
     // Only system_server uses these maps, always under WMS's global lock.
     private static final Map<Object, ServerSession> OWNERS = new IdentityHashMap<>();
     private static final Map<Object, ServerSession> WORKSPACES = new IdentityHashMap<>();
@@ -858,8 +864,7 @@ public final class OneStepImePolicy {
                         Object task = resolveTask(token);
                         int type = ReflectUtils.invokeNoArgInt(task, "getActivityType", -1);
                         if (task == workspace || !standalone(task) || (type != 1 && type != 2)
-                                || ReflectUtils.getIntField(task, "mUserId", -1)
-                                != ReflectUtils.getIntField(workspace, "mUserId", -2))
+                                || !taskBelongsToWorkspace(task, workspace))
                             throw new SecurityException("Task is outside this workspace");
                         ServerSession previous = OWNERS.get(task);
                         if (previous != null && previous != this) throw new IllegalStateException("Task already hosted");
@@ -917,6 +922,7 @@ public final class OneStepImePolicy {
             }
             Object task = resolveTask(token);
             if (task == workspace || !tasks.containsKey(token) || !standalone(task)
+                    || !taskBelongsToWorkspace(task, workspace)
                     || ReflectUtils.invokeNoArgInt(task, "getActivityType", -1) != 1)
                 throw new IllegalStateException("Task is outside this workspace");
             if (bounds.isEmpty() || bounds.width() <= bounds.height())

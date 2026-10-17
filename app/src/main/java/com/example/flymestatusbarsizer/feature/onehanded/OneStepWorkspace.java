@@ -375,11 +375,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         initialTaskStarted = false;
         entryAnimationStarted = false;
         transitionHandoff = false;
-        shell.begin(request, main.userId);
+        shell.begin(request, main.userId, workspaceOwnerUserId);
         OneStepFlowLog.info("workspace_entry_started", request,
                 "task=" + main.taskId + " user=" + main.userId + " suspended=" + suspended);
         shell.setSuspended(suspended);
-        activitySession = new OneStepActivitySession(context, handler, main.userId, workspaceOwnerUserId, shell, new OneStepActivitySession.Listener() {
+        activitySession = new OneStepActivitySession(context, handler, workspaceOwnerUserId, workspaceOwnerUserId, shell, new OneStepActivitySession.Listener() {
             @Override public void onAttached(int taskId, Rect bounds, Rect insets) {
                 if (generation != request || state != State.OPENING) return;
                 shell.attachActivity(taskId, () -> {

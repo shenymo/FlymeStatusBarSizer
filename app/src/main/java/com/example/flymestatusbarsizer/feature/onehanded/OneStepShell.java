@@ -270,6 +270,7 @@ final class OneStepShell {
     private volatile int activityTaskId = -1;
     private volatile Object activityToken;
     private volatile int activityUserId;
+    private volatile int activityHostUserId;
     private volatile IBinder activityLaunchCookie;
     private IBinder activityLaunchTransition;
     private OneStepImePolicy.Session imeSession;
@@ -517,6 +518,19 @@ final class OneStepShell {
         }
     }
 
+    private void registerImeTask(Host host) throws Exception {
+        try {
+            imeSession.add((IBinder) host.card.token);
+            host.imeRegistered = true;
+        } catch (SecurityException error) {
+            host.imeRegistered = false;
+            if (host.card.userId != 999 || !"Task is outside this workspace".equals(error.getMessage()))
+                throw error;
+            OneStepFlowLog.warn("clone_ime_policy_unavailable", host.session,
+                    "task=" + host.card.taskId + " user=999", error);
+        }
+    }
+
     void logImeTasks(int request, String event) {
         executor.execute(() -> {
             if (!accepting || request != session) return;
@@ -546,7 +560,7 @@ final class OneStepShell {
         }
     }
 
-    void begin(int value, int userId) {
+    void begin(int value, int userId, int hostUserId) {
         if (!available()) throw new IllegalStateException("Shell workspace is not ready");
         closeRequest.incrementAndGet();
         session = value;
@@ -555,13 +569,15 @@ final class OneStepShell {
         activityLaunchCookie = null;
         activityLaunchTransition = null;
         activityUserId = userId;
+        activityHostUserId = hostUserId;
         covered = false;
         suspended = false;
         hostVisible = true;
         declined.clear();
         accepting = true;
         closingFocusTask = -1;
-        OneStepFlowLog.info("shell_session_started", session, "user=" + userId);
+        OneStepFlowLog.info("shell_session_started", session,
+                "user=" + userId + " hostUser=" + hostUserId);
     }
 
     void prepareWorkspaceEntry(RecentTaskCard card, java.util.function.Consumer<Rect> ready) {
@@ -815,7 +831,7 @@ final class OneStepShell {
                 }
             });
             for (Host host : hosts) if (current(host) && host.imeRegistered) {
-                imeSession.add((IBinder) host.card.token);
+                registerImeTask(host);
                 // A replacement server session has no pane overrides. Reapply
                 // them even when the visible frame has not changed.
                 host.landscapeForced = false;
@@ -866,7 +882,7 @@ final class OneStepShell {
     }
 
     boolean isActivityTask(Object info) {
-        if (info == null || ReflectUtils.getIntField(info, "userId", -1) != activityUserId) return false;
+        if (info == null || ReflectUtils.getIntField(info, "userId", -1) != activityHostUserId) return false;
         Object component = ReflectUtils.getField(info, "baseActivity");
         if (!(component instanceof ComponentName)) component = ReflectUtils.getField(info, "topActivity");
         if (!(component instanceof ComponentName) || !OneStepActivityProtocol.isActivity((ComponentName) component)) return false;
@@ -1208,8 +1224,7 @@ final class OneStepShell {
             }
             save(host, info);
             if (imeSession == null) throw new IllegalStateException("Workspace IME session unavailable");
-            host.imeRegistered = true;
-            imeSession.add((IBinder) host.card.token);
+            registerImeTask(host);
             updateLandscapePolicy(host);
             synchronized (OneStepReflection.get(organizer, "mLock")) {
                 SparseArray<Object> listeners = listeners();

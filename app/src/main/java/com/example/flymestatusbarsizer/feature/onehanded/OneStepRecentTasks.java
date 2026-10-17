@@ -15,6 +15,7 @@ import java.util.List;
 
 /** Reads eligible recent tasks through the same services as this ROM's SystemUI/Launcher. */
 final class OneStepRecentTasks {
+    static final int CLONE_USER_ID = 999;
     private final Object wrapper;
     private final Object taskManager;
     private final Method currentUser;
@@ -32,14 +33,31 @@ final class OneStepRecentTasks {
 
     List<RecentTaskCard> recentTasks() throws ReflectiveOperationException {
         int userId = ((Number) currentUser.invoke(wrapper)).intValue();
-        Object result = recentTasks.invoke(taskManager, 32, ActivityManager.RECENT_IGNORE_UNAVAILABLE, userId);
         List<RecentTaskCard> cards = new ArrayList<>();
-        if (!(result instanceof List)) return cards;
+        addRecentTasks(cards, userId, false);
+        if (userId != CLONE_USER_ID) addRecentTasks(cards, CLONE_USER_ID, true);
+        return cards;
+    }
+
+    private void addRecentTasks(List<RecentTaskCard> cards, int userId, boolean optional)
+            throws ReflectiveOperationException {
+        Object result;
+        try {
+            result = recentTasks.invoke(taskManager, 32, ActivityManager.RECENT_IGNORE_UNAVAILABLE, userId);
+        } catch (ReflectiveOperationException error) {
+            if (optional) return;
+            throw error;
+        }
+        if (!(result instanceof List)) return;
         for (Object info : (List<?>) result) {
             RecentTaskCard card = candidate(info, userId);
-            if (card != null) cards.add(card);
+            if (card == null) continue;
+            boolean duplicate = false;
+            for (RecentTaskCard existing : cards) {
+                if (existing.sameTask(card)) { duplicate = true; break; }
+            }
+            if (!duplicate) cards.add(card);
         }
-        return cards;
     }
 
     Object taskInfo(RecentTaskCard requested) throws ReflectiveOperationException {
@@ -57,8 +75,9 @@ final class OneStepRecentTasks {
         Object bounds = ReflectUtils.invokeNoArg(window, "getBounds");
         Object token = ReflectUtils.invokeNoArg(ReflectUtils.getField(info, "token"), "asBinder");
         int taskId = ReflectUtils.getIntField(info, "taskId", -1);
+        int taskUserId = ReflectUtils.getIntField(info, "userId", -1);
         if (taskId < 0 || token == null || !(bounds instanceof Rect) || ((Rect) bounds).isEmpty()
-                || ReflectUtils.getIntField(info, "userId", -1) != userId
+                || (taskUserId != userId && taskUserId != CLONE_USER_ID)
                 || ReflectUtils.getIntField(info, "displayId", -1) != 0
                 || ReflectUtils.getIntField(info, "parentTaskId", -2) != -1
                 || ReflectUtils.invokeNoArgInt(window, "getWindowingMode", -1) != 1
@@ -76,6 +95,6 @@ final class OneStepRecentTasks {
         Object label = ReflectUtils.invokeNoArg(ReflectUtils.getField(info, "taskDescription"), "getLabel");
         String description = label instanceof String && !((String) label).isEmpty()
                 ? (String) label : ((ComponentName) component).getPackageName();
-        return new RecentTaskCard(taskId, userId, token, description, (ComponentName) component);
+        return new RecentTaskCard(taskId, taskUserId, token, description, (ComponentName) component);
     }
 }

@@ -5,6 +5,7 @@ import android.content.res.ColorStateList;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
+import android.os.UserHandle;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.HorizontalScrollView;
@@ -220,7 +221,14 @@ final class OneStepRecentAppsBar {
                 icons.add(icon);
                 iconLoader.execute(() -> {
                     Drawable drawable;
-                    try { drawable = context.getPackageManager().getActivityIcon(card.component); }
+                    try {
+                        android.content.pm.PackageManager packageManager = context.getPackageManager();
+                        drawable = packageManager.getActivityIcon(card.component);
+                        if (card.userId == OneStepRecentTasks.CLONE_USER_ID) {
+                            drawable = packageManager.getUserBadgedIcon(drawable,
+                                    UserHandle.getUserHandleForUid(card.userId * 100000));
+                        }
+                    }
                     catch (Exception error) { drawable = context.getPackageManager().getDefaultActivityIcon(); }
                     Drawable result = drawable;
                     handler.post(() -> {

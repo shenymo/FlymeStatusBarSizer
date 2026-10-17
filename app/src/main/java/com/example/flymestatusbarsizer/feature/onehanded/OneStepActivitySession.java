@@ -40,7 +40,7 @@ final class OneStepActivitySession {
     private final Listener listener;
     private final OneStepShell shell;
     private final IBinder control;
-    private final int userId;
+    private final int hostUserId;
     private final int ownerUserId;
     private final int clientUid;
     private IBinder client;
@@ -62,16 +62,16 @@ final class OneStepActivitySession {
     private final Runnable restart = this::restartHost;
     private final Runnable restartTimeout = this::checkRestartTimeout;
 
-    OneStepActivitySession(Context context, Handler handler, int userId, int ownerUserId,
+    OneStepActivitySession(Context context, Handler handler, int hostUserId, int ownerUserId,
                            OneStepShell shell, Listener listener) throws Exception {
         this.context = context;
         this.handler = handler;
-        this.userId = userId;
+        this.hostUserId = hostUserId;
         this.ownerUserId = ownerUserId;
         this.listener = listener;
         this.shell = shell;
         clientUid = ((Number) OneStepReflection.call(context.getPackageManager(), "getPackageUidAsUser",
-                new Class<?>[]{String.class, int.class}, BuildConfig.APPLICATION_ID, userId)).intValue();
+                new Class<?>[]{String.class, int.class}, BuildConfig.APPLICATION_ID, hostUserId)).intValue();
         control = new Binder() {
             @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
                     throws RemoteException {
@@ -191,7 +191,7 @@ final class OneStepActivitySession {
         ActivityOptions creator = ActivityOptions.makeBasic();
         if (android.os.Build.VERSION.SDK_INT >= 35)
             creator.setPendingIntentCreatorBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
-        UserHandle user = UserHandle.getUserHandleForUid(userId * 100000);
+        UserHandle user = UserHandle.getUserHandleForUid(hostUserId * 100000);
         if (launchIntent != null) launchIntent.cancel();
         launchIntent = (PendingIntent) OneStepReflection.method(PendingIntent.class, "getActivityAsUser",
                 Context.class, int.class, Intent.class, int.class, Bundle.class, UserHandle.class)
