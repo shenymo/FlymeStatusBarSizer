@@ -1503,19 +1503,19 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         try {
             boolean changed = inputRegionRefreshPending;
             Region obscured = obscuredTouchRegion(block);
-            for (Pane pane : panes) if (pane != null && pane.host != null) {
-                java.lang.reflect.Field field = OneStepReflection.field(pane.host.view.getClass(), "mObscuredTouchRegion");
-                Object previous = field.get(pane.host.view);
-                if (inputRegionRefreshPending || !obscured.equals(previous)) {
-                    field.set(pane.host.view, new android.graphics.Region(obscured));
-                    changed = true;
-                    // The field is private on this ROM and changing it directly does
-                    // not invalidate ViewRoot's internal-insets result. A layout pass
-                    // is required after a pane move so TaskView publishes the new hole.
-                    pane.host.view.requestLayout();
+            java.util.IdentityHashMap<OneStepShell.Host, Boolean> updated = new java.util.IdentityHashMap<>();
+            for (Pane pane : panes) if (pane != null) {
+                changed |= updateHostInputRegion(pane.host, obscured, updated);
+                if (pane.launchHost != null) {
+                    pane.launchHost.obscure(new Rect(screenBounds));
+                    updated.put(pane.launchHost, Boolean.TRUE);
                 }
-                if (pane.launchHost != null) pane.launchHost.obscure(new Rect(screenBounds));
             }
+            // Home remains mounted while parked after the main pane launches an app.
+            // Its TaskView shares this window's internal-insets listener and must not
+            // retain the full-screen region installed during mounting.
+            if (desktopHost != null && !updated.containsKey(desktopHost))
+                changed |= updateHostInputRegion(desktopHost, obscured, updated);
             if (changed) {
                 // The region is consumed by TaskView's internal-insets listener.
                 // Invalidate alone can leave the ViewRoot traversal behind a
@@ -1528,6 +1528,20 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             if (active()) handler.post(() -> fail("无法设置应用触摸区域", error));
             else OneStepFlowLog.w(TAG, "Cannot close task input regions", error);
         }
+    }
+
+    private boolean updateHostInputRegion(OneStepShell.Host host, Region obscured,
+                                         java.util.IdentityHashMap<OneStepShell.Host, Boolean> updated)
+            throws ReflectiveOperationException {
+        if (host == null || updated.put(host, Boolean.TRUE) != null) return false;
+        java.lang.reflect.Field field = OneStepReflection.field(host.view.getClass(), "mObscuredTouchRegion");
+        Object previous = field.get(host.view);
+        if (!inputRegionRefreshPending && obscured.equals(previous)) return false;
+        field.set(host.view, new Region(obscured));
+        // Directly changing TaskView's region does not invalidate ViewRoot's
+        // internal-insets result, so request a traversal for every mounted task.
+        host.view.requestLayout();
+        return true;
     }
 
     private Region obscuredTouchRegion(boolean block) {
@@ -2436,6 +2450,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 pane.replacing = false;
                 desktopBusy = false;
                 pane.updateAppearance();
+                bringLandscapePaneToFront();
                 // Launcher handoff replaces a SurfaceView after the pane has already
                 // been laid out. Reapply the decoration once the new view has its
                 // final scale; otherwise the first frame can retain the desktop's
