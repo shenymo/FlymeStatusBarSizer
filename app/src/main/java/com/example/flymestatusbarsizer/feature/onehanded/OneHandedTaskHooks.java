@@ -43,6 +43,7 @@ public final class OneHandedTaskHooks {
     private static volatile Object taskDisplayAreas;
     private static volatile boolean imeVisible;
     private static volatile boolean imePositioning;
+    private static volatile boolean workspaceTriggerReceiverInstalled;
 
     public static final SideGestureActions.Action ACTION = new SideGestureActions.Action() {
         @Override public boolean isReady() {
@@ -321,9 +322,33 @@ public final class OneHandedTaskHooks {
                         shellTransitions, taskViewFactory, taskDisplayAreas);
                 registerEnvironment(context, handler);
                 controller = current;
+                registerWorkspaceTriggerReceiver(context, handler);
                 OneStepFlowLog.i(TAG, "OneStep Shell workspace ready in SystemUI");
             } catch (Throwable e) { OneStepFlowLog.w(TAG, "Cannot initialize OneStep workspace", e); }
         });
+    }
+
+    private static void registerWorkspaceTriggerReceiver(Context context, Handler handler) {
+        if (workspaceTriggerReceiverInstalled) return;
+        BroadcastReceiver receiver = new BroadcastReceiver() {
+            @Override public void onReceive(Context receiverContext, Intent intent) {
+                if (!OneStepWorkspaceProtocol.ACTION_OPEN.equals(intent.getAction())) return;
+                OneStepFlowLog.i(TAG, "URL scheme workspace request received");
+                handler.postDelayed(() -> {
+                    OneStepWorkspace current = controller;
+                    if (current == null || !installed || !current.canTrigger()) {
+                        OneStepFlowLog.i(TAG, "URL scheme workspace request ignored: unavailable");
+                        return;
+                    }
+                    current.useSideGestureProfile();
+                    current.toggle(false, null);
+                }, 250);
+            }
+        };
+        context.registerReceiver(receiver,
+                new IntentFilter(OneStepWorkspaceProtocol.ACTION_OPEN),
+                Context.RECEIVER_EXPORTED);
+        workspaceTriggerReceiverInstalled = true;
     }
 
     private static void registerEnvironment(Context context, Handler handler) {

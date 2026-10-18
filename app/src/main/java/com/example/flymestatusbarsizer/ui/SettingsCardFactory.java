@@ -13,9 +13,13 @@ import com.example.flymestatusbarsizer.feature.notification.anip.AnipBundleStore
 import com.example.flymestatusbarsizer.feature.notification.anip.AnipIconLibrary;
 import com.example.flymestatusbarsizer.feature.notification.anip.AnipIconLibraryEditor;
 import com.example.flymestatusbarsizer.feature.notification.anip.AnipIconMode;
+import com.example.flymestatusbarsizer.feature.onehanded.OneStepWorkspaceProtocol;
 import com.example.flymestatusbarsizer.feature.signal.SignalAppearancePreviewView;
 import com.example.flymestatusbarsizer.feature.wifi.WifiAppearancePreviewView;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.graphics.Color;
 import android.view.Gravity;
 import android.view.View;
@@ -503,6 +507,18 @@ public final class SettingsCardFactory {
     private LinearLayout buildTaskWorkbenchOptions(boolean oneHanded) {
         LinearLayout options = new LinearLayout(activity);
         options.setOrientation(LinearLayout.VERTICAL);
+
+        activity.addActionButtonRow(options, "任务工作台链接", null, "复制链接", () -> {
+            ClipboardManager clipboard = (ClipboardManager)
+                    activity.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard == null) {
+                activity.showToast("剪贴板不可用");
+                return;
+            }
+            clipboard.setPrimaryClip(ClipData.newPlainText(
+                    "task_workbench_url", OneStepWorkspaceProtocol.URI));
+            activity.showToast("任务工作台链接已复制");
+        });
 
         TextView behavior = new TextView(activity);
         behavior.setText("进入后当前应用作为主窗口，顶部图标栏用于切换最近应用；长按图标可拖入侧窗。"

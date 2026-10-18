@@ -53,6 +53,25 @@
         </activity>
 
         <activity
+            android:name=".feature.onehanded.WorkspaceDeepLinkActivity"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:taskAffinity="${applicationId}.workspace.trigger"
+            android:launchMode="singleInstance"
+            android:exported="true"
+            android:noHistory="true"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="flymestatusbarsizer"
+                    android:host="workspace"
+                    android:path="/open" />
+            </intent-filter>
+        </activity>
+
+        <activity
             android:name=".feature.onehanded.OneStepActivity"
             android:theme="@style/OneStepTheme"
             android:label="应用工作台"
