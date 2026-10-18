@@ -1264,11 +1264,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         int connection = ++desktopRequest;
         taskWorker.execute(() -> {
             try {
-                RecentTaskCard home = tasks.homeTask(workspaceUserId);
+                RecentTaskCard home = tasks.homeTask(workspaceOwnerUserId);
                 handler.post(() -> {
                     if (!running() || generation != request || desktopRequest != connection || pane != panes[mainSlot]) return;
                     try {
-                        desktopSession = new OneStepLauncherBridge.Session(context, handler, workspaceUserId,
+                        desktopSession = new OneStepLauncherBridge.Session(context, handler, workspaceOwnerUserId,
                                 new OneStepLauncherBridge.Listener() {
                             @Override public void onConnected() {
                                 if (running() && generation == request && desktopRequest == connection

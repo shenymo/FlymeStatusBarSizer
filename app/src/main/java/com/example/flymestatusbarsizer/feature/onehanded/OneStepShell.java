@@ -1887,7 +1887,8 @@ final class OneStepShell {
     }
 
     private boolean acceptsWorkspaceUser(int userId) {
-        return userId == activityUserId || (activityUserId == 0 && userId == 999);
+        return userId == activityUserId || userId == activityHostUserId
+                || (activityUserId == 0 && userId == 999);
     }
 
     private void stageNavigation(Navigation navigation, Object change, SurfaceControl.Transaction start,
