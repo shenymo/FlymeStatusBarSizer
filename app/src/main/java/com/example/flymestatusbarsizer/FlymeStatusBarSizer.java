@@ -243,6 +243,8 @@ public class FlymeStatusBarSizer extends XposedModule {
                 this, param.getClassLoader());
         com.example.flymestatusbarsizer.feature.onehanded.OneStepImeDiagnostics.install(
                 this, param.getClassLoader());
+        com.example.flymestatusbarsizer.feature.onehanded.OneStepSystemResizePolicy.install(
+                this, param.getClassLoader());
     }
 
     @Override

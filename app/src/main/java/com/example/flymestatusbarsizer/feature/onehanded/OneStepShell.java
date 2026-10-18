@@ -722,9 +722,21 @@ final class OneStepShell {
                 for (ArrayList<SurfaceControl.Transaction> transactions : finishes.values())
                     for (SurfaceControl.Transaction finish : transactions) place(host, parent, finish);
                 motion.remove(tx);
-                tx.addTransactionCommittedListener(executor, () -> ui.post(() -> {
-                    if (accepting && request == session) finished.run();
-                }));
+                tx.addTransactionCommittedListener(executor, () -> {
+                    if (!accepting || request != session) return;
+                    try {
+                        // Fullscreen-compatible tasks can keep their original WM mode.
+                        // Re-present after the bridge transaction commits so their leash
+                        // is definitely owned by the TaskView before entry completes.
+                        present(host, null, null);
+                        if (host.backIntercepted)
+                            OneStepReflection.call(organizer, "setInterceptBackPressedOnTaskRoot",
+                                    new Class<?>[]{tokenClass, boolean.class}, host.token, true);
+                        ui.post(() -> { if (accepting && request == session) finished.run(); });
+                    } catch (Exception error) {
+                        ui.post(() -> fail("无法完成工作台窗口接管", error));
+                    }
+                });
                 tx.apply();
                 motion.release();
             } catch (Exception error) {
