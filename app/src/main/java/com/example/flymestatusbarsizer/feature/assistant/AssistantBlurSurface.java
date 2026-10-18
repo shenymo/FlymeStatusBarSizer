@@ -26,7 +26,7 @@ final class AssistantBlurSurface {
         return new AssistantBlurSurface(parent, radius);
     }
 
-    AssistantBlurSurface(SurfaceControl parent, int radius) throws ReflectiveOperationException {
+    private AssistantBlurSurface(SurfaceControl parent, int radius) throws ReflectiveOperationException {
         this.parent = parent;
         setCrop = AssistantReflection.method(SurfaceControl.Transaction.class,
                 "setWindowCrop", SurfaceControl.class, Rect.class);

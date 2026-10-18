@@ -46,14 +46,10 @@ public final class AssistantBackgroundSettings {
                 "恢复默认", () -> {
                     Context context = activity.getApplicationContext();
                     AssistantBackgroundImages.WORKER.execute(() -> {
-                        boolean saved = SettingsStore.prefs(context).edit().remove(SettingsStore.KEY_ASSISTANT_BACKGROUND_IMAGE)
-                                .putBoolean(SettingsStore.KEY_ASSISTANT_BACKGROUND_CUSTOM, false)
-                                .putBoolean(SettingsStore.KEY_ASSISTANT_BACKGROUND_BLUR, true)
-                                .putInt(SettingsStore.KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE,
-                                        SettingsStore.ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR).commit();
-                        if (!saved) { finish(activity, "恢复失败，请重试", false); return; }
-                        SettingsStore.notifyChanged(context);
-                        AssistantBackgroundImages.deleteUnused(context, "");
+                        if (!saveSettings(context, "", true)) {
+                            finish(activity, "恢复失败，请重试", false);
+                            return;
+                        }
                         finish(activity, "已恢复默认背景", true);
                     });
                 });
@@ -82,17 +78,32 @@ public final class AssistantBackgroundSettings {
         AssistantBackgroundImages.WORKER.execute(() -> {
             try {
                 String id = AssistantBackgroundImages.importImage(context, uri);
-                if (!SettingsStore.prefs(context).edit().putString(SettingsStore.KEY_ASSISTANT_BACKGROUND_IMAGE, id)
-                        .putBoolean(SettingsStore.KEY_ASSISTANT_BACKGROUND_CUSTOM, true).commit())
+                if (!saveSettings(context, id, false))
                     throw new java.io.IOException("无法保存背景设置");
-                SettingsStore.notifyChanged(context);
-                AssistantBackgroundImages.deleteUnused(context, id);
                 finish(activity, "背景图片已保存，下次打开全局负一屏时生效", true);
             } catch (Exception | OutOfMemoryError error) {
                 android.util.Log.w("FlymeAssistantGesture", "Cannot import background image", error);
                 finish(activity, "图片处理失败，请选择其他图片", false);
             }
         });
+        return true;
+    }
+
+    private static boolean saveSettings(Context context, String imageId, boolean reset) {
+        android.content.SharedPreferences.Editor editor = SettingsStore.prefs(context).edit();
+        if (reset) {
+            editor.remove(SettingsStore.KEY_ASSISTANT_BACKGROUND_IMAGE)
+                    .putBoolean(SettingsStore.KEY_ASSISTANT_BACKGROUND_CUSTOM, false)
+                    .putBoolean(SettingsStore.KEY_ASSISTANT_BACKGROUND_BLUR, true)
+                    .putInt(SettingsStore.KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE,
+                            SettingsStore.ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR);
+        } else {
+            editor.putString(SettingsStore.KEY_ASSISTANT_BACKGROUND_IMAGE, imageId)
+                    .putBoolean(SettingsStore.KEY_ASSISTANT_BACKGROUND_CUSTOM, true);
+        }
+        if (!editor.commit()) return false;
+        SettingsStore.notifyChanged(context);
+        AssistantBackgroundImages.deleteUnused(context, reset ? "" : imageId);
         return true;
     }
 

@@ -13,7 +13,7 @@ final class AssistantSurfaceHost {
         this.setStartRelease = setStartRelease;
     }
 
-    AssistantSurfaceHost(Class<?> surfaceType) throws NoSuchMethodException {
+    private AssistantSurfaceHost(Class<?> surfaceType) throws NoSuchMethodException {
         this(AssistantReflection.method(surfaceType, "setStartRelease", boolean.class));
     }
 

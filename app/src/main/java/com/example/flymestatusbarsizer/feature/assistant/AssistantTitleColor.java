@@ -41,12 +41,6 @@ final class AssistantTitleColor implements ViewTreeObserver.OnPreDrawListener {
         };
     }
 
-    // Also used by the lifecycle tests without depending on the assistant APK's resources.
-    AssistantTitleColor(TextView title) {
-        root = title;
-        targets = new Target[]{new Target(() -> title)};
-    }
-
     private static int id(View root, String name) {
         return root.getResources().getIdentifier(name, "id", AssistantProtocol.PACKAGE);
     }

@@ -282,7 +282,6 @@ final class AssistantController implements ComponentCallbacks {
         Method[] methods = type.getDeclaredMethods();
         long supported = java.util.Arrays.stream(methods).filter(m -> isOverlayCallback(m.getName())).count();
         if (supported != 4) throw new IllegalStateException("Unsupported launcher callback " + type.getName());
-        int found = 0;
         for (Method method : methods) {
             String name = method.getName();
             if (!isOverlayCallback(name)) continue;
@@ -293,9 +292,7 @@ final class AssistantController implements ComponentCallbacks {
                     return method.getReturnType() == int.class ? 0 : null;
                 return chain.proceed();
             });
-            ++found;
         }
-        if (found != 4) throw new IllegalStateException("Unsupported launcher callback " + type.getName());
         CALLBACK_TYPES.add(type);
     }
 

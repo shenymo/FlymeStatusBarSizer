@@ -34,10 +34,6 @@ final class AssistantWindowBackground implements View.OnAttachStateChangeListene
     private boolean active;
     private boolean failed;
 
-    AssistantWindowBackground(View content, float density) {
-        this(content, density, new ModuleConfig());
-    }
-
     AssistantWindowBackground(View content, float density, ModuleConfig config) {
         this.content = content;
         blurEnabled = config.assistantBackgroundBlur;
