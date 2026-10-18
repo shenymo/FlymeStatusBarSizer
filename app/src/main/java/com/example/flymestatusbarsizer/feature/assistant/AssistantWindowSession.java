@@ -5,8 +5,10 @@ import android.content.res.Configuration;
 
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import android.graphics.Rect;
+import android.graphics.PixelFormat;
 import android.os.IBinder;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -30,21 +32,25 @@ final class AssistantWindowSession {
     final WindowManager overlayManager;
     final WindowManager originalManager;
     final WindowManager.LayoutParams originalAttrs = new WindowManager.LayoutParams();
+    final WindowManager.LayoutParams outsideAttrs = new WindowManager.LayoutParams();
     final Object originalWindowManager, originalToken, originalAppName, originalBackgroundState;
     final AssistantWindowBackground background;
     final AssistantTitleColor titleColor;
     final AssistantPanelMotion motion;
     final AssistantSurfaceHost surfaceHost;
     final boolean dark;
+    final boolean fromLeft;
+    final View outsideDismissView;
     final int originalVisibility, originalSystemUi;
     final Field componentManager, added, windowManager, appToken, appName;
     final Method open, close, start, resume, pause, stop, setWindowManager;
     String restoreLifecycle;
     volatile boolean suppressCallbacks = true;
-    boolean restoring, moved, lifecycleChanged;
+    boolean restoring, moved, lifecycleChanged, outsideAttached;
 
     AssistantWindowSession(Object component, boolean fromLeft) throws ReflectiveOperationException {
         this.component = component;
+        this.fromLeft = fromLeft;
         window = (Window) AssistantReflection.get(component, "mWindow");
         decor = (View) AssistantReflection.get(component, "mDecorView");
         panel = AssistantReflection.call(component, "getSlidingPanelLayout");
@@ -77,6 +83,12 @@ final class AssistantWindowSession {
         windowContext = context.getApplicationContext().createDisplayContext(originalManager.getDefaultDisplay())
                 .createWindowContext(WINDOW_TYPE, null);
         overlayManager = windowContext.getSystemService(WindowManager.class);
+        outsideDismissView = new View(windowContext);
+        outsideDismissView.setClickable(true);
+        outsideDismissView.setOnTouchListener((view, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) view.post(this::closeNormally);
+            return true;
+        });
         dark = (windowContext.getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         View slidingContent = (View) AssistantReflection.get(panel, "mContentView");
@@ -113,6 +125,7 @@ final class AssistantWindowSession {
         decor.setVisibility(View.VISIBLE);
         currentManager().addView(decor, window.getAttributes());
         added.setBoolean(component, true);
+        attachOutsideWindow();
         titleColor.apply();
         lifecycleChanged = true;
         if ("CREATED".equals(restoreLifecycle)) start.invoke(component);
@@ -121,14 +134,25 @@ final class AssistantWindowSession {
 
     void open() throws ReflectiveOperationException { open.invoke(component, 1); }
 
+    void closeNormally() {
+        if (restoring) return;
+        try { motion.closeFromOutside(); }
+        catch (Throwable t) { AssistantHooks.warn("Cannot close assistant panel normally", t); }
+    }
+
     void updateAttributes(WindowManager.LayoutParams attrs) {
         Rect bounds = overlayManager.getCurrentWindowMetrics().getBounds();
         applyHostAttributes(attrs);
-        attrs.x = attrs.y = 0;
-        attrs.width = bounds.width();
+        attrs.y = bounds.top;
         attrs.height = bounds.height();
+        attrs.width = bounds.width() > bounds.height()
+                ? Math.min(Math.max(1, Math.round(bounds.height()
+                        * (bounds.width() / (float) bounds.height()))), Math.max(1, bounds.width() / 2))
+                : bounds.width();
+        attrs.x = fromLeft ? bounds.left : bounds.right - attrs.width;
         attrs.gravity = Gravity.TOP | Gravity.LEFT;
         background.updateAttributes(attrs);
+        updateOutsideAttributes(bounds, attrs);
     }
 
     static void applyHostAttributes(WindowManager.LayoutParams attrs) {
@@ -137,6 +161,36 @@ final class AssistantWindowSession {
         attrs.token = null;
         attrs.setTitle(TITLE);
         attrs.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+    }
+
+    private void updateOutsideAttributes(Rect bounds, WindowManager.LayoutParams panelAttrs) {
+        int width = bounds.width() - panelAttrs.width;
+        outsideAttrs.copyFrom(panelAttrs);
+        outsideAttrs.width = Math.max(0, width);
+        outsideAttrs.height = bounds.height();
+        outsideAttrs.x = fromLeft ? panelAttrs.x + panelAttrs.width : bounds.left;
+        outsideAttrs.y = bounds.top;
+        outsideAttrs.gravity = Gravity.TOP | Gravity.LEFT;
+        outsideAttrs.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
+        outsideAttrs.flags &= ~(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH);
+        outsideAttrs.alpha = 1;
+        outsideAttrs.format = PixelFormat.TRANSLUCENT;
+        outsideAttrs.windowAnimations = 0;
+        outsideAttrs.setTitle(TITLE + ":outside");
+        outsideAttrs.packageName = AssistantProtocol.PACKAGE;
+        outsideAttrs.token = null;
+    }
+
+    private void attachOutsideWindow() {
+        if (outsideAttrs.width <= 0) return;
+        try {
+            currentManager().addView(outsideDismissView, outsideAttrs);
+            outsideAttached = true;
+        } catch (Throwable t) {
+            AssistantHooks.warn("Cannot attach assistant outside touch window", t);
+        }
     }
 
     void attributesChanged(WindowManager.LayoutParams attrs) throws ReflectiveOperationException {
@@ -154,6 +208,10 @@ final class AssistantWindowSession {
             // onPanelClosed can be called again here; the owner ignores it while restoring.
             try { close.invoke(component, 0); } catch (Throwable t) { AssistantHooks.warn("Closing assistant panel", t); }
             if (lifecycleChanged) { pause.invoke(component); stop.invoke(component); }
+            if (outsideAttached || outsideDismissView.isAttachedToWindow()) {
+                currentManager().removeViewImmediate(outsideDismissView);
+                outsideAttached = false;
+            }
             if (decor.isAttachedToWindow()) {
                 surfaceHost.prepareForHostChange(decor);
                 currentManager().removeViewImmediate(decor);
@@ -180,6 +238,7 @@ final class AssistantWindowSession {
             background.restore();
             // A dead Launcher token must never leave a focusable transparent overlay on screen.
             decor.setVisibility(View.GONE);
+            try { currentManager().removeViewImmediate(outsideDismissView); } catch (Throwable ignored) { }
             try { currentManager().removeViewImmediate(decor); } catch (Throwable ignored) { }
             try { added.setBoolean(component, false); } catch (Throwable ignored) { }
             throw error;

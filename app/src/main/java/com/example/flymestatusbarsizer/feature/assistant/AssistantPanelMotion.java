@@ -180,6 +180,12 @@ final class AssistantPanelMotion {
         }
     }
 
+    void closeFromOutside() throws ReflectiveOperationException {
+        if (closingLeft) return;
+        prepareClose();
+        closePanel.invoke(panel, duration);
+    }
+
     private void clearTouch() {
         tracking = dragging = rejected = false;
         pointerId = -1;
