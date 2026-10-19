@@ -34,8 +34,14 @@ final class OneStepStatusBar {
         installColors(module, loader);
         installBackground(module, loader);
         try {
-            Class<?> type = Class.forName(
-                    "com.android.systemui.statusbar.window.StatusBarWindowControllerImpl", false, loader);
+            Class<?> type;
+            try {
+                type = Class.forName(
+                        "com.android.systemui.statusbar.window.StatusBarWindowControllerImpl", false, loader);
+            } catch (ClassNotFoundException unavailable) {
+                type = Class.forName(
+                        "com.android.systemui.statusbar.window.StatusBarWindowController", false, loader);
+            }
             Class<?> state = Class.forName(type.getName() + "$State", false, loader);
             Method method = type.getDeclaredMethod("apply", state);
             method.setAccessible(true);

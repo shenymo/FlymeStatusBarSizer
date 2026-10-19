@@ -141,10 +141,18 @@ final class OneStepShell {
             this.session = session;
             this.requireFocused = requireFocused;
             main = requireFocused;
-            controller = controllerClass.getConstructor(Context.class, organizerClass, controllerInterface,
-                    syncQueue.getClass()).newInstance(context, organizer, taskViewController, syncQueue);
-            view = (SurfaceView) taskViewClass.getConstructor(Context.class, controllerInterface, controllerClass)
-                    .newInstance(context, taskViewController, controller);
+            if (usesTaskViewTransitions) {
+                controller = controllerClass.getConstructor(Context.class, organizerClass,
+                        taskViewTransitionsClass, syncQueue.getClass())
+                        .newInstance(context, organizer, taskViewController, syncQueue);
+                view = (SurfaceView) taskViewClass.getConstructor(Context.class, controllerClass)
+                        .newInstance(context, controller);
+            } else {
+                controller = controllerClass.getConstructor(Context.class, organizerClass, controllerInterface,
+                        syncQueue.getClass()).newInstance(context, organizer, taskViewController, syncQueue);
+                view = (SurfaceView) taskViewClass.getConstructor(Context.class, controllerInterface, controllerClass)
+                        .newInstance(context, taskViewController, controller);
+            }
             Object listener = Proxy.newProxyInstance(loader, new Class<?>[]{viewListenerClass}, (proxy, method, args) -> {
                 if (method.getDeclaringClass() == Object.class) return objectMethod(proxy, method.getName(), args);
                 switch (method.getName()) {
@@ -232,6 +240,7 @@ final class OneStepShell {
     private final Class<?> organizerClass;
     private final Class<?> controllerClass;
     private final Class<?> controllerInterface;
+    private final Class<?> taskViewTransitionsClass;
     private final Class<?> taskViewClass;
     private final Class<?> viewListenerClass;
     private final Class<?> taskListenerClass;
@@ -239,6 +248,7 @@ final class OneStepShell {
     private final Class<?> tokenClass;
     private final Class<?> transitionHandlerClass;
     private final Object taskViewController;
+    private final boolean usesTaskViewTransitions;
     private final Object transitionHandler;
     private final Object observer;
     private final SharedPreferences recovery;
@@ -295,7 +305,24 @@ final class OneStepShell {
         executor = (Executor) OneStepReflection.call(organizer, "getExecutor");
         organizerClass = Class.forName("com.android.wm.shell.ShellTaskOrganizer", false, loader);
         controllerClass = Class.forName("com.android.wm.shell.taskview.TaskViewTaskController", false, loader);
-        controllerInterface = Class.forName("com.android.wm.shell.taskview.TaskViewController", false, loader);
+        Class<?> legacyController;
+        Class<?> nativeTransitions;
+        Object taskViewTransitions = null;
+        try {
+            legacyController = Class.forName("com.android.wm.shell.taskview.TaskViewController", false, loader);
+            nativeTransitions = null;
+        } catch (ClassNotFoundException unavailable) {
+            legacyController = null;
+            nativeTransitions = Class.forName("com.android.wm.shell.taskview.TaskViewTransitions", false, loader);
+            taskViewTransitions = OneStepReflection.get(factory, "mTaskViewTransitions");
+            if (taskViewTransitions == null || !nativeTransitions.isInstance(taskViewTransitions))
+                throw new IllegalStateException("TaskViewTransitions instance is unavailable");
+            if (organizer != OneStepReflection.get(taskViewTransitions, "mOrganizer"))
+                throw new IllegalStateException("TaskView and TaskViewTransitions have different organizers");
+        }
+        controllerInterface = legacyController;
+        taskViewTransitionsClass = nativeTransitions;
+        usesTaskViewTransitions = legacyController == null;
         taskViewClass = Class.forName("com.android.wm.shell.taskview.TaskView", false, loader);
         viewListenerClass = Class.forName("com.android.wm.shell.taskview.TaskView$Listener", false, loader);
         taskListenerClass = Class.forName("com.android.wm.shell.ShellTaskOrganizer$TaskListener", false, loader);
@@ -304,26 +331,18 @@ final class OneStepShell {
         transitionHandlerClass = Class.forName("com.android.wm.shell.transition.Transitions$TransitionHandler", false, loader);
         recovery = context.getSharedPreferences("flyme_onestep_borrowed_tasks", Context.MODE_PRIVATE);
         bootCount = Settings.Global.getInt(context.getContentResolver(), Settings.Global.BOOT_COUNT, -1);
-        taskViewController = Proxy.newProxyInstance(loader, new Class<?>[]{controllerInterface}, (proxy, method, args) -> {
-            if (method.getDeclaringClass() == Object.class) return objectMethod(proxy, method.getName(), args);
-            if ("isUsingShellTransitions".equals(method.getName())) return true;
-            if ("setTaskViewVisible".equals(method.getName())) {
-                executor.execute(() -> surfaceChanged(args[0], (Boolean) args[1]));
-            } else if ("moveTaskViewToFullscreen".equals(method.getName()) || "removeTaskView".equals(method.getName())) {
-                boolean fullscreen = "moveTaskViewToFullscreen".equals(method.getName());
-                executor.execute(() -> {
-                    for (Host host : new ArrayList<>(hosts)) {
-                        if (host.controller != args[0] || !current(host)) continue;
-                        if (fullscreen) focus(mainHost());
-                        else restoreOne(host, () -> { if (listener != null) listener.onRemoved(host); }, 0);
-                        break;
-                    }
-                });
-            }
-            // Pane geometry owns the viewport. Landscape bounds and orientation
-            // are applied together by the server policy, outside view callbacks.
-            return null;
-        });
+        if (usesTaskViewTransitions) {
+            taskViewController = taskViewTransitions;
+        } else {
+            taskViewController = Proxy.newProxyInstance(loader, new Class<?>[]{controllerInterface}, (proxy, method, args) -> {
+                if (method.getDeclaringClass() == Object.class) return objectMethod(proxy, method.getName(), args);
+                if ("isUsingShellTransitions".equals(method.getName())) return true;
+                handleTaskViewCallback(method.getName(), args);
+                // Pane geometry owns the viewport. Landscape bounds and orientation
+                // are applied together by the server policy, outside view callbacks.
+                return null;
+            });
+        }
         transitionHandler = Proxy.newProxyInstance(loader, new Class<?>[]{transitionHandlerClass}, (proxy, method, args) -> {
             if (method.getDeclaringClass() == Object.class) return objectMethod(proxy, method.getName(), args);
             try {
@@ -542,6 +561,35 @@ final class OneStepShell {
                 }
             } catch (Throwable error) { OneStepImeDiagnostics.unavailable(error); }
         });
+    }
+
+    private void handleTaskViewCallback(String name, Object[] args) {
+        if (args == null || args.length == 0) return;
+        if ("setTaskViewVisible".equals(name)) {
+            Boolean visible = null;
+            for (int i = 1; i < args.length; i++) {
+                if (args[i] instanceof Boolean) { visible = (Boolean) args[i]; break; }
+            }
+            if (visible != null) {
+                Boolean value = visible;
+                executor.execute(() -> surfaceChanged(args[0], value));
+            }
+        } else if ("moveTaskViewToFullscreen".equals(name) || "removeTaskView".equals(name)) {
+            boolean fullscreen = "moveTaskViewToFullscreen".equals(name);
+            executor.execute(() -> {
+                for (Host host : new ArrayList<>(hosts)) {
+                    if (host.controller != args[0] || !current(host)) continue;
+                    if (fullscreen) focus(mainHost());
+                    else restoreOne(host, () -> { if (listener != null) listener.onRemoved(host); }, 0);
+                    break;
+                }
+            });
+        }
+    }
+
+    void onTaskViewTransition(String name, Object[] args) {
+        if (!usesTaskViewTransitions) return;
+        handleTaskViewCallback(name, args);
     }
 
     private void initialize(Class<?> observerClass) {

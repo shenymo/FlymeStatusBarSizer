@@ -96,6 +96,7 @@ public final class OneHandedTaskHooks {
                 shellTransitions = value;
                 attach();
             });
+            hookTaskViewTransitions(module, loader);
             installed = true;
             OneStepFlowLog.i(TAG, "OneStep Shell task workspace hooks installed");
         } catch (Throwable e) {
@@ -306,6 +307,43 @@ public final class OneHandedTaskHooks {
                 callback.accept(chain.getThisObject());
                 return result;
             });
+        }
+    }
+
+    private static void hookTaskViewTransitions(FlymeStatusBarSizer module, ClassLoader loader) {
+        String[] owners = {
+                "com.android.wm.shell.taskview.TaskViewTransitions",
+                "com.android.wm.shell.taskview.TaskViewTaskController"
+        };
+        for (String owner : owners) try {
+            Class<?> type = Class.forName(owner, false, loader);
+            for (Method method : type.getDeclaredMethods()) {
+                String name = method.getName();
+                boolean transitionsOwner = owner.endsWith("TaskViewTransitions");
+                if (transitionsOwner
+                        ? !("setTaskViewVisible".equals(name) || "removeTaskView".equals(name))
+                        : !"moveTaskViewToFullscreen".equals(name)) continue;
+                method.setAccessible(true);
+                module.intercept(method, chain -> {
+                    Object result = chain.proceed();
+                    OneStepWorkspace current = controller;
+                    if (current != null) {
+                        Object[] args = chain.getArgs().toArray();
+                        if (args.length == 0 || args[0] == null
+                                || !"TaskViewTaskController".equals(args[0].getClass().getSimpleName())) {
+                            Object[] withController = new Object[args.length + 1];
+                            withController[0] = chain.getThisObject();
+                            System.arraycopy(args, 0, withController, 1, args.length);
+                            args = withController;
+                        }
+                        current.onTaskViewTransition(name, args);
+                    }
+                    return result;
+                });
+            }
+        } catch (ClassNotFoundException ignored) { }
+        catch (Throwable error) {
+            OneStepFlowLog.i(TAG, "TaskView transition callback hook unavailable");
         }
     }
 

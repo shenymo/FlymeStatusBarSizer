@@ -440,23 +440,29 @@ public final class MBackHooks {
                     ? cancelMethod.getDeclaringClass().getClassLoader()
                     : MBackHooks.class.getClassLoader();
             Class<?> dependencyClass = Class.forName("com.android.systemui.Dependency", false, loader);
-            Class<?> proxyServiceClass =
-                    Class.forName("com.android.systemui.recents.LauncherProxyService", false, loader);
             Method getMethod = dependencyClass.getDeclaredMethod("get", Class.class);
             getMethod.setAccessible(true);
-            Object proxyService = getMethod.invoke(null, proxyServiceClass);
-            if (proxyService == null) {
-                return;
+            String[] serviceNames = {
+                    "com.android.systemui.recents.LauncherProxyService",
+                    "com.android.systemui.recents.OverviewProxyService"
+            };
+            for (String serviceName : serviceNames) {
+                try {
+                    Class<?> proxyServiceClass = Class.forName(serviceName, false, loader);
+                    Object proxyService = getMethod.invoke(null, proxyServiceClass);
+                    if (proxyService == null) continue;
+                    Method getProxyMethod = proxyServiceClass.getDeclaredMethod("getProxy");
+                    getProxyMethod.setAccessible(true);
+                    Object proxy = getProxyMethod.invoke(proxyService);
+                    if (proxy == null) continue;
+                    Method requestCancelSwipeUpMethod = proxy.getClass().getMethod("requestCancelSwipeUp");
+                    requestCancelSwipeUpMethod.setAccessible(true);
+                    requestCancelSwipeUpMethod.invoke(proxy);
+                    break;
+                } catch (ClassNotFoundException | NoSuchMethodException ignored) {
+                    // Try the service name used by the other SystemUI generation.
+                }
             }
-            Method getProxyMethod = proxyServiceClass.getDeclaredMethod("getProxy");
-            getProxyMethod.setAccessible(true);
-            Object proxy = getProxyMethod.invoke(proxyService);
-            if (proxy == null) {
-                return;
-            }
-            Method requestCancelSwipeUpMethod = proxy.getClass().getMethod("requestCancelSwipeUp");
-            requestCancelSwipeUpMethod.setAccessible(true);
-            requestCancelSwipeUpMethod.invoke(proxy);
         } catch (Throwable ignored) {
         }
     }

@@ -2287,6 +2287,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         });
     }
 
+    void onTaskViewTransition(String name, Object[] args) {
+        shell.onTaskViewTransition(name, args);
+    }
+
     boolean blocksNavigation() {
         return active() && entryStarted && !suspended
                 && OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId);
