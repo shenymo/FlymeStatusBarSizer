@@ -213,6 +213,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private boolean active() { return state == State.OPENING || state == State.RUNNING; }
     private boolean running() { return state == State.RUNNING; }
 
+    private boolean profileAllowed() {
+        return !oneHandedProfile || OneHandedTaskHooks.oneHandedWorkspaceEnabled(context);
+    }
+
     private int toolbarHeightDp() {
         ModuleConfig config = ModuleConfig.load(context);
         return Math.max(SettingsStore.MIN_WORKSPACE_TOOLBAR_HEIGHT_DP,
@@ -295,7 +299,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         handler.post(() -> {
             if (active()) return;
             if (state != State.CLOSED || !shell.available() || !OneHandedTaskHooks.environmentAllowed(context)
-                    || (oneHandedProfile && !OneHandedTaskHooks.oneHandedWorkspaceEnabled(context))) return;
+                    || !profileAllowed()) return;
             try { workspaceOwnerUserId = OneHandedTaskHooks.currentUserId(); }
             catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot resolve workspace user", error); return; }
             state = State.OPENING;
@@ -314,7 +318,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     handler.post(() -> {
                         if (state != State.OPENING || generation != request) return;
                         if (main == null || !OneHandedTaskHooks.environmentAllowed(context)
-                                || (oneHandedProfile && !OneHandedTaskHooks.oneHandedWorkspaceEnabled(context))) {
+                                || !profileAllowed()) {
                             close(false);
                             return;
                         }
@@ -340,8 +344,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                                     boolean fromLeft, Runnable success, int request,
                                     long deadline, long hiddenSince) {
         if (state != State.OPENING || generation != request) return;
-        if (!OneHandedTaskHooks.environmentAllowed(context)
-                || (oneHandedProfile && !OneHandedTaskHooks.oneHandedWorkspaceEnabled(context))) {
+        if (!OneHandedTaskHooks.environmentAllowed(context) || !profileAllowed()) {
             close(false);
             return;
         }
@@ -2276,7 +2279,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     void refresh() {
         handler.post(() -> {
-            if (oneHandedProfile && !OneHandedTaskHooks.oneHandedWorkspaceEnabled(context)) close(false);
+            if (!profileAllowed()) close(false);
             else if (state == State.CLOSING && !OneHandedTaskHooks.workspaceAllowed(context, workspaceOwnerUserId)) close(false);
             else if (active()) {
                 int previousToolbarHeight = layoutToolbarHeightDp;

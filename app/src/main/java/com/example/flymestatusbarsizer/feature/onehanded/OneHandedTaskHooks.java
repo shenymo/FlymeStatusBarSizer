@@ -26,6 +26,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.function.Predicate;
 
 /** Initializes the live OneStep workspace through LSPosed in SystemUI. */
 public final class OneHandedTaskHooks {
@@ -147,36 +148,33 @@ public final class OneHandedTaskHooks {
     }
 
     private static void installOneHandedActivationHook(FlymeStatusBarSizer module, ClassLoader loader) {
-        try {
-            Class<?> controllerClass = Class.forName(
-                    "com.android.wm.shell.onehanded.OneHandedController", false, loader);
-            Method method = controllerClass.getDeclaredMethod("onActivatedActionChanged");
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object target = chain.getThisObject();
-                if (consumeOneHandedActivation(target)) return null;
-                return chain.proceed();
-            });
-            OneStepFlowLog.i(TAG, "One-handed activation routed to workspace");
-        } catch (Throwable error) {
-            OneStepFlowLog.w(TAG, "One-handed activation hook unavailable", error);
-        }
+        installOneHandedHook(module, loader, "onActivatedActionChanged",
+                OneHandedTaskHooks::consumeOneHandedActivation,
+                "One-handed activation routed to workspace",
+                "One-handed activation hook unavailable");
     }
 
     private static void installOneHandedStartHook(FlymeStatusBarSizer module, ClassLoader loader) {
+        installOneHandedHook(module, loader, "startOneHanded",
+                OneHandedTaskHooks::consumeOneHandedStart,
+                "One-handed start routed to workspace",
+                "One-handed start hook unavailable");
+    }
+
+    private static void installOneHandedHook(FlymeStatusBarSizer module, ClassLoader loader,
+                                             String methodName, Predicate<Object> consumer,
+                                             String installedMessage, String unavailableMessage) {
         try {
             Class<?> controllerClass = Class.forName(
                     "com.android.wm.shell.onehanded.OneHandedController", false, loader);
-            Method method = controllerClass.getDeclaredMethod("startOneHanded");
+            Method method = controllerClass.getDeclaredMethod(methodName);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                Object target = chain.getThisObject();
-                if (consumeOneHandedStart(target)) return null;
-                return chain.proceed();
+                return consumer.test(chain.getThisObject()) ? null : chain.proceed();
             });
-            OneStepFlowLog.i(TAG, "One-handed start routed to workspace");
+            OneStepFlowLog.i(TAG, installedMessage);
         } catch (Throwable error) {
-            OneStepFlowLog.w(TAG, "One-handed start hook unavailable", error);
+            OneStepFlowLog.w(TAG, unavailableMessage, error);
         }
     }
 
@@ -327,17 +325,8 @@ public final class OneHandedTaskHooks {
                 module.intercept(method, chain -> {
                     Object result = chain.proceed();
                     OneStepWorkspace current = controller;
-                    if (current != null) {
-                        Object[] args = chain.getArgs().toArray();
-                        if (args.length == 0 || args[0] == null
-                                || !"TaskViewTaskController".equals(args[0].getClass().getSimpleName())) {
-                            Object[] withController = new Object[args.length + 1];
-                            withController[0] = chain.getThisObject();
-                            System.arraycopy(args, 0, withController, 1, args.length);
-                            args = withController;
-                        }
-                        current.onTaskViewTransition(name, args);
-                    }
+                    if (current != null) notifyTaskViewTransition(current, name,
+                            chain.getThisObject(), chain.getArgs().toArray());
                     return result;
                 });
             }
@@ -345,6 +334,18 @@ public final class OneHandedTaskHooks {
         catch (Throwable error) {
             OneStepFlowLog.i(TAG, "TaskView transition callback hook unavailable");
         }
+    }
+
+    private static void notifyTaskViewTransition(OneStepWorkspace workspace, String name,
+                                                 Object owner, Object[] args) {
+        if (args.length == 0 || args[0] == null
+                || !"TaskViewTaskController".equals(args[0].getClass().getSimpleName())) {
+            Object[] withController = new Object[args.length + 1];
+            withController[0] = owner;
+            System.arraycopy(args, 0, withController, 1, args.length);
+            args = withController;
+        }
+        workspace.onTaskViewTransition(name, args);
     }
 
     private static void attach() {

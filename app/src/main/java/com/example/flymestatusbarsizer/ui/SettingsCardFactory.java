@@ -450,7 +450,7 @@ public final class SettingsCardFactory {
         page.addView(appearanceCard, activity.matchWrapWithTop(8));
         View workspaceCard = activity.buildSectionCard("任务工作台",
                 "从侧边进入多应用工作台，在主窗口和侧窗之间快速切换。",
-                buildTaskWorkbenchOptions(), true);
+                buildTaskWorkbenchOptions(false), true);
         workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
         page.addView(workspaceCard, activity.matchWrapWithTop(8));
         java.util.function.IntConsumer updateAction = value -> {
@@ -498,10 +498,6 @@ public final class SettingsCardFactory {
         }
         existing.setVisibility(action == SettingsStore.ONE_HANDED_MODE_ACTION_TASK_SCALE
                 ? View.VISIBLE : View.GONE);
-    }
-
-    private LinearLayout buildTaskWorkbenchOptions() {
-        return buildTaskWorkbenchOptions(false);
     }
 
     private LinearLayout buildTaskWorkbenchOptions(boolean oneHanded) {
