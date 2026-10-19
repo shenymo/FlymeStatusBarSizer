@@ -192,10 +192,8 @@ public final class OneStepImePolicy {
             installed = true;
             installInputRegionHooks(module, loader);
             OneStepFlowLog.i(TAG, "workspace IME policy installed build=" + BuildConfig.VERSION_NAME);
-            OneStepFlowLog.hookSummary("system_server.workspace_ime");
         } catch (Throwable error) {
             OneStepFlowLog.w(TAG, "Workspace IME policy unavailable", error);
-            OneStepFlowLog.hookSummary("system_server.workspace_ime");
         }
     }
 

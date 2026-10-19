@@ -237,6 +237,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     @Override
     public void onSystemServerStarting(XposedModuleInterface.SystemServerStartingParam param) {
         MODULE = this;
+        OneStepFlowLog.attachLogger(this);
         OneStepFlowLog.info("server_lifecycle",
                 "phase=onSystemServerStarting pid=" + android.os.Process.myPid());
         com.example.flymestatusbarsizer.feature.onehanded.OneStepImePolicy.install(
@@ -245,6 +246,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 this, param.getClassLoader());
         com.example.flymestatusbarsizer.feature.onehanded.OneStepSystemResizePolicy.install(
                 this, param.getClassLoader());
+        OneStepFlowLog.hookSummary("system_server.workspace_ime");
     }
 
     @Override
@@ -254,6 +256,7 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         MODULE = this;
+        OneStepFlowLog.attachLogger(this);
         ModuleConfig.setConfigChangedCallback(FlymeStatusBarSizer::scheduleConfigChangedRefresh);
         ModuleConfig.attachToModule(this);
         ClassLoader loader = param.getDefaultClassLoader();

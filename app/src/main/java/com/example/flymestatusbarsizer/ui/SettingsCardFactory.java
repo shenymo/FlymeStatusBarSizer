@@ -820,7 +820,7 @@ public final class SettingsCardFactory {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         activity.addSwitchRow(content, "应用工作台日志",
-                "控制侧边手势和应用工作台的流程、任务恢复与异常日志输出。",
+                "控制应用工作台 Hook 初始化和模块错误日志输出。",
                 SettingsStore.KEY_WORKSPACE_FLOW_LOGGING_ENABLED,
                 SettingsStore.DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED);
         activity.addDivider(content);
