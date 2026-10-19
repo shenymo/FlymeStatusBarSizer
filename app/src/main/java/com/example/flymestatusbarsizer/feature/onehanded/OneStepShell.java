@@ -41,6 +41,28 @@ import java.util.concurrent.Executor;
 /** Borrows existing tasks from Flyme's organizer. Never registers another organizer or a display. */
 final class OneStepShell {
     private static final String TAG = OneStepFlowLog.TAG;
+    private static final String SYSTEM_UI_15_25_11_27_MP_VERSION = "15.25.11.27_mp";
+    private static final String SYSTEM_UI_16_26_06_25_BASE_VERSION = "16.26.06.25_base";
+
+    private enum SystemUiVersion {
+        SYSTEM_UI_15_25_11_27_MP(SYSTEM_UI_15_25_11_27_MP_VERSION),
+        SYSTEM_UI_16_26_06_25_BASE(SYSTEM_UI_16_26_06_25_BASE_VERSION),
+        UNKNOWN(null);
+
+        final String versionName;
+
+        SystemUiVersion(String versionName) {
+            this.versionName = versionName;
+        }
+
+        static SystemUiVersion resolve(String versionName) {
+            for (SystemUiVersion version : values()) {
+                if (version.versionName != null && version.versionName.equals(versionName)) return version;
+            }
+            return UNKNOWN;
+        }
+    }
+
     interface Listener {
         void onReady(Host host);
         void onRemoved(Host host);
@@ -141,16 +163,18 @@ final class OneStepShell {
             this.session = session;
             this.requireFocused = requireFocused;
             main = requireFocused;
-            if (usesTaskViewTransitions) {
+            if (systemUi15Implementation) {
                 controller = controllerClass.getConstructor(Context.class, organizerClass,
-                        taskViewTransitionsClass, syncQueue.getClass())
+                        systemUi15TaskViewTransitionsClass, syncQueue.getClass())
                         .newInstance(context, organizer, taskViewController, syncQueue);
                 view = (SurfaceView) taskViewClass.getConstructor(Context.class, controllerClass)
                         .newInstance(context, controller);
             } else {
-                controller = controllerClass.getConstructor(Context.class, organizerClass, controllerInterface,
+                controller = controllerClass.getConstructor(Context.class, organizerClass,
+                        systemUi16TaskViewControllerClass,
                         syncQueue.getClass()).newInstance(context, organizer, taskViewController, syncQueue);
-                view = (SurfaceView) taskViewClass.getConstructor(Context.class, controllerInterface, controllerClass)
+                view = (SurfaceView) taskViewClass.getConstructor(Context.class,
+                                systemUi16TaskViewControllerClass, controllerClass)
                         .newInstance(context, taskViewController, controller);
             }
             Object listener = Proxy.newProxyInstance(loader, new Class<?>[]{viewListenerClass}, (proxy, method, args) -> {
@@ -239,8 +263,8 @@ final class OneStepShell {
     private final ClassLoader loader;
     private final Class<?> organizerClass;
     private final Class<?> controllerClass;
-    private final Class<?> controllerInterface;
-    private final Class<?> taskViewTransitionsClass;
+    private final Class<?> systemUi16TaskViewControllerClass;
+    private final Class<?> systemUi15TaskViewTransitionsClass;
     private final Class<?> taskViewClass;
     private final Class<?> viewListenerClass;
     private final Class<?> taskListenerClass;
@@ -248,7 +272,9 @@ final class OneStepShell {
     private final Class<?> tokenClass;
     private final Class<?> transitionHandlerClass;
     private final Object taskViewController;
-    private final boolean usesTaskViewTransitions;
+    private final SystemUiVersion systemUiVersion;
+    private final String systemUiVersionName;
+    private final boolean systemUi15Implementation;
     private final Object transitionHandler;
     private final Object observer;
     private final SharedPreferences recovery;
@@ -296,6 +322,9 @@ final class OneStepShell {
         this.transitions = transitions;
         this.displayAreas = displayAreas;
         this.tasks = tasks;
+        systemUiVersionName = context.getPackageManager()
+                .getPackageInfo("com.android.systemui", 0).versionName;
+        systemUiVersion = SystemUiVersion.resolve(systemUiVersionName);
         loader = context.getClassLoader();
         organizer = OneStepReflection.get(factory, "mTaskOrganizer");
         if (organizer != OneStepReflection.get(transitions, "mOrganizer")) {
@@ -305,24 +334,43 @@ final class OneStepShell {
         executor = (Executor) OneStepReflection.call(organizer, "getExecutor");
         organizerClass = Class.forName("com.android.wm.shell.ShellTaskOrganizer", false, loader);
         controllerClass = Class.forName("com.android.wm.shell.taskview.TaskViewTaskController", false, loader);
-        Class<?> legacyController;
-        Class<?> nativeTransitions;
         Object taskViewTransitions = null;
-        try {
-            legacyController = Class.forName("com.android.wm.shell.taskview.TaskViewController", false, loader);
-            nativeTransitions = null;
-        } catch (ClassNotFoundException unavailable) {
-            legacyController = null;
-            nativeTransitions = Class.forName("com.android.wm.shell.taskview.TaskViewTransitions", false, loader);
+        Class<?> systemUi15Transitions = null;
+        Class<?> systemUi16Controller = null;
+        boolean useSystemUi15;
+        if (systemUiVersion == SystemUiVersion.SYSTEM_UI_15_25_11_27_MP) {
+            useSystemUi15 = true;
+        } else if (systemUiVersion == SystemUiVersion.SYSTEM_UI_16_26_06_25_BASE) {
+            useSystemUi15 = false;
+        } else {
+            try {
+                systemUi16Controller = Class.forName(
+                        "com.android.wm.shell.taskview.TaskViewController", false, loader);
+                useSystemUi15 = false;
+            } catch (ClassNotFoundException unavailable) {
+                useSystemUi15 = true;
+            }
+        }
+        if (useSystemUi15) {
+            systemUi15Transitions = Class.forName(
+                    "com.android.wm.shell.taskview.TaskViewTransitions", false, loader);
             taskViewTransitions = OneStepReflection.get(factory, "mTaskViewTransitions");
-            if (taskViewTransitions == null || !nativeTransitions.isInstance(taskViewTransitions))
+            if (taskViewTransitions == null || !systemUi15Transitions.isInstance(taskViewTransitions))
                 throw new IllegalStateException("TaskViewTransitions instance is unavailable");
             if (organizer != OneStepReflection.get(taskViewTransitions, "mOrganizer"))
                 throw new IllegalStateException("TaskView and TaskViewTransitions have different organizers");
+        } else {
+            if (systemUi16Controller == null) {
+                systemUi16Controller = Class.forName(
+                        "com.android.wm.shell.taskview.TaskViewController", false, loader);
+            }
         }
-        controllerInterface = legacyController;
-        taskViewTransitionsClass = nativeTransitions;
-        usesTaskViewTransitions = legacyController == null;
+        systemUi15TaskViewTransitionsClass = systemUi15Transitions;
+        systemUi16TaskViewControllerClass = systemUi16Controller;
+        systemUi15Implementation = useSystemUi15;
+        OneStepFlowLog.i(TAG, "SystemUI " + systemUiVersionName
+                + " selected " + (useSystemUi15 ? "TaskViewTransitions" : "TaskViewController")
+                + " workspace implementation");
         taskViewClass = Class.forName("com.android.wm.shell.taskview.TaskView", false, loader);
         viewListenerClass = Class.forName("com.android.wm.shell.taskview.TaskView$Listener", false, loader);
         taskListenerClass = Class.forName("com.android.wm.shell.ShellTaskOrganizer$TaskListener", false, loader);
@@ -331,10 +379,11 @@ final class OneStepShell {
         transitionHandlerClass = Class.forName("com.android.wm.shell.transition.Transitions$TransitionHandler", false, loader);
         recovery = context.getSharedPreferences("flyme_onestep_borrowed_tasks", Context.MODE_PRIVATE);
         bootCount = Settings.Global.getInt(context.getContentResolver(), Settings.Global.BOOT_COUNT, -1);
-        if (usesTaskViewTransitions) {
+        if (systemUi15Implementation) {
             taskViewController = taskViewTransitions;
         } else {
-            taskViewController = Proxy.newProxyInstance(loader, new Class<?>[]{controllerInterface}, (proxy, method, args) -> {
+            taskViewController = Proxy.newProxyInstance(loader,
+                    new Class<?>[]{systemUi16TaskViewControllerClass}, (proxy, method, args) -> {
                 if (method.getDeclaringClass() == Object.class) return objectMethod(proxy, method.getName(), args);
                 if ("isUsingShellTransitions".equals(method.getName())) return true;
                 handleTaskViewCallback(method.getName(), args);
@@ -596,7 +645,7 @@ final class OneStepShell {
     }
 
     boolean onTaskViewTransition(String name, Object[] args) {
-        if (!usesTaskViewTransitions) return false;
+        if (!systemUi15Implementation) return false;
         return handleTaskViewCallback(name, args);
     }
 
