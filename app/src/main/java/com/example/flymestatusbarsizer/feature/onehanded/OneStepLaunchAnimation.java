@@ -40,6 +40,7 @@ final class OneStepLaunchAnimation {
             Class<?> surfaceContext = Class.forName(
                     "com.meizu.flyme.launcher.floatingsurface.ActivitySurfaceContext", false, loader);
             module.intercept(OneStepReflection.method(surfaceContext, "getParentSurface"), chain -> {
+                OneStepFlowLog.hookTriggered("ActivitySurfaceContext.getParentSurface");
                 Launch launch = active;
                 if (launch != null && launch.iconParent != null && launch.iconParent.isValid()
                         && OneStepReflection.get(chain.getThisObject(), "activity") == launch.launcher)
@@ -60,6 +61,7 @@ final class OneStepLaunchAnimation {
         // but do not create a wallpaper animator that could outlive this launch.
         module.intercept(OneStepReflection.method(depthController, "createWallpaperZoomAnim",
                 boolean.class, long.class), chain -> {
+            OneStepFlowLog.hookTriggered("FlymeDepthController.createWallpaperZoomAnim");
             Launch launch = active;
             if (launch != null && launcherField.get(chain.getThisObject()) == launch.launcher)
                 return new AnimatorSet();
@@ -68,6 +70,7 @@ final class OneStepLaunchAnimation {
         // Freeze the controller's cached value too, including native reset/end callbacks,
         // so finishing or cancelling the launch cannot cause a wallpaper scale jump.
         module.intercept(OneStepReflection.method(depthController, "setWallpaperZoomOut", float.class), chain -> {
+            OneStepFlowLog.hookTriggered("FlymeDepthController.setWallpaperZoomOut");
             Launch launch = active;
             if (launch != null && launcherField.get(chain.getThisObject()) == launch.launcher)
                 return null;

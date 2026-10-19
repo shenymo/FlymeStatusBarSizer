@@ -38,6 +38,7 @@ public final class OneStepImeDiagnostics {
                     method.setAccessible(true);
                     module.intercept(method, chain -> {
                         Object result = chain.proceed();
+                        OneStepFlowLog.hookTriggered("DisplayContent." + name);
                         recordServerState(chain.getThisObject(), name);
                         return result;
                     });

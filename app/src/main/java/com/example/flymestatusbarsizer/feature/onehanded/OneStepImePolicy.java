@@ -88,7 +88,12 @@ public final class OneStepImePolicy {
             fromBinder = OneStepReflection.method(Class.forName("com.android.server.wm.WindowContainer", false, loader),
                     "fromBinder", IBinder.class);
             module.intercept(OneStepReflection.method(window, "shouldControlIme"), chain -> {
-                if (!hasSessions) return chain.proceed();
+                String point = "WindowState.shouldControlIme";
+                OneStepFlowLog.hookTriggered(point);
+                if (!hasSessions) {
+                    OneStepFlowLog.hookBypassed(point, "no_workspace_session");
+                    return chain.proceed();
+                }
                 Object target = chain.getThisObject();
                 try {
                     Object dc = OneStepReflection.call(target, "getDisplayContent");
@@ -98,9 +103,14 @@ public final class OneStepImePolicy {
                         if (owner != null && owner.live() && dc != null
                                 && ReflectUtils.getField(dc, "mRemoteInsetsControlTarget") != null
                                 && !Boolean.TRUE.equals(ReflectUtils.invokeNoArg(
-                                        ReflectUtils.getField(dc, "mImeWindowsContainer"), "isOrganized"))) return false;
+                                        ReflectUtils.getField(dc, "mImeWindowsContainer"), "isOrganized"))) {
+                            OneStepFlowLog.hookMatched(point, true, "workspace_task_ime_target");
+                            OneStepFlowLog.hookEffective(point, true, "workspace_ime_control_blocked");
+                            return false;
+                        }
                     }
                 } catch (Exception error) { OneStepImeDiagnostics.unavailable(error); }
+                OneStepFlowLog.hookBypassed(point, "foreign_or_inactive_ime_target");
                 return chain.proceed();
             });
             for (String name : new String[]{"updateImeParent", "adjustForImeIfNeeded", "updateImeControlTarget"}) {
@@ -108,12 +118,14 @@ public final class OneStepImePolicy {
                         ? OneStepReflection.method(display, name, boolean.class)
                         : OneStepReflection.method(display, name);
                 module.intercept(method, chain -> {
+                    OneStepFlowLog.hookTriggered("DisplayContent." + name);
                     Object result = chain.proceed();
                     report(chain.getThisObject());
                     return result;
                 });
             }
             module.intercept(OneStepReflection.method(task, "removeImmediately", String.class), chain -> {
+                OneStepFlowLog.hookTriggered("Task.removeImmediately");
                 if (!hasSessions) return chain.proceed();
                 Object target = chain.getThisObject();
                 try {
@@ -136,9 +148,16 @@ public final class OneStepImePolicy {
             });
             // Reuse the existing window-service Binder; no new service or SELinux service name.
             module.intercept(OneStepReflection.method(wms, "onTransact", int.class, Parcel.class, Parcel.class, int.class), chain -> {
-                if ((Integer) chain.getArg(0) == OneStepImeRegionProtocol.CONNECT && installed)
+                String point = "WindowManagerService.onTransact";
+                OneStepFlowLog.hookTriggered(point);
+                boolean connect = (Integer) chain.getArg(0) == OneStepImeRegionProtocol.CONNECT;
+                if (connect && installed) {
+                    OneStepFlowLog.hookMatched(point, true, "workspace_ime_connect_transaction");
+                    OneStepFlowLog.hookEffective(point, true, "workspace_ime_connect_intercepted");
                     return connectImeRegionObserver(chain.getThisObject(), (Parcel) chain.getArg(1),
                             (Parcel) chain.getArg(2));
+                }
+                if (connect) OneStepFlowLog.hookBypassed(point, "workspace_ime_policy_not_installed");
                 if ((Integer) chain.getArg(0) != CONNECT || !installed) return chain.proceed();
                 Parcel data = (Parcel) chain.getArg(1);
                 Parcel reply = (Parcel) chain.getArg(2);
@@ -173,7 +192,11 @@ public final class OneStepImePolicy {
             installed = true;
             installInputRegionHooks(module, loader);
             OneStepFlowLog.i(TAG, "workspace IME policy installed build=" + BuildConfig.VERSION_NAME);
-        } catch (Throwable error) { OneStepFlowLog.w(TAG, "Workspace IME policy unavailable", error); }
+            OneStepFlowLog.hookSummary("system_server.workspace_ime");
+        } catch (Throwable error) {
+            OneStepFlowLog.w(TAG, "Workspace IME policy unavailable", error);
+            OneStepFlowLog.hookSummary("system_server.workspace_ime");
+        }
     }
 
     private static Object resolveTask(IBinder token) throws ReflectiveOperationException {
@@ -271,6 +294,7 @@ public final class OneStepImePolicy {
             // Session method can be bypassed if ART has inlined it into the stub.
             module.intercept(OneStepReflection.method(session, "onTransact",
                     int.class, Parcel.class, Parcel.class, int.class), chain -> {
+                OneStepFlowLog.hookTriggered("Session.onTransact");
                 if (hasSessions && (Integer) chain.getArg(0) == rectangleTransaction) {
                     Parcel data = (Parcel) chain.getArg(1);
                     int position = data.dataPosition();
@@ -300,6 +324,7 @@ public final class OneStepImePolicy {
                 Class<?> session = Class.forName("com.android.server.wm.Session", false, loader);
                 module.intercept(OneStepReflection.method(session, "onRectangleOnScreenRequested",
                         IBinder.class, Rect.class), chain -> {
+                    OneStepFlowLog.hookTriggered("Session.onRectangleOnScreenRequested");
                     if (hasSessions) receiveInputRegion(chain.getThisObject(),
                             (IBinder) chain.getArg(0), (Rect) chain.getArg(1));
                     return chain.proceed();
@@ -329,7 +354,9 @@ public final class OneStepImePolicy {
             }
             if (start == null) throw new NoSuchMethodException("IMMS startInputOrWindowGainedFocus");
             start.setAccessible(true);
+            String startName = start.getName();
             module.intercept(start, chain -> {
+                OneStepFlowLog.hookTriggered("InputMethodManagerService." + startName);
                 Object result = chain.proceed();
                 if (chain.getArg(6) != null) {
                     try {
@@ -659,6 +686,7 @@ public final class OneStepImePolicy {
         Method orientation = OneStepReflection.method(activity, "getOverrideOrientation");
         for (Method method : new Method[]{taskResize, activityResize, taskMultiWindow, activityMultiWindow}) {
             module.intercept(method, chain -> {
+                OneStepFlowLog.hookTriggered(method.getDeclaringClass().getName() + "." + method.getName());
                 // These exceptions expire with the pane's task-token capability;
                 // app manifests and Android's global resize settings stay intact.
                 if (hasForcedLandscape(chain.getThisObject())) return true;
@@ -666,6 +694,7 @@ public final class OneStepImePolicy {
             });
         }
         module.intercept(orientation, chain -> {
+            OneStepFlowLog.hookTriggered("ActivityRecord.getOverrideOrientation");
             if (hasForcedLandscape(chain.getThisObject())) return ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
             return chain.proceed();
         });
@@ -691,6 +720,7 @@ public final class OneStepImePolicy {
         try {
             Class<?> activity = Class.forName("com.android.server.wm.ActivityRecord", false, loader);
             module.intercept(OneStepReflection.method(activity, "setRequestedOrientation", int.class), chain -> {
+                OneStepFlowLog.hookTriggered("ActivityRecord.setRequestedOrientation");
                 Object record = chain.getThisObject();
                 Integer forced = forcedOrientation(record, (Integer) chain.getArg(0));
                 Object result = forced == null

@@ -297,13 +297,31 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     void toggle(boolean fromLeft, Runnable success) {
         handler.post(() -> {
-            if (active()) return;
-            if (state != State.CLOSED || !shell.available() || !OneHandedTaskHooks.environmentAllowed(context)
-                    || !profileAllowed()) return;
+            if (active()) {
+                OneStepFlowLog.hookBypassed("workspace.toggle", "already_active");
+                return;
+            }
+            if (state != State.CLOSED) {
+                OneStepFlowLog.hookBypassed("workspace.toggle", "state=" + state);
+                return;
+            }
+            if (!shell.available()) {
+                OneStepFlowLog.hookBypassed("workspace.toggle", "shell_unavailable");
+                return;
+            }
+            if (!OneHandedTaskHooks.environmentAllowed(context)) {
+                OneStepFlowLog.hookBypassed("workspace.toggle", "environment_blocked");
+                return;
+            }
+            if (!profileAllowed()) {
+                OneStepFlowLog.hookBypassed("workspace.toggle", "profile_blocked");
+                return;
+            }
             try { workspaceOwnerUserId = OneHandedTaskHooks.currentUserId(); }
             catch (Exception error) { OneStepFlowLog.w(TAG, "Cannot resolve workspace user", error); return; }
             state = State.OPENING;
             int request = ++generation;
+            OneStepFlowLog.hookEffective("workspace.toggle", true, "open_requested");
             OneStepFlowLog.info("workspace_open_requested", request,
                     "side=" + (fromLeft ? "left" : "right")
                             + " profile=" + (oneHandedProfile ? "one-handed" : "side-gesture"));
@@ -519,6 +537,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 if (state != State.OPENING || generation != request) return;
                 transitionHandoff = false;
                 state = State.RUNNING;
+                OneStepFlowLog.hookEffective("workspace.toggle", true, "workspace_ready");
                 OneStepFlowLog.info("workspace_ready", request,
                         "task=" + (panes[mainSlot] == null || panes[mainSlot].card == null
                                 ? -1 : panes[mainSlot].card.taskId));
@@ -2290,8 +2309,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         });
     }
 
-    void onTaskViewTransition(String name, Object[] args) {
-        shell.onTaskViewTransition(name, args);
+    boolean onTaskViewTransition(String name, Object[] args) {
+        return shell.onTaskViewTransition(name, args);
     }
 
     boolean blocksNavigation() {

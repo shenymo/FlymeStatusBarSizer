@@ -563,8 +563,15 @@ final class OneStepShell {
         });
     }
 
-    private void handleTaskViewCallback(String name, Object[] args) {
-        if (args == null || args.length == 0) return;
+    private boolean handleTaskViewCallback(String name, Object[] args) {
+        if (args == null || args.length == 0) return false;
+        boolean matched = false;
+        for (Host host : hosts) {
+            if (host.controller == args[0] && current(host)) {
+                matched = true;
+                break;
+            }
+        }
         if ("setTaskViewVisible".equals(name)) {
             Boolean visible = null;
             for (int i = 1; i < args.length; i++) {
@@ -585,11 +592,12 @@ final class OneStepShell {
                 }
             });
         }
+        return matched;
     }
 
-    void onTaskViewTransition(String name, Object[] args) {
-        if (!usesTaskViewTransitions) return;
-        handleTaskViewCallback(name, args);
+    boolean onTaskViewTransition(String name, Object[] args) {
+        if (!usesTaskViewTransitions) return false;
+        return handleTaskViewCallback(name, args);
     }
 
     private void initialize(Class<?> observerClass) {

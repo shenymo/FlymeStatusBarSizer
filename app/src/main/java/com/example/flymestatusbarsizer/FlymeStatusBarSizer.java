@@ -912,11 +912,15 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     public void intercept(Method method, XposedInterface.Hooker hooker) {
+        OneStepFlowLog.hookResolved(method);
         hook(method).intercept(hooker);
+        OneStepFlowLog.hookInstalled(method);
     }
 
     public <T> void intercept(Constructor<T> constructor, XposedInterface.Hooker hooker) {
+        OneStepFlowLog.hookResolved(constructor);
         hook(constructor).intercept(hooker);
+        OneStepFlowLog.hookInstalled(constructor);
     }
 
     @SuppressWarnings("rawtypes")

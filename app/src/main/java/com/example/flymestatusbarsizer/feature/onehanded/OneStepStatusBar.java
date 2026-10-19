@@ -47,16 +47,27 @@ final class OneStepStatusBar {
             method.setAccessible(true);
             Field forceVisible = state.getDeclaredField("mForceStatusBarVisible");
             forceVisible.setAccessible(true);
+            String typeName = type.getName();
             module.intercept(method, chain -> {
+                String point = typeName + ".apply";
+                OneStepFlowLog.hookTriggered(point);
                 Object owner = chain.getThisObject();
-                if (!isPrimary(owner)) return chain.proceed();
+                if (!isPrimary(owner)) {
+                    OneStepFlowLog.hookBypassed(point, "non_primary_display");
+                    return chain.proceed();
+                }
+                OneStepFlowLog.hookMatched(point, true, "primary_status_bar");
                 primary = new WeakReference<>(owner);
-                if (!visible) return chain.proceed();
+                if (!visible) {
+                    OneStepFlowLog.hookEffective(point, false, "workspace_status_bar_not_visible");
+                    return chain.proceed();
+                }
                 Object current = chain.getArg(0);
                 boolean requested = forceVisible.getBoolean(current);
                 forceVisible.setBoolean(current, true);
                 try { return chain.proceed(); }
                 finally {
+                    OneStepFlowLog.hookEffective(point, true, "force_visible_applied");
                     // Restore the native request, not a snapshot saved when the workspace opened.
                     forceVisible.setBoolean(current, requested);
                 }
@@ -85,6 +96,7 @@ final class OneStepStatusBar {
             int transparentMode = transparent;
             Method applyBackground = OneStepReflection.method(base, "applyModeBackground", int.class, int.class, boolean.class);
             module.intercept(applyBackground, chain -> {
+                OneStepFlowLog.hookTriggered(base.getName() + ".applyModeBackground");
                 Object owner = chain.getThisObject();
                 if (!phone.isInstance(owner) || !rememberBackground(owner))
                     return chain.proceed();
@@ -215,10 +227,19 @@ final class OneStepStatusBar {
             for (Method method : type.getDeclaredMethods()) {
                 if ("updateStatus".equals(method.getName()) && method.getParameterCount() == 1) {
                     module.intercept(method, chain -> {
+                        String point = type.getName() + ".updateStatus";
+                        OneStepFlowLog.hookTriggered(point);
                         Object owner = chain.getThisObject();
-                        if (!rememberLightBar(owner)) return chain.proceed();
+                        if (!rememberLightBar(owner)) {
+                            OneStepFlowLog.hookBypassed(point, "non_primary_display");
+                            return chain.proceed();
+                        }
+                        OneStepFlowLog.hookMatched(point, true, "primary_light_bar");
                         refreshBackground();
-                        if (!useWallpaperColors(owner)) return chain.proceed();
+                        if (!useWallpaperColors(owner)) {
+                            OneStepFlowLog.hookEffective(point, false, "workspace_colors_not_active");
+                            return chain.proceed();
+                        }
                         try {
                             Object icons = OneStepReflection.get(owner, "mStatusBarIconController");
                             OneStepReflection.call(icons, "setIconsDarkArea", new Class<?>[]{ArrayList.class},
@@ -226,8 +247,10 @@ final class OneStepStatusBar {
                             Object transitions = OneStepReflection.call(icons, "getTransitionsController");
                             OneStepReflection.call(transitions, "setIconsDark",
                                     new Class<?>[]{boolean.class, boolean.class}, darkIcons, true);
+                            OneStepFlowLog.hookEffective(point, true, "workspace_icon_tint_applied");
                             return null;
                         } catch (ReflectiveOperationException | RuntimeException error) {
+                            OneStepFlowLog.hookEffective(point, false, "workspace_icon_tint_failed");
                             OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot tint workspace status bar", error);
                             return chain.proceed();
                         }
@@ -235,13 +258,26 @@ final class OneStepStatusBar {
                 } else if ("updateNavigation".equals(method.getName()) && method.getParameterCount() == 0) {
                     Field navigationLight = OneStepReflection.field(type, "mNavigationLight");
                     module.intercept(method, chain -> {
+                        String point = type.getName() + ".updateNavigation";
+                        OneStepFlowLog.hookTriggered(point);
                         Object owner = chain.getThisObject();
-                        if (!rememberLightBar(owner) || !useWallpaperColors(owner) || imeVisible)
+                        if (!rememberLightBar(owner)) {
+                            OneStepFlowLog.hookBypassed(point, "non_primary_display");
                             return chain.proceed();
+                        }
+                        if (!useWallpaperColors(owner) || imeVisible) {
+                            OneStepFlowLog.hookMatched(point, true,
+                                    imeVisible ? "ime_visible" : "workspace_colors_not_active");
+                            OneStepFlowLog.hookEffective(point, false, "native_navigation_colors_preserved");
+                            return chain.proceed();
+                        }
+                        OneStepFlowLog.hookMatched(point, true, "primary_navigation_bar");
                         boolean nativeLight = navigationLight.getBoolean(owner);
                         navigationLight.setBoolean(owner, darkIcons);
-                        try { return chain.proceed(); }
-                        finally { navigationLight.setBoolean(owner, nativeLight); }
+                        try {
+                            OneStepFlowLog.hookEffective(point, true, "workspace_navigation_colors_applied");
+                            return chain.proceed();
+                        } finally { navigationLight.setBoolean(owner, nativeLight); }
                     });
                 }
             }

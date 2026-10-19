@@ -140,6 +140,7 @@ public final class OneStepLauncherBridge {
             Class<?> launcher = Class.forName("com.android.launcher3.uioverrides.QuickstepLauncher", false, loader);
             Method onCreate = OneStepReflection.method(launcher, "onCreate", Bundle.class);
             module.intercept(onCreate, chain -> {
+                OneStepFlowLog.hookTriggered("QuickstepLauncher.onCreate");
                 Object result = chain.proceed();
                 try { register((Context) chain.getThisObject()); }
                 catch (RuntimeException error) { OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Cannot register workspace receiver", error); }
@@ -148,14 +149,27 @@ public final class OneStepLauncherBridge {
             Class<?> item = Class.forName("com.android.launcher3.model.data.ItemInfo", false, loader);
             Method launch = OneStepReflection.method(launcher, "startActivitySafely", View.class, Intent.class, item);
             module.intercept(launch, chain -> {
+                String point = "QuickstepLauncher.startActivitySafely";
+                OneStepFlowLog.hookTriggered(point);
                 IBinder control = launcherControl;
-                if (control == null) return chain.proceed();
+                if (control == null) {
+                    OneStepFlowLog.hookBypassed(point, "launcher_control_unavailable");
+                    return chain.proceed();
+                }
                 Context context = (Context) chain.getThisObject();
                 OneStepLaunchAnimation.Launch animation = null;
                 try {
                     int state = transact(control, ACTIVE, null);
-                    if (state == 0) return chain.proceed();
-                    if (state != 1) return null;
+                    if (state == 0) {
+                        OneStepFlowLog.hookBypassed(point, "workspace_inactive");
+                        return chain.proceed();
+                    }
+                    if (state != 1) {
+                        OneStepFlowLog.hookMatched(point, true, "workspace_control_connected");
+                        OneStepFlowLog.hookEffective(point, false, "workspace_request_pending");
+                        return null;
+                    }
+                    OneStepFlowLog.hookMatched(point, true, "workspace_control_active");
                     Intent intent = new Intent((Intent) chain.getArg(1));
                     Object info = chain.getArg(2);
                     Object user = ReflectUtils.getField(info, "user");
@@ -176,10 +190,12 @@ public final class OneStepLauncherBridge {
                         data.writeStrongBinder(preparedAnimation);
                     });
                     if (accepted != 1) {
+                        OneStepFlowLog.hookEffective(point, false, "workspace_rejected_launch_request");
                         if (animation != null) animation.cancel();
                         pending.cancel();
                         return null;
                     }
+                    OneStepFlowLog.hookEffective(point, true, "workspace_launch_accepted");
                     if (animation != null) return animation.callbacks;
                     Object callbacks = launch.getReturnType().getConstructor().newInstance();
                     OneStepReflection.call(callbacks, "executeAllAndDestroy");
@@ -191,7 +207,11 @@ public final class OneStepLauncherBridge {
                     return null;
                 }
             });
-        } catch (Exception error) { OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Launcher workspace hook unavailable", error); }
+            OneStepFlowLog.hookSummary("launcher.workspace");
+        } catch (Exception error) {
+            OneStepFlowLog.w(OneHandedTaskHooks.TAG, "Launcher workspace hook unavailable", error);
+            OneStepFlowLog.hookSummary("launcher.workspace");
+        }
     }
 
     private static PendingIntent pendingIntent(Context context, Intent intent, Object item, UserHandle user)

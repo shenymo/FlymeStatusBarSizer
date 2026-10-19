@@ -102,6 +102,7 @@ public final class OneHandedTaskHooks {
             OneStepFlowLog.i(TAG, "OneStep Shell task workspace hooks installed");
         } catch (Throwable e) {
             OneStepFlowLog.w(TAG, "Cannot install OneStep workspace", e);
+            OneStepFlowLog.hookSummary("systemui.workspace");
             return;
         }
         installOneHandedActivationHook(module, loader);
@@ -113,6 +114,7 @@ public final class OneHandedTaskHooks {
                     .getDeclaredMethod("toHome");
             home.setAccessible(true);
             module.intercept(home, chain -> {
+                OneStepFlowLog.hookTriggered("MBackButtonController.toHome");
                 OneStepWorkspace current = controller;
                 return current != null && current.blocksNavigation() ? null : chain.proceed();
             });
@@ -130,6 +132,7 @@ public final class OneHandedTaskHooks {
                 int callbackIndex = runnerIndex;
                 method.setAccessible(true);
                 module.intercept(method, chain -> {
+                    OneStepFlowLog.hookTriggered("RecentsTransitionHandler.startRecentsTransition");
                     OneStepWorkspace current = controller;
                     if (current != null && current.blocksNavigation()) {
                         // Normally disabled SysUiState flags prevent the launcher from starting.
@@ -145,6 +148,7 @@ public final class OneHandedTaskHooks {
                 });
             }
         } catch (Throwable e) { OneStepFlowLog.w(TAG, "Recents lifecycle hook unavailable", e); }
+        OneStepFlowLog.hookSummary("systemui.workspace");
     }
 
     private static void installOneHandedActivationHook(FlymeStatusBarSizer module, ClassLoader loader) {
@@ -170,7 +174,14 @@ public final class OneHandedTaskHooks {
             Method method = controllerClass.getDeclaredMethod(methodName);
             method.setAccessible(true);
             module.intercept(method, chain -> {
-                return consumer.test(chain.getThisObject()) ? null : chain.proceed();
+                String point = "OneHandedController." + methodName;
+                OneStepFlowLog.hookTriggered(point);
+                boolean consumed = consumer.test(chain.getThisObject());
+                OneStepFlowLog.hookMatched(point, consumed,
+                        consumed ? "workspace_condition_passed" : "workspace_condition_rejected");
+                OneStepFlowLog.hookEffective(point, consumed,
+                        consumed ? "workspace_toggle_requested" : "native_path_preserved");
+                return consumed ? null : chain.proceed();
             });
             OneStepFlowLog.i(TAG, installedMessage);
         } catch (Throwable error) {
@@ -324,19 +335,31 @@ public final class OneHandedTaskHooks {
                 method.setAccessible(true);
                 module.intercept(method, chain -> {
                     Object result = chain.proceed();
+                    String point = owner + "." + name;
+                    OneStepFlowLog.hookTriggered(point);
                     OneStepWorkspace current = controller;
-                    if (current != null) notifyTaskViewTransition(current, name,
-                            chain.getThisObject(), chain.getArgs().toArray());
+                    if (current == null) {
+                        OneStepFlowLog.hookBypassed(point, "workspace_controller_unavailable");
+                    } else {
+                        Object[] args = chain.getArgs().toArray();
+                        boolean matched = notifyTaskViewTransition(current, name,
+                                chain.getThisObject(), args);
+                        OneStepFlowLog.hookMatched(point, matched,
+                                matched ? "workspace_task_view" : "foreign_task_view");
+                        OneStepFlowLog.hookEffective(point, matched,
+                                matched ? "workspace_callback_dispatched" : "callback_ignored");
+                    }
                     return result;
                 });
             }
         } catch (ClassNotFoundException ignored) { }
         catch (Throwable error) {
             OneStepFlowLog.i(TAG, "TaskView transition callback hook unavailable");
+            OneStepFlowLog.hookUnavailable("TaskViewTransitions", error);
         }
     }
 
-    private static void notifyTaskViewTransition(OneStepWorkspace workspace, String name,
+    private static boolean notifyTaskViewTransition(OneStepWorkspace workspace, String name,
                                                  Object owner, Object[] args) {
         if (args.length == 0 || args[0] == null
                 || !"TaskViewTaskController".equals(args[0].getClass().getSimpleName())) {
@@ -345,7 +368,7 @@ public final class OneHandedTaskHooks {
             System.arraycopy(args, 0, withController, 1, args.length);
             args = withController;
         }
-        workspace.onTaskViewTransition(name, args);
+        return workspace.onTaskViewTransition(name, args);
     }
 
     private static void attach() {
@@ -361,6 +384,7 @@ public final class OneHandedTaskHooks {
                         shellTransitions, taskViewFactory, taskDisplayAreas);
                 registerEnvironment(context, handler);
                 controller = current;
+                OneStepFlowLog.hookTriggered("OneStepWorkspace.attach");
                 registerWorkspaceTriggerReceiver(context, handler);
                 OneStepFlowLog.i(TAG, "OneStep Shell workspace ready in SystemUI");
             } catch (Throwable e) { OneStepFlowLog.w(TAG, "Cannot initialize OneStep workspace", e); }

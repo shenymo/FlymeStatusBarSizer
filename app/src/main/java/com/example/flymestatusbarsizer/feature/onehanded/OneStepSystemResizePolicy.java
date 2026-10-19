@@ -34,22 +34,45 @@ public final class OneStepSystemResizePolicy {
                     fragment, "supportsMultiWindowInDisplayArea", displayArea);
 
             module.intercept(retrieveSettings, chain -> {
+                String point = "ActivityTaskManagerService.retrieveSettings";
+                OneStepFlowLog.hookTriggered(point);
                 Object result = chain.proceed();
                 forceMultiWindowEnabled(chain.getThisObject(), atms);
+                OneStepFlowLog.hookEffective(point, true, "multi_window_flag_forced");
                 return result;
             });
-            module.intercept(activityResize, chain ->
-                    isSystemActivity(chain.getThisObject(), activity)
-                            ? true : chain.proceed());
-            module.intercept(taskResize, chain ->
-                    isSystemTask(chain.getThisObject(), task)
-                            ? true : chain.proceed());
-            module.intercept(activityMultiWindow, chain ->
-                    isSystemActivity(chain.getThisObject(), activity)
-                            ? true : chain.proceed());
-            module.intercept(taskMultiWindow, chain ->
-                    isSystemTask(chain.getThisObject(), task)
-                            ? true : chain.proceed());
+            module.intercept(activityResize, chain -> {
+                String point = "ActivityRecord.isResizeable";
+                OneStepFlowLog.hookTriggered(point);
+                boolean matched = isSystemActivity(chain.getThisObject(), activity);
+                OneStepFlowLog.hookMatched(point, matched, matched ? "system_activity" : "ordinary_activity");
+                OneStepFlowLog.hookEffective(point, matched, matched ? "resize_enabled" : "native_result_preserved");
+                return matched ? true : chain.proceed();
+            });
+            module.intercept(taskResize, chain -> {
+                String point = "Task.isResizeable";
+                OneStepFlowLog.hookTriggered(point);
+                boolean matched = isSystemTask(chain.getThisObject(), task);
+                OneStepFlowLog.hookMatched(point, matched, matched ? "system_task" : "ordinary_task");
+                OneStepFlowLog.hookEffective(point, matched, matched ? "resize_enabled" : "native_result_preserved");
+                return matched ? true : chain.proceed();
+            });
+            module.intercept(activityMultiWindow, chain -> {
+                String point = "ActivityRecord.supportsMultiWindowInDisplayArea";
+                OneStepFlowLog.hookTriggered(point);
+                boolean matched = isSystemActivity(chain.getThisObject(), activity);
+                OneStepFlowLog.hookMatched(point, matched, matched ? "system_activity" : "ordinary_activity");
+                OneStepFlowLog.hookEffective(point, matched, matched ? "multi_window_enabled" : "native_result_preserved");
+                return matched ? true : chain.proceed();
+            });
+            module.intercept(taskMultiWindow, chain -> {
+                String point = "TaskFragment.supportsMultiWindowInDisplayArea";
+                OneStepFlowLog.hookTriggered(point);
+                boolean matched = isSystemTask(chain.getThisObject(), task);
+                OneStepFlowLog.hookMatched(point, matched, matched ? "system_task" : "ordinary_task");
+                OneStepFlowLog.hookEffective(point, matched, matched ? "multi_window_enabled" : "native_result_preserved");
+                return matched ? true : chain.proceed();
+            });
 
             installed = true;
             OneStepFlowLog.i(TAG, "global system-app multi-window policy installed");
