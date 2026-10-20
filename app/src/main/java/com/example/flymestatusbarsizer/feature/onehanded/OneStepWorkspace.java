@@ -57,7 +57,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private static final long IME_HIDE_TIMEOUT_MS = 2500;
     private static final long IME_SETTLE_MS = 100;
     private static final long CLOSE_WATCHDOG_MS = 8000;
-    private static final PathInterpolator EASING = new PathInterpolator(0.2f, 0f, 0f, 1f);
+    private static final PathInterpolator EASING = new PathInterpolator(0.22f, 0.61f, 0.36f, 1f);
     private enum State { CLOSED, OPENING, RUNNING, CLOSING }
     private volatile State state = State.CLOSED;
     private final Context context;
