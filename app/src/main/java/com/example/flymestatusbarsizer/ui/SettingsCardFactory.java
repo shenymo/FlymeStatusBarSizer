@@ -448,14 +448,14 @@ public final class SettingsCardFactory {
                 "下次打开时生效，不影响桌面负一屏。", assistantOptions, true);
         appearanceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
         page.addView(appearanceCard, activity.matchWrapWithTop(8));
-        View workspaceCard = activity.buildSectionCard("任务工作台",
-                "从侧边进入多应用工作台，在主窗口和侧窗之间快速切换。",
+        View workspaceCard = activity.buildSectionCard("多应用工作台",
+                "从侧边手势进入，在主窗口和侧边小窗之间切换应用。",
                 buildTaskWorkbenchOptions(false), true);
         workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
         page.addView(workspaceCard, activity.matchWrapWithTop(8));
         java.util.function.IntConsumer updateAction = value -> {
             boolean scale = value == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
-            summary.setText(scale ? "当前动作：任务工作台 · 侧边长滑进入，重复触发或点击留白退出。"
+            summary.setText(scale ? "当前动作：多应用工作台 · 侧边长滑进入，重复触发或点击留白退出。"
                     : "当前动作：全局负一屏 · 侧边长滑进入，左右滑动或返回退出。");
             appearanceCard.setVisibility(scale ? View.GONE : View.VISIBLE);
             workspaceCard.setVisibility(scale ? View.VISIBLE : View.GONE);
@@ -463,7 +463,7 @@ public final class SettingsCardFactory {
         activity.addChoiceRow(actionOptions, "触发动作", "选择侧边长滑手势执行的功能。",
                 SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION,
                 new int[]{SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT, SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE},
-                new String[]{"全局负一屏", "任务工作台"}, updateAction);
+                new String[]{"全局负一屏", "多应用工作台"}, updateAction);
         updateAction.accept(SettingsStore.normalizeSideGestureAction(SettingsStore.readInt(activity.prefs(),
                 SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION)));
         return activity.buildSectionCard("侧边手势",
@@ -479,14 +479,14 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_ONE_HANDED_MODE_ACTION, SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION,
                 new int[]{SettingsStore.ONE_HANDED_MODE_ACTION_SYSTEM,
                         SettingsStore.ONE_HANDED_MODE_ACTION_TASK_SCALE},
-                new String[]{"系统单手缩放", "应用工作台"}, value ->
+                new String[]{"系统单手缩放", "多应用工作台"}, value ->
                         updateOneHandedWorkbenchVisibility(options, value));
         updateOneHandedWorkbenchVisibility(options,
                 SettingsStore.normalizeOneHandedModeAction(SettingsStore.readInt(activity.prefs(),
                         SettingsStore.KEY_ONE_HANDED_MODE_ACTION,
                         SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION)));
         return activity.buildSectionCard("下拉单手模式",
-                "把底部单手手势单独配置；选择应用工作台后，可设置它自己的布局参数。", options, true);
+                "底部上滑可打开多应用工作台；这里的布局设置与侧边入口分别保存。", options, true);
     }
 
     private void updateOneHandedWorkbenchVisibility(LinearLayout options, int action) {
@@ -504,53 +504,43 @@ public final class SettingsCardFactory {
         LinearLayout options = new LinearLayout(activity);
         options.setOrientation(LinearLayout.VERTICAL);
 
-        activity.addActionButtonRow(options, "任务工作台链接", null, "复制链接", () -> {
-            ClipboardManager clipboard = (ClipboardManager)
-                    activity.getSystemService(Context.CLIPBOARD_SERVICE);
-            if (clipboard == null) {
-                activity.showToast("剪贴板不可用");
-                return;
-            }
-            clipboard.setPrimaryClip(ClipData.newPlainText(
-                    "task_workbench_url", OneStepWorkspaceProtocol.URI));
-            activity.showToast("任务工作台链接已复制");
-        });
-
         TextView behavior = new TextView(activity);
-        behavior.setText("进入后当前应用作为主窗口，顶部图标栏用于切换最近应用；长按图标可拖入侧窗。"
-                + "侧窗为空时自动收起，点击留白或再次触发手势退出。");
+        behavior.setText("当前应用作为主窗口。点击顶部应用图标可切换主窗口，长按可拖入侧边小窗；"
+                + "空侧窗会自动收起，点击留白或再次触发手势可退出。");
         behavior.setTextSize(13);
         behavior.setTextColor(activity.subtextColor());
         behavior.setLineSpacing(activity.dp(2), 1.0f);
         behavior.setPadding(0, 0, 0, activity.dp(8));
         options.addView(behavior, activity.matchWrap());
 
-        activity.addProfileSectionHeader(options, "工作台布局", "图标栏位置和主窗口大小会根据可用空间自动安排。");
-        activity.addSliderRow(options, "图标栏高度", null,
+        activity.addProfileSectionHeader(options, "窗口布局", "工具栏高度和侧边小窗状态按入口分别保存。");
+        activity.addSliderRow(options, "顶部工具栏高度", null,
                 oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP
                         : SettingsStore.KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
                 oneHanded ? SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP
                         : SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP,
                 SettingsStore.MIN_WORKSPACE_TOOLBAR_HEIGHT_DP,
                 SettingsStore.MAX_WORKSPACE_TOOLBAR_HEIGHT_DP, "dp");
-        activity.addSwitchRow(options, "默认显示侧边栏",
-                "进入应用工作台时默认显示侧边的 3 个小窗；关闭后侧窗为空时自动收起。",
+        activity.addSwitchRow(options, "进入时展开侧边小窗",
+                "进入工作台时显示 3 个侧边小窗；关闭后从收起状态开始。",
                 oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED
                         : SettingsStore.KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
                 oneHanded ? SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED
                         : SettingsStore.DEFAULT_WORKSPACE_DEFAULT_SIDEBAR_ENABLED);
         if (!oneHanded) {
-            activity.addSwitchRow(options, "空白窗使用应用序列",
-                    "开启后，空白窗和返回后的主窗显示按 A-Z 排列的应用序列；关闭后恢复 Flyme 原生桌面。",
+            activity.addProfileSectionHeader(options, "空窗口应用列表",
+                    "在空窗口中查找并启动应用；关闭后显示 Flyme 桌面。此设置对两种入口生效。");
+            activity.addSwitchRow(options, "显示应用列表",
+                    "按应用名称排序，支持中文名称和拼音搜索。",
                     SettingsStore.KEY_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED,
                     SettingsStore.DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED);
-            activity.addChoiceRow(options, "应用序列样式", null,
+            activity.addChoiceRow(options, "列表排列", null,
                     SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_STYLE,
                     SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_STYLE,
                     new int[]{SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_LIST,
                             SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_GRID},
                     new String[]{"列表", "网格"});
-            activity.addSliderRow(options, "应用名称文字大小", null,
+            activity.addSliderRow(options, "应用名称字号", null,
                     SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
                     SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
                     SettingsStore.MIN_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
@@ -561,6 +551,17 @@ public final class SettingsCardFactory {
                     SettingsStore.MIN_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
                     SettingsStore.MAX_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP, "dp");
         }
+        activity.addActionButtonRow(options, "工作台链接", null, "复制链接", () -> {
+            ClipboardManager clipboard = (ClipboardManager)
+                    activity.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard == null) {
+                activity.showToast("剪贴板不可用");
+                return;
+            }
+            clipboard.setPrimaryClip(ClipData.newPlainText(
+                    "task_workbench_url", OneStepWorkspaceProtocol.URI));
+            activity.showToast("工作台链接已复制");
+        });
         return options;
     }
 
@@ -841,8 +842,8 @@ public final class SettingsCardFactory {
     public View createPerformanceDebugCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
-        activity.addSwitchRow(content, "应用工作台日志",
-                "控制应用工作台 Hook 初始化和模块错误日志输出。",
+        activity.addSwitchRow(content, "多应用工作台日志",
+                "控制多应用工作台初始化和模块错误日志输出。",
                 SettingsStore.KEY_WORKSPACE_FLOW_LOGGING_ENABLED,
                 SettingsStore.DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED);
         activity.addDivider(content);
@@ -862,7 +863,7 @@ public final class SettingsCardFactory {
                 SettingsStore.DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED);
         return activity.buildSectionCard(
                 "性能调试",
-                "管理应用工作台流程日志和性能打点输出。",
+                "管理多应用工作台流程日志和性能打点输出。",
                 content);
     }
 
@@ -1354,7 +1355,7 @@ public final class SettingsCardFactory {
         page.setOrientation(LinearLayout.VERTICAL);
 
         activity.addProfileSectionHeader(page, "小窗选择器",
-                "这里的设置只影响 Flyme 原生小窗面板，不影响任务工作台。");
+                "这里的设置只影响 Flyme 原生小窗面板，不影响多应用工作台。");
         activity.addSwitchRow(page, "预热原生小窗面板",
                 "提前准备 Flyme 原生小窗选择面板，降低首次触发卡顿。",
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
