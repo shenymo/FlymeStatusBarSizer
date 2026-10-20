@@ -138,6 +138,11 @@ public final class ModuleConfig {
     public int workspaceToolbarPositionDp = SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP;
     public boolean workspaceDefaultSidebarEnabled =
             SettingsStore.DEFAULT_WORKSPACE_DEFAULT_SIDEBAR_ENABLED;
+    public boolean workspaceEmptyPaneAppSequenceEnabled =
+            SettingsStore.DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED;
+    public int workspaceAppSequenceStyle = SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_STYLE;
+    public int workspaceAppSequenceTextSizeSp = SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP;
+    public int workspaceAppSequenceIconSizeDp = SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP;
     public int oneHandedWorkspaceToolbarHeightDp =
             SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP;
     public int oneHandedWorkspaceToolbarPositionDp =
@@ -753,6 +758,25 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
                     SettingsStore.DEFAULT_WORKSPACE_DEFAULT_SIDEBAR_ENABLED);
+            config.workspaceEmptyPaneAppSequenceEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED,
+                    SettingsStore.DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED);
+            config.workspaceAppSequenceStyle = SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_STYLE,
+                    SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_STYLE) == SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_GRID
+                    ? SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_GRID
+                    : SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_LIST;
+            config.workspaceAppSequenceTextSizeSp = Math.max(
+                    SettingsStore.MIN_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
+                    Math.min(SettingsStore.MAX_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP, SettingsStore.readInt(prefs,
+                            SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
+                            SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP)));
+            config.workspaceAppSequenceIconSizeDp = Math.max(
+                    SettingsStore.MIN_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
+                    Math.min(SettingsStore.MAX_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP, SettingsStore.readInt(prefs,
+                            SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
+                            SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP)));
             config.oneHandedWorkspaceToolbarHeightDp = Math.max(
                     SettingsStore.MIN_WORKSPACE_TOOLBAR_HEIGHT_DP,
                     Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_HEIGHT_DP, SettingsStore.readInt(prefs,

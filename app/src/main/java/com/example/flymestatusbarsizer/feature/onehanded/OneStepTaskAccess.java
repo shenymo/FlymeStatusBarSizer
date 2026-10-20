@@ -4,7 +4,10 @@ import android.app.ActivityOptions;
 import android.content.Context;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.os.Bundle;
+import android.os.UserHandle;
 
 import com.example.flymestatusbarsizer.BuildConfig;
 
@@ -164,9 +167,20 @@ final class OneStepTaskAccess {
         options.setLaunchDisplayId(0);
         Intent intent = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Context userContext = (Context) OneStepReflection.call(context, "createContextAsUser",
+                new Class<?>[]{UserHandle.class, int.class}, userHandle(userId), 0);
+        ResolveInfo home = userContext.getPackageManager().resolveActivity(intent,
+                PackageManager.MATCH_DEFAULT_ONLY);
+        if (home != null && home.activityInfo != null) {
+            intent.setComponent(new ComponentName(home.activityInfo.packageName, home.activityInfo.name));
+        }
         OneStepReflection.call(context, "startActivityAsUser",
                 new Class<?>[]{Intent.class, Bundle.class, android.os.UserHandle.class}, intent, options.toBundle(),
-                android.os.UserHandle.getUserHandleForUid(userId * 100000));
+                userHandle(userId));
+    }
+
+    private static UserHandle userHandle(int userId) {
+        return UserHandle.getUserHandleForUid(userId * 100000);
     }
 
     void returnToPage(RecentTaskCard requested) throws ReflectiveOperationException {

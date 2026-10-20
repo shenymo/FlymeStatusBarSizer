@@ -539,6 +539,28 @@ public final class SettingsCardFactory {
                         : SettingsStore.KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
                 oneHanded ? SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED
                         : SettingsStore.DEFAULT_WORKSPACE_DEFAULT_SIDEBAR_ENABLED);
+        if (!oneHanded) {
+            activity.addSwitchRow(options, "空白窗使用应用序列",
+                    "开启后，空白窗和返回后的主窗显示按 A-Z 排列的应用序列；关闭后恢复 Flyme 原生桌面。",
+                    SettingsStore.KEY_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED,
+                    SettingsStore.DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED);
+            activity.addChoiceRow(options, "应用序列样式", null,
+                    SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_STYLE,
+                    SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_STYLE,
+                    new int[]{SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_LIST,
+                            SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_GRID},
+                    new String[]{"列表", "网格"});
+            activity.addSliderRow(options, "应用名称文字大小", null,
+                    SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
+                    SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
+                    SettingsStore.MIN_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
+                    SettingsStore.MAX_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP, "sp");
+            activity.addSliderRow(options, "应用图标大小", null,
+                    SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
+                    SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
+                    SettingsStore.MIN_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
+                    SettingsStore.MAX_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP, "dp");
+        }
         return options;
     }
 

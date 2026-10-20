@@ -151,6 +151,21 @@ public final class SettingsStore {
     public static final String KEY_WORKSPACE_TOOLBAR_POSITION_DP = "workspace_toolbar_position_dp";
     public static final String KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED =
             "workspace_default_sidebar_enabled";
+    public static final String KEY_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED =
+            "workspace_empty_pane_app_sequence_enabled";
+    public static final boolean DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED = true;
+    public static final String KEY_WORKSPACE_APP_SEQUENCE_STYLE = "workspace_app_sequence_style";
+    public static final int WORKSPACE_APP_SEQUENCE_STYLE_LIST = 0;
+    public static final int WORKSPACE_APP_SEQUENCE_STYLE_GRID = 1;
+    public static final int DEFAULT_WORKSPACE_APP_SEQUENCE_STYLE = WORKSPACE_APP_SEQUENCE_STYLE_LIST;
+    public static final String KEY_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP = "workspace_app_sequence_text_size_sp";
+    public static final int DEFAULT_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP = 13;
+    public static final int MIN_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP = 10;
+    public static final int MAX_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP = 20;
+    public static final String KEY_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP = "workspace_app_sequence_icon_size_dp";
+    public static final int DEFAULT_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP = 30;
+    public static final int MIN_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP = 20;
+    public static final int MAX_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP = 48;
     public static final String KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP =
             "one_handed_workspace_toolbar_height_dp";
     public static final String KEY_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP =
@@ -649,6 +664,9 @@ public final class SettingsStore {
             KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
             KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
             KEY_WORKSPACE_TOOLBAR_POSITION_DP,
+            KEY_WORKSPACE_APP_SEQUENCE_STYLE,
+            KEY_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
+            KEY_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
             KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP,
             KEY_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP,
             KEY_WORKSPACE_SIDEBAR_WIDTH_PERCENT,
@@ -788,6 +806,7 @@ public final class SettingsStore {
             KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
             KEY_ONE_HANDED_MODE_ENABLED,
             KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
+            KEY_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED,
             KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
             KEY_WORKSPACE_FLOW_LOGGING_ENABLED,
             CircleBatteryAnimationConfig.ENABLED,
@@ -1069,6 +1088,9 @@ public final class SettingsStore {
             case KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP: return DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP;
             case KEY_WORKSPACE_TOOLBAR_HEIGHT_DP: return DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;
             case KEY_WORKSPACE_TOOLBAR_POSITION_DP: return DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP;
+            case KEY_WORKSPACE_APP_SEQUENCE_STYLE: return DEFAULT_WORKSPACE_APP_SEQUENCE_STYLE;
+            case KEY_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP: return DEFAULT_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP;
+            case KEY_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP: return DEFAULT_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP;
             case KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP:
                 return DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP;
             case KEY_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP:
@@ -1307,6 +1329,8 @@ public final class SettingsStore {
             case KEY_ONE_HANDED_MODE_ENABLED: return DEFAULT_ONE_HANDED_MODE_ENABLED;
             case KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED:
                 return DEFAULT_WORKSPACE_DEFAULT_SIDEBAR_ENABLED;
+            case KEY_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED:
+                return DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED;
             case KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED:
                 return DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED;
             case KEY_ENABLED:
