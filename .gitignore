@@ -61,5 +61,7 @@ com.android.systemui_dumpdex_jadx/
 /com.meizu.flyme.launcher/
 /com.meizu.assistant/
 /docs/
+/device_sources/
 /com.flyme.systemuitools/
+/reverse_engineering/
 .yceignore
