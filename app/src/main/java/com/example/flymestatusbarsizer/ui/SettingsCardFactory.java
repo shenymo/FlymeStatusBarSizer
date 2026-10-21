@@ -531,7 +531,7 @@ public final class SettingsCardFactory {
             activity.addProfileSectionHeader(options, "空窗口应用列表",
                     "在空窗口中查找并启动应用；关闭后显示 Flyme 桌面。此设置对两种入口生效。");
             activity.addSwitchRow(options, "显示应用列表",
-                    "按应用名称排序，支持中文名称和拼音搜索。",
+                    "按应用名称排序，支持中文名称、拼音和首字母搜索。",
                     SettingsStore.KEY_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED,
                     SettingsStore.DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED);
             activity.addChoiceRow(options, "列表排列", null,
