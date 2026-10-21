@@ -125,6 +125,7 @@ final class OneStepAppSequenceView extends FrameLayout {
     private final TextView preview;
     private final EditText search;
     private final ImageView clear;
+    private final LinearLayout keyboard;
     private float cornerRadius;
     private final ArrayList<TextView> railItems = new ArrayList<>();
     private final ArrayList<AppEntry> apps = new ArrayList<>();
@@ -140,6 +141,9 @@ final class OneStepAppSequenceView extends FrameLayout {
     private int style = SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_LIST;
     private int textSizeSp = SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP;
     private int iconSizeDp = SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP;
+    private boolean keyboardVisible;
+    private boolean settingKeyboardText;
+    private final ArrayList<String> queryGroups = new ArrayList<>();
 
     private static final class CachedApps {
         final ArrayList<AppEntry> apps;
@@ -191,10 +195,19 @@ final class OneStepAppSequenceView extends FrameLayout {
         search.setPadding(dp(8), 0, dp(4), 0);
         search.setBackground(null);
         search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        search.setShowSoftInputOnFocus(false);
+        search.setFocusableInTouchMode(true);
         searchBar.addView(search, new LinearLayout.LayoutParams(0, -1, 1));
+        searchBar.setOnClickListener(v -> showCustomKeyboard());
+        search.setOnClickListener(v -> showCustomKeyboard());
+        search.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) showCustomKeyboard();
+            return false;
+        });
         search.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (!settingKeyboardText) queryGroups.clear();
                 query = s.toString().trim().toLowerCase(Locale.ROOT);
                 clear.setVisibility(s.length() > 0 ? VISIBLE : GONE);
                 applyFilter();
@@ -220,7 +233,10 @@ final class OneStepAppSequenceView extends FrameLayout {
         clear.setBackground(selectableBackground());
         clear.setContentDescription("清空搜索");
         clear.setVisibility(GONE);
-        clear.setOnClickListener(v -> search.setText(""));
+        clear.setOnClickListener(v -> {
+            queryGroups.clear();
+            search.setText("");
+        });
         searchBar.addView(clear, new LinearLayout.LayoutParams(dp(34), dp(34)));
 
         FrameLayout listFrame = new FrameLayout(context);
@@ -284,6 +300,18 @@ final class OneStepAppSequenceView extends FrameLayout {
         previewParams.rightMargin = dp(34);
         listFrame.addView(preview, previewParams);
 
+        keyboard = new LinearLayout(context);
+        keyboard.setOrientation(LinearLayout.VERTICAL);
+        keyboard.setPadding(dp(4), dp(4), dp(4), dp(4));
+        keyboard.setBackground(roundRect(SURFACE, dp(8)));
+        keyboard.setVisibility(GONE);
+        LinearLayout.LayoutParams keyboardParams = new LinearLayout.LayoutParams(-1, dp(174));
+        keyboardParams.topMargin = dp(4);
+        column.addView(keyboard, keyboardParams);
+        addKeyboardRow("QW", "ER", "TY", "UI", "OP");
+        addKeyboardRow("AS", "DF", "GH", "JK", "L");
+        addKeyboardRow("ZX", "CV", "BN", "M", "DEL");
+
         rail.setOnTouchListener((v, event) -> {
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
@@ -309,6 +337,66 @@ final class OneStepAppSequenceView extends FrameLayout {
             return true;
         });
         loadApps();
+    }
+
+    boolean consumeBack() {
+        if (!keyboardVisible) return false;
+        hideCustomKeyboard();
+        return true;
+    }
+
+    void dismissKeyboard() {
+        if (keyboardVisible) hideCustomKeyboard();
+    }
+
+    private void showCustomKeyboard() {
+        keyboardVisible = true;
+        keyboard.setVisibility(VISIBLE);
+        search.requestFocus();
+    }
+
+    private void hideCustomKeyboard() {
+        keyboardVisible = false;
+        keyboard.setVisibility(GONE);
+    }
+
+    private void addKeyboardRow(String... keys) {
+        LinearLayout row = new LinearLayout(getContext());
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        keyboard.addView(row, new LinearLayout.LayoutParams(-1, 0, 1f));
+        for (String key : keys) {
+            TextView button = text(key, 17, PRIMARY, false);
+            button.setGravity(Gravity.CENTER);
+            button.setBackground(roundRect(CHIP, dp(8)));
+            button.setContentDescription("输入 " + key);
+            button.setTag(key);
+            button.setOnClickListener(v -> {
+                v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                onKeyboardKey((String) v.getTag());
+            });
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -1, 1f);
+            params.setMargins(dp(2), dp(2), dp(2), dp(2));
+            row.addView(button, params);
+        }
+    }
+
+    private void onKeyboardKey(String key) {
+        if ("DEL".equals(key)) {
+            if (!queryGroups.isEmpty()) queryGroups.remove(queryGroups.size() - 1);
+            updateKeyboardText();
+            return;
+        }
+        queryGroups.add(key.toLowerCase(Locale.ROOT));
+        updateKeyboardText();
+    }
+
+    private void updateKeyboardText() {
+        StringBuilder value = new StringBuilder();
+        for (String group : queryGroups) value.append(group);
+        settingKeyboardText = true;
+        try { search.setText(value); }
+        finally { settingKeyboardText = false; }
+        search.setSelection(search.length());
     }
 
     @Override protected void onAttachedToWindow() {
@@ -429,15 +517,35 @@ final class OneStepAppSequenceView extends FrameLayout {
             ArrayList<AppEntry> prefix = new ArrayList<>();
             ArrayList<AppEntry> contains = new ArrayList<>();
             for (AppEntry app : apps) {
-                if (app.lowerLabel.startsWith(query) || app.lowerLatin.startsWith(query)
-                        || app.lowerInitials.startsWith(query)) prefix.add(app);
-                else if (app.lowerLabel.contains(query) || app.lowerLatin.contains(query)
-                        || app.lowerInitials.contains(query)) contains.add(app);
+                if (matchesQuery(app.lowerLabel, true) || matchesQuery(app.lowerLatin, true)
+                        || matchesQuery(app.lowerInitials, true)) prefix.add(app);
+                else if (matchesQuery(app.lowerLabel, false) || matchesQuery(app.lowerLatin, false)
+                        || matchesQuery(app.lowerInitials, false)) contains.add(app);
             }
             filtered.addAll(prefix);
             filtered.addAll(contains);
         }
         rebuildRows();
+    }
+
+    private boolean matchesQuery(String value, boolean prefix) {
+        if (queryGroups.isEmpty()) {
+            return prefix ? value.startsWith(query) : value.contains(query);
+        }
+        int limit = value.length() - queryGroups.size();
+        if (limit < 0) return false;
+        for (int offset = 0; offset <= limit; offset++) {
+            if (prefix && offset > 0) break;
+            boolean matched = true;
+            for (int i = 0; i < queryGroups.size(); i++) {
+                if (queryGroups.get(i).indexOf(value.charAt(offset + i)) < 0) {
+                    matched = false;
+                    break;
+                }
+            }
+            if (matched) return true;
+        }
+        return false;
     }
 
     private void rebuildRows() {

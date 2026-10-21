@@ -30,6 +30,7 @@ final class OneStepActivitySession {
         void onResized(Rect bounds, Rect insets);
         void onMounted(boolean visible);
         void onImeChanged(int bottom, boolean animating);
+        void onBackPressed();
         void onBarColorsChanged(boolean darkIcons);
         void onClosed(boolean focusMain);
         void onVisibilityChanged(boolean visible);
@@ -75,7 +76,7 @@ final class OneStepActivitySession {
         control = new Binder() {
             @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
                     throws RemoteException {
-                if (code < OneStepActivityProtocol.ATTACH || code > OneStepActivityProtocol.DETACH)
+                if (code < OneStepActivityProtocol.ATTACH || code > OneStepActivityProtocol.BACK)
                     return super.onTransact(code, data, reply, flags);
                 if (Binder.getCallingUid() != clientUid) throw new SecurityException("Workspace client mismatch");
                 data.enforceInterface(OneStepActivityProtocol.CONTROL);
@@ -163,6 +164,11 @@ final class OneStepActivitySession {
                             // Config recreation will attach itself; a finished host needs a new task.
                             handler.removeCallbacks(restart);
                             handler.postDelayed(restart, restartActivity ? 100 : 2000);
+                        });
+                        break;
+                    case OneStepActivityProtocol.BACK:
+                        handler.post(() -> {
+                            if (!closed && mounted && callback.equals(client)) listener.onBackPressed();
                         });
                         break;
                     default: break;

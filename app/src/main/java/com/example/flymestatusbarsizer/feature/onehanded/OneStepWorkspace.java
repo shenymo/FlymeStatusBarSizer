@@ -465,6 +465,12 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 if (diagnosticBoundary) logImeEvent("activity-insets");
             }
 
+            @Override public void onBackPressed() {
+                if (generation != request || !active()) return;
+                if (appSequence != null && appSequence.consumeBack()) return;
+                close(true);
+            }
+
             @Override public void onClosed(boolean focusMain) {
                 if (generation == request) close(focusMain);
             }
@@ -1461,6 +1467,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (pane == null || app == null || !appSequenceEnabled()
                 || appSequence == null || appSequence.getVisibility() != View.VISIBLE
                 || pane.host != null || pane.launchHost != null) return;
+        appSequence.dismissKeyboard();
         try {
             Intent intent = new Intent(Intent.ACTION_MAIN)
                     .addCategory(Intent.CATEGORY_LAUNCHER)

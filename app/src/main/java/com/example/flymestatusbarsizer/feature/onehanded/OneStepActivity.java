@@ -156,7 +156,8 @@ public final class OneStepActivity extends Activity implements SurfaceHolder.Cal
         }
         watchWallpaperColors();
         getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> { });
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                () -> send(OneStepActivityProtocol.BACK, data -> {}));
         handler.postDelayed(timeout, 12000);
     }
 
