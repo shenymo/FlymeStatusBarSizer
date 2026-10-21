@@ -9,6 +9,7 @@ import android.graphics.Outline;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.icu.text.Transliterator;
 import android.os.Handler;
 import android.os.Looper;
@@ -28,6 +29,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 
 import java.util.ArrayList;
@@ -42,7 +44,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Dark A-Z application list shown over the borrowed HOME task in a workspace pane. */
+/** A-Z application list shown over the borrowed HOME task in a workspace pane. */
 final class OneStepAppSequenceView extends FrameLayout {
     interface Listener { void onAppSelected(AppEntry app); }
 
@@ -68,7 +70,7 @@ final class OneStepAppSequenceView extends FrameLayout {
     }
 
     private static final String ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    private static final int BACKGROUND = 0xff111315;
+    private static final int BACKGROUND = 0xc8202830;
     private static final int SURFACE = 0xff1b1e21;
     private static final int PRIMARY = 0xfff2f3f4;
     private static final int SECONDARY = 0xff9ba1a6;
@@ -216,6 +218,11 @@ final class OneStepAppSequenceView extends FrameLayout {
         loadApps();
     }
 
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        post(this::applyGlassBackground);
+    }
+
     void dispose() {
         loader.shutdownNow();
     }
@@ -223,6 +230,27 @@ final class OneStepAppSequenceView extends FrameLayout {
     void setCornerRadius(float radius) {
         cornerRadius = radius;
         invalidateOutline();
+        Drawable background = getBackground();
+        if (background != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            FlymeStatusBarSizer.invokeMethodCompat(background, "setCornerRadius",
+                    new Class<?>[]{float.class}, cornerRadius);
+        }
+    }
+
+    private void applyGlassBackground() {
+        if (!isAttachedToWindow() || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return;
+        Object viewRoot = FlymeStatusBarSizer.invokeNoArgCompat(this, "getViewRootImpl");
+        Object blur = FlymeStatusBarSizer.invokeNoArgCompat(viewRoot, "createBackgroundBlurDrawable");
+        if (!(blur instanceof Drawable)) return;
+        FlymeStatusBarSizer.invokeMethodCompat(blur, "setCornerRadius",
+                new Class<?>[]{float.class}, cornerRadius);
+        FlymeStatusBarSizer.invokeMethodCompat(blur, "setBlurRadius",
+                new Class<?>[]{int.class}, dp(32));
+        FlymeStatusBarSizer.invokeMethodCompat(blur, "setZAdjustment",
+                new Class<?>[]{int.class}, -1);
+        FlymeStatusBarSizer.invokeMethodCompat(blur, "setColor",
+                new Class<?>[]{int.class}, BACKGROUND);
+        setBackground((Drawable) blur);
     }
 
     void configure(int style, int textSizeSp, int iconSizeDp) {
