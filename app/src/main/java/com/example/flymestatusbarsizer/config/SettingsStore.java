@@ -172,6 +172,14 @@ public final class SettingsStore {
             "one_handed_workspace_toolbar_position_dp";
     public static final String KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED =
             "one_handed_workspace_default_sidebar_enabled";
+    public static final String KEY_ONE_HANDED_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED =
+            "one_handed_workspace_empty_pane_app_sequence_enabled";
+    public static final String KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_STYLE =
+            "one_handed_workspace_app_sequence_style";
+    public static final String KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP =
+            "one_handed_workspace_app_sequence_text_size_sp";
+    public static final String KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP =
+            "one_handed_workspace_app_sequence_icon_size_dp";
     public static final String KEY_WORKSPACE_SIDEBAR_WIDTH_PERCENT =
             "workspace_sidebar_width_percent";
     public static final String KEY_WORKSPACE_FLOW_LOGGING_ENABLED =
@@ -669,6 +677,9 @@ public final class SettingsStore {
             KEY_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
             KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP,
             KEY_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP,
+            KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_STYLE,
+            KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
+            KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
             KEY_WORKSPACE_SIDEBAR_WIDTH_PERCENT,
             CircleBatteryAnimationConfig.NORMAL,
             CircleBatteryAnimationConfig.CHARGING,
@@ -808,6 +819,7 @@ public final class SettingsStore {
             KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
             KEY_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED,
             KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
+            KEY_ONE_HANDED_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED,
             KEY_WORKSPACE_FLOW_LOGGING_ENABLED,
             CircleBatteryAnimationConfig.ENABLED,
             CircleBatteryAnimationConfig.CHARGING_ONLY,
@@ -1091,6 +1103,12 @@ public final class SettingsStore {
             case KEY_WORKSPACE_APP_SEQUENCE_STYLE: return DEFAULT_WORKSPACE_APP_SEQUENCE_STYLE;
             case KEY_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP: return DEFAULT_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP;
             case KEY_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP: return DEFAULT_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP;
+            case KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_STYLE:
+                return DEFAULT_WORKSPACE_APP_SEQUENCE_STYLE;
+            case KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP:
+                return DEFAULT_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP;
+            case KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP:
+                return DEFAULT_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP;
             case KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP:
                 return DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP;
             case KEY_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP:
@@ -1330,6 +1348,8 @@ public final class SettingsStore {
             case KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED:
                 return DEFAULT_WORKSPACE_DEFAULT_SIDEBAR_ENABLED;
             case KEY_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED:
+                return DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED;
+            case KEY_ONE_HANDED_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED:
                 return DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED;
             case KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED:
                 return DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED;

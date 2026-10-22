@@ -1462,8 +1462,13 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         }
         appSequencePane = pane;
         appSequence.setLoadingPaused(false);
-        appSequence.configure(config.workspaceAppSequenceStyle,
-                config.workspaceAppSequenceTextSizeSp, config.workspaceAppSequenceIconSizeDp);
+        appSequence.configure(
+                oneHandedProfile ? config.oneHandedWorkspaceAppSequenceStyle
+                        : config.workspaceAppSequenceStyle,
+                oneHandedProfile ? config.oneHandedWorkspaceAppSequenceTextSizeSp
+                        : config.workspaceAppSequenceTextSizeSp,
+                oneHandedProfile ? config.oneHandedWorkspaceAppSequenceIconSizeDp
+                        : config.workspaceAppSequenceIconSizeDp);
         appSequence.setCornerRadius(pane.cornerRadius);
         appSequence.setVisibility(View.VISIBLE);
         appSequence.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
@@ -1485,7 +1490,9 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private boolean appSequenceEnabled() {
-        return ModuleConfig.load(context).workspaceEmptyPaneAppSequenceEnabled;
+        ModuleConfig config = ModuleConfig.load(context);
+        return oneHandedProfile ? config.oneHandedWorkspaceEmptyPaneAppSequenceEnabled
+                : config.workspaceEmptyPaneAppSequenceEnabled;
     }
 
     private Pane paneForDesktop() {

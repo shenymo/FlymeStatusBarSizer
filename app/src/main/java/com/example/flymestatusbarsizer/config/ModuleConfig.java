@@ -149,6 +149,14 @@ public final class ModuleConfig {
             SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_TOOLBAR_POSITION_DP;
     public boolean oneHandedWorkspaceDefaultSidebarEnabled =
             SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED;
+    public boolean oneHandedWorkspaceEmptyPaneAppSequenceEnabled =
+            SettingsStore.DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED;
+    public int oneHandedWorkspaceAppSequenceStyle =
+            SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_STYLE;
+    public int oneHandedWorkspaceAppSequenceTextSizeSp =
+            SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP;
+    public int oneHandedWorkspaceAppSequenceIconSizeDp =
+            SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP;
     public int workspaceSidebarWidthPercent = SettingsStore.DEFAULT_WORKSPACE_SIDEBAR_WIDTH_PERCENT;
     public boolean workspaceFlowLoggingEnabled = SettingsStore.DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED;
     public int mbackLongTouchAction = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION;
@@ -791,6 +799,28 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
                     SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED);
+            config.oneHandedWorkspaceEmptyPaneAppSequenceEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_ONE_HANDED_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED,
+                    config.workspaceEmptyPaneAppSequenceEnabled);
+            config.oneHandedWorkspaceAppSequenceStyle = SettingsStore.readInt(
+                    prefs,
+                    SettingsStore.KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_STYLE,
+                    config.workspaceAppSequenceStyle) == SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_GRID
+                    ? SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_GRID
+                    : SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_LIST;
+            config.oneHandedWorkspaceAppSequenceTextSizeSp = Math.max(
+                    SettingsStore.MIN_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
+                    Math.min(SettingsStore.MAX_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
+                            SettingsStore.readInt(prefs,
+                                    SettingsStore.KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
+                                    config.workspaceAppSequenceTextSizeSp)));
+            config.oneHandedWorkspaceAppSequenceIconSizeDp = Math.max(
+                    SettingsStore.MIN_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
+                    Math.min(SettingsStore.MAX_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
+                            SettingsStore.readInt(prefs,
+                                    SettingsStore.KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
+                                    config.workspaceAppSequenceIconSizeDp)));
             config.workspaceSidebarWidthPercent = Math.max(
                     SettingsStore.MIN_WORKSPACE_SIDEBAR_WIDTH_PERCENT,
                     Math.min(SettingsStore.MAX_WORKSPACE_SIDEBAR_WIDTH_PERCENT,
