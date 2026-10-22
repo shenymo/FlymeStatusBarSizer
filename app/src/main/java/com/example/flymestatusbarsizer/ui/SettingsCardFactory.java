@@ -538,16 +538,6 @@ public final class SettingsCardFactory {
                                 SettingsStore.KEY_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED,
                                 SettingsStore.DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED)
                         : SettingsStore.DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED);
-        activity.addChoiceRow(options, "列表排列", null,
-                oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_STYLE
-                        : SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_STYLE,
-                oneHanded
-                        ? SettingsStore.readInt(activity.prefs(), SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_STYLE,
-                                SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_STYLE)
-                        : SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_STYLE,
-                new int[]{SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_LIST,
-                        SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_GRID},
-                new String[]{"列表", "网格"});
         activity.addSliderRow(options, "应用名称字号", null,
                 oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP
                         : SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,

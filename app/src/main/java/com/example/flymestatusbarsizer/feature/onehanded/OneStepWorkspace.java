@@ -1463,8 +1463,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         appSequencePane = pane;
         appSequence.setLoadingPaused(false);
         appSequence.configure(
-                oneHandedProfile ? config.oneHandedWorkspaceAppSequenceStyle
-                        : config.workspaceAppSequenceStyle,
                 oneHandedProfile ? config.oneHandedWorkspaceAppSequenceTextSizeSp
                         : config.workspaceAppSequenceTextSizeSp,
                 oneHandedProfile ? config.oneHandedWorkspaceAppSequenceIconSizeDp

@@ -127,7 +127,6 @@ final class OneStepAppSequenceView extends FrameLayout {
     private final AppAdapter adapter;
     private final Map<Character, Integer> sectionPositions = new HashMap<>();
     private String query = "";
-    private int style = SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_LIST;
     private int textSizeSp = SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP;
     private int iconSizeDp = SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP;
     private boolean loading = true;
@@ -317,9 +316,8 @@ final class OneStepAppSequenceView extends FrameLayout {
     boolean consumeBack() { if (!keyboardVisible) return false; hideCustomKeyboard(); return true; }
     void dismissKeyboard() { if (keyboardVisible) hideCustomKeyboard(); }
 
-    void configure(int style, int textSizeSp, int iconSizeDp) {
-        boolean changed = this.style != style || this.textSizeSp != textSizeSp || this.iconSizeDp != iconSizeDp;
-        this.style = style;
+    void configure(int textSizeSp, int iconSizeDp) {
+        boolean changed = this.textSizeSp != textSizeSp || this.iconSizeDp != iconSizeDp;
         this.textSizeSp = textSizeSp;
         this.iconSizeDp = iconSizeDp;
         if (changed) {
@@ -343,17 +341,15 @@ final class OneStepAppSequenceView extends FrameLayout {
 
     @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
-        if (w != oldw && style == SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_GRID) post(this::configureLayoutManager);
+        if (w != oldw) post(this::configureLayoutManager);
     }
 
     private void configureLayoutManager() {
-        if (style == SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_GRID) {
-            GridLayoutManager manager = new GridLayoutManager(getContext(), gridColumns());
-            manager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
-                @Override public int getSpanSize(int position) { return adapter.itemAt(position).type == TYPE_HEADER ? manager.getSpanCount() : 1; }
-            });
-            recycler.setLayoutManager(manager);
-        } else recycler.setLayoutManager(new LinearLayoutManager(getContext()));
+        GridLayoutManager manager = new GridLayoutManager(getContext(), gridColumns());
+        manager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
+            @Override public int getSpanSize(int position) { return adapter.itemAt(position).type == TYPE_HEADER ? manager.getSpanCount() : 1; }
+        });
+        recycler.setLayoutManager(manager);
     }
 
     private int gridColumns() { return Math.max(1, Math.min(5, Math.max(1, recycler.getWidth()) / dp(88))); }
@@ -594,9 +590,9 @@ final class OneStepAppSequenceView extends FrameLayout {
         @Override public int getItemViewType(int position) { return getItem(position).type; }
         @NonNull @Override public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
             if (type == TYPE_HEADER) {
-                TextView header = text("A", style == SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_GRID ? 11 : 13, PRIMARY, true);
+                TextView header = text("A", 11, PRIMARY, true);
                 header.setGravity(Gravity.CENTER); header.setBackground(roundRect(CHIP, dp(11)));
-                header.setLayoutParams(new RecyclerView.LayoutParams(dp(22), dp(style == SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_GRID ? 26 : 34)));
+                header.setLayoutParams(new RecyclerView.LayoutParams(dp(22), dp(26)));
                 return new HeaderHolder(header);
             }
             return new AppHolder(new AppItemView(getContext()));
@@ -642,20 +638,14 @@ final class OneStepAppSequenceView extends FrameLayout {
         }
         void bind(AppEntry app) {
             this.app = app;
-            boolean grid = style == SettingsStore.WORKSPACE_APP_SEQUENCE_STYLE_GRID;
             int size = dp(iconSizeDp);
-            setOrientation(grid ? VERTICAL : HORIZONTAL);
-            setGravity(grid ? Gravity.TOP | Gravity.CENTER_HORIZONTAL : Gravity.CENTER_VERTICAL);
+            setOrientation(VERTICAL);
+            setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
             setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                    grid ? Math.max(dp(76), dp(iconSizeDp + 32)) : Math.max(dp(44), dp(iconSizeDp + 8))));
+                    Math.max(dp(76), dp(iconSizeDp + 32))));
             iconView.setLayoutParams(new LinearLayout.LayoutParams(size, size));
-            if (grid) {
-                labelView.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(24)));
-                labelView.setGravity(Gravity.CENTER);
-            } else {
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -1, 1);
-                params.leftMargin = dp(12); labelView.setLayoutParams(params); labelView.setGravity(Gravity.CENTER_VERTICAL);
-            }
+            labelView.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(24)));
+            labelView.setGravity(Gravity.CENTER);
             labelView.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
             labelView.setMaxLines(1); labelView.setEllipsize(android.text.TextUtils.TruncateAt.END); labelView.setText(app.displayLabel);
             iconView.setImageDrawable(app.icon);
