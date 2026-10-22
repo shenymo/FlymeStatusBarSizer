@@ -1432,6 +1432,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             parent.addView(appSequence, new FrameLayout.LayoutParams(-1, -1));
         }
         appSequencePane = pane;
+        appSequence.setLoadingPaused(false);
         appSequence.configure(config.workspaceAppSequenceStyle,
                 config.workspaceAppSequenceTextSizeSp, config.workspaceAppSequenceIconSizeDp);
         appSequence.setCornerRadius(pane.cornerRadius);
@@ -1443,6 +1444,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void hideAppSequence() {
         if (appSequence == null) return;
+        appSequence.setLoadingPaused(true);
         appSequence.setVisibility(View.GONE);
         appSequence.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         appSequencePane = null;
