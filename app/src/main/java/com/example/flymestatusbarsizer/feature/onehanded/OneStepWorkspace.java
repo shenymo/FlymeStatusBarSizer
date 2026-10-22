@@ -1780,6 +1780,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 boolean appList = pane == appSequencePane && appSequence != null
                         && appSequence.getVisibility() == View.VISIBLE && pane.host == null
                         && pane.launchHost == null && !pane.replacing && !desktopBusy;
+                if (!appList && pane == appSequencePane && appSequence != null
+                        && appSequence.getVisibility() == View.VISIBLE && pane.host == desktopHost
+                        && desktopContainer != null && desktopContainer.getVisibility() == View.VISIBLE
+                        && desktopContainer.getAlpha() > 0f && pane.launchHost == null
+                        && !pane.replacing && !desktopBusy) appList = true;
                 boolean task = pane.host != null && pane.host.ready && !pane.replacing
                         && pane.launchHost == null && !pane.host.closing
                         && !pane.host.restoring && !pane.host.released
@@ -1793,6 +1798,11 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 // just after a new app is moved to a side/landscape pane.
                 if (pane.container.getVisibility() != View.VISIBLE || pane.container.getAlpha() <= 0f) continue;
                 Rect paneWindow = paneWindowRect(pane);
+                if (appList) {
+                    Rect appListWindow = new Rect();
+                    if (appSequence.getGlobalVisibleRect(appListWindow) && !appListWindow.isEmpty())
+                        paneWindow = appListWindow;
+                }
                 if (paneWindow.isEmpty()) continue;
                 RectF bounds = new RectF(toWindowRegion(paneWindow));
                 Path shape = new Path();
