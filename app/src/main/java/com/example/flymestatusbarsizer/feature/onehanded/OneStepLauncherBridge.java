@@ -180,7 +180,7 @@ public final class OneStepLauncherBridge {
                         Toast.makeText(context, "暂不支持在工作台中打开其他用户的应用", Toast.LENGTH_SHORT).show();
                         return null;
                     }
-                    PendingIntent pending = pendingIntent(context, intent, info, target);
+                    PendingIntent pending = createPendingIntent(context, intent, info, target);
                     animation = OneStepLaunchAnimation.prepare(context, (View) chain.getArg(0), info, item,
                             launcherOwnerUid);
                     OneStepLaunchAnimation.Launch preparedAnimation = animation;
@@ -214,7 +214,7 @@ public final class OneStepLauncherBridge {
         }
     }
 
-    private static PendingIntent pendingIntent(Context context, Intent intent, Object item, UserHandle user)
+    static PendingIntent createPendingIntent(Context context, Intent intent, Object item, UserHandle user)
             throws Exception {
         ActivityOptions creatorOptions = ActivityOptions.makeBasic();
         // The WCT is sent by system_server. Its sender-side BAL opt-in does not grant

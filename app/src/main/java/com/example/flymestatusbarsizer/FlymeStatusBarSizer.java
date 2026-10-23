@@ -237,7 +237,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     @Override
     public void onSystemServerStarting(XposedModuleInterface.SystemServerStartingParam param) {
         MODULE = this;
-        OneStepFlowLog.attachLogger(this);
         OneStepFlowLog.info("server_lifecycle",
                 "phase=onSystemServerStarting pid=" + android.os.Process.myPid());
         com.example.flymestatusbarsizer.feature.onehanded.OneStepImePolicy.install(
@@ -256,7 +255,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             return;
         }
         MODULE = this;
-        OneStepFlowLog.attachLogger(this);
         ModuleConfig.setConfigChangedCallback(FlymeStatusBarSizer::scheduleConfigChangedRefresh);
         ModuleConfig.attachToModule(this);
         ClassLoader loader = param.getDefaultClassLoader();
@@ -624,11 +622,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (!OneStepFlowLog.isEnabled()) {
             return;
         }
-        FlymeStatusBarSizer module = MODULE;
-        if (module != null) {
-            module.log(android.util.Log.WARN, OneStepFlowLog.TAG,
-                    "flow=side-workbench event=windowmode_warning " + message, throwable);
-        }
+        android.util.Log.w(OneStepFlowLog.TAG,
+                "flow=side-workbench event=windowmode_warning " + message, throwable);
     }
 
     public static boolean isCarLinkExpandAppsEnabled() {

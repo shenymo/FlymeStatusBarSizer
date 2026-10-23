@@ -146,6 +146,7 @@ final class OneStepShell {
         boolean surfaceMissing;
         boolean fullscreenCompat;
         boolean landscapeForced;
+        boolean keepMainPane;
         final Rect landscapeFrame = new Rect();
         final Rect autoLandscapeFrame = new Rect();
         volatile boolean landscapeRequested;
@@ -1984,7 +1985,7 @@ final class OneStepShell {
         Navigation previous = incoming.get(card.token);
         if (previous != null) return previous;
         Host source = mainHost();
-        if (source == null || source.home() || !source.ready || source.closing || matches(source.card, info)) return null;
+        if (source == null || !source.ready || source.closing || matches(source.card, info)) return null;
         Navigation navigation = new Navigation(card, source, info);
         Object appeared = appeared(card.taskId);
         if (appeared != null) navigation.leash = (SurfaceControl) OneStepReflection.call(appeared, "getLeash");

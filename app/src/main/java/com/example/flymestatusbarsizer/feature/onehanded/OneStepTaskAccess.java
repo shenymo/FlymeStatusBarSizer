@@ -101,6 +101,7 @@ final class OneStepTaskAccess {
     }
 
     RecentTaskCard homeTask(int userId) throws ReflectiveOperationException {
+        ComponentName defaultHome = defaultHomeComponent(userId);
         for (Object root : roots()) {
             if (display(root) != 0 || !home(root) || token(root) == null
                     || ReflectUtils.getIntField(root, "userId", -1) != userId
@@ -108,11 +109,26 @@ final class OneStepTaskAccess {
             Object component = ReflectUtils.getField(root, "topActivity");
             if (!(component instanceof ComponentName)) component = ReflectUtils.getField(root, "baseActivity");
             if (component instanceof ComponentName
-                    && OneStepLauncherBridge.LAUNCHER.equals(((ComponentName) component).getPackageName())) {
+                    && (defaultHome == null
+                    || defaultHome.getPackageName().equals(((ComponentName) component).getPackageName()))) {
                 return new RecentTaskCard(taskId(root), userId, token(root), "桌面", (ComponentName) component, true);
             }
         }
-        throw new IllegalStateException("Flyme HOME task is unavailable");
+        throw new IllegalStateException("Default HOME task is unavailable");
+    }
+
+    private ComponentName defaultHomeComponent(int userId) {
+        try {
+            Context userContext = (Context) OneStepReflection.call(context, "createContextAsUser",
+                    new Class<?>[]{UserHandle.class, int.class}, userHandle(userId), 0);
+            Intent intent = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+            ResolveInfo home = userContext.getPackageManager().resolveActivity(intent,
+                    PackageManager.MATCH_DEFAULT_ONLY);
+            if (home != null && home.activityInfo != null) {
+                return new ComponentName(home.activityInfo.packageName, home.activityInfo.name);
+            }
+        } catch (Exception ignored) { }
+        return null;
     }
 
     RecentTaskCard focusedTask() throws ReflectiveOperationException {

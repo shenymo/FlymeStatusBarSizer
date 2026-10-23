@@ -11,18 +11,12 @@ import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import io.github.libxposed.api.XposedInterface;
-
-/** Shared LSPosed log for workspace hook initialization and errors. */
+/** Shared logcat output for workspace hook initialization and errors. */
 public final class OneStepFlowLog {
     public static final String TAG = "FlymeOneStep";
     private static final String PREFIX = "flow=side-workbench";
     private static final ConcurrentHashMap<String, HookStats> HOOK_STATS = new ConcurrentHashMap<>();
-    private static volatile XposedInterface logger;
-
     private OneStepFlowLog() {}
-
-    public static void attachLogger(XposedInterface module) { logger = module; }
 
     public static void info(String event, int session, String fields) {
         if (isInitializationEvent(event)) emit(Log.INFO, event, session, fields, null);
@@ -119,13 +113,9 @@ public final class OneStepFlowLog {
     private static void emit(int level, String event, int session, String fields,
                              Throwable error) {
         if (!isEnabled()) return;
-        XposedInterface current = logger;
-        if (current == null) return;
         String message = format(event, session, fields);
-        try {
-            if (error == null) current.log(level, TAG, message);
-            else current.log(level, TAG, message, error);
-        } catch (Throwable ignored) { }
+        if (error != null && level == Log.WARN) Log.w(TAG, message, error);
+        else Log.println(level, TAG, message);
     }
 
     private static boolean isInitializationEvent(String event) {

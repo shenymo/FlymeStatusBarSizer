@@ -120,10 +120,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private FrameLayout desktopContainer;
     private OneStepAppSequenceView appSequence;
     private Pane appSequencePane;
-    private Pane appSequenceLaunchPane;
     private GradientDrawable desktopBorder;
     private int desktopRequest;
-    private int appLaunchRequest;
     private boolean desktopBusy;
     private int workspaceUserId;
     private int workspaceOwnerUserId;
@@ -1158,14 +1156,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
 
     private void select(int slot) {
         if (isSideWindowHidden(slot)) return;
-        Pane listPane = appSequencePane;
         Pane selected = slot >= 0 && slot < COUNT ? panes[slot] : null;
-        if (running() && appSequence != null && appSequence.getVisibility() == View.VISIBLE
-                && listPane == panes[mainSlot] && slot != mainSlot && selected != null
-                && !hasPaneContent(selected) && !selected.replacing) {
-            selectAppSequenceLaunchPane(selected);
-            return;
-        }
         if (landscapeWindow.directlyInteractive(slot, mainSlot)) {
             if (canChangeTask() && panes[slot] != null && panes[slot].host != null
                     && panes[slot].host.ready) focusPane(panes[slot]);
@@ -1182,7 +1173,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (appSequence != null && appSequence.getVisibility() == View.VISIBLE
                 && appSequencePane == previous) {
             hideAppSequence();
-            appSequenceLaunchPane = null;
             previous.showEmpty();
         }
         boolean leavingDesktop = previous.card != null && previous.card.home;
@@ -1259,11 +1249,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 || imeAnimator != null || imeAnimating || dragSession != null || OneHandedTaskHooks.shadeOpen()) return;
         Pane target = panes[slot];
         if (target == null || target.host != null || target.replacing) return;
-        if (appSequence != null && appSequence.getVisibility() == View.VISIBLE
-                && appSequencePane == panes[mainSlot] && target != panes[mainSlot]) {
-            selectAppSequenceLaunchPane(target);
-            return;
-        }
         if (appSequenceEnabled()) {
             enterAppSequence(target, fromTap);
             return;
@@ -1311,15 +1296,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         });
     }
 
-    private void selectAppSequenceLaunchPane(Pane pane) {
-        if (pane == null || pane == appSequencePane || pane == appSequenceLaunchPane
-                || hasPaneContent(pane) || pane.replacing) return;
-        appSequenceLaunchPane = pane;
-        showPaneTapFeedback(pane.slot);
-        haptic(HapticFeedbackConstants.CLOCK_TICK);
-        focusedSlot = pane.slot;
-    }
-
     private void enterAppSequence(Pane target, boolean fromTap) {
         if (!running() || movingTask || desktopBusy || animator != null || layoutAnimator != null || transitionAnimator != null
                 || imeAnimator != null || imeAnimating || dragSession != null || OneHandedTaskHooks.shadeOpen()
@@ -1358,7 +1334,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     }
 
     private boolean reusableDesktop() {
-        return desktopSession != null && desktopHost != null && desktopHost.ready
+        return desktopHost != null && desktopHost.ready
                 && !desktopHost.closing && !desktopHost.released;
     }
 
@@ -1371,23 +1347,31 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                 handler.post(() -> {
                     if (!running() || generation != request || desktopRequest != connection || pane != panes[mainSlot]) return;
                     try {
-                        desktopSession = new OneStepLauncherBridge.Session(context, handler, workspaceOwnerUserId,
-                                new OneStepLauncherBridge.Listener() {
-                            @Override public void onConnected() {
-                                if (running() && generation == request && desktopRequest == connection
-                                        && pane == panes[mainSlot]) pane.load(home);
-                            }
-                            @Override public void onLaunch(PendingIntent intent, IBinder animation) {
-                                Pane main = panes[mainSlot];
-                                if (running() && generation == request && desktopRequest == connection
-                                        && main != null && main.host == desktopHost && desktopHost != null)
-                                    launchFromDesktop(main, intent, animation);
-                                else OneStepLaunchAnimation.cancelRemote(animation);
-                            }
-                            @Override public void onUnavailable() {
-                                if (running() && generation == request && desktopRequest == connection) desktopUnavailable(pane);
-                            }
-                        });
+                        if (OneStepLauncherBridge.LAUNCHER.equals(home.component.getPackageName())) {
+                            desktopSession = new OneStepLauncherBridge.Session(context, handler, workspaceOwnerUserId,
+                                    new OneStepLauncherBridge.Listener() {
+                                        @Override public void onConnected() {
+                                            if (running() && generation == request && desktopRequest == connection
+                                                    && pane == panes[mainSlot]) pane.load(home);
+                                        }
+                                        @Override public void onLaunch(PendingIntent intent, IBinder animation) {
+                                            Pane main = panes[mainSlot];
+                                            if (running() && generation == request && desktopRequest == connection
+                                                    && main != null && main.host == desktopHost && desktopHost != null)
+                                                launchFromDesktop(main, intent, animation);
+                                            else OneStepLaunchAnimation.cancelRemote(animation);
+                                        }
+                                        @Override public void onUnavailable() {
+                                            if (running() && generation == request && desktopRequest == connection)
+                                                desktopUnavailable(pane);
+                                        }
+                            });
+                        } else {
+                            // Third-party launchers do not implement Flyme's private
+                            // launcher bridge. Their app launch is picked up by the
+                            // generic task-navigation path in OneStepShell.
+                            pane.load(home);
+                        }
                     } catch (Exception error) {
                         OneStepFlowLog.w(TAG, "Cannot connect launcher", error);
                         desktopUnavailable(pane);
@@ -1447,6 +1431,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             return;
         }
         if (pane == null) return;
+        if (pane != panes[mainSlot]) {
+            hideAppSequence();
+            return;
+        }
         ModuleConfig config = ModuleConfig.load(context);
         if (appSequence == null) {
             appSequence = new OneStepAppSequenceView(context, workspaceOwnerUserId,
@@ -1502,6 +1490,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
     private void launchAppFromSequence(Pane pane, OneStepAppSequenceView.AppEntry app) {
         if (pane == null || app == null || !appSequenceEnabled()
                 || appSequence == null || appSequence.getVisibility() != View.VISIBLE
+                || pane != panes[mainSlot] || pane != appSequencePane
                 || pane.host != null || pane.launchHost != null) return;
         appSequence.dismissKeyboard();
         try {
@@ -1509,24 +1498,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
                     .addCategory(Intent.CATEGORY_LAUNCHER)
                     .setComponent(app.component)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            android.app.ActivityOptions creator = android.app.ActivityOptions.makeBasic();
-            if (android.os.Build.VERSION.SDK_INT >= 35) {
-                creator.setPendingIntentCreatorBackgroundActivityStartMode(
-                        android.os.Build.VERSION.SDK_INT >= 36
-                                ? android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE
-                                : android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
-            }
-            android.app.PendingIntent pending = (android.app.PendingIntent) OneStepReflection
-                    .method(android.app.PendingIntent.class, "getActivityAsUser",
-                            Context.class, int.class, Intent.class, int.class, android.os.Bundle.class,
-                            android.os.UserHandle.class)
-                    .invoke(null, context, ++appLaunchRequest, intent,
-                            android.app.PendingIntent.FLAG_ONE_SHOT | android.app.PendingIntent.FLAG_IMMUTABLE,
-                            creator.toBundle(), app.user);
-            Pane target = appSequenceLaunchPane != null && !hasPaneContent(appSequenceLaunchPane)
-                    ? appSequenceLaunchPane : pane;
-            appSequenceLaunchPane = null;
-            launchIntoPane(target, pending, null, false);
+            PendingIntent pending = OneStepLauncherBridge.createPendingIntent(context, intent, null, app.user);
+            launchIntoPane(pane, pending, null, false);
         } catch (Exception error) {
             OneStepFlowLog.w(TAG, "Cannot prepare application sequence launch", error);
             Toast.makeText(context, "无法打开应用", Toast.LENGTH_SHORT).show();
@@ -1623,6 +1596,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         try {
             pane.launchHost = shell.createLaunch(context, intent, animation,
                     fromDesktop ? pane.host : null, screenBounds);
+            pane.launchHost.keepMainPane = !fromDesktop;
             pane.mount(pane.launchHost);
             pane.configureHost(pane.launchHost);
         } catch (Exception error) {
@@ -2114,6 +2088,10 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         refreshInputRegion();
         int direction = orientationDirection(orientation);
         requestedOrientations.put(host, direction);
+        if (host.keepMainPane) {
+            pendingOrientations.remove(host);
+            return;
+        }
         if (explicit) manualOrientations.remove(host);
         else if (manualOrientations.containsKey(host)) {
             Integer held = manualOrientations.get(host);
@@ -2159,6 +2137,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         for (OneStepShell.Host host : new ArrayList<>(pendingOrientations.keySet())) {
             Pane pane = paneForHost(host);
             if (pane == null || host.closing || host.released || host.restoring) { pendingOrientations.remove(host); continue; }
+            if (host.keepMainPane) { pendingOrientations.remove(host); continue; }
             if (!host.ready || pane.launchHost != null) { scheduleOrientationRouting(); continue; }
             int direction = orientationDirection(pendingOrientations.get(host));
             if (!directlyInteractive(pane) && direction != 0) continue;
@@ -2212,6 +2191,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             }
             // Move the owning Pane, keeping its TaskView attached and its task identity.
             // The displaced task is restored to recents instead of put in the wrong orientation.
+            hideAppSequenceForPaneSwap(source, target);
             panes[targetSlot] = source;
             panes[sourceSlot] = target;
             source.slot = targetSlot;
@@ -2284,6 +2264,7 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             if (source == target) { focusPane(source); return; }
             if (source.host == null || !source.host.ready || (target.host != null && !target.host.ready)) return;
             holdManualPlacement(source);
+            hideAppSequenceForPaneSwap(source, target);
             int oldSlot = source.slot;
             pinRecent(target.card);
             panes[slot] = source;
@@ -2392,8 +2373,14 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         updateInput();
     }
 
+    private void hideAppSequenceForPaneSwap(Pane first, Pane second) {
+        if (appSequence != null && appSequence.getVisibility() == View.VISIBLE
+                && (appSequencePane == first || appSequencePane == second)) hideAppSequence();
+    }
+
     private void holdManualPlacement(Pane pane) {
         if (pane == null || pane.host == null || pane.host.home()) return;
+        pane.host.keepMainPane = false;
         pendingOrientations.remove(pane.host);
         requestedOrientations.remove(pane.host);
         // A null marker consumes the first post-swap orientation report and keeps
@@ -2895,15 +2882,8 @@ final class OneStepWorkspace implements OneStepShell.Listener {
             pane.manualLandscapeLoad = landscapeWindow.isSlot(pane.slot);
             if (pane.load(previous)) return;
         }
-        if (appSequence != null && appSequence.getVisibility() == View.VISIBLE
-                && appSequencePane == panes[mainSlot] && pane != appSequencePane) {
-            pane.showEmpty();
-            pane.focusAfterLoad = null;
-            pane.manualLandscapeLoad = false;
-            relayoutPanes();
-            focusActivePane();
-        } else if (appSequenceEnabled()) showAppSequence(pane);
-        else if (pane.slot == mainSlot) returnToDesktop(pane, request);
+        if (appSequenceEnabled() && pane == panes[mainSlot]) showAppSequence(pane);
+        else if (!appSequenceEnabled() && pane.slot == mainSlot) returnToDesktop(pane, request);
         else {
             pane.focusAfterLoad = null;
             pane.manualLandscapeLoad = false;
@@ -3028,7 +3008,6 @@ final class OneStepWorkspace implements OneStepShell.Listener {
         if (appSequence != null) appSequence.dispose();
         appSequence = null;
         appSequencePane = null;
-        appSequenceLaunchPane = null;
         desktopContainer = null;
         desktopBorder = null;
         recentStrip = null;
