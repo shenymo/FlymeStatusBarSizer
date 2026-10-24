@@ -326,8 +326,6 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_SIGNAL_WIFI_SWAP_ENABLED,
                 SettingsStore.DEFAULT_SIGNAL_WIFI_SWAP_ENABLED);
         activity.addDivider(content);
-        activity.addProfileSectionHeader(content, "说明",
-                "显示内容跟随系统真实网络状态或 Telephony 调试结果。");
         return activity.buildSectionCard(
                 "信号与 Wi-Fi",
                 "移动网络图标统一由模块接管，同时保留 Wi-Fi 的独立开关。",
@@ -385,12 +383,6 @@ public final class SettingsCardFactory {
         actionOptions.setOrientation(LinearLayout.VERTICAL);
         page.addView(actionOptions, activity.matchWrap());
 
-        TextView summary = new TextView(activity);
-        summary.setTextColor(activity.subtextColor());
-        summary.setTextSize(13);
-        summary.setPadding(0, activity.dp(2), 0, activity.dp(8));
-        page.addView(summary, activity.matchWrap());
-
         AssistantGesturePreviewLayout gestureOptions = new AssistantGesturePreviewLayout(
                 activity, activity.prefs(), activity.primaryColor());
         activity.addChoiceRow(gestureOptions, "触发侧边", null,
@@ -438,7 +430,7 @@ public final class SettingsCardFactory {
                 "显示边界", gestureOptions::showVerticalPreview);
         gestureOptions.addView(verticalOptions, activity.matchWrap());
         View gestureCard = activity.buildSectionCard("手势设置", null, gestureOptions, true);
-        gestureCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
+        gestureCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
         page.addView(gestureCard, activity.matchWrapWithTop(8));
 
         LinearLayout assistantOptions = new LinearLayout(activity);
@@ -446,17 +438,15 @@ public final class SettingsCardFactory {
         AssistantBackgroundSettings.addRows(activity, assistantOptions);
         View appearanceCard = activity.buildSectionCard("全局负一屏",
                 "下次打开时生效，不影响桌面负一屏。", assistantOptions, true);
-        appearanceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
+        appearanceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
         page.addView(appearanceCard, activity.matchWrapWithTop(8));
         View workspaceCard = activity.buildSectionCard("多应用工作台",
                 "从侧边手势进入，在主窗口和侧边小窗之间切换应用。",
                 buildTaskWorkbenchOptions(false), true);
-        workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
+        workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
         page.addView(workspaceCard, activity.matchWrapWithTop(8));
         java.util.function.IntConsumer updateAction = value -> {
             boolean scale = value == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
-            summary.setText(scale ? "当前动作：多应用工作台 · 侧边长滑进入，重复触发或点击留白退出。"
-                    : "当前动作：全局负一屏 · 侧边长滑进入，左右滑动或返回退出。");
             appearanceCard.setVisibility(scale ? View.GONE : View.VISIBLE);
             workspaceCard.setVisibility(scale ? View.VISIBLE : View.GONE);
         };
@@ -504,16 +494,7 @@ public final class SettingsCardFactory {
         LinearLayout options = new LinearLayout(activity);
         options.setOrientation(LinearLayout.VERTICAL);
 
-        TextView behavior = new TextView(activity);
-        behavior.setText("当前应用作为主窗口。点击顶部应用图标可切换主窗口，长按可拖入侧边小窗；"
-                + "空侧窗会自动收起，点击留白或再次触发手势可退出。");
-        behavior.setTextSize(13);
-        behavior.setTextColor(activity.subtextColor());
-        behavior.setLineSpacing(activity.dp(2), 1.0f);
-        behavior.setPadding(0, 0, 0, activity.dp(8));
-        options.addView(behavior, activity.matchWrap());
-
-        activity.addProfileSectionHeader(options, "窗口布局", "工具栏高度和侧边小窗状态按入口分别保存。");
+        activity.addProfileSectionHeader(options, "窗口布局", null);
         activity.addSliderRow(options, "顶部工具栏高度", null,
                 oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP
                         : SettingsStore.KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,

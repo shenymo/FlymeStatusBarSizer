@@ -6,10 +6,10 @@ import com.example.flymestatusbarsizer.config.SettingsStore;
 import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -40,22 +40,7 @@ public final class SettingsUiFactory {
         view.setMinHeight(dp(40));
         view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         view.setPadding(dp(12), dp(6), dp(12), dp(6));
-        view.setBackground(roundRect(backgroundColor, 16));
-        return view;
-    }
-
-    TextView helpButton(String titleText, String message) {
-        TextView view = new TextView(activity);
-        view.setText("?");
-        view.setTextColor(activity.primaryColor());
-        view.setTextSize(14);
-        view.setGravity(Gravity.CENTER);
-        view.setMinWidth(dp(36));
-        view.setMinHeight(dp(36));
-        view.setContentDescription(titleText + "说明");
-        view.setBackground(new InsetDrawable(
-                roundRect(activity.surfaceSoftColor(), 12), dp(6)));
-        activity.setTapClickListener(view, v -> activity.showHelpDialog(titleText, message));
+        view.setBackground(roundRect(backgroundColor, 8));
         return view;
     }
 
@@ -91,8 +76,8 @@ public final class SettingsUiFactory {
     public void addDivider(LinearLayout root) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
-        lp.topMargin = dp(4);
-        lp.bottomMargin = dp(4);
+        lp.leftMargin = dp(16);
+        lp.rightMargin = dp(16);
         root.addView(buildDividerView(), lp);
     }
 
@@ -103,8 +88,10 @@ public final class SettingsUiFactory {
 
         TextView title = new TextView(activity);
         title.setText(titleText);
-        title.setTextColor(activity.primaryColor());
-        title.setTextSize(14);
+        title.setTextColor(activity.subtextColor());
+        title.setTextSize(13);
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        title.setPadding(dp(16), dp(12), dp(16), dp(4));
         row.addView(title, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         addHelpButton(row, titleText, subtitleText);
@@ -116,7 +103,7 @@ public final class SettingsUiFactory {
         LinearLayout row = new LinearLayout(activity);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(48));
+        row.setMinimumHeight(dp(52));
 
         LinearLayout textColumn = new LinearLayout(activity);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -124,7 +111,7 @@ public final class SettingsUiFactory {
         TextView title = new TextView(activity);
         title.setText(titleText);
         title.setTextColor(activity.textColor());
-        title.setTextSize(16);
+        title.setTextSize(15);
         textColumn.addView(title, matchWrap());
 
         TextView button = filledButton(buttonText, activity.primaryColor(), android.graphics.Color.WHITE);
@@ -144,23 +131,24 @@ public final class SettingsUiFactory {
             String key, int defaultValue, int[] values, String[] labels, String emptyLabel) {
         LinearLayout row = new LinearLayout(activity);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(56));
-        LinearLayout textColumn = new LinearLayout(activity);
-        textColumn.setOrientation(LinearLayout.VERTICAL);
-        textColumn.setPadding(0, dp(8), 0, dp(8));
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setMinimumHeight(dp(52));
         TextView title = new TextView(activity);
         title.setText(titleText);
         title.setTextColor(activity.textColor());
-        title.setTextSize(16);
-        textColumn.addView(title, matchWrap());
+        title.setTextSize(15);
+        row.addView(title, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         TextView summary = new TextView(activity);
         summary.setTextColor(activity.primaryColor());
         summary.setTextSize(13);
-        summary.setPadding(0, dp(4), 0, 0);
+        summary.setMaxLines(1);
+        summary.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        summary.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         summary.setText(multiChoiceLabel(readMultiChoiceValue(key, defaultValue),
                 values, labels, emptyLabel));
-        textColumn.addView(summary, matchWrap());
-        activity.setTapClickListener(textColumn, v -> {
+        summary.setMaxWidth(dp(180));
+        activity.setTapClickListener(row, v -> {
             int current = readMultiChoiceValue(key, defaultValue);
             boolean[] checked = new boolean[values.length];
             for (int i = 0; i < values.length; i++) checked[i] = (current & values[i]) != 0;
@@ -178,8 +166,16 @@ public final class SettingsUiFactory {
             activity.styleDialog(dialog);
             activity.attachDialogButtonHaptics(dialog);
         });
-        row.addView(textColumn, new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(summary, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        ImageView arrow = new ImageView(activity);
+        arrow.setImageResource(com.example.flymestatusbarsizer.R.drawable.ic_section_expand);
+        arrow.setRotation(-90f);
+        arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams arrowLp = new LinearLayout.LayoutParams(dp(20), dp(20));
+        arrowLp.leftMargin = dp(4);
+        row.addView(arrow, arrowLp);
         addHelpButton(row, titleText, subtitleText);
         root.addView(row, matchWrap());
     }
@@ -201,12 +197,6 @@ public final class SettingsUiFactory {
 
     public void addHelpButton(LinearLayout row, String titleText, String message) {
         activity.addSearchItem(row, titleText, message);
-        if (message == null || message.length() == 0) {
-            return;
-        }
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(36), dp(36));
-        lp.rightMargin = dp(4);
-        row.addView(helpButton(titleText, message), lp);
     }
 
     private View buildDividerView() {

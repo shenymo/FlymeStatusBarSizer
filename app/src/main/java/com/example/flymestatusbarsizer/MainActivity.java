@@ -362,7 +362,7 @@ public class MainActivity extends Activity {
         bar.setClipToOutline(true);
         EditText input = new EditText(this);
         input.setId(R.id.feature_search_input);
-        input.setHint("搜索功能，如电池、网速");
+        input.setHint("搜索功能");
         input.setContentDescription("搜索功能");
         input.setTextSize(16);
         input.setTextColor(colorText);
@@ -429,12 +429,12 @@ public class MainActivity extends Activity {
         }
         matches.sort((a, b) -> Integer.compare(a.rank, b.rank));
         TextView count = new TextView(this);
-        count.setText(matches.isEmpty() ? "未找到相关功能，试试其他关键词" : "找到 " + matches.size() + " 项功能");
+        count.setText(matches.isEmpty() ? "无匹配结果" : matches.size() + " 项");
         count.setTextColor(colorSubtext);
         count.setTextSize(13);
         results.addView(count, matchWrap());
         for (SearchResult match : matches) {
-            LinearLayout row = card(colorSurface, 16);
+            LinearLayout row = card(colorSurface, 8);
             TextView title = new TextView(this);
             title.setText(match.title);
             title.setTextColor(colorText);
@@ -633,15 +633,7 @@ public class MainActivity extends Activity {
             topBarTitleView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         }
         if (topBarSubtitleView != null) {
-            if (TextUtils.isEmpty(page.subtitle)) {
-                topBarSubtitleView.setVisibility(View.GONE);
-            } else {
-                topBarSubtitleView.setText("?");
-                topBarSubtitleView.setContentDescription(page.title + "说明");
-                topBarSubtitleView.setVisibility(View.VISIBLE);
-                setTapClickListener(topBarSubtitleView,
-                        v -> showHelpDialog(page.title, page.subtitle));
-            }
+            topBarSubtitleView.setVisibility(View.GONE);
         }
     }
 
@@ -758,7 +750,7 @@ public class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(48));
+        row.setMinimumHeight(dp(52));
 
         LinearLayout textColumn = new LinearLayout(this);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -766,7 +758,7 @@ public class MainActivity extends Activity {
         TextView title = new TextView(this);
         title.setText(titleText);
         title.setTextColor(colorText);
-        title.setTextSize(16);
+        title.setTextSize(15);
         textColumn.addView(title, matchWrap());
 
         Switch toggle = new Switch(this);
@@ -849,7 +841,7 @@ public class MainActivity extends Activity {
         int clamped = Math.max(min, Math.min(max, current));
         valueView.setText(tenthDp ? formatDpValue(clamped, decimalScale) : formatValue(clamped, suffix));
         valueView.setPadding(dp(10), dp(4), dp(10), dp(4));
-        valueView.setBackground(roundRect(colorSurfaceSoft, 16));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 4));
         valueView.setMinHeight(dp(36));
         valueView.setGravity(Gravity.CENTER);
         header.addView(valueView, new LinearLayout.LayoutParams(
@@ -945,7 +937,7 @@ public class MainActivity extends Activity {
         valueView.setTextColor(colorPrimary);
         valueView.setTextSize(14);
         valueView.setPadding(dp(10), dp(4), dp(10), dp(4));
-        valueView.setBackground(roundRect(colorSurfaceSoft, 16));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 4));
         valueView.setMinHeight(dp(36));
         valueView.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
@@ -1041,7 +1033,7 @@ public class MainActivity extends Activity {
         valueView.setTextColor(colorPrimary);
         valueView.setTextSize(14);
         valueView.setPadding(dp(10), dp(4), dp(10), dp(4));
-        valueView.setBackground(roundRect(colorSurfaceSoft, 16));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 4));
         valueView.setMinHeight(dp(36));
         valueView.setGravity(Gravity.CENTER);
         header.addView(valueView, new LinearLayout.LayoutParams(
@@ -1144,7 +1136,7 @@ public class MainActivity extends Activity {
         valueView.setTextColor(colorPrimary);
         valueView.setTextSize(14);
         valueView.setPadding(dp(10), dp(4), dp(10), dp(4));
-        valueView.setBackground(roundRect(colorSurfaceSoft, 16));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 4));
         valueView.setMinHeight(dp(36));
         valueView.setGravity(Gravity.CENTER);
         int clamped = getPendingIntSliderValue(key, defaultValue, min, max);
@@ -1232,7 +1224,7 @@ public class MainActivity extends Activity {
         valueView.setTextColor(colorPrimary);
         valueView.setTextSize(14);
         valueView.setPadding(dp(10), dp(4), dp(10), dp(4));
-        valueView.setBackground(roundRect(colorSurfaceSoft, 16));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 4));
         valueView.setMinHeight(dp(36));
         valueView.setGravity(Gravity.CENTER);
         int clamped = Math.max(min, Math.min(max, SettingsStore.normalizeLauncherStackParameter(
@@ -1314,30 +1306,29 @@ public class MainActivity extends Activity {
             String key, String defaultValue, String emptyLabel, String inputHint, boolean plainTextInput,
             String neutralButtonText, String neutralValue) {
         LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.VERTICAL);
+        row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(48));
+        row.setMinimumHeight(dp(52));
 
         LinearLayout textColumn = new LinearLayout(this);
-        textColumn.setOrientation(LinearLayout.HORIZONTAL);
+        textColumn.setOrientation(LinearLayout.VERTICAL);
         textColumn.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView title = new TextView(this);
         title.setText(titleText);
         title.setTextColor(colorText);
-        title.setTextSize(16);
-        textColumn.addView(title, new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        addHelpButton(textColumn, titleText, subtitleText);
+        title.setTextSize(15);
+        textColumn.addView(title, matchWrap());
 
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
         valueView.setTextSize(13);
         valueView.setPadding(dp(10), dp(4), dp(10), dp(4));
-        valueView.setBackground(roundRect(colorSurfaceSoft, 16));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 4));
         valueView.setMinHeight(dp(36));
-        valueView.setGravity(Gravity.CENTER_VERTICAL);
-        valueView.setMaxLines(2);
+        valueView.setGravity(Gravity.CENTER);
+        valueView.setMaxLines(1);
+        valueView.setMaxWidth(dp(180));
         valueView.setEllipsize(TextUtils.TruncateAt.END);
         updateTextSettingLabel(valueView, readStringSetting(key, defaultValue), emptyLabel);
         setTapClickListener(valueView, v -> showTextInputDialog(
@@ -1353,8 +1344,13 @@ public class MainActivity extends Activity {
                     updateTextSettingLabel(valueView, value, emptyLabel);
                 }));
 
-        row.addView(textColumn, matchWrap());
-        row.addView(valueView, matchWrapWithTop(4));
+        row.addView(textColumn, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        valueLp.leftMargin = dp(12);
+        row.addView(valueView, valueLp);
         root.addView(row, matchWrap());
         return valueView;
     }
@@ -1370,7 +1366,7 @@ public class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(48));
+        row.setMinimumHeight(dp(52));
 
         LinearLayout textColumn = new LinearLayout(this);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -1378,16 +1374,19 @@ public class MainActivity extends Activity {
         TextView title = new TextView(this);
         title.setText(titleText);
         title.setTextColor(colorText);
-        title.setTextSize(16);
+        title.setTextSize(15);
         textColumn.addView(title, matchWrap());
 
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
         valueView.setTextSize(13);
         valueView.setPadding(dp(10), dp(4), dp(10), dp(4));
-        valueView.setBackground(roundRect(colorSurfaceSoft, 16));
+        valueView.setBackground(roundRect(colorSurfaceSoft, 4));
         valueView.setMinHeight(dp(36));
         valueView.setGravity(Gravity.CENTER);
+        valueView.setMaxWidth(dp(160));
+        valueView.setMaxLines(1);
+        valueView.setEllipsize(TextUtils.TruncateAt.END);
         int currentValue = readIntSetting(key, defaultValue);
         valueView.setText(resolveChoiceLabel(currentValue, values, labels));
         setTapClickListener(valueView, v -> showChoiceMenu(v, key, defaultValue, values, labels, valueView, onChanged));
@@ -2122,7 +2121,7 @@ public class MainActivity extends Activity {
         view.setClipToOutline(true);
         if (!(view.getForeground() instanceof RippleDrawable)) {
             view.setForeground(new RippleDrawable(
-                    ColorStateList.valueOf(0x246750A4), null, roundRect(Color.WHITE, 0)));
+                    ColorStateList.valueOf(0x242F6FED), null, roundRect(Color.WHITE, 0)));
         }
         view.setOnClickListener(v -> {
             performTapHaptic(v);
@@ -2169,7 +2168,7 @@ public class MainActivity extends Activity {
         TextView neutral = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
         if (positive != null) {
             positive.setTextColor(Color.WHITE);
-            positive.setBackground(roundRect(colorPrimary, 16));
+            positive.setBackground(roundRect(colorPrimary, 8));
             positive.setMinHeight(dp(48));
         }
         if (negative != null) {
@@ -2478,8 +2477,8 @@ public class MainActivity extends Activity {
     public LinearLayout card(int color, int radiusDp) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(16), dp(12), dp(16), dp(12));
-        card.setBackground(roundRect(color, Math.min(radiusDp, 24)));
+        card.setPadding(dp(12), dp(8), dp(12), dp(8));
+        card.setBackground(roundRect(color, Math.min(radiusDp, 8)));
         return card;
     }
 
@@ -2707,24 +2706,23 @@ public class MainActivity extends Activity {
     }
 
     public View buildSectionCard(String titleText, String subtitleText, View content, boolean expanded) {
-        LinearLayout card = card(colorSurface, 24);
+        LinearLayout card = card(colorSurface, 8);
         card.setPadding(0, 0, 0, 0);
         card.setClipToOutline(true);
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(16), dp(12), dp(16), dp(12));
-        header.setMinimumHeight(dp(64));
+        header.setPadding(dp(16), dp(8), dp(12), dp(8));
+        header.setMinimumHeight(dp(52));
 
         TextView title = new TextView(this);
         title.setText(titleText);
         title.setTextColor(colorText);
-        title.setTextSize(18);
+        title.setTextSize(16);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         header.addView(title, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        addHelpButton(header, titleText, subtitleText);
         card.addView(header, matchWrap());
 
         if (content != null) {
@@ -2734,13 +2732,13 @@ public class MainActivity extends Activity {
             arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             header.addView(arrow, new LinearLayout.LayoutParams(dp(24), dp(24)));
             content.setVisibility(expanded ? View.VISIBLE : View.GONE);
-            LinearLayout.LayoutParams contentLp = matchWrapWithTop(4);
+            LinearLayout.LayoutParams contentLp = matchWrapWithTop(0);
             contentLp.leftMargin = dp(16);
             contentLp.rightMargin = dp(16);
-            contentLp.bottomMargin = dp(12);
+            contentLp.bottomMargin = dp(10);
             card.addView(content, contentLp);
-            header.setPadding(dp(16), dp(12), dp(16), expanded ? 0 : dp(12));
-            header.setMinimumHeight(dp(expanded ? 52 : 64));
+            header.setPadding(dp(16), dp(8), dp(12), expanded ? 0 : dp(8));
+            header.setMinimumHeight(dp(52));
             header.setContentDescription(titleText + (expanded
                     ? "，已展开，点击收起" : "，已收起，点击展开"));
             setTapClickListener(header, v -> {
@@ -2752,8 +2750,8 @@ public class MainActivity extends Activity {
                             .hideSoftInputFromWindow(content.getWindowToken(), 0);
                 }
                 content.setVisibility(expand ? View.VISIBLE : View.GONE);
-                header.setPadding(dp(16), dp(12), dp(16), expand ? 0 : dp(12));
-                header.setMinimumHeight(dp(expand ? 52 : 64));
+                header.setPadding(dp(16), dp(8), dp(12), expand ? 0 : dp(8));
+                header.setMinimumHeight(dp(52));
                 arrow.setRotation(expand ? 0f : -90f);
                 header.setContentDescription(titleText + (expand
                         ? "，已展开，点击收起" : "，已收起，点击展开"));

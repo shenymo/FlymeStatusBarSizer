@@ -17,10 +17,7 @@ public final class HomePageController {
     }
 
     public static void bind(MainActivity activity, LinearLayout root) {
-        TextView label = text(activity, "FLYME · 个性化工具", 11, activity.primaryColor());
-        label.setLetterSpacing(0.12f);
-        root.addView(label, PageViewUtils.matchWrapWithTop(activity, 8));
-        TextView title = text(activity, "FlymeBarSizer", 30, activity.textColor());
+        TextView title = text(activity, "FlymeBarSizer", 24, activity.textColor());
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         LinearLayout titleRow = new LinearLayout(activity);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -31,31 +28,29 @@ public final class HomePageController {
         donate.setColorFilter(activity.primaryColor());
         donate.setContentDescription("捐赠");
         donate.setPadding(activity.dp(8), activity.dp(8), activity.dp(8), activity.dp(8));
-        donate.setBackground(activity.roundRect(activity.surfaceColor(), 24));
+        donate.setBackground(activity.roundRect(activity.surfaceColor(), 8));
         activity.setTapClickListener(donate, v -> activity.openPage(MainActivity.Page.DONATION));
         LinearLayout.LayoutParams donateLp = new LinearLayout.LayoutParams(activity.dp(40), activity.dp(40));
         donateLp.leftMargin = activity.dp(12);
         titleRow.addView(donate, donateLp);
         root.addView(titleRow, PageViewUtils.matchWrapWithTop(activity, 4));
-        root.addView(text(activity, "让系统界面更合心意", 14, activity.subtextColor()),
-                PageViewUtils.matchWrapWithTop(activity, 4));
         LinearLayout content = activity.addFeatureSearch(root);
         content.addView(buildRestartCard(activity), PageViewUtils.matchWrapWithTop(activity, 12));
 
         LinearLayout personal = addGroup(activity, content, "个性化");
-        addEntry(activity, personal, "图标与电池", "图标大小 · 电池样式",
+        addEntry(activity, personal, "图标与电池", null,
                 R.drawable.ic_settings_battery, MainActivity.Page.ICONS_BATTERY);
-        addEntry(activity, personal, "时间与网络", "时间样式 · 实时网速",
+        addEntry(activity, personal, "时间与网络", null,
                 R.drawable.ic_settings_clock, MainActivity.Page.TIME_NETWORK);
-        addEntry(activity, personal, "系统外观", "桌面文件夹 · 外观细节",
+        addEntry(activity, personal, "系统外观", null,
                 R.drawable.ic_settings_appearance, MainActivity.Page.SYSTEM_APPEARANCE);
-        addEntry(activity, personal, "系统交互", "导航手势 · 输入法工具栏",
+        addEntry(activity, personal, "系统交互", null,
                 R.drawable.ic_settings_interaction, MainActivity.Page.SYSTEM_INTERACTION);
 
         LinearLayout tools = addGroup(activity, content, "工具与支持");
-        addEntry(activity, tools, "高级与调试", "配置管理 · 布局微调",
+        addEntry(activity, tools, "高级与调试", null,
                 R.drawable.ic_settings_tune, MainActivity.Page.ADVANCED_DEBUG);
-        addEntry(activity, tools, "关于与支持", "版本信息 · 项目与交流",
+        addEntry(activity, tools, "关于与支持", null,
                 R.drawable.ic_settings_info, MainActivity.Page.ABOUT);
     }
 
@@ -63,9 +58,8 @@ public final class HomePageController {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         activity.bindRestartCardContent(content);
-        View card = activity.buildSectionCard("应用重启",
-                "仅显示 LSPosed 中已启用且已安装的作用域应用；返回应用时自动刷新。重启需要 Root 权限。", content);
-        card.setBackground(activity.roundRect(activity.primaryContainerColor(), 24));
+        View card = activity.buildSectionCard("应用重启", null, content);
+        card.setBackground(activity.roundRect(activity.primaryContainerColor(), 8));
         return card;
     }
 
@@ -119,9 +113,10 @@ public final class HomePageController {
 
     private static LinearLayout addGroup(MainActivity activity, LinearLayout root, String title) {
         TextView heading = text(activity, title, 13, activity.subtextColor());
+        heading.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         heading.setPadding(activity.dp(4), 0, 0, 0);
         root.addView(heading, PageViewUtils.matchWrapWithTop(activity, 16));
-        LinearLayout group = activity.card(activity.surfaceColor(), 24);
+        LinearLayout group = activity.card(activity.surfaceColor(), 8);
         group.setPadding(0, 0, 0, 0);
         group.setClipToOutline(true);
         root.addView(group, PageViewUtils.matchWrapWithTop(activity, 6));
@@ -141,7 +136,7 @@ public final class HomePageController {
         }
         LinearLayout row = new LinearLayout(activity);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(activity.dp(64));
+        row.setMinimumHeight(activity.dp(56));
         row.setPadding(activity.dp(16), activity.dp(8), activity.dp(16), activity.dp(8));
         activity.setTapClickListener(row, v -> activity.openPage(page));
 
@@ -149,7 +144,7 @@ public final class HomePageController {
         icon.setImageResource(iconRes);
         icon.setColorFilter(activity.primaryColor());
         icon.setPadding(activity.dp(10), activity.dp(10), activity.dp(10), activity.dp(10));
-        icon.setBackground(activity.roundRect(activity.surfaceSoftColor(), 16));
+        icon.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
         icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         row.addView(icon, new LinearLayout.LayoutParams(activity.dp(40), activity.dp(40)));
 
@@ -158,8 +153,10 @@ public final class HomePageController {
         TextView name = text(activity, title, 16, activity.textColor());
         name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         texts.addView(name, PageViewUtils.matchWrap());
-        texts.addView(text(activity, summary, 12, activity.subtextColor()),
-                PageViewUtils.matchWrapWithTop(activity, 4));
+        if (summary != null && !summary.isEmpty()) {
+            texts.addView(text(activity, summary, 12, activity.subtextColor()),
+                    PageViewUtils.matchWrapWithTop(activity, 4));
+        }
         LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         textLp.leftMargin = activity.dp(16);
