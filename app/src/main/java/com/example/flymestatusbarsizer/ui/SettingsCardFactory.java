@@ -476,7 +476,7 @@ public final class SettingsCardFactory {
                         SettingsStore.KEY_ONE_HANDED_MODE_ACTION,
                         SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION)));
         return activity.buildSectionCard("下拉单手模式",
-                "底部上滑可打开多应用工作台；这里的设置与侧边入口分别保存。", options, true);
+                "底部上滑可打开多应用工作台；这里的设置与侧边入口分别保存。", options, false);
     }
 
     private void updateOneHandedWorkbenchVisibility(LinearLayout options, int action) {
