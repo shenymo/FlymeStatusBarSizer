@@ -527,37 +527,6 @@ public final class SettingsCardFactory {
                         : SettingsStore.KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
                 oneHanded ? SettingsStore.DEFAULT_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED
                         : SettingsStore.DEFAULT_WORKSPACE_DEFAULT_SIDEBAR_ENABLED);
-        activity.addProfileSectionHeader(options, "空窗口应用列表",
-                "在空窗口中查找并启动应用；关闭后显示 Flyme 桌面。此入口单独保存这些设置。");
-        activity.addSwitchRow(options, "显示应用列表",
-                "按应用名称排序，支持中文名称、拼音和首字母搜索。",
-                oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED
-                        : SettingsStore.KEY_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED,
-                oneHanded
-                        ? SettingsStore.readBoolean(activity.prefs(),
-                                SettingsStore.KEY_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED,
-                                SettingsStore.DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED)
-                        : SettingsStore.DEFAULT_WORKSPACE_EMPTY_PANE_APP_SEQUENCE_ENABLED);
-        activity.addSliderRow(options, "应用名称字号", null,
-                oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP
-                        : SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
-                oneHanded
-                        ? SettingsStore.readInt(activity.prefs(),
-                                SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
-                                SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP)
-                        : SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
-                SettingsStore.MIN_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP,
-                SettingsStore.MAX_WORKSPACE_APP_SEQUENCE_TEXT_SIZE_SP, "sp");
-        activity.addSliderRow(options, "应用图标大小", null,
-                oneHanded ? SettingsStore.KEY_ONE_HANDED_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP
-                        : SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
-                oneHanded
-                        ? SettingsStore.readInt(activity.prefs(),
-                                SettingsStore.KEY_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
-                                SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP)
-                        : SettingsStore.DEFAULT_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
-                SettingsStore.MIN_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP,
-                SettingsStore.MAX_WORKSPACE_APP_SEQUENCE_ICON_SIZE_DP, "dp");
         activity.addActionButtonRow(options, "工作台链接", null, "复制链接", () -> {
             ClipboardManager clipboard = (ClipboardManager)
                     activity.getSystemService(Context.CLIPBOARD_SERVICE);
