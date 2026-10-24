@@ -54,6 +54,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.animation.DecelerateInterpolator;
 import android.view.inputmethod.InputMethodManager;
 import android.view.inputmethod.EditorInfo;
 import android.window.OnBackInvokedCallback;
@@ -155,6 +156,7 @@ public class MainActivity extends Activity {
     private final Map<Page, View> pageViews = new LinkedHashMap<>();
     private final ArrayDeque<Page> navigationStack = new ArrayDeque<>();
     private Page currentPage = Page.HOME;
+    private int pageTransitionGeneration;
     private View searchHighlightedView;
     private Drawable searchPreviousForeground;
     private final Runnable searchHighlightReset = this::clearSearchHighlight;
@@ -585,18 +587,64 @@ public class MainActivity extends Activity {
             return;
         }
         navigationStack.push(currentPage);
-        showPage(page);
+        showPage(page, true, false);
     }
 
     void showPage(Page page) {
+        showPage(page, false, false);
+    }
+
+    private void showPage(Page page, boolean animate, boolean returning) {
         if (page == null) {
             return;
         }
+        Page previousPage = currentPage;
+        View incomingView = pageViews.get(page);
+        View outgoingView = pageViews.get(previousPage);
+        int transition = ++pageTransitionGeneration;
         currentPage = page;
         for (Map.Entry<Page, View> entry : pageViews.entrySet()) {
-            entry.getValue().setVisibility(entry.getKey() == page ? View.VISIBLE : View.GONE);
+            View pageView = entry.getValue();
+            pageView.animate().cancel();
+            boolean participates = entry.getKey() == page || entry.getKey() == previousPage;
+            pageView.setVisibility(participates ? View.VISIBLE : View.GONE);
         }
         resetPageTransforms();
+        if (animate && previousPage != page && incomingView != null && outgoingView != null
+                && pageHostView != null) {
+            pageHostView.bringChildToFront(incomingView);
+            float direction = returning ? -1f : 1f;
+            float distance = Math.min(pageHostView.getWidth() * 0.16f, dp(56));
+            if (distance <= 0f) {
+                distance = dp(56);
+            }
+            incomingView.setTranslationX(direction * distance);
+            incomingView.setAlpha(0.82f);
+            outgoingView.animate()
+                    .translationX(-direction * distance * 0.35f)
+                    .alpha(0.86f)
+                    .setDuration(220L)
+                    .setInterpolator(new DecelerateInterpolator(1.5f))
+                    .start();
+            incomingView.animate()
+                    .translationX(0f)
+                    .alpha(1f)
+                    .setDuration(220L)
+                    .setInterpolator(new DecelerateInterpolator(1.5f))
+                    .withEndAction(() -> {
+                        if (transition != pageTransitionGeneration) {
+                            return;
+                        }
+                        outgoingView.setVisibility(View.GONE);
+                        outgoingView.setTranslationX(0f);
+                        outgoingView.setAlpha(1f);
+                    })
+                    .start();
+        } else {
+            for (Map.Entry<Page, View> entry : pageViews.entrySet()) {
+                entry.getValue().setVisibility(entry.getKey() == page ? View.VISIBLE : View.GONE);
+            }
+        }
         if (page == Page.HOME) {
             if (refreshSearchResults != null) refreshSearchResults.run();
             refreshRestartScope();
@@ -655,7 +703,7 @@ public class MainActivity extends Activity {
     private boolean handleBackNavigation() {
         if (currentPage != Page.HOME || !navigationStack.isEmpty()) {
             navigationStack.clear();
-            showPage(Page.HOME);
+            showPage(Page.HOME, true, true);
             return true;
         }
         return false;
