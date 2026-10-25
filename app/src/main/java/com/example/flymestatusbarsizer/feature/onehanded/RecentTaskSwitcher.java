@@ -100,7 +100,7 @@ public final class RecentTaskSwitcher {
     }
 
     private static final class Popup {
-        private static final int ROW_HEIGHT_DP = 31;
+        private static final int ROW_HEIGHT_DP = 34;
         private final Context context;
         private final boolean fromLeft;
         private final float anchorY;
@@ -440,7 +440,7 @@ public final class RecentTaskSwitcher {
             TextView name = new TextView(context);
             name.setText(label);
             name.setTextColor(paletteColor(0xff222222, 0xfff1f3f4));
-            name.setTextSize(11);
+            name.setTextSize(12);
             name.setSingleLine(true);
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);
             name.setGravity(Gravity.CENTER_VERTICAL);
@@ -450,7 +450,7 @@ public final class RecentTaskSwitcher {
 
             TextView remove = new TextView(context);
             remove.setText("×");
-            remove.setTextSize(11);
+            remove.setTextSize(13);
             remove.setTextColor(paletteColor(0xff444444, 0xffd4d8dc));
             remove.setGravity(Gravity.CENTER);
             remove.setContentDescription("关闭" + label);
@@ -459,6 +459,7 @@ public final class RecentTaskSwitcher {
             ImageView icon = new ImageView(context);
             if (entry.icon != null) icon.setImageDrawable(entry.icon);
             else icon.setImageResource(android.R.drawable.sym_def_app_icon);
+            int iconSize = dp(16);
             ImageButton miniWindow = new ImageButton(context);
             miniWindow.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
             miniWindow.setPadding(dp(5), dp(5), dp(5), dp(5));
@@ -469,15 +470,15 @@ public final class RecentTaskSwitcher {
             setModuleIcon(miniWindow, R.drawable.ic_task_window, android.R.drawable.ic_menu_view);
             miniWindow.setOnClickListener(view -> openMiniWindow(card, miniWindow));
             if (fromLeft) {
-                row.addView(remove, new LinearLayout.LayoutParams(dp(23), textHeight));
-                row.addView(icon, new LinearLayout.LayoutParams(textHeight, textHeight));
+                row.addView(remove, new LinearLayout.LayoutParams(dp(26), dp(26)));
+                row.addView(icon, new LinearLayout.LayoutParams(iconSize, iconSize));
                 row.addView(name, new LinearLayout.LayoutParams(0, textHeight, 1f));
-                row.addView(miniWindow, new LinearLayout.LayoutParams(dp(26), dp(26)));
+                row.addView(miniWindow, new LinearLayout.LayoutParams(dp(29), dp(29)));
             } else {
-                row.addView(miniWindow, new LinearLayout.LayoutParams(dp(26), dp(26)));
+                row.addView(miniWindow, new LinearLayout.LayoutParams(dp(29), dp(29)));
                 row.addView(name, new LinearLayout.LayoutParams(0, textHeight, 1f));
-                row.addView(icon, new LinearLayout.LayoutParams(textHeight, textHeight));
-                row.addView(remove, new LinearLayout.LayoutParams(dp(23), textHeight));
+                row.addView(icon, new LinearLayout.LayoutParams(iconSize, iconSize));
+                row.addView(remove, new LinearLayout.LayoutParams(dp(26), dp(26)));
             }
             row.setOnClickListener(view -> {
                 view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
