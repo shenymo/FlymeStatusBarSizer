@@ -6,7 +6,10 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.graphics.Rect;
 import android.os.Bundle;
+import android.os.IBinder;
+import android.os.SystemClock;
 import android.os.UserHandle;
 
 import com.example.flymestatusbarsizer.BuildConfig;
@@ -27,6 +30,9 @@ final class OneStepTaskAccess {
     private final Method focusTask;
     private final OneStepRecentTasks recent;
     private Object taskListener;
+    private Object windowManagerExt;
+    private Method enterWindowMode;
+    private Method isWindowMode;
 
     OneStepTaskAccess(Context context) throws ReflectiveOperationException {
         this.context = context;
@@ -169,6 +175,30 @@ final class OneStepTaskAccess {
         if (!(result instanceof Number) || ((Number) result).intValue() < 0) {
             throw new IllegalStateException("Cannot resume recent task");
         }
+    }
+
+    void openMiniWindow(RecentTaskCard requested) throws ReflectiveOperationException {
+        RecentTaskCard current = findCandidate(requested);
+        if (current == null || !(current.token instanceof IBinder)) {
+            throw new IllegalStateException("Selected task no longer exists");
+        }
+        initWindowManagerExt();
+        enterWindowMode.invoke(windowManagerExt, 0, current.taskId, 1, 11, null, -1.0f, true);
+        for (int attempt = 0; attempt < 10; attempt++) {
+            Object result = isWindowMode.invoke(windowManagerExt, 0, current.taskId, 11, current.token);
+            if (Boolean.TRUE.equals(result)) return;
+            SystemClock.sleep(100L);
+        }
+        throw new IllegalStateException("Flyme mini window was not entered");
+    }
+
+    private void initWindowManagerExt() throws ReflectiveOperationException {
+        if (windowManagerExt != null) return;
+        Class<?> type = Class.forName("flyme.view.WindowManagerExt", false, context.getClassLoader());
+        windowManagerExt = type.getMethod("getInstance", Context.class).invoke(null, context);
+        enterWindowMode = type.getMethod("enterWindowMode", int.class, int.class, int.class, int.class,
+                Rect.class, float.class, boolean.class);
+        isWindowMode = type.getMethod("isWindowMode", int.class, int.class, int.class, IBinder.class);
     }
 
     void remove(RecentTaskCard requested) throws ReflectiveOperationException {

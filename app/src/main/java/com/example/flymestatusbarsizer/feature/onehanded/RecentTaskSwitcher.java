@@ -24,11 +24,14 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import com.example.flymestatusbarsizer.R;
 import com.example.flymestatusbarsizer.feature.assistant.SideGestureActions;
 
 import java.util.ArrayList;
@@ -441,8 +444,46 @@ public final class RecentTaskSwitcher {
             else icon.setImageResource(android.R.drawable.sym_def_app_icon);
             row.addView(icon, new LinearLayout.LayoutParams(textHeight, textHeight));
             row.addView(name, new LinearLayout.LayoutParams(0, textHeight, 1f));
+
+            ImageButton miniWindow = new ImageButton(context);
+            miniWindow.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            miniWindow.setPadding(dp(5), dp(5), dp(5), dp(5));
+            miniWindow.setBackground(new android.graphics.drawable.RippleDrawable(
+                    ColorStateList.valueOf(0x18000000), null, null));
+            miniWindow.setContentDescription("以小窗打开" + label);
+            miniWindow.setTooltipText("以小窗打开");
+            setModuleIcon(miniWindow, R.drawable.ic_task_window, android.R.drawable.ic_menu_view);
+            miniWindow.setOnClickListener(view -> openMiniWindow(card, miniWindow));
+            row.addView(miniWindow, new LinearLayout.LayoutParams(dp(26), dp(26)));
             row.setOnClickListener(view -> activate(card));
             return row;
+        }
+
+        private void setModuleIcon(ImageView view, int resource, int fallback) {
+            try {
+                Context module = context.createPackageContext(
+                        com.example.flymestatusbarsizer.BuildConfig.APPLICATION_ID, 0);
+                view.setImageDrawable(module.getDrawable(resource));
+            } catch (Exception error) {
+                view.setImageResource(fallback);
+                view.setColorFilter(0xff287a78);
+            }
+        }
+
+        private void openMiniWindow(RecentTaskCard card, ImageButton button) {
+            button.setEnabled(false);
+            WORKER.execute(() -> {
+                try {
+                    getTaskAccess(context).openMiniWindow(card);
+                    MAIN.post(() -> { if (isCurrent()) close(); });
+                } catch (Exception ignored) {
+                    MAIN.post(() -> {
+                        if (!isCurrent()) return;
+                        button.setEnabled(true);
+                        Toast.makeText(context, "无法打开小窗", Toast.LENGTH_SHORT).show();
+                    });
+                }
+            });
         }
 
         private void toggleSearch() {
