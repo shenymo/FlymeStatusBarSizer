@@ -43,6 +43,7 @@ final class AssistantGestureState {
     }
 
     float startY() { return startY; }
+    float currentY() { return startY + dy; }
     float inwardDistance() { return dx; }
     float verticalDelta() { return dy; }
     float travelDistance() { return (float) Math.hypot(dx, dy); }

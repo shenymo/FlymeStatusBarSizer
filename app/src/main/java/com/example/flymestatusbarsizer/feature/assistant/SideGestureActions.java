@@ -7,7 +7,7 @@ public final class SideGestureActions {
     public interface Action {
         boolean isReady();
         void execute(boolean fromLeft, Runnable onSuccess);
-        default void execute(boolean fromLeft, float startY, Runnable onSuccess) {
+        default void execute(boolean fromLeft, float anchorY, Runnable onSuccess) {
             execute(fromLeft, onSuccess);
         }
     }

@@ -5,7 +5,6 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
-import android.app.ActivityOptions;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
@@ -43,6 +42,8 @@ import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
+import com.example.flymestatusbarsizer.feature.windowmode.FlymeMiniWindowLauncher;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -70,7 +71,6 @@ final class MBackStarOverlayController {
     private static final float SMALL_WINDOW_ICON_SCALE = 1f / 3f;
     private static final int FLYME_WINDOW_MODE_MINI = 11;
     private static final int FLYME_WINDOW_MODE_FREEFORM = 1035;
-    private static final String START_WINDOW_MODE_BUNDLE_KEY = "start_windowmode";
     private static final long SMALL_WINDOW_ANIMATION_START_DELAY_MS = 48L;
     private static final long SMALL_WINDOW_ANIMATION_DURATION_MS = 260L;
     private static final long SMALL_WINDOW_HOVER_TIMEOUT_MS = 1000L;
@@ -86,14 +86,6 @@ final class MBackStarOverlayController {
     private static boolean activityTaskManagerGetServiceMethodResolved;
     private static Method startActivityFromRecentsMethod;
     private static boolean startActivityFromRecentsMethodResolved;
-    private static Method makeCustomTaskAnimationMethod;
-    private static boolean makeCustomTaskAnimationMethodResolved;
-    private static Method windowManagerExtGetInstanceMethod;
-    private static boolean windowManagerExtGetInstanceMethodResolved;
-    private static Method setStartWindowModeMethod;
-    private static boolean setStartWindowModeMethodResolved;
-    private static Method getWindowModeBoundMethod;
-    private static boolean getWindowModeBoundMethodResolved;
     private static Field trustedOverlayPrivateFlagsField;
     private static boolean trustedOverlayPrivateFlagsFieldResolved;
 
@@ -1043,24 +1035,13 @@ final class MBackStarOverlayController {
 
     private Rect resolveSmallWindowTargetRect(int taskId, int startWidth, int startHeight) {
         try {
-            Object windowManagerExt = resolveWindowManagerExtInstance(context);
-            Method method = resolveGetWindowModeBoundMethod();
-            if (windowManagerExt == null || method == null) {
-                return null;
+            Rect rect = FlymeMiniWindowLauncher.getWindowModeBound(
+                    context, resolveDisplayId(), taskId, FLYME_WINDOW_MODE_MINI);
+            if (rect == null || rect.isEmpty()) {
+                rect = FlymeMiniWindowLauncher.getWindowModeBound(
+                        context, resolveDisplayId(), taskId, FLYME_WINDOW_MODE_FREEFORM);
             }
-            Rect rect = resolveWindowModeBound(
-                    windowManagerExt,
-                    method,
-                    taskId,
-                    FLYME_WINDOW_MODE_MINI);
-            if (rect.isEmpty()) {
-                rect = resolveWindowModeBound(
-                        windowManagerExt,
-                        method,
-                        taskId,
-                        FLYME_WINDOW_MODE_FREEFORM);
-            }
-            if (rect.isEmpty()) {
+            if (rect == null || rect.isEmpty()) {
                 return null;
             }
             int[] location = new int[2];
@@ -1070,15 +1051,6 @@ final class MBackStarOverlayController {
         } catch (Throwable ignored) {
             return null;
         }
-    }
-
-    private Rect resolveWindowModeBound(
-            Object windowManagerExt,
-            Method method,
-            int taskId,
-            int windowMode) throws Exception {
-        Object result = method.invoke(windowManagerExt, resolveDisplayId(), taskId, windowMode);
-        return result instanceof Rect ? new Rect((Rect) result) : new Rect();
     }
 
     private Rect buildFallbackSmallWindowTargetRect(int startWidth, int startHeight) {
@@ -1216,7 +1188,7 @@ final class MBackStarOverlayController {
     private boolean startTaskFromRecents(int taskId) {
         return startTaskFromRecents(
                 taskId,
-                buildNoAnimationTaskOptions(),
+                FlymeMiniWindowLauncher.buildTaskAnimationOptions(context),
                 "Failed to start mBack star task from recents: ");
     }
 
@@ -1224,11 +1196,20 @@ final class MBackStarOverlayController {
         if (app == null || app.taskId < 0) {
             return false;
         }
-        markFlymeStartWindowMode(app.packageName);
-        return startTaskFromRecents(
-                app.taskId,
-                buildSmallWindowTaskOptions(),
-                "Failed to start mBack star task in small window: ");
+        try {
+            FlymeMiniWindowLauncher.startTaskInMiniWindow(
+                    context,
+                    resolveActivityTaskManagerService(),
+                    resolveStartActivityFromRecentsMethod(),
+                    app.taskId,
+                    app.packageName);
+            return true;
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logMBackWarning(
+                    "Failed to start mBack star task in small window: " + app.taskId,
+                    t);
+            return false;
+        }
     }
 
     private boolean startTaskFromRecents(int taskId, Bundle options, String warningPrefix) {
@@ -1246,32 +1227,6 @@ final class MBackStarOverlayController {
                     t);
         }
         return false;
-    }
-
-    private Bundle buildNoAnimationTaskOptions() {
-        try {
-            Method method = resolveMakeCustomTaskAnimationMethod();
-            if (method == null) {
-                return null;
-            }
-            Object options = method.invoke(null, context, 0, 0, null, null, null);
-            return options instanceof ActivityOptions ? ((ActivityOptions) options).toBundle() : null;
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private Bundle buildSmallWindowTaskOptions() {
-        try {
-            Bundle options = buildNoAnimationTaskOptions();
-            if (options == null) {
-                options = ActivityOptions.makeBasic().toBundle();
-            }
-            options.putBoolean(START_WINDOW_MODE_BUNDLE_KEY, true);
-            return options;
-        } catch (Throwable ignored) {
-            return null;
-        }
     }
 
     private FrameLayout buildPreviewContainer(Context context, ImageView imageView) {
@@ -1420,71 +1375,6 @@ final class MBackStarOverlayController {
         return startActivityFromRecentsMethod;
     }
 
-    private static Method resolveMakeCustomTaskAnimationMethod() {
-        if (!makeCustomTaskAnimationMethodResolved) {
-            try {
-                Method[] methods = ActivityOptions.class.getDeclaredMethods();
-                for (Method method : methods) {
-                    Class<?>[] parameterTypes = method.getParameterTypes();
-                    if ("makeCustomTaskAnimation".equals(method.getName())
-                            && parameterTypes.length == 6
-                            && parameterTypes[0] == Context.class
-                            && parameterTypes[1] == int.class
-                            && parameterTypes[2] == int.class) {
-                        method.setAccessible(true);
-                        makeCustomTaskAnimationMethod = method;
-                        break;
-                    }
-                }
-            } catch (Throwable ignored) {
-                makeCustomTaskAnimationMethod = null;
-            }
-            makeCustomTaskAnimationMethodResolved = true;
-        }
-        return makeCustomTaskAnimationMethod;
-    }
-
-    private static Object resolveWindowManagerExtInstance(Context context) {
-        try {
-            Method method = resolveWindowManagerExtGetInstanceMethod();
-            return method != null ? method.invoke(null, context) : null;
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private static Method resolveWindowManagerExtGetInstanceMethod() {
-        if (!windowManagerExtGetInstanceMethodResolved) {
-            try {
-                Class<?> clazz = Class.forName("flyme.view.WindowManagerExt");
-                windowManagerExtGetInstanceMethod = clazz.getMethod("getInstance", Context.class);
-                windowManagerExtGetInstanceMethod.setAccessible(true);
-            } catch (Throwable ignored) {
-                windowManagerExtGetInstanceMethod = null;
-            }
-            windowManagerExtGetInstanceMethodResolved = true;
-        }
-        return windowManagerExtGetInstanceMethod;
-    }
-
-    private static Method resolveGetWindowModeBoundMethod() {
-        if (!getWindowModeBoundMethodResolved) {
-            try {
-                Class<?> clazz = Class.forName("flyme.view.WindowManagerExt");
-                getWindowModeBoundMethod = clazz.getMethod(
-                        "getWindowModeBound",
-                        int.class,
-                        int.class,
-                        int.class);
-                getWindowModeBoundMethod.setAccessible(true);
-            } catch (Throwable ignored) {
-                getWindowModeBoundMethod = null;
-            }
-            getWindowModeBoundMethodResolved = true;
-        }
-        return getWindowModeBoundMethod;
-    }
-
     private int resolveDisplayId() {
         try {
             if (overlayView.getDisplay() != null) {
@@ -1493,38 +1383,6 @@ final class MBackStarOverlayController {
         } catch (Throwable ignored) {
         }
         return 0;
-    }
-
-    private void markFlymeStartWindowMode(String packageName) {
-        if (packageName == null || packageName.trim().isEmpty()) {
-            return;
-        }
-        try {
-            Object windowManagerExt = resolveWindowManagerExtInstance(context);
-            Method method = resolveSetStartWindowModeMethod();
-            if (windowManagerExt != null && method != null) {
-                method.invoke(windowManagerExt, packageName);
-            }
-        } catch (Throwable t) {
-            FlymeStatusBarSizer.logMBackWarning(
-                    "Failed to mark Flyme small window start for mBack star app: "
-                            + packageName,
-                    t);
-        }
-    }
-
-    private static Method resolveSetStartWindowModeMethod() {
-        if (!setStartWindowModeMethodResolved) {
-            try {
-                Class<?> clazz = Class.forName("flyme.view.WindowManagerExt");
-                setStartWindowModeMethod = clazz.getMethod("setStartWindowMode", String.class);
-                setStartWindowModeMethod.setAccessible(true);
-            } catch (Throwable ignored) {
-                setStartWindowModeMethod = null;
-            }
-            setStartWindowModeMethodResolved = true;
-        }
-        return setStartWindowModeMethod;
     }
 
     private int dp(int value) {

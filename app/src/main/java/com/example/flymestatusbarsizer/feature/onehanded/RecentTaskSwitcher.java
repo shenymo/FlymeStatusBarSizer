@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
@@ -17,6 +18,7 @@ import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -87,9 +89,9 @@ public final class RecentTaskSwitcher {
                 execute(fromLeft, 0f, onSuccess);
             }
 
-            @Override public void execute(boolean fromLeft, float startY, Runnable onSuccess) {
+            @Override public void execute(boolean fromLeft, float anchorY, Runnable onSuccess) {
                 if (isReady()) {
-                    new Popup(context, fromLeft, startY).show();
+                    new Popup(context, fromLeft, anchorY).show();
                     if (onSuccess != null) onSuccess.run();
                 }
             }
@@ -100,7 +102,7 @@ public final class RecentTaskSwitcher {
         private static final int ROW_HEIGHT_DP = 31;
         private final Context context;
         private final boolean fromLeft;
-        private final float startY;
+        private final float anchorY;
         private final WindowManager windowManager;
         private final List<TaskEntry> entries = new ArrayList<>();
         private final FrameLayout root;
@@ -114,10 +116,10 @@ public final class RecentTaskSwitcher {
         private boolean closing;
         private boolean loading = true;
 
-        Popup(Context context, boolean fromLeft, float startY) {
+        Popup(Context context, boolean fromLeft, float anchorY) {
             this.context = context;
             this.fromLeft = fromLeft;
-            this.startY = startY;
+            this.anchorY = anchorY;
             windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
 
             root = new FrameLayout(context);
@@ -141,7 +143,7 @@ public final class RecentTaskSwitcher {
                     Gravity.TOP | (fromLeft ? Gravity.LEFT : Gravity.RIGHT));
             panelParams.leftMargin = dp(8);
             panelParams.rightMargin = dp(8);
-            panelParams.topMargin = Math.max(0, Math.round(startY - dp(156)));
+            panelParams.topMargin = Math.max(0, Math.round(anchorY - dp(156)));
             root.addView(panel, panelParams);
 
             searchContainer = new LinearLayout(context);
@@ -213,7 +215,7 @@ public final class RecentTaskSwitcher {
                     windowManager.addView(root, params);
                     attached = true;
                     panel.post(() -> {
-                        alignToGestureStart();
+                        alignToGestureAnchor();
                         animateIn();
                     });
                     loadTasksAsync();
@@ -225,19 +227,19 @@ public final class RecentTaskSwitcher {
             synchronized (RecentTaskSwitcher.class) { if (active == this) active = null; }
         }
 
-        private void alignToGestureStart() {
+        private void alignToGestureAnchor() {
             if (!attached || root.getHeight() <= 0 || panel.getHeight() <= 0) return;
             FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) panel.getLayoutParams();
             int maxTop = Math.max(0, root.getHeight() - panel.getHeight());
             params.topMargin = Math.max(0, Math.min(maxTop,
-                    Math.round(startY - panel.getHeight() / 2f)));
+                    Math.round(anchorY - panel.getHeight() / 2f)));
             panel.setLayoutParams(params);
         }
 
         private void animateIn() {
             if (!attached) return;
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
-            panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), startY - panel.getTop())));
+            panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));
             panel.setScaleX(0.04f);
             panel.setScaleY(0.08f);
             panel.setAlpha(0.15f);
@@ -420,6 +422,7 @@ public final class RecentTaskSwitcher {
             String label = entry.label;
             LinearLayout row = new LinearLayout(context);
             row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setBackground(new RippleDrawable(ColorStateList.valueOf(0x22287a78), null, null));
             TextView name = new TextView(context);
             name.setText(label);
             name.setTextColor(0xff222222);
@@ -427,6 +430,7 @@ public final class RecentTaskSwitcher {
             name.setSingleLine(true);
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);
             name.setGravity(Gravity.CENTER_VERTICAL);
+            if (!fromLeft) name.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
             name.setPadding(dp(6), 0, dp(4), 0);
             int textHeight = name.getLineHeight();
 
@@ -436,15 +440,11 @@ public final class RecentTaskSwitcher {
             remove.setTextColor(0xff444444);
             remove.setGravity(Gravity.CENTER);
             remove.setContentDescription("关闭" + label);
-            row.addView(remove, new LinearLayout.LayoutParams(dp(23), textHeight));
             remove.setOnClickListener(view -> removeTask(card));
 
             ImageView icon = new ImageView(context);
             if (entry.icon != null) icon.setImageDrawable(entry.icon);
             else icon.setImageResource(android.R.drawable.sym_def_app_icon);
-            row.addView(icon, new LinearLayout.LayoutParams(textHeight, textHeight));
-            row.addView(name, new LinearLayout.LayoutParams(0, textHeight, 1f));
-
             ImageButton miniWindow = new ImageButton(context);
             miniWindow.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
             miniWindow.setPadding(dp(5), dp(5), dp(5), dp(5));
@@ -454,8 +454,21 @@ public final class RecentTaskSwitcher {
             miniWindow.setTooltipText("以小窗打开");
             setModuleIcon(miniWindow, R.drawable.ic_task_window, android.R.drawable.ic_menu_view);
             miniWindow.setOnClickListener(view -> openMiniWindow(card, miniWindow));
-            row.addView(miniWindow, new LinearLayout.LayoutParams(dp(26), dp(26)));
-            row.setOnClickListener(view -> activate(card));
+            if (fromLeft) {
+                row.addView(remove, new LinearLayout.LayoutParams(dp(23), textHeight));
+                row.addView(icon, new LinearLayout.LayoutParams(textHeight, textHeight));
+                row.addView(name, new LinearLayout.LayoutParams(0, textHeight, 1f));
+                row.addView(miniWindow, new LinearLayout.LayoutParams(dp(26), dp(26)));
+            } else {
+                row.addView(miniWindow, new LinearLayout.LayoutParams(dp(26), dp(26)));
+                row.addView(name, new LinearLayout.LayoutParams(0, textHeight, 1f));
+                row.addView(icon, new LinearLayout.LayoutParams(textHeight, textHeight));
+                row.addView(remove, new LinearLayout.LayoutParams(dp(23), textHeight));
+            }
+            row.setOnClickListener(view -> {
+                view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
+                activate(card);
+            });
             return row;
         }
 
@@ -553,7 +566,7 @@ public final class RecentTaskSwitcher {
             closing = true;
             panel.animate().cancel();
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
-            panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), startY - panel.getTop())));
+            panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));
             panel.animate().scaleX(0.04f).scaleY(0.08f).alpha(0f)
                     .translationX(fromLeft ? -dp(5) : dp(5)).setDuration(230L)
                     .setInterpolator(new AccelerateInterpolator(1.35f))

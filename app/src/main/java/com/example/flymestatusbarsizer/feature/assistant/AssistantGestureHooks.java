@@ -243,7 +243,7 @@ final class AssistantGestureHooks {
                     executeNavigationAction(target, actionId);
                     haptic.run();
                 } else {
-                    action.execute(fromLeft, state.startY(), haptic);
+                    action.execute(fromLeft, (state.startY() + state.currentY()) / 2f, haptic);
                 }
                 return true;
             } catch (Throwable t) {
