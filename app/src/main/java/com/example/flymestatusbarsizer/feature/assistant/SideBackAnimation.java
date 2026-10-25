@@ -7,6 +7,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.animation.DecelerateInterpolator;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
@@ -30,7 +31,7 @@ final class SideBackAnimation {
             View view = (View) chain.getThisObject();
             State state;
             synchronized (STATES) { state = STATES.get(view); }
-            if (state == null || !state.active) return chain.proceed();
+            if (state == null || !state.active || !state.gestureStarted) return chain.proceed();
             state.draw(view, (Canvas) chain.getArg(0));
             return null;
         });
@@ -42,7 +43,9 @@ final class SideBackAnimation {
             State state = stateFor(view, event);
             if (state == null) return chain.proceed();
             int action = event.getActionMasked();
-            if (action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_UP) state.move(view, event);
+            if (action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_UP) {
+                state.move(view, event);
+            }
             Object result = chain.proceed();
             if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL
                     || action == MotionEvent.ACTION_POINTER_DOWN) {
@@ -66,6 +69,7 @@ final class SideBackAnimation {
             }
             State state = new State(left, event.getRawX(), event.getRawY(), context.getResources()
                     .getDisplayMetrics().density,
+                    ViewConfiguration.get(context).getScaledTouchSlop(),
                     ReflectUtils.getBooleanField(view, "mTriggerBackSilently", false));
             synchronized (STATES) {
                 State previous = STATES.put(view, state);
@@ -88,6 +92,7 @@ final class SideBackAnimation {
         private final float startX;
         private final float startY;
         private final float density;
+        private final float touchSlop;
         private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint outline = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint highlight = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -95,14 +100,17 @@ final class SideBackAnimation {
         private float inward, vertical;
         private float releaseScale = 1f;
         private boolean active = true;
+        private boolean gestureStarted;
         private ValueAnimator releaseAnimator;
 
-        State(boolean fromLeft, float startX, float startY, float density, boolean silent) {
+        State(boolean fromLeft, float startX, float startY, float density, float touchSlop,
+                boolean silent) {
             this.fromLeft = fromLeft;
             this.silent = silent;
             this.startX = startX;
             this.startY = startY;
             this.density = density;
+            this.touchSlop = touchSlop;
             fill.setColor(0x4c3c3c3c);
             fill.setStyle(Paint.Style.FILL);
             outline.setColor(0x28ffffff);
@@ -118,7 +126,10 @@ final class SideBackAnimation {
             float x = event.getRawX();
             inward = Math.max(0f, fromLeft ? x - startX : startX - x);
             vertical = event.getRawY() - startY;
-            view.postInvalidateOnAnimation();
+            if (inward > touchSlop) {
+                gestureStarted = true;
+                view.postInvalidateOnAnimation();
+            }
         }
 
         void draw(View view, Canvas canvas) {
@@ -155,6 +166,14 @@ final class SideBackAnimation {
 
         void finish(View view, boolean committed) {
             if (!active) return;
+            if (!gestureStarted) {
+                active = false;
+                synchronized (STATES) {
+                    if (STATES.get(view) == State.this) STATES.remove(view);
+                }
+                view.setVisibility(View.GONE);
+                return;
+            }
             if (silent) {
                 active = false;
                 synchronized (STATES) {

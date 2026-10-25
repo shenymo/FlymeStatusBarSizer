@@ -9,6 +9,7 @@ import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
@@ -105,6 +106,10 @@ final class AssistantGestureHooks {
         boolean actionPreviewEnabled;
         boolean zoneOverlayEnabled;
         boolean distanceSplitEnabled;
+        boolean gestureStarted;
+        float gestureTouchSlop;
+        float gestureStartX;
+        float shortDistancePx;
         float longDistancePx;
         final AssistantGestureActionOverlay actionOverlay;
         final AssistantGestureZoneOverlay zoneOverlay;
@@ -141,7 +146,13 @@ final class AssistantGestureHooks {
             float density = context.getResources().getDisplayMetrics().density;
             float rawX = event.getRawX();
             float rawY = event.getRawY();
-            state.begin(rawX, rawY, config.assistantGestureDistanceDp * density,
+            Object touchSlop = ReflectUtils.getField(target, "mTouchSlop");
+            gestureTouchSlop = touchSlop instanceof Float
+                    ? Math.max(0f, (Float) touchSlop)
+                    : ViewConfiguration.get(context).getScaledTouchSlop() * 0.75f;
+            gestureStartX = rawX;
+            shortDistancePx = config.assistantGestureDistanceDp * density;
+            state.begin(rawX, rawY, shortDistancePx,
                     12f * density, leftEdge, 24f * density);
             fromLeft = leftEdge;
             zoneOverlayEnabled = config.assistantGestureZoneOverlayEnabled;
@@ -159,12 +170,6 @@ final class AssistantGestureHooks {
                     ? config.sideGestureLeftUpLongAction : config.sideGestureRightUpLongAction;
             downLongActionId = leftEdge
                     ? config.sideGestureLeftDownLongAction : config.sideGestureRightDownLongAction;
-            if (zoneOverlayEnabled) {
-                zoneOverlay.show(rawX, rawY, leftEdge,
-                        config.assistantGestureDistanceDp * density, longDistancePx,
-                        distanceSplitEnabled, horizontalActionId, upActionId, downActionId,
-                        horizontalLongActionId, upLongActionId, downLongActionId);
-            }
             remember(event);
         }
 
@@ -180,13 +185,24 @@ final class AssistantGestureHooks {
             float rawX = event.getRawX();
             float rawY = event.getRawY();
             state.move(rawX, rawY, event.getPointerCount());
-            if (zoneOverlayEnabled) zoneOverlay.updatePointer(rawX, rawY);
+            if (!gestureStarted && state.inwardDistance() > gestureTouchSlop) {
+                gestureStarted = true;
+                if (zoneOverlayEnabled) {
+                    zoneOverlay.show(gestureStartX, state.startY(), fromLeft, shortDistancePx,
+                            longDistancePx, distanceSplitEnabled, horizontalActionId, upActionId,
+                            downActionId, horizontalLongActionId, upLongActionId,
+                            downLongActionId);
+                }
+            }
+            if (zoneOverlayEnabled && gestureStarted) zoneOverlay.updatePointer(rawX, rawY);
             remember(event);
         }
 
         boolean tryClaim(boolean onRelease) {
             Object target = owner.get();
-            if (last == null || target == null || consumed || !state.ready()) return false;
+            if (last == null || target == null || consumed || !gestureStarted || !state.ready()) {
+                return false;
+            }
             if (triggerOnRelease && !onRelease) return false;
             ModuleConfig config = ModuleConfig.load(context);
             if (!config.enabled || !config.assistantGestureEnabled
@@ -246,7 +262,7 @@ final class AssistantGestureHooks {
         }
 
         void updateActionPreview() {
-            if (!actionPreviewEnabled || !state.ready()) {
+            if (!actionPreviewEnabled || !gestureStarted || !state.ready()) {
                 actionOverlay.hide();
                 return;
             }
@@ -315,7 +331,7 @@ final class AssistantGestureHooks {
 
         void updateAnimation() {
             Object target = owner.get();
-            if (target == null || last == null) return;
+            if (target == null || last == null || !gestureStarted) return;
             Object panel = ReflectUtils.getField(target, "mEdgeBackPlugin");
             if (panel != null) {
                 float centerY = state.direction() == AssistantGestureState.HORIZONTAL
@@ -326,7 +342,7 @@ final class AssistantGestureHooks {
         }
 
         void updateAnimationProgress() {
-            if (state.direction() == AssistantGestureState.HORIZONTAL) return;
+            if (!gestureStarted || state.direction() == AssistantGestureState.HORIZONTAL) return;
             Object target = owner.get();
             Object panel = ReflectUtils.getField(target, "mEdgeBackPlugin");
             if (!(panel instanceof View)) return;
@@ -355,6 +371,7 @@ final class AssistantGestureHooks {
         void reset() {
             state.cancel();
             consumed = false;
+            gestureStarted = false;
             actionOverlay.hide();
             zoneOverlay.hide();
             if (last != null) { last.recycle(); last = null; }
