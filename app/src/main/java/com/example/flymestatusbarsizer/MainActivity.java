@@ -19,6 +19,7 @@ import com.example.flymestatusbarsizer.ui.RestartTarget;
 import com.example.flymestatusbarsizer.ui.SettingsCardFactory;
 import com.example.flymestatusbarsizer.ui.SettingsUiFactory;
 import com.example.flymestatusbarsizer.ui.SideGestureSettingsPageController;
+import com.example.flymestatusbarsizer.ui.SideGestureZoneOverlay;
 import com.example.flymestatusbarsizer.ui.SystemAppearancePageController;
 import com.example.flymestatusbarsizer.ui.SystemInteractionPageController;
 import com.example.flymestatusbarsizer.ui.TelephonyDebugPageController;
@@ -175,6 +176,8 @@ public class MainActivity extends Activity {
     private final ImeToolbarEditor imeToolbarEditor = new ImeToolbarEditor(this);
     private final SettingsCardFactory settingsCardFactory = new SettingsCardFactory(this);
     private final SettingsUiFactory settingsUiFactory = new SettingsUiFactory(this);
+    private SideGestureZoneOverlay sideGestureZoneOverlay;
+    private Runnable sideGestureActionsChangedListener;
 
     public enum Page {
         HOME(null, null, null, false),
@@ -256,6 +259,7 @@ public class MainActivity extends Activity {
         RemoteSettingsSync.removeServiceListener(scopeServiceListener);
         clearSearchHighlight();
         unregisterSystemBackCallback();
+        if (sideGestureZoneOverlay != null) sideGestureZoneOverlay.close(false);
         super.onDestroy();
     }
 
@@ -713,6 +717,10 @@ public class MainActivity extends Activity {
     }
 
     private boolean handleBackNavigation() {
+        if (sideGestureZoneOverlay != null) {
+            sideGestureZoneOverlay.close(false);
+            return true;
+        }
         if (!navigationStack.isEmpty()) {
             showPage(navigationStack.pop(), true, true);
             return true;
@@ -722,6 +730,34 @@ public class MainActivity extends Activity {
             return true;
         }
         return false;
+    }
+
+    public void setSideGestureActionsChangedListener(Runnable listener) {
+        sideGestureActionsChangedListener = listener;
+    }
+
+    public void notifySideGestureActionsChanged() {
+        if (sideGestureActionsChangedListener != null) {
+            sideGestureActionsChangedListener.run();
+        }
+    }
+
+    public void openSideGestureZoneOverlay() {
+        showSideGestureZoneOverlay();
+    }
+
+    private void showSideGestureZoneOverlay() {
+        if (sideGestureZoneOverlay != null) return;
+        sideGestureZoneOverlay = new SideGestureZoneOverlay(this, prefs, primaryColor(),
+                this::notifySideGestureActionsChanged, () -> {
+                    sideGestureZoneOverlay = null;
+                });
+        if (sideGestureZoneOverlay.show()) {
+            return;
+        } else {
+            sideGestureZoneOverlay = null;
+            showToast("无法显示触发区编辑层");
+        }
     }
 
     private void updateSystemBackCallbackRegistration() {
