@@ -126,6 +126,8 @@ public final class ModuleConfig {
     public boolean assistantBackgroundBlur = SettingsStore.DEFAULT_ASSISTANT_BACKGROUND_BLUR;
     public boolean assistantGestureEnabled = SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED;
     public int sideGestureAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
+    public int sideGestureUpAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
+    public int sideGestureDownAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
     public boolean oneHandedModeEnabled = SettingsStore.DEFAULT_ONE_HANDED_MODE_ENABLED;
     public int oneHandedModeAction = SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION;
     public int assistantGestureScenes = SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES;
@@ -721,6 +723,10 @@ public final class ModuleConfig {
                     SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED, SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
             config.sideGestureAction = SettingsStore.normalizeSideGestureAction(SettingsStore.readInt(prefs,
                     SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION));
+            config.sideGestureUpAction = SettingsStore.normalizeSideGestureAction(SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_SIDE_GESTURE_UP_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION));
+            config.sideGestureDownAction = SettingsStore.normalizeSideGestureAction(SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION));
             config.oneHandedModeEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_ONE_HANDED_MODE_ENABLED, SettingsStore.DEFAULT_ONE_HANDED_MODE_ENABLED);
             config.oneHandedModeAction = SettingsStore.normalizeOneHandedModeAction(SettingsStore.readInt(prefs,

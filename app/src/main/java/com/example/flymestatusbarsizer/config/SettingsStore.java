@@ -124,6 +124,8 @@ public final class SettingsStore {
     public static final int SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT = 0;
     public static final int SIDE_GESTURE_ACTION_TASK_SCALE = 1;
     public static final int DEFAULT_SIDE_GESTURE_ACTION = SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
+    public static final String KEY_SIDE_GESTURE_UP_ACTION = "side_gesture_up_action";
+    public static final String KEY_SIDE_GESTURE_DOWN_ACTION = "side_gesture_down_action";
     public static final String KEY_ONE_HANDED_MODE_ENABLED = "one_handed_mode_enabled";
     public static final boolean DEFAULT_ONE_HANDED_MODE_ENABLED = false;
     public static final String KEY_ONE_HANDED_MODE_ACTION = "one_handed_mode_action";
@@ -640,6 +642,8 @@ public final class SettingsStore {
     public static final int DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL = 2;
     public static final String[] INT_KEYS = {
             KEY_SIDE_GESTURE_ACTION,
+            KEY_SIDE_GESTURE_UP_ACTION,
+            KEY_SIDE_GESTURE_DOWN_ACTION,
             KEY_ONE_HANDED_MODE_ACTION,
             KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE,
             KEY_ASSISTANT_GESTURE_SCENES,
@@ -1061,6 +1065,8 @@ public final class SettingsStore {
             case KEY_ANIP_ICON_COLOR_MODE: return DEFAULT_ANIP_ICON_COLOR_MODE;
             case KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE: return ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR;
             case KEY_SIDE_GESTURE_ACTION: return DEFAULT_SIDE_GESTURE_ACTION;
+            case KEY_SIDE_GESTURE_UP_ACTION:
+            case KEY_SIDE_GESTURE_DOWN_ACTION: return DEFAULT_SIDE_GESTURE_ACTION;
             case KEY_ONE_HANDED_MODE_ACTION: return DEFAULT_ONE_HANDED_MODE_ACTION;
             case KEY_ASSISTANT_GESTURE_SCENES: return DEFAULT_ASSISTANT_GESTURE_SCENES;
             case KEY_ASSISTANT_GESTURE_SIDE: return DEFAULT_ASSISTANT_GESTURE_SIDE;

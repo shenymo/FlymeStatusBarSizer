@@ -28,6 +28,8 @@ final class AssistantGestureHooks {
     static void install(FlymeStatusBarSizer module, ClassLoader loader) throws ReflectiveOperationException {
         Class<?> type = Class.forName("com.android.systemui.navigationbar.gestural.EdgeBackGestureHandler", false, loader);
         Method motion = AssistantReflection.method(type, "onMotionEvent", MotionEvent.class);
+        try { SideBackAnimation.install(module, loader); }
+        catch (Throwable t) { AssistantHooks.warn("Cannot install custom edge back animation", t); }
         Method cancel = AssistantReflection.method(type, "cancelGesture", MotionEvent.class);
         Method pilfer = AssistantReflection.method(type, "pilferPointers");
         for (Constructor<?> constructor : type.getDeclaredConstructors()) {
@@ -70,6 +72,7 @@ final class AssistantGestureHooks {
                 return chain.proceed();
             }
             gesture.move(event);
+            if (action == MotionEvent.ACTION_MOVE) gesture.updateAnimation();
             // UP must be intercepted before the native plugin commits back.
             if (action == MotionEvent.ACTION_UP) {
                 boolean claimed = gesture.tryClaim();
@@ -77,7 +80,10 @@ final class AssistantGestureHooks {
                 return claimed ? null : chain.proceed();
             }
             Object result = chain.proceed();
-            if (action == MotionEvent.ACTION_MOVE) gesture.tryClaim();
+            if (action == MotionEvent.ACTION_MOVE) {
+                gesture.updateAnimationProgress();
+                gesture.tryClaim();
+            }
             return result;
         });
     }
@@ -93,8 +99,7 @@ final class AssistantGestureHooks {
         MotionEvent last;
         boolean consumed;
         boolean fromLeft;
-        int actionId;
-        SideGestureActions.Action action;
+        int horizontalActionId, upActionId, downActionId;
 
         Gesture(Object owner, Context context, Method cancel, Method pilfer,
                 SideGestureActions.Action globalAssistant) {
@@ -120,23 +125,23 @@ final class AssistantGestureHooks {
             boolean leftEdge = ReflectUtils.getBooleanField(target, "mIsOnLeftEdge", false);
             if (!SettingsStore.assistantGestureAllowsSide(config.assistantGestureSide, leftEdge)
                     || !AssistantGestureScenes.allows(config.assistantGestureScenes, target) || locked()) return;
-            SideGestureActions.Action candidate = SideGestureActions.resolve(config.sideGestureAction, globalAssistant);
-            if (candidate == null || !candidate.isReady()) return;
             float density = context.getResources().getDisplayMetrics().density;
             state.begin(event.getX(), event.getY(), event.getDownTime(),
                     config.assistantGestureDistanceDp * density, config.assistantGestureHoldMs, 12f * density, leftEdge,
                     config.assistantGestureVerticalLimitEnabled
-                            ? config.assistantGestureVerticalLimitDp * density : Float.POSITIVE_INFINITY);
+                            ? config.assistantGestureVerticalLimitDp * density : Float.POSITIVE_INFINITY,
+                    24f * density);
             fromLeft = leftEdge;
-            actionId = config.sideGestureAction;
-            action = candidate;
+            horizontalActionId = config.sideGestureAction;
+            upActionId = config.sideGestureUpAction;
+            downActionId = config.sideGestureDownAction;
             remember(event);
             handler.postAtTime(timeout, state.deadline());
         }
 
         void move(MotionEvent event) {
             if (last == null) return;
-            // A batched excursion past the limit still cancels even if the finger has returned.
+            // Process batched samples so direction changes cannot be skipped.
             for (int i = 0; i < event.getHistorySize(); i++) {
                 state.move(event.getHistoricalX(i), event.getHistoricalY(i), event.getPointerCount());
             }
@@ -149,11 +154,15 @@ final class AssistantGestureHooks {
             if (last == null || target == null || consumed || !state.ready(SystemClock.uptimeMillis())) return false;
             ModuleConfig config = ModuleConfig.load(context);
             if (!config.enabled || !config.assistantGestureEnabled
-                    || config.sideGestureAction != actionId || action == null
                     || !ReflectUtils.getBooleanField(target, "mAllowGesture", false)
                     || ReflectUtils.getBooleanField(target, "mInterceptBack", false)
                     || !AssistantGestureScenes.allows(config.assistantGestureScenes, target)
-                    || locked() || !action.isReady()) { reset(); return false; }
+                    || locked()) { reset(); return false; }
+            int direction = state.direction();
+            int actionId = actionId(direction);
+            if (actionId != configuredAction(config, direction)) { reset(); return false; }
+            SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant);
+            if (action == null || !action.isReady()) { reset(); return false; }
             try {
                 // Native predictive back may defer input ownership: ensure the old app loses this stream.
                 pilfer.invoke(target);
@@ -172,6 +181,47 @@ final class AssistantGestureHooks {
             }
         }
 
+        int actionId(int direction) {
+            if (direction == AssistantGestureState.UP) return upActionId;
+            if (direction == AssistantGestureState.DOWN) return downActionId;
+            return horizontalActionId;
+        }
+
+        int configuredAction(ModuleConfig config, int direction) {
+            if (direction == AssistantGestureState.UP) return config.sideGestureUpAction;
+            if (direction == AssistantGestureState.DOWN) return config.sideGestureDownAction;
+            return config.sideGestureAction;
+        }
+
+        void updateAnimation() {
+            Object target = owner.get();
+            if (target == null || last == null) return;
+            Object panel = ReflectUtils.getField(target, "mEdgeBackPlugin");
+            if (panel != null) {
+                float centerY = state.direction() == AssistantGestureState.HORIZONTAL
+                        ? state.startY() : state.startY() + state.verticalDelta() * 0.5f;
+                ReflectUtils.setFloatField(panel, "mCenterY", centerY);
+                if (panel instanceof View) ((View) panel).postInvalidateOnAnimation();
+            }
+        }
+
+        void updateAnimationProgress() {
+            if (state.direction() == AssistantGestureState.HORIZONTAL) return;
+            Object target = owner.get();
+            Object panel = ReflectUtils.getField(target, "mEdgeBackPlugin");
+            if (!(panel instanceof View)) return;
+            float width = ((View) panel).getWidth();
+            if (width <= 0) return;
+            Object pathWidth = ReflectUtils.getField(panel, "mBackViewWidth");
+            Object pathHeight = ReflectUtils.getField(panel, "mMaxHeight");
+            if (!(pathWidth instanceof Float) || !(pathHeight instanceof Float)) return;
+            float stretchedHeight = (Float) pathWidth + Math.abs(state.verticalDelta());
+            ReflectUtils.invokeMethod(panel, "computePath",
+                    new Class<?>[]{float.class, float.class, float.class},
+                    state.travelDistance() / width, stretchedHeight, pathHeight);
+            ((View) panel).postInvalidateOnAnimation();
+        }
+
         boolean locked() {
             KeyguardManager manager = context.getSystemService(KeyguardManager.class);
             return manager != null && manager.isKeyguardLocked();
@@ -184,7 +234,6 @@ final class AssistantGestureHooks {
 
         void reset() {
             state.cancel();
-            action = null;
             consumed = false;
             handler.removeCallbacks(timeout);
             if (last != null) { last.recycle(); last = null; }
