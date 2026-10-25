@@ -127,6 +127,8 @@ public final class ModuleConfig {
     public boolean assistantGestureEnabled = SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED;
     public boolean assistantGesturePreviewEnabled =
             SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED;
+    public boolean assistantGestureZoneOverlayEnabled =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED;
     public int sideGestureLeftAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
     public int sideGestureLeftUpAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
     public int sideGestureLeftDownAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
@@ -735,6 +737,9 @@ public final class ModuleConfig {
             config.assistantGesturePreviewEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
                     SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED);
+            config.assistantGestureZoneOverlayEnabled = SettingsStore.readBoolean(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED);
             config.sideGestureLeftAction = SettingsStore.readSideGestureAction(prefs,
                     SettingsStore.KEY_SIDE_GESTURE_LEFT_ACTION, SettingsStore.KEY_SIDE_GESTURE_ACTION);
             config.sideGestureLeftUpAction = SettingsStore.readSideGestureAction(prefs,

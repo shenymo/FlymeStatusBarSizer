@@ -478,10 +478,14 @@ public final class SettingsCardFactory {
         activity.addDivider(gestureOptions);
         activity.addProfileSectionHeader(gestureOptions, "滑动距离",
                 "达到最短距离后才会触发；开启分段后，按长距离阈值切换动作。");
-        activity.addSwitchRow(gestureOptions, "手势提示",
-                "手势过程中显示当前要触发的功能名称，并跟随侧边动画移动。",
+        activity.addSwitchRow(gestureOptions, "显示当前功能提示",
+                "手势过程中显示当前对应的功能名称。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED);
+        activity.addSwitchRow(gestureOptions, "显示触发区域",
+                "有效侧边手势开始时，在屏幕上标出各方向区域、触发距离和对应功能。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED);
         gestureOptions.addView(triggerOptions, activity.matchWrapWithTop(8));
         activity.addActionButtonRow(gestureOptions, "侧边手势设置",
                 "打开侧边触发区域设置，可切换左右侧、调整滑动距离和设置动作。",

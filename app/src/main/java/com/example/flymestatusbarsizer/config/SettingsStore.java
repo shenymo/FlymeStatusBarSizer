@@ -152,6 +152,8 @@ public final class SettingsStore {
     public static final String KEY_ASSISTANT_GESTURE_ENABLED = "assistant_gesture_enabled";
     public static final String KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED =
             "assistant_gesture_preview_enabled";
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED =
+            "assistant_gesture_zone_overlay_enabled";
     public static final String KEY_ASSISTANT_GESTURE_SCENES = "assistant_gesture_scenes";
     public static final int ASSISTANT_GESTURE_SCENE_NORMAL = 1;
     public static final int ASSISTANT_GESTURE_SCENE_NOTIFICATION = 1 << 1;
@@ -180,6 +182,7 @@ public final class SettingsStore {
             "workspace_flow_logging_enabled";
     public static final boolean DEFAULT_ASSISTANT_GESTURE_ENABLED = false;
     public static final boolean DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED = true;
+    public static final boolean DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED = false;
     public static final int DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP = 140;
     public static final int MIN_ASSISTANT_GESTURE_DISTANCE_DP = 0;
     public static final int MAX_ASSISTANT_GESTURE_DISTANCE_DP = 240;
@@ -827,6 +830,7 @@ public final class SettingsStore {
             KEY_ASSISTANT_BACKGROUND_BLUR,
             KEY_ASSISTANT_GESTURE_ENABLED,
             KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
+            KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED,
             KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
             KEY_ONE_HANDED_MODE_ENABLED,
             KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
@@ -1363,6 +1367,8 @@ public final class SettingsStore {
             case KEY_ASSISTANT_GESTURE_ENABLED: return DEFAULT_ASSISTANT_GESTURE_ENABLED;
             case KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED:
                 return DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED;
+            case KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED;
             case KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED:
                 return DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED;
             case KEY_ONE_HANDED_MODE_ENABLED: return DEFAULT_ONE_HANDED_MODE_ENABLED;

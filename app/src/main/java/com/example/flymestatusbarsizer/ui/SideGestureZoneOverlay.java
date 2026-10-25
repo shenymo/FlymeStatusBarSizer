@@ -69,7 +69,6 @@ public final class SideGestureZoneOverlay {
     private int longDistanceDp;
     private boolean leftSide = true;
     private boolean splitEnabled;
-    private boolean longDistanceMode;
     private boolean attached;
 
     public SideGestureZoneOverlay(MainActivity activity, SharedPreferences prefs, int accentColor,
@@ -121,7 +120,6 @@ public final class SideGestureZoneOverlay {
         splitEnabled = SettingsStore.readBoolean(prefs,
                 SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED);
-        if (!splitEnabled) longDistanceMode = false;
     }
 
     private int readDistance(String key, int defaultValue, int min, int max) {
@@ -155,10 +153,9 @@ public final class SideGestureZoneOverlay {
         private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF leftControl = new RectF();
         private final RectF rightControl = new RectF();
-        private final RectF shortControl = new RectF();
-        private final RectF longControl = new RectF();
         private final RectF exitControl = new RectF();
         private final RectF saveControl = new RectF();
+        private final RectF[][] actionLabelBounds = new RectF[2][6];
         private float density;
         private float scaledDensity;
         private float centerY;
@@ -168,6 +165,7 @@ public final class SideGestureZoneOverlay {
         private float scale;
         private int dragging;
         private int pickerDirection = -1;
+        private boolean pickerLongDistance;
         private boolean pickerGestureActive;
         private float dragOffsetX;
 
@@ -197,6 +195,11 @@ public final class SideGestureZoneOverlay {
             textPaint.setTextAlign(Paint.Align.CENTER);
             textPaint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
             labelBackgroundPaint.setColor(0xd869a9ff);
+            for (int mode = 0; mode < actionLabelBounds.length; mode++) {
+                for (int action = 0; action < actionLabelBounds[mode].length; action++) {
+                    actionLabelBounds[mode][action] = new RectF();
+                }
+            }
             setBackgroundColor(Color.TRANSPARENT);
         }
 
@@ -223,25 +226,32 @@ public final class SideGestureZoneOverlay {
         }
 
         private void drawZones(Canvas canvas) {
+            for (int mode = 0; mode < actionLabelBounds.length; mode++) {
+                for (int action = 0; action < actionLabelBounds[mode].length; action++) {
+                    actionLabelBounds[mode][action].setEmpty();
+                }
+            }
             if (splitEnabled) {
                 if (longDistanceDp >= shortDistanceDp) {
-                    drawTriggerRegion(canvas, shortDistanceDp, shortDistanceDp, longDistanceDp,
-                            shortRegionPaint);
-                    drawTriggerRegion(canvas, shortDistanceDp, longDistanceDp, -1,
-                            longRegionPaint);
-                } else {
-                    drawTriggerRegion(canvas, longDistanceDp, longDistanceDp, -1,
-                            longRegionPaint);
+                    if (longDistanceDp > shortDistanceDp) {
+                        drawTriggerRegion(canvas, shortDistanceDp, shortDistanceDp, longDistanceDp,
+                                shortRegionPaint);
+                    }
                 }
+                drawTriggerRegion(canvas, shortDistanceDp,
+                        Math.max(shortDistanceDp, longDistanceDp), -1, longRegionPaint);
             } else {
                 drawTriggerRegion(canvas, shortDistanceDp, shortDistanceDp, -1, shortRegionPaint);
             }
             drawThreshold(canvas, shortDistanceDp, thresholdPaint, handlePaint);
             int offset = leftSide ? 0 : 3;
-            drawActionLabels(canvas, shortDistanceDp, thresholdPaint, offset, false);
+            if (!splitEnabled || longDistanceDp > shortDistanceDp) {
+                drawActionLabels(canvas, shortDistanceDp, thresholdPaint, offset, false);
+            }
             if (splitEnabled) {
                 drawThreshold(canvas, longDistanceDp, longThresholdPaint, longHandlePaint);
-                drawActionLabels(canvas, longDistanceDp, longThresholdPaint, offset, true);
+                drawActionLabels(canvas, Math.max(shortDistanceDp, longDistanceDp),
+                        longThresholdPaint, offset, true);
             }
             canvas.drawCircle(originX, centerY, dp(5), handlePaint);
             textPaint.setTextSize(11f * scaledDensity);
@@ -440,16 +450,20 @@ public final class SideGestureZoneOverlay {
             float diagonalY = Math.max(Math.max(24f, diagonalX * 0.45f) + 24f,
                     (float) Math.sqrt(Math.max(0f, distanceDp * distanceDp
                             - diagonalX * diagonalX)) + 24f);
-            drawArcActionLabel(canvas, actionLabel(actionOffset, longDistance),
-                    screenX(horizontalX), centerY, 1, arcPaint);
-            drawArcActionLabel(canvas, actionLabel(actionOffset + 1, longDistance),
-                    screenX(diagonalX), centerY - diagonalY * scale, 0, arcPaint);
-            drawArcActionLabel(canvas, actionLabel(actionOffset + 2, longDistance),
-                    screenX(diagonalX), centerY + diagonalY * scale, 2, arcPaint);
+            int mode = longDistance ? 1 : 0;
+            String prefix = splitEnabled ? (longDistance ? "长 " : "短 ") : "";
+            drawArcActionLabel(canvas, prefix + actionLabel(actionOffset, longDistance),
+                    screenX(horizontalX), centerY, 1, arcPaint, mode, actionOffset);
+            drawArcActionLabel(canvas, prefix + actionLabel(actionOffset + 1, longDistance),
+                    screenX(diagonalX), centerY - diagonalY * scale, 0, arcPaint,
+                    mode, actionOffset + 1);
+            drawArcActionLabel(canvas, prefix + actionLabel(actionOffset + 2, longDistance),
+                    screenX(diagonalX), centerY + diagonalY * scale, 2, arcPaint,
+                    mode, actionOffset + 2);
         }
 
         private void drawArcActionLabel(Canvas canvas, String text, float x, float y, int zone,
-                Paint arcPaint) {
+                Paint arcPaint, int mode, int actionIndex) {
             textPaint.setTextSize(13f * scaledDensity);
             textPaint.setColor(Color.WHITE);
             float labelX = x + direction * dp(24);
@@ -461,9 +475,13 @@ public final class SideGestureZoneOverlay {
             labelBackgroundPaint.setColor(Color.argb(0xd8,
                     Color.red(arcPaint.getColor()), Color.green(arcPaint.getColor()),
                     Color.blue(arcPaint.getColor())));
-            canvas.drawRoundRect(labelX - halfWidth, baseline + metrics.ascent - dp(4),
-                    labelX + halfWidth, baseline + metrics.descent + dp(4),
+            float labelTop = baseline + metrics.ascent - dp(4);
+            float labelBottom = baseline + metrics.descent + dp(4);
+            canvas.drawRoundRect(labelX - halfWidth, labelTop,
+                    labelX + halfWidth, labelBottom,
                     dp(6), dp(6), labelBackgroundPaint);
+            actionLabelBounds[mode][actionIndex].set(labelX - halfWidth, labelTop,
+                    labelX + halfWidth, labelBottom);
             textPaint.setColor(Color.WHITE);
             canvas.drawText(text, labelX, baseline, textPaint);
         }
@@ -477,14 +495,8 @@ public final class SideGestureZoneOverlay {
             leftControl.set(margin, controlTop, margin + rowWidth, controlTop + controlHeight);
             rightControl.set(margin + rowWidth + gap, controlTop, width - margin,
                     controlTop + controlHeight);
-            float modeTop = controlTop + controlHeight + gap;
-            shortControl.set(margin, modeTop, margin + rowWidth, modeTop + controlHeight);
-            longControl.set(margin + rowWidth + gap, modeTop, width - margin,
-                    modeTop + controlHeight);
             drawControl(canvas, leftControl, "左侧", leftSide);
             drawControl(canvas, rightControl, "右侧", !leftSide);
-            drawControl(canvas, shortControl, "短距离", !longDistanceMode);
-            drawControl(canvas, longControl, "长距离", splitEnabled && longDistanceMode);
 
             float buttonTop = height - navigationBarHeight() - dp(58);
             float buttonHeight = dp(44);
@@ -493,9 +505,9 @@ public final class SideGestureZoneOverlay {
                     buttonTop + buttonHeight);
             drawControl(canvas, exitControl, "退出", false);
             drawControl(canvas, saveControl, "保存", true);
-            textPaint.setTextSize(12f * scaledDensity);
+            textPaint.setTextSize(11f * scaledDensity);
             textPaint.setColor(0xeeffffff);
-            canvas.drawText("1:1 比例 · 点击区域设置动作 · 拖动圆点调整距离", width / 2f,
+            canvas.drawText("点区域选动作，点功能文字编辑；拖动圆点改距离", width / 2f,
                     buttonTop - dp(10), textPaint);
             textPaint.setColor(Color.WHITE);
         }
@@ -512,14 +524,14 @@ public final class SideGestureZoneOverlay {
         private void drawPicker(Canvas canvas, float width, float height, float top) {
             float panelLeft = dp(22);
             float panelRight = width - dp(22);
-            float panelTop = top + dp(108);
+            float panelTop = top + dp(66);
             float rowHeight = dp(44);
             float panelBottom = panelTop + dp(38) + rowHeight * ACTION_LABELS.length;
             controlPaint.setColor(0xe62a313a);
             canvas.drawRoundRect(panelLeft, panelTop, panelRight, panelBottom,
                     dp(14), dp(14), controlPaint);
             int index = (leftSide ? 0 : 3) + pickerDirection;
-            boolean longDistance = splitEnabled && longDistanceMode;
+            boolean longDistance = splitEnabled && pickerLongDistance;
             int action = (longDistance ? longActions : shortActions)[index];
             textPaint.setTextSize(14f * scaledDensity);
             canvas.drawText(directionName(pickerDirection) + " · "
@@ -576,16 +588,6 @@ public final class SideGestureZoneOverlay {
                     invalidate();
                     return true;
                 }
-                if (shortControl.contains(x, y)) {
-                    longDistanceMode = false;
-                    invalidate();
-                    return true;
-                }
-                if (longControl.contains(x, y) && splitEnabled) {
-                    longDistanceMode = true;
-                    invalidate();
-                    return true;
-                }
                 dragging = hitHandle(x, y);
                 if (dragging == DRAG_SHORT) {
                     dragOffsetX = x - handleX(shortDistanceDp);
@@ -618,14 +620,22 @@ public final class SideGestureZoneOverlay {
                     activity.performTapHaptic(this);
                     return true;
                 }
+                int actionLabel = hitActionLabel(x, y);
+                if (actionLabel >= 0) {
+                    pickerDirection = actionLabel % 3;
+                    pickerLongDistance = actionLabel >= 3;
+                    invalidate();
+                    return true;
+                }
                 float inward = (x - originX) * direction;
                 if (inward > 0 && y > topInset() && y < getHeight() - navigationBarHeight()) {
                     float dy = y - centerY;
-                    float distanceDp = inward / scale;
+                    float distanceDp = (float) Math.hypot(inward, dy) / scale;
                     int directionIndex = Math.abs(dy) < Math.max(dp(24), inward * 0.45f)
                             ? 0 : dy < 0 ? 1 : 2;
                     if (distanceDp > 8f) {
                         pickerDirection = directionIndex;
+                        pickerLongDistance = splitEnabled && distanceDp >= longDistanceDp;
                         invalidate();
                     }
                 }
@@ -639,14 +649,14 @@ public final class SideGestureZoneOverlay {
         private boolean handlePickerTap(float x, float y) {
             float panelLeft = dp(22);
             float panelRight = getWidth() - dp(22);
-            float panelTop = topInset() + dp(108);
+            float panelTop = topInset() + dp(66);
             float rowHeight = dp(44);
             float rowStart = panelTop + dp(38);
             if (x < panelLeft || x > panelRight || y < rowStart
                     || y >= rowStart + rowHeight * ACTION_LABELS.length) return false;
             int actionIndex = (int) ((y - rowStart) / rowHeight);
             int index = (leftSide ? 0 : 3) + pickerDirection;
-            if (splitEnabled && longDistanceMode) longActions[index] = ACTION_VALUES[actionIndex];
+            if (splitEnabled && pickerLongDistance) longActions[index] = ACTION_VALUES[actionIndex];
             else shortActions[index] = ACTION_VALUES[actionIndex];
             pickerDirection = -1;
             invalidate();
@@ -672,6 +682,17 @@ public final class SideGestureZoneOverlay {
 
         private float handleX(int distanceDp) {
             return screenX(distanceDp);
+        }
+
+        private int hitActionLabel(float x, float y) {
+            for (int mode = splitEnabled ? 1 : 0; mode >= 0; mode--) {
+                for (int index = 0; index < 6; index++) {
+                    if (actionLabelBounds[mode][index].contains(x, y)) {
+                        return mode * 3 + index % 3;
+                    }
+                }
+            }
+            return -1;
         }
 
         private String actionLabel(int index, boolean longDistance) {
