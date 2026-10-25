@@ -8,6 +8,8 @@ import android.os.Binder;
 import android.os.Build;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.view.animation.AccelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -67,6 +69,7 @@ public final class RecentTaskSwitcher {
         private final EditText search;
         private final LinearLayout searchContainer;
         private boolean attached;
+        private boolean closing;
 
         Popup(Context context, boolean fromLeft, float startY) {
             this.context = context;
@@ -171,7 +174,10 @@ public final class RecentTaskSwitcher {
                 try {
                     windowManager.addView(root, params);
                     attached = true;
-                    panel.post(this::alignToGestureStart);
+                    panel.post(() -> {
+                        alignToGestureStart();
+                        animateIn();
+                    });
                     return;
                 } catch (Throwable ignored) {
                     try { windowManager.removeViewImmediate(root); } catch (Throwable ignoredAgain) { }
@@ -187,6 +193,18 @@ public final class RecentTaskSwitcher {
             params.topMargin = Math.max(0, Math.min(maxTop,
                     Math.round(startY - panel.getHeight() / 2f)));
             panel.setLayoutParams(params);
+        }
+
+        private void animateIn() {
+            if (!attached) return;
+            panel.setPivotX(fromLeft ? 0f : panel.getWidth());
+            panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), startY - panel.getTop())));
+            panel.setScaleX(0.04f);
+            panel.setScaleY(0.08f);
+            panel.setAlpha(0.15f);
+            panel.setTranslationX(fromLeft ? -dp(5) : dp(5));
+            panel.animate().scaleX(1f).scaleY(1f).alpha(1f).translationX(0f)
+                    .setDuration(360L).setInterpolator(new OvershootInterpolator(0.55f)).start();
         }
 
         private WindowManager.LayoutParams buildLayoutParams() {
@@ -329,6 +347,18 @@ public final class RecentTaskSwitcher {
         }
 
         private void close() {
+            if (!attached || closing) return;
+            closing = true;
+            panel.animate().cancel();
+            panel.setPivotX(fromLeft ? 0f : panel.getWidth());
+            panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), startY - panel.getTop())));
+            panel.animate().scaleX(0.04f).scaleY(0.08f).alpha(0f)
+                    .translationX(fromLeft ? -dp(5) : dp(5)).setDuration(230L)
+                    .setInterpolator(new AccelerateInterpolator(1.35f))
+                    .withEndAction(this::finishClose).start();
+        }
+
+        private void finishClose() {
             if (attached) {
                 try { windowManager.removeViewImmediate(root); }
                 catch (Throwable ignored) { }
