@@ -123,9 +123,19 @@ public final class SettingsStore {
     public static final String KEY_SIDE_GESTURE_ACTION = "side_gesture_action";
     public static final int SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT = 0;
     public static final int SIDE_GESTURE_ACTION_TASK_SCALE = 1;
+    public static final int SIDE_GESTURE_ACTION_NONE = 2;
+    public static final int SIDE_GESTURE_ACTION_BACK = 3;
+    public static final int SIDE_GESTURE_ACTION_HOME = 4;
+    public static final int SIDE_GESTURE_ACTION_RECENTS = 5;
     public static final int DEFAULT_SIDE_GESTURE_ACTION = SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
     public static final String KEY_SIDE_GESTURE_UP_ACTION = "side_gesture_up_action";
     public static final String KEY_SIDE_GESTURE_DOWN_ACTION = "side_gesture_down_action";
+    public static final String KEY_SIDE_GESTURE_LEFT_ACTION = "side_gesture_left_action";
+    public static final String KEY_SIDE_GESTURE_LEFT_UP_ACTION = "side_gesture_left_up_action";
+    public static final String KEY_SIDE_GESTURE_LEFT_DOWN_ACTION = "side_gesture_left_down_action";
+    public static final String KEY_SIDE_GESTURE_RIGHT_ACTION = "side_gesture_right_action";
+    public static final String KEY_SIDE_GESTURE_RIGHT_UP_ACTION = "side_gesture_right_up_action";
+    public static final String KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION = "side_gesture_right_down_action";
     public static final String KEY_ONE_HANDED_MODE_ENABLED = "one_handed_mode_enabled";
     public static final boolean DEFAULT_ONE_HANDED_MODE_ENABLED = false;
     public static final String KEY_ONE_HANDED_MODE_ACTION = "one_handed_mode_action";
@@ -644,6 +654,12 @@ public final class SettingsStore {
             KEY_SIDE_GESTURE_ACTION,
             KEY_SIDE_GESTURE_UP_ACTION,
             KEY_SIDE_GESTURE_DOWN_ACTION,
+            KEY_SIDE_GESTURE_LEFT_ACTION,
+            KEY_SIDE_GESTURE_LEFT_UP_ACTION,
+            KEY_SIDE_GESTURE_LEFT_DOWN_ACTION,
+            KEY_SIDE_GESTURE_RIGHT_ACTION,
+            KEY_SIDE_GESTURE_RIGHT_UP_ACTION,
+            KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION,
             KEY_ONE_HANDED_MODE_ACTION,
             KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE,
             KEY_ASSISTANT_GESTURE_SCENES,
@@ -1067,6 +1083,13 @@ public final class SettingsStore {
             case KEY_SIDE_GESTURE_ACTION: return DEFAULT_SIDE_GESTURE_ACTION;
             case KEY_SIDE_GESTURE_UP_ACTION:
             case KEY_SIDE_GESTURE_DOWN_ACTION: return DEFAULT_SIDE_GESTURE_ACTION;
+            case KEY_SIDE_GESTURE_LEFT_ACTION:
+            case KEY_SIDE_GESTURE_LEFT_UP_ACTION:
+            case KEY_SIDE_GESTURE_LEFT_DOWN_ACTION:
+            case KEY_SIDE_GESTURE_RIGHT_ACTION:
+            case KEY_SIDE_GESTURE_RIGHT_UP_ACTION:
+            case KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION:
+                return DEFAULT_SIDE_GESTURE_ACTION;
             case KEY_ONE_HANDED_MODE_ACTION: return DEFAULT_ONE_HANDED_MODE_ACTION;
             case KEY_ASSISTANT_GESTURE_SCENES: return DEFAULT_ASSISTANT_GESTURE_SCENES;
             case KEY_ASSISTANT_GESTURE_SIDE: return DEFAULT_ASSISTANT_GESTURE_SIDE;
@@ -1496,10 +1519,19 @@ public final class SettingsStore {
         switch (value) {
             case SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT:
             case SIDE_GESTURE_ACTION_TASK_SCALE:
+            case SIDE_GESTURE_ACTION_NONE:
+            case SIDE_GESTURE_ACTION_BACK:
+            case SIDE_GESTURE_ACTION_HOME:
+            case SIDE_GESTURE_ACTION_RECENTS:
                 return value;
             default:
                 return DEFAULT_SIDE_GESTURE_ACTION;
         }
+    }
+
+    public static int readSideGestureAction(SharedPreferences prefs, String key, String legacyKey) {
+        int fallback = readInt(prefs, legacyKey, DEFAULT_SIDE_GESTURE_ACTION);
+        return normalizeSideGestureAction(readInt(prefs, key, fallback));
     }
 
     public static int normalizeOneHandedModeAction(int value) {

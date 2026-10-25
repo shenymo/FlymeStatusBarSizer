@@ -7,6 +7,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.view.HapticFeedbackConstants;
 import android.view.InputDevice;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -32,6 +33,7 @@ final class AssistantGestureHooks {
         catch (Throwable t) { AssistantHooks.warn("Cannot install custom edge back animation", t); }
         Method cancel = AssistantReflection.method(type, "cancelGesture", MotionEvent.class);
         Method pilfer = AssistantReflection.method(type, "pilferPointers");
+        Method sendEvent = AssistantReflection.method(type, "sendEvent", int.class, int.class);
         for (Constructor<?> constructor : type.getDeclaredConstructors()) {
             constructor.setAccessible(true);
             module.intercept(constructor, chain -> {
@@ -52,7 +54,8 @@ final class AssistantGestureHooks {
                 if (gesture == null) {
                     Object c = ReflectUtils.getField(owner, "mContext");
                     if (!(c instanceof Context) || Looper.myLooper() == null) return chain.proceed();
-                    gesture = new Gesture(owner, (Context) c, cancel, pilfer, AssistantClient.get((Context) c));
+                    gesture = new Gesture(owner, (Context) c, cancel, pilfer, sendEvent,
+                            AssistantClient.get((Context) c));
                     GESTURES.put(owner, gesture);
                 }
             }
@@ -99,14 +102,16 @@ final class AssistantGestureHooks {
         MotionEvent last;
         boolean consumed;
         boolean fromLeft;
+        final Method sendEvent;
         int horizontalActionId, upActionId, downActionId;
 
         Gesture(Object owner, Context context, Method cancel, Method pilfer,
-                SideGestureActions.Action globalAssistant) {
+                Method sendEvent, SideGestureActions.Action globalAssistant) {
             this.owner = new WeakReference<>(owner);
             this.context = context;
             this.cancel = cancel;
             this.pilfer = pilfer;
+            this.sendEvent = sendEvent;
             this.globalAssistant = globalAssistant;
         }
 
@@ -132,9 +137,9 @@ final class AssistantGestureHooks {
                             ? config.assistantGestureVerticalLimitDp * density : Float.POSITIVE_INFINITY,
                     24f * density);
             fromLeft = leftEdge;
-            horizontalActionId = config.sideGestureAction;
-            upActionId = config.sideGestureUpAction;
-            downActionId = config.sideGestureDownAction;
+            horizontalActionId = leftEdge ? config.sideGestureLeftAction : config.sideGestureRightAction;
+            upActionId = leftEdge ? config.sideGestureLeftUpAction : config.sideGestureRightUpAction;
+            downActionId = leftEdge ? config.sideGestureLeftDownAction : config.sideGestureRightDownAction;
             remember(event);
             handler.postAtTime(timeout, state.deadline());
         }
@@ -161,8 +166,11 @@ final class AssistantGestureHooks {
             int direction = state.direction();
             int actionId = actionId(direction);
             if (actionId != configuredAction(config, direction)) { reset(); return false; }
+            if (actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK) return false;
             SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant);
-            if (action == null || !action.isReady()) { reset(); return false; }
+            boolean noAction = actionId == SettingsStore.SIDE_GESTURE_ACTION_NONE;
+            boolean navigation = isNavigationAction(actionId);
+            if (!noAction && !navigation && (action == null || !action.isReady())) { reset(); return false; }
             try {
                 // Native predictive back may defer input ownership: ensure the old app loses this stream.
                 pilfer.invoke(target);
@@ -171,8 +179,16 @@ final class AssistantGestureHooks {
                 consumed = true;
                 handler.removeCallbacks(timeout);
                 Object panel = ReflectUtils.getField(target, "mEdgeBackPlugin");
-                action.execute(fromLeft, () -> handler.post(() -> HapticFeedbackUtils.perform(
-                        context, panel instanceof View ? (View) panel : null, HapticFeedbackConstants.LONG_PRESS)));
+                Runnable haptic = () -> handler.post(() -> HapticFeedbackUtils.perform(
+                        context, panel instanceof View ? (View) panel : null, HapticFeedbackConstants.LONG_PRESS));
+                if (noAction) {
+                    return true;
+                } else if (navigation) {
+                    executeNavigationAction(target, actionId);
+                    haptic.run();
+                } else {
+                    action.execute(fromLeft, haptic);
+                }
                 return true;
             } catch (Throwable t) {
                 AssistantHooks.warn("Cannot take over edge back", t);
@@ -188,9 +204,29 @@ final class AssistantGestureHooks {
         }
 
         int configuredAction(ModuleConfig config, int direction) {
-            if (direction == AssistantGestureState.UP) return config.sideGestureUpAction;
-            if (direction == AssistantGestureState.DOWN) return config.sideGestureDownAction;
-            return config.sideGestureAction;
+            if (fromLeft) {
+                if (direction == AssistantGestureState.UP) return config.sideGestureLeftUpAction;
+                if (direction == AssistantGestureState.DOWN) return config.sideGestureLeftDownAction;
+                return config.sideGestureLeftAction;
+            }
+            if (direction == AssistantGestureState.UP) return config.sideGestureRightUpAction;
+            if (direction == AssistantGestureState.DOWN) return config.sideGestureRightDownAction;
+            return config.sideGestureRightAction;
+        }
+
+        boolean isNavigationAction(int actionId) {
+            return actionId == SettingsStore.SIDE_GESTURE_ACTION_HOME
+                    || actionId == SettingsStore.SIDE_GESTURE_ACTION_RECENTS;
+        }
+
+        void executeNavigationAction(Object target, int actionId) throws ReflectiveOperationException {
+            int keyCode = actionId == SettingsStore.SIDE_GESTURE_ACTION_HOME
+                    ? KeyEvent.KEYCODE_HOME : KeyEvent.KEYCODE_APP_SWITCH;
+            Object down = sendEvent.invoke(target, 0, keyCode);
+            Object up = sendEvent.invoke(target, 1, keyCode);
+            if (Boolean.FALSE.equals(down) || Boolean.FALSE.equals(up)) {
+                throw new IllegalStateException("System navigation key injection failed");
+            }
         }
 
         void updateAnimation() {

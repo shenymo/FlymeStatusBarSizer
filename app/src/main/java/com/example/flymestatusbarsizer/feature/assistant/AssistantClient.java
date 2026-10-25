@@ -74,9 +74,12 @@ final class AssistantClient implements SideGestureActions.Action {
     static boolean enabled(Context context) {
         ModuleConfig c = ModuleConfig.load(context);
         return c.enabled && c.assistantGestureEnabled
-                && (c.sideGestureAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || c.sideGestureUpAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || c.sideGestureDownAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT);
+                && (c.sideGestureLeftAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                || c.sideGestureLeftUpAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                || c.sideGestureLeftDownAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                || c.sideGestureRightAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                || c.sideGestureRightUpAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                || c.sideGestureRightDownAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT);
     }
 
     @Override public boolean isReady() {

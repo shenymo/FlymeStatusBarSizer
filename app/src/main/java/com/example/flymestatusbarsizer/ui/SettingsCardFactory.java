@@ -446,36 +446,70 @@ public final class SettingsCardFactory {
         workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
         page.addView(workspaceCard, activity.matchWrapWithTop(8));
         Runnable updateActionVisibility = () -> {
-            int horizontal = SettingsStore.normalizeSideGestureAction(SettingsStore.readInt(activity.prefs(),
-                    SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION));
-            int up = SettingsStore.normalizeSideGestureAction(SettingsStore.readInt(activity.prefs(),
-                    SettingsStore.KEY_SIDE_GESTURE_UP_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION));
-            int down = SettingsStore.normalizeSideGestureAction(SettingsStore.readInt(activity.prefs(),
-                    SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION));
-            boolean hasAssistant = horizontal == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                    || up == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                    || down == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
-            boolean hasWorkspace = horizontal == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE
-                    || up == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE
-                    || down == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
+            int[] actions = {
+                    SettingsStore.readSideGestureAction(activity.prefs(),
+                            SettingsStore.KEY_SIDE_GESTURE_LEFT_ACTION, SettingsStore.KEY_SIDE_GESTURE_ACTION),
+                    SettingsStore.readSideGestureAction(activity.prefs(),
+                            SettingsStore.KEY_SIDE_GESTURE_LEFT_UP_ACTION, SettingsStore.KEY_SIDE_GESTURE_UP_ACTION),
+                    SettingsStore.readSideGestureAction(activity.prefs(),
+                            SettingsStore.KEY_SIDE_GESTURE_LEFT_DOWN_ACTION, SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION),
+                    SettingsStore.readSideGestureAction(activity.prefs(),
+                            SettingsStore.KEY_SIDE_GESTURE_RIGHT_ACTION, SettingsStore.KEY_SIDE_GESTURE_ACTION),
+                    SettingsStore.readSideGestureAction(activity.prefs(),
+                            SettingsStore.KEY_SIDE_GESTURE_RIGHT_UP_ACTION, SettingsStore.KEY_SIDE_GESTURE_UP_ACTION),
+                    SettingsStore.readSideGestureAction(activity.prefs(),
+                            SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION, SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION)
+            };
+            boolean hasAssistant = false;
+            boolean hasWorkspace = false;
+            for (int action : actions) {
+                hasAssistant |= action == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
+                hasWorkspace |= action == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
+            }
             appearanceCard.setVisibility(hasAssistant ? View.VISIBLE : View.GONE);
             workspaceCard.setVisibility(hasWorkspace ? View.VISIBLE : View.GONE);
         };
         java.util.function.IntConsumer updateAction = value -> updateActionVisibility.run();
-        int[] actionValues = {SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT,
-                SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE};
-        String[] actionLabels = {"全局负一屏", "多应用工作台"};
-        activity.addChoiceRow(actionOptions, "横向触发动作", "选择横向滑动执行的功能。",
-                SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION,
-                actionValues, actionLabels, updateAction);
+        int[] actionValues = {
+                SettingsStore.SIDE_GESTURE_ACTION_NONE,
+                SettingsStore.SIDE_GESTURE_ACTION_BACK,
+                SettingsStore.SIDE_GESTURE_ACTION_HOME,
+                SettingsStore.SIDE_GESTURE_ACTION_RECENTS,
+                SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT,
+                SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE
+        };
+        String[] actionLabels = {"无", "返回", "主页", "后台多任务界面", "全局负一屏", "多应用工作台"};
+        activity.addProfileSectionHeader(actionOptions, "左侧动作", "从屏幕左侧边缘向内滑动。");
+        activity.addChoiceRow(actionOptions, "横向滑动", null,
+                SettingsStore.KEY_SIDE_GESTURE_LEFT_ACTION,
+                SettingsStore.readSideGestureAction(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_LEFT_ACTION,
+                        SettingsStore.KEY_SIDE_GESTURE_ACTION), actionValues, actionLabels, updateAction);
         activity.addDivider(actionOptions);
-        activity.addChoiceRow(actionOptions, "上斜触发动作", "从侧边向内并向上滑动时执行的功能。",
-                SettingsStore.KEY_SIDE_GESTURE_UP_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION,
-                actionValues, actionLabels, updateAction);
+        activity.addChoiceRow(actionOptions, "上斜滑动", null,
+                SettingsStore.KEY_SIDE_GESTURE_LEFT_UP_ACTION,
+                SettingsStore.readSideGestureAction(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_LEFT_UP_ACTION,
+                        SettingsStore.KEY_SIDE_GESTURE_UP_ACTION), actionValues, actionLabels, updateAction);
         activity.addDivider(actionOptions);
-        activity.addChoiceRow(actionOptions, "下斜触发动作", "从侧边向内并向下滑动时执行的功能。",
-                SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION,
-                actionValues, actionLabels, updateAction);
+        activity.addChoiceRow(actionOptions, "下斜滑动", null,
+                SettingsStore.KEY_SIDE_GESTURE_LEFT_DOWN_ACTION,
+                SettingsStore.readSideGestureAction(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_LEFT_DOWN_ACTION,
+                        SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION), actionValues, actionLabels, updateAction);
+        activity.addDivider(actionOptions);
+        activity.addProfileSectionHeader(actionOptions, "右侧动作", "从屏幕右侧边缘向内滑动。");
+        activity.addChoiceRow(actionOptions, "横向滑动", null,
+                SettingsStore.KEY_SIDE_GESTURE_RIGHT_ACTION,
+                SettingsStore.readSideGestureAction(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_RIGHT_ACTION,
+                        SettingsStore.KEY_SIDE_GESTURE_ACTION), actionValues, actionLabels, updateAction);
+        activity.addDivider(actionOptions);
+        activity.addChoiceRow(actionOptions, "上斜滑动", null,
+                SettingsStore.KEY_SIDE_GESTURE_RIGHT_UP_ACTION,
+                SettingsStore.readSideGestureAction(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_RIGHT_UP_ACTION,
+                        SettingsStore.KEY_SIDE_GESTURE_UP_ACTION), actionValues, actionLabels, updateAction);
+        activity.addDivider(actionOptions);
+        activity.addChoiceRow(actionOptions, "下斜滑动", null,
+                SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION,
+                SettingsStore.readSideGestureAction(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION,
+                        SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION), actionValues, actionLabels, updateAction);
         updateActionVisibility.run();
         return activity.buildSectionCard("侧边手势增强",
                 "请先在 LSPosed 中启用 SystemUI 范围并重启系统界面，再选择手势动作。", page);
