@@ -4,7 +4,6 @@ import android.app.KeyguardManager;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.view.HapticFeedbackConstants;
 import android.view.InputDevice;
 import android.view.KeyEvent;
@@ -98,7 +97,6 @@ final class AssistantGestureHooks {
         final AssistantGestureState state = new AssistantGestureState();
         final SideGestureActions.Action globalAssistant;
         final Method cancel, pilfer;
-        final Runnable timeout = () -> tryClaim(false);
         MotionEvent last;
         boolean consumed;
         boolean fromLeft;
@@ -131,8 +129,8 @@ final class AssistantGestureHooks {
             boolean leftEdge = ReflectUtils.getBooleanField(target, "mIsOnLeftEdge", false);
             if (locked()) return;
             float density = context.getResources().getDisplayMetrics().density;
-            state.begin(event.getX(), event.getY(), event.getDownTime(),
-                    config.assistantGestureDistanceDp * density, config.assistantGestureHoldMs, 12f * density, leftEdge,
+            state.begin(event.getX(), event.getY(), config.assistantGestureDistanceDp * density,
+                    12f * density, leftEdge,
                     config.assistantGestureVerticalLimitEnabled
                             ? config.assistantGestureVerticalLimitDp * density : Float.POSITIVE_INFINITY,
                     24f * density);
@@ -143,7 +141,6 @@ final class AssistantGestureHooks {
             upActionId = leftEdge ? config.sideGestureLeftUpAction : config.sideGestureRightUpAction;
             downActionId = leftEdge ? config.sideGestureLeftDownAction : config.sideGestureRightDownAction;
             remember(event);
-            handler.postAtTime(timeout, state.deadline());
         }
 
         void move(MotionEvent event) {
@@ -158,7 +155,7 @@ final class AssistantGestureHooks {
 
         boolean tryClaim(boolean onRelease) {
             Object target = owner.get();
-            if (last == null || target == null || consumed || !state.ready(SystemClock.uptimeMillis())) return false;
+            if (last == null || target == null || consumed || !state.ready()) return false;
             if (triggerOnRelease && !onRelease) return false;
             ModuleConfig config = ModuleConfig.load(context);
             if (!config.enabled || !config.assistantGestureEnabled
@@ -183,7 +180,6 @@ final class AssistantGestureHooks {
                 cancel.invoke(target, last);
                 state.claim();
                 consumed = true;
-                handler.removeCallbacks(timeout);
                 Object panel = ReflectUtils.getField(target, "mEdgeBackPlugin");
                 Runnable haptic = () -> handler.post(() -> HapticFeedbackUtils.perform(
                         context, panel instanceof View ? (View) panel : null, HapticFeedbackConstants.LONG_PRESS));
@@ -277,7 +273,6 @@ final class AssistantGestureHooks {
         void reset() {
             state.cancel();
             consumed = false;
-            handler.removeCallbacks(timeout);
             if (last != null) { last.recycle(); last = null; }
         }
     }

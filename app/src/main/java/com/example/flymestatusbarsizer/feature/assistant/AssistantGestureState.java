@@ -1,6 +1,6 @@
 package com.example.flymestatusbarsizer.feature.assistant;
 
-/** Tracks one touchscreen pointer, signed edge displacement, direction, and a deadline. */
+/** Tracks one touchscreen pointer, signed edge displacement, and direction. */
 final class AssistantGestureState {
     static final int HORIZONTAL = 0;
     static final int UP = 1;
@@ -8,11 +8,10 @@ final class AssistantGestureState {
     private boolean tracking;
     private boolean claimed;
     private float startX, startY, dx, dy, distance, backwardLimit, verticalLimit, diagonalMin;
-    private long deadline;
     private int inwardDirection;
 
-    void begin(float x, float y, long downTime, float distance, long duration,
-            float backwardLimit, boolean leftEdge, float verticalLimit, float diagonalMin) {
+    void begin(float x, float y, float distance, float backwardLimit, boolean leftEdge,
+            float verticalLimit, float diagonalMin) {
         inwardDirection = leftEdge ? 1 : -1;
         tracking = true;
         claimed = false;
@@ -24,7 +23,6 @@ final class AssistantGestureState {
         // Positive infinity disables the optional vertical limit for horizontal gestures.
         this.verticalLimit = verticalLimit;
         this.diagonalMin = diagonalMin;
-        deadline = downTime + duration;
     }
 
     void move(float x, float y, int pointerCount) {
@@ -34,8 +32,8 @@ final class AssistantGestureState {
                 || dx < -backwardLimit) cancel();
     }
 
-    boolean ready(long now) {
-        if (!tracking || claimed || now < deadline) return false;
+    boolean ready() {
+        if (!tracking || claimed) return false;
         int direction = direction();
         if (direction == HORIZONTAL) return dx >= distance && Math.abs(dy) <= verticalLimit;
         return (float) Math.hypot(dx, dy) >= distance && dx >= distance * 0.35f;
@@ -52,5 +50,4 @@ final class AssistantGestureState {
 
     void claim() { claimed = true; tracking = false; }
     void cancel() { tracking = false; }
-    long deadline() { return deadline; }
 }

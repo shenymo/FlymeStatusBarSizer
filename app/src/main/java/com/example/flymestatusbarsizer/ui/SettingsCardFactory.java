@@ -377,7 +377,7 @@ public final class SettingsCardFactory {
     public View createSideGestureSettingsCard() {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
-        activity.addSwitchRow(page, "启用侧边手势增强", "横向、上斜或下斜滑动并按住，可分别触发对应动作。锁屏时不会触发。",
+        activity.addSwitchRow(page, "启用侧边手势增强", "横向、上斜或下斜滑动达到设定距离后，可分别触发对应动作。锁屏时不会触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED, SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
         LinearLayout actionOptions = new LinearLayout(activity);
         actionOptions.setOrientation(LinearLayout.VERTICAL);
@@ -388,15 +388,12 @@ public final class SettingsCardFactory {
         activity.addSliderRow(gestureOptions, "最短滑动距离", "手指向内滑动达到此距离后才可能触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP, SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP,
                 40, 240, "dp");
-        activity.addSliderRow(gestureOptions, "按住时长", "从手指按下开始计时，距离和时长都达到要求后触发。",
-                SettingsStore.KEY_ASSISTANT_GESTURE_HOLD_MS, SettingsStore.DEFAULT_ASSISTANT_GESTURE_HOLD_MS,
-                250, 2000, "ms");
-        activity.addChoiceRow(gestureOptions, "触发时机", "达到最短按住时长后立即触发，或等手指松开后触发。",
+        activity.addChoiceRow(gestureOptions, "触发时机", "达到最短滑动距离后立即触发，或等手指松开后触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_TRIGGER_MODE,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE,
-                new int[]{SettingsStore.ASSISTANT_GESTURE_TRIGGER_AT_HOLD,
+                new int[]{SettingsStore.ASSISTANT_GESTURE_TRIGGER_AT_DISTANCE,
                         SettingsStore.ASSISTANT_GESTURE_TRIGGER_ON_RELEASE},
-                new String[]{"达到时长时触发", "松手后触发"});
+                new String[]{"达到距离立即触发", "松手后触发"});
         activity.addActionButtonRow(gestureOptions, "预览滑动距离",
                 "显示所选边缘的触发距离，5 秒后自动隐藏。",
                 "显示标线", gestureOptions::showPreview);

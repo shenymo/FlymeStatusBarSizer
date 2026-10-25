@@ -156,7 +156,6 @@ public final class SettingsStore {
     public static final int ASSISTANT_GESTURE_SIDE_BOTH = 2;
     public static final int DEFAULT_ASSISTANT_GESTURE_SIDE = ASSISTANT_GESTURE_SIDE_LEFT;
     public static final String KEY_ASSISTANT_GESTURE_DISTANCE_DP = "assistant_gesture_distance_dp";
-    public static final String KEY_ASSISTANT_GESTURE_HOLD_MS = "assistant_gesture_hold_ms";
     public static final String KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED = "assistant_gesture_vertical_limit_enabled";
     public static final String KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = "assistant_gesture_vertical_limit_dp";
     public static final String KEY_WORKSPACE_TOOLBAR_HEIGHT_DP = "workspace_toolbar_height_dp";
@@ -175,11 +174,10 @@ public final class SettingsStore {
             "workspace_flow_logging_enabled";
     public static final boolean DEFAULT_ASSISTANT_GESTURE_ENABLED = false;
     public static final int DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP = 140;
-    public static final int DEFAULT_ASSISTANT_GESTURE_HOLD_MS = 600;
     public static final String KEY_ASSISTANT_GESTURE_TRIGGER_MODE = "assistant_gesture_trigger_mode";
-    public static final int ASSISTANT_GESTURE_TRIGGER_AT_HOLD = 0;
+    public static final int ASSISTANT_GESTURE_TRIGGER_AT_DISTANCE = 0;
     public static final int ASSISTANT_GESTURE_TRIGGER_ON_RELEASE = 1;
-    public static final int DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE = ASSISTANT_GESTURE_TRIGGER_AT_HOLD;
+    public static final int DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE = ASSISTANT_GESTURE_TRIGGER_AT_DISTANCE;
     public static final boolean DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED = false;
     public static final int DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = 48;
     public static final int MIN_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = 8;
@@ -669,7 +667,6 @@ public final class SettingsStore {
             KEY_ASSISTANT_GESTURE_SCENES,
             KEY_ASSISTANT_GESTURE_SIDE,
             KEY_ASSISTANT_GESTURE_DISTANCE_DP,
-            KEY_ASSISTANT_GESTURE_HOLD_MS,
             KEY_ASSISTANT_GESTURE_TRIGGER_MODE,
             KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
             KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
@@ -1099,7 +1096,6 @@ public final class SettingsStore {
             case KEY_ASSISTANT_GESTURE_SCENES: return DEFAULT_ASSISTANT_GESTURE_SCENES;
             case KEY_ASSISTANT_GESTURE_SIDE: return DEFAULT_ASSISTANT_GESTURE_SIDE;
             case KEY_ASSISTANT_GESTURE_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
-            case KEY_ASSISTANT_GESTURE_HOLD_MS: return DEFAULT_ASSISTANT_GESTURE_HOLD_MS;
             case KEY_ASSISTANT_GESTURE_TRIGGER_MODE: return DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE;
             case KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP: return DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP;
             case KEY_WORKSPACE_TOOLBAR_HEIGHT_DP: return DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;

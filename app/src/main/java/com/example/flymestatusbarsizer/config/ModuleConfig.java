@@ -135,7 +135,6 @@ public final class ModuleConfig {
     public int oneHandedModeAction = SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION;
     public int assistantGestureScenes = SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES;
     public int assistantGestureDistanceDp = SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
-    public int assistantGestureHoldMs = SettingsStore.DEFAULT_ASSISTANT_GESTURE_HOLD_MS;
     public int assistantGestureTriggerMode = SettingsStore.DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE;
     public boolean assistantGestureVerticalLimitEnabled = SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED;
     public int assistantGestureVerticalLimitDp = SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP;
@@ -744,8 +743,6 @@ public final class ModuleConfig {
                     SettingsStore.KEY_ASSISTANT_GESTURE_SCENES, SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES));
             config.assistantGestureDistanceDp = Math.max(40, Math.min(240, SettingsStore.readInt(prefs,
                     SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP, SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP)));
-            config.assistantGestureHoldMs = Math.max(250, Math.min(2000, SettingsStore.readInt(prefs,
-                    SettingsStore.KEY_ASSISTANT_GESTURE_HOLD_MS, SettingsStore.DEFAULT_ASSISTANT_GESTURE_HOLD_MS)));
             config.assistantGestureTriggerMode = SettingsStore.normalizeAssistantGestureTriggerMode(
                     SettingsStore.readInt(prefs, SettingsStore.KEY_ASSISTANT_GESTURE_TRIGGER_MODE,
                             SettingsStore.DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE));
