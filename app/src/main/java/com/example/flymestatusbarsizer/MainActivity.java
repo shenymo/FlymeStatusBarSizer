@@ -177,18 +177,18 @@ public class MainActivity extends Activity {
 
     public enum Page {
         HOME(null, null, null, false),
-        ICONS_BATTERY("图标与电池", "状态栏图标缩放、电池样式、通知图标以及信号与 Wi-Fi 接管设置。", null, true),
-        TIME_NETWORK("时间与网络", "实时网速显隐阈值、时间表达式、时钟详情弹窗，以及时间字重字号设置。", null, true),
-        SYSTEM_APPEARANCE("系统外观", "Flyme 桌面文件夹、系统界面外观相关设置。", null, true),
-        SYSTEM_INTERACTION("系统交互", "MBack 长触、导航栏沉浸与高度、输入法控制栏接管，以及系统桌面后台卡片布局调整。", null, true),
-        ADVANCED_DEBUG("高级与调试", "配置管理、WIFI 性能打点，以及高阶工具入口。", null, true),
-        ABOUT("关于与支持", "项目地址、交流群、版本构建信息和目标作用域说明。", null, false),
+        ICONS_BATTERY("状态栏图标与电池", "调整状态栏图标、电池、通知图标、移动网络和 Wi-Fi。", null, true),
+        TIME_NETWORK("时间与网速", "设置实时网速显示、时间格式、时钟交互和状态栏文字样式。", null, true),
+        SYSTEM_APPEARANCE("系统外观", "调整摄像头挖孔、状态栏颜色、桌面整理和系统界面外观。", null, true),
+        SYSTEM_INTERACTION("手势与系统交互", "调整侧边手势、单手模式、MBack、小窗、输入法和最近任务。", null, true),
+        ADVANCED_DEBUG("工具与调试", "管理配置、性能日志、布局微调和调试工具。", null, true),
+        ABOUT("关于与支持", "查看项目地址、交流入口、版本信息和模块适用范围。", null, false),
         DONATION("捐赠", null, null, false),
-        POSITION_TUNING("布局微调", "单独调整时钟、电池、信号、Wi-Fi 与输入法控制栏的细节位置。", null, true),
-        CAMERA_CIRCLE_POSITION("环形摄像头位置微调", "调整摄像头环形电池相对挖孔中心的位置。", null, true),
-        LAUNCHER_STACK_PARAMS("堆叠后台参数", "调整 IOS 式堆叠后台的布局、动画、手势、视觉和性能参数。", null, true),
-        LAUNCHER_ORGANIZER("AI 整理桌面", "生成分类后预览，确认后应用到 Flyme 桌面。", null, true),
-        TELEPHONY_DEBUG("Telephony 调试", "伪造 Telephony 读数，验证双卡、网络制式与信号等级对图标布局的影响。", null, true);
+        POSITION_TUNING("状态栏位置微调", "微调时钟、电池、移动网络、Wi-Fi 和输入法控制栏的位置。", null, true),
+        CAMERA_CIRCLE_POSITION("环形电池位置", "调整环形电池相对摄像头挖孔中心的位置。", null, true),
+        LAUNCHER_STACK_PARAMS("最近任务布局参数", "调整最近任务卡片的布局、动画、手势、视觉和性能。", null, true),
+        LAUNCHER_ORGANIZER("AI 桌面整理", "生成应用分类并预览，确认后应用到 Flyme 桌面。", null, true),
+        TELEPHONY_DEBUG("移动网络状态模拟", "模拟 SIM 卡数量、网络类型和信号等级，用于检查状态栏图标布局。", null, true);
 
         final String title;
         final String subtitle;
@@ -365,8 +365,8 @@ public class MainActivity extends Activity {
         bar.setClipToOutline(true);
         EditText input = new EditText(this);
         input.setId(R.id.feature_search_input);
-        input.setHint("搜索功能");
-        input.setContentDescription("搜索功能");
+        input.setHint("搜索设置");
+        input.setContentDescription("搜索设置");
         input.setTextSize(16);
         input.setTextColor(colorText);
         input.setHintTextColor(colorSubtext);
@@ -432,7 +432,7 @@ public class MainActivity extends Activity {
         }
         matches.sort((a, b) -> Integer.compare(a.rank, b.rank));
         TextView count = new TextView(this);
-        count.setText(matches.isEmpty() ? "无匹配结果" : matches.size() + " 项");
+        count.setText(matches.isEmpty() ? "没有找到匹配设置" : matches.size() + " 项");
         count.setTextColor(colorSubtext);
         count.setTextSize(13);
         results.addView(count, matchWrap());
@@ -500,7 +500,7 @@ public class MainActivity extends Activity {
         }
         if (ancestor != page) {
             refreshSearchResults.run();
-            showToast("功能列表已更新，请重新选择");
+            showToast("设置列表已更新，请重新选择。");
             return;
         }
         input.clearFocus();
@@ -682,7 +682,14 @@ public class MainActivity extends Activity {
             topBarTitleView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         }
         if (topBarSubtitleView != null) {
-            topBarSubtitleView.setVisibility(View.GONE);
+            if (TextUtils.isEmpty(page.subtitle)) {
+                topBarSubtitleView.setText(null);
+                topBarSubtitleView.setVisibility(View.GONE);
+            } else {
+                topBarSubtitleView.setText(page.subtitle);
+                topBarSubtitleView.setTextColor(colorSubtext);
+                topBarSubtitleView.setVisibility(View.VISIBLE);
+            }
         }
     }
 
@@ -1395,6 +1402,7 @@ public class MainActivity extends Activity {
 
         row.addView(textColumn, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addHelpButton(row, titleText, subtitleText);
         LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -1598,7 +1606,7 @@ public class MainActivity extends Activity {
         editor.apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
-        showToast("堆叠后台参数已恢复默认");
+        showToast("最近任务参数已恢复默认");
         recreate();
     }
 
@@ -1622,7 +1630,7 @@ public class MainActivity extends Activity {
                         root.toString(2)));
             }
             showTextInputDialog(
-                    "导出堆叠后台参数",
+                    "导出最近任务参数",
                     root.toString(2),
                     "已复制到剪贴板。",
                     "",
@@ -1638,9 +1646,9 @@ public class MainActivity extends Activity {
 
     public void showImportLauncherStackParamsDialog() {
         showTextInputDialog(
-                "导入堆叠后台参数",
+                "导入最近任务参数",
                 readClipboardText(),
-                "粘贴导出的堆叠后台参数 JSON。",
+                "粘贴最近任务布局参数 JSON，将覆盖本页对应参数。",
                 "{\"schema\":\"flyme_status_bar_sizer_stack_recents\"...}",
                 true,
                 "清空",
@@ -1679,7 +1687,7 @@ public class MainActivity extends Activity {
             editor.apply();
             SettingsStore.notifyChanged(this);
             invalidatePreview();
-            showToast("堆叠后台参数已导入");
+            showToast("最近任务参数已导入");
             recreate();
         } catch (Throwable t) {
             showToast("导入失败：" + t.getMessage());
@@ -1706,7 +1714,7 @@ public class MainActivity extends Activity {
         prefs.edit().putBoolean(SettingsStore.KEY_TELEPHONY_DEBUG_ENABLED, false).apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
-        showToast("已恢复真实 Telephony");
+        showToast("已恢复真实移动网络状态");
     }
 
     public void testLaunchMBackIntent() {
@@ -1789,8 +1797,20 @@ public class MainActivity extends Activity {
         prefs.edit().clear().apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
-        showToast("\u5df2\u6062\u590d\u9ed8\u8ba4\u914d\u7f6e");
+        showToast("已恢复全部默认设置");
         recreate();
+    }
+
+    public void confirmResetAllSettings() {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("恢复全部默认设置")
+                .setMessage("此操作会清除当前模块的所有设置并恢复默认值，无法自动恢复。是否继续？")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("恢复默认", (d, which) -> resetAllSettings())
+                .create();
+        dialog.show();
+        styleDialog(dialog);
+        attachDialogButtonHaptics(dialog);
     }
 
     String formatValue(int value, String suffix) {
@@ -1930,11 +1950,21 @@ public class MainActivity extends Activity {
                 }
             }
             SettingsStore.markPositionOffsetStorageVersion(editor);
-            editor.apply();
-            SettingsStore.notifyChanged(this);
-            invalidatePreview();
-            showToast("\u914d\u7f6e\u5df2\u5bfc\u5165");
-            recreate();
+            AlertDialog dialog = new AlertDialog.Builder(this)
+                    .setTitle("确认导入配置")
+                    .setMessage("所选配置将覆盖当前模块设置。建议确认这是要恢复的备份文件。")
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("覆盖并导入", (d, which) -> {
+                        editor.apply();
+                        SettingsStore.notifyChanged(this);
+                        invalidatePreview();
+                        showToast("配置已导入");
+                        recreate();
+                    })
+                    .create();
+            dialog.show();
+            styleDialog(dialog);
+            attachDialogButtonHaptics(dialog);
         } catch (Throwable t) {
             showToast("\u5bfc\u5165\u5931\u8d25\uff1a" + t.getMessage());
         }
@@ -2346,11 +2376,29 @@ public class MainActivity extends Activity {
             showToast(target.label + "未安装");
             return;
         }
-        switch (target) {
-            case SYSTEM_UI -> restartSystemUi();
-            case FRAMEWORK -> confirmDeviceRestart();
-            default -> restartRootCommands(target.label, target.restartCommands(), target.stopOnFirstSuccess());
+        if (target == RestartTarget.FRAMEWORK) {
+            confirmDeviceRestart();
+        } else {
+            confirmRestartTarget(target);
         }
+    }
+
+    private void confirmRestartTarget(RestartTarget target) {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("重启" + target.label)
+                .setMessage(target.summary + "\n\n目标应用会短暂关闭并重新启动。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("重启", (d, which) -> {
+                    if (target == RestartTarget.SYSTEM_UI) {
+                        restartSystemUi();
+                    } else {
+                        restartRootCommands(target.label, target.restartCommands(), target.stopOnFirstSuccess());
+                    }
+                })
+                .create();
+        dialog.show();
+        styleDialog(dialog);
+        attachDialogButtonHaptics(dialog);
     }
 
     public boolean isBatchRestartRunning() {
@@ -2385,7 +2433,7 @@ public class MainActivity extends Activity {
         List<String> labels = new ArrayList<>();
         for (RestartTarget target : targets) labels.add(target.label);
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("重启全部应用")
+                .setTitle("重启全部相关应用")
                 .setMessage("将依次重启以下 " + targets.size() + " 个应用：\n\n"
                         + TextUtils.join("、", labels)
                         + "\n\n不包含系统框架，不会重启手机。请先保存正在进行的操作。")
@@ -2779,6 +2827,7 @@ public class MainActivity extends Activity {
         card.addView(header, matchWrap());
 
         if (content != null) {
+            settingsUiFactory.addHelpButton(header, titleText, subtitleText);
             ImageView arrow = new ImageView(this);
             arrow.setImageResource(R.drawable.ic_section_expand);
             arrow.setRotation(expanded ? 0f : -90f);

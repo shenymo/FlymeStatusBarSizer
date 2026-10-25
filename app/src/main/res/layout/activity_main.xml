@@ -57,17 +57,17 @@
                     android:textColor="@color/flyme_text"
                     android:textSize="20sp" />
 
-                <TextView
-                    android:id="@+id/top_bar_subtitle"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:layout_marginStart="8dp"
-                    android:gravity="center"
-                    android:text="?"
-                    android:textColor="@color/flyme_primary"
-                    android:textSize="14sp"
-                    android:visibility="gone" />
             </LinearLayout>
+
+            <TextView
+                android:id="@+id/top_bar_subtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:maxLines="2"
+                android:textColor="@color/flyme_subtext"
+                android:textSize="12sp"
+                android:visibility="gone" />
         </LinearLayout>
 
         <ImageButton

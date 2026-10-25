@@ -40,12 +40,12 @@ public final class ClockExpressionEditor {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
 
-        activity.addProfileSectionHeader(page, "表达式编辑",
-                "当前支持：小时、分钟、秒、星期、AM/PM、时段词、十二时辰地支和传统别称。单击切换启用；快速左右滑动切换 24 小时、12 小时、星期写法；长按可拖动排序。");
+        activity.addProfileSectionHeader(page, "时间格式编辑",
+                "可组合小时、分钟、秒、星期、AM/PM 和传统时段写法。单击启用或停用；左右滑动切换显示方式；长按拖动排序。");
         ensureDragTouchSlop();
 
         TextView orderTitle = new TextView(activity);
-        orderTitle.setText("表达式列表");
+        orderTitle.setText("时间格式列表");
         orderTitle.setTextColor(activity.primaryColor());
         orderTitle.setTextSize(15);
         orderTitle.setPadding(0, activity.dp(8), 0, 0);
@@ -66,12 +66,12 @@ public final class ClockExpressionEditor {
         renderEditor();
 
         activity.addDivider(page);
-        activity.addActionButtonRow(page, "应用当前表达式",
-                "保存当前启用状态和拖动顺序生成的表达式，并通知 SystemUI 立即刷新状态栏时间。",
+        activity.addActionButtonRow(page, "应用当前格式",
+                "保存当前时间格式并立即刷新状态栏时钟。",
                 "应用", this::applyDraft);
         activity.addDivider(page);
-        activity.addActionButtonRow(page, "清空当前表达式",
-                "清空后只会关闭当前启用项，拖动顺序会保留。",
+        activity.addActionButtonRow(page, "清空当前格式",
+                "清空后会关闭当前格式，时间项目的排序会保留。",
                 "清空", this::clearDraft);
         return page;
     }
@@ -142,7 +142,7 @@ public final class ClockExpressionEditor {
         RowTouchState touchState = new RowTouchState();
         TextView chip = new TextView(activity);
         chip.setText(getTokenLabel(token));
-        activity.addSearchItem(chip, getTokenLabel(token), "时间表达式");
+        activity.addSearchItem(chip, getTokenLabel(token), "时间显示格式");
         chip.setTextColor(enabled ? activity.textColor() : activity.subtextColor());
         chip.setTextSize(12);
         chip.setGravity(Gravity.CENTER);
@@ -346,13 +346,13 @@ public final class ClockExpressionEditor {
         editor.apply();
         SettingsStore.notifyChanged(activity);
         activity.invalidatePreview();
-        activity.showToast(TextUtils.isEmpty(format) ? "已清空自定义时间表达式" : "自定义时间表达式已应用");
+        activity.showToast(TextUtils.isEmpty(format) ? "已清空自定义时间格式" : "自定义时间格式已应用");
     }
 
     private void clearDraft() {
         enabledTokens.clear();
         renderEditor();
-        activity.showToast("当前表达式已清空，点应用后才会写入设置");
+        activity.showToast("当前格式已清空，点击应用后才会保存。");
     }
 
     private String buildFormat() {

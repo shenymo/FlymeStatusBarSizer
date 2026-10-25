@@ -27,8 +27,8 @@ public final class AboutPageController {
         ComponentName launcher = new ComponentName(activity, MainActivity.class.getName() + "Alias");
         Switch toggle = new Switch(activity);
         activity.styleSwitch(toggle);
-        toggle.setText("隐藏桌面图标");
-        activity.addSearchItem(toggle, toggle.getText().toString(), "从 LSPosed 模块页面打开设置");
+        toggle.setText("隐藏桌面应用图标");
+        activity.addSearchItem(toggle, toggle.getText().toString(), "隐藏后请从 LSPosed 模块页面打开设置；关闭此开关即可恢复桌面图标。");
         toggle.setTextColor(activity.textColor());
         toggle.setTextSize(16);
         toggle.setMinHeight(PageViewUtils.dp(activity, 44));
@@ -51,8 +51,8 @@ public final class AboutPageController {
                 activity.showToast("桌面图标设置失败");
             }
         });
-        return activity.buildSectionCard("应用设置",
-                "隐藏后，可从 LSPosed 的模块页面打开设置，关闭此开关即可恢复图标。", toggle, expanded);
+        return activity.buildSectionCard("应用入口",
+                "隐藏后请从 LSPosed 模块页面打开设置；关闭此开关即可恢复桌面图标。", toggle, expanded);
     }
 
     private static View buildProjectCard(MainActivity activity, boolean expanded) {
@@ -66,21 +66,21 @@ public final class AboutPageController {
                 PageViewUtils.matchWrap());
         content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
         content.addView(buildLinkRow(activity,
-                "交流群",
+                "QQ 群",
                 "QQ群 " + activity.qqGroupNumber(),
                 "加入群聊",
                 activity.qqGroupUrl()),
                 PageViewUtils.matchWrapWithTop(activity, 8));
         content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
         content.addView(buildLinkRow(activity,
-                "QQ频道",
-                "群已满，加入QQ频道【FlymeBarSizer】进行交流",
+                "QQ 频道",
+                "QQ 群已满，可加入 QQ 频道“FlymeBarSizer”交流。",
                 "加入频道",
                 activity.qqChannelUrl()),
                 PageViewUtils.matchWrapWithTop(activity, 8));
         return activity.buildSectionCard(
-                "项目与社区",
-                "保留仓库地址和交流群入口，不再额外占用一级导航。",
+                "项目与交流",
+                "提供项目仓库和交流入口。",
                 content,
                 expanded);
     }
@@ -92,10 +92,10 @@ public final class AboutPageController {
         content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
         content.addView(buildInfoRow(activity, "构建日期", BuildConfig.BUILD_DATE), PageViewUtils.matchWrapWithTop(activity, 8));
         content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
-        content.addView(buildInfoRow(activity, "目标作用域", activity.supportedScopesSummary()), PageViewUtils.matchWrapWithTop(activity, 8));
+        content.addView(buildInfoRow(activity, "支持范围", activity.supportedScopesSummary()), PageViewUtils.matchWrapWithTop(activity, 8));
         return activity.buildSectionCard(
-                "版本与作用域",
-                "这里展示静态构建信息，以及模块在仓库里声明的目标作用域。",
+                "版本与适用范围",
+                "查看版本、构建日期和模块支持的应用范围。",
                 content,
                 expanded);
     }

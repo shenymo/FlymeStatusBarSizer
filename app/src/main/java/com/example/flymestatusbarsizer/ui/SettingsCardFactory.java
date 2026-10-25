@@ -51,41 +51,41 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_ENABLED,
                 SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED)
                 ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(content, "摄像头环形电池",
-                "开启后使用 Flyme 原生摄像头孔位环形电池。",
+        activity.addSwitchRow(content, "环形电池",
+                "开启后在摄像头挖孔周围显示环形电池。",
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_ENABLED,
                 SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED,
                 (buttonView, isChecked) -> {
                     circleBatteryOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE);
                     updateBatteryOptionsVisibility();
                 });
-        activity.addSwitchRow(circleBatteryOptions, "隐藏普通电池图标",
-                "同时隐藏代码绘制和系统原生电池图标，并释放原来的占位。",
+        activity.addSwitchRow(circleBatteryOptions, "隐藏原电池图标",
+                "同时隐藏模块绘制和系统原生电池图标，并释放原图标占用的位置。",
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED,
                 SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED,
                 (buttonView, isChecked) -> updateBatteryOptionsVisibility());
         activity.addDivider(circleBatteryOptions);
         LinearLayout circleAppearance = new LinearLayout(activity);
         circleAppearance.setOrientation(LinearLayout.VERTICAL);
-        activity.addSliderRow(circleAppearance, "环形电池半径",
-                "放大后可避开摄像头和周围黑边。",
+        activity.addSliderRow(circleAppearance, "环形大小",
+                "调整环形电池大小，放大后可避开摄像头周围的黑边。",
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT,
                 SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_RADIUS_PERCENT,
                 80, 200, "%");
-        activity.addSliderRow(circleAppearance, "环形电池粗细",
-                "单独调整圆环线条粗细，不改变半径。",
+        activity.addSliderRow(circleAppearance, "环形线条粗细",
+                "只调整圆环线条粗细，不改变环形大小。",
                 SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT,
                 SettingsStore.DEFAULT_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT,
                 50, 300, "%");
         new CircleBatteryAppearanceEditor(activity).addTo(circleAppearance);
         circleBatteryOptions.addView(activity.buildSectionCard("环形电池外观",
-                "调整半径、粗细、透明度和各状态颜色。状态优先级：充电 ＞ 低电量 ＞ 省电 ＞ 正常。", circleAppearance),
+                "调整环形电池的大小、粗细、透明度和状态颜色。状态优先级为：充电、低电量、省电、正常。", circleAppearance),
                 PageViewUtils.matchWrap());
         LinearLayout dynamics = new LinearLayout(activity);
         dynamics.setOrientation(LinearLayout.VERTICAL);
         new CircleBatteryAnimationEditor(activity).addTo(dynamics);
-        circleBatteryOptions.addView(activity.buildSectionCard("动态效果",
-                "日常柔和流动，充电彗星增强。省电、熄屏或隐藏时暂停动画。", dynamics),
+        circleBatteryOptions.addView(activity.buildSectionCard("动画效果",
+                "普通状态使用柔和流光，充电时增强彗星效果。省电、熄屏或隐藏时暂停动画。", dynamics),
                 PageViewUtils.matchWrap());
         LinearLayout.LayoutParams circleBatteryOptionsLp = activity.matchWrapWithTop(10);
         circleBatteryOptionsLp.leftMargin = activity.dp(12);
@@ -93,18 +93,18 @@ public final class SettingsCardFactory {
         batteryIconOptions = new LinearLayout(activity);
         batteryIconOptions.setOrientation(LinearLayout.VERTICAL);
         activity.addDivider(batteryIconOptions);
-        activity.addSwitchRow(batteryIconOptions, "代码绘制电池图标",
-                "关闭后恢复系统原来的电池图标，不再接管这一项的绘制和尺寸。",
+        activity.addSwitchRow(batteryIconOptions, "接管电池图标绘制",
+                "关闭后恢复系统电池图标，模块不再控制电池图标的样式和大小。",
                 SettingsStore.KEY_BATTERY_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED);
         activity.addDivider(batteryIconOptions);
-        activity.addChoiceRow(batteryIconOptions, "电池图标样式",
-                "当前保留类 IOS、类 One UI 和 IOS 旧版三套代码绘制样式。",
+        activity.addChoiceRow(batteryIconOptions, "电池样式",
+                "可选择类 iOS、类 One UI 和 iOS 旧版三种样式。",
                 SettingsStore.KEY_BATTERY_ICON_STYLE,
                 SettingsStore.DEFAULT_BATTERY_ICON_STYLE,
                 new int[]{SettingsStore.BATTERY_STYLE_IOS, SettingsStore.BATTERY_STYLE_ONEUI,
                         SettingsStore.BATTERY_STYLE_FLYME_CAPSULE},
-                new String[]{"类 IOS", "类 One UI", "IOS 旧版"});
+                new String[]{"类 iOS", "类 One UI", "iOS 旧版"});
         activity.addDivider(batteryIconOptions);
         LinearLayout hollowSection = new LinearLayout(activity);
         hollowSection.setOrientation(LinearLayout.VERTICAL);
@@ -117,13 +117,13 @@ public final class SettingsCardFactory {
                 activity.prefs(),
                 SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED) ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(batteryIconOptions, "电池内显示电量数字",
-                "关闭后只保留图形电池，不在电池内部绘制剩余电量数字。",
+        activity.addSwitchRow(batteryIconOptions, "显示电池电量数字",
+                "关闭后只显示电池图形，不在图形内部显示剩余电量。",
                 SettingsStore.KEY_BATTERY_LEVEL_TEXT_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_LEVEL_TEXT_ENABLED,
                 (buttonView, isChecked) -> hollowSection.setVisibility(isChecked ? View.VISIBLE : View.GONE));
-        activity.addSwitchRow(hollowSection, "镂空电池",
-                "开启后电池内数字使用透明挖空显示。",
+        activity.addSwitchRow(hollowSection, "镂空显示电量",
+                "开启后用透明镂空方式显示电量数字。",
                 SettingsStore.KEY_BATTERY_HOLLOW_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED,
                 (buttonView, isChecked) -> hollowOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
@@ -135,8 +135,8 @@ public final class SettingsCardFactory {
         batteryIconOptions.addView(hollowSection, hollowSectionLp);
         activity.addDivider(batteryIconOptions);
         int[] batteryTextFontOptions = BatteryTextFontHelper.getAvailableFontOptions(activity);
-        activity.addChoiceRow(batteryIconOptions, "电池数字字体",
-                "会列出系统可用字体，也包含模块自带的 MiSansLatinVFNumber。",
+        activity.addChoiceRow(batteryIconOptions, "电量数字字体",
+                "可选择系统字体，也可以使用模块内置的 MiSansLatinVFNumber。",
                 SettingsStore.KEY_BATTERY_TEXT_FONT,
                 SettingsStore.DEFAULT_BATTERY_TEXT_FONT,
                 batteryTextFontOptions,
@@ -145,29 +145,29 @@ public final class SettingsCardFactory {
         LinearLayout batteryAppearance = new LinearLayout(activity);
         batteryAppearance.setOrientation(LinearLayout.VERTICAL);
         activity.addApplySliderRow(batteryAppearance, "电池主体宽度",
-                "默认 100%。One UI 和两种带电池帽样式都生效。",
+                "默认值为 100%。类 One UI 和带电池帽的两种样式均生效。",
                 SettingsStore.KEY_BATTERY_BODY_WIDTH_PERCENT,
                 SettingsStore.DEFAULT_BATTERY_BODY_WIDTH_PERCENT, 50, 150, "%");
         activity.addApplySliderRow(batteryAppearance, "电池主体高度",
-                "默认 100%。调整主体高度，不改变状态栏图标占用大小。",
+                "默认值为 100%。只调整图形高度，不改变状态栏图标占用大小。",
                 SettingsStore.KEY_BATTERY_BODY_HEIGHT_PERCENT,
                 SettingsStore.DEFAULT_BATTERY_BODY_HEIGHT_PERCENT, 50, 150, "%");
-        activity.addApplySliderRow(batteryAppearance, "电池圆角",
-                "默认值保持当前样式外观；0% 为直角，200% 为最大圆角。",
+        activity.addApplySliderRow(batteryAppearance, "电池图形圆角",
+                "默认值保持当前样式。0% 为直角，200% 为最大圆角。",
                 SettingsStore.KEY_BATTERY_CORNER_RADIUS_PERCENT,
                 SettingsStore.DEFAULT_BATTERY_CORNER_RADIUS_PERCENT, 0, 200, "%");
         activity.addApplySliderRow(batteryAppearance, "电池帽宽度",
-                "默认 100%。仅类 IOS 和 IOS 旧版样式生效。",
+                "默认值为 100%，仅类 iOS 和 iOS 旧版样式生效。",
                 SettingsStore.KEY_BATTERY_CAP_WIDTH_PERCENT,
                 SettingsStore.DEFAULT_BATTERY_CAP_WIDTH_PERCENT, 50, 150, "%");
-        batteryIconOptions.addView(activity.buildSectionCard("电池外观",
-                "调整普通电池图标的尺寸和轮廓。", batteryAppearance),
+        batteryIconOptions.addView(activity.buildSectionCard("电池图标外观",
+                "调整普通电池图标的宽度、高度、圆角和电池帽。", batteryAppearance),
                 PageViewUtils.matchWrap());
         content.addView(batteryIconOptions, PageViewUtils.matchWrap());
         updateBatteryOptionsVisibility();
         return activity.buildSectionCard(
-                "电池样式",
-                "状态栏电池绘制、数字样式和镂空细节都集中在这里。",
+                "电池图标",
+                "在这里选择电池图标样式，并调整电量数字和镂空效果。",
                 content);
     }
 
@@ -196,8 +196,8 @@ public final class SettingsCardFactory {
                 activity.prefs(),
                 SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
                 SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED) ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(content, "通知使用应用图标",
-                "开启后把第三方应用的状态栏通知图标改成应用自身图标，不再使用 Flyme 统一通知图标。",
+        activity.addSwitchRow(content, "使用应用通知图标",
+                "开启后使用第三方应用自己的图标，不再使用 Flyme 的统一通知图标。",
                 SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,
                 SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED,
                 (buttonView, isChecked) -> appIconOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
@@ -206,7 +206,7 @@ public final class SettingsCardFactory {
         content.addView(appIconOptions, optionsLp);
         return activity.buildSectionCard(
                 "通知图标",
-                "这里只改第三方应用通知图标的来源、尺寸和内边距。",
+                "只调整第三方应用通知图标的来源、大小和边距。",
                 content);
     }
 
@@ -214,8 +214,8 @@ public final class SettingsCardFactory {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
 
-        activity.addSwitchRow(content, "代码绘制信号图标",
-                "关闭后恢复系统原来的移动信号和 Wi-Fi 图标，不再替换相关槽位和尺寸。",
+        activity.addSwitchRow(content, "接管移动网络图标绘制",
+                "关闭后恢复系统的移动网络和 Wi-Fi 图标，模块不再替换图标位置和大小。",
                 SettingsStore.KEY_SIGNAL_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_SIGNAL_CODE_DRAW_ENABLED);
         activity.addDivider(content);
@@ -244,8 +244,8 @@ public final class SettingsCardFactory {
                 "调整双卡合一下方的副卡信号点；0% 为方形，100% 为圆形。",
                 SettingsStore.KEY_SIGNAL_DOT_CORNER_RADIUS_PERCENT,
                 SettingsStore.DEFAULT_SIGNAL_DOT_CORNER_RADIUS_PERCENT, 0, 100, "%");
-        content.addView(activity.buildSectionCard("信号外观",
-                "拖动自动保存，点击数值可精确输入，也可恢复默认。预览为放大效果，双卡示例为主卡 3 格、副卡 2 格。",
+        content.addView(activity.buildSectionCard("移动网络图标外观",
+                "拖动会自动保存，也可以点击数值精确输入或恢复默认。预览为放大显示，双卡示例为主卡 3 格、副卡 2 格。",
                 signalAppearance),
                 PageViewUtils.matchWrap());
         activity.addDivider(content);
@@ -256,31 +256,31 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED,
                 SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED);
         badgeTextOptions.setVisibility(badgeEnabled ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(content, "显示网络类型标识",
-                "关闭后只保留移动信号图标，不显示右侧自定义文字。",
+        activity.addSwitchRow(content, "显示网络类型文字",
+                "关闭后只显示移动网络图标，不显示右侧的网络类型文字。",
                 SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_ENABLED,
                 SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED,
                 (buttonView, isChecked) -> badgeTextOptions.setVisibility(
                         isChecked ? View.VISIBLE : View.GONE));
         activity.addDivider(badgeTextOptions);
-        activity.addTextSettingRow(badgeTextOptions, "5G 显示内容",
-                "检测到 5G 时显示；留空则不显示，也不占用位置。",
+        activity.addTextSettingRow(badgeTextOptions, "5G 标签文字",
+                "检测到 5G 时显示；留空表示隐藏且不占用位置。",
                 SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT,
                 SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT,
                 "不显示",
                 "例如 5G",
                 true);
         activity.addDivider(badgeTextOptions);
-        activity.addTextSettingRow(badgeTextOptions, "5GA 显示内容",
-                "检测到 5GA 时显示；留空则不显示，也不占用位置。",
+        activity.addTextSettingRow(badgeTextOptions, "5GA 标签文字",
+                "检测到 5GA 时显示；留空表示隐藏且不占用位置。",
                 SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT,
                 SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT,
                 "不显示",
                 "例如 5GA",
                 true);
         activity.addDivider(badgeTextOptions);
-        activity.addTextSettingRow(badgeTextOptions, "非 5G 显示内容",
-                "检测到其他移动网络类型时显示；留空则不显示，也不占用位置。",
+        activity.addTextSettingRow(badgeTextOptions, "其他网络标签文字",
+                "检测到其他移动网络类型时显示；留空表示隐藏且不占用位置。",
                 SettingsStore.KEY_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT,
                 SettingsStore.DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT,
                 "不显示",
@@ -307,77 +307,77 @@ public final class SettingsCardFactory {
                 "层间空隙与弧带线宽的比例。保持图标总高度，间距增大时弧带会相应变细。",
                 SettingsStore.KEY_WIFI_BAND_GAP_PERCENT,
                 SettingsStore.DEFAULT_WIFI_BAND_GAP_PERCENT, 40, 120, "%");
-        View wifiAppearanceCard = activity.buildSectionCard("Wi-Fi 外观",
-                "拖动自动保存，点击数值可精确输入；双 Wi-Fi 同步调整。预览为放大效果。",
+        View wifiAppearanceCard = activity.buildSectionCard("Wi-Fi 图标外观",
+                "拖动会自动保存，也可以点击数值精确输入。双 Wi-Fi 会同步调整，预览为放大显示。",
                 wifiAppearance);
         wifiAppearanceCard.setVisibility(SettingsStore.readBoolean(activity.prefs(),
                 SettingsStore.KEY_WIFI_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_WIFI_CODE_DRAW_ENABLED) ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(content, "重绘 Wi-Fi 图标",
-                "在信号总开关开启时，单独控制是否继续接管 Wi-Fi 图标。",
+        activity.addSwitchRow(content, "接管 Wi-Fi 图标绘制",
+                "在“接管移动网络图标绘制”开启时，单独控制是否接管 Wi-Fi 图标。",
                 SettingsStore.KEY_WIFI_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_WIFI_CODE_DRAW_ENABLED,
                 (buttonView, isChecked) -> wifiAppearanceCard.setVisibility(
                         isChecked ? View.VISIBLE : View.GONE));
         content.addView(wifiAppearanceCard, activity.matchWrapWithTop(10));
         activity.addDivider(content);
-        activity.addSwitchRow(content, "交换 Wi-Fi 与信号位置",
-                "让 Wi-Fi 图标显示在电池和移动信号之间。",
+        activity.addSwitchRow(content, "调换 Wi-Fi 和移动网络位置",
+                "让 Wi-Fi 图标显示在电池和移动网络图标之间。",
                 SettingsStore.KEY_SIGNAL_WIFI_SWAP_ENABLED,
                 SettingsStore.DEFAULT_SIGNAL_WIFI_SWAP_ENABLED);
         activity.addDivider(content);
         return activity.buildSectionCard(
-                "信号与 Wi-Fi",
-                "移动网络图标统一由模块接管，同时保留 Wi-Fi 的独立开关。",
+                "移动网络与 Wi-Fi",
+                "可分别控制移动网络图标和 Wi-Fi 图标是否由模块绘制。",
                 content);
     }
 
     public View createConnectionRateSettingsCard() {
         return activity.buildSectionCard(
-                "实时网速",
-                "保留系统原采样，只在这里调节阈值显隐和确认次数。",
+                "实时网速显示",
+                "保留系统采样，只调整网速文字的显示阈值和确认次数。",
                 buildConnectionRateThresholdPage());
     }
 
     public View createTimeExpressionSettingsCard() {
         return activity.buildSectionCard(
-                "时间表达式",
-                "通过按钮组合表达式，并在当前页完成拖动排序和应用。",
+                "时间显示格式",
+                "通过按钮组合时间格式，并在当前页面排序和应用。",
                 activity.clockExpressionEditor().buildPage());
     }
 
     public View createTimeInteractionSettingsCard() {
         return activity.buildSectionCard(
-                "时间交互",
-                "控制左上角时钟点击后的详细时间弹窗，当前默认 8 秒自动收起。",
+                "时钟点击交互",
+                "设置点击左上角时钟后显示的详细信息窗口，默认 8 秒后自动收起。",
                 buildTimeInteractionPage());
     }
 
     public View createTimeTypographySettingsCard() {
         return activity.buildSectionCard(
                 "状态栏文字",
-                "统一调整时间、日期、网速、锁屏运营商和原生电量数字的粗细。",
+                "统一调整时间、日期、网速、锁屏运营商和系统电量数字的粗细。",
                 buildTimeTypographyPage());
     }
 
     public View createMBackActionSettingsCard() {
         return activity.buildSectionCard(
-                "MBack 长触动作",
-                "只接管长按分支，保留单击和系统其他来源。",
+                "MBack 长按动作",
+                "只接管 MBack 长按操作，保留单击和其他系统操作。",
                 buildMBackActionPage());
     }
 
     public View createWindowModeSideGestureSettingsCard() {
         return activity.buildSectionCard(
-                "小窗选择器",
-                "调整 Flyme 原生小窗选择面板和它的侧边触发行为。",
+                "小窗选择面板",
+                "调整 Flyme 原生小窗选择面板及其侧边触发手势。",
                 buildWindowModeSideGesturePage());
     }
 
     public View createSideGestureSettingsCard() {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
-        activity.addSwitchRow(page, "启用侧边手势", "从屏幕侧边向内滑动并按住，执行下方选择的动作。锁屏时不触发。",
+        activity.addSwitchRow(page, "启用侧滑手势", "从屏幕侧边向内滑动并按住，执行所选动作。锁屏时不会触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED, SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
         LinearLayout actionOptions = new LinearLayout(activity);
         actionOptions.setOrientation(LinearLayout.VERTICAL);
@@ -385,29 +385,29 @@ public final class SettingsCardFactory {
 
         AssistantGesturePreviewLayout gestureOptions = new AssistantGesturePreviewLayout(
                 activity, activity.prefs(), activity.primaryColor());
-        activity.addChoiceRow(gestureOptions, "触发侧边", null,
+        activity.addChoiceRow(gestureOptions, "触发边缘", null,
                 SettingsStore.KEY_ASSISTANT_GESTURE_SIDE, SettingsStore.DEFAULT_ASSISTANT_GESTURE_SIDE,
                 new int[]{SettingsStore.ASSISTANT_GESTURE_SIDE_LEFT,
                         SettingsStore.ASSISTANT_GESTURE_SIDE_RIGHT, SettingsStore.ASSISTANT_GESTURE_SIDE_BOTH},
                 new String[]{"左侧", "右侧", "两侧"});
         activity.addDivider(gestureOptions);
-        activity.addMultiChoiceRow(gestureOptions, "触发场景",
-                "可多选。常规界面包括应用和桌面；通知栏或控制中心展开时，按当前面板判断。"
-                        + "应用单手缩放仅在勾选“常规界面”时对竖屏全屏应用生效。全部取消后不触发。",
+        activity.addMultiChoiceRow(gestureOptions, "生效场景",
+                "可多选：应用和桌面、通知栏、控制中心。全部取消后手势不生效。"
+                        + "单手缩放只在选择“应用和桌面”且应用为竖屏全屏时生效。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_SCENES, SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES,
                 new int[]{SettingsStore.ASSISTANT_GESTURE_SCENE_NORMAL,
                         SettingsStore.ASSISTANT_GESTURE_SCENE_NOTIFICATION,
                         SettingsStore.ASSISTANT_GESTURE_SCENE_CONTROL_CENTER},
-                new String[]{"常规界面", "通知栏", "控制中心"}, "未选择触发场景");
+                new String[]{"应用和桌面", "通知栏", "控制中心"}, "未选择触发场景");
         activity.addDivider(gestureOptions);
-        activity.addSliderRow(gestureOptions, "滑动距离", "向内滑动的最短距离，超过后仍可触发。",
+        activity.addSliderRow(gestureOptions, "最短滑动距离", "手指向内滑动达到此距离后才可能触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP, SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP,
                 40, 240, "dp");
-        activity.addSliderRow(gestureOptions, "按住时间", "从手指按下开始计时，距离和时间都达标后触发。",
+        activity.addSliderRow(gestureOptions, "按住时长", "从手指按下开始计时，距离和时长都达到要求后触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_HOLD_MS, SettingsStore.DEFAULT_ASSISTANT_GESTURE_HOLD_MS,
                 250, 2000, "ms");
-        activity.addActionButtonRow(gestureOptions, "距离预览",
-                "显示所选侧边的最短滑动距离。切换侧边或调节距离时也会显示，5 秒后自动消失。",
+        activity.addActionButtonRow(gestureOptions, "预览滑动距离",
+                "显示所选边缘的触发距离，5 秒后自动隐藏。",
                 "显示标线", gestureOptions::showPreview);
         activity.addDivider(gestureOptions);
         LinearLayout verticalOptions = new LinearLayout(activity);
@@ -416,7 +416,7 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED) ? View.VISIBLE : View.GONE);
         activity.addSwitchRow(gestureOptions, "限制上下偏移",
-                "相对起手位置，上下偏移超过上限即取消触发，需重新起手。",
+                "手指相对起点上下移动超过上限时取消触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
                 (buttonView, isChecked) -> verticalOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
@@ -425,8 +425,8 @@ public final class SettingsCardFactory {
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
                 SettingsStore.MIN_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
                 SettingsStore.MAX_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP, "dp");
-        activity.addActionButtonRow(verticalOptions, "偏移预览",
-                "以屏幕中部为示例起点显示上下边界，5 秒后消失。实际边界随起手位置移动。",
+        activity.addActionButtonRow(verticalOptions, "预览上下范围",
+                "以屏幕中部为例显示允许的上下范围，5 秒后自动隐藏。",
                 "显示边界", gestureOptions::showVerticalPreview);
         gestureOptions.addView(verticalOptions, activity.matchWrap());
         View gestureCard = activity.buildSectionCard("手势设置", null, gestureOptions, true);
@@ -437,11 +437,11 @@ public final class SettingsCardFactory {
         assistantOptions.setOrientation(LinearLayout.VERTICAL);
         AssistantBackgroundSettings.addRows(activity, assistantOptions);
         View appearanceCard = activity.buildSectionCard("全局负一屏",
-                "下次打开时生效，不影响桌面负一屏。", assistantOptions, true);
+                "下次打开全局负一屏时生效，不影响桌面负一屏。", assistantOptions, true);
         appearanceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
         page.addView(appearanceCard, activity.matchWrapWithTop(8));
         View workspaceCard = activity.buildSectionCard("多应用工作台",
-                "从侧边手势进入，在主窗口和侧边小窗之间切换应用。",
+                "可在主窗口和侧边小窗之间切换多个应用。",
                 buildTaskWorkbenchOptions(false), true);
         workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
         page.addView(workspaceCard, activity.matchWrapWithTop(8));
@@ -457,13 +457,13 @@ public final class SettingsCardFactory {
         updateAction.accept(SettingsStore.normalizeSideGestureAction(SettingsStore.readInt(activity.prefs(),
                 SettingsStore.KEY_SIDE_GESTURE_ACTION, SettingsStore.DEFAULT_SIDE_GESTURE_ACTION)));
         return activity.buildSectionCard("侧边手势",
-                "先启用 SystemUI 作用域并重启 SystemUI，再选择要执行的动作。", page);
+                "请先在 LSPosed 中启用 SystemUI 范围并重启系统界面，再选择手势动作。", page);
     }
 
     public View createOneHandedModeSettingsCard() {
         LinearLayout options = new LinearLayout(activity);
         options.setOrientation(LinearLayout.VERTICAL);
-        activity.addSwitchRow(options, "启用下拉单手模式", "关闭时不接管系统单手手势，系统原生单手缩放照常工作。",
+        activity.addSwitchRow(options, "启用底部上滑手势", "关闭后不接管系统单手手势，系统原生单手缩放继续工作。",
                 SettingsStore.KEY_ONE_HANDED_MODE_ENABLED, SettingsStore.DEFAULT_ONE_HANDED_MODE_ENABLED);
         activity.addChoiceRow(options, "触发动作", "选择从屏幕底部上滑触发的功能，不影响侧边手势。",
                 SettingsStore.KEY_ONE_HANDED_MODE_ACTION, SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION,
@@ -475,8 +475,8 @@ public final class SettingsCardFactory {
                 SettingsStore.normalizeOneHandedModeAction(SettingsStore.readInt(activity.prefs(),
                         SettingsStore.KEY_ONE_HANDED_MODE_ACTION,
                         SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION)));
-        return activity.buildSectionCard("下拉单手模式",
-                "底部上滑可打开多应用工作台；这里的设置与侧边入口分别保存。", options, false);
+        return activity.buildSectionCard("底部上滑模式",
+                "从屏幕底部上滑触发所选功能；此处设置与侧边手势分别保存。", options, false);
     }
 
     private void updateOneHandedWorkbenchVisibility(LinearLayout options, int action) {
@@ -525,24 +525,31 @@ public final class SettingsCardFactory {
     public View createShareTargetsSettingsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
-        activity.addActionButtonRow(content, "分享列表管理",
-                "按图片、视频、文本、PDF、音频分别隐藏和排序，微信好友、朋友圈等可独立管理。"
-                        + "首次使用需在 LSPosed 的模块作用域中勾选 com.android.intentresolver，"
-                        + "并重启该应用进程或手机。",
+        activity.addActionButtonRow(content, "管理分享面板",
+                "可按图片、视频、文本、PDF 和音频分别隐藏、排序，也可单独管理微信好友和朋友圈。"
+                        + "首次使用请在 LSPosed 中启用系统分享范围并重启分享进程或手机。",
                 "管理", () -> new ShareTargetsEditor(activity).show());
-        return activity.buildSectionCard("分享列表",
-                "默认跟随系统顺序，支持隐藏和手动排序，保存后应用到分享面板。", content);
+        return activity.buildSectionCard("分享面板",
+                "默认跟随系统顺序，可按内容类型隐藏和排序，保存后应用到分享面板。", content);
     }
 
     public View createCarLinkSettingsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
+        TextView restartNote = new TextView(activity);
+        restartNote.setText("修改后需重启 CarLink 才能生效");
+        restartNote.setTextColor(activity.subtextColor());
+        restartNote.setTextSize(12);
+        LinearLayout.LayoutParams restartNoteLp = activity.matchWrapWithTop(4);
+        restartNoteLp.leftMargin = activity.dp(16);
+        restartNoteLp.rightMargin = activity.dp(16);
+        content.addView(restartNote, restartNoteLp);
         activity.addSwitchRow(content, "扩展可流转应用",
-                "把有桌面入口的第三方应用加入 CarLink 原生应用管理页。切换后重启 CarLink 生效。",
+                "将有桌面入口的第三方应用加入 CarLink 应用管理页。修改后需重启 CarLink。",
                 SettingsStore.KEY_CARLINK_EXPAND_APPS_ENABLED,
                 SettingsStore.DEFAULT_CARLINK_EXPAND_APPS_ENABLED);
         activity.addDivider(content);
-        activity.addActionButtonRow(content, "CarLink 应用管理",
+        activity.addActionButtonRow(content, "管理 CarLink 应用",
                 "使用 CarLink 原生页面选择、移除和排序车机应用。",
                 "打开", activity::openCarLinkAppManagement);
         activity.addDivider(content);
@@ -551,28 +558,28 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_CARLINK_NETEASE_COLD_START_FIX_ENABLED,
                 SettingsStore.DEFAULT_CARLINK_NETEASE_COLD_START_FIX_ENABLED);
         activity.addDivider(content);
-        activity.addSwitchRow(content, "隔离车机昼夜样式",
-                "忽略车机发送的昼夜切换指令。切换后重启 CarLink 生效。",
+        activity.addSwitchRow(content, "忽略车机昼夜样式",
+                "忽略车机发送的昼夜切换指令。修改后需重启 CarLink。",
                 SettingsStore.KEY_CARLINK_DAY_NIGHT_ISOLATION_ENABLED,
                 SettingsStore.DEFAULT_CARLINK_DAY_NIGHT_ISOLATION_ENABLED);
         activity.addDivider(content);
-        activity.addSwitchRow(content, "停止周期界面重绘",
-                "连接状态变化后，不再每秒强制重绘主界面。切换后重启 CarLink 生效。",
+        activity.addSwitchRow(content, "停止周期性界面重绘",
+                "连接状态变化后不再每秒强制刷新主界面。修改后需重启 CarLink。",
                 SettingsStore.KEY_CARLINK_PERIODIC_REDRAW_DISABLED,
                 SettingsStore.DEFAULT_CARLINK_PERIODIC_REDRAW_DISABLED);
         activity.addDivider(content);
-        activity.addSwitchRow(content, "过滤触摸调试日志",
-                "停止记录高频触摸坐标和界面尺寸日志。切换后重启 CarLink 生效。",
+        activity.addSwitchRow(content, "减少触摸调试日志",
+                "停止记录高频触摸坐标和界面尺寸。修改后需重启 CarLink。",
                 SettingsStore.KEY_CARLINK_TOUCH_LOG_FILTER_ENABLED,
                 SettingsStore.DEFAULT_CARLINK_TOUCH_LOG_FILTER_ENABLED);
         activity.addDivider(content);
-        activity.addSwitchRow(content, "注销任务监听器",
-                "CarLink 投屏界面关闭时注销任务监听器。切换后重启 CarLink 生效。",
+        activity.addSwitchRow(content, "清理任务监听器",
+                "CarLink 投屏界面关闭时清理任务监听器。修改后需重启 CarLink。",
                 SettingsStore.KEY_CARLINK_TASK_LISTENER_CLEANUP_ENABLED,
                 SettingsStore.DEFAULT_CARLINK_TASK_LISTENER_CLEANUP_ENABLED);
         return activity.buildSectionCard(
                 "CarLink",
-                "管理应用流转和原生音乐兼容处理。",
+                "管理应用流转和车机音乐兼容设置。",
                 content);
     }
 
@@ -583,28 +590,28 @@ public final class SettingsCardFactory {
         activity.addDivider(content);
         content.addView(buildMBackHeightPage(), activity.matchWrapWithTop(8));
         return activity.buildSectionCard(
-                "导航栏沉浸与高度",
-                "透明背景、小白条显隐与尺寸、Inset 抬高和导航栏高度在同一页平铺展示。",
+                "导航栏背景与抬高",
+                "调整导航栏透明背景、白条和 MBack 背景位置。“抬高”也会影响应用对底部区域的判断。",
                 content);
     }
 
     public View createImeToolbarSettingsCard() {
         return activity.buildSectionCard(
-                "IME 控制栏",
-                "统一接管输入法控制栏，并保留图标缩放、透明度、抬高和按钮草稿应用逻辑。",
+                "输入法控制栏",
+                "接管输入法控制栏，可调整图标大小、透明度、位置和按钮布局。",
                 activity.imeToolbarEditor().buildSettingsContent());
     }
 
     public View createLauncherRecentsSettingsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
-        activity.addSwitchRow(content, "IOS 式堆叠后台",
-                "仅在竖屏生效，把 Flyme launcher 的 Recent 卡片压成重叠 stack carousel；横屏保持系统原生后台。",
+        activity.addSwitchRow(content, "iOS 式堆叠最近任务",
+                "仅在竖屏生效，将最近任务卡片显示为重叠堆叠布局；横屏保持系统原生样式。",
                 SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED);
         activity.addDivider(content);
-        activity.addSwitchRow(content, "堆叠后台 blur 效果",
-                "关闭后保留 IOS 式堆叠后台布局，但不再模糊边缘堆叠卡片的截图和图标。",
+        activity.addSwitchRow(content, "堆叠卡片模糊效果",
+                "关闭后保留堆叠布局，但不再模糊边缘卡片的截图和图标。",
                 SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED);
         activity.addDivider(content);
@@ -613,24 +620,24 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED);
         activity.addDivider(content);
-        activity.addSwitchRow(content, "显示清除全部按钮",
-                "只在 IOS 式堆叠后台开启时生效。",
+        activity.addSwitchRow(content, "显示“清除全部”按钮",
+                "仅在启用堆叠最近任务后生效。",
                 SettingsStore.KEY_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED);
         return activity.buildSectionCard(
-                "系统桌面后台",
-                "作用域是 com.meizu.flyme.launcher。保留原有 Quickstep 手势入口，只在原地改后台卡片布局。",
+                "最近任务卡片",
+                "调整系统桌面的最近任务卡片布局，保留原有 Quickstep 手势入口。",
                 content);
     }
 
     public View createSystemAppearanceSettingsCard() {
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout content = addSection(root, "卡片圆角", "分别调整通知卡片和最近任务卡片的圆角大小。");
+        LinearLayout content = addSection(root, "通知与最近任务卡片圆角", "分别调整通知卡片和最近任务卡片的圆角。");
         LinearLayout notificationCornerOptions = new LinearLayout(activity);
         notificationCornerOptions.setOrientation(LinearLayout.VERTICAL);
-        Switch notificationCornerSwitch = activity.addSwitchRow(content, "通知卡片圆角",
-                "开启后使用下面的圆角大小，关闭时保持系统默认。",
+        Switch notificationCornerSwitch = activity.addSwitchRow(content, "自定义通知卡片圆角",
+                "开启后使用下方设置的圆角大小；关闭后恢复系统默认。",
                 SettingsStore.KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED,
                 SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED,
                 (buttonView, isChecked) -> notificationCornerOptions.setAlpha(
@@ -638,7 +645,7 @@ public final class SettingsCardFactory {
         LinearLayout.LayoutParams cornerOptionsLp = PageViewUtils.matchWrap();
         cornerOptionsLp.leftMargin = activity.dp(12);
         activity.addSliderRow(notificationCornerOptions, "圆角大小",
-                "0dp 为直角，Flyme 当前主通知卡片默认约为 14dp。",
+                "0dp 为直角。Flyme 主通知卡片默认约为 14dp。",
                 SettingsStore.KEY_NOTIFICATION_CARD_CORNER_RADIUS_DP,
                 SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_DP,
                 0, 40, "dp");
@@ -647,8 +654,8 @@ public final class SettingsCardFactory {
         activity.addDivider(content);
         LinearLayout recentsCornerOptions = new LinearLayout(activity);
         recentsCornerOptions.setOrientation(LinearLayout.VERTICAL);
-        Switch recentsCornerSwitch = activity.addSwitchRow(content, "后台应用卡片圆角",
-                "调整最近任务中的应用预览卡片，关闭时保持系统默认。",
+        Switch recentsCornerSwitch = activity.addSwitchRow(content, "自定义最近任务卡片圆角",
+                "调整最近任务中的应用预览卡片圆角；关闭后恢复系统默认。",
                 SettingsStore.KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED,
                 (buttonView, isChecked) -> recentsCornerOptions.setAlpha(
@@ -656,17 +663,17 @@ public final class SettingsCardFactory {
         LinearLayout.LayoutParams recentsCornerOptionsLp = PageViewUtils.matchWrap();
         recentsCornerOptionsLp.leftMargin = activity.dp(12);
         activity.addSliderRow(recentsCornerOptions, "圆角大小",
-                "0dp 为直角，普通机型的 Flyme 默认值约为 24dp。",
+                "0dp 为直角。多数 Flyme 机型默认约为 24dp。",
                 SettingsStore.KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP,
                 SettingsStore.DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP,
                 0, 40, "dp");
         recentsCornerOptions.setAlpha(recentsCornerSwitch.isChecked() ? 1f : 0.45f);
         content.addView(recentsCornerOptions, recentsCornerOptionsLp);
-        content = addSection(root, "系统通知", "修改 SystemUI 通知卡片的模糊背景前景色。");
+        content = addSection(root, "通知背景", "调整系统通知卡片的背景效果和颜色。");
         LinearLayout blurOnlyOptions = new LinearLayout(activity);
         Switch[] textColorSwitchHolder = new Switch[1];
-        Switch blurOnlySwitch = activity.addSwitchRow(content, "通知背景",
-                "移除通知原背景，只保留系统动态模糊层。",
+        Switch blurOnlySwitch = activity.addSwitchRow(content, "使用模糊通知背景",
+                "开启后移除通知原背景，只保留系统模糊层。",
                 SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
                 (buttonView, isChecked) -> {
@@ -678,8 +685,8 @@ public final class SettingsCardFactory {
         blurOnlyOptions.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams blurOnlyOptionsLp = PageViewUtils.matchWrap();
         blurOnlyOptionsLp.leftMargin = activity.dp(12);
-        activity.addChoiceRow(blurOnlyOptions, "通知背景模式",
-                "跟随系统会按系统日间、夜间模式切换承载层颜色。",
+        activity.addChoiceRow(blurOnlyOptions, "通知背景颜色模式",
+                "选择跟随系统、日间或夜间模式显示通知背景颜色。",
                 SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE,
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_MODE,
                 new int[]{
@@ -688,8 +695,8 @@ public final class SettingsCardFactory {
                         SettingsStore.NOTIFICATION_SYSTEM_BLUR_CARRIER_COLOR_DARK
                 },
                 new String[]{"跟随系统", "日间模式", "夜间模式"});
-        activity.addTextSettingRow(blurOnlyOptions, "日间模式",
-                "填写日间承载层颜色，格式为 #AARRGGBB。",
+        activity.addTextSettingRow(blurOnlyOptions, "日间背景颜色",
+                "设置日间通知背景颜色，格式为 #AARRGGBB。",
                 SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR,
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR,
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR,
@@ -697,8 +704,8 @@ public final class SettingsCardFactory {
                 true,
                 "恢复默认",
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_LIGHT_COLOR);
-        activity.addTextSettingRow(blurOnlyOptions, "夜间模式",
-                "填写夜间承载层颜色，格式为 #AARRGGBB。",
+        activity.addTextSettingRow(blurOnlyOptions, "夜间背景颜色",
+                "设置夜间通知背景颜色，格式为 #AARRGGBB。",
                 SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR,
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR,
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR,
@@ -706,44 +713,44 @@ public final class SettingsCardFactory {
                 true,
                 "恢复默认",
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR);
-        Switch textColorSwitch = activity.addSwitchRow(blurOnlyOptions, "通知字体跟随状态栏",
-                "通知文字跟随当前状态栏图标颜色，只在通知背景开启时生效。",
+        Switch textColorSwitch = activity.addSwitchRow(blurOnlyOptions, "通知文字跟随状态栏",
+                "通知文字使用当前状态栏图标颜色，仅在模糊通知背景开启时生效。",
                 SettingsStore.KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,
                 SettingsStore.DEFAULT_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED);
         textColorSwitchHolder[0] = textColorSwitch;
         textColorSwitch.setEnabled(blurOnlySwitch.isChecked());
         blurOnlyOptions.setAlpha(blurOnlySwitch.isChecked() ? 1f : 0.45f);
         content.addView(blurOnlyOptions, blurOnlyOptionsLp);
-        content = addSection(root, "桌面分页", "在底部分页圆点区域左右拖动，快速切换桌面页面。");
-        activity.addSwitchRow(content, "滑动分页指示器切页",
-                "支持一次拖动跨越多页；显示搜索入口时也可滑动，点击仍打开搜索。更新模块后需重启系统桌面。",
+        content = addSection(root, "桌面分页切换", "在底部分页指示器区域左右拖动，快速切换桌面页面。");
+        activity.addSwitchRow(content, "滑动分页指示器切换页面",
+                "支持一次拖动跨越多页；显示搜索入口时仍可滑动，点击仍打开搜索。修改后需重启系统桌面。",
                 SettingsStore.KEY_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED);
-        content = addSection(root, "桌面 Aicy 入口", "强制显示桌面页码位置的 Aicy 入口，并接管显示文字和点击目标。");
-        activity.addSwitchRow(content, "强制显示 Aicy 入口",
-                "忽略桌面原开关和 Aicy 助手安装状态。",
+        content = addSection(root, "桌面 Aicy 入口", "在桌面分页指示器位置显示 Aicy 入口，并可自定义入口文字和点击后打开的内容。");
+        activity.addSwitchRow(content, "显示 Aicy 入口",
+                "忽略桌面原开关和 Aicy 助手是否安装。",
                 SettingsStore.KEY_LAUNCHER_AICY_ENTRY_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_ENABLED);
-        activity.addTextSettingRow(content, "显示文字",
-                "设置入口文字，建议保持简短；留空仅显示图标。",
+        activity.addTextSettingRow(content, "入口文字",
+                "设置入口显示文字；留空时只显示图标。",
                 SettingsStore.KEY_LAUNCHER_AICY_ENTRY_TEXT,
                 SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TEXT,
                 "仅显示图标",
                 "Aicy",
                 true);
-        activity.addTextSettingRow(content, "点击目标",
-                "填写应用包名、URL 或 Intent URI；留空使用原生 Aicy 助手。",
+        activity.addTextSettingRow(content, "点击后打开",
+                "填写应用包名、URL 或 Intent URI；留空时打开原生 Aicy 助手。",
                 SettingsStore.KEY_LAUNCHER_AICY_ENTRY_TARGET,
                 SettingsStore.DEFAULT_LAUNCHER_AICY_ENTRY_TARGET,
                 "原生 Aicy",
                 "com.example.app 或 intent://...",
                 true);
-        activity.addActionButtonRow(content, "测试点击目标",
-                "测试当前填写的应用包名、URL 或 Intent URI。",
+        activity.addActionButtonRow(content, "测试入口",
+                "测试当前填写的打开目标。",
                 "立即测试", activity::testLaunchLauncherAicyTarget);
-        content = addSection(root, "系统桌面文件夹", "修改 Flyme 桌面文件夹图标的圆角背景颜色。");
-        activity.addTextSettingRow(content, "文件夹圆角背景颜色",
-                "填写 #AARRGGBB。留空跟随系统；原浅色约为 #73FFFFFF，纯透明为 #00000000。",
+        content = addSection(root, "桌面文件夹", "修改 Flyme 桌面文件夹图标的圆角背景颜色。");
+        activity.addTextSettingRow(content, "文件夹背景颜色",
+                "填写 #AARRGGBB 颜色值。留空表示跟随系统；纯透明为 #00000000。",
                 SettingsStore.KEY_LAUNCHER_FOLDER_BG_COLOR,
                 SettingsStore.DEFAULT_LAUNCHER_FOLDER_BG_COLOR,
                 "跟随系统",
@@ -755,24 +762,24 @@ public final class SettingsCardFactory {
     public View createAdvancedToolsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
-        activity.addActionButtonRow(content, "布局微调",
-                "进入独立工具页，微调时钟、电池、信号、Wi-Fi 与输入法控制栏的位置。",
-                "进入", activity::showPositionTuningPage);
+        activity.addActionButtonRow(content, "状态栏位置微调",
+                "进入独立页面，微调时钟、电池、移动网络、Wi-Fi 和输入法控制栏的位置。",
+                "打开", activity::showPositionTuningPage);
         activity.addDivider(content);
-        activity.addActionButtonRow(content, "环形摄像头位置微调",
+        activity.addActionButtonRow(content, "环形电池位置",
                 "调整摄像头环形电池相对挖孔中心的位置。",
-                "进入", activity::showCameraCirclePositionPage);
+                "打开", activity::showCameraCirclePositionPage);
         activity.addDivider(content);
-        activity.addActionButtonRow(content, "堆叠后台参数",
-                "进入独立参数页，调整 IOS 式堆叠后台的布局、动画、手势、视觉和性能。",
-                "进入", activity::showLauncherStackParamsPage);
+        activity.addActionButtonRow(content, "最近任务布局参数",
+                "打开独立页面，调整最近任务卡片的布局、动画、手势、视觉和性能。",
+                "打开", activity::showLauncherStackParamsPage);
         activity.addDivider(content);
-        activity.addActionButtonRow(content, "Telephony 调试",
-                "进入独立调试页，伪造插卡数量、默认数据卡、网络类型和信号等级。",
-                "进入", activity::showTelephonyDebugPage);
+        activity.addActionButtonRow(content, "移动网络状态模拟",
+                "打开独立页面，模拟 SIM 卡数量、默认上网卡、网络类型和信号等级。",
+                "打开", activity::showTelephonyDebugPage);
         return activity.buildSectionCard(
-                "高阶工具",
-                "面向需要进一步验证布局或 Telephony 行为的场景。",
+                "高级工具",
+                "用于进一步调整布局或模拟移动网络状态。",
                 content);
     }
 
@@ -780,19 +787,19 @@ public final class SettingsCardFactory {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         activity.addActionButtonRow(content, "导入配置",
-                "从 JSON 文件恢复当前模块配置，会直接覆盖现有设置。",
+                "从 JSON 文件恢复模块配置，会覆盖当前设置。",
                 "导入", activity::startImportConfig);
         activity.addDivider(content);
         activity.addActionButtonRow(content, "导出配置",
-                "把当前可备份的设置项导出到 JSON，便于备份或跨设备迁移。",
+                "将当前可备份设置导出为 JSON，用于备份或迁移到其他设备。",
                 "导出", activity::startExportConfig);
         activity.addDivider(content);
-        activity.addActionButtonRow(content, "恢复默认",
-                "清空当前 SharedPreferences，并重新按默认值初始化界面。",
-                "恢复", activity::resetAllSettings);
+        activity.addActionButtonRow(content, "恢复全部默认设置",
+                "清除当前模块设置，并恢复全部默认值。",
+                "恢复默认", activity::confirmResetAllSettings);
         return activity.buildSectionCard(
-                "配置管理",
-                "原来藏在悬浮菜单里的导入、导出和恢复默认，现在都放到主页面里。",
+                "配置备份与恢复",
+                "导入、导出或恢复模块配置。",
                 content);
     }
 
@@ -804,56 +811,56 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_WORKSPACE_FLOW_LOGGING_ENABLED,
                 SettingsStore.DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED);
         activity.addDivider(content);
-        activity.addSwitchRow(content, "启用 WIFI 性能打点",
-                "打开后会给 Wi-Fi 更新链路输出详细耗时日志，方便在 logcat 里分析刷新开销。",
+        activity.addSwitchRow(content, "Wi-Fi 性能日志",
+                "开启后输出 Wi-Fi 更新过程的耗时日志，便于分析刷新开销。",
                 SettingsStore.KEY_WIFI_PERF_LOGGING_ENABLED,
                 SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED);
         activity.addDivider(content);
-        activity.addSwitchRow(content, "启用后台堆叠性能打点",
-                "打开后输出 IOS 式堆叠后台每次交互的真实帧耗时、卡顿率和慢调用。",
+        activity.addSwitchRow(content, "最近任务性能日志",
+                "开启后输出堆叠最近任务交互的帧耗时、卡顿率和慢调用。",
                 SettingsStore.KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED);
         activity.addDivider(content);
-        activity.addSwitchRow(content, "IOS 堆叠后台日志",
-                "打开后输出关键触摸、分页、删除和动画节点，不输出逐帧日志。",
+        activity.addSwitchRow(content, "最近任务交互日志",
+                "开启后输出触摸、分页、删除和动画节点，不输出逐帧日志。",
                 SettingsStore.KEY_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED);
         return activity.buildSectionCard(
-                "性能调试",
-                "管理多应用工作台流程日志和性能打点输出。",
+                "性能日志",
+                "管理工作台、Wi-Fi 和最近任务的调试日志与性能数据输出。",
                 content);
     }
 
     public View createLauncherStackParamsSettingsCard() {
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout content = addSection(root, "布局外观", "屏幕左侧/屏幕右侧均按用户看屏幕的方向理解。");
-        addStackParam(content, "屏幕右侧卡片露出比例", "数值越大，屏幕右侧卡片露出越多。",
+        LinearLayout content = addSection(root, "卡片布局", "左侧和右侧均按用户面对屏幕时的方向理解。");
+        addStackParam(content, "右侧卡片露出比例", "数值越大，右侧卡片露出越多。",
                 SettingsStore.KEY_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT, 20, 120, "%");
-        addStackParam(content, "屏幕左侧移动比例", "数值越大，屏幕左侧卡片移动距离越大。",
+        addStackParam(content, "左侧卡片移动比例", "数值越大，左侧卡片移动距离越大。",
                 SettingsStore.KEY_LAUNCHER_STACK_LEFT_MOVE_PERCENT, 0, 200, "%");
-        addStackParam(content, "屏幕左侧静止内缩比例", "负数会让屏幕左侧卡片继续缩进屏幕外。",
+        addStackParam(content, "左侧卡片静止内缩比例", "负数会让左侧卡片继续缩进屏幕外。",
                 SettingsStore.KEY_LAUNCHER_STACK_LEFT_REST_INSET_PERCENT, -100, 60, "%");
         addStackParam(content, "最小缩放", "边缘卡片的最小缩放比例。",
                 SettingsStore.KEY_LAUNCHER_STACK_MIN_SCALE_PERCENT, 60, 110, "%");
-        content = addSection(root, "缩放曲线", "拖动两个控制点，直接调整卡片从最小到最大缩放的变化走势。");
+        content = addSection(root, "卡片缩放曲线", "拖动两个控制点，调整卡片从最小到最大时的缩放变化。");
         content.addView(
                 new LauncherStackScaleCurveView(activity),
                 activity.matchWrapWithTop(8));
         addStackParam(content, "最大堆叠层数", "参与深度计算的最大层数。",
                 SettingsStore.KEY_LAUNCHER_STACK_MAX_LAYERS, 1, 10, "");
 
-        content = addSection(root, "入场与回弹", "控制从应用进入后台、从桌面进入后台和松手回弹的过渡。");
+        content = addSection(root, "进入与回弹动画", "调整从应用或桌面进入最近任务，以及松手后的回弹动画。");
         activity.addSwitchRow(content, "当前应用卡片居中",
-                "开启后从应用进入堆叠后台时，始终让当前应用卡片居中；关闭时保持下一张卡片居中。",
+                "开启后从应用进入最近任务时，让当前应用卡片保持居中；关闭后保持下一张卡片居中。",
                 SettingsStore.KEY_LAUNCHER_STACK_CURRENT_APP_CENTERED,
                 SettingsStore.DEFAULT_LAUNCHER_STACK_CURRENT_APP_CENTERED);
         activity.addDivider(content);
-        addStackParam(content, "入场抬升比例", "后台入场时卡片向上抬升的幅度。",
+        addStackParam(content, "入场抬升幅度", "最近任务入场时卡片向上抬升的幅度。",
                 SettingsStore.KEY_LAUNCHER_STACK_ENTRY_LIFT_PERCENT, 0, 50, "%");
-        addStackParam(content, "入场初始展开比例", "入场起始阶段卡片的展开程度。",
+        addStackParam(content, "入场初始展开程度", "入场起始阶段卡片的展开程度。",
                 SettingsStore.KEY_LAUNCHER_STACK_ENTRY_INITIAL_SPREAD_PERCENT, 0, 250, "%");
-        addStackParam(content, "松手初始展开比例", "手势松开后回弹动画的起始展开程度。",
+        addStackParam(content, "回弹初始展开程度", "手势松开后回弹动画的起始展开程度。",
                 SettingsStore.KEY_LAUNCHER_STACK_RELEASE_INITIAL_SPREAD_PERCENT, 0, 200, "%");
         addStackParam(content, "桌面入口显示数量", "从桌面进入后台时，轻量入场阶段参与显示的卡片数量。",
                 SettingsStore.KEY_LAUNCHER_STACK_DESKTOP_ENTRY_VISIBLE_COUNT, 1, 10, "");
@@ -862,21 +869,21 @@ public final class SettingsCardFactory {
         addStackParam(content, "手势松手回弹时长", "上滑进入后台后，堆叠回弹动画时长。",
                 SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_DURATION_MS, 60, 1500, "ms");
 
-        content = addSection(root, "滑动展开", "屏幕左侧是主卡片左边退走的卡片，屏幕右侧是主卡片右边露出的卡片。");
-        addStackParam(content, "常驻显示半径", "左右滑动稳定后，锚点两侧参与显示的卡片范围。",
+        content = addSection(root, "滑动展开范围", "左侧表示主卡片左边退走的卡片，右侧表示主卡片右边露出的卡片。");
+        addStackParam(content, "常驻显示范围", "左右滑动稳定后，锚点两侧参与显示的卡片范围。",
                 SettingsStore.KEY_LAUNCHER_STACK_STABLE_VISIBLE_RADIUS, 1, 8, "");
-        addStackParam(content, "入场轻量半径", "进入后台轻量阶段，锚点两侧预先参与显示的卡片范围。",
+        addStackParam(content, "入场显示范围", "进入最近任务轻量阶段，锚点两侧预先参与显示的卡片范围。",
                 SettingsStore.KEY_LAUNCHER_STACK_ENTRY_LIGHT_RADIUS, 1, 6, "");
-        addStackParam(content, "松手核心半径", "手势松开回弹时，保持完整视觉计算的卡片范围。",
+        addStackParam(content, "回弹显示范围", "手势松开回弹时，保持完整视觉计算的卡片范围。",
                 SettingsStore.KEY_LAUNCHER_STACK_GESTURE_RELEASE_CORE_RADIUS, 1, 8, "");
-        addStackParam(content, "AppFlow 轻量半径", "应用进入后台过程中，保留动态 AppFlow 的卡片范围。",
+        addStackParam(content, "AppFlow 入场显示范围", "应用进入最近任务过程中，保留动态 AppFlow 的卡片范围。",
                 SettingsStore.KEY_LAUNCHER_STACK_APP_FLOW_LIGHT_RADIUS, 1, 8, "");
-        addStackParam(content, "屏幕右侧基础加速", "屏幕右侧卡片展开的基础加速量。",
+        addStackParam(content, "右侧卡片基础展开速度", "右侧卡片展开的基础加速量。",
                 SettingsStore.KEY_LAUNCHER_STACK_RIGHT_BASE_SPEEDUP_PERCENT, 0, 120, "%");
-        addStackParam(content, "屏幕右侧深度加速", "越靠深层的屏幕右侧卡片展开越快。",
+        addStackParam(content, "右侧卡片深层展开速度", "越靠深层的右侧卡片展开越快。",
                 SettingsStore.KEY_LAUNCHER_STACK_RIGHT_SPEEDUP_PERCENT, 0, 200, "%");
 
-        content = addSection(root, "左右滑动手感", "控制手指拖动、翻页判定和松手吸附。默认值保持 Flyme 原有手感。");
+        content = addSection(root, "左右滑动手感", "调整手指拖动、翻页判断和松手吸附。默认值保持 Flyme 原有手感。");
         addStackParam(content, "拖动阻力", "数值越大，卡片跟随手指移动得越慢。",
                 SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_DRAG_RESISTANCE_PERCENT, -100, 95, "%");
         addStackParam(content, "翻页距离阈值", "数值越大，需要拖动更远才会切换任务。",
@@ -886,7 +893,7 @@ public final class SettingsCardFactory {
         addStackParam(content, "松手吸附时长", "数值越大，卡片吸附到目标位置越慢。",
                 SettingsStore.KEY_LAUNCHER_STACK_HORIZONTAL_SNAP_DURATION_MS, 50, 2500, "ms");
 
-        content = addSection(root, "退出与启动", "控制回桌面和点击任务启动时的动画距离。");
+        content = addSection(root, "退出与启动动画", "调整返回桌面和点击任务启动应用时的动画距离。");
         addStackParam(content, "回桌面缩放量", "点空白回桌面时，卡片额外缩小的比例。",
                 SettingsStore.KEY_LAUNCHER_STACK_BLANK_EXIT_SCALE_DELTA_PERCENT, 0, 50, "%");
         addStackParam(content, "回桌面额外位移", "点空白回桌面时，卡片额外滑出的距离。",
@@ -894,7 +901,7 @@ public final class SettingsCardFactory {
         addStackParam(content, "启动旁侧退出距离", "点击任务启动时，旁边卡片额外移开的距离。",
                 SettingsStore.KEY_LAUNCHER_STACK_TASK_LAUNCH_EXTRA_WIDTH_PERCENT, 0, 200, "%");
 
-        content = addSection(root, "删除手势", "控制上滑删除任务的判定和动画。");
+        content = addSection(root, "删除手势", "调整上滑删除任务的触发判断和动画。");
         addStackParam(content, "删除成功动画", "任务删除成功时滑出动画时长。",
                 SettingsStore.KEY_LAUNCHER_STACK_DISMISS_SUCCESS_ANIM_MS, 30, 1000, "ms");
         addStackParam(content, "删除取消动画", "删除取消时回弹动画时长。",
@@ -908,41 +915,41 @@ public final class SettingsCardFactory {
         addStackParam(content, "快速上滑删除阈值", "数值越低，快速上滑越容易触发删除。",
                 SettingsStore.KEY_LAUNCHER_STACK_DISMISS_MIN_FLING_VELOCITY, 100, 6000, "");
 
-        content = addSection(root, "下拉菜单", "控制任务卡片下拉打开系统菜单的触发距离。");
+        content = addSection(root, "下拉菜单", "调整下拉任务卡片打开系统菜单所需的距离。");
         addStackParam(content, "菜单触发距离", "数值越大，需要下拉更远才会弹出任务菜单。",
                 SettingsStore.KEY_LAUNCHER_STACK_MENU_PULL_THRESHOLD_DP, 10, 400, "dp");
 
-        content = addSection(root, "视觉效果", "控制边缘卡片的 blur 和隐藏阈值。");
+        content = addSection(root, "卡片视觉效果", "调整边缘卡片的模糊效果和隐藏阈值。");
         addStackParam(content, "阴影强度", "数值越大，卡片周围的系统阴影越明显。",
                 SettingsStore.KEY_LAUNCHER_STACK_SHADOW_ELEVATION_DP, 0, 16, "dp");
-        addStackParam(content, "blur 最大强度", "边缘卡片截图和图标的最大模糊强度。",
+        addStackParam(content, "最大模糊强度", "边缘卡片截图和图标的最大模糊强度。",
                 SettingsStore.KEY_LAUNCHER_STACK_CONTENT_MAX_BLUR_DP, 0, 80, "dp");
-        addStackParam(content, "blur 开始透明度", "卡片透明度低于此值后开始增加 blur。",
+        addStackParam(content, "开始模糊的透明度", "卡片透明度低于此值后开始增加模糊效果。",
                 SettingsStore.KEY_LAUNCHER_STACK_CONTENT_BLUR_START_ALPHA_PERCENT, 0, 100, "%");
-        addStackParam(content, "屏幕左侧淡出距离", "数值越大，屏幕左侧卡片会在更长距离内逐渐淡出。",
+        addStackParam(content, "左侧卡片淡出距离", "数值越大，左侧卡片会在更长距离内逐渐淡出。",
                 SettingsStore.KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT, 1, 150, "%");
         addStackParam(content, "标题提前淡出距离", "数值越大，任务标题越早开始渐变，并在卡片开始淡出前消失。",
                 SettingsStore.KEY_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT, 100, 300, "%");
-        addStackParam(content, "屏幕左侧隐藏阈值", "屏幕左侧卡片透明度低于此值后不再参与显示。",
+        addStackParam(content, "左侧卡片隐藏阈值", "左侧卡片透明度低于此值后不再参与显示。",
                 SettingsStore.KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT, 0, 100, "%");
 
-        content = addSection(root, "性能", "控制后台滑动时请求的帧率和释放延迟。");
-        addStackParam(content, "滑动请求帧率", "后台滑动时向系统请求的刷新率。",
+        content = addSection(root, "动画性能", "调整滑动时的刷新率和资源释放延迟。");
+        addStackParam(content, "滑动刷新率", "最近任务滑动时向系统请求的刷新率。",
                 SettingsStore.KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE, 30, 240, "Hz");
         addStackParam(content, "帧率释放延迟", "停止滑动后恢复系统默认帧率的延迟。",
                 SettingsStore.KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS, 0, 30000, "ms");
 
-        content = addSection(root, "参数管理", "");
-        activity.addActionButtonRow(content, "导出参数",
-                "复制当前堆叠后台参数 JSON。",
+        content = addSection(root, "参数备份与恢复", "");
+        activity.addActionButtonRow(content, "导出最近任务参数",
+                "复制当前最近任务布局参数 JSON。",
                 "导出", activity::exportLauncherStackParamsToClipboard);
         activity.addDivider(content);
-        activity.addActionButtonRow(content, "导入参数",
-                "粘贴堆叠后台参数 JSON 并写入当前设置。",
+        activity.addActionButtonRow(content, "导入最近任务参数",
+                "粘贴最近任务布局参数 JSON 并写入当前设置。",
                 "导入", activity::showImportLauncherStackParamsDialog);
         activity.addDivider(content);
-        activity.addActionButtonRow(content, "全部恢复默认",
-                "只恢复本页堆叠后台参数，不影响功能开关。",
+        activity.addActionButtonRow(content, "恢复全部默认参数",
+                "只恢复本页最近任务参数，不影响功能开关。",
                 "恢复", activity::resetLauncherStackParams);
         return root;
     }
@@ -991,8 +998,8 @@ public final class SettingsCardFactory {
                 "检查当前系统 com.meizu.pps 里目标类和方法是否仍存在。",
                 "检测", () -> activity.detectOneMindHookPoints(status));
         return activity.buildSectionCard(
-                "OneMind 性能调节",
-                "仅处理 PPS 性能下发入口，不处理热控。",
+                "OneMind 性能设置",
+                "只控制 PPS 的性能下发，不调整温控。",
                 content);
     }
 
@@ -1004,8 +1011,8 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED,
                 SettingsStore.DEFAULT_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED);
         return activity.buildSectionCard(
-                "手机管家优化",
-                "电话短信拦截和流量统计不受影响。",
+                "手机管家后台优化",
+                "不影响电话短信拦截和流量统计。",
                 content);
     }
 
@@ -1014,7 +1021,7 @@ public final class SettingsCardFactory {
 
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout content = addSection(root, "时钟与通知图区", "改的是状态栏 clock View 的右侧 padding，会直接影响时间和右侧通知图标区之间的间距。");
+        LinearLayout content = addSection(root, "时钟与通知区域", "调整状态栏时钟右侧的间距，会影响时间和通知图标之间的位置。");
         activity.addPositionOffsetSliderRow(content, "时钟右边距",
                 "基于系统默认间距做增减。系统原本的右侧边距为 2dp。正数增大间距，负数减小间距。",
                 SettingsStore.KEY_CLOCK_RIGHT_PADDING_OFFSET_DP,
@@ -1026,7 +1033,7 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_BATTERY_ICON_Y_OFFSET_DP,
                 SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10);
         activity.addDivider(content);
-        activity.addPositionOffsetSliderRow(content, "电池内数字数显",
+        activity.addPositionOffsetSliderRow(content, "电池内电量数字",
                 "只改电池内部数字的基线高度。默认 0dp。",
                 SettingsStore.KEY_BATTERY_TEXT_Y_OFFSET_DP,
                 SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP * 10);
@@ -1036,7 +1043,7 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_BATTERY_BOLT_Y_OFFSET_DP,
                 SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10);
 
-        content = addSection(root, "移动网络", "这些项只影响模块自绘的移动信号和 5G/5GA 标识。");
+        content = addSection(root, "移动网络", "这些项只影响模块绘制的移动网络图标和 5G/5GA 标签。");
         activity.addPositionOffsetSliderRow(content, "单层信号图标",
                 "单卡场景下信号柱的 Y 轴位置。默认 0dp。",
                 SettingsStore.KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
@@ -1058,19 +1065,19 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_WIFI_Y_OFFSET_DP,
                 SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP * 10);
 
-        content = addSection(root, "输入法控制栏", "这里单独保留输入法控制栏整体抬高的细调项。");
+        content = addSection(root, "输入法控制栏", "这里单独调整输入法控制栏的位置。");
         activity.addPositionOffsetSliderRow(content, "输入法控制栏抬高",
                 "正数向上、负数向下；滑块按 1dp 粗调，点右侧数值可输入 0.1dp。",
                 SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10);
 
         content = addSection(root, "应用与重置", "");
-        activity.addActionButtonRow(content, "应用当前微调",
-                "把这个页面里的待应用微调值一次性写入配置，并通知当前状态栏刷新。",
+        activity.addActionButtonRow(content, "应用当前调整",
+                "将本页待应用的调整一次性保存，并刷新当前状态栏。",
                 "应用", activity::applyAllPositionOffsets);
         activity.addDivider(content);
-        activity.addActionButtonRow(content, "全部归零",
-                "先把这个页面里的待应用微调值都改成 0.0dp；改完后再点上面的应用写入状态栏。",
+        activity.addActionButtonRow(content, "所有位置恢复 0",
+                "将本页位置调整设为 0；然后点击“应用当前调整”使其生效。",
                 "归零", activity::resetAllPositionOffsets);
         return root;
     }
@@ -1092,7 +1099,7 @@ public final class SettingsCardFactory {
                 SettingsStore.CAMERA_CIRCLE_BATTERY_OFFSET_MIN_TENTH_DP,
                 SettingsStore.CAMERA_CIRCLE_BATTERY_OFFSET_MAX_TENTH_DP);
         return activity.buildSectionCard(
-                "位置微调",
+                "环形电池位置",
                 "偏移量会叠加到系统识别出的摄像头挖孔中心。",
                 content);
     }
@@ -1100,22 +1107,22 @@ public final class SettingsCardFactory {
     public View createTelephonyDebugSettingsCard() {
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout content = addSection(root, "调试开关",
-                "打开后，远端偏好会立即同步到 SystemUI。你可以先设好两张测试卡的状态，再切换插卡数量和默认数据卡。");
-        activity.addSwitchRow(content, "启用 Telephony 伪造",
-                "关闭后恢复真实 Telephony 结果，但下面保存的调试预设会保留。",
+        LinearLayout content = addSection(root, "模拟开关",
+                "开启后，模拟状态会立即同步到 SystemUI。请先设置测试卡，再选择 SIM 卡数量和默认上网卡。");
+        activity.addSwitchRow(content, "启用移动网络状态模拟",
+                "关闭后恢复真实移动网络状态，已保存的模拟参数会保留。",
                 SettingsStore.KEY_TELEPHONY_DEBUG_ENABLED,
                 SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED);
         activity.addDivider(content);
-        activity.addChoiceRow(content, "模拟插卡数量",
-                "用于测试 0 卡、单卡和双卡时你的自绘信号图标是否按预期切换布局和可见性。",
+        activity.addChoiceRow(content, "SIM 卡数量",
+                "用于测试无卡、单卡和双卡时移动网络图标的布局和显示。",
                 SettingsStore.KEY_TELEPHONY_DEBUG_SIM_COUNT,
                 SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT,
                 new int[]{0, 1, 2},
                 new String[]{"0 张", "1 张", "2 张"});
         activity.addDivider(content);
-        activity.addChoiceRow(content, "默认上网卡",
-                "双卡场景下，移动网络类型和 5G 标识会跟随这里选择的那张卡。",
+        activity.addChoiceRow(content, "默认移动数据卡",
+                "双卡时，网络类型和 5G 标签跟随这里选择的 SIM 卡。",
                 SettingsStore.KEY_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
                 SettingsStore.DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT,
                 new int[]{
@@ -1142,8 +1149,8 @@ public final class SettingsCardFactory {
                 SettingsStore.DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL);
 
         content = addSection(root, "恢复设置", "");
-        activity.addActionButtonRow(content, "恢复真实系统",
-                "只关闭 Telephony 伪造，不清空你刚才配好的两张测试卡参数。",
+        activity.addActionButtonRow(content, "恢复真实移动网络状态",
+                "关闭状态模拟，但保留两张测试卡的模拟参数。",
                 "恢复", activity::disableTelephonyDebug);
         return root;
     }
@@ -1255,8 +1262,8 @@ public final class SettingsCardFactory {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
 
-        activity.addApplySliderRow(content, "全部状态栏图标大小",
-                "默认 100%。统一调右上角系统状态图标，还有代码绘制的电池和信号图标。",
+        activity.addApplySliderRow(content, "状态栏图标大小",
+                "默认值为 100%。调整右上角状态图标，以及模块接管后的电池和移动网络图标。通知图标、隐私权限图标和隐私圆点不在此处调整。",
                 SettingsStore.KEY_STATUS_BAR_ICON_SCALE_PERCENT,
                 SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT, 50, 200, "%");
         batterySizingOptions = new LinearLayout(activity);
@@ -1268,8 +1275,8 @@ public final class SettingsCardFactory {
                 SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT, 50, 200, "%");
         content.addView(batterySizingOptions, PageViewUtils.matchWrap());
         updateBatteryOptionsVisibility();
-        return activity.buildSectionCard("图标缩放",
-                "统一控制右上角系统状态图标，以及代码绘制开启后的电池图标和信号图标。通知图标、隐私权限标识和隐私圆点不在这里面。",
+        return activity.buildSectionCard("图标大小",
+                "调整右上角状态图标，以及模块接管后的电池和移动网络图标。通知图标、隐私权限图标和隐私圆点不在此处调整。",
                 content);
     }
 
@@ -1277,10 +1284,10 @@ public final class SettingsCardFactory {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
 
-        activity.addProfileSectionHeader(page, "长触动作",
-                "只接管 mBack 长触分支，保留单击和系统其他来源。");
-        activity.addSwitchRow(page, "接管长触 mBack",
-                "拦截 Flyme SystemUI 里原本唤醒 AICY 的 mBack/Home 长触入口，改为执行这里配置的长触动作。",
+        activity.addProfileSectionHeader(page, "长按动作",
+                "只接管 MBack 长按操作，保留单击和其他系统操作。 ");
+        activity.addSwitchRow(page, "接管 MBack 长按",
+                "接管 Flyme SystemUI 中原本唤醒 Aicy 的 MBack/Home 长按入口，改为执行下方设置的动作。",
                 SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
                 SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED);
         activity.addDivider(page);
@@ -1311,7 +1318,7 @@ public final class SettingsCardFactory {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
 
-        activity.addProfileSectionHeader(page, "小窗选择器",
+        activity.addProfileSectionHeader(page, "小窗选择面板",
                 "这里的设置只影响 Flyme 原生小窗面板，不影响多应用工作台。");
         activity.addSwitchRow(page, "预热原生小窗面板",
                 "提前准备 Flyme 原生小窗选择面板，降低首次触发卡顿。",
@@ -1476,15 +1483,15 @@ public final class SettingsCardFactory {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
 
-        activity.addProfileSectionHeader(page, "沉浸 / Inset",
-                "这里主要调透明背景和 mBack 背景抬高。透明只改背景层；这里的 inset 指把 mBack 背景往上抬，同时会影响应用对底部区域的判断。");
-        activity.addSwitchRow(page, "mBack 导航栏透明",
-                "把 mBack 所在导航栏背景压成透明，只动导航栏背景层，不改 mBack 本体绘制。",
+        activity.addProfileSectionHeader(page, "导航栏背景与抬高",
+                "调整导航栏透明背景、白条和 MBack 背景位置。“抬高”也会影响应用对底部区域的判断。");
+        activity.addSwitchRow(page, "导航栏背景透明",
+                "将 MBack 所在导航栏背景设为透明，只改变背景，不改变 MBack 图标本身。",
                 SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,
                 SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT);
         activity.addDivider(page);
-        activity.addSwitchRow(page, "隐藏小白条",
-                "只隐藏 mBack 自己画出来的那条胶囊，不直接改长触逻辑和 inset。适合配合透明背景和背景抬高一起调。",
+        activity.addSwitchRow(page, "隐藏导航栏白条",
+                "只隐藏 MBack 绘制的白色胶囊，不改变长按逻辑和背景位置。",
                 SettingsStore.KEY_MBACK_HIDE_PILL,
                 SettingsStore.DEFAULT_MBACK_HIDE_PILL);
         activity.addDivider(page);
@@ -1503,8 +1510,8 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_MBACK_PILL_INTERACTION_SYNC_ENABLED,
                 SettingsStore.DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED);
         activity.addDivider(page);
-        activity.addApplyInsetSliderRow(page, "mBack inset 大小",
-                "这里的 inset 指 mBack 背景抬高。-1 表示保持系统默认，0 表示不额外抬高，其他数值按 dp 处理；同时也会影响应用感知到的底部区域。",
+        activity.addApplyInsetSliderRow(page, "MBack 背景抬高",
+                "调整 MBack 背景向上抬高的距离。-1 表示系统默认，0 表示不额外抬高；此设置也会影响应用感知到的底部区域。",
                 SettingsStore.KEY_MBACK_INSET_SIZE,
                 SettingsStore.DEFAULT_MBACK_INSET_SIZE, -1, 80);
         return page;
@@ -1515,9 +1522,9 @@ public final class SettingsCardFactory {
         page.setOrientation(LinearLayout.VERTICAL);
 
         activity.addProfileSectionHeader(page, "导航栏高度",
-                "这个页直接压 mBack 导航栏窗口本身的高度，比单纯透明更能减少底部透明可触区域对应用按钮的遮挡。");
-        activity.addApplyInsetSliderRow(page, "mBack 导航栏高度",
-                "控制 mBack 导航栏窗口本身的高度。-1 表示保持系统默认，数值越小，底部透明可触区域越矮。这个项更直接影响应用底部按钮是否容易被挡住。",
+                "调整 MBack 导航栏窗口高度，减少底部透明可触区域对应用按钮的遮挡。");
+        activity.addApplyInsetSliderRow(page, "MBack 导航栏高度",
+                "控制 MBack 导航栏窗口高度。-1 表示系统默认，数值越小，底部透明可触区域越矮。",
                 SettingsStore.KEY_MBACK_NAV_BAR_HEIGHT,
                 SettingsStore.DEFAULT_MBACK_NAV_BAR_HEIGHT, -1, 80);
         return page;
@@ -1527,30 +1534,30 @@ public final class SettingsCardFactory {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
 
-        activity.addProfileSectionHeader(page, "阈值显隐",
-                "显示阈值和隐藏阈值分开，连续采样确认后再切换，继续用 GONE 但尽量避免频繁抖动。");
-        activity.addSwitchRow(page, "启用阈值显隐",
-                "高于显示阈值时显示，低于隐藏阈值时隐藏。只改显示，不改采样。",
+        activity.addProfileSectionHeader(page, "自动显示与隐藏",
+                "分别设置显示和隐藏阈值，连续满足条件后再切换，减少网速文字反复闪烁。");
+        activity.addSwitchRow(page, "根据网速自动显示",
+                "网速达到显示阈值时显示，低于隐藏阈值时隐藏。只影响显示，不改变采样。",
                 SettingsStore.KEY_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED,
                 SettingsStore.DEFAULT_CONNECTION_RATE_AUTO_VISIBILITY_ENABLED);
         activity.addDivider(page);
         activity.addSliderRow(page, "显示阈值",
-                "连续达到这个速度后才显示，单位 KB/s",
+                "网速达到此值后显示，单位 KB/s。",
                 SettingsStore.KEY_CONNECTION_RATE_SHOW_THRESHOLD_KB,
                 SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_THRESHOLD_KB, 0, 1024, "KB/s");
         activity.addDivider(page);
         activity.addSliderRow(page, "隐藏阈值",
-                "低于这个速度后才隐藏，单位 KB/s",
+                "网速低于此值后隐藏，单位 KB/s。",
                 SettingsStore.KEY_CONNECTION_RATE_HIDE_THRESHOLD_KB,
                 SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_THRESHOLD_KB, 0, 1024, "KB/s");
         activity.addDivider(page);
         activity.addSliderRow(page, "显示确认次数",
-                "连续多少次达到显示阈值才真正显示",
+                "连续达到显示阈值多少次后显示。",
                 SettingsStore.KEY_CONNECTION_RATE_SHOW_SAMPLE_COUNT,
                 SettingsStore.DEFAULT_CONNECTION_RATE_SHOW_SAMPLE_COUNT, 1, 5, "次");
         activity.addDivider(page);
         activity.addSliderRow(page, "隐藏确认次数",
-                "连续多少次低于隐藏阈值才真正隐藏",
+                "连续低于隐藏阈值多少次后隐藏。",
                 SettingsStore.KEY_CONNECTION_RATE_HIDE_SAMPLE_COUNT,
                 SettingsStore.DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT, 1, 5, "次");
         return page;
@@ -1561,22 +1568,22 @@ public final class SettingsCardFactory {
         page.setOrientation(LinearLayout.VERTICAL);
 
         activity.addProfileSectionHeader(page, "字体粗细与大小",
-                "粗细支持原生电量数字（含仅数字模式）；不影响电池图标内部数字、信号标识和活动胶囊文字。");
-        activity.addSwitchRow(page, "自定义字体粗细",
-                "同步调整时间、日期、网速、锁屏运营商和原生电量数字。关闭后时间恢复常规粗细，其余恢复系统字体。",
+                "粗细设置也会影响系统电量数字，但不影响电池图标内部数字、网络标签和活动胶囊文字。");
+        activity.addSwitchRow(page, "自定义文字粗细",
+                "同步调整时间、日期、网速、锁屏运营商和系统电量数字。关闭后时间恢复常规粗细，其余恢复系统字体。",
                 SettingsStore.KEY_CLOCK_BOLD_ENABLED, SettingsStore.DEFAULT_CLOCK_BOLD_ENABLED);
         activity.addDivider(page);
         activity.addApplySliderRow(page, "字体粗细",
                 "数值越大越粗，范围 100–900；开启“自定义字体粗细”后生效。",
                 SettingsStore.KEY_CLOCK_FONT_WEIGHT, SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT, 100, 900, "");
         activity.addDivider(page);
-        activity.addApplySliderRow(page, "字体大小",
-                "缩放时间、日期、网速和锁屏运营商文字，100% 为系统默认大小；不影响原生电量数字。",
+        activity.addApplySliderRow(page, "文字大小",
+                "缩放时间、日期、网速和锁屏运营商文字，100% 为系统默认大小；不影响系统电量数字。",
                 SettingsStore.KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT,
                 SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT, 50, 200, "%");
         activity.addDivider(page);
-        activity.addSwitchRow(page, "锁屏 Canvas 时钟",
-                "用代码绘制锁屏大时钟，第一版只替换大数字区域。",
+        activity.addSwitchRow(page, "锁屏大时钟",
+                "使用模块绘制锁屏大时钟，目前只替换大数字区域。",
                 SettingsStore.KEY_LOCKSCREEN_CANVAS_CLOCK_ENABLED,
                 SettingsStore.DEFAULT_LOCKSCREEN_CANVAS_CLOCK_ENABLED);
         return page;
@@ -1587,14 +1594,14 @@ public final class SettingsCardFactory {
         page.setOrientation(LinearLayout.VERTICAL);
 
         activity.addProfileSectionHeader(page, "主状态栏时钟",
-                "只作用于左上角主状态栏时钟，不影响锁屏时钟和其他同类时间控件。");
-        activity.addSwitchRow(page, "点击时钟显示详细时间",
-                "点击左上角时钟后先显示时间和日期；窗口内下拉再展开内存、电池和最近任务，上拉直接收回。",
+                "只影响左上角主状态栏时钟，不影响锁屏时钟和其他时间显示。");
+        activity.addSwitchRow(page, "点击时钟显示详细信息",
+                "点击左上角时钟显示时间和日期；在窗口内下拉可展开更多信息，上滑可收回。",
                 SettingsStore.KEY_CLOCK_DETAIL_POPUP_ENABLED,
                 SettingsStore.DEFAULT_CLOCK_DETAIL_POPUP_ENABLED);
         activity.addDivider(page);
-        activity.addSwitchRow(page, "显示农历日期",
-                "控制详细时间弹窗中的农历日期显示",
+        activity.addSwitchRow(page, "显示农历",
+                "控制详细信息窗口是否显示农历日期。",
                 SettingsStore.KEY_CLOCK_DETAIL_LUNAR_DATE_ENABLED,
                 SettingsStore.DEFAULT_CLOCK_DETAIL_LUNAR_DATE_ENABLED);
         activity.addDivider(page);
@@ -1605,15 +1612,15 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED,
                 SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED);
         actionGridEditorSection.setVisibility(actionGridEnabled ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(page, "显示固定快捷启动图标",
-                "在详细区里新增最多 5 个图标快捷入口；候选项来自 Aicy纵览里可扫描到的快捷启动。",
+        activity.addSwitchRow(page, "显示快捷入口图标",
+                "在详细信息区域显示最多 5 个快捷入口；候选项来自 Aicy 纵览中可扫描到的入口。",
                 SettingsStore.KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED,
                 SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED,
                 (buttonView, isChecked) -> actionGridEditorSection.setVisibility(
                         isChecked ? View.VISIBLE : View.GONE));
         activity.addDivider(actionGridEditorSection);
-        activity.addActionButtonRow(actionGridEditorSection, "编辑图标入口顺序",
-                "优先使用已缓存候选；可在编辑器里扫描/刷新 Aicy纵览中的快捷启动列表。最多选择 5 个，长按已选图标拖动排序，点应用后保存。",
+        activity.addActionButtonRow(actionGridEditorSection, "编辑快捷入口",
+                "优先使用已缓存候选；可扫描/刷新 Aicy 纵览中的快捷入口。最多选择 5 个，长按已添加图标可排序，点击应用后保存。",
                 "编辑", activity::showClockDetailActionGridEditor);
         page.addView(actionGridEditorSection, activity.matchWrap());
         return page;
@@ -1643,7 +1650,7 @@ public final class SettingsCardFactory {
             int defaultSignalValue) {
         LinearLayout content = addSection(root, titleText, subtitleText);
         activity.addChoiceRow(content, "网络类型",
-                "改的是 Telephony 读到的网络制式。4G 会隐藏 5G 标识，5G / 5G CA / 5GA / 5G+ 会分别走不同的 5G 分支。",
+                "设置移动网络类型。4G 会隐藏 5G 标签；5G、5G CA、5GA 和 5G+ 会显示对应状态。",
                 networkKey,
                 defaultNetworkValue,
                 new int[]{
@@ -1659,7 +1666,7 @@ public final class SettingsCardFactory {
                 new String[]{"无服务", "2G", "3G", "4G", "5G", "5G CA", "5GA", "5G+"});
         activity.addDivider(content);
         activity.addChoiceRow(content, "信号强度",
-                "这里填的是标准 0 到 4 级。代码绘制信号图标会直接跟着这个等级变化。",
+                "设置 0 到 4 格的信号强度，移动网络图标会随之变化。",
                 signalKey,
                 defaultSignalValue,
                 new int[]{0, 1, 2, 3, 4},

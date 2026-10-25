@@ -429,7 +429,7 @@ public final class ImeToolbarEditor {
     private void syncApplyState() {
         boolean changed = hasPendingChanges();
         if (applyStateView != null) {
-            applyStateView.setText(changed ? "有未应用的改动" : "当前草稿已应用");
+        applyStateView.setText(changed ? "有未应用的修改" : "当前修改已应用");
             applyStateView.setTextColor(changed ? activity.primaryColor() : activity.subtextColor());
         }
         if (applyButton != null) {

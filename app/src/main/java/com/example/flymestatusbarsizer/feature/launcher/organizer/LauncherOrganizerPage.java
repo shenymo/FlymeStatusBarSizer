@@ -268,7 +268,7 @@ public final class LauncherOrganizerPage {
             Thread.sleep(250);
         }
         activity.getContentResolver().call(LauncherOrganizerProvider.URI, "cancel", id, null);
-        throw new IllegalStateException("桌面响应超时。请确认桌面作用域已启用，重启桌面后再读取；已开始的操作可返回桌面查看结果。");
+        throw new IllegalStateException("桌面响应超时。请确认桌面范围已启用，重启桌面后再读取；已开始的操作可返回桌面查看结果。");
     }
 
     private JSONArray classify(JSONArray apps, String address, String model, String key, String systemPrompt, String instructions) throws Exception {

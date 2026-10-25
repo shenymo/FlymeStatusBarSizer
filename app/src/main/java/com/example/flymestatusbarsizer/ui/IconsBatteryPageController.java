@@ -30,8 +30,8 @@ public final class IconsBatteryPageController {
             }
             activity.addSwitchRow(content, "隐藏" + icon.title, icon.description, icon.key, false);
         }
-        root.addView(activity.buildSectionCard("隐藏状态栏图标",
-                "开启对应开关后隐藏图标并释放占位。应用于状态栏、锁屏和下拉面板的系统状态图标；关闭后跟随系统。时间、电池、网速、通知和权限提示保持各自设置。",
+        root.addView(activity.buildSectionCard("隐藏状态图标",
+                "开启后隐藏对应图标并释放占位，作用于状态栏、锁屏和下拉面板。时间、电池、网速、通知和权限提示仍由各自设置控制。",
                 content), PageViewUtils.matchWrapWithTop(activity, 8));
     }
 }

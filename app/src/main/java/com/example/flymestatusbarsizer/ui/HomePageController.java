@@ -37,18 +37,18 @@ public final class HomePageController {
         LinearLayout content = activity.addFeatureSearch(root);
         content.addView(buildRestartCard(activity), PageViewUtils.matchWrapWithTop(activity, 12));
 
-        LinearLayout personal = addGroup(activity, content, "个性化");
-        addEntry(activity, personal, "图标与电池", null,
+        LinearLayout personal = addGroup(activity, content, "功能设置");
+        addEntry(activity, personal, "状态栏图标与电池", null,
                 R.drawable.ic_settings_battery, MainActivity.Page.ICONS_BATTERY);
-        addEntry(activity, personal, "时间与网络", null,
+        addEntry(activity, personal, "时间与网速", null,
                 R.drawable.ic_settings_clock, MainActivity.Page.TIME_NETWORK);
         addEntry(activity, personal, "系统外观", null,
                 R.drawable.ic_settings_appearance, MainActivity.Page.SYSTEM_APPEARANCE);
-        addEntry(activity, personal, "系统交互", null,
+        addEntry(activity, personal, "手势与系统交互", null,
                 R.drawable.ic_settings_interaction, MainActivity.Page.SYSTEM_INTERACTION);
 
-        LinearLayout tools = addGroup(activity, content, "工具与支持");
-        addEntry(activity, tools, "高级与调试", null,
+        LinearLayout tools = addGroup(activity, content, "工具");
+        addEntry(activity, tools, "工具与调试", null,
                 R.drawable.ic_settings_tune, MainActivity.Page.ADVANCED_DEBUG);
         addEntry(activity, tools, "关于与支持", null,
                 R.drawable.ic_settings_info, MainActivity.Page.ABOUT);
@@ -58,7 +58,7 @@ public final class HomePageController {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         activity.bindRestartCardContent(content);
-        View card = activity.buildSectionCard("应用重启", null, content);
+        View card = activity.buildSectionCard("重启相关组件", null, content);
         card.setBackground(activity.roundRect(activity.primaryContainerColor(), 8));
         return card;
     }
@@ -67,13 +67,13 @@ public final class HomePageController {
             Set<String> enabledScope, boolean loading) {
         content.removeAllViews();
         if (loading) {
-            content.addView(text(activity, "正在读取已启用的作用域…", 14, activity.subtextColor()));
+            content.addView(text(activity, "正在读取已启用范围…", 14, activity.subtextColor()));
             return;
         }
         if (enabledScope == null) {
-            content.addView(text(activity, "无法读取已启用的作用域，请确认 LSPosed 和模块已启用。",
+            content.addView(text(activity, "无法读取已启用范围，请确认 LSPosed 和模块已启用。",
                     14, activity.subtextColor()));
-            activity.addActionButtonRow(content, "重新读取作用域",
+            activity.addActionButtonRow(content, "重新读取已启用范围",
                     "连接框架后重试；也可从 LSPosed 返回应用以自动刷新。",
                     "重试", activity::refreshRestartScope);
             return;
@@ -81,12 +81,12 @@ public final class HomePageController {
         int batchCount = activity.getBatchRestartTargets(enabledScope).size();
         boolean restarting = activity.isBatchRestartRunning();
         if (batchCount > 0) {
-            TextView button = activity.addActionButtonRow(content, "全部应用",
-                    "依次重启当前列表中的应用，最后重启系统桌面和 SystemUI。完成后汇总结果。",
+            TextView button = activity.addActionButtonRow(content, "重启全部相关应用",
+                    "按顺序重启当前列表中的相关应用，最后重启系统桌面和 SystemUI。完成后显示结果。",
                     restarting ? "重启中…" : "重启全部", () -> activity.restartAllScopeApps(enabledScope));
             button.setEnabled(!restarting);
             button.setAlpha(restarting ? 0.4f : 1f);
-            content.addView(text(activity, "共 " + batchCount + " 个应用，不含系统框架，不会重启手机。",
+            content.addView(text(activity, "共 " + batchCount + " 个应用，不包含系统框架，不会重启手机。",
                     12, activity.subtextColor()));
         }
         for (RestartTarget target : RestartTarget.values()) {
@@ -105,8 +105,8 @@ public final class HomePageController {
         }
         if (content.getChildCount() == 0) {
             String message = enabledScope.isEmpty()
-                    ? "尚未启用任何作用域，请在 LSPosed 中勾选后返回。"
-                    : "已启用的作用域中没有可重启的已安装应用。";
+                    ? "尚未启用任何范围，请在 LSPosed 中勾选目标应用后返回。"
+                    : "已启用范围中没有可重启的已安装应用。";
             content.addView(text(activity, message, 14, activity.subtextColor()));
         }
     }

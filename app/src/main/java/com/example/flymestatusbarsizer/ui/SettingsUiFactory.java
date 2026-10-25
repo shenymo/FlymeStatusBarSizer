@@ -139,6 +139,7 @@ public final class SettingsUiFactory {
         title.setTextSize(15);
         row.addView(title, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addHelpButton(row, titleText, subtitleText);
         TextView summary = new TextView(activity);
         summary.setTextColor(activity.primaryColor());
         summary.setTextSize(13);
@@ -176,7 +177,6 @@ public final class SettingsUiFactory {
         LinearLayout.LayoutParams arrowLp = new LinearLayout.LayoutParams(dp(20), dp(20));
         arrowLp.leftMargin = dp(4);
         row.addView(arrow, arrowLp);
-        addHelpButton(row, titleText, subtitleText);
         root.addView(row, matchWrap());
     }
 
@@ -197,6 +197,19 @@ public final class SettingsUiFactory {
 
     public void addHelpButton(LinearLayout row, String titleText, String message) {
         activity.addSearchItem(row, titleText, message);
+        if (message == null || message.trim().isEmpty()) {
+            return;
+        }
+        ImageView help = new ImageView(activity);
+        help.setImageResource(com.example.flymestatusbarsizer.R.drawable.ic_settings_info);
+        help.setColorFilter(activity.primaryColor());
+        help.setPadding(dp(6), dp(6), dp(6), dp(6));
+        help.setBackground(roundRect(Color.TRANSPARENT, 18));
+        help.setContentDescription("查看" + titleText + "说明");
+        activity.setTapClickListener(help, v -> activity.showHelpDialog(titleText, message));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(36), dp(36));
+        lp.leftMargin = dp(4);
+        row.addView(help, lp);
     }
 
     private View buildDividerView() {

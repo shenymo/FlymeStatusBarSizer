@@ -108,7 +108,7 @@ public final class AnipIconLibraryEditor {
         progress = statusText("正在读取图标库…", 24);
         root.addView(progress, activity.matchWrapWithTop(12));
 
-        emptyHint = statusText("没有匹配的应用。", 16);
+        emptyHint = statusText("没有找到匹配的应用。", 16);
         emptyHint.setVisibility(View.GONE);
         root.addView(emptyHint, activity.matchWrapWithTop(12));
 
@@ -260,7 +260,7 @@ public final class AnipIconLibraryEditor {
         }
         updateRunning = true;
         updateButton.setEnabled(false);
-        updateStatus.setText("正在检查更新…");
+        updateStatus.setText("正在检查图标库更新…");
         loader.execute(() -> {
             final AnipIconUpdater.CheckResult result = AnipIconUpdater.check(activity);
             if (!result.success) {
@@ -280,7 +280,7 @@ public final class AnipIconLibraryEditor {
                 });
                 return;
             }
-            main.post(() -> updateStatus.setText("正在下载 " + result.release.tag + "…"));
+            main.post(() -> updateStatus.setText("正在下载图标库 " + result.release.tag + "…"));
             final boolean ok = AnipIconUpdater.download(activity, result.release);
             main.post(() -> {
                 updateRunning = false;
@@ -446,7 +446,7 @@ public final class AnipIconLibraryEditor {
         }
         progress.setVisibility(View.GONE);
         emptyHint.setVisibility(View.VISIBLE);
-        summary.setText("图标库读取失败");
+        summary.setText("无法读取图标库");
         emptyHint.setText("无法读取内置的通知图标库，请重新安装模块后重试。");
     }
 
@@ -469,7 +469,7 @@ public final class AnipIconLibraryEditor {
         if (loaded) {
             emptyHint.setVisibility(filtered.isEmpty() ? View.VISIBLE : View.GONE);
             if (filtered.isEmpty()) {
-                emptyHint.setText("没有匹配的应用。");
+                emptyHint.setText("没有找到匹配的应用。");
             }
         }
     }

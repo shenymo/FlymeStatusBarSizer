@@ -633,7 +633,7 @@ public final class ShareTargetsEditor {
                         + "未单独设置的类型沿用默认，混合或未识别类型使用默认配置。"
                         + "各类型只列出支持该内容的入口，单文件和多文件共用配置。\n\n"
                         + "保存会一次应用所有类型的修改，重新打开分享面板生效。"
-                        + "首次使用需在 LSPosed 中勾选 com.android.intentresolver 作用域。"
+                        + "首次使用请在 LSPosed 中启用系统分享范围。"
                         + "Flyme 图库内分享还需勾选图库（com.meizu.media.gallery），并重启对应应用或手机。")
                 .setPositiveButton("知道了", null).show());
         showSheet(body);
