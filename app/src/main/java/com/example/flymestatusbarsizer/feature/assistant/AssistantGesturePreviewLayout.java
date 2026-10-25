@@ -5,7 +5,6 @@ import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
-import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
@@ -23,9 +22,9 @@ public final class AssistantGesturePreviewLayout extends LinearLayout {
     private final Runnable dismiss = this::hidePreview;
     private View overlayHost;
     private final SharedPreferences.OnSharedPreferenceChangeListener listener = (prefs, key) -> {
-        if (SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP.equals(key)) showPreview();
-        else if (SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED.equals(key)
-                || SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP.equals(key)) showVerticalPreview();
+        if (SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP.equals(key)
+                || SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED.equals(key)
+                || SettingsStore.KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP.equals(key)) showPreview();
     };
 
     public AssistantGesturePreviewLayout(Context context, SharedPreferences prefs, int accentColor) {
@@ -36,29 +35,24 @@ public final class AssistantGesturePreviewLayout extends LinearLayout {
     }
 
     public void showPreview() {
-        showPreview(false);
-    }
-
-    public void showVerticalPreview() {
-        showPreview(true);
-    }
-
-    private void showPreview(boolean vertical) {
         if (!isAttachedToWindow() || !isShown() || !hasWindowFocus()
                 || getWindowVisibility() != VISIBLE) return;
         hidePreview();
-        int distance = Math.max(40, Math.min(240, SettingsStore.readInt(prefs,
+        int distance = Math.max(SettingsStore.MIN_ASSISTANT_GESTURE_DISTANCE_DP,
+                Math.min(SettingsStore.MAX_ASSISTANT_GESTURE_DISTANCE_DP, SettingsStore.readInt(prefs,
                 SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP)));
+        boolean splitEnabled = SettingsStore.readBoolean(prefs,
+                SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED);
+        int longDistance = Math.max(SettingsStore.MIN_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
+                Math.min(SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP, SettingsStore.readInt(prefs,
+                        SettingsStore.KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
+                        SettingsStore.DEFAULT_ASSISTANT_GESTURE_LONG_DISTANCE_DP)));
         overlayHost = getRootView();
         marker.distanceDp = distance;
-        marker.vertical = vertical;
-        marker.verticalLimitEnabled = SettingsStore.readBoolean(prefs,
-                SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
-                SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED);
-        marker.verticalLimitDp = SettingsStore.normalizeAssistantGestureVerticalLimitDp(SettingsStore.readInt(prefs,
-                SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
-                SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP));
+        marker.distanceSplitEnabled = splitEnabled;
+        marker.longDistanceDp = longDistance;
         marker.setBounds(0, 0, overlayHost.getWidth(), overlayHost.getHeight());
         overlayHost.getOverlay().add(marker);
         postDelayed(dismiss, PREVIEW_DURATION_MS);
@@ -116,25 +110,24 @@ public final class AssistantGesturePreviewLayout extends LinearLayout {
 
     private final class DistanceMarker extends Drawable {
         private final Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint longLinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint outlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint originPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private int distanceDp;
-        private boolean vertical, verticalLimitEnabled;
-        private int verticalLimitDp;
+        private int longDistanceDp;
+        private boolean distanceSplitEnabled;
 
         DistanceMarker(int accentColor) {
             linePaint.setColor(accentColor);
             linePaint.setStrokeWidth(dp(2));
+            longLinePaint.setColor(0xffffb547);
+            longLinePaint.setStrokeWidth(dp(2));
             outlinePaint.setColor(Color.WHITE);
             outlinePaint.setStrokeWidth(dp(4));
             labelPaint.setColor(Color.WHITE);
             labelPaint.setTextSize(14f * getResources().getDisplayMetrics().scaledDensity);
             backgroundPaint.setColor(0xe6222222);
-            originPaint.setColor(accentColor);
-            originPaint.setStrokeWidth(dp(2));
-            originPaint.setPathEffect(new DashPathEffect(new float[]{dp(6), dp(6)}, 0));
         }
 
         @Override
@@ -147,64 +140,34 @@ public final class AssistantGesturePreviewLayout extends LinearLayout {
                 bottom -= insets.getSystemWindowInsetBottom();
             }
             float center = (top + bottom) / 2f;
-            if (vertical) {
-                drawVertical(canvas, top, bottom, center);
-                return;
-            }
-            drawSide(canvas, true, top, bottom, center - dp(36));
-            drawSide(canvas, false, top, bottom, center + dp(36));
+            drawSide(canvas, true, top, bottom, center - dp(36),
+                    center + dp(36));
+            drawSide(canvas, false, top, bottom, center + dp(36),
+                    center - dp(36));
         }
 
-        private void drawVertical(Canvas canvas, float top, float bottom, float center) {
-            float upper = center - dp(verticalLimitDp);
-            float lower = center + dp(verticalLimitDp);
-            float width = getBounds().width();
-            canvas.drawLine(0, center, width, center, originPaint);
-            for (float y : new float[]{upper, lower}) {
-                canvas.drawLine(0, y, width, y, outlinePaint);
-                canvas.drawLine(0, y, width, y, linePaint);
+        private void drawSide(Canvas canvas, boolean leftEdge, float top, float bottom,
+                float shortCenter, float longCenter) {
+            drawDistance(canvas, leftEdge, top, bottom, shortCenter, distanceDp,
+                    (leftEdge ? "左侧短距 " : "右侧短距 ") + distanceDp + "dp", linePaint);
+            if (distanceSplitEnabled) {
+                drawDistance(canvas, leftEdge, top, bottom, longCenter, longDistanceDp,
+                        (leftEdge ? "左侧长距 " : "右侧长距 ") + longDistanceDp + "dp", longLinePaint);
             }
-            drawVerticalLabel(canvas, "上移 " + verticalLimitDp + "dp 边界"
-                            + (upper < top ? "（屏幕外）" : ""),
-                    upper - dp(12) - labelPaint.descent(), top, bottom);
-            drawVerticalLabel(canvas, "下移 " + verticalLimitDp + "dp 边界"
-                            + (lower > bottom ? "（屏幕外）" : ""),
-                    lower + dp(12) - labelPaint.ascent(), top, bottom);
-            drawVerticalLabel(canvas, verticalLimitEnabled
-                            ? "示例起点 · 实际随按下位置" : "示例起点 · 限制未开启",
-                    center - (labelPaint.ascent() + labelPaint.descent()) / 2f, top, bottom);
         }
 
-        private void drawVerticalLabel(Canvas canvas, String label, float baseline, float top, float bottom) {
-            float originalSize = labelPaint.getTextSize();
-            float availableWidth = Math.max(1, getBounds().width() - dp(32));
-            float textWidth = labelPaint.measureText(label);
-            if (textWidth > availableWidth) {
-                labelPaint.setTextSize(originalSize * availableWidth / textWidth);
-                textWidth = labelPaint.measureText(label);
-            }
-            float left = (getBounds().width() - textWidth) / 2f;
-            baseline = Math.max(top - labelPaint.ascent() + dp(6),
-                    Math.min(bottom - labelPaint.descent() - dp(6), baseline));
-            canvas.drawRoundRect(left - dp(8), baseline + labelPaint.ascent() - dp(6),
-                    left + textWidth + dp(8), baseline + labelPaint.descent() + dp(6),
-                    dp(8), dp(8), backgroundPaint);
-            canvas.drawText(label, left, baseline, labelPaint);
-            labelPaint.setTextSize(originalSize);
-        }
-
-        private void drawSide(Canvas canvas, boolean leftEdge, float top, float bottom, float center) {
+        private void drawDistance(Canvas canvas, boolean leftEdge, float top, float bottom,
+                float center, int distance, String label, Paint activeLinePaint) {
             float edge = leftEdge ? 0 : getBounds().width();
             float direction = leftEdge ? 1 : -1;
-            float x = edge + direction * dp(distanceDp);
-            String label = (leftEdge ? "左侧 " : "右侧 ") + distanceDp + "dp 达标线";
+            float x = edge + direction * dp(distance);
             // Decor coordinates start at the window's left edge, not at the settings card.
             canvas.drawLine(x, top, x, bottom, outlinePaint);
             canvas.drawLine(edge, center, x, center, outlinePaint);
-            canvas.drawLine(x, top, x, bottom, linePaint);
-            canvas.drawLine(edge, center, x, center, linePaint);
-            canvas.drawLine(x - direction * dp(8), center - dp(6), x, center, linePaint);
-            canvas.drawLine(x - direction * dp(8), center + dp(6), x, center, linePaint);
+            canvas.drawLine(x, top, x, bottom, activeLinePaint);
+            canvas.drawLine(edge, center, x, center, activeLinePaint);
+            canvas.drawLine(x - direction * dp(8), center - dp(6), x, center, activeLinePaint);
+            canvas.drawLine(x - direction * dp(8), center + dp(6), x, center, activeLinePaint);
 
             float textWidth = labelPaint.measureText(label);
             float labelLeft = Math.max(dp(8), Math.min(leftEdge ? x + dp(12) : x - dp(12) - textWidth,
@@ -218,19 +181,19 @@ public final class AssistantGesturePreviewLayout extends LinearLayout {
 
         @Override public void setAlpha(int alpha) {
             linePaint.setAlpha(alpha);
+            longLinePaint.setAlpha(alpha);
             outlinePaint.setAlpha(alpha);
             labelPaint.setAlpha(alpha);
             backgroundPaint.setAlpha(Math.round(alpha * 0xe6 / 255f));
-            originPaint.setAlpha(alpha);
             invalidateSelf();
         }
 
         @Override public void setColorFilter(ColorFilter filter) {
             linePaint.setColorFilter(filter);
+            longLinePaint.setColorFilter(filter);
             outlinePaint.setColorFilter(filter);
             labelPaint.setColorFilter(filter);
             backgroundPaint.setColorFilter(filter);
-            originPaint.setColorFilter(filter);
             invalidateSelf();
         }
 

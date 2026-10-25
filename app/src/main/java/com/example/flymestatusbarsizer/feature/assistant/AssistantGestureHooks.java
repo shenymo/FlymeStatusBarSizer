@@ -74,6 +74,7 @@ final class AssistantGestureHooks {
                 return chain.proceed();
             }
             gesture.move(event);
+            gesture.updateActionPreview();
             if (action == MotionEvent.ACTION_MOVE) gesture.updateAnimation();
             // UP must be intercepted before the native plugin commits back.
             if (action == MotionEvent.ACTION_UP) {
@@ -101,8 +102,14 @@ final class AssistantGestureHooks {
         boolean consumed;
         boolean fromLeft;
         boolean triggerOnRelease;
+        boolean actionPreviewEnabled;
+        boolean distanceSplitEnabled;
+        float longDistancePx;
+        float previewDistancePx;
+        final AssistantGestureActionOverlay actionOverlay;
         final Method sendEvent;
         int horizontalActionId, upActionId, downActionId;
+        int horizontalLongActionId, upLongActionId, downLongActionId;
 
         Gesture(Object owner, Context context, Method cancel, Method pilfer,
                 Method sendEvent, SideGestureActions.Action globalAssistant) {
@@ -112,6 +119,7 @@ final class AssistantGestureHooks {
             this.pilfer = pilfer;
             this.sendEvent = sendEvent;
             this.globalAssistant = globalAssistant;
+            this.actionOverlay = new AssistantGestureActionOverlay(context);
         }
 
         void begin(MotionEvent event) {
@@ -130,16 +138,23 @@ final class AssistantGestureHooks {
             if (locked()) return;
             float density = context.getResources().getDisplayMetrics().density;
             state.begin(event.getX(), event.getY(), config.assistantGestureDistanceDp * density,
-                    12f * density, leftEdge,
-                    config.assistantGestureVerticalLimitEnabled
-                            ? config.assistantGestureVerticalLimitDp * density : Float.POSITIVE_INFINITY,
-                    24f * density);
+                    12f * density, leftEdge, 24f * density);
             fromLeft = leftEdge;
-            triggerOnRelease = config.assistantGestureTriggerMode
+            actionPreviewEnabled = config.assistantGesturePreviewEnabled;
+            distanceSplitEnabled = config.assistantGestureDistanceSplitEnabled;
+            triggerOnRelease = distanceSplitEnabled || config.assistantGestureTriggerMode
                     == SettingsStore.ASSISTANT_GESTURE_TRIGGER_ON_RELEASE;
+            longDistancePx = config.assistantGestureLongDistanceDp * density;
+            previewDistancePx = 8f * density;
             horizontalActionId = leftEdge ? config.sideGestureLeftAction : config.sideGestureRightAction;
             upActionId = leftEdge ? config.sideGestureLeftUpAction : config.sideGestureRightUpAction;
             downActionId = leftEdge ? config.sideGestureLeftDownAction : config.sideGestureRightDownAction;
+            horizontalLongActionId = leftEdge
+                    ? config.sideGestureLeftLongAction : config.sideGestureRightLongAction;
+            upLongActionId = leftEdge
+                    ? config.sideGestureLeftUpLongAction : config.sideGestureRightUpLongAction;
+            downLongActionId = leftEdge
+                    ? config.sideGestureLeftDownLongAction : config.sideGestureRightDownLongAction;
             remember(event);
         }
 
@@ -161,10 +176,14 @@ final class AssistantGestureHooks {
             if (!config.enabled || !config.assistantGestureEnabled
                     || !ReflectUtils.getBooleanField(target, "mAllowGesture", false)
                     || ReflectUtils.getBooleanField(target, "mInterceptBack", false)
+                    || config.assistantGestureDistanceSplitEnabled != distanceSplitEnabled
+                    || (distanceSplitEnabled && config.assistantGestureLongDistanceDp
+                            * context.getResources().getDisplayMetrics().density != longDistancePx)
                     || locked()) { reset(); return false; }
             int direction = state.direction();
             int actionId = actionId(direction);
-            if (actionId != configuredAction(config, direction)) { reset(); return false; }
+            boolean longDistance = distanceSplitEnabled && state.travelDistance() >= longDistancePx;
+            if (actionId != configuredAction(config, direction, longDistance)) { reset(); return false; }
             if (actionId == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
                     && !AssistantGestureScenes.allows(config.assistantGestureScenes, target)) {
                 return false;
@@ -200,20 +219,44 @@ final class AssistantGestureHooks {
         }
 
         int actionId(int direction) {
+            if (distanceSplitEnabled && state.travelDistance() >= longDistancePx) {
+                if (direction == AssistantGestureState.UP) return upLongActionId;
+                if (direction == AssistantGestureState.DOWN) return downLongActionId;
+                return horizontalLongActionId;
+            }
             if (direction == AssistantGestureState.UP) return upActionId;
             if (direction == AssistantGestureState.DOWN) return downActionId;
             return horizontalActionId;
         }
 
-        int configuredAction(ModuleConfig config, int direction) {
-            if (fromLeft) {
-                if (direction == AssistantGestureState.UP) return config.sideGestureLeftUpAction;
-                if (direction == AssistantGestureState.DOWN) return config.sideGestureLeftDownAction;
-                return config.sideGestureLeftAction;
+        void updateActionPreview() {
+            if (!actionPreviewEnabled || state.inwardDistance() < previewDistancePx) {
+                actionOverlay.hide();
+                return;
             }
-            if (direction == AssistantGestureState.UP) return config.sideGestureRightUpAction;
-            if (direction == AssistantGestureState.DOWN) return config.sideGestureRightDownAction;
-            return config.sideGestureRightAction;
+            float density = context.getResources().getDisplayMetrics().density;
+            float edge = fromLeft ? 0f : context.getResources().getDisplayMetrics().widthPixels;
+            float direction = fromLeft ? 1f : -1f;
+            float reach = 28f * density
+                    + Math.min(170f * density, state.inwardDistance() * 0.72f);
+            float anchorX = edge + direction * reach;
+            float anchorY = state.startY() + state.verticalDelta() * 0.58f;
+            actionOverlay.show(SideGestureActions.label(actionId(state.direction())), anchorX, anchorY);
+        }
+
+        int configuredAction(ModuleConfig config, int direction, boolean longDistance) {
+            if (fromLeft) {
+                if (direction == AssistantGestureState.UP) return longDistance
+                        ? config.sideGestureLeftUpLongAction : config.sideGestureLeftUpAction;
+                if (direction == AssistantGestureState.DOWN) return longDistance
+                        ? config.sideGestureLeftDownLongAction : config.sideGestureLeftDownAction;
+                return longDistance ? config.sideGestureLeftLongAction : config.sideGestureLeftAction;
+            }
+            if (direction == AssistantGestureState.UP) return longDistance
+                    ? config.sideGestureRightUpLongAction : config.sideGestureRightUpAction;
+            if (direction == AssistantGestureState.DOWN) return longDistance
+                    ? config.sideGestureRightDownLongAction : config.sideGestureRightDownAction;
+            return longDistance ? config.sideGestureRightLongAction : config.sideGestureRightAction;
         }
 
         boolean isNavigationAction(int actionId) {
@@ -273,6 +316,7 @@ final class AssistantGestureHooks {
         void reset() {
             state.cancel();
             consumed = false;
+            actionOverlay.hide();
             if (last != null) { last.recycle(); last = null; }
         }
     }

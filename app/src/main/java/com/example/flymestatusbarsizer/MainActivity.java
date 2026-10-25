@@ -18,6 +18,7 @@ import com.example.flymestatusbarsizer.ui.PositionTuningPageController;
 import com.example.flymestatusbarsizer.ui.RestartTarget;
 import com.example.flymestatusbarsizer.ui.SettingsCardFactory;
 import com.example.flymestatusbarsizer.ui.SettingsUiFactory;
+import com.example.flymestatusbarsizer.ui.SideGestureSettingsPageController;
 import com.example.flymestatusbarsizer.ui.SystemAppearancePageController;
 import com.example.flymestatusbarsizer.ui.SystemInteractionPageController;
 import com.example.flymestatusbarsizer.ui.TelephonyDebugPageController;
@@ -181,6 +182,7 @@ public class MainActivity extends Activity {
         TIME_NETWORK("时间与网速", "设置实时网速显示、时间格式、时钟交互和状态栏文字样式。", null, true),
         SYSTEM_APPEARANCE("系统外观", "调整摄像头挖孔、状态栏颜色、桌面整理和系统界面外观。", null, true),
         SYSTEM_INTERACTION("手势与系统交互", "调整侧边手势、单手模式、MBack、小窗、输入法和最近任务。", null, true),
+        SIDE_GESTURE_SETTINGS("侧边手势增强", "分别设置左右边缘的滑动动作和触发方式。", null, false),
         ADVANCED_DEBUG("工具与调试", "管理配置、性能日志、布局微调和调试工具。", null, true),
         ABOUT("关于与支持", "查看项目地址、交流入口、版本信息和模块适用范围。", null, false),
         DONATION("捐赠", null, null, false),
@@ -320,6 +322,8 @@ public class MainActivity extends Activity {
                 SystemAppearancePageController::bind);
         registerPage(Page.SYSTEM_INTERACTION, R.layout.page_system_interaction,
                 SystemInteractionPageController::bind);
+        registerPage(Page.SIDE_GESTURE_SETTINGS, R.layout.page_side_gesture,
+                SideGestureSettingsPageController::bind);
         registerPage(Page.ADVANCED_DEBUG, R.layout.page_advanced_debug, AdvancedDebugPageController::bind);
         registerPage(Page.ABOUT, R.layout.page_about, AboutPageController::bind);
         registerPage(Page.DONATION, R.layout.page_donation, null);
@@ -709,8 +713,11 @@ public class MainActivity extends Activity {
     }
 
     private boolean handleBackNavigation() {
-        if (currentPage != Page.HOME || !navigationStack.isEmpty()) {
-            navigationStack.clear();
+        if (!navigationStack.isEmpty()) {
+            showPage(navigationStack.pop(), true, true);
+            return true;
+        }
+        if (currentPage != Page.HOME) {
             showPage(Page.HOME, true, true);
             return true;
         }
@@ -2736,6 +2743,10 @@ public class MainActivity extends Activity {
 
     public View createSideGestureSettingsCard() {
         return settingsCardFactory.createSideGestureSettingsCard();
+    }
+
+    public View createSideGestureSettingsPage() {
+        return settingsCardFactory.createSideGestureSettingsPage();
     }
 
     public View createOneHandedModeSettingsCard() {

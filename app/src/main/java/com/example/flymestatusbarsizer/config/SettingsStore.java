@@ -136,6 +136,12 @@ public final class SettingsStore {
     public static final String KEY_SIDE_GESTURE_RIGHT_ACTION = "side_gesture_right_action";
     public static final String KEY_SIDE_GESTURE_RIGHT_UP_ACTION = "side_gesture_right_up_action";
     public static final String KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION = "side_gesture_right_down_action";
+    public static final String KEY_SIDE_GESTURE_LEFT_LONG_ACTION = "side_gesture_left_long_action";
+    public static final String KEY_SIDE_GESTURE_LEFT_UP_LONG_ACTION = "side_gesture_left_up_long_action";
+    public static final String KEY_SIDE_GESTURE_LEFT_DOWN_LONG_ACTION = "side_gesture_left_down_long_action";
+    public static final String KEY_SIDE_GESTURE_RIGHT_LONG_ACTION = "side_gesture_right_long_action";
+    public static final String KEY_SIDE_GESTURE_RIGHT_UP_LONG_ACTION = "side_gesture_right_up_long_action";
+    public static final String KEY_SIDE_GESTURE_RIGHT_DOWN_LONG_ACTION = "side_gesture_right_down_long_action";
     public static final String KEY_ONE_HANDED_MODE_ENABLED = "one_handed_mode_enabled";
     public static final boolean DEFAULT_ONE_HANDED_MODE_ENABLED = false;
     public static final String KEY_ONE_HANDED_MODE_ACTION = "one_handed_mode_action";
@@ -144,6 +150,8 @@ public final class SettingsStore {
     public static final int DEFAULT_ONE_HANDED_MODE_ACTION = ONE_HANDED_MODE_ACTION_SYSTEM;
     // Keep the original gesture keys so upgrades and old backups retain their settings.
     public static final String KEY_ASSISTANT_GESTURE_ENABLED = "assistant_gesture_enabled";
+    public static final String KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED =
+            "assistant_gesture_preview_enabled";
     public static final String KEY_ASSISTANT_GESTURE_SCENES = "assistant_gesture_scenes";
     public static final int ASSISTANT_GESTURE_SCENE_NORMAL = 1;
     public static final int ASSISTANT_GESTURE_SCENE_NOTIFICATION = 1 << 1;
@@ -156,8 +164,6 @@ public final class SettingsStore {
     public static final int ASSISTANT_GESTURE_SIDE_BOTH = 2;
     public static final int DEFAULT_ASSISTANT_GESTURE_SIDE = ASSISTANT_GESTURE_SIDE_LEFT;
     public static final String KEY_ASSISTANT_GESTURE_DISTANCE_DP = "assistant_gesture_distance_dp";
-    public static final String KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED = "assistant_gesture_vertical_limit_enabled";
-    public static final String KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = "assistant_gesture_vertical_limit_dp";
     public static final String KEY_WORKSPACE_TOOLBAR_HEIGHT_DP = "workspace_toolbar_height_dp";
     public static final String KEY_WORKSPACE_TOOLBAR_POSITION_DP = "workspace_toolbar_position_dp";
     public static final String KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED =
@@ -173,15 +179,22 @@ public final class SettingsStore {
     public static final String KEY_WORKSPACE_FLOW_LOGGING_ENABLED =
             "workspace_flow_logging_enabled";
     public static final boolean DEFAULT_ASSISTANT_GESTURE_ENABLED = false;
+    public static final boolean DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED = true;
     public static final int DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP = 140;
+    public static final int MIN_ASSISTANT_GESTURE_DISTANCE_DP = 0;
+    public static final int MAX_ASSISTANT_GESTURE_DISTANCE_DP = 240;
+    public static final String KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED =
+            "assistant_gesture_distance_split_enabled";
+    public static final boolean DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED = false;
+    public static final String KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP =
+            "assistant_gesture_long_distance_dp";
+    public static final int DEFAULT_ASSISTANT_GESTURE_LONG_DISTANCE_DP = 280;
+    public static final int MIN_ASSISTANT_GESTURE_LONG_DISTANCE_DP = 0;
+    public static final int MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP = 480;
     public static final String KEY_ASSISTANT_GESTURE_TRIGGER_MODE = "assistant_gesture_trigger_mode";
     public static final int ASSISTANT_GESTURE_TRIGGER_AT_DISTANCE = 0;
     public static final int ASSISTANT_GESTURE_TRIGGER_ON_RELEASE = 1;
     public static final int DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE = ASSISTANT_GESTURE_TRIGGER_AT_DISTANCE;
-    public static final boolean DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED = false;
-    public static final int DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = 48;
-    public static final int MIN_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = 8;
-    public static final int MAX_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP = 240;
     public static final int DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP = 40;
     public static final int MIN_WORKSPACE_TOOLBAR_HEIGHT_DP = 32;
     public static final int MAX_WORKSPACE_TOOLBAR_HEIGHT_DP = 80;
@@ -662,13 +675,19 @@ public final class SettingsStore {
             KEY_SIDE_GESTURE_RIGHT_ACTION,
             KEY_SIDE_GESTURE_RIGHT_UP_ACTION,
             KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION,
+            KEY_SIDE_GESTURE_LEFT_LONG_ACTION,
+            KEY_SIDE_GESTURE_LEFT_UP_LONG_ACTION,
+            KEY_SIDE_GESTURE_LEFT_DOWN_LONG_ACTION,
+            KEY_SIDE_GESTURE_RIGHT_LONG_ACTION,
+            KEY_SIDE_GESTURE_RIGHT_UP_LONG_ACTION,
+            KEY_SIDE_GESTURE_RIGHT_DOWN_LONG_ACTION,
             KEY_ONE_HANDED_MODE_ACTION,
             KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE,
             KEY_ASSISTANT_GESTURE_SCENES,
             KEY_ASSISTANT_GESTURE_SIDE,
             KEY_ASSISTANT_GESTURE_DISTANCE_DP,
+            KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
             KEY_ASSISTANT_GESTURE_TRIGGER_MODE,
-            KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
             KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
             KEY_WORKSPACE_TOOLBAR_POSITION_DP,
             KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP,
@@ -807,7 +826,8 @@ public final class SettingsStore {
             KEY_ASSISTANT_BACKGROUND_CUSTOM,
             KEY_ASSISTANT_BACKGROUND_BLUR,
             KEY_ASSISTANT_GESTURE_ENABLED,
-            KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
+            KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
+            KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
             KEY_ONE_HANDED_MODE_ENABLED,
             KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
             KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
@@ -1092,12 +1112,19 @@ public final class SettingsStore {
             case KEY_SIDE_GESTURE_RIGHT_UP_ACTION:
             case KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION:
                 return DEFAULT_SIDE_GESTURE_ACTION;
+            case KEY_SIDE_GESTURE_LEFT_LONG_ACTION:
+            case KEY_SIDE_GESTURE_LEFT_UP_LONG_ACTION:
+            case KEY_SIDE_GESTURE_LEFT_DOWN_LONG_ACTION:
+            case KEY_SIDE_GESTURE_RIGHT_LONG_ACTION:
+            case KEY_SIDE_GESTURE_RIGHT_UP_LONG_ACTION:
+            case KEY_SIDE_GESTURE_RIGHT_DOWN_LONG_ACTION:
+                return DEFAULT_SIDE_GESTURE_ACTION;
             case KEY_ONE_HANDED_MODE_ACTION: return DEFAULT_ONE_HANDED_MODE_ACTION;
             case KEY_ASSISTANT_GESTURE_SCENES: return DEFAULT_ASSISTANT_GESTURE_SCENES;
             case KEY_ASSISTANT_GESTURE_SIDE: return DEFAULT_ASSISTANT_GESTURE_SIDE;
             case KEY_ASSISTANT_GESTURE_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
+            case KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_LONG_DISTANCE_DP;
             case KEY_ASSISTANT_GESTURE_TRIGGER_MODE: return DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE;
-            case KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP: return DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP;
             case KEY_WORKSPACE_TOOLBAR_HEIGHT_DP: return DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;
             case KEY_WORKSPACE_TOOLBAR_POSITION_DP: return DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP;
             case KEY_ONE_HANDED_WORKSPACE_TOOLBAR_HEIGHT_DP:
@@ -1334,7 +1361,10 @@ public final class SettingsStore {
         switch (key) {
             case KEY_ASSISTANT_BACKGROUND_BLUR: return DEFAULT_ASSISTANT_BACKGROUND_BLUR;
             case KEY_ASSISTANT_GESTURE_ENABLED: return DEFAULT_ASSISTANT_GESTURE_ENABLED;
-            case KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED: return DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED;
+            case KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED:
+                return DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED;
+            case KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED:
+                return DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED;
             case KEY_ONE_HANDED_MODE_ENABLED: return DEFAULT_ONE_HANDED_MODE_ENABLED;
             case KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED:
                 return DEFAULT_WORKSPACE_DEFAULT_SIDEBAR_ENABLED;
@@ -1536,6 +1566,12 @@ public final class SettingsStore {
         return normalizeSideGestureAction(readInt(prefs, key, fallback));
     }
 
+    public static int readSideGestureActionWithFallback(SharedPreferences prefs, String key,
+            String fallbackKey, String legacyKey) {
+        int fallback = readSideGestureAction(prefs, fallbackKey, legacyKey);
+        return normalizeSideGestureAction(readInt(prefs, key, fallback));
+    }
+
     public static int normalizeOneHandedModeAction(int value) {
         return value == ONE_HANDED_MODE_ACTION_TASK_SCALE
                 ? value : DEFAULT_ONE_HANDED_MODE_ACTION;
@@ -1548,11 +1584,6 @@ public final class SettingsStore {
     public static int normalizeAssistantGestureSide(int value) {
         return value == ASSISTANT_GESTURE_SIDE_RIGHT || value == ASSISTANT_GESTURE_SIDE_BOTH
                 ? value : DEFAULT_ASSISTANT_GESTURE_SIDE;
-    }
-
-    public static int normalizeAssistantGestureVerticalLimitDp(int value) {
-        return Math.max(MIN_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
-                Math.min(MAX_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP, value));
     }
 
     public static int normalizeAssistantGestureTriggerMode(int value) {

@@ -377,50 +377,20 @@ public final class SettingsCardFactory {
     public View createSideGestureSettingsCard() {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
-        activity.addSwitchRow(page, "启用侧边手势增强", "横向、上斜或下斜滑动达到设定距离后，可分别触发对应动作。锁屏时不会触发。",
+        activity.addSwitchRow(page, "启用侧边手势增强",
+                "扩展系统侧滑手势；锁屏时不会触发。需在 LSPosed 启用 SystemUI 范围并重启 SystemUI。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED, SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
+        activity.addActionButtonRow(page, "手势动作与触发设置",
+                "分别设置左右边缘的动作、触发距离和预览。", "打开",
+                () -> activity.openPage(MainActivity.Page.SIDE_GESTURE_SETTINGS));
+        return activity.buildSectionCard("侧边手势增强", null, page);
+    }
+
+    public View createSideGestureSettingsPage() {
+        LinearLayout page = new LinearLayout(activity);
+        page.setOrientation(LinearLayout.VERTICAL);
         LinearLayout actionOptions = new LinearLayout(activity);
         actionOptions.setOrientation(LinearLayout.VERTICAL);
-        page.addView(actionOptions, activity.matchWrap());
-
-        AssistantGesturePreviewLayout gestureOptions = new AssistantGesturePreviewLayout(
-                activity, activity.prefs(), activity.primaryColor());
-        activity.addSliderRow(gestureOptions, "最短滑动距离", "手指向内滑动达到此距离后才可能触发。",
-                SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP, SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP,
-                40, 240, "dp");
-        activity.addChoiceRow(gestureOptions, "触发时机", "达到最短滑动距离后立即触发，或等手指松开后触发。",
-                SettingsStore.KEY_ASSISTANT_GESTURE_TRIGGER_MODE,
-                SettingsStore.DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE,
-                new int[]{SettingsStore.ASSISTANT_GESTURE_TRIGGER_AT_DISTANCE,
-                        SettingsStore.ASSISTANT_GESTURE_TRIGGER_ON_RELEASE},
-                new String[]{"达到距离立即触发", "松手后触发"});
-        activity.addActionButtonRow(gestureOptions, "预览滑动距离",
-                "显示所选边缘的触发距离，5 秒后自动隐藏。",
-                "显示标线", gestureOptions::showPreview);
-        activity.addDivider(gestureOptions);
-        LinearLayout verticalOptions = new LinearLayout(activity);
-        verticalOptions.setOrientation(LinearLayout.VERTICAL);
-        verticalOptions.setVisibility(SettingsStore.readBoolean(activity.prefs(),
-                SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
-                SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED) ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(gestureOptions, "限制上下偏移",
-                "限制横向手势的上下偏移；上斜和下斜手势仍可触发。",
-                SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
-                SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED,
-                (buttonView, isChecked) -> verticalOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE));
-        activity.addSliderRow(verticalOptions, "上下偏移上限", null,
-                SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
-                SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
-                SettingsStore.MIN_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
-                SettingsStore.MAX_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP, "dp");
-        activity.addActionButtonRow(verticalOptions, "预览上下范围",
-                "以屏幕中部为例显示允许的上下范围，5 秒后自动隐藏。",
-                "显示边界", gestureOptions::showVerticalPreview);
-        gestureOptions.addView(verticalOptions, activity.matchWrap());
-        View gestureCard = activity.buildSectionCard("手势设置", null, gestureOptions, true);
-        gestureCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
-        page.addView(gestureCard, activity.matchWrapWithTop(8));
-
         LinearLayout assistantOptions = new LinearLayout(activity);
         assistantOptions.setOrientation(LinearLayout.VERTICAL);
         activity.addMultiChoiceRow(assistantOptions, "生效场景",
@@ -435,37 +405,36 @@ public final class SettingsCardFactory {
         View appearanceCard = activity.buildSectionCard("全局负一屏",
                 "下次打开全局负一屏时生效，不影响桌面负一屏。", assistantOptions, true);
         appearanceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
-        page.addView(appearanceCard, activity.matchWrapWithTop(8));
         View workspaceCard = activity.buildSectionCard("多应用工作台",
                 "可在主窗口和侧边小窗之间切换多个应用。",
                 buildTaskWorkbenchOptions(false), true);
         workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
-        page.addView(workspaceCard, activity.matchWrapWithTop(8));
-        Runnable updateActionVisibility = () -> {
-            int[] actions = {
-                    SettingsStore.readSideGestureAction(activity.prefs(),
-                            SettingsStore.KEY_SIDE_GESTURE_LEFT_ACTION, SettingsStore.KEY_SIDE_GESTURE_ACTION),
-                    SettingsStore.readSideGestureAction(activity.prefs(),
-                            SettingsStore.KEY_SIDE_GESTURE_LEFT_UP_ACTION, SettingsStore.KEY_SIDE_GESTURE_UP_ACTION),
-                    SettingsStore.readSideGestureAction(activity.prefs(),
-                            SettingsStore.KEY_SIDE_GESTURE_LEFT_DOWN_ACTION, SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION),
-                    SettingsStore.readSideGestureAction(activity.prefs(),
-                            SettingsStore.KEY_SIDE_GESTURE_RIGHT_ACTION, SettingsStore.KEY_SIDE_GESTURE_ACTION),
-                    SettingsStore.readSideGestureAction(activity.prefs(),
-                            SettingsStore.KEY_SIDE_GESTURE_RIGHT_UP_ACTION, SettingsStore.KEY_SIDE_GESTURE_UP_ACTION),
-                    SettingsStore.readSideGestureAction(activity.prefs(),
-                            SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION, SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION)
-            };
-            boolean hasAssistant = false;
-            boolean hasWorkspace = false;
-            for (int action : actions) {
-                hasAssistant |= action == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
-                hasWorkspace |= action == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
-            }
-            appearanceCard.setVisibility(hasAssistant ? View.VISIBLE : View.GONE);
-            workspaceCard.setVisibility(hasWorkspace ? View.VISIBLE : View.GONE);
+
+        String[] shortActionKeys = {
+                SettingsStore.KEY_SIDE_GESTURE_LEFT_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_LEFT_UP_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_LEFT_DOWN_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_RIGHT_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_RIGHT_UP_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION
         };
-        java.util.function.IntConsumer updateAction = value -> updateActionVisibility.run();
+        String[] legacyActionKeys = {
+                SettingsStore.KEY_SIDE_GESTURE_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_UP_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_UP_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION
+        };
+        String[] longActionKeys = {
+                SettingsStore.KEY_SIDE_GESTURE_LEFT_LONG_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_LEFT_UP_LONG_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_LEFT_DOWN_LONG_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_RIGHT_LONG_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_RIGHT_UP_LONG_ACTION,
+                SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_LONG_ACTION
+        };
+        String[] gestureLabels = {"横向滑动", "上斜滑动", "下斜滑动"};
         int[] actionValues = {
                 SettingsStore.SIDE_GESTURE_ACTION_NONE,
                 SettingsStore.SIDE_GESTURE_ACTION_BACK,
@@ -474,41 +443,137 @@ public final class SettingsCardFactory {
                 SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT,
                 SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE
         };
-        String[] actionLabels = {"无", "返回", "主页", "后台多任务界面", "全局负一屏", "多应用工作台"};
+        String[] actionLabels = {"无动作", "返回", "主页", "后台多任务界面", "全局负一屏", "多应用工作台"};
+        Runnable updateActionVisibility = () -> {
+            boolean splitEnabled = SettingsStore.readBoolean(activity.prefs(),
+                    SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED);
+            boolean hasAssistant = false;
+            boolean hasWorkspace = false;
+            for (int i = 0; i < shortActionKeys.length; i++) {
+                int action = SettingsStore.readSideGestureAction(activity.prefs(),
+                        shortActionKeys[i], legacyActionKeys[i]);
+                hasAssistant |= action == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
+                hasWorkspace |= action == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
+                if (splitEnabled) {
+                    action = SettingsStore.readSideGestureActionWithFallback(activity.prefs(),
+                            longActionKeys[i], shortActionKeys[i], legacyActionKeys[i]);
+                    hasAssistant |= action == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
+                    hasWorkspace |= action == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
+                }
+            }
+            appearanceCard.setVisibility(hasAssistant ? View.VISIBLE : View.GONE);
+            workspaceCard.setVisibility(hasWorkspace ? View.VISIBLE : View.GONE);
+        };
+        java.util.function.IntConsumer updateAction = value -> updateActionVisibility.run();
+
         activity.addProfileSectionHeader(actionOptions, "左侧动作", "从屏幕左侧边缘向内滑动。");
-        activity.addChoiceRow(actionOptions, "横向滑动", null,
-                SettingsStore.KEY_SIDE_GESTURE_LEFT_ACTION,
-                SettingsStore.readSideGestureAction(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_LEFT_ACTION,
-                        SettingsStore.KEY_SIDE_GESTURE_ACTION), actionValues, actionLabels, updateAction);
-        activity.addDivider(actionOptions);
-        activity.addChoiceRow(actionOptions, "上斜滑动", null,
-                SettingsStore.KEY_SIDE_GESTURE_LEFT_UP_ACTION,
-                SettingsStore.readSideGestureAction(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_LEFT_UP_ACTION,
-                        SettingsStore.KEY_SIDE_GESTURE_UP_ACTION), actionValues, actionLabels, updateAction);
-        activity.addDivider(actionOptions);
-        activity.addChoiceRow(actionOptions, "下斜滑动", null,
-                SettingsStore.KEY_SIDE_GESTURE_LEFT_DOWN_ACTION,
-                SettingsStore.readSideGestureAction(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_LEFT_DOWN_ACTION,
-                        SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION), actionValues, actionLabels, updateAction);
+        for (int i = 0; i < 3; i++) {
+            if (i > 0) activity.addDivider(actionOptions);
+            activity.addChoiceRow(actionOptions, gestureLabels[i], null,
+                    shortActionKeys[i], SettingsStore.readSideGestureAction(activity.prefs(),
+                            shortActionKeys[i], legacyActionKeys[i]),
+                    actionValues, actionLabels, updateAction);
+        }
         activity.addDivider(actionOptions);
         activity.addProfileSectionHeader(actionOptions, "右侧动作", "从屏幕右侧边缘向内滑动。");
-        activity.addChoiceRow(actionOptions, "横向滑动", null,
-                SettingsStore.KEY_SIDE_GESTURE_RIGHT_ACTION,
-                SettingsStore.readSideGestureAction(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_RIGHT_ACTION,
-                        SettingsStore.KEY_SIDE_GESTURE_ACTION), actionValues, actionLabels, updateAction);
-        activity.addDivider(actionOptions);
-        activity.addChoiceRow(actionOptions, "上斜滑动", null,
-                SettingsStore.KEY_SIDE_GESTURE_RIGHT_UP_ACTION,
-                SettingsStore.readSideGestureAction(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_RIGHT_UP_ACTION,
-                        SettingsStore.KEY_SIDE_GESTURE_UP_ACTION), actionValues, actionLabels, updateAction);
-        activity.addDivider(actionOptions);
-        activity.addChoiceRow(actionOptions, "下斜滑动", null,
-                SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION,
-                SettingsStore.readSideGestureAction(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION,
-                        SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION), actionValues, actionLabels, updateAction);
+        for (int i = 3; i < 6; i++) {
+            if (i > 3) activity.addDivider(actionOptions);
+            activity.addChoiceRow(actionOptions, gestureLabels[i - 3], null,
+                    shortActionKeys[i], SettingsStore.readSideGestureAction(activity.prefs(),
+                            shortActionKeys[i], legacyActionKeys[i]),
+                    actionValues, actionLabels, updateAction);
+        }
+        View actionCard = activity.buildSectionCard("短距离动作",
+                "达到最短距离后，未达到长距离阈值时执行这里设置的动作。", actionOptions, true);
+
+        LinearLayout longActionOptions = new LinearLayout(activity);
+        longActionOptions.setOrientation(LinearLayout.VERTICAL);
+        activity.addProfileSectionHeader(longActionOptions, "左侧长距离动作", "从屏幕左侧边缘向内滑动。");
+        for (int i = 0; i < 3; i++) {
+            if (i > 0) activity.addDivider(longActionOptions);
+            activity.addChoiceRow(longActionOptions, gestureLabels[i], null,
+                    longActionKeys[i], SettingsStore.readSideGestureActionWithFallback(activity.prefs(),
+                            longActionKeys[i], shortActionKeys[i], legacyActionKeys[i]),
+                    actionValues, actionLabels, updateAction);
+        }
+        activity.addDivider(longActionOptions);
+        activity.addProfileSectionHeader(longActionOptions, "右侧长距离动作", "从屏幕右侧边缘向内滑动。");
+        for (int i = 3; i < 6; i++) {
+            if (i > 3) activity.addDivider(longActionOptions);
+            activity.addChoiceRow(longActionOptions, gestureLabels[i - 3], null,
+                    longActionKeys[i], SettingsStore.readSideGestureActionWithFallback(activity.prefs(),
+                            longActionKeys[i], shortActionKeys[i], legacyActionKeys[i]),
+                    actionValues, actionLabels, updateAction);
+        }
+        View longActionCard = activity.buildSectionCard("长距离动作",
+                "达到长距离阈值后执行；未单独设置时沿用对应的短距离动作。", longActionOptions, true);
+
+        AssistantGesturePreviewLayout gestureOptions = new AssistantGesturePreviewLayout(
+                activity, activity.prefs(), activity.primaryColor());
+        boolean splitEnabled = SettingsStore.readBoolean(activity.prefs(),
+                SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED);
+        LinearLayout distanceOptions = new LinearLayout(activity);
+        distanceOptions.setOrientation(LinearLayout.VERTICAL);
+        activity.addSliderRow(distanceOptions, "最短滑动距离",
+                "手指向内移动并达到此距离后才可能触发；设为 0 仍需实际向内移动。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP,
+                SettingsStore.MIN_ASSISTANT_GESTURE_DISTANCE_DP,
+                SettingsStore.MAX_ASSISTANT_GESTURE_DISTANCE_DP, "dp");
+        LinearLayout longDistanceOptions = new LinearLayout(activity);
+        longDistanceOptions.setOrientation(LinearLayout.VERTICAL);
+        longDistanceOptions.setVisibility(splitEnabled ? View.VISIBLE : View.GONE);
+        activity.addSliderRow(longDistanceOptions, "长距离阈值",
+                "达到此距离后执行长距离动作；低于最短距离时，达标手势都会执行长距离动作。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
+                SettingsStore.MIN_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
+                SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP, "dp");
+        distanceOptions.addView(longDistanceOptions, activity.matchWrapWithTop(8));
+        LinearLayout triggerOptions = new LinearLayout(activity);
+        triggerOptions.setOrientation(LinearLayout.VERTICAL);
+        triggerOptions.setVisibility(splitEnabled ? View.GONE : View.VISIBLE);
+        activity.addChoiceRow(triggerOptions, "触发时机", "达到最短滑动距离后立即触发，或等手指松开后触发。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_TRIGGER_MODE,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE,
+                new int[]{SettingsStore.ASSISTANT_GESTURE_TRIGGER_AT_DISTANCE,
+                        SettingsStore.ASSISTANT_GESTURE_TRIGGER_ON_RELEASE},
+                new String[]{"达到距离立即触发", "松手后触发"});
+        activity.addSwitchRow(gestureOptions, "区分短距离和长距离动作",
+                "开启后等手指松开，再按最终滑动距离选择对应动作。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
+                (buttonView, isChecked) -> {
+                    longDistanceOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+                    triggerOptions.setVisibility(isChecked ? View.GONE : View.VISIBLE);
+                    longActionCard.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+                    updateActionVisibility.run();
+                });
+        activity.addDivider(gestureOptions);
+        activity.addProfileSectionHeader(gestureOptions, "滑动距离",
+                "达到最短距离后才会触发；开启分段后，按长距离阈值切换动作。");
+        activity.addSwitchRow(gestureOptions, "手势提示",
+                "手势过程中显示当前要触发的功能名称，并跟随侧边动画移动。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED);
+        gestureOptions.addView(distanceOptions, activity.matchWrap());
+        gestureOptions.addView(triggerOptions, activity.matchWrapWithTop(8));
+        activity.addActionButtonRow(gestureOptions, "预览滑动距离",
+                "显示所选边缘的触发距离，5 秒后自动隐藏。",
+                "显示标线", gestureOptions::showPreview);
+        View gestureCard = activity.buildSectionCard("滑动距离与触发", null, gestureOptions, true);
+        gestureCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
+
         updateActionVisibility.run();
-        return activity.buildSectionCard("侧边手势增强",
-                "请先在 LSPosed 中启用 SystemUI 范围并重启系统界面，再选择手势动作。", page);
+        longActionCard.setVisibility(splitEnabled ? View.VISIBLE : View.GONE);
+        page.addView(actionCard, activity.matchWrapWithTop(8));
+        page.addView(longActionCard, activity.matchWrapWithTop(8));
+        page.addView(gestureCard, activity.matchWrapWithTop(8));
+        page.addView(appearanceCard, activity.matchWrapWithTop(8));
+        page.addView(workspaceCard, activity.matchWrapWithTop(8));
+        return page;
     }
 
     public View createOneHandedModeSettingsCard() {

@@ -79,7 +79,14 @@ final class AssistantClient implements SideGestureActions.Action {
                 || c.sideGestureLeftDownAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
                 || c.sideGestureRightAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
                 || c.sideGestureRightUpAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || c.sideGestureRightDownAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT);
+                || c.sideGestureRightDownAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                || (c.assistantGestureDistanceSplitEnabled
+                && (c.sideGestureLeftLongAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                || c.sideGestureLeftUpLongAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                || c.sideGestureLeftDownLongAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                || c.sideGestureRightLongAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                || c.sideGestureRightUpLongAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                || c.sideGestureRightDownLongAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT)));
     }
 
     @Override public boolean isReady() {

@@ -7,11 +7,11 @@ final class AssistantGestureState {
     static final int DOWN = 2;
     private boolean tracking;
     private boolean claimed;
-    private float startX, startY, dx, dy, distance, backwardLimit, verticalLimit, diagonalMin;
+    private float startX, startY, dx, dy, distance, backwardLimit, diagonalMin;
     private int inwardDirection;
 
     void begin(float x, float y, float distance, float backwardLimit, boolean leftEdge,
-            float verticalLimit, float diagonalMin) {
+            float diagonalMin) {
         inwardDirection = leftEdge ? 1 : -1;
         tracking = true;
         claimed = false;
@@ -20,8 +20,6 @@ final class AssistantGestureState {
         dx = dy = 0;
         this.distance = distance;
         this.backwardLimit = backwardLimit;
-        // Positive infinity disables the optional vertical limit for horizontal gestures.
-        this.verticalLimit = verticalLimit;
         this.diagonalMin = diagonalMin;
     }
 
@@ -33,9 +31,9 @@ final class AssistantGestureState {
     }
 
     boolean ready() {
-        if (!tracking || claimed) return false;
+        if (!tracking || claimed || dx <= 0f) return false;
         int direction = direction();
-        if (direction == HORIZONTAL) return dx >= distance && Math.abs(dy) <= verticalLimit;
+        if (direction == HORIZONTAL) return dx >= distance;
         return (float) Math.hypot(dx, dy) >= distance && dx >= distance * 0.35f;
     }
 
@@ -45,6 +43,7 @@ final class AssistantGestureState {
     }
 
     float startY() { return startY; }
+    float inwardDistance() { return dx; }
     float verticalDelta() { return dy; }
     float travelDistance() { return (float) Math.hypot(dx, dy); }
 
