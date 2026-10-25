@@ -483,8 +483,8 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED);
         gestureOptions.addView(triggerOptions, activity.matchWrapWithTop(8));
-        activity.addActionButtonRow(gestureOptions, "预览滑动距离",
-                "将触发区域叠加到当前屏幕上，可直接切换左右侧、调整距离和设置动作。",
+        activity.addActionButtonRow(gestureOptions, "侧边手势设置",
+                "打开侧边触发区域设置，可切换左右侧、调整滑动距离和设置动作。",
                 "开始编辑", activity::openSideGestureZoneOverlay);
         View gestureCard = activity.buildSectionCard("滑动距离与触发", null, gestureOptions, true);
         gestureCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));

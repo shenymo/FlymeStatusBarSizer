@@ -143,17 +143,16 @@ public final class SideGestureZoneOverlay {
     }
 
     private final class OverlayView extends View {
-        private final Paint zoneFill = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint zoneStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint thresholdPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint longThresholdPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint shortRegionPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint longRegionPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint handlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint longHandlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint controlPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint selectedControlPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint labelBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Path zonePath = new Path();
         private final RectF leftControl = new RectF();
         private final RectF rightControl = new RectF();
         private final RectF shortControl = new RectF();
@@ -165,24 +164,18 @@ public final class SideGestureZoneOverlay {
         private float centerY;
         private float edge;
         private float direction;
-        private float depth;
         private float originX;
         private float scale;
         private int dragging;
         private int pickerDirection = -1;
         private boolean pickerGestureActive;
+        private float dragOffsetX;
 
         OverlayView(Context context) {
             super(context);
             density = getResources().getDisplayMetrics().density;
             scaledDensity = getResources().getDisplayMetrics().scaledDensity;
             setFocusable(false);
-            zoneFill.setColor(0x3a4f9dff);
-            zoneStroke.setColor(0x9a8db7ff);
-            zoneStroke.setStyle(Paint.Style.STROKE);
-            zoneStroke.setStrokeWidth(dp(1));
-            zoneStroke.setStrokeCap(Paint.Cap.ROUND);
-            zoneStroke.setStrokeJoin(Paint.Join.ROUND);
             thresholdPaint.setColor(0xff69a9ff);
             thresholdPaint.setStyle(Paint.Style.STROKE);
             thresholdPaint.setStrokeWidth(dp(2));
@@ -193,6 +186,8 @@ public final class SideGestureZoneOverlay {
             longThresholdPaint.setStrokeWidth(dp(2));
             longThresholdPaint.setStrokeCap(Paint.Cap.ROUND);
             longThresholdPaint.setStrokeJoin(Paint.Join.ROUND);
+            shortRegionPaint.setColor(0x294b8dff);
+            longRegionPaint.setColor(0x29ffad5a);
             handlePaint.setColor(0xff69a9ff);
             longHandlePaint.setColor(0xffffb45f);
             longHandlePaint.setAlpha(220);
@@ -201,8 +196,7 @@ public final class SideGestureZoneOverlay {
             textPaint.setColor(Color.WHITE);
             textPaint.setTextAlign(Paint.Align.CENTER);
             textPaint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            linePaint.setColor(0x90ffffff);
-            linePaint.setStrokeWidth(dp(1));
+            labelBackgroundPaint.setColor(0xd869a9ff);
             setBackgroundColor(Color.TRANSPARENT);
         }
 
@@ -216,174 +210,277 @@ public final class SideGestureZoneOverlay {
             centerY = (top + bottom) / 2f;
             edge = leftSide ? 0f : width;
             direction = leftSide ? 1f : -1f;
-            depth = Math.min(width * 0.92f, dp(MAX_DISTANCE_DP));
             originX = edge;
-            scale = depth / MAX_DISTANCE_DP;
+            scale = density;
 
-            drawZones(canvas, top, bottom);
+            canvas.drawColor(0xb8000000);
+            int save = canvas.save();
+            canvas.clipRect(0, top, width, bottom);
+            drawZones(canvas);
+            canvas.restoreToCount(save);
             drawControls(canvas, width, height, top);
             if (pickerDirection >= 0) drawPicker(canvas, width, height, top);
         }
 
-        private void drawZones(Canvas canvas, float top, float bottom) {
-            float cutStart = Math.min(dp(24), depth * 0.24f);
-            float cutEnd = Math.max(cutStart, depth * 0.45f);
-            drawZone(canvas, originX, top, bottom, centerY, cutStart, cutEnd, 1, 0x2f5e9dff);
-            drawZone(canvas, originX, top, bottom, centerY, cutStart, cutEnd, 0, 0x2f48c5a0);
-            drawZone(canvas, originX, top, bottom, centerY, cutStart, cutEnd, 2, 0x2fffaa62);
-            drawConnectedZoneBoundaries(canvas, top, bottom, centerY, cutStart, cutEnd);
-            canvas.drawLine(originX, centerY, originX + direction * depth, centerY, linePaint);
-            drawThreshold(canvas, shortDistanceDp, thresholdPaint, handlePaint, -dp(16));
-            drawThreshold(canvas, longDistanceDp, longThresholdPaint, longHandlePaint, dp(16));
+        private void drawZones(Canvas canvas) {
+            if (splitEnabled) {
+                if (longDistanceDp >= shortDistanceDp) {
+                    drawTriggerRegion(canvas, shortDistanceDp, shortDistanceDp, longDistanceDp,
+                            shortRegionPaint);
+                    drawTriggerRegion(canvas, shortDistanceDp, longDistanceDp, -1,
+                            longRegionPaint);
+                } else {
+                    drawTriggerRegion(canvas, longDistanceDp, longDistanceDp, -1,
+                            longRegionPaint);
+                }
+            } else {
+                drawTriggerRegion(canvas, shortDistanceDp, shortDistanceDp, -1, shortRegionPaint);
+            }
+            drawThreshold(canvas, shortDistanceDp, thresholdPaint, handlePaint);
             int offset = leftSide ? 0 : 3;
-            drawActionLabel(canvas, actionLabel(offset + 1), 1, top, bottom);
-            drawActionLabel(canvas, actionLabel(offset), 0, top, bottom);
-            drawActionLabel(canvas, actionLabel(offset + 2), 2, top, bottom);
-        }
-
-        private void drawZone(Canvas canvas, float origin, float top, float bottom, float mid,
-                float cutStart, float cutEnd, int zone, int color) {
-            zonePath.reset();
-            if (zone == 1) {
-                zonePath.moveTo(origin, top);
-                zonePath.lineTo(origin + direction * depth, top);
-                zonePath.lineTo(origin + direction * depth, mid - cutEnd);
-                appendCurvedBoundary(zonePath, origin + direction * depth, mid - cutEnd,
-                        origin, mid - cutStart);
-            } else if (zone == 0) {
-                zonePath.moveTo(origin, mid - cutStart);
-                appendCurvedBoundary(zonePath, origin, mid - cutStart,
-                        origin + direction * depth, mid - cutEnd);
-                zonePath.lineTo(origin + direction * depth, mid + cutEnd);
-                appendCurvedBoundary(zonePath, origin + direction * depth, mid + cutEnd,
-                        origin, mid + cutStart);
-            } else {
-                zonePath.moveTo(origin, mid + cutStart);
-                appendCurvedBoundary(zonePath, origin, mid + cutStart,
-                        origin + direction * depth, mid + cutEnd);
-                zonePath.lineTo(origin + direction * depth, bottom);
-                zonePath.lineTo(origin, bottom);
+            drawActionLabels(canvas, shortDistanceDp, thresholdPaint, offset, false);
+            if (splitEnabled) {
+                drawThreshold(canvas, longDistanceDp, longThresholdPaint, longHandlePaint);
+                drawActionLabels(canvas, longDistanceDp, longThresholdPaint, offset, true);
             }
-            zonePath.close();
-            zoneFill.setColor(color);
-            canvas.drawPath(zonePath, zoneFill);
-            canvas.drawPath(zonePath, zoneStroke);
+            canvas.drawCircle(originX, centerY, dp(5), handlePaint);
+            textPaint.setTextSize(11f * scaledDensity);
+            textPaint.setColor(Color.WHITE);
+            textPaint.setTextAlign(leftSide ? Paint.Align.LEFT : Paint.Align.RIGHT);
+            canvas.drawText("起点", originX + direction * dp(12), centerY - dp(10), textPaint);
+            textPaint.setTextAlign(Paint.Align.CENTER);
         }
 
-        private void drawConnectedZoneBoundaries(Canvas canvas, float top, float bottom,
-                float mid, float cutStart, float cutEnd) {
-            float farX = originX + direction * depth;
-            Path boundaries = new Path();
-            boundaries.moveTo(originX, mid - cutStart);
-            appendCurvedBoundary(boundaries, originX, mid - cutStart, farX, mid - cutEnd);
-            boundaries.lineTo(farX, mid + cutEnd);
-            appendCurvedBoundary(boundaries, farX, mid + cutEnd, originX, mid + cutStart);
-            boundaries.lineTo(originX, mid - cutStart);
-            canvas.drawPath(boundaries, zoneStroke);
+        private void drawTriggerRegion(Canvas canvas, int readyDistanceDp, int radialMinDp,
+                float radialMaxDp, Paint fill) {
+            float verticalLimit = Math.max((centerY - statusBarHeight()) / scale,
+                    (getHeight() - navigationBarHeight() - centerY) / scale);
+            float screenWidthDp = getWidth() / scale;
+            float screenRadiusDp = (float) Math.hypot(screenWidthDp, verticalLimit);
+            float end = radialMaxDp > 0 ? Math.min(radialMaxDp, screenRadiusDp)
+                    : screenRadiusDp;
+            if (end <= readyDistanceDp) return;
+            drawDiagonalRegion(canvas, readyDistanceDp, radialMinDp, end, verticalLimit,
+                    fill, true);
+            drawDiagonalRegion(canvas, readyDistanceDp, radialMinDp, end, verticalLimit,
+                    fill, false);
+            drawHorizontalRegion(canvas, readyDistanceDp, radialMinDp, end, verticalLimit, fill);
         }
 
-        private void appendCurvedBoundary(Path path, float startX, float startY,
-                float endX, float endY) {
-            boolean startsAtOrigin = Math.abs(startX - originX) < Math.abs(endX - originX);
-            float originY = startsAtOrigin ? startY : endY;
-            float farY = startsAtOrigin ? endY : startY;
-            float span = (startsAtOrigin ? endX : startX) - originX;
-            float firstControlX = originX + span * 0.2f;
-            float firstControlY = originY;
-            float secondControlX = originX + span * 0.85f;
-            float secondControlY = originY + (farY - originY) * 0.85f;
-            if (startsAtOrigin) {
-                path.cubicTo(firstControlX, firstControlY, secondControlX, secondControlY,
-                        endX, endY);
-            } else {
-                path.cubicTo(secondControlX, secondControlY, firstControlX, firstControlY,
-                        endX, endY);
+        private void drawDiagonalRegion(Canvas canvas, int readyDistanceDp, int radialMinDp,
+                float maxDistanceDp, float verticalLimit, Paint fill, boolean upper) {
+            float startX = readyDistanceDp * 0.35f;
+            float endX = Math.min(maxDistanceDp, getWidth() / scale);
+            Path region = new Path();
+            boolean started = false;
+            int steps = 96;
+            for (int i = 0; i <= steps; i++) {
+                float x = startX + (endX - startX) * i / steps;
+                float lower = diagonalBoundaryY(x, radialMinDp);
+                float upperY = Math.min(verticalLimit,
+                        (float) Math.sqrt(Math.max(0f,
+                                maxDistanceDp * maxDistanceDp - x * x)));
+                if (lower >= upperY) continue;
+                float y = upper ? upperY : lower;
+                float screenY = centerY + (upper ? -1f : 1f) * y * scale;
+                if (!started) {
+                    region.moveTo(screenX(x), screenY);
+                    started = true;
+                } else {
+                    region.lineTo(screenX(x), screenY);
+                }
             }
+            if (!started) return;
+            for (int i = steps; i >= 0; i--) {
+                float x = startX + (endX - startX) * i / steps;
+                float lower = diagonalBoundaryY(x, radialMinDp);
+                float upperY = Math.min(verticalLimit,
+                        (float) Math.sqrt(Math.max(0f,
+                                maxDistanceDp * maxDistanceDp - x * x)));
+                if (lower >= upperY) continue;
+                float y = upper ? lower : upperY;
+                float screenY = centerY + (upper ? -1f : 1f) * y * scale;
+                region.lineTo(screenX(x), screenY);
+            }
+            region.close();
+            canvas.drawPath(region, fill);
         }
 
-        private void drawThreshold(Canvas canvas, int distanceDp, Paint paint, Paint handle,
-                float handleOffset) {
-            float radius = Math.min(depth, dp(distanceDp));
-            float x = originX + direction * radius;
-            float startAngle = (float) Math.atan(0.45f) + 0.01f;
-            float endAngle = (float) Math.acos(0.35f);
-            drawDiagonalThreshold(canvas, paint, startAngle, endAngle, -1f, distanceDp);
-            drawCurvedThresholdMiddle(canvas, paint, startAngle, distanceDp);
-            drawDiagonalThreshold(canvas, paint, startAngle, endAngle, 1f, distanceDp);
-            canvas.drawCircle(x, centerY + handleOffset, dp(13), controlPaint);
-            canvas.drawCircle(x, centerY + handleOffset, dp(8), handle);
+        private void drawHorizontalRegion(Canvas canvas, int readyDistanceDp, int radialMinDp,
+                float maxDistanceDp, float verticalLimit, Paint fill) {
+            float startX = readyDistanceDp;
+            float endX = Math.min(maxDistanceDp, getWidth() / scale);
+            if (endX <= startX) return;
+            Path region = new Path();
+            int steps = 96;
+            boolean started = false;
+            for (int i = 0; i <= steps; i++) {
+                float x = startX + (endX - startX) * i / steps;
+                float inner = radialMinDp > 0 ? (float) Math.sqrt(Math.max(0f,
+                        radialMinDp * radialMinDp - x * x)) : 0f;
+                float outer = maxDistanceDp > 0 ? (float) Math.sqrt(Math.max(0f,
+                        maxDistanceDp * maxDistanceDp - x * x)) : verticalLimit;
+                float y = Math.max(24f, x * 0.45f);
+                float upper = Math.min(verticalLimit, Math.min(y, outer));
+                if (upper <= inner) continue;
+                if (!started) {
+                    region.moveTo(screenX(x), centerY - upper * scale);
+                    started = true;
+                } else {
+                    region.lineTo(screenX(x), centerY - upper * scale);
+                }
+            }
+            if (!started) return;
+            for (int i = steps; i >= 0; i--) {
+                float x = startX + (endX - startX) * i / steps;
+                float inner = radialMinDp > 0 ? (float) Math.sqrt(Math.max(0f,
+                        radialMinDp * radialMinDp - x * x)) : 0f;
+                float outer = maxDistanceDp > 0 ? (float) Math.sqrt(Math.max(0f,
+                        maxDistanceDp * maxDistanceDp - x * x)) : verticalLimit;
+                float y = Math.max(24f, x * 0.45f);
+                float upper = Math.min(verticalLimit, Math.min(y, outer));
+                if (upper > inner) region.lineTo(screenX(x), centerY - inner * scale);
+            }
+            for (int i = 0; i <= steps; i++) {
+                float x = startX + (endX - startX) * i / steps;
+                float inner = radialMinDp > 0 ? (float) Math.sqrt(Math.max(0f,
+                        radialMinDp * radialMinDp - x * x)) : 0f;
+                float outer = maxDistanceDp > 0 ? (float) Math.sqrt(Math.max(0f,
+                        maxDistanceDp * maxDistanceDp - x * x)) : verticalLimit;
+                float y = Math.max(24f, x * 0.45f);
+                float lower = Math.min(verticalLimit, Math.min(y, outer));
+                if (lower > inner) region.lineTo(screenX(x), centerY + inner * scale);
+            }
+            for (int i = steps; i >= 0; i--) {
+                float x = startX + (endX - startX) * i / steps;
+                float inner = radialMinDp > 0 ? (float) Math.sqrt(Math.max(0f,
+                        radialMinDp * radialMinDp - x * x)) : 0f;
+                float outer = maxDistanceDp > 0 ? (float) Math.sqrt(Math.max(0f,
+                        maxDistanceDp * maxDistanceDp - x * x)) : verticalLimit;
+                float y = Math.max(24f, x * 0.45f);
+                float lower = Math.min(verticalLimit, Math.min(y, outer));
+                if (lower > inner) region.lineTo(screenX(x), centerY + lower * scale);
+            }
+            region.close();
+            canvas.drawPath(region, fill);
+        }
+
+        private float diagonalBoundaryY(float x, int minDistanceDp) {
+            float distanceLimit = x < minDistanceDp
+                    ? (float) Math.sqrt(Math.max(0f,
+                    minDistanceDp * minDistanceDp - x * x)) : 0f;
+            return Math.max(Math.max(24f, x * 0.45f), distanceLimit);
+        }
+
+        private float directionBandY(float x) {
+            return Math.max(24f, x * 0.45f);
+        }
+
+        private float screenX(float distanceDp) {
+            return originX + direction * distanceDp * scale;
+        }
+
+        private void drawThreshold(Canvas canvas, int distanceDp, Paint paint, Paint handle) {
+            drawThresholdContour(canvas, paint, distanceDp);
+            float x = screenX(distanceDp);
+            float y = centerY;
+            canvas.drawCircle(x, y, dp(13), controlPaint);
+            canvas.drawCircle(x, y, dp(8), handle);
             String label = distanceDp + "dp";
             textPaint.setTextSize(12f * scaledDensity);
-            float labelX = x + direction * dp(24);
-            float labelY = centerY + handleOffset - dp(16);
-            canvas.drawText(label, labelX, labelY, textPaint);
-        }
-
-        private void drawDiagonalThreshold(Canvas canvas, Paint paint, float startAngle,
-                float endAngle, float sign, int distanceDp) {
-            Path path = new Path();
-            int steps = 26;
-            for (int i = 0; i <= steps; i++) {
-                float angle = startAngle + (endAngle - startAngle) * i / steps;
-                float radius = Math.min(MAX_DISTANCE_DP, thresholdRadiusDp(angle, distanceDp))
-                        * density;
-                float x = originX + direction * radius * (float) Math.cos(angle);
-                float y = centerY + sign * radius * (float) Math.sin(angle);
-                if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
-            }
-            canvas.drawPath(path, paint);
-        }
-
-        private void drawCurvedThresholdMiddle(Canvas canvas, Paint paint, float startAngle,
-                int distanceDp) {
-            float radius = Math.min(MAX_DISTANCE_DP, thresholdRadiusDp(startAngle, distanceDp))
-                    * density;
-            float inset = radius * (float) Math.cos(startAngle);
-            float halfHeight = radius * (float) Math.sin(startAngle);
-            float endpointX = originX + direction * inset;
-            float topY = centerY - halfHeight;
-            float bottomY = centerY + halfHeight;
-            float targetX = originX + direction * Math.min(depth, dp(distanceDp));
-            float controlX = endpointX + (targetX - endpointX) / 0.75f;
-            float controlOffsetY = halfHeight * 0.35f;
-            Path path = new Path();
-            path.moveTo(endpointX, topY);
-            path.cubicTo(controlX, centerY - controlOffsetY,
-                    controlX, centerY + controlOffsetY, endpointX, bottomY);
-            canvas.drawPath(path, paint);
-        }
-
-        private float thresholdRadiusDp(float angle, int distanceDp) {
-            return Math.max(distanceDp, Math.max(
-                    24f / (float) Math.sin(angle),
-                    0.35f * distanceDp / (float) Math.cos(angle)));
-        }
-
-        private void drawActionLabel(Canvas canvas, String text, int zone, float top, float bottom) {
-            textPaint.setTextSize(14f * scaledDensity);
-            float y = zone == 1 ? top + (centerY - top) * 0.48f
-                    : zone == 0 ? centerY : centerY + (bottom - centerY) * 0.52f;
-            float x = originX + direction * Math.min(depth * 0.62f, dp(250));
+            float halfWidth = textPaint.measureText(label) / 2f + dp(6);
+            float labelX = Math.max(halfWidth + dp(8),
+                    Math.min(getWidth() - halfWidth - dp(8), x + direction * dp(28)));
+            float labelY = y - dp(16);
             Paint.FontMetrics metrics = textPaint.getFontMetrics();
-            float baseline = y - (metrics.ascent + metrics.descent) / 2f;
-            canvas.drawText(text, x, baseline, textPaint);
+            float baseline = labelY - (metrics.ascent + metrics.descent) / 2f;
+            labelBackgroundPaint.setColor(Color.argb(0xe0,
+                    Color.red(handle.getColor()), Color.green(handle.getColor()),
+                    Color.blue(handle.getColor())));
+            canvas.drawRoundRect(labelX - halfWidth, baseline + metrics.ascent - dp(3),
+                    labelX + halfWidth, baseline + metrics.descent + dp(3),
+                    dp(6), dp(6), labelBackgroundPaint);
+            textPaint.setColor(Color.WHITE);
+            canvas.drawText(label, labelX, baseline, textPaint);
+        }
+
+        private void drawThresholdContour(Canvas canvas, Paint paint, int distanceDp) {
+            float x = screenX(distanceDp);
+            float halfBand = Math.max(24f, distanceDp * 0.45f) * scale;
+            canvas.drawLine(x, centerY - halfBand, x, centerY + halfBand, paint);
+            float screenWidthDp = getWidth() / scale;
+            float startX = distanceDp * 0.35f;
+            float endX = Math.min(screenWidthDp, (float) Math.hypot(screenWidthDp,
+                    Math.max((centerY - statusBarHeight()) / scale,
+                            (getHeight() - navigationBarHeight() - centerY) / scale)));
+            if (startX >= endX) return;
+            for (int side = -1; side <= 1; side += 2) {
+                Path boundary = new Path();
+                int steps = 96;
+                for (int i = 0; i <= steps; i++) {
+                    float dx = startX + (endX - startX) * i / steps;
+                    float radialLimit = dx < distanceDp
+                            ? (float) Math.sqrt(Math.max(0f,
+                            distanceDp * distanceDp - dx * dx)) : 0f;
+                    float dy = Math.max(directionBandY(dx), radialLimit);
+                    float screenY = centerY + side * dy * scale;
+                    if (i == 0) boundary.moveTo(screenX(dx), screenY);
+                    else boundary.lineTo(screenX(dx), screenY);
+                }
+                canvas.drawPath(boundary, paint);
+            }
+        }
+
+        private void drawActionLabels(Canvas canvas, int distanceDp, Paint arcPaint,
+                int actionOffset, boolean longDistance) {
+            float horizontalX = Math.min(getWidth() / scale,
+                    distanceDp + (splitEnabled && longDistance ? 30f : 46f));
+            float diagonalX = Math.min(getWidth() / scale,
+                    Math.max(distanceDp * 0.72f, distanceDp * 0.35f + 30f));
+            float diagonalY = Math.max(Math.max(24f, diagonalX * 0.45f) + 24f,
+                    (float) Math.sqrt(Math.max(0f, distanceDp * distanceDp
+                            - diagonalX * diagonalX)) + 24f);
+            drawArcActionLabel(canvas, actionLabel(actionOffset, longDistance),
+                    screenX(horizontalX), centerY, 1, arcPaint);
+            drawArcActionLabel(canvas, actionLabel(actionOffset + 1, longDistance),
+                    screenX(diagonalX), centerY - diagonalY * scale, 0, arcPaint);
+            drawArcActionLabel(canvas, actionLabel(actionOffset + 2, longDistance),
+                    screenX(diagonalX), centerY + diagonalY * scale, 2, arcPaint);
+        }
+
+        private void drawArcActionLabel(Canvas canvas, String text, float x, float y, int zone,
+                Paint arcPaint) {
+            textPaint.setTextSize(13f * scaledDensity);
+            textPaint.setColor(Color.WHITE);
+            float labelX = x + direction * dp(24);
+            float labelY = y + (zone == 0 ? -dp(10) : zone == 2 ? dp(18) : -dp(18));
+            float halfWidth = textPaint.measureText(text) / 2f + dp(6);
+            labelX = Math.max(halfWidth + dp(8), Math.min(getWidth() - halfWidth - dp(8), labelX));
+            Paint.FontMetrics metrics = textPaint.getFontMetrics();
+            float baseline = labelY - (metrics.ascent + metrics.descent) / 2f;
+            labelBackgroundPaint.setColor(Color.argb(0xd8,
+                    Color.red(arcPaint.getColor()), Color.green(arcPaint.getColor()),
+                    Color.blue(arcPaint.getColor())));
+            canvas.drawRoundRect(labelX - halfWidth, baseline + metrics.ascent - dp(4),
+                    labelX + halfWidth, baseline + metrics.descent + dp(4),
+                    dp(6), dp(6), labelBackgroundPaint);
+            textPaint.setColor(Color.WHITE);
+            canvas.drawText(text, labelX, baseline, textPaint);
         }
 
         private void drawControls(Canvas canvas, float width, float height, float top) {
             float margin = dp(12);
             float controlTop = top + dp(12);
-            float controlHeight = dp(42);
+            float controlHeight = dp(40);
             float gap = dp(6);
-            float sideWidth = dp(72);
-            float modeWidth = dp(104);
-            leftControl.set(margin, controlTop, margin + sideWidth, controlTop + controlHeight);
-            rightControl.set(leftControl.right + gap, controlTop,
-                    leftControl.right + gap + sideWidth, controlTop + controlHeight);
-            shortControl.set(rightControl.right + gap, controlTop,
-                    rightControl.right + gap + modeWidth, controlTop + controlHeight);
-            longControl.set(shortControl.right + gap, controlTop,
-                    Math.min(width - margin, shortControl.right + gap + modeWidth),
+            float rowWidth = (width - margin * 2f - gap) / 2f;
+            leftControl.set(margin, controlTop, margin + rowWidth, controlTop + controlHeight);
+            rightControl.set(margin + rowWidth + gap, controlTop, width - margin,
                     controlTop + controlHeight);
+            float modeTop = controlTop + controlHeight + gap;
+            shortControl.set(margin, modeTop, margin + rowWidth, modeTop + controlHeight);
+            longControl.set(margin + rowWidth + gap, modeTop, width - margin,
+                    modeTop + controlHeight);
             drawControl(canvas, leftControl, "左侧", leftSide);
             drawControl(canvas, rightControl, "右侧", !leftSide);
             drawControl(canvas, shortControl, "短距离", !longDistanceMode);
@@ -398,7 +495,7 @@ public final class SideGestureZoneOverlay {
             drawControl(canvas, saveControl, "保存", true);
             textPaint.setTextSize(12f * scaledDensity);
             textPaint.setColor(0xeeffffff);
-            canvas.drawText("点击彩色区域设置动作，拖动圆点调整距离", width / 2f,
+            canvas.drawText("1:1 比例 · 点击区域设置动作 · 拖动圆点调整距离", width / 2f,
                     buttonTop - dp(10), textPaint);
             textPaint.setColor(Color.WHITE);
         }
@@ -415,7 +512,7 @@ public final class SideGestureZoneOverlay {
         private void drawPicker(Canvas canvas, float width, float height, float top) {
             float panelLeft = dp(22);
             float panelRight = width - dp(22);
-            float panelTop = top + dp(70);
+            float panelTop = top + dp(108);
             float rowHeight = dp(44);
             float panelBottom = panelTop + dp(38) + rowHeight * ACTION_LABELS.length;
             controlPaint.setColor(0xe62a313a);
@@ -490,10 +587,19 @@ public final class SideGestureZoneOverlay {
                     return true;
                 }
                 dragging = hitHandle(x, y);
-                if (dragging != DRAG_NONE) return true;
+                if (dragging == DRAG_SHORT) {
+                    dragOffsetX = x - handleX(shortDistanceDp);
+                    return true;
+                }
+                if (dragging == DRAG_LONG) {
+                    dragOffsetX = x - handleX(longDistanceDp);
+                    return true;
+                }
             } else if (action == MotionEvent.ACTION_MOVE) {
                 if (dragging != DRAG_NONE) {
-                    int distance = Math.round(((x - originX) * direction) / density);
+                    float handleX = x - dragOffsetX;
+                    float inward = Math.max(0f, (handleX - originX) * direction);
+                    int distance = Math.round(inward / scale);
                     if (dragging == DRAG_LONG) {
                         longDistanceDp = clamp(distance,
                                 SettingsStore.MIN_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
@@ -515,7 +621,7 @@ public final class SideGestureZoneOverlay {
                 float inward = (x - originX) * direction;
                 if (inward > 0 && y > topInset() && y < getHeight() - navigationBarHeight()) {
                     float dy = y - centerY;
-                    float distanceDp = inward / density;
+                    float distanceDp = inward / scale;
                     int directionIndex = Math.abs(dy) < Math.max(dp(24), inward * 0.45f)
                             ? 0 : dy < 0 ? 1 : 2;
                     if (distanceDp > 8f) {
@@ -533,7 +639,7 @@ public final class SideGestureZoneOverlay {
         private boolean handlePickerTap(float x, float y) {
             float panelLeft = dp(22);
             float panelRight = getWidth() - dp(22);
-            float panelTop = topInset() + dp(70);
+            float panelTop = topInset() + dp(108);
             float rowHeight = dp(44);
             float rowStart = panelTop + dp(38);
             if (x < panelLeft || x > panelRight || y < rowStart
@@ -550,10 +656,10 @@ public final class SideGestureZoneOverlay {
 
         private int hitHandle(float x, float y) {
             float hit = dp(28);
-            float shortX = originX + direction * Math.min(depth, dp(shortDistanceDp));
-            float longX = originX + direction * Math.min(depth, dp(longDistanceDp));
-            float shortY = centerY - dp(16);
-            float longY = centerY + dp(16);
+            float shortX = handleX(shortDistanceDp);
+            float shortY = centerY;
+            float longX = handleX(longDistanceDp);
+            float longY = centerY;
             boolean shortHit = Math.hypot(x - shortX, y - shortY) <= hit;
             boolean longHit = splitEnabled && Math.hypot(x - longX, y - longY) <= hit;
             if (!shortHit && !longHit) return DRAG_NONE;
@@ -564,8 +670,12 @@ public final class SideGestureZoneOverlay {
             return shortHit ? DRAG_SHORT : DRAG_LONG;
         }
 
-        private String actionLabel(int index) {
-            int action = (splitEnabled && longDistanceMode) ? longActions[index] : shortActions[index];
+        private float handleX(int distanceDp) {
+            return screenX(distanceDp);
+        }
+
+        private String actionLabel(int index, boolean longDistance) {
+            int action = longDistance ? longActions[index] : shortActions[index];
             switch (action) {
                 case SettingsStore.SIDE_GESTURE_ACTION_BACK: return "返回";
                 case SettingsStore.SIDE_GESTURE_ACTION_HOME: return "主页";
