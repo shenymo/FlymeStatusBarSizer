@@ -139,7 +139,9 @@ final class AssistantGestureHooks {
             boolean leftEdge = ReflectUtils.getBooleanField(target, "mIsOnLeftEdge", false);
             if (locked()) return;
             float density = context.getResources().getDisplayMetrics().density;
-            state.begin(event.getX(), event.getY(), config.assistantGestureDistanceDp * density,
+            float rawX = event.getRawX();
+            float rawY = event.getRawY();
+            state.begin(rawX, rawY, config.assistantGestureDistanceDp * density,
                     12f * density, leftEdge, 24f * density);
             fromLeft = leftEdge;
             zoneOverlayEnabled = config.assistantGestureZoneOverlayEnabled;
@@ -158,7 +160,7 @@ final class AssistantGestureHooks {
             downLongActionId = leftEdge
                     ? config.sideGestureLeftDownLongAction : config.sideGestureRightDownLongAction;
             if (zoneOverlayEnabled) {
-                zoneOverlay.show(event.getX(), event.getY(), leftEdge,
+                zoneOverlay.show(rawX, rawY, leftEdge,
                         config.assistantGestureDistanceDp * density, longDistancePx,
                         distanceSplitEnabled, horizontalActionId, upActionId, downActionId,
                         horizontalLongActionId, upLongActionId, downLongActionId);
@@ -169,11 +171,16 @@ final class AssistantGestureHooks {
         void move(MotionEvent event) {
             if (last == null) return;
             // Process batched samples so direction changes cannot be skipped.
+            float rawOffsetX = event.getRawX() - event.getX();
+            float rawOffsetY = event.getRawY() - event.getY();
             for (int i = 0; i < event.getHistorySize(); i++) {
-                state.move(event.getHistoricalX(i), event.getHistoricalY(i), event.getPointerCount());
+                state.move(event.getHistoricalX(i) + rawOffsetX,
+                        event.getHistoricalY(i) + rawOffsetY, event.getPointerCount());
             }
-            state.move(event.getX(), event.getY(), event.getPointerCount());
-            if (zoneOverlayEnabled) zoneOverlay.updatePointer(event.getX(), event.getY());
+            float rawX = event.getRawX();
+            float rawY = event.getRawY();
+            state.move(rawX, rawY, event.getPointerCount());
+            if (zoneOverlayEnabled) zoneOverlay.updatePointer(rawX, rawY);
             remember(event);
         }
 
