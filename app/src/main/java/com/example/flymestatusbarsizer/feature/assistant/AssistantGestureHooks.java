@@ -98,6 +98,7 @@ final class AssistantGestureHooks {
         final Handler handler = new Handler(Looper.myLooper());
         final AssistantGestureState state = new AssistantGestureState();
         final SideGestureActions.Action globalAssistant;
+        final SideGestureActions.Action taskSwitcher;
         final Method cancel, pilfer;
         MotionEvent last;
         boolean consumed;
@@ -125,6 +126,7 @@ final class AssistantGestureHooks {
             this.pilfer = pilfer;
             this.sendEvent = sendEvent;
             this.globalAssistant = globalAssistant;
+            this.taskSwitcher = com.example.flymestatusbarsizer.feature.onehanded.RecentTaskSwitcher.action(context);
             this.actionOverlay = new AssistantGestureActionOverlay(context);
             this.zoneOverlay = new AssistantGestureZoneOverlay(context);
         }
@@ -221,7 +223,8 @@ final class AssistantGestureHooks {
                 return false;
             }
             if (actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK) return false;
-            SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant);
+            SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant,
+                    com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION, taskSwitcher);
             boolean noAction = actionId == SettingsStore.SIDE_GESTURE_ACTION_NONE;
             boolean navigation = isNavigationAction(actionId);
             if (!noAction && !navigation && (action == null || !action.isReady())) { reset(); return false; }
@@ -240,7 +243,7 @@ final class AssistantGestureHooks {
                     executeNavigationAction(target, actionId);
                     haptic.run();
                 } else {
-                    action.execute(fromLeft, haptic);
+                    action.execute(fromLeft, state.startY(), haptic);
                 }
                 return true;
             } catch (Throwable t) {
@@ -282,7 +285,8 @@ final class AssistantGestureHooks {
                 actionOverlay.hide();
                 return;
             }
-            SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant);
+            SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant,
+                    com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION, taskSwitcher);
             if (actionId != SettingsStore.SIDE_GESTURE_ACTION_NONE
                     && !isNavigationAction(actionId)
                     && (action == null || !action.isReady())) {

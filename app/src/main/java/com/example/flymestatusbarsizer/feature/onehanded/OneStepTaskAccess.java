@@ -23,6 +23,7 @@ final class OneStepTaskAccess {
     private final Object service;
     private final Method roots;
     private final Method launch;
+    private final Method removeTask;
     private final Method focusTask;
     private final OneStepRecentTasks recent;
     private Object taskListener;
@@ -33,6 +34,7 @@ final class OneStepTaskAccess {
         Class<?> tasks = Class.forName("android.app.IActivityTaskManager");
         roots = tasks.getMethod("getAllRootTaskInfos");
         launch = tasks.getMethod("startActivityFromRecents", int.class, Bundle.class);
+        removeTask = tasks.getMethod("removeTask", int.class);
         focusTask = tasks.getMethod("setFocusedTask", int.class);
         recent = new OneStepRecentTasks(context);
     }
@@ -167,6 +169,11 @@ final class OneStepTaskAccess {
         if (!(result instanceof Number) || ((Number) result).intValue() < 0) {
             throw new IllegalStateException("Cannot resume recent task");
         }
+    }
+
+    void remove(RecentTaskCard requested) throws ReflectiveOperationException {
+        Object result = removeTask.invoke(service, requested.taskId);
+        if (Boolean.FALSE.equals(result)) throw new IllegalStateException("Cannot remove recent task");
     }
 
     int defaultFocusedTaskId() throws ReflectiveOperationException {
