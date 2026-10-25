@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.onehanded;
 
 import android.content.Context;
+import android.content.res.Configuration;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
@@ -103,6 +104,7 @@ public final class RecentTaskSwitcher {
         private final Context context;
         private final boolean fromLeft;
         private final float anchorY;
+        private boolean darkMode;
         private final WindowManager windowManager;
         private final List<TaskEntry> entries = new ArrayList<>();
         private final FrameLayout root;
@@ -111,6 +113,8 @@ public final class RecentTaskSwitcher {
         private final ScrollView scroll;
         private final EditText search;
         private final LinearLayout searchContainer;
+        private final TextView searchButton;
+        private final TextView closeAllButton;
         private View loadingRow;
         private boolean attached;
         private boolean closing;
@@ -120,9 +124,17 @@ public final class RecentTaskSwitcher {
             this.context = context;
             this.fromLeft = fromLeft;
             this.anchorY = anchorY;
+            darkMode = (context.getResources().getConfiguration().uiMode
+                    & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
             windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
 
-            root = new FrameLayout(context);
+            root = new FrameLayout(context) {
+                @Override
+                protected void onConfigurationChanged(Configuration configuration) {
+                    super.onConfigurationChanged(configuration);
+                    updateDarkMode(configuration);
+                }
+            };
             root.setBackgroundColor(Color.TRANSPARENT);
             root.setOnClickListener(view -> close());
             root.setOnTouchListener((view, event) -> {
@@ -133,7 +145,7 @@ public final class RecentTaskSwitcher {
             panel = new LinearLayout(context);
             panel.setOrientation(LinearLayout.VERTICAL);
             panel.setPadding(dp(4), dp(4), dp(4), dp(2));
-            panel.setBackground(background(0xf5ffffff, dp(12), 0x24000000));
+            panel.setBackground(panelBackground());
             panel.setElevation(dp(7));
             panel.setOnClickListener(view -> { });
             int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
@@ -152,11 +164,12 @@ public final class RecentTaskSwitcher {
             search = new EditText(context);
             search.setSingleLine(true);
             search.setTextSize(12);
-            search.setTextColor(0xff222222);
-            search.setHintTextColor(0xff888888);
+            search.setTextColor(paletteColor(0xff222222, 0xfff1f3f4));
+            search.setHintTextColor(paletteColor(0xff888888, 0xffaeb4b9));
             search.setHint("搜索应用");
             search.setPadding(dp(7), 0, dp(7), 0);
-            search.setBackground(background(0x11000000, dp(7), Color.TRANSPARENT));
+            search.setBackground(background(
+                    paletteColor(0x11000000, 0x18ffffff), dp(7), Color.TRANSPARENT));
             searchContainer.addView(search, new LinearLayout.LayoutParams(-1, dp(24)));
             panel.addView(searchContainer, new LinearLayout.LayoutParams(-1, dp(27)));
             search.addTextChangedListener(new TextWatcher() {
@@ -177,24 +190,24 @@ public final class RecentTaskSwitcher {
 
             LinearLayout footer = new LinearLayout(context);
             footer.setGravity(Gravity.CENTER_VERTICAL);
-            TextView searchButton = new TextView(context);
+            searchButton = new TextView(context);
             searchButton.setText("⌕");
             searchButton.setTextSize(19);
-            searchButton.setTextColor(0xff287a78);
+            searchButton.setTextColor(accentColor());
             searchButton.setGravity(Gravity.CENTER);
             searchButton.setContentDescription("搜索任务");
             footer.addView(searchButton, new LinearLayout.LayoutParams(dp(28), dp(27)));
             searchButton.setOnClickListener(view -> toggleSearch());
             View spacer = new View(context);
             footer.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
-            TextView closeAll = new TextView(context);
-            closeAll.setText("全部关闭");
-            closeAll.setTextSize(11);
-            closeAll.setTextColor(0xff287a78);
-            closeAll.setGravity(Gravity.CENTER);
-            closeAll.setPadding(dp(8), 0, dp(8), 0);
-            footer.addView(closeAll, new LinearLayout.LayoutParams(-2, dp(27)));
-            closeAll.setOnClickListener(view -> closeAllTasks());
+            closeAllButton = new TextView(context);
+            closeAllButton.setText("全部关闭");
+            closeAllButton.setTextSize(11);
+            closeAllButton.setTextColor(accentColor());
+            closeAllButton.setGravity(Gravity.CENTER);
+            closeAllButton.setPadding(dp(8), 0, dp(8), 0);
+            footer.addView(closeAllButton, new LinearLayout.LayoutParams(-2, dp(27)));
+            closeAllButton.setOnClickListener(view -> closeAllTasks());
             panel.addView(footer, new LinearLayout.LayoutParams(-1, dp(27)));
 
             int availableHeight = context.getResources().getDisplayMetrics().heightPixels;
@@ -347,7 +360,7 @@ public final class RecentTaskSwitcher {
                 if (!matchesQuery(entry, query)) continue;
                 if (count > 0) {
                     View divider = new View(context);
-                    divider.setBackgroundColor(0x18000000);
+                    divider.setBackgroundColor(paletteColor(0x18000000, 0x28ffffff));
                     rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
                 }
                 rows.addView(taskRow(entry), new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
@@ -356,7 +369,7 @@ public final class RecentTaskSwitcher {
             if (count == 0 && !loading) {
                 TextView empty = new TextView(context);
                 empty.setText(entries.isEmpty() ? "没有最近任务" : "没有匹配的任务");
-                empty.setTextColor(0xff777777);
+                empty.setTextColor(paletteColor(0xff777777, 0xffb8bec3));
                 empty.setTextSize(14);
                 empty.setGravity(Gravity.CENTER);
                 rows.addView(empty, new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
@@ -383,7 +396,7 @@ public final class RecentTaskSwitcher {
                 }
                 if (visibleBefore > 0) {
                     View divider = new View(context);
-                    divider.setBackgroundColor(0x18000000);
+                    divider.setBackgroundColor(paletteColor(0x18000000, 0x28ffffff));
                     rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
                 }
                 View row = taskRow(entry);
@@ -400,7 +413,7 @@ public final class RecentTaskSwitcher {
         private void addLoadingRow() {
             FrameLayout row = new FrameLayout(context);
             ProgressBar spinner = new ProgressBar(context, null, android.R.attr.progressBarStyleSmall);
-            spinner.setIndeterminateTintList(ColorStateList.valueOf(0xff287a78));
+            spinner.setIndeterminateTintList(ColorStateList.valueOf(accentColor()));
             row.addView(spinner, new FrameLayout.LayoutParams(dp(18), dp(18), Gravity.CENTER));
             rows.addView(row, new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
             loadingRow = row;
@@ -422,10 +435,11 @@ public final class RecentTaskSwitcher {
             String label = entry.label;
             LinearLayout row = new LinearLayout(context);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setBackground(new RippleDrawable(ColorStateList.valueOf(0x22287a78), null, null));
+            row.setBackground(new RippleDrawable(
+                    ColorStateList.valueOf(paletteColor(0x22287a78, 0x2877c6c1)), null, null));
             TextView name = new TextView(context);
             name.setText(label);
-            name.setTextColor(0xff222222);
+            name.setTextColor(paletteColor(0xff222222, 0xfff1f3f4));
             name.setTextSize(11);
             name.setSingleLine(true);
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -437,7 +451,7 @@ public final class RecentTaskSwitcher {
             TextView remove = new TextView(context);
             remove.setText("×");
             remove.setTextSize(11);
-            remove.setTextColor(0xff444444);
+            remove.setTextColor(paletteColor(0xff444444, 0xffd4d8dc));
             remove.setGravity(Gravity.CENTER);
             remove.setContentDescription("关闭" + label);
             remove.setOnClickListener(view -> removeTask(card));
@@ -449,7 +463,7 @@ public final class RecentTaskSwitcher {
             miniWindow.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
             miniWindow.setPadding(dp(5), dp(5), dp(5), dp(5));
             miniWindow.setBackground(new android.graphics.drawable.RippleDrawable(
-                    ColorStateList.valueOf(0x18000000), null, null));
+                    ColorStateList.valueOf(paletteColor(0x18000000, 0x20ffffff)), null, null));
             miniWindow.setContentDescription("以小窗打开" + label);
             miniWindow.setTooltipText("以小窗打开");
             setModuleIcon(miniWindow, R.drawable.ic_task_window, android.R.drawable.ic_menu_view);
@@ -479,8 +493,38 @@ public final class RecentTaskSwitcher {
                 view.setImageDrawable(module.getDrawable(resource));
             } catch (Exception error) {
                 view.setImageResource(fallback);
-                view.setColorFilter(0xff287a78);
+                view.setColorFilter(accentColor());
             }
+        }
+
+        private int paletteColor(int light, int dark) {
+            return darkMode ? dark : light;
+        }
+
+        private Drawable panelBackground() {
+            return background(
+                    paletteColor(0xf5ffffff, 0xf52a2c2f),
+                    dp(12),
+                    paletteColor(0x24000000, 0x38ffffff));
+        }
+
+        private void updateDarkMode(Configuration configuration) {
+            boolean nextDarkMode = (configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                    == Configuration.UI_MODE_NIGHT_YES;
+            if (!attached || darkMode == nextDarkMode) return;
+            darkMode = nextDarkMode;
+            panel.setBackground(panelBackground());
+            search.setTextColor(paletteColor(0xff222222, 0xfff1f3f4));
+            search.setHintTextColor(paletteColor(0xff888888, 0xffaeb4b9));
+            search.setBackground(background(
+                    paletteColor(0x11000000, 0x18ffffff), dp(7), Color.TRANSPARENT));
+            searchButton.setTextColor(accentColor());
+            closeAllButton.setTextColor(accentColor());
+            renderRows();
+        }
+
+        private int accentColor() {
+            return paletteColor(0xff287a78, 0xff77c6c1);
         }
 
         private void openMiniWindow(RecentTaskCard card, ImageButton button) {
