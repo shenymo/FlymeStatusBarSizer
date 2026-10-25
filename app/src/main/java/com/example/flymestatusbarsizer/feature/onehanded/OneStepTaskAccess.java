@@ -6,8 +6,8 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
-import android.graphics.Rect;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.SystemClock;
 import android.os.UserHandle;
@@ -31,8 +31,9 @@ final class OneStepTaskAccess {
     private final OneStepRecentTasks recent;
     private Object taskListener;
     private Object windowManagerExt;
-    private Method enterWindowMode;
     private Method isWindowMode;
+    private Method setStartWindowMode;
+    private Method makeCustomTaskAnimation;
 
     OneStepTaskAccess(Context context) throws ReflectiveOperationException {
         this.context = context;
@@ -183,22 +184,52 @@ final class OneStepTaskAccess {
             throw new IllegalStateException("Selected task no longer exists");
         }
         initWindowManagerExt();
-        enterWindowMode.invoke(windowManagerExt, 0, current.taskId, 1, 11, null, -1.0f, true);
-        for (int attempt = 0; attempt < 10; attempt++) {
-            Object result = isWindowMode.invoke(windowManagerExt, 0, current.taskId, 11, current.token);
+        int previousFocusedTaskId = defaultFocusedTaskId();
+        setStartWindowMode.invoke(windowManagerExt, current.component.getPackageName());
+        Bundle options = buildSmallWindowTaskOptions();
+        Object launchResult = launch.invoke(service, current.taskId, options);
+        if (!(launchResult instanceof Number) || ((Number) launchResult).intValue() < 0) {
+            throw new IllegalStateException("Cannot open selected task in mini window");
+        }
+        for (int attempt = 0; attempt < 20; attempt++) {
+            Object result = isWindowMode.invoke(windowManagerExt, 0, current.taskId, 11, null);
             if (Boolean.TRUE.equals(result)) return;
             SystemClock.sleep(100L);
         }
+        if (previousFocusedTaskId >= 0) restoreFocusedTask(previousFocusedTaskId);
         throw new IllegalStateException("Flyme mini window was not entered");
+    }
+
+    private Bundle buildSmallWindowTaskOptions() throws ReflectiveOperationException {
+        ActivityOptions taskAnimation = null;
+        if (makeCustomTaskAnimation == null) {
+            for (Method method : ActivityOptions.class.getDeclaredMethods()) {
+                Class<?>[] parameters = method.getParameterTypes();
+                if ("makeCustomTaskAnimation".equals(method.getName()) && parameters.length == 6
+                        && parameters[0] == Context.class && parameters[1] == int.class
+                        && parameters[2] == int.class && parameters[3] == Handler.class) {
+                    method.setAccessible(true);
+                    makeCustomTaskAnimation = method;
+                    break;
+                }
+            }
+        }
+        if (makeCustomTaskAnimation != null) {
+            Object result = makeCustomTaskAnimation.invoke(null, context, 0, 0, null, null, null);
+            if (result instanceof ActivityOptions) taskAnimation = (ActivityOptions) result;
+        }
+        Bundle options = taskAnimation != null
+                ? taskAnimation.toBundle() : ActivityOptions.makeBasic().toBundle();
+        options.putBoolean("start_windowmode", true);
+        return options;
     }
 
     private void initWindowManagerExt() throws ReflectiveOperationException {
         if (windowManagerExt != null) return;
         Class<?> type = Class.forName("flyme.view.WindowManagerExt", false, context.getClassLoader());
         windowManagerExt = type.getMethod("getInstance", Context.class).invoke(null, context);
-        enterWindowMode = type.getMethod("enterWindowMode", int.class, int.class, int.class, int.class,
-                Rect.class, float.class, boolean.class);
         isWindowMode = type.getMethod("isWindowMode", int.class, int.class, int.class, IBinder.class);
+        setStartWindowMode = type.getMethod("setStartWindowMode", String.class);
     }
 
     void remove(RecentTaskCard requested) throws ReflectiveOperationException {
@@ -211,6 +242,11 @@ final class OneStepTaskAccess {
             if (display(root) == 0 && ReflectUtils.getBooleanField(root, "isFocused", false)) return taskId(root);
         }
         return -1;
+    }
+
+    private void restoreFocusedTask(int id) {
+        try { focusTask.invoke(service, id); }
+        catch (ReflectiveOperationException ignored) { }
     }
 
     void focusTask(int id) throws ReflectiveOperationException { focusTask.invoke(service, id); }
