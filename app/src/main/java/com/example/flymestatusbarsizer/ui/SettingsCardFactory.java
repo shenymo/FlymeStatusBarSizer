@@ -385,27 +385,18 @@ public final class SettingsCardFactory {
 
         AssistantGesturePreviewLayout gestureOptions = new AssistantGesturePreviewLayout(
                 activity, activity.prefs(), activity.primaryColor());
-        activity.addChoiceRow(gestureOptions, "触发边缘", null,
-                SettingsStore.KEY_ASSISTANT_GESTURE_SIDE, SettingsStore.DEFAULT_ASSISTANT_GESTURE_SIDE,
-                new int[]{SettingsStore.ASSISTANT_GESTURE_SIDE_LEFT,
-                        SettingsStore.ASSISTANT_GESTURE_SIDE_RIGHT, SettingsStore.ASSISTANT_GESTURE_SIDE_BOTH},
-                new String[]{"左侧", "右侧", "两侧"});
-        activity.addDivider(gestureOptions);
-        activity.addMultiChoiceRow(gestureOptions, "生效场景",
-                "可多选：应用和桌面、通知栏、控制中心。全部取消后手势不生效。"
-                        + "单手缩放只在选择“应用和桌面”且应用为竖屏全屏时生效。",
-                SettingsStore.KEY_ASSISTANT_GESTURE_SCENES, SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES,
-                new int[]{SettingsStore.ASSISTANT_GESTURE_SCENE_NORMAL,
-                        SettingsStore.ASSISTANT_GESTURE_SCENE_NOTIFICATION,
-                        SettingsStore.ASSISTANT_GESTURE_SCENE_CONTROL_CENTER},
-                new String[]{"应用和桌面", "通知栏", "控制中心"}, "未选择触发场景");
-        activity.addDivider(gestureOptions);
         activity.addSliderRow(gestureOptions, "最短滑动距离", "手指向内滑动达到此距离后才可能触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP, SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP,
                 40, 240, "dp");
         activity.addSliderRow(gestureOptions, "按住时长", "从手指按下开始计时，距离和时长都达到要求后触发。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_HOLD_MS, SettingsStore.DEFAULT_ASSISTANT_GESTURE_HOLD_MS,
                 250, 2000, "ms");
+        activity.addChoiceRow(gestureOptions, "触发时机", "达到最短按住时长后立即触发，或等手指松开后触发。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_TRIGGER_MODE,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE,
+                new int[]{SettingsStore.ASSISTANT_GESTURE_TRIGGER_AT_HOLD,
+                        SettingsStore.ASSISTANT_GESTURE_TRIGGER_ON_RELEASE},
+                new String[]{"达到时长时触发", "松手后触发"});
         activity.addActionButtonRow(gestureOptions, "预览滑动距离",
                 "显示所选边缘的触发距离，5 秒后自动隐藏。",
                 "显示标线", gestureOptions::showPreview);
@@ -435,6 +426,14 @@ public final class SettingsCardFactory {
 
         LinearLayout assistantOptions = new LinearLayout(activity);
         assistantOptions.setOrientation(LinearLayout.VERTICAL);
+        activity.addMultiChoiceRow(assistantOptions, "生效场景",
+                "仅控制选择“全局负一屏”的手势在哪些界面生效。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_SCENES, SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES,
+                new int[]{SettingsStore.ASSISTANT_GESTURE_SCENE_NORMAL,
+                        SettingsStore.ASSISTANT_GESTURE_SCENE_NOTIFICATION,
+                        SettingsStore.ASSISTANT_GESTURE_SCENE_CONTROL_CENTER},
+                new String[]{"应用和桌面", "通知栏", "控制中心"}, "未选择触发场景");
+        activity.addDivider(assistantOptions);
         AssistantBackgroundSettings.addRows(activity, assistantOptions);
         View appearanceCard = activity.buildSectionCard("全局负一屏",
                 "下次打开全局负一屏时生效，不影响桌面负一屏。", assistantOptions, true);

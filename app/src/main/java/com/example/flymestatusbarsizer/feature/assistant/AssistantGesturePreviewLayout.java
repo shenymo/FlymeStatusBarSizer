@@ -23,8 +23,7 @@ public final class AssistantGesturePreviewLayout extends LinearLayout {
     private final Runnable dismiss = this::hidePreview;
     private View overlayHost;
     private final SharedPreferences.OnSharedPreferenceChangeListener listener = (prefs, key) -> {
-        if (SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP.equals(key)
-                || SettingsStore.KEY_ASSISTANT_GESTURE_SIDE.equals(key)) showPreview();
+        if (SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP.equals(key)) showPreview();
         else if (SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_ENABLED.equals(key)
                 || SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP.equals(key)) showVerticalPreview();
     };
@@ -60,8 +59,6 @@ public final class AssistantGesturePreviewLayout extends LinearLayout {
         marker.verticalLimitDp = SettingsStore.normalizeAssistantGestureVerticalLimitDp(SettingsStore.readInt(prefs,
                 SettingsStore.KEY_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_VERTICAL_LIMIT_DP));
-        marker.side = SettingsStore.normalizeAssistantGestureSide(SettingsStore.readInt(prefs,
-                SettingsStore.KEY_ASSISTANT_GESTURE_SIDE, SettingsStore.DEFAULT_ASSISTANT_GESTURE_SIDE));
         marker.setBounds(0, 0, overlayHost.getWidth(), overlayHost.getHeight());
         overlayHost.getOverlay().add(marker);
         postDelayed(dismiss, PREVIEW_DURATION_MS);
@@ -124,7 +121,6 @@ public final class AssistantGesturePreviewLayout extends LinearLayout {
         private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint originPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private int distanceDp;
-        private int side;
         private boolean vertical, verticalLimitEnabled;
         private int verticalLimitDp;
 
@@ -155,13 +151,8 @@ public final class AssistantGesturePreviewLayout extends LinearLayout {
                 drawVertical(canvas, top, bottom, center);
                 return;
             }
-            boolean both = side == SettingsStore.ASSISTANT_GESTURE_SIDE_BOTH;
-            if (SettingsStore.assistantGestureAllowsSide(side, true)) {
-                drawSide(canvas, true, top, bottom, both ? center - dp(36) : center);
-            }
-            if (SettingsStore.assistantGestureAllowsSide(side, false)) {
-                drawSide(canvas, false, top, bottom, both ? center + dp(36) : center);
-            }
+            drawSide(canvas, true, top, bottom, center - dp(36));
+            drawSide(canvas, false, top, bottom, center + dp(36));
         }
 
         private void drawVertical(Canvas canvas, float top, float bottom, float center) {

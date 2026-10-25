@@ -11,7 +11,6 @@ import android.view.animation.DecelerateInterpolator;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
-import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import java.lang.reflect.Method;
@@ -61,8 +60,7 @@ final class SideBackAnimation {
             Context context = view.getContext();
             ModuleConfig config = ModuleConfig.load(context);
             boolean left = ReflectUtils.getBooleanField(view, "mIsLeftPanel", false);
-            if (!config.enabled || !config.assistantGestureEnabled
-                    || !SettingsStore.assistantGestureAllowsSide(config.assistantGestureSide, left)) {
+            if (!config.enabled || !config.assistantGestureEnabled) {
                 clear(view);
                 return null;
             }

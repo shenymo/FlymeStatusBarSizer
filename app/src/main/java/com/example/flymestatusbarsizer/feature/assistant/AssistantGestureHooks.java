@@ -78,14 +78,14 @@ final class AssistantGestureHooks {
             if (action == MotionEvent.ACTION_MOVE) gesture.updateAnimation();
             // UP must be intercepted before the native plugin commits back.
             if (action == MotionEvent.ACTION_UP) {
-                boolean claimed = gesture.tryClaim();
+                boolean claimed = gesture.tryClaim(true);
                 gesture.reset();
                 return claimed ? null : chain.proceed();
             }
             Object result = chain.proceed();
             if (action == MotionEvent.ACTION_MOVE) {
                 gesture.updateAnimationProgress();
-                gesture.tryClaim();
+                gesture.tryClaim(false);
             }
             return result;
         });
@@ -98,10 +98,11 @@ final class AssistantGestureHooks {
         final AssistantGestureState state = new AssistantGestureState();
         final SideGestureActions.Action globalAssistant;
         final Method cancel, pilfer;
-        final Runnable timeout = this::tryClaim;
+        final Runnable timeout = () -> tryClaim(false);
         MotionEvent last;
         boolean consumed;
         boolean fromLeft;
+        boolean triggerOnRelease;
         final Method sendEvent;
         int horizontalActionId, upActionId, downActionId;
 
@@ -128,8 +129,7 @@ final class AssistantGestureHooks {
                     || ReflectUtils.getBooleanField(target, "mIsTrackpadThreeFingerSwipe", false)
                     || ReflectUtils.getBooleanField(target, "mInterceptBack", false)) return;
             boolean leftEdge = ReflectUtils.getBooleanField(target, "mIsOnLeftEdge", false);
-            if (!SettingsStore.assistantGestureAllowsSide(config.assistantGestureSide, leftEdge)
-                    || !AssistantGestureScenes.allows(config.assistantGestureScenes, target) || locked()) return;
+            if (locked()) return;
             float density = context.getResources().getDisplayMetrics().density;
             state.begin(event.getX(), event.getY(), event.getDownTime(),
                     config.assistantGestureDistanceDp * density, config.assistantGestureHoldMs, 12f * density, leftEdge,
@@ -137,6 +137,8 @@ final class AssistantGestureHooks {
                             ? config.assistantGestureVerticalLimitDp * density : Float.POSITIVE_INFINITY,
                     24f * density);
             fromLeft = leftEdge;
+            triggerOnRelease = config.assistantGestureTriggerMode
+                    == SettingsStore.ASSISTANT_GESTURE_TRIGGER_ON_RELEASE;
             horizontalActionId = leftEdge ? config.sideGestureLeftAction : config.sideGestureRightAction;
             upActionId = leftEdge ? config.sideGestureLeftUpAction : config.sideGestureRightUpAction;
             downActionId = leftEdge ? config.sideGestureLeftDownAction : config.sideGestureRightDownAction;
@@ -154,18 +156,22 @@ final class AssistantGestureHooks {
             remember(event);
         }
 
-        boolean tryClaim() {
+        boolean tryClaim(boolean onRelease) {
             Object target = owner.get();
             if (last == null || target == null || consumed || !state.ready(SystemClock.uptimeMillis())) return false;
+            if (triggerOnRelease && !onRelease) return false;
             ModuleConfig config = ModuleConfig.load(context);
             if (!config.enabled || !config.assistantGestureEnabled
                     || !ReflectUtils.getBooleanField(target, "mAllowGesture", false)
                     || ReflectUtils.getBooleanField(target, "mInterceptBack", false)
-                    || !AssistantGestureScenes.allows(config.assistantGestureScenes, target)
                     || locked()) { reset(); return false; }
             int direction = state.direction();
             int actionId = actionId(direction);
             if (actionId != configuredAction(config, direction)) { reset(); return false; }
+            if (actionId == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                    && !AssistantGestureScenes.allows(config.assistantGestureScenes, target)) {
+                return false;
+            }
             if (actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK) return false;
             SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant);
             boolean noAction = actionId == SettingsStore.SIDE_GESTURE_ACTION_NONE;
