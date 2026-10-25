@@ -71,6 +71,13 @@ public final class AboutPageController {
                 "加入群聊",
                 activity.qqGroupUrl()),
                 PageViewUtils.matchWrapWithTop(activity, 8));
+        content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
+        content.addView(buildLinkRow(activity,
+                "QQ频道",
+                "群已满，加入QQ频道【FlymeBarSizer】进行交流",
+                "加入频道",
+                activity.qqChannelUrl()),
+                PageViewUtils.matchWrapWithTop(activity, 8));
         return activity.buildSectionCard(
                 "项目与社区",
                 "保留仓库地址和交流群入口，不再额外占用一级导航。",

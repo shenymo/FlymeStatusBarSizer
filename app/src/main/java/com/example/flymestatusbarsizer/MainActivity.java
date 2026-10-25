@@ -105,6 +105,7 @@ public class MainActivity extends Activity {
     private static final String GITHUB_URL = "https://github.com/shenymo/FlymeStatusBarSizer";
     private static final String QQ_GROUP_URL = "https://qun.qq.com/universal-share/share?ac=1&authKey=WuaHYIEHdI6Y%2Fvn7SvcFMtyuUX%2Bwp%2FMedY0eMgPLq9Bbrz%2FPMRsiIgDttNOMbPWW&busi_data=eyJncm91cENvZGUiOiIxMTAyMTM4MzgxIiwidG9rZW4iOiJIb1hmV2xvaVUxWFk2YjAyOXl5MmIwelljU3A5bFRYejQrb3JtUlJwOXRMK1BLU3pnWWRaSG9VdHZ4M3Fld2xqIiwidWluIjoiMjI4OTU3MTk5MCJ9&data=O3ClX619ry0x93elARpxRoHiwSavPU_N00zhT1jj5d_rR0feICi-g7gudqIpU6sbrKtr1_CCPBpNQ-APojGliw&svctype=4&tempid=h5_group_info";
     private static final String QQ_GROUP_NUMBER = "1102138381";
+    private static final String QQ_CHANNEL_URL = "https://pd.qq.com/s/ga4i8vkbn?b=9";
     public static final Pattern CLOCK_EXPRESSION_TOKEN_PATTERN = Pattern.compile("\\{([A-Za-z0-9_]+)\\}");
     static final String[][] CLOCK_EXPRESSION_TOKEN_ROWS = {
             {"HH", "H", "hh", "h"},
@@ -2608,6 +2609,10 @@ public class MainActivity extends Activity {
 
     public String qqGroupNumber() {
         return QQ_GROUP_NUMBER;
+    }
+
+    public String qqChannelUrl() {
+        return QQ_CHANNEL_URL;
     }
 
     public String supportedScopesSummary() {
