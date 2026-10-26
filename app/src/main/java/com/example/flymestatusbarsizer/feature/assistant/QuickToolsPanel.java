@@ -25,6 +25,7 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.Display;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
@@ -215,6 +216,8 @@ final class QuickToolsPanel {
         private boolean closing;
         private int activeSlider;
         private int brightness;
+        private int brightnessMin = 1;
+        private int brightnessMax = 255;
         private int volume;
         private int volumeMax;
         private boolean wifi;
@@ -300,9 +303,10 @@ final class QuickToolsPanel {
         }
 
         void refreshState() {
+            refreshBrightnessRange();
             try {
-                brightness = systemInt(Settings.System.SCREEN_BRIGHTNESS, 128);
-            } catch (Throwable ignored) { brightness = 128; }
+                brightness = clampBrightness(systemInt(Settings.System.SCREEN_BRIGHTNESS, 128));
+            } catch (Throwable ignored) { brightness = clampBrightness(128); }
             AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
             if (audio != null) {
                 volume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
@@ -340,7 +344,7 @@ final class QuickToolsPanel {
             float trackRight = getWidth() - dp(12);
             brightnessTrack.set(trackLeft, dp(25), trackRight, dp(30));
             volumeTrack.set(trackLeft, dp(53), trackRight, dp(58));
-            drawSlider(canvas, brightnessTrack, brightness / 255f, 0);
+            drawSlider(canvas, brightnessTrack, brightnessFraction(), 0);
             drawSlider(canvas, volumeTrack, volumeMax == 0 ? 0f : volume / (float) volumeMax, 1);
 
             float gridTop = dp(72);
@@ -533,6 +537,7 @@ final class QuickToolsPanel {
             if (event.getActionMasked() == MotionEvent.ACTION_UP) {
                 if (activeSlider != 0) {
                     updateSlider(x);
+                    if (activeSlider == 1) commitBrightness();
                     activeSlider = 0;
                     return true;
                 }
@@ -544,6 +549,11 @@ final class QuickToolsPanel {
                 }
                 return true;
             }
+            if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                if (activeSlider == 1) commitBrightness();
+                activeSlider = 0;
+                return true;
+            }
             return true;
         }
 
@@ -551,21 +561,85 @@ final class QuickToolsPanel {
             RectF track = activeSlider == 1 ? brightnessTrack : volumeTrack;
             float fraction = Math.max(0f, Math.min(1f, (x - track.left) / track.width()));
             if (activeSlider == 1) {
-                brightness = Math.max(1, Math.round(fraction * 255f));
-                putSystemInt(Settings.System.SCREEN_BRIGHTNESS, brightness);
-                try {
-                    DisplayManager display = (DisplayManager) getContext()
-                            .getSystemService(Context.DISPLAY_SERVICE);
-                    display.getClass().getMethod("setTemporaryBrightness", int.class, float.class)
-                            .invoke(display, 0, brightness / 255f);
-                } catch (Throwable ignored) {
-                }
+                brightness = brightnessFromFraction(fraction);
+                setTemporaryBrightness();
             } else {
                 volume = Math.round(fraction * volumeMax);
                 AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
                 if (audio != null) audio.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0);
             }
             invalidate();
+        }
+
+        private void refreshBrightnessRange() {
+            brightnessMin = integerResource("config_screenBrightnessSettingMinimum", 1);
+            brightnessMax = integerResource("config_screenBrightnessSettingMaximum", 255);
+            if (brightnessMin < 0) brightnessMin = 0;
+            if (brightnessMax <= brightnessMin) {
+                brightnessMin = 1;
+                brightnessMax = 255;
+            }
+        }
+
+        private int integerResource(String name, int fallback) {
+            int id = getResources().getIdentifier(name, "integer", "android");
+            if (id == 0) return fallback;
+            try {
+                return getResources().getInteger(id);
+            } catch (Throwable ignored) {
+                return fallback;
+            }
+        }
+
+        private int clampBrightness(int value) {
+            return Math.max(brightnessMin, Math.min(brightnessMax, value));
+        }
+
+        private float brightnessFraction() {
+            return (brightness - brightnessMin) / (float) (brightnessMax - brightnessMin);
+        }
+
+        private int brightnessFromFraction(float fraction) {
+            return clampBrightness(brightnessMin
+                    + Math.round(fraction * (brightnessMax - brightnessMin)));
+        }
+
+        private float brightnessFloat() {
+            return Math.max(0f, Math.min(1f, brightness / (float) brightnessMax));
+        }
+
+        private int displayId() {
+            Display display = getDisplay();
+            return display == null ? Display.DEFAULT_DISPLAY : display.getDisplayId();
+        }
+
+        private DisplayManager displayManager() {
+            return (DisplayManager) getContext().getSystemService(Context.DISPLAY_SERVICE);
+        }
+
+        private void setTemporaryBrightness() {
+            try {
+                DisplayManager display = displayManager();
+                if (display == null) return;
+                display.getClass().getMethod("setTemporaryBrightness", int.class, float.class)
+                        .invoke(display, displayId(), brightnessFloat());
+            } catch (Throwable ignored) {
+            }
+        }
+
+        private void commitBrightness() {
+            boolean committed = false;
+            try {
+                DisplayManager display = displayManager();
+                if (display != null) {
+                    display.getClass().getMethod("setBrightness", int.class, float.class)
+                            .invoke(display, displayId(), brightnessFloat());
+                    committed = true;
+                }
+            } catch (Throwable ignored) {
+            }
+            if (!committed) putSystemInt(Settings.System.SCREEN_BRIGHTNESS, brightness);
+            setTemporaryBrightness();
         }
 
         private boolean containsWithInset(RectF bounds, float x, float y, float inset) {
