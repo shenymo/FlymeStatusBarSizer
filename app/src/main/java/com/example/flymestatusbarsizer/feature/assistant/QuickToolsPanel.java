@@ -22,6 +22,7 @@ import android.os.PowerManager;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -30,6 +31,8 @@ import android.view.animation.AccelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
 import android.widget.Toast;
+
+import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
 
 import java.lang.reflect.Method;
 import java.util.Collection;
@@ -99,6 +102,7 @@ final class QuickToolsPanel {
         view.anchorY = anchorY;
         view.refreshState();
         if (attached) {
+            view.startBrightnessRefresh();
             view.alignToGestureAnchor();
             view.animateIn();
         } else if (!attempted) {
@@ -120,6 +124,7 @@ final class QuickToolsPanel {
             try {
                 windowManager.addView(root, params);
                 attached = true;
+                view.startBrightnessRefresh();
                 root.post(() -> {
                     view.alignToGestureAnchor();
                     view.animateIn();
@@ -206,10 +211,21 @@ final class QuickToolsPanel {
         private final RectF bounds = new RectF();
         private final RectF close = new RectF();
         private final RectF brightnessTrack = new RectF();
+        private final RectF brightnessIcon = new RectF();
         private final RectF volumeTrack = new RectF();
         private final RectF[] buttons = new RectF[TOOL_DESCRIPTIONS.length];
         private final float density;
         private final Handler main = new Handler(Looper.getMainLooper());
+        private final Runnable brightnessRefresh = new Runnable() {
+            @Override public void run() {
+                if (!attached || closing) return;
+                if (activeSlider == 0) {
+                    refreshBrightnessState();
+                    invalidate();
+                }
+                main.postDelayed(this, 120L);
+            }
+        };
         private boolean fromLeft = true;
         private float anchorY;
         private boolean darkMode;
@@ -218,6 +234,7 @@ final class QuickToolsPanel {
         private int brightness;
         private int brightnessMin = 1;
         private int brightnessMax = 255;
+        private boolean brightnessAuto;
         private int volume;
         private int volumeMax;
         private boolean wifi;
@@ -285,6 +302,7 @@ final class QuickToolsPanel {
         void animateClose() {
             if (!attached || closing) return;
             closing = true;
+            stopBrightnessRefresh();
             animate().cancel();
             setPivotX(fromLeft ? 0f : getWidth());
             setPivotY(Math.max(0f, Math.min(getHeight(), anchorY - getTop())));
@@ -303,10 +321,7 @@ final class QuickToolsPanel {
         }
 
         void refreshState() {
-            refreshBrightnessRange();
-            try {
-                brightness = clampBrightness(systemInt(Settings.System.SCREEN_BRIGHTNESS, 128));
-            } catch (Throwable ignored) { brightness = clampBrightness(128); }
+            refreshBrightnessState();
             AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
             if (audio != null) {
                 volume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
@@ -323,6 +338,34 @@ final class QuickToolsPanel {
             } catch (Throwable ignored) { rotationAuto = true; }
             flashlight = flashlightState();
             recording = screenRecordState();
+        }
+
+        void startBrightnessRefresh() {
+            main.removeCallbacks(brightnessRefresh);
+            main.post(brightnessRefresh);
+        }
+
+        void stopBrightnessRefresh() {
+            main.removeCallbacks(brightnessRefresh);
+        }
+
+        private void refreshBrightnessState() {
+            refreshBrightnessRange();
+            int settingBrightness;
+            try {
+                settingBrightness = clampBrightness(systemInt(Settings.System.SCREEN_BRIGHTNESS, 128));
+            } catch (Throwable ignored) {
+                settingBrightness = clampBrightness(128);
+            }
+            float displayBrightness = currentDisplayBrightness();
+            brightness = displayBrightness >= 0f
+                    ? brightnessFromDisplay(displayBrightness) : settingBrightness;
+            brightnessAuto = systemInt(Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
+                    == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC;
+            setContentDescription("快捷工具，亮度、自动亮度"
+                    + (brightnessAuto ? "开启" : "关闭")
+                    + "、音量、Wi-Fi、铃声模式、蓝牙、旋转、截图、锁屏、手电筒、录屏");
         }
 
         @Override protected void onDraw(Canvas canvas) {
@@ -343,8 +386,9 @@ final class QuickToolsPanel {
             float trackLeft = dp(29);
             float trackRight = getWidth() - dp(12);
             brightnessTrack.set(trackLeft, dp(25), trackRight, dp(30));
+            brightnessIcon.set(trackLeft - dp(28), dp(11), trackLeft - dp(4), dp(43));
             volumeTrack.set(trackLeft, dp(53), trackRight, dp(58));
-            drawSlider(canvas, brightnessTrack, brightnessFraction(), 0);
+            drawSlider(canvas, brightnessTrack, brightnessFraction(), 0, brightnessAuto);
             drawSlider(canvas, volumeTrack, volumeMax == 0 ? 0f : volume / (float) volumeMax, 1);
 
             float gridTop = dp(72);
@@ -362,8 +406,14 @@ final class QuickToolsPanel {
         }
 
         private void drawSlider(Canvas canvas, RectF track, float fraction, int icon) {
-            paint.setColor(darkMode ? 0xffaeb4b9 : 0xff61666e);
-            drawSliderIcon(canvas, track.left - dp(16), track.centerY(), dp(8), icon);
+            drawSlider(canvas, track, fraction, icon, false);
+        }
+
+        private void drawSlider(Canvas canvas, RectF track, float fraction, int icon, boolean iconActive) {
+            paint.setColor(iconActive
+                    ? (darkMode ? 0xff77c6c1 : 0xff287a78)
+                    : (darkMode ? 0xffaeb4b9 : 0xff61666e));
+            drawSliderIcon(canvas, track.left - dp(16), track.centerY(), dp(8), icon, iconActive);
             paint.setColor(darkMode ? 0x44ffffff : 0x22000000);
             canvas.drawRoundRect(track, dp(4), dp(4), paint);
             paint.setColor(darkMode ? 0xff77c6c1 : 0xff287a78);
@@ -388,13 +438,19 @@ final class QuickToolsPanel {
             paint.setStyle(Paint.Style.FILL);
         }
 
-        private void drawSliderIcon(Canvas canvas, float cx, float cy, float size, int index) {
+        private void drawSliderIcon(Canvas canvas, float cx, float cy, float size,
+                int index, boolean active) {
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(dp(1.5f));
             paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeJoin(Paint.Join.ROUND);
             if (index == 0) {
                 canvas.drawCircle(cx, cy, size * 0.42f, paint);
+                if (active) {
+                    paint.setStyle(Paint.Style.FILL);
+                    canvas.drawCircle(cx, cy, size * 0.25f, paint);
+                    paint.setStyle(Paint.Style.STROKE);
+                }
                 for (int i = 0; i < 8; i++) {
                     double angle = i * Math.PI / 4d;
                     float x1 = cx + (float) Math.cos(angle) * size * 0.68f;
@@ -521,10 +577,12 @@ final class QuickToolsPanel {
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
                 if (!bounds.contains(x, y)) return false;
                 if (close.contains(x, y)) {
+                    performClickHaptic();
                     hide();
                     return true;
                 }
-                if (containsWithInset(brightnessTrack, x, y, dp(16))) activeSlider = 1;
+                if (brightnessIcon.contains(x, y)) activeSlider = 0;
+                else if (containsWithInset(brightnessTrack, x, y, dp(16))) activeSlider = 1;
                 else if (containsWithInset(volumeTrack, x, y, dp(16))) activeSlider = 2;
                 else activeSlider = 0;
                 if (activeSlider != 0) updateSlider(x);
@@ -539,6 +597,10 @@ final class QuickToolsPanel {
                     updateSlider(x);
                     if (activeSlider == 1) commitBrightness();
                     activeSlider = 0;
+                    return true;
+                }
+                if (brightnessIcon.contains(x, y)) {
+                    toggleBrightnessAuto();
                     return true;
                 }
                 for (int i = 0; i < buttons.length; i++) {
@@ -608,6 +670,10 @@ final class QuickToolsPanel {
             return Math.max(0f, Math.min(1f, brightness / (float) brightnessMax));
         }
 
+        private int brightnessFromDisplay(float displayBrightness) {
+            return clampBrightness(Math.round(displayBrightness * brightnessMax));
+        }
+
         private int displayId() {
             Display display = getDisplay();
             return display == null ? Display.DEFAULT_DISPLAY : display.getDisplayId();
@@ -615,6 +681,20 @@ final class QuickToolsPanel {
 
         private DisplayManager displayManager() {
             return (DisplayManager) getContext().getSystemService(Context.DISPLAY_SERVICE);
+        }
+
+        private float currentDisplayBrightness() {
+            try {
+                DisplayManager display = displayManager();
+                if (display == null) return -1f;
+                Object value = display.getClass().getMethod("getBrightness", int.class)
+                        .invoke(display, displayId());
+                if (!(value instanceof Float)) return -1f;
+                float brightness = (Float) value;
+                return brightness >= 0f && brightness <= 1f ? brightness : -1f;
+            } catch (Throwable ignored) {
+                return -1f;
+            }
         }
 
         private void setTemporaryBrightness() {
@@ -642,12 +722,23 @@ final class QuickToolsPanel {
             setTemporaryBrightness();
         }
 
+        private void toggleBrightnessAuto() {
+            performClickHaptic();
+            brightnessAuto = !brightnessAuto;
+            putSystemInt(Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    brightnessAuto ? Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
+                            : Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+            refreshState();
+            invalidate();
+        }
+
         private boolean containsWithInset(RectF bounds, float x, float y, float inset) {
             return x >= bounds.left - inset && x <= bounds.right + inset
                     && y >= bounds.top - inset && y <= bounds.bottom + inset;
         }
 
         private void executeButton(int index) {
+            performClickHaptic();
             try {
                 switch (index) {
                     case 0: toggleWifi(); break;
@@ -670,6 +761,10 @@ final class QuickToolsPanel {
                 refreshState();
                 invalidate();
             }, 800L);
+        }
+
+        private void performClickHaptic() {
+            HapticFeedbackUtils.perform(getContext(), this, HapticFeedbackConstants.CONTEXT_CLICK);
         }
 
         private void toggleWifi() {
