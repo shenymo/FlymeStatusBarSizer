@@ -166,7 +166,7 @@ final class QuickToolsPanel {
     }
 
     private int panelHeight() {
-        return dp(206);
+        return dp(198);
     }
 
     private int dp(float value) {
@@ -411,13 +411,13 @@ final class QuickToolsPanel {
 
             float trackLeft = dp(29);
             float trackRight = getWidth() - dp(12);
-            brightnessTrack.set(trackLeft, dp(25), trackRight, dp(30));
-            brightnessIcon.set(trackLeft - dp(28), dp(11), trackLeft - dp(4), dp(43));
-            volumeTrack.set(trackLeft, dp(53), trackRight, dp(58));
+            brightnessTrack.set(trackLeft, dp(17), trackRight, dp(22));
+            brightnessIcon.set(trackLeft - dp(28), dp(3), trackLeft - dp(4), dp(35));
+            volumeTrack.set(trackLeft, dp(45), trackRight, dp(50));
             drawSlider(canvas, brightnessTrack, brightnessFraction(), 0, brightnessAuto);
             drawSlider(canvas, volumeTrack, volumeMax == 0 ? 0f : volume / (float) volumeMax, 1);
 
-            float gridTop = dp(72);
+            float gridTop = dp(64);
             float gap = dp(4);
             float cellWidth = (getWidth() - dp(12) - gap * 3) / 4f;
             float cellHeight = (getHeight() - gridTop - dp(10) - gap) / 2f;
