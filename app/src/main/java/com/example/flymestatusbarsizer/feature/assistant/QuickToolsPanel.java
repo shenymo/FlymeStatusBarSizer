@@ -68,7 +68,13 @@ final class QuickToolsPanel {
         view = new PanelView(context);
         panelBlur = new AssistantPanelBlur(view,
                 context.getResources().getDisplayMetrics().density);
-        root = new FrameLayout(context);
+        root = new FrameLayout(context) {
+            @Override
+            protected void onConfigurationChanged(Configuration configuration) {
+                super.onConfigurationChanged(configuration);
+                view.updateDarkMode(configuration);
+            }
+        };
         root.setBackgroundColor(Color.TRANSPARENT);
         root.setOnTouchListener((v, event) -> {
             if (event.getActionMasked() == MotionEvent.ACTION_OUTSIDE
@@ -106,6 +112,7 @@ final class QuickToolsPanel {
     private void show(boolean fromLeft, float anchorY) {
         view.fromLeft = fromLeft;
         view.anchorY = anchorY;
+        view.updateDarkMode(context.getResources().getConfiguration());
         view.refreshState();
         if (attached) {
             view.startBrightnessRefresh();
@@ -300,8 +307,14 @@ final class QuickToolsPanel {
 
         @Override protected void onConfigurationChanged(Configuration configuration) {
             super.onConfigurationChanged(configuration);
-            darkMode = (configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK)
+            updateDarkMode(configuration);
+        }
+
+        void updateDarkMode(Configuration configuration) {
+            boolean nextDarkMode = (configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK)
                     == Configuration.UI_MODE_NIGHT_YES;
+            if (darkMode == nextDarkMode) return;
+            darkMode = nextDarkMode;
             updateBackground();
             invalidate();
         }
