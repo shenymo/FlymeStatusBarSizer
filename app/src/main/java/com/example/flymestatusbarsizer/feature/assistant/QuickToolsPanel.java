@@ -880,7 +880,16 @@ final class QuickToolsPanel {
                     case 1: toggleRinger(); break;
                     case 2: toggleBluetooth(); break;
                     case 3: toggleRotation(); break;
-                    case 4: hide(); takeScreenshot(); return;
+                    case 4:
+                        hide();
+                        main.postDelayed(() -> {
+                            try {
+                                takeScreenshot();
+                            } catch (Throwable t) {
+                                AssistantHooks.warn("Quick tool failed: " + TOOL_DESCRIPTIONS[index], t);
+                            }
+                        }, 260L);
+                        return;
                     case 5: lockScreen(); hide(); return;
                     case 6: toggleFlashlight(); break;
                     case 7: hide(); toggleScreenRecord(); return;
@@ -996,14 +1005,13 @@ final class QuickToolsPanel {
         }
 
         private void takeScreenshot() throws Exception {
-            Class<?> dependency = Class.forName("com.android.systemui.Dependency", false,
+            Class<?> helperClass = Class.forName("com.android.internal.util.ScreenshotHelper", false,
                     getContext().getClassLoader());
-            Class<?> controllerClass = Class.forName(
-                    "com.flyme.systemui.statusbar.policy.ScreenshotController", false,
+            Object helper = helperClass.getConstructor(Context.class).newInstance(getContext());
+            Class<?> consumerClass = Class.forName("java.util.function.Consumer", false,
                     getContext().getClassLoader());
-            Object controller = dependency.getMethod("get", Class.class)
-                    .invoke(null, controllerClass);
-            controllerClass.getMethod("takeScreenShot").invoke(controller);
+            helperClass.getMethod("takeScreenshot", int.class, Handler.class, consumerClass)
+                    .invoke(helper, 1, main, null);
         }
 
         private void lockScreen() throws Exception {
