@@ -9,6 +9,7 @@ import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.RectF;
 import android.graphics.Path;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
@@ -30,8 +31,9 @@ import android.view.Display;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
-import android.widget.Toast;
 
+import com.example.flymestatusbarsizer.BuildConfig;
+import com.example.flymestatusbarsizer.R;
 import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
 
 import java.lang.reflect.Method;
@@ -209,11 +211,16 @@ final class QuickToolsPanel {
     private final class PanelView extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF bounds = new RectF();
-        private final RectF close = new RectF();
         private final RectF brightnessTrack = new RectF();
         private final RectF brightnessIcon = new RectF();
         private final RectF volumeTrack = new RectF();
         private final RectF[] buttons = new RectF[TOOL_DESCRIPTIONS.length];
+        private final Drawable[] buttonIcons = new Drawable[TOOL_DESCRIPTIONS.length];
+        private final Drawable ringerNormalIcon;
+        private final Drawable ringerVibrateIcon;
+        private final Drawable ringerSilentIcon;
+        private final Drawable brightnessDrawable;
+        private final Drawable volumeDrawable;
         private final float density;
         private final Handler main = new Handler(Looper.getMainLooper());
         private final Runnable brightnessRefresh = new Runnable() {
@@ -247,6 +254,19 @@ final class QuickToolsPanel {
         PanelView(Context context) {
             super(context);
             density = getResources().getDisplayMetrics().density;
+            Context resourceContext = moduleResourceContext(context);
+            buttonIcons[0] = loadDrawable(resourceContext, R.drawable.quick_tool_wifi);
+            buttonIcons[2] = loadDrawable(resourceContext, R.drawable.quick_tool_bluetooth);
+            buttonIcons[3] = loadDrawable(resourceContext, R.drawable.quick_tool_rotate);
+            buttonIcons[4] = loadDrawable(resourceContext, R.drawable.quick_tool_screenshot);
+            buttonIcons[5] = loadDrawable(resourceContext, R.drawable.quick_tool_lock);
+            buttonIcons[6] = loadDrawable(resourceContext, R.drawable.quick_tool_flashlight);
+            buttonIcons[7] = loadDrawable(resourceContext, R.drawable.quick_tool_screen_record);
+            ringerNormalIcon = loadDrawable(resourceContext, R.drawable.quick_tool_bell);
+            ringerVibrateIcon = loadDrawable(resourceContext, R.drawable.quick_tool_vibrate);
+            ringerSilentIcon = loadDrawable(resourceContext, R.drawable.quick_tool_mute);
+            brightnessDrawable = loadDrawable(resourceContext, R.drawable.quick_tool_autobrightness);
+            volumeDrawable = loadDrawable(resourceContext, R.drawable.quick_tool_volume);
             setFocusable(false);
             darkMode = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                     == Configuration.UI_MODE_NIGHT_YES;
@@ -254,6 +274,23 @@ final class QuickToolsPanel {
             setElevation(dp(7));
             updateBackground();
             for (int i = 0; i < buttons.length; i++) buttons[i] = new RectF();
+        }
+
+        private Context moduleResourceContext(Context context) {
+            try {
+                return context.createPackageContext(BuildConfig.APPLICATION_ID,
+                        Context.CONTEXT_IGNORE_SECURITY);
+            } catch (Throwable ignored) {
+                return context;
+            }
+        }
+
+        private Drawable loadDrawable(Context context, int resourceId) {
+            try {
+                return context.getDrawable(resourceId).mutate();
+            } catch (Throwable ignored) {
+                return null;
+            }
         }
 
         @Override protected void onConfigurationChanged(Configuration configuration) {
@@ -372,17 +409,6 @@ final class QuickToolsPanel {
             super.onDraw(canvas);
             bounds.set(0f, 0f, getWidth(), getHeight());
 
-            close.set(getWidth() - dp(28), dp(3), getWidth() - dp(4), dp(23));
-            paint.setColor(darkMode ? 0xffb7bdc0 : 0xff656b70);
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(dp(1.8f));
-            paint.setStrokeCap(Paint.Cap.ROUND);
-            canvas.drawLine(close.centerX() - dp(4), close.centerY() - dp(4),
-                    close.centerX() + dp(4), close.centerY() + dp(4), paint);
-            canvas.drawLine(close.centerX() + dp(4), close.centerY() - dp(4),
-                    close.centerX() - dp(4), close.centerY() + dp(4), paint);
-            paint.setStyle(Paint.Style.FILL);
-
             float trackLeft = dp(29);
             float trackRight = getWidth() - dp(12);
             brightnessTrack.set(trackLeft, dp(25), trackRight, dp(30));
@@ -440,6 +466,13 @@ final class QuickToolsPanel {
 
         private void drawSliderIcon(Canvas canvas, float cx, float cy, float size,
                 int index, boolean active) {
+            Drawable drawable = index == 0 ? brightnessDrawable : volumeDrawable;
+            if (drawable != null) {
+                drawSliderDrawable(canvas, drawable, index, cx, cy, dp(16),
+                        active ? (darkMode ? 0xff77c6c1 : 0xff287a78)
+                                : (darkMode ? 0xffaeb4b9 : 0xff61666e));
+                return;
+            }
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(dp(1.5f));
             paint.setStrokeCap(Paint.Cap.ROUND);
@@ -476,6 +509,15 @@ final class QuickToolsPanel {
         }
 
         private void drawIcon(Canvas canvas, int index, float cx, float cy, float size, int color) {
+            Drawable drawable = buttonDrawable(index);
+            if (drawable != null) {
+                float visualSize = index == 1
+                        ? (ringerMode == AudioManager.RINGER_MODE_VIBRATE ? dp(21)
+                                : ringerMode == AudioManager.RINGER_MODE_SILENT ? dp(18) : dp(19))
+                        : dp(19);
+                drawButtonDrawable(canvas, drawable, index, cx, cy, visualSize, color);
+                return;
+            }
             paint.setColor(color);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeCap(Paint.Cap.ROUND);
@@ -562,6 +604,96 @@ final class QuickToolsPanel {
             paint.setStyle(Paint.Style.FILL);
         }
 
+        private Drawable buttonDrawable(int index) {
+            if (index == 1) {
+                if (ringerMode == AudioManager.RINGER_MODE_SILENT) return ringerSilentIcon;
+                if (ringerMode == AudioManager.RINGER_MODE_VIBRATE) return ringerVibrateIcon;
+                return ringerNormalIcon;
+            }
+            return index >= 0 && index < buttonIcons.length ? buttonIcons[index] : null;
+        }
+
+        private void drawDrawable(Canvas canvas, Drawable drawable, float cx, float cy,
+                float maxSize, int color) {
+            drawable.setTint(color);
+            int intrinsicWidth = drawable.getIntrinsicWidth();
+            int intrinsicHeight = drawable.getIntrinsicHeight();
+            if (intrinsicWidth <= 0) intrinsicWidth = 1;
+            if (intrinsicHeight <= 0) intrinsicHeight = 1;
+            float scale = Math.min(maxSize / intrinsicWidth, maxSize / intrinsicHeight);
+            int width = Math.max(1, Math.round(intrinsicWidth * scale));
+            int height = Math.max(1, Math.round(intrinsicHeight * scale));
+            drawable.setBounds(Math.round(cx - width / 2f), Math.round(cy - height / 2f),
+                    Math.round(cx + width / 2f), Math.round(cy + height / 2f));
+            drawable.draw(canvas);
+        }
+
+        private void drawSliderDrawable(Canvas canvas, Drawable drawable, int index,
+                float cx, float cy, float visualSize, int color) {
+            float left = index == 0 ? 0.0917f : 0.0417f;
+            float top = index == 0 ? 0.1f : 0.0833f;
+            float right = index == 0 ? 0.9083f : 1f;
+            float bottom = index == 0 ? 0.9083f : 0.9167f;
+            drawable.setTint(color);
+            int intrinsicWidth = Math.max(1, drawable.getIntrinsicWidth());
+            int intrinsicHeight = Math.max(1, drawable.getIntrinsicHeight());
+            float contentWidth = (right - left) * intrinsicWidth;
+            float contentHeight = (bottom - top) * intrinsicHeight;
+            float scale = visualSize / Math.max(contentWidth, contentHeight);
+            float outerWidth = intrinsicWidth * scale;
+            float outerHeight = intrinsicHeight * scale;
+            float contentCenterX = (left + right) * 0.5f * outerWidth;
+            float contentCenterY = (top + bottom) * 0.5f * outerHeight;
+            drawable.setBounds(Math.round(cx - contentCenterX), Math.round(cy - contentCenterY),
+                    Math.round(cx - contentCenterX + outerWidth),
+                    Math.round(cy - contentCenterY + outerHeight));
+            drawable.draw(canvas);
+        }
+
+        private void drawButtonDrawable(Canvas canvas, Drawable drawable, int index,
+                float cx, float cy, float visualSize, int color) {
+            float left = 0f;
+            float top = 0f;
+            float right = 1f;
+            float bottom = 1f;
+            if (index == 0) {
+                left = 0.1125f; top = 0.2f; right = 0.875f; bottom = 0.8f;
+            } else if (index == 1 && ringerMode == AudioManager.RINGER_MODE_VIBRATE) {
+                left = 0.0278f; top = 0.125f; right = 0.9722f; bottom = 0.875f;
+            } else if (index == 1 && ringerMode == AudioManager.RINGER_MODE_SILENT) {
+                left = 0.225f; top = 0.1083f; right = 0.7833f; bottom = 0.825f;
+            } else if (index == 1) {
+                left = 0.2083f; top = 0.1667f; right = 0.7833f; bottom = 0.825f;
+            } else if (index == 2) {
+                left = 0.2f; top = 0.1125f; right = 0.775f; bottom = 0.925f;
+            } else if (index == 3) {
+                left = 0.125f; top = 0.1667f; right = 0.875f; bottom = 0.8333f;
+            } else if (index == 4) {
+                left = 0.0694f; top = 0.0556f; right = 0.9306f; bottom = 0.9306f;
+            } else if (index == 5) {
+                left = 0.1667f; top = 0.0833f; right = 0.8333f; bottom = 0.9167f;
+            } else if (index == 6) {
+                left = 0.2188f; top = 0.2071f; right = 0.7813f; bottom = 0.8f;
+            } else if (index == 7) {
+                left = 0.0417f; top = 0.1667f; right = 0.9583f; bottom = 0.8333f;
+            }
+
+            drawable.setTint(color);
+            int intrinsicWidth = Math.max(1, drawable.getIntrinsicWidth());
+            int intrinsicHeight = Math.max(1, drawable.getIntrinsicHeight());
+            float contentWidth = (right - left) * intrinsicWidth;
+            float contentHeight = (bottom - top) * intrinsicHeight;
+            float scale = visualSize / Math.max(contentWidth, contentHeight);
+            float outerWidth = intrinsicWidth * scale;
+            float outerHeight = intrinsicHeight * scale;
+            float contentCenterX = (left + right) * 0.5f * outerWidth;
+            float contentCenterY = (top + bottom) * 0.5f * outerHeight;
+            drawable.setBounds(Math.round(cx - contentCenterX), Math.round(cy - contentCenterY),
+                    Math.round(cx - contentCenterX + outerWidth),
+                    Math.round(cy - contentCenterY + outerHeight));
+            drawable.draw(canvas);
+        }
+
         private boolean buttonActive(int index) {
             if (index == 0) return wifi;
             if (index == 1) return ringerMode != AudioManager.RINGER_MODE_SILENT;
@@ -576,11 +708,6 @@ final class QuickToolsPanel {
             float y = event.getY();
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
                 if (!bounds.contains(x, y)) return false;
-                if (close.contains(x, y)) {
-                    performClickHaptic();
-                    hide();
-                    return true;
-                }
                 if (brightnessIcon.contains(x, y)) activeSlider = 0;
                 else if (containsWithInset(brightnessTrack, x, y, dp(16))) activeSlider = 1;
                 else if (containsWithInset(volumeTrack, x, y, dp(16))) activeSlider = 2;
@@ -753,7 +880,7 @@ final class QuickToolsPanel {
                 }
             } catch (Throwable t) {
                 AssistantHooks.warn("Quick tool failed: " + TOOL_DESCRIPTIONS[index], t);
-                Toast.makeText(getContext(), TOOL_DESCRIPTIONS[index] + "暂不可用", Toast.LENGTH_SHORT).show();
+                return;
             }
             refreshState();
             invalidate();
