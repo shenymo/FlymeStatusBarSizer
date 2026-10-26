@@ -13,23 +13,34 @@ final class AssistantBlurSurface {
     private final SurfaceControl surface;
     private final SurfaceControl parent;
     private final Method setCrop;
+    private final Method setCornerRadius;
     private final Rect lastBounds = new Rect();
     private float lastAlpha = -1;
     private boolean released;
 
     static AssistantBlurSurface create(View content, int radius) throws ReflectiveOperationException {
+        return create(content, radius, 0f);
+    }
+
+    static AssistantBlurSurface create(View content, int radius, float cornerRadius)
+            throws ReflectiveOperationException {
         Object root = AssistantReflection.call(content, "getViewRootImpl");
         if (root == null) return null;
         SurfaceControl parent = (SurfaceControl) AssistantReflection.call(root, "getSurfaceControl");
         // Attachment can precede the first window relayout. Try again on the next pre-draw.
         if (parent == null || !parent.isValid()) return null;
-        return new AssistantBlurSurface(parent, radius);
+        return new AssistantBlurSurface(parent, radius, cornerRadius);
     }
 
-    private AssistantBlurSurface(SurfaceControl parent, int radius) throws ReflectiveOperationException {
+    private AssistantBlurSurface(SurfaceControl parent, int radius, float cornerRadius)
+            throws ReflectiveOperationException {
         this.parent = parent;
         setCrop = AssistantReflection.method(SurfaceControl.Transaction.class,
                 "setWindowCrop", SurfaceControl.class, Rect.class);
+        setCornerRadius = cornerRadius > 0f
+                ? AssistantReflection.method(SurfaceControl.Transaction.class,
+                        "setCornerRadius", SurfaceControl.class, float.class)
+                : null;
         Method setRelativeLayer = AssistantReflection.method(SurfaceControl.Transaction.class,
                 "setRelativeLayer", SurfaceControl.class, SurfaceControl.class, int.class);
         Method setBlurRadius = AssistantReflection.method(SurfaceControl.Transaction.class,
@@ -43,6 +54,9 @@ final class AssistantBlurSurface {
             // Unlike Drawable Z adjustment, this orders an actual, separate compositor layer.
             setRelativeLayer.invoke(transaction, surface, parent, -3);
             setBlurRadius.invoke(transaction, surface, radius);
+            if (setCornerRadius != null) {
+                setCornerRadius.invoke(transaction, surface, cornerRadius);
+            }
             transaction.setAlpha(surface, 0).setVisibility(surface, false).apply();
         } catch (ReflectiveOperationException | RuntimeException error) {
             release();

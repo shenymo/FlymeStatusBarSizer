@@ -35,6 +35,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.flymestatusbarsizer.R;
+import com.example.flymestatusbarsizer.feature.assistant.AssistantPanelBlur;
 import com.example.flymestatusbarsizer.feature.assistant.SideGestureActions;
 
 import java.util.ArrayList;
@@ -109,6 +110,7 @@ public final class RecentTaskSwitcher {
         private final List<TaskEntry> entries = new ArrayList<>();
         private final FrameLayout root;
         private final LinearLayout panel;
+        private final AssistantPanelBlur panelBlur;
         private final LinearLayout rows;
         private final ScrollView scroll;
         private final EditText search;
@@ -148,6 +150,8 @@ public final class RecentTaskSwitcher {
             panel.setBackground(panelBackground());
             panel.setElevation(dp(7));
             panel.setOnClickListener(view -> { });
+            panelBlur = new AssistantPanelBlur(panel,
+                    context.getResources().getDisplayMetrics().density);
             int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
             int panelWidth = Math.min(dp(193), Math.max(dp(147), screenWidth - dp(22)));
             FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(panelWidth,
@@ -227,6 +231,7 @@ public final class RecentTaskSwitcher {
                 try {
                     windowManager.addView(root, params);
                     attached = true;
+                    panelBlur.start();
                     panel.post(() -> {
                         alignToGestureAnchor();
                         animateIn();
@@ -503,8 +508,9 @@ public final class RecentTaskSwitcher {
         }
 
         private Drawable panelBackground() {
+            int alpha = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? 0x98 : 0xf5;
             return background(
-                    paletteColor(0xf5ffffff, 0xf52a2c2f),
+                    paletteColor(0xffffff | (alpha << 24), 0x2a2c2f | (alpha << 24)),
                     dp(12),
                     paletteColor(0x24000000, 0x38ffffff));
         }
@@ -619,6 +625,7 @@ public final class RecentTaskSwitcher {
         }
 
         private void finishClose() {
+            panelBlur.stop();
             if (attached) {
                 try { windowManager.removeViewImmediate(root); }
                 catch (Throwable ignored) { }

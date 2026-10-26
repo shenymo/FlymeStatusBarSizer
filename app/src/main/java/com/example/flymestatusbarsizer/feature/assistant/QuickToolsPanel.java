@@ -17,6 +17,7 @@ import android.media.AudioManager;
 import android.net.wifi.WifiManager;
 import android.hardware.display.DisplayManager;
 import android.os.Binder;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
@@ -57,6 +58,7 @@ final class QuickToolsPanel {
     private final WindowManager windowManager;
     private final FrameLayout root;
     private final PanelView view;
+    private final AssistantPanelBlur panelBlur;
     private boolean attached;
     private boolean attempted;
 
@@ -64,6 +66,8 @@ final class QuickToolsPanel {
         this.context = context;
         windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         view = new PanelView(context);
+        panelBlur = new AssistantPanelBlur(view,
+                context.getResources().getDisplayMetrics().density);
         root = new FrameLayout(context);
         root.setBackgroundColor(Color.TRANSPARENT);
         root.setOnTouchListener((v, event) -> {
@@ -126,6 +130,7 @@ final class QuickToolsPanel {
             try {
                 windowManager.addView(root, params);
                 attached = true;
+                panelBlur.start();
                 view.startBrightnessRefresh();
                 root.post(() -> {
                     view.alignToGestureAnchor();
@@ -303,7 +308,9 @@ final class QuickToolsPanel {
 
         private void updateBackground() {
             GradientDrawable background = new GradientDrawable();
-            background.setColor(darkMode ? 0xf52a2c2f : 0xf5ffffff);
+            int alpha = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? 0x98 : 0xf5;
+            background.setColor(darkMode ? (0x2a2c2f | (alpha << 24))
+                    : (0xffffff | (alpha << 24)));
             background.setCornerRadius(dp(12));
             background.setStroke(Math.round(dp(1)), darkMode ? 0x38ffffff : 0x24000000);
             setBackground(background);
@@ -347,6 +354,7 @@ final class QuickToolsPanel {
                     .translationX(fromLeft ? -dp(5) : dp(5)).setDuration(230L)
                     .setInterpolator(new AccelerateInterpolator(1.35f))
                     .withEndAction(() -> {
+                        panelBlur.stop();
                         if (attached) {
                             try { windowManager.removeViewImmediate(root); }
                             catch (Throwable ignored) { }
