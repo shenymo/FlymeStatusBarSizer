@@ -27,6 +27,7 @@ final class AssistantGestureHooks {
     private static final Map<Object, Gesture> GESTURES = new WeakHashMap<>();
 
     static void install(FlymeStatusBarSizer module, ClassLoader loader) throws ReflectiveOperationException {
+        QuickToolsPanel.install(module, loader);
         Class<?> type = Class.forName("com.android.systemui.navigationbar.gestural.EdgeBackGestureHandler", false, loader);
         Method motion = AssistantReflection.method(type, "onMotionEvent", MotionEvent.class);
         try { SideBackAnimation.install(module, loader); }
@@ -99,6 +100,7 @@ final class AssistantGestureHooks {
         final AssistantGestureState state = new AssistantGestureState();
         final SideGestureActions.Action globalAssistant;
         final SideGestureActions.Action taskSwitcher;
+        final SideGestureActions.Action quickTools;
         final Method cancel, pilfer;
         MotionEvent last;
         boolean consumed;
@@ -127,6 +129,7 @@ final class AssistantGestureHooks {
             this.sendEvent = sendEvent;
             this.globalAssistant = globalAssistant;
             this.taskSwitcher = com.example.flymestatusbarsizer.feature.onehanded.RecentTaskSwitcher.action(context);
+            this.quickTools = QuickToolsPanel.action(context);
             this.actionOverlay = new AssistantGestureActionOverlay(context);
             this.zoneOverlay = new AssistantGestureZoneOverlay(context);
         }
@@ -224,7 +227,8 @@ final class AssistantGestureHooks {
             }
             if (actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK) return false;
             SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant,
-                    com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION, taskSwitcher);
+                    com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION,
+                    taskSwitcher, quickTools);
             boolean noAction = actionId == SettingsStore.SIDE_GESTURE_ACTION_NONE;
             boolean navigation = isNavigationAction(actionId);
             if (!noAction && !navigation && (action == null || !action.isReady())) { reset(); return false; }
@@ -286,7 +290,8 @@ final class AssistantGestureHooks {
                 return;
             }
             SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant,
-                    com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION, taskSwitcher);
+                    com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION,
+                    taskSwitcher, quickTools);
             if (actionId != SettingsStore.SIDE_GESTURE_ACTION_NONE
                     && !isNavigationAction(actionId)
                     && (action == null || !action.isReady())) {

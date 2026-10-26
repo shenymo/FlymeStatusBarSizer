@@ -48,10 +48,11 @@ public final class SideGestureZoneOverlay {
             SettingsStore.SIDE_GESTURE_ACTION_RECENTS,
             SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT,
             SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE,
-            SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER
+            SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER,
+            SettingsStore.SIDE_GESTURE_ACTION_QUICK_TOOLS
     };
     private static final String[] ACTION_LABELS = {
-            "无动作", "返回", "主页", "后台多任务界面", "全局负一屏", "多应用工作台", "任务切换器"
+            "无动作", "返回", "主页", "后台多任务界面", "全局负一屏", "多应用工作台", "任务切换器", "快捷工具"
     };
     private static final int MAX_DISTANCE_DP = SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP;
     private static final int DRAG_NONE = 0;
@@ -705,6 +706,7 @@ public final class SideGestureZoneOverlay {
                 case SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT: return "全局负一屏";
                 case SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE: return "多应用工作台";
                 case SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER: return "任务切换器";
+                case SettingsStore.SIDE_GESTURE_ACTION_QUICK_TOOLS: return "快捷工具";
                 default: return "无动作";
             }
         }

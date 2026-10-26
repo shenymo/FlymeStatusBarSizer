@@ -24,6 +24,11 @@ public final class SideGestureActions {
     }
 
     static Action resolve(int action, Action globalAssistant, Action taskScale, Action taskSwitcher) {
+        return resolve(action, globalAssistant, taskScale, taskSwitcher, null);
+    }
+
+    static Action resolve(int action, Action globalAssistant, Action taskScale, Action taskSwitcher,
+            Action quickTools) {
         switch (action) {
             case SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT:
                 return globalAssistant;
@@ -31,6 +36,8 @@ public final class SideGestureActions {
                 return taskScale;
             case SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER:
                 return taskSwitcher;
+            case SettingsStore.SIDE_GESTURE_ACTION_QUICK_TOOLS:
+                return quickTools;
             default:
                 return null;
         }
@@ -44,6 +51,7 @@ public final class SideGestureActions {
             case SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT: return "全局负一屏";
             case SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE: return "多应用工作台";
             case SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER: return "任务切换器";
+            case SettingsStore.SIDE_GESTURE_ACTION_QUICK_TOOLS: return "快捷工具";
             default: return "无动作";
         }
     }

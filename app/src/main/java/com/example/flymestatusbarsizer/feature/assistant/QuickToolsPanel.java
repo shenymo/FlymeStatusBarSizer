@@ -1,0 +1,816 @@
+package com.example.flymestatusbarsizer.feature.assistant;
+
+import android.bluetooth.BluetoothAdapter;
+import android.content.Context;
+import android.content.res.Configuration;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
+import android.graphics.RectF;
+import android.graphics.Path;
+import android.graphics.drawable.GradientDrawable;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraManager;
+import android.media.AudioManager;
+import android.net.wifi.WifiManager;
+import android.hardware.display.DisplayManager;
+import android.os.Binder;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.PowerManager;
+import android.os.SystemClock;
+import android.provider.Settings;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
+import android.view.animation.AccelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
+import android.widget.FrameLayout;
+import android.widget.Toast;
+
+import java.lang.reflect.Method;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
+/** Compact SystemUI-owned quick tools panel opened by a side gesture. */
+final class QuickToolsPanel {
+    private static final int[] WINDOW_TYPES = {2041, 2017, 2040};
+    private static final String TITLE = "FlymeStatusBarSizer:QuickTools";
+    private static volatile Object qsHost;
+    private static final Map<String, Object> CREATED_TILES = new HashMap<>();
+    private static final String[] TOOL_DESCRIPTIONS = {
+            "Wi-Fi", "铃声模式", "蓝牙", "自动旋转",
+            "截图", "锁屏", "手电筒", "屏幕录制"
+    };
+    private static QuickToolsPanel instance;
+
+    private final Context context;
+    private final WindowManager windowManager;
+    private final FrameLayout root;
+    private final PanelView view;
+    private boolean attached;
+    private boolean attempted;
+
+    private QuickToolsPanel(Context context) {
+        this.context = context;
+        windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+        view = new PanelView(context);
+        root = new FrameLayout(context);
+        root.setBackgroundColor(Color.TRANSPARENT);
+        root.setOnTouchListener((v, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_OUTSIDE
+                    || event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                hide();
+            }
+            return true;
+        });
+        FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(panelWidth(), panelHeight(),
+                Gravity.TOP | Gravity.LEFT);
+        panelParams.leftMargin = dp(8);
+        panelParams.rightMargin = dp(8);
+        root.addView(view, panelParams);
+    }
+
+    static void install(com.example.flymestatusbarsizer.FlymeStatusBarSizer module,
+            ClassLoader loader) throws ReflectiveOperationException {
+        Class<?> host = Class.forName("com.android.systemui.qs.QSTileHost", false, loader);
+        for (java.lang.reflect.Constructor<?> constructor : host.getDeclaredConstructors()) {
+            constructor.setAccessible(true);
+            module.intercept(constructor, chain -> {
+                Object result = chain.proceed();
+                qsHost = chain.getThisObject();
+                synchronized (CREATED_TILES) { CREATED_TILES.clear(); }
+                return result;
+            });
+        }
+    }
+
+    static synchronized SideGestureActions.Action action(Context context) {
+        if (instance == null) instance = new QuickToolsPanel(context);
+        return new Action(instance);
+    }
+
+    private void show(boolean fromLeft, float anchorY) {
+        view.fromLeft = fromLeft;
+        view.anchorY = anchorY;
+        view.refreshState();
+        if (attached) {
+            view.alignToGestureAnchor();
+            view.animateIn();
+        } else if (!attempted) {
+            attempted = true;
+            attach();
+        }
+        view.invalidate();
+    }
+
+    private void hide() {
+        if (attached) view.animateClose();
+    }
+
+    private void attach() {
+        if (windowManager == null) return;
+        Throwable last = null;
+        for (int type : WINDOW_TYPES) {
+            WindowManager.LayoutParams params = buildLayoutParams(type);
+            try {
+                windowManager.addView(root, params);
+                attached = true;
+                root.post(() -> {
+                    view.alignToGestureAnchor();
+                    view.animateIn();
+                });
+                return;
+            } catch (Throwable error) {
+                last = error;
+                try { windowManager.removeViewImmediate(root); } catch (Throwable ignored) { }
+            }
+        }
+        AssistantHooks.warn("Cannot attach quick tools panel", last);
+    }
+
+    private WindowManager.LayoutParams buildLayoutParams(int type) {
+        int flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH;
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                type, flags, PixelFormat.TRANSLUCENT);
+        params.token = new Binder();
+        params.gravity = Gravity.TOP | Gravity.START;
+        params.setFitInsetsTypes(0);
+        params.setTitle(TITLE);
+        params.packageName = context.getPackageName();
+        params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+        applyTrustedOverlay(params);
+        return params;
+    }
+
+    private int panelWidth() {
+        int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
+        float density = context.getResources().getDisplayMetrics().density;
+        return Math.min(Math.round(193f * density),
+                Math.max(Math.round(147f * density), screenWidth - Math.round(22f * density)));
+    }
+
+    private int panelHeight() {
+        return dp(206);
+    }
+
+    private int dp(float value) {
+        return Math.round(value * context.getResources().getDisplayMetrics().density);
+    }
+
+    private static void applyTrustedOverlay(WindowManager.LayoutParams params) {
+        try {
+            Method method = WindowManager.LayoutParams.class.getMethod("setTrustedOverlay");
+            method.invoke(params);
+        } catch (Throwable ignored) {
+        }
+        try {
+            java.lang.reflect.Field field = WindowManager.LayoutParams.class.getDeclaredField("privateFlags");
+            field.setAccessible(true);
+            field.setInt(params, field.getInt(params) | 0x01000000);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static final class Action implements SideGestureActions.Action {
+        private final QuickToolsPanel panel;
+
+        Action(QuickToolsPanel panel) {
+            this.panel = panel;
+        }
+
+        @Override public boolean isReady() {
+            return true;
+        }
+
+        @Override public void execute(boolean fromLeft, Runnable onSuccess) {
+            execute(fromLeft, 0f, onSuccess);
+        }
+
+        @Override public void execute(boolean fromLeft, float anchorY, Runnable onSuccess) {
+            panel.show(fromLeft, anchorY);
+            if (onSuccess != null) onSuccess.run();
+        }
+    }
+
+    private final class PanelView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF bounds = new RectF();
+        private final RectF close = new RectF();
+        private final RectF brightnessTrack = new RectF();
+        private final RectF volumeTrack = new RectF();
+        private final RectF[] buttons = new RectF[TOOL_DESCRIPTIONS.length];
+        private final float density;
+        private final Handler main = new Handler(Looper.getMainLooper());
+        private boolean fromLeft = true;
+        private float anchorY;
+        private boolean darkMode;
+        private boolean closing;
+        private int activeSlider;
+        private int brightness;
+        private int volume;
+        private int volumeMax;
+        private boolean wifi;
+        private boolean bluetooth;
+        private boolean rotationAuto;
+        private boolean flashlight;
+        private boolean recording;
+        private int ringerMode = AudioManager.RINGER_MODE_NORMAL;
+
+        PanelView(Context context) {
+            super(context);
+            density = getResources().getDisplayMetrics().density;
+            setFocusable(false);
+            darkMode = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                    == Configuration.UI_MODE_NIGHT_YES;
+            setContentDescription("快捷工具，亮度、音量、Wi-Fi、铃声模式、蓝牙、旋转、截图、锁屏、手电筒、录屏");
+            setElevation(dp(7));
+            updateBackground();
+            for (int i = 0; i < buttons.length; i++) buttons[i] = new RectF();
+        }
+
+        @Override protected void onConfigurationChanged(Configuration configuration) {
+            super.onConfigurationChanged(configuration);
+            darkMode = (configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                    == Configuration.UI_MODE_NIGHT_YES;
+            updateBackground();
+            invalidate();
+        }
+
+        private void updateBackground() {
+            GradientDrawable background = new GradientDrawable();
+            background.setColor(darkMode ? 0xf52a2c2f : 0xf5ffffff);
+            background.setCornerRadius(dp(12));
+            background.setStroke(Math.round(dp(1)), darkMode ? 0x38ffffff : 0x24000000);
+            setBackground(background);
+        }
+
+        void alignToGestureAnchor() {
+            if (!attached || root.getHeight() <= 0 || getHeight() <= 0) return;
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) getLayoutParams();
+            params.gravity = Gravity.TOP | (fromLeft ? Gravity.LEFT : Gravity.RIGHT);
+            params.leftMargin = Math.round(dp(8));
+            params.rightMargin = Math.round(dp(8));
+            int maxTop = Math.max(statusBarHeight(), root.getHeight() - navigationBarHeight() - getHeight());
+            int desiredTop = anchorY > 0f ? Math.round(anchorY - getHeight() / 2f)
+                    : (root.getHeight() - getHeight()) / 2;
+            params.topMargin = Math.max(statusBarHeight() + Math.round(dp(8)),
+                    Math.min(maxTop - Math.round(dp(8)), desiredTop));
+            setLayoutParams(params);
+        }
+
+        void animateIn() {
+            closing = false;
+            animate().cancel();
+            setPivotX(fromLeft ? 0f : getWidth());
+            setPivotY(Math.max(0f, Math.min(getHeight(), anchorY - getTop())));
+            setScaleX(0.04f);
+            setScaleY(0.08f);
+            setAlpha(0.15f);
+            setTranslationX(fromLeft ? -dp(5) : dp(5));
+            animate().scaleX(1f).scaleY(1f).alpha(1f).translationX(0f)
+                    .setDuration(360L).setInterpolator(new OvershootInterpolator(0.55f)).start();
+        }
+
+        void animateClose() {
+            if (!attached || closing) return;
+            closing = true;
+            animate().cancel();
+            setPivotX(fromLeft ? 0f : getWidth());
+            setPivotY(Math.max(0f, Math.min(getHeight(), anchorY - getTop())));
+            animate().scaleX(0.04f).scaleY(0.08f).alpha(0f)
+                    .translationX(fromLeft ? -dp(5) : dp(5)).setDuration(230L)
+                    .setInterpolator(new AccelerateInterpolator(1.35f))
+                    .withEndAction(() -> {
+                        if (attached) {
+                            try { windowManager.removeViewImmediate(root); }
+                            catch (Throwable ignored) { }
+                            attached = false;
+                        }
+                        attempted = false;
+                        closing = false;
+                    }).start();
+        }
+
+        void refreshState() {
+            try {
+                brightness = systemInt(Settings.System.SCREEN_BRIGHTNESS, 128);
+            } catch (Throwable ignored) { brightness = 128; }
+            AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+            if (audio != null) {
+                volume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+                volumeMax = Math.max(1, audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+                ringerMode = audio.getRingerMode();
+            }
+            WifiManager wifiManager = (WifiManager) getContext().getApplicationContext()
+                    .getSystemService(Context.WIFI_SERVICE);
+            wifi = wifiManager != null && wifiManager.isWifiEnabled();
+            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+            bluetooth = adapter != null && adapter.isEnabled();
+            try {
+                rotationAuto = systemInt(Settings.System.ACCELEROMETER_ROTATION, 1) != 0;
+            } catch (Throwable ignored) { rotationAuto = true; }
+            flashlight = flashlightState();
+            recording = screenRecordState();
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            bounds.set(0f, 0f, getWidth(), getHeight());
+
+            close.set(getWidth() - dp(28), dp(3), getWidth() - dp(4), dp(23));
+            paint.setColor(darkMode ? 0xffb7bdc0 : 0xff656b70);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(1.8f));
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            canvas.drawLine(close.centerX() - dp(4), close.centerY() - dp(4),
+                    close.centerX() + dp(4), close.centerY() + dp(4), paint);
+            canvas.drawLine(close.centerX() + dp(4), close.centerY() - dp(4),
+                    close.centerX() - dp(4), close.centerY() + dp(4), paint);
+            paint.setStyle(Paint.Style.FILL);
+
+            float trackLeft = dp(29);
+            float trackRight = getWidth() - dp(12);
+            brightnessTrack.set(trackLeft, dp(25), trackRight, dp(30));
+            volumeTrack.set(trackLeft, dp(53), trackRight, dp(58));
+            drawSlider(canvas, brightnessTrack, brightness / 255f, 0);
+            drawSlider(canvas, volumeTrack, volumeMax == 0 ? 0f : volume / (float) volumeMax, 1);
+
+            float gridTop = dp(72);
+            float gap = dp(4);
+            float cellWidth = (getWidth() - dp(12) - gap * 3) / 4f;
+            float cellHeight = (getHeight() - gridTop - dp(10) - gap) / 2f;
+            for (int i = 0; i < buttons.length; i++) {
+                int row = i / 4;
+                int column = i % 4;
+                float cellLeft = dp(6) + column * (cellWidth + gap);
+                float cellTop = gridTop + row * (cellHeight + gap);
+                buttons[i].set(cellLeft, cellTop, cellLeft + cellWidth, cellTop + cellHeight);
+                drawButton(canvas, buttons[i], buttonActive(i), i);
+            }
+        }
+
+        private void drawSlider(Canvas canvas, RectF track, float fraction, int icon) {
+            paint.setColor(darkMode ? 0xffaeb4b9 : 0xff61666e);
+            drawSliderIcon(canvas, track.left - dp(16), track.centerY(), dp(8), icon);
+            paint.setColor(darkMode ? 0x44ffffff : 0x22000000);
+            canvas.drawRoundRect(track, dp(4), dp(4), paint);
+            paint.setColor(darkMode ? 0xff77c6c1 : 0xff287a78);
+            float x = track.left + Math.max(0f, Math.min(1f, fraction)) * track.width();
+            canvas.drawRoundRect(track.left, track.top, x, track.bottom, dp(4), dp(4), paint);
+            paint.setColor(darkMode ? 0xffb3e3df : 0xff216967);
+            canvas.drawCircle(x, track.centerY(), dp(7), paint);
+        }
+
+        private void drawButton(Canvas canvas, RectF bounds, boolean active, int index) {
+            paint.setColor(active ? (darkMode ? 0x4277c6c1 : 0x30287a78)
+                    : (darkMode ? 0x18ffffff : 0x10000000));
+            canvas.drawRoundRect(bounds, dp(8), dp(8), paint);
+            paint.setColor(active ? (darkMode ? 0xffa9ded9 : 0xff216967)
+                    : (darkMode ? 0xffe2e6e7 : 0xff3f464b));
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(1.8f));
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            drawIcon(canvas, index, bounds.centerX(), bounds.centerY(),
+                    Math.min(dp(18), bounds.width() * 0.32f), paint.getColor());
+            paint.setStyle(Paint.Style.FILL);
+        }
+
+        private void drawSliderIcon(Canvas canvas, float cx, float cy, float size, int index) {
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(1.5f));
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            if (index == 0) {
+                canvas.drawCircle(cx, cy, size * 0.42f, paint);
+                for (int i = 0; i < 8; i++) {
+                    double angle = i * Math.PI / 4d;
+                    float x1 = cx + (float) Math.cos(angle) * size * 0.68f;
+                    float y1 = cy + (float) Math.sin(angle) * size * 0.68f;
+                    float x2 = cx + (float) Math.cos(angle) * size * 0.95f;
+                    float y2 = cy + (float) Math.sin(angle) * size * 0.95f;
+                    canvas.drawLine(x1, y1, x2, y2, paint);
+                }
+            } else {
+                Path speaker = new Path();
+                speaker.moveTo(cx - size * 0.9f, cy - size * 0.28f);
+                speaker.lineTo(cx - size * 0.35f, cy - size * 0.28f);
+                speaker.lineTo(cx + size * 0.25f, cy - size * 0.72f);
+                speaker.lineTo(cx + size * 0.25f, cy + size * 0.72f);
+                speaker.lineTo(cx - size * 0.35f, cy + size * 0.28f);
+                speaker.lineTo(cx - size * 0.9f, cy + size * 0.28f);
+                speaker.close();
+                canvas.drawPath(speaker, paint);
+                canvas.drawArc(new RectF(cx - size * 0.12f, cy - size * 0.58f,
+                        cx + size * 0.95f, cy + size * 0.58f), -55f, 110f, false, paint);
+            }
+            paint.setStyle(Paint.Style.FILL);
+        }
+
+        private void drawIcon(Canvas canvas, int index, float cx, float cy, float size, int color) {
+            paint.setColor(color);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            if (index == 0) {
+                canvas.drawArc(new RectF(cx - size, cy - size * 0.7f, cx + size, cy + size * 1.0f),
+                        225f, 90f, false, paint);
+                canvas.drawArc(new RectF(cx - size * 0.62f, cy - size * 0.28f,
+                        cx + size * 0.62f, cy + size * 0.78f), 225f, 90f, false, paint);
+                canvas.drawCircle(cx, cy + size * 0.42f, size * 0.12f, paint);
+            } else if (index == 1) {
+                Path speaker = new Path();
+                speaker.moveTo(cx - size * 0.9f, cy - size * 0.28f);
+                speaker.lineTo(cx - size * 0.3f, cy - size * 0.28f);
+                speaker.lineTo(cx + size * 0.28f, cy - size * 0.74f);
+                speaker.lineTo(cx + size * 0.28f, cy + size * 0.74f);
+                speaker.lineTo(cx - size * 0.3f, cy + size * 0.28f);
+                speaker.lineTo(cx - size * 0.9f, cy + size * 0.28f);
+                speaker.close();
+                canvas.drawPath(speaker, paint);
+                if (ringerMode == AudioManager.RINGER_MODE_SILENT) {
+                    canvas.drawLine(cx - size * 0.95f, cy - size * 0.95f,
+                            cx + size * 0.9f, cy + size * 0.95f, paint);
+                } else if (ringerMode == AudioManager.RINGER_MODE_VIBRATE) {
+                    canvas.drawLine(cx + size * 0.55f, cy - size * 0.55f,
+                            cx + size * 0.88f, cy - size * 0.35f, paint);
+                    canvas.drawLine(cx + size * 0.55f, cy + size * 0.55f,
+                            cx + size * 0.88f, cy + size * 0.35f, paint);
+                } else {
+                    canvas.drawArc(new RectF(cx - size * 0.12f, cy - size * 0.62f,
+                            cx + size * 1.0f, cy + size * 0.62f), -55f, 110f, false, paint);
+                }
+            } else if (index == 2) {
+                Path bluetooth = new Path();
+                bluetooth.moveTo(cx, cy - size);
+                bluetooth.lineTo(cx, cy + size);
+                bluetooth.moveTo(cx, cy - size);
+                bluetooth.lineTo(cx + size * 0.8f, cy - size * 0.25f);
+                bluetooth.lineTo(cx - size * 0.65f, cy + size * 0.7f);
+                bluetooth.moveTo(cx, cy + size);
+                bluetooth.lineTo(cx + size * 0.8f, cy + size * 0.25f);
+                bluetooth.lineTo(cx - size * 0.65f, cy - size * 0.7f);
+                canvas.drawPath(bluetooth, paint);
+            } else if (index == 3) {
+                RectF arc = new RectF(cx - size, cy - size, cx + size, cy + size);
+                canvas.drawArc(arc, 225f, 245f, false, paint);
+                Path arrow = new Path();
+                arrow.moveTo(cx - size * 0.95f, cy - size * 0.05f);
+                arrow.lineTo(cx - size * 0.95f, cy - size * 0.7f);
+                arrow.lineTo(cx - size * 0.35f, cy - size * 0.38f);
+                canvas.drawPath(arrow, paint);
+            } else if (index == 4) {
+                canvas.drawRect(cx - size * 0.82f, cy - size * 0.66f,
+                        cx + size * 0.82f, cy + size * 0.66f, paint);
+                canvas.drawLine(cx - size * 0.5f, cy - size * 0.95f,
+                        cx - size * 0.95f, cy - size * 0.95f, paint);
+                canvas.drawLine(cx - size * 0.95f, cy - size * 0.95f,
+                        cx - size * 0.95f, cy - size * 0.5f, paint);
+                canvas.drawLine(cx + size * 0.5f, cy + size * 0.95f,
+                        cx + size * 0.95f, cy + size * 0.95f, paint);
+                canvas.drawLine(cx + size * 0.95f, cy + size * 0.95f,
+                        cx + size * 0.95f, cy + size * 0.5f, paint);
+            } else if (index == 5) {
+                canvas.drawRoundRect(new RectF(cx - size * 0.72f, cy - size * 0.05f,
+                        cx + size * 0.72f, cy + size * 0.85f), size * 0.12f, size * 0.12f, paint);
+                canvas.drawArc(new RectF(cx - size * 0.48f, cy - size * 0.8f,
+                        cx + size * 0.48f, cy + size * 0.25f), 180f, 180f, false, paint);
+            } else if (index == 6) {
+                Path torch = new Path();
+                torch.moveTo(cx - size * 0.48f, cy - size * 0.82f);
+                torch.lineTo(cx + size * 0.48f, cy - size * 0.82f);
+                torch.lineTo(cx + size * 0.34f, cy - size * 0.35f);
+                torch.lineTo(cx + size * 0.2f, cy + size * 0.8f);
+                torch.lineTo(cx - size * 0.2f, cy + size * 0.8f);
+                torch.lineTo(cx - size * 0.34f, cy - size * 0.35f);
+                torch.close();
+                canvas.drawPath(torch, paint);
+                canvas.drawLine(cx - size * 0.55f, cy - size * 0.35f,
+                        cx + size * 0.55f, cy - size * 0.35f, paint);
+            } else {
+                canvas.drawCircle(cx, cy, size * 0.42f, paint);
+                canvas.drawCircle(cx, cy, size * 0.9f, paint);
+            }
+            paint.setStyle(Paint.Style.FILL);
+        }
+
+        private boolean buttonActive(int index) {
+            if (index == 0) return wifi;
+            if (index == 1) return ringerMode != AudioManager.RINGER_MODE_SILENT;
+            if (index == 2) return bluetooth;
+            if (index == 3) return rotationAuto;
+            if (index == 6) return flashlight;
+            return index == 7 && recording;
+        }
+
+        @Override public boolean onTouchEvent(MotionEvent event) {
+            float x = event.getX();
+            float y = event.getY();
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                if (!bounds.contains(x, y)) return false;
+                if (close.contains(x, y)) {
+                    hide();
+                    return true;
+                }
+                if (containsWithInset(brightnessTrack, x, y, dp(16))) activeSlider = 1;
+                else if (containsWithInset(volumeTrack, x, y, dp(16))) activeSlider = 2;
+                else activeSlider = 0;
+                if (activeSlider != 0) updateSlider(x);
+                return true;
+            }
+            if (event.getActionMasked() == MotionEvent.ACTION_MOVE && activeSlider != 0) {
+                updateSlider(x);
+                return true;
+            }
+            if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                if (activeSlider != 0) {
+                    updateSlider(x);
+                    activeSlider = 0;
+                    return true;
+                }
+                for (int i = 0; i < buttons.length; i++) {
+                    if (buttons[i].contains(x, y)) {
+                        executeButton(i);
+                        return true;
+                    }
+                }
+                return true;
+            }
+            return true;
+        }
+
+        private void updateSlider(float x) {
+            RectF track = activeSlider == 1 ? brightnessTrack : volumeTrack;
+            float fraction = Math.max(0f, Math.min(1f, (x - track.left) / track.width()));
+            if (activeSlider == 1) {
+                brightness = Math.max(1, Math.round(fraction * 255f));
+                putSystemInt(Settings.System.SCREEN_BRIGHTNESS, brightness);
+                try {
+                    DisplayManager display = (DisplayManager) getContext()
+                            .getSystemService(Context.DISPLAY_SERVICE);
+                    display.getClass().getMethod("setTemporaryBrightness", int.class, float.class)
+                            .invoke(display, 0, brightness / 255f);
+                } catch (Throwable ignored) {
+                }
+            } else {
+                volume = Math.round(fraction * volumeMax);
+                AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+                if (audio != null) audio.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0);
+            }
+            invalidate();
+        }
+
+        private boolean containsWithInset(RectF bounds, float x, float y, float inset) {
+            return x >= bounds.left - inset && x <= bounds.right + inset
+                    && y >= bounds.top - inset && y <= bounds.bottom + inset;
+        }
+
+        private void executeButton(int index) {
+            try {
+                switch (index) {
+                    case 0: toggleWifi(); break;
+                    case 1: toggleRinger(); break;
+                    case 2: toggleBluetooth(); break;
+                    case 3: toggleRotation(); break;
+                    case 4: hide(); takeScreenshot(); return;
+                    case 5: lockScreen(); hide(); return;
+                    case 6: toggleFlashlight(); break;
+                    case 7: hide(); toggleScreenRecord(); return;
+                    default: return;
+                }
+            } catch (Throwable t) {
+                AssistantHooks.warn("Quick tool failed: " + TOOL_DESCRIPTIONS[index], t);
+                Toast.makeText(getContext(), TOOL_DESCRIPTIONS[index] + "暂不可用", Toast.LENGTH_SHORT).show();
+            }
+            refreshState();
+            invalidate();
+            main.postDelayed(() -> {
+                refreshState();
+                invalidate();
+            }, 800L);
+        }
+
+        private void toggleWifi() {
+            WifiManager manager = (WifiManager) getContext().getApplicationContext()
+                    .getSystemService(Context.WIFI_SERVICE);
+            if (manager == null || !manager.setWifiEnabled(!manager.isWifiEnabled())) {
+                throw new IllegalStateException("Wi-Fi control unavailable");
+            }
+        }
+
+        private void toggleRinger() {
+            AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+            if (audio == null) return;
+            int mode = audio.getRingerMode();
+            audio.setRingerMode(mode == AudioManager.RINGER_MODE_NORMAL
+                    ? AudioManager.RINGER_MODE_VIBRATE
+                    : mode == AudioManager.RINGER_MODE_VIBRATE
+                    ? AudioManager.RINGER_MODE_SILENT : AudioManager.RINGER_MODE_NORMAL);
+        }
+
+        private void toggleBluetooth() {
+            ClassLoader loader = getContext().getClassLoader();
+            try {
+                Class<?> dependency = Class.forName("com.android.systemui.Dependency", false, loader);
+                Class<?> controllerClass = Class.forName(
+                        "com.android.systemui.statusbar.policy.BluetoothController", false, loader);
+                Object controller = dependency.getMethod("get", Class.class)
+                        .invoke(null, controllerClass);
+                boolean enabled = invokeBoolean(controller, "isBluetoothEnabled");
+                controllerClass.getMethod("setBluetoothEnabled", boolean.class)
+                        .invoke(controller, !enabled);
+            } catch (Throwable unavailable) {
+                BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+                if (adapter != null) {
+                    if (adapter.isEnabled()) adapter.disable(); else adapter.enable();
+                }
+            }
+        }
+
+        private void toggleRotation() {
+            boolean auto = systemInt(Settings.System.ACCELEROMETER_ROTATION, 1) != 0;
+            if (auto) {
+                DisplayManager display = (DisplayManager) getContext()
+                        .getSystemService(Context.DISPLAY_SERVICE);
+                android.view.Display current = display == null ? null : display.getDisplay(0);
+                putSystemInt(Settings.System.USER_ROTATION,
+                        current == null ? 0 : current.getRotation());
+                putSystemInt(Settings.System.ACCELEROMETER_ROTATION, 0);
+            } else {
+                putSystemInt(Settings.System.ACCELEROMETER_ROTATION, 1);
+            }
+        }
+
+        private void toggleFlashlight() throws Exception {
+            ClassLoader loader = getContext().getClassLoader();
+            try {
+                Class<?> dependency = Class.forName("com.android.systemui.Dependency", false, loader);
+                Class<?> controllerClass = Class.forName(
+                        "com.android.systemui.statusbar.policy.FlashlightController", false, loader);
+                Object controller = dependency.getMethod("get", Class.class)
+                        .invoke(null, controllerClass);
+                flashlight = !invokeBoolean(controller, "isEnabled");
+                controllerClass.getMethod("setFlashlight", boolean.class)
+                        .invoke(controller, flashlight);
+                return;
+            } catch (Throwable ignored) {
+            }
+            CameraManager manager = (CameraManager) getContext().getSystemService(Context.CAMERA_SERVICE);
+            if (manager == null) return;
+            String cameraId = null;
+            for (String id : manager.getCameraIdList()) {
+                Boolean available = manager.getCameraCharacteristics(id)
+                        .get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                if (Boolean.TRUE.equals(available)) { cameraId = id; break; }
+            }
+            if (cameraId != null) {
+                flashlight = !flashlight;
+                manager.setTorchMode(cameraId, flashlight);
+            }
+        }
+
+        private boolean flashlightState() {
+            try {
+                ClassLoader loader = getContext().getClassLoader();
+                Class<?> dependency = Class.forName("com.android.systemui.Dependency", false, loader);
+                Class<?> controllerClass = Class.forName(
+                        "com.android.systemui.statusbar.policy.FlashlightController", false, loader);
+                Object controller = dependency.getMethod("get", Class.class)
+                        .invoke(null, controllerClass);
+                return invokeBoolean(controller, "isEnabled");
+            } catch (Throwable ignored) {
+                return false;
+            }
+        }
+
+        private void takeScreenshot() throws Exception {
+            Class<?> dependency = Class.forName("com.android.systemui.Dependency", false,
+                    getContext().getClassLoader());
+            Class<?> controllerClass = Class.forName(
+                    "com.flyme.systemui.statusbar.policy.ScreenshotController", false,
+                    getContext().getClassLoader());
+            Object controller = dependency.getMethod("get", Class.class)
+                    .invoke(null, controllerClass);
+            controllerClass.getMethod("takeScreenShot").invoke(controller);
+        }
+
+        private void lockScreen() throws Exception {
+            PowerManager power = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+            if (power == null) throw new IllegalStateException("Power service unavailable");
+            power.getClass().getMethod("goToSleep", long.class)
+                    .invoke(power, SystemClock.uptimeMillis());
+        }
+
+        private void toggleScreenRecord() throws Exception {
+            Object tile = getTile("screenrecord", "ScreenRecordTile");
+            if (tile == null) throw new IllegalStateException("Screen recording tile unavailable");
+            Class<?> expandable = Class.forName("com.android.systemui.animation.Expandable", false,
+                    getContext().getClassLoader());
+            tile.getClass().getMethod("handleClick", expandable).invoke(tile, new Object[]{null});
+        }
+
+        private boolean screenRecordState() {
+            try {
+                Object tile = getTile("screenrecord", "ScreenRecordTile");
+                Object controller = fieldValue(tile, "mController");
+                if (controller == null) return false;
+                return invokeBoolean(controller, "isRecordingForQS") || invokeBoolean(controller, "isRecording");
+            } catch (Throwable ignored) {
+                return false;
+            }
+        }
+
+        private boolean invokeBoolean(Object target, String name) throws Exception {
+            Object value = target.getClass().getMethod(name).invoke(target);
+            return Boolean.TRUE.equals(value);
+        }
+
+        private Object getTile(String spec, String simpleClassName) {
+            Object host = qsHost;
+            if (host == null) return null;
+            try {
+                Object tiles = host.getClass().getMethod("getTiles").invoke(host);
+                if (tiles instanceof Collection) {
+                    for (Object tile : (Collection<?>) tiles) {
+                        if (tile.getClass().getSimpleName().equals(simpleClassName)) return tile;
+                    }
+                }
+                synchronized (CREATED_TILES) {
+                    Object cached = CREATED_TILES.get(spec);
+                    if (cached != null) return cached;
+                    Object tile = host.getClass().getMethod("createTile", String.class)
+                            .invoke(host, spec);
+                    if (tile != null) {
+                        try { tile.getClass().getMethod("initialize").invoke(tile); }
+                        catch (Throwable ignored) { }
+                        CREATED_TILES.put(spec, tile);
+                    }
+                    return tile;
+                }
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+
+        private Object fieldValue(Object target, String name) {
+            if (target == null) return null;
+            try {
+                java.lang.reflect.Field field = target.getClass().getField(name);
+                return field.get(target);
+            } catch (Throwable ignored) {
+                try {
+                    java.lang.reflect.Field field = target.getClass().getDeclaredField(name);
+                    field.setAccessible(true);
+                    return field.get(target);
+                } catch (Throwable alsoIgnored) {
+                    return null;
+                }
+            }
+        }
+
+        private int systemInt(String key, int fallback) {
+            try {
+                Method method = Settings.System.class.getMethod("getIntForUser",
+                        android.content.ContentResolver.class, String.class, int.class, int.class);
+                Object result = method.invoke(null, getContext().getContentResolver(), key, fallback, -2);
+                return result instanceof Integer ? (Integer) result : fallback;
+            } catch (Throwable ignored) {
+                try {
+                    return Settings.System.getInt(getContext().getContentResolver(), key, fallback);
+                } catch (Throwable alsoIgnored) {
+                    return fallback;
+                }
+            }
+        }
+
+        private void putSystemInt(String key, int value) {
+            try {
+                Method method = Settings.System.class.getMethod("putIntForUser",
+                        android.content.ContentResolver.class, String.class, int.class, int.class);
+                method.invoke(null, getContext().getContentResolver(), key, value, -2);
+            } catch (Throwable ignored) {
+                Settings.System.putInt(getContext().getContentResolver(), key, value);
+            }
+        }
+
+        private float dp(float value) { return value * density; }
+
+        private int statusBarHeight() {
+            int resource = getResources().getIdentifier("status_bar_height", "dimen", "android");
+            return resource == 0 ? Math.round(dp(24)) : getResources().getDimensionPixelSize(resource);
+        }
+
+        private int navigationBarHeight() {
+            int resource = getResources().getIdentifier("navigation_bar_height", "dimen", "android");
+            return resource == 0 ? Math.round(dp(24)) : getResources().getDimensionPixelSize(resource);
+        }
+    }
+}
