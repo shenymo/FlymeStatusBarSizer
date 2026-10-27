@@ -146,17 +146,15 @@ final class AppLauncherPanel {
 
     private static final class AppEntry {
         final String label;
-        final Drawable icon;
         final Intent launchIntent;
         final String packageName;
         final String shortcutId;
         final UserHandle user;
         final String[] keys;
 
-        AppEntry(String label, Drawable icon, Intent launchIntent, String packageName,
+        AppEntry(String label, Intent launchIntent, String packageName,
                 String shortcutId, UserHandle user, String[] keys) {
             this.label = label;
-            this.icon = icon;
             this.launchIntent = launchIntent;
             this.packageName = packageName;
             this.shortcutId = shortcutId;
@@ -165,6 +163,29 @@ final class AppLauncherPanel {
         }
 
         boolean isShortcut() { return shortcutId != null; }
+
+        Drawable loadIcon(Context context) {
+            android.content.pm.PackageManager pm = context.getPackageManager();
+            if (isShortcut()) {
+                LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
+                if (launcherApps == null) return null;
+                LauncherApps.ShortcutQuery shortcutQuery = new LauncherApps.ShortcutQuery()
+                        .setPackage(packageName)
+                        .setShortcutIds(Collections.singletonList(shortcutId))
+                        .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED
+                                | FLAG_MATCH_PINNED_BY_ANY_LAUNCHER);
+                try {
+                    List<ShortcutInfo> shortcuts = launcherApps.getShortcuts(shortcutQuery, user);
+                    if (shortcuts != null && !shortcuts.isEmpty()) {
+                        return launcherApps.getShortcutIconDrawable(shortcuts.get(0),
+                                Math.round(34f * context.getResources().getDisplayMetrics().density));
+                    }
+                } catch (RuntimeException ignored) { }
+                return null;
+            }
+            try { return pm.getActivityIcon(launchIntent.getComponent()); }
+            catch (android.content.pm.PackageManager.NameNotFoundException ignored) { return null; }
+        }
 
         int matchScore(List<String> query) {
             int best = Integer.MAX_VALUE;
@@ -209,6 +230,7 @@ final class AppLauncherPanel {
         private boolean loading;
         private boolean indexRequested;
         private volatile int loadRequestId;
+        private volatile int iconLoadRequestId;
         private View holdView;
         private ImageView holdIcon;
         private Runnable holdRunnable;
@@ -409,13 +431,12 @@ final class AppLauncherPanel {
                         || found.containsKey(activity.packageName)) continue;
                 CharSequence rawLabel = info.loadLabel(pm);
                 String label = rawLabel == null ? activity.packageName : rawLabel.toString();
-                Drawable icon = info.loadIcon(pm);
                 ComponentName component = new ComponentName(activity.packageName, activity.name);
                 Intent launch = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
                         .setComponent(component)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
                 String latin = PINYIN.transliterate(label).toLowerCase(Locale.ROOT);
-                found.put(activity.packageName, new AppEntry(label, icon, launch,
+                found.put(activity.packageName, new AppEntry(label, launch,
                         activity.packageName, null, null, buildKeys(label)));
             }
             LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
@@ -436,12 +457,10 @@ final class AppLauncherPanel {
                         android.content.pm.ApplicationInfo application;
                         try { application = launcherApps.getApplicationInfo(packageName, 0, user); }
                         catch (android.content.pm.PackageManager.NameNotFoundException ignored) { continue; }
-                        Drawable shortcutIcon = launcherApps.getShortcutIconDrawable(shortcut, dp(context, 34));
-                        if (shortcutIcon == null) shortcutIcon = application.loadIcon(pm);
                         CharSequence appLabel = application.loadLabel(pm);
                         String label = rawLabel.toString();
                         found.put(packageName + "#" + user + "#" + shortcut.getId(),
-                                new AppEntry(label, shortcutIcon, null, packageName,
+                                new AppEntry(label, null, packageName,
                                         shortcut.getId(), user,
                                         buildKeys(label, appLabel == null ? null : appLabel.toString())));
                     }
@@ -479,6 +498,7 @@ final class AppLauncherPanel {
         }
 
         private void renderRows() {
+            int iconRequest = ++iconLoadRequestId;
             rows.removeAllViews();
             if (!indexRequested) {
                 addMessage("点击键盘开始搜索");
@@ -504,14 +524,17 @@ final class AppLauncherPanel {
                 addMessage(query.isEmpty() ? "没有可启动的应用" : "未找到匹配应用");
                 return;
             }
+            Map<ImageView, AppEntry> iconTargets = new HashMap<>();
             for (int start = 0; start < matches.size(); start += 3) {
                 LinearLayout row = new LinearLayout(context);
                 row.setGravity(Gravity.CENTER_VERTICAL);
                 for (int index = start; index < Math.min(start + 3, matches.size()); index++) {
-                    addEntry(row, matches.get(index));
+                    ImageView icon = addEntry(row, matches.get(index));
+                    iconTargets.put(icon, matches.get(index));
                 }
                 rows.addView(row, new LinearLayout.LayoutParams(-1, dp(54)));
             }
+            loadResultIcons(iconTargets, iconRequest);
         }
 
         private void addMessage(String message) {
@@ -523,13 +546,13 @@ final class AppLauncherPanel {
             rows.addView(view, new LinearLayout.LayoutParams(-1, dp(48)));
         }
 
-        private void addEntry(LinearLayout row, AppEntry entry) {
+        private ImageView addEntry(LinearLayout row, AppEntry entry) {
             LinearLayout cell = new LinearLayout(context);
             cell.setOrientation(LinearLayout.VERTICAL);
             cell.setGravity(Gravity.CENTER);
             cell.setPadding(dp(2), dp(1), dp(2), dp(1));
             ImageView icon = new ImageView(context);
-            icon.setImageDrawable(entry.icon);
+            icon.setTag(entry);
             icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
             cell.addView(icon, new LinearLayout.LayoutParams(dp(34), dp(34)));
             TextView name = new TextView(context);
@@ -542,6 +565,24 @@ final class AppLauncherPanel {
             cell.addView(name, new LinearLayout.LayoutParams(-1, dp(16)));
             cell.setOnTouchListener((view, event) -> handleEntryTouch(view, icon, entry, event));
             row.addView(cell, new LinearLayout.LayoutParams(0, -1, 1f));
+            return icon;
+        }
+
+        private void loadResultIcons(Map<ImageView, AppEntry> targets, int requestId) {
+            WORKER.execute(() -> {
+                for (Map.Entry<ImageView, AppEntry> target : targets.entrySet()) {
+                    if (requestId != iconLoadRequestId) return;
+                    Drawable icon = target.getValue().loadIcon(context);
+                    if (icon == null) continue;
+                    ImageView view = target.getKey();
+                    MAIN.post(() -> {
+                        if (requestId == iconLoadRequestId && isCurrent()
+                                && view.isAttachedToWindow() && view.getTag() == target.getValue()) {
+                            view.setImageDrawable(icon);
+                        }
+                    });
+                }
+            });
         }
 
         private boolean handleEntryTouch(View view, ImageView icon, AppEntry entry, MotionEvent event) {
@@ -690,6 +731,7 @@ final class AppLauncherPanel {
         private void close() {
             if (!attached || closing) return;
             closing = true;
+            iconLoadRequestId++;
             cancelHold();
             panel.animate().cancel();
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
