@@ -47,6 +47,7 @@ import java.util.concurrent.Executors;
 /** Compact app search panel opened by a side gesture. */
 final class AppLauncherPanel {
     private static final int[] WINDOW_TYPES = {2041, 2017, 2040};
+    private static final int FLAG_MATCH_PINNED_BY_ANY_LAUNCHER = 1 << 10;
     private static final String TITLE = "FlymeStatusBarSizer:AppLauncher";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final long LONG_PRESS_MS = 800L;
@@ -424,28 +425,29 @@ final class AppLauncherPanel {
             LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
             if (launcherApps != null) {
                 for (UserHandle user : launcherApps.getProfiles()) {
-                    for (android.content.pm.ApplicationInfo application : pm.getInstalledApplications(0)) {
-                        if (context.getPackageName().equals(application.packageName)) continue;
-                        LauncherApps.ShortcutQuery shortcutQuery = new LauncherApps.ShortcutQuery()
-                                .setPackage(application.packageName)
-                                .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED);
-                        List<ShortcutInfo> shortcuts;
-                        try { shortcuts = launcherApps.getShortcuts(shortcutQuery, user); }
-                        catch (RuntimeException ignored) { continue; }
-                        if (shortcuts == null) continue;
+                    LauncherApps.ShortcutQuery shortcutQuery = new LauncherApps.ShortcutQuery()
+                            .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED
+                                    | FLAG_MATCH_PINNED_BY_ANY_LAUNCHER);
+                    List<ShortcutInfo> shortcuts;
+                    try { shortcuts = launcherApps.getShortcuts(shortcutQuery, user); }
+                    catch (RuntimeException ignored) { continue; }
+                    if (shortcuts == null) continue;
+                    for (ShortcutInfo shortcut : shortcuts) {
+                        CharSequence rawLabel = shortcut.getShortLabel();
+                        if (rawLabel == null || rawLabel.length() == 0) rawLabel = shortcut.getLongLabel();
+                        if (rawLabel == null || rawLabel.length() == 0) continue;
+                        String packageName = shortcut.getPackage();
+                        android.content.pm.ApplicationInfo application;
+                        try { application = launcherApps.getApplicationInfo(packageName, 0, user); }
+                        catch (android.content.pm.PackageManager.NameNotFoundException ignored) { continue; }
+                        Drawable shortcutIcon = launcherApps.getShortcutIconDrawable(shortcut, dp(context, 34));
+                        if (shortcutIcon == null) shortcutIcon = application.loadIcon(pm);
                         CharSequence appLabel = application.loadLabel(pm);
-                        for (ShortcutInfo shortcut : shortcuts) {
-                            if (!shortcut.isPinned()) continue;
-                            CharSequence rawLabel = shortcut.getShortLabel();
-                            if (rawLabel == null || rawLabel.length() == 0) rawLabel = shortcut.getLongLabel();
-                            if (rawLabel == null || rawLabel.length() == 0) continue;
-                            Drawable shortcutIcon = launcherApps.getShortcutIconDrawable(shortcut, dp(context, 34));
-                            if (shortcutIcon == null) shortcutIcon = application.loadIcon(pm);
-                            String label = rawLabel.toString();
-                            found.put(application.packageName + "#" + user + "#" + shortcut.getId(),
-                                    new AppEntry(label, shortcutIcon, null, application.packageName,
-                                            shortcut.getId(), user, buildKeys(label, appLabel == null ? null : appLabel.toString())));
-                        }
+                        String label = rawLabel.toString();
+                        found.put(packageName + "#" + user + "#" + shortcut.getId(),
+                                new AppEntry(label, shortcutIcon, null, packageName,
+                                        shortcut.getId(), user,
+                                        buildKeys(label, appLabel == null ? null : appLabel.toString())));
                     }
                 }
             }
