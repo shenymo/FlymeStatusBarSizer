@@ -32,10 +32,11 @@ final class AssistantGestureZoneOverlay {
 
     void show(float startX, float startY, boolean fromLeft, float shortDistancePx,
             float longDistancePx, boolean splitEnabled, int horizontalAction, int upAction,
-            int downAction, int horizontalLongAction, int upLongAction, int downLongAction) {
+            int downAction, int horizontalLongAction, int upLongAction, int downLongAction,
+            float upAngle, float downAngle, float minVertical) {
         view.setSpec(startX, startY, fromLeft, shortDistancePx, longDistancePx, splitEnabled,
                 horizontalAction, upAction, downAction, horizontalLongAction, upLongAction,
-                downLongAction);
+                downLongAction, upAngle, downAngle, minVertical);
         if (!attached && !attempted) {
             attempted = true;
             attach();
@@ -126,6 +127,9 @@ final class AssistantGestureZoneOverlay {
         private float pointerY;
         private float shortDistance;
         private float longDistance;
+        private float upAngleTan;
+        private float downAngleTan;
+        private float minVertical;
         private boolean fromLeft;
         private boolean splitEnabled;
         private int horizontalAction;
@@ -160,7 +164,7 @@ final class AssistantGestureZoneOverlay {
         void setSpec(float startX, float startY, boolean fromLeft, float shortDistance,
                 float longDistance, boolean splitEnabled, int horizontalAction, int upAction,
                 int downAction, int horizontalLongAction, int upLongAction,
-                int downLongAction) {
+                int downLongAction, float upAngle, float downAngle, float minVertical) {
             this.startX = startX;
             this.startY = startY;
             pointerX = startX;
@@ -175,6 +179,9 @@ final class AssistantGestureZoneOverlay {
             this.horizontalLongAction = horizontalLongAction;
             this.upLongAction = upLongAction;
             this.downLongAction = downLongAction;
+            upAngleTan = (float) Math.tan(Math.toRadians(upAngle));
+            downAngleTan = (float) Math.tan(Math.toRadians(downAngle));
+            this.minVertical = minVertical;
         }
 
         @Override protected void onDraw(Canvas canvas) {
@@ -237,11 +244,12 @@ final class AssistantGestureZoneOverlay {
                     fill.getColor());
             float diagonalX = Math.max(shortDistance * 0.35f + dp(22), labelDistance);
             diagonalX = Math.min(availableX * 0.82f, Math.max(shortDistance * 0.35f, diagonalX));
-            float diagonalY = Math.max(dp(24), diagonalX * 0.45f) + dp(26);
-            drawLabel(canvas, direction, diagonalX, startY - diagonalY,
+            float upDiagonalY = angleBand(diagonalX, true) + dp(26);
+            float downDiagonalY = angleBand(diagonalX, false) + dp(26);
+            drawLabel(canvas, direction, diagonalX, startY - upDiagonalY,
                     (mode.length() == 0 ? "上斜" : mode + "距离上斜") + " · "
                             + SideGestureActions.label(up), fill.getColor());
-            drawLabel(canvas, direction, diagonalX, startY + diagonalY,
+            drawLabel(canvas, direction, diagonalX, startY + downDiagonalY,
                     (mode.length() == 0 ? "下斜" : mode + "距离下斜") + " · "
                             + SideGestureActions.label(down), fill.getColor());
         }
@@ -267,7 +275,7 @@ final class AssistantGestureZoneOverlay {
                 float x = start + (end - start) * i / steps;
                 float inner = radialLower(x, minRadius);
                 float outer = radialUpper(x, maxRadius);
-                float band = Math.max(dp(24), x * 0.45f);
+                float band = angleBand(x, upper);
                 float high = Math.min(verticalLimit, Math.min(band, outer));
                 if (high <= inner) continue;
                 float y = upper ? startY - high : startY + high;
@@ -283,7 +291,7 @@ final class AssistantGestureZoneOverlay {
                 float x = start + (end - start) * i / steps;
                 float inner = radialLower(x, minRadius);
                 float outer = radialUpper(x, maxRadius);
-                float band = Math.max(dp(24), x * 0.45f);
+                float band = angleBand(x, upper);
                 float high = Math.min(verticalLimit, Math.min(band, outer));
                 if (high > inner) {
                     path.lineTo(screenX(x, direction), upper
@@ -309,7 +317,7 @@ final class AssistantGestureZoneOverlay {
                 float x = start + (end - start) * i / steps;
                 float inner = radialLower(x, minRadius);
                 float outer = radialUpper(x, maxRadius);
-                float band = Math.max(dp(24), x * 0.45f);
+                float band = angleBand(x, upper);
                 float low = Math.max(band, inner);
                 float high = Math.min(verticalLimit, outer);
                 if (high <= low) continue;
@@ -326,7 +334,7 @@ final class AssistantGestureZoneOverlay {
                 float x = start + (end - start) * i / steps;
                 float inner = radialLower(x, minRadius);
                 float outer = radialUpper(x, maxRadius);
-                float band = Math.max(dp(24), x * 0.45f);
+                float band = angleBand(x, upper);
                 float low = Math.max(band, inner);
                 float high = Math.min(verticalLimit, outer);
                 if (high > low) {
@@ -397,6 +405,10 @@ final class AssistantGestureZoneOverlay {
             if (radius <= 0f) return Float.POSITIVE_INFINITY;
             if (x >= radius) return 0f;
             return (float) Math.sqrt(Math.max(0f, radius * radius - x * x));
+        }
+
+        private float angleBand(float x, boolean upper) {
+            return Math.max(minVertical, x * (upper ? upAngleTan : downAngleTan));
         }
 
         private float screenX(float distance, int direction) {

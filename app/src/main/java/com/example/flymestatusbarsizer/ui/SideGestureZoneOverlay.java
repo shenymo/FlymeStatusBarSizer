@@ -58,6 +58,9 @@ public final class SideGestureZoneOverlay {
     private static final int DRAG_NONE = 0;
     private static final int DRAG_SHORT = 1;
     private static final int DRAG_LONG = 2;
+    private static final int DRAG_UP_ANGLE = 3;
+    private static final int DRAG_DOWN_ANGLE = 4;
+    private static final int DRAG_MIN_VERTICAL = 5;
 
     private final MainActivity activity;
     private final SharedPreferences prefs;
@@ -69,6 +72,9 @@ public final class SideGestureZoneOverlay {
     private final int[] longActions = new int[6];
     private int shortDistanceDp;
     private int longDistanceDp;
+    private int upAngle;
+    private int downAngle;
+    private int minVerticalDp;
     private boolean leftSide = true;
     private boolean splitEnabled;
     private boolean attached;
@@ -122,6 +128,16 @@ public final class SideGestureZoneOverlay {
         splitEnabled = SettingsStore.readBoolean(prefs,
                 SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED);
+        upAngle = readBounded(SettingsStore.KEY_ASSISTANT_GESTURE_UP_ANGLE,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_UP_ANGLE,
+                SettingsStore.MIN_ASSISTANT_GESTURE_ANGLE, SettingsStore.MAX_ASSISTANT_GESTURE_ANGLE);
+        downAngle = readBounded(SettingsStore.KEY_ASSISTANT_GESTURE_DOWN_ANGLE,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_DOWN_ANGLE,
+                SettingsStore.MIN_ASSISTANT_GESTURE_ANGLE, SettingsStore.MAX_ASSISTANT_GESTURE_ANGLE);
+        minVerticalDp = readBounded(SettingsStore.KEY_ASSISTANT_GESTURE_MIN_VERTICAL_DP,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_MIN_VERTICAL_DP,
+                SettingsStore.MIN_ASSISTANT_GESTURE_MIN_VERTICAL_DP,
+                SettingsStore.MAX_ASSISTANT_GESTURE_MIN_VERTICAL_DP);
     }
 
     private int readDistance(String key, int defaultValue, int min, int max) {
@@ -129,10 +145,18 @@ public final class SideGestureZoneOverlay {
         return Math.max(min, Math.min(max, value));
     }
 
+    private int readBounded(String key, int defaultValue, int min, int max) {
+        int value = SettingsStore.readInt(prefs, key, defaultValue);
+        return Math.max(min, Math.min(max, value));
+    }
+
     private void saveToPreferences() {
         SharedPreferences.Editor editor = prefs.edit()
                 .putInt(SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP, shortDistanceDp)
-                .putInt(SettingsStore.KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP, longDistanceDp);
+                .putInt(SettingsStore.KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP, longDistanceDp)
+                .putInt(SettingsStore.KEY_ASSISTANT_GESTURE_UP_ANGLE, upAngle)
+                .putInt(SettingsStore.KEY_ASSISTANT_GESTURE_DOWN_ANGLE, downAngle)
+                .putInt(SettingsStore.KEY_ASSISTANT_GESTURE_MIN_VERTICAL_DP, minVerticalDp);
         for (int i = 0; i < SHORT_KEYS.length; i++) {
             editor.putInt(SHORT_KEYS[i], shortActions[i]);
             editor.putInt(LONG_KEYS[i], longActions[i]);
@@ -256,6 +280,7 @@ public final class SideGestureZoneOverlay {
                         longThresholdPaint, offset, true);
             }
             canvas.drawCircle(originX, centerY, dp(5), handlePaint);
+            drawGeometryHandles(canvas);
             textPaint.setTextSize(11f * scaledDensity);
             textPaint.setColor(Color.WHITE);
             textPaint.setTextAlign(leftSide ? Paint.Align.LEFT : Paint.Align.RIGHT);
@@ -276,7 +301,10 @@ public final class SideGestureZoneOverlay {
                     fill, true);
             drawDiagonalRegion(canvas, readyDistanceDp, radialMinDp, end, verticalLimit,
                     fill, false);
-            drawHorizontalRegion(canvas, readyDistanceDp, radialMinDp, end, verticalLimit, fill);
+            drawHorizontalRegion(canvas, readyDistanceDp, radialMinDp, end, verticalLimit, fill,
+                    true);
+            drawHorizontalRegion(canvas, readyDistanceDp, radialMinDp, end, verticalLimit, fill,
+                    false);
         }
 
         private void drawDiagonalRegion(Canvas canvas, int readyDistanceDp, int radialMinDp,
@@ -288,7 +316,7 @@ public final class SideGestureZoneOverlay {
             int steps = 96;
             for (int i = 0; i <= steps; i++) {
                 float x = startX + (endX - startX) * i / steps;
-                float lower = diagonalBoundaryY(x, radialMinDp);
+                float lower = diagonalBoundaryY(x, radialMinDp, upper);
                 float upperY = Math.min(verticalLimit,
                         (float) Math.sqrt(Math.max(0f,
                                 maxDistanceDp * maxDistanceDp - x * x)));
@@ -305,7 +333,7 @@ public final class SideGestureZoneOverlay {
             if (!started) return;
             for (int i = steps; i >= 0; i--) {
                 float x = startX + (endX - startX) * i / steps;
-                float lower = diagonalBoundaryY(x, radialMinDp);
+                float lower = diagonalBoundaryY(x, radialMinDp, upper);
                 float upperY = Math.min(verticalLimit,
                         (float) Math.sqrt(Math.max(0f,
                                 maxDistanceDp * maxDistanceDp - x * x)));
@@ -319,7 +347,7 @@ public final class SideGestureZoneOverlay {
         }
 
         private void drawHorizontalRegion(Canvas canvas, int readyDistanceDp, int radialMinDp,
-                float maxDistanceDp, float verticalLimit, Paint fill) {
+                float maxDistanceDp, float verticalLimit, Paint fill, boolean upper) {
             float startX = readyDistanceDp;
             float endX = Math.min(maxDistanceDp, getWidth() / scale);
             if (endX <= startX) return;
@@ -332,14 +360,14 @@ public final class SideGestureZoneOverlay {
                         radialMinDp * radialMinDp - x * x)) : 0f;
                 float outer = maxDistanceDp > 0 ? (float) Math.sqrt(Math.max(0f,
                         maxDistanceDp * maxDistanceDp - x * x)) : verticalLimit;
-                float y = Math.max(24f, x * 0.45f);
-                float upper = Math.min(verticalLimit, Math.min(y, outer));
-                if (upper <= inner) continue;
+                float y = directionBandY(x, upper);
+                float edge = Math.min(verticalLimit, Math.min(y, outer));
+                if (edge <= inner) continue;
                 if (!started) {
-                    region.moveTo(screenX(x), centerY - upper * scale);
+                    region.moveTo(screenX(x), centerY + (upper ? -1f : 1f) * edge * scale);
                     started = true;
                 } else {
-                    region.lineTo(screenX(x), centerY - upper * scale);
+                    region.lineTo(screenX(x), centerY + (upper ? -1f : 1f) * edge * scale);
                 }
             }
             if (!started) return;
@@ -349,43 +377,24 @@ public final class SideGestureZoneOverlay {
                         radialMinDp * radialMinDp - x * x)) : 0f;
                 float outer = maxDistanceDp > 0 ? (float) Math.sqrt(Math.max(0f,
                         maxDistanceDp * maxDistanceDp - x * x)) : verticalLimit;
-                float y = Math.max(24f, x * 0.45f);
-                float upper = Math.min(verticalLimit, Math.min(y, outer));
-                if (upper > inner) region.lineTo(screenX(x), centerY - inner * scale);
-            }
-            for (int i = 0; i <= steps; i++) {
-                float x = startX + (endX - startX) * i / steps;
-                float inner = radialMinDp > 0 ? (float) Math.sqrt(Math.max(0f,
-                        radialMinDp * radialMinDp - x * x)) : 0f;
-                float outer = maxDistanceDp > 0 ? (float) Math.sqrt(Math.max(0f,
-                        maxDistanceDp * maxDistanceDp - x * x)) : verticalLimit;
-                float y = Math.max(24f, x * 0.45f);
-                float lower = Math.min(verticalLimit, Math.min(y, outer));
-                if (lower > inner) region.lineTo(screenX(x), centerY + inner * scale);
-            }
-            for (int i = steps; i >= 0; i--) {
-                float x = startX + (endX - startX) * i / steps;
-                float inner = radialMinDp > 0 ? (float) Math.sqrt(Math.max(0f,
-                        radialMinDp * radialMinDp - x * x)) : 0f;
-                float outer = maxDistanceDp > 0 ? (float) Math.sqrt(Math.max(0f,
-                        maxDistanceDp * maxDistanceDp - x * x)) : verticalLimit;
-                float y = Math.max(24f, x * 0.45f);
-                float lower = Math.min(verticalLimit, Math.min(y, outer));
-                if (lower > inner) region.lineTo(screenX(x), centerY + lower * scale);
+                float y = directionBandY(x, upper);
+                float edge = Math.min(verticalLimit, Math.min(y, outer));
+                if (edge > inner) region.lineTo(screenX(x), centerY + (upper ? -1f : 1f) * inner * scale);
             }
             region.close();
             canvas.drawPath(region, fill);
         }
 
-        private float diagonalBoundaryY(float x, int minDistanceDp) {
+        private float diagonalBoundaryY(float x, int minDistanceDp, boolean upper) {
             float distanceLimit = x < minDistanceDp
                     ? (float) Math.sqrt(Math.max(0f,
                     minDistanceDp * minDistanceDp - x * x)) : 0f;
-            return Math.max(Math.max(24f, x * 0.45f), distanceLimit);
+            return Math.max(directionBandY(x, upper), distanceLimit);
         }
 
-        private float directionBandY(float x) {
-            return Math.max(24f, x * 0.45f);
+        private float directionBandY(float x, boolean upper) {
+            float angle = (float) Math.tan(Math.toRadians(angleDegrees(upper ? upAngle : downAngle)));
+            return Math.max(minVerticalDp, x * angle);
         }
 
         private float screenX(float distanceDp) {
@@ -416,10 +425,77 @@ public final class SideGestureZoneOverlay {
             canvas.drawText(label, labelX, baseline, textPaint);
         }
 
+        private void drawGeometryHandles(Canvas canvas) {
+            float angleDistance = angleHandleDistanceDp();
+            float angleX = screenX(angleDistance);
+            float upY = centerY - angleDistance
+                    * (float) Math.tan(Math.toRadians(angleDegrees(upAngle))) * scale;
+            float downY = centerY + angleDistance
+                    * (float) Math.tan(Math.toRadians(angleDegrees(downAngle))) * scale;
+            canvas.drawCircle(angleX, upY, dp(13), controlPaint);
+            canvas.drawCircle(angleX, upY, dp(8), handlePaint);
+            canvas.drawCircle(angleX, downY, dp(13), controlPaint);
+            canvas.drawCircle(angleX, downY, dp(8), handlePaint);
+            float verticalDistance = Math.max(32f, Math.min(shortDistanceDp,
+                    getWidth() / scale * 0.18f));
+            float verticalX = screenX(verticalDistance);
+            float upperMinY = centerY - minVerticalDp * scale;
+            float lowerMinY = centerY + minVerticalDp * scale;
+            canvas.drawCircle(verticalX, upperMinY, dp(11), controlPaint);
+            canvas.drawCircle(verticalX, upperMinY, dp(6), longHandlePaint);
+            canvas.drawCircle(verticalX, lowerMinY, dp(11), controlPaint);
+            canvas.drawCircle(verticalX, lowerMinY, dp(6), longHandlePaint);
+            drawGeometryLabel(canvas, angleX, upY - dp(18), "上 " + angleText(upAngle) + "°");
+            drawGeometryLabel(canvas, angleX, downY + dp(18), "下 " + angleText(downAngle) + "°");
+            drawGeometryLabel(canvas, verticalX, upperMinY - dp(16), "竖 ±" + minVerticalDp + "dp");
+        }
+
+        private void drawGeometryLabel(Canvas canvas, float x, float y, String text) {
+            textPaint.setTextSize(10f * scaledDensity);
+            textPaint.setColor(Color.WHITE);
+            float halfWidth = textPaint.measureText(text) / 2f + dp(5);
+            Paint.FontMetrics metrics = textPaint.getFontMetrics();
+            float baseline = y - (metrics.ascent + metrics.descent) / 2f;
+            labelBackgroundPaint.setColor(0xd820262f);
+            canvas.drawRoundRect(x - halfWidth, baseline + metrics.ascent - dp(2),
+                    x + halfWidth, baseline + metrics.descent + dp(2),
+                    dp(4), dp(4), labelBackgroundPaint);
+            canvas.drawText(text, x, baseline, textPaint);
+        }
+
+        private float angleHandleDistanceDp() {
+            float widthDp = getWidth() / scale;
+            float upNeed = minVerticalDp
+                    / (float) Math.tan(Math.toRadians(Math.max(1f, angleDegrees(upAngle))));
+            float downNeed = minVerticalDp
+                    / (float) Math.tan(Math.toRadians(Math.max(1f, angleDegrees(downAngle))));
+            float verticalLimit = Math.min((centerY - topInset()) / scale,
+                    (getHeight() - navigationBarHeight() - centerY) / scale);
+            float upLimit = verticalLimit
+                    / (float) Math.tan(Math.toRadians(angleDegrees(upAngle)));
+            float downLimit = verticalLimit
+                    / (float) Math.tan(Math.toRadians(angleDegrees(downAngle)));
+            float availableDistance = Math.min(widthDp * 0.68f, Math.min(upLimit, downLimit));
+            float desiredDistance = Math.max(shortDistanceDp + 56f,
+                    Math.max(120f, Math.max(upNeed, downNeed) + 16f));
+            return Math.max(1f, Math.min(availableDistance, desiredDistance));
+        }
+
+        private float angleDegrees(int angleTenths) {
+            return angleTenths / 10f;
+        }
+
+        private String angleText(int angleTenths) {
+            return angleTenths % 10 == 0
+                    ? Integer.toString(angleTenths / 10)
+                    : (angleTenths / 10) + "." + (angleTenths % 10);
+        }
+
         private void drawThresholdContour(Canvas canvas, Paint paint, int distanceDp) {
             float x = screenX(distanceDp);
-            float halfBand = Math.max(24f, distanceDp * 0.45f) * scale;
-            canvas.drawLine(x, centerY - halfBand, x, centerY + halfBand, paint);
+            float upperBand = directionBandY(distanceDp, true) * scale;
+            float lowerBand = directionBandY(distanceDp, false) * scale;
+            canvas.drawLine(x, centerY - upperBand, x, centerY + lowerBand, paint);
             float screenWidthDp = getWidth() / scale;
             float startX = distanceDp * 0.35f;
             float endX = Math.min(screenWidthDp, (float) Math.hypot(screenWidthDp,
@@ -434,7 +510,7 @@ public final class SideGestureZoneOverlay {
                     float radialLimit = dx < distanceDp
                             ? (float) Math.sqrt(Math.max(0f,
                             distanceDp * distanceDp - dx * dx)) : 0f;
-                    float dy = Math.max(directionBandY(dx), radialLimit);
+                    float dy = Math.max(directionBandY(dx, side < 0), radialLimit);
                     float screenY = centerY + side * dy * scale;
                     if (i == 0) boundary.moveTo(screenX(dx), screenY);
                     else boundary.lineTo(screenX(dx), screenY);
@@ -449,18 +525,21 @@ public final class SideGestureZoneOverlay {
                     distanceDp + (splitEnabled && longDistance ? 30f : 46f));
             float diagonalX = Math.min(getWidth() / scale,
                     Math.max(distanceDp * 0.72f, distanceDp * 0.35f + 30f));
-            float diagonalY = Math.max(Math.max(24f, diagonalX * 0.45f) + 24f,
+            float upDiagonalY = Math.max(directionBandY(diagonalX, true) + dp(24) / scale,
                     (float) Math.sqrt(Math.max(0f, distanceDp * distanceDp
-                            - diagonalX * diagonalX)) + 24f);
+                            - diagonalX * diagonalX)) + dp(24) / scale);
+            float downDiagonalY = Math.max(directionBandY(diagonalX, false) + dp(24) / scale,
+                    (float) Math.sqrt(Math.max(0f, distanceDp * distanceDp
+                            - diagonalX * diagonalX)) + dp(24) / scale);
             int mode = longDistance ? 1 : 0;
             String prefix = splitEnabled ? (longDistance ? "长 " : "短 ") : "";
             drawArcActionLabel(canvas, prefix + actionLabel(actionOffset, longDistance),
                     screenX(horizontalX), centerY, 1, arcPaint, mode, actionOffset);
             drawArcActionLabel(canvas, prefix + actionLabel(actionOffset + 1, longDistance),
-                    screenX(diagonalX), centerY - diagonalY * scale, 0, arcPaint,
+                    screenX(diagonalX), centerY - upDiagonalY * scale, 0, arcPaint,
                     mode, actionOffset + 1);
             drawArcActionLabel(canvas, prefix + actionLabel(actionOffset + 2, longDistance),
-                    screenX(diagonalX), centerY + diagonalY * scale, 2, arcPaint,
+                    screenX(diagonalX), centerY + downDiagonalY * scale, 2, arcPaint,
                     mode, actionOffset + 2);
         }
 
@@ -509,7 +588,7 @@ public final class SideGestureZoneOverlay {
             drawControl(canvas, saveControl, "保存", true);
             textPaint.setTextSize(11f * scaledDensity);
             textPaint.setColor(0xeeffffff);
-            canvas.drawText("点区域选动作，点功能文字编辑；拖动圆点改距离", width / 2f,
+            canvas.drawText("点区域选动作；拖动圆点调整距离、角度和竖向范围", width / 2f,
                     buttonTop - dp(10), textPaint);
             textPaint.setColor(Color.WHITE);
         }
@@ -601,17 +680,32 @@ public final class SideGestureZoneOverlay {
                 }
             } else if (action == MotionEvent.ACTION_MOVE) {
                 if (dragging != DRAG_NONE) {
-                    float handleX = x - dragOffsetX;
-                    float inward = Math.max(0f, (handleX - originX) * direction);
-                    int distance = Math.round(inward / scale);
-                    if (dragging == DRAG_LONG) {
-                        longDistanceDp = clamp(distance,
-                                SettingsStore.MIN_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
-                                SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP);
-                    } else {
-                        shortDistanceDp = clamp(distance,
-                                SettingsStore.MIN_ASSISTANT_GESTURE_DISTANCE_DP,
-                                SettingsStore.MAX_ASSISTANT_GESTURE_DISTANCE_DP);
+                    if (dragging == DRAG_SHORT || dragging == DRAG_LONG) {
+                        float handleX = x - dragOffsetX;
+                        float inward = Math.max(0f, (handleX - originX) * direction);
+                        int distance = Math.round(inward / scale);
+                        if (dragging == DRAG_LONG) {
+                            longDistanceDp = clamp(distance,
+                                    SettingsStore.MIN_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
+                                    SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP);
+                        } else {
+                            shortDistanceDp = clamp(distance,
+                                    SettingsStore.MIN_ASSISTANT_GESTURE_DISTANCE_DP,
+                                    SettingsStore.MAX_ASSISTANT_GESTURE_DISTANCE_DP);
+                        }
+                    } else if (dragging == DRAG_UP_ANGLE || dragging == DRAG_DOWN_ANGLE) {
+                        float inward = Math.max(1f, (x - originX) * direction);
+                        float vertical = Math.abs(y - centerY);
+                        int angle = Math.round((float) Math.toDegrees(Math.atan2(vertical, inward))
+                                * 10f);
+                        angle = clamp(angle, SettingsStore.MIN_ASSISTANT_GESTURE_ANGLE,
+                                SettingsStore.MAX_ASSISTANT_GESTURE_ANGLE);
+                        if (dragging == DRAG_UP_ANGLE) upAngle = angle;
+                        else downAngle = angle;
+                    } else if (dragging == DRAG_MIN_VERTICAL) {
+                        minVerticalDp = clamp(Math.round(Math.abs(y - centerY) / scale),
+                                SettingsStore.MIN_ASSISTANT_GESTURE_MIN_VERTICAL_DP,
+                                SettingsStore.MAX_ASSISTANT_GESTURE_MIN_VERTICAL_DP);
                     }
                     invalidate();
                     return true;
@@ -633,7 +727,9 @@ public final class SideGestureZoneOverlay {
                 if (inward > 0 && y > topInset() && y < getHeight() - navigationBarHeight()) {
                     float dy = y - centerY;
                     float distanceDp = (float) Math.hypot(inward, dy) / scale;
-                    int directionIndex = Math.abs(dy) < Math.max(dp(24), inward * 0.45f)
+                    float angle = angleDegrees(dy < 0 ? upAngle : downAngle);
+                    int directionIndex = Math.abs(dy) < Math.max(minVerticalDp * scale,
+                            inward * (float) Math.tan(Math.toRadians(angle)))
                             ? 0 : dy < 0 ? 1 : 2;
                     if (distanceDp > 8f) {
                         pickerDirection = directionIndex;
@@ -668,6 +764,21 @@ public final class SideGestureZoneOverlay {
 
         private int hitHandle(float x, float y) {
             float hit = dp(28);
+            float angleDistance = angleHandleDistanceDp();
+            float angleX = screenX(angleDistance);
+            float upY = centerY - angleDistance
+                    * (float) Math.tan(Math.toRadians(angleDegrees(upAngle))) * scale;
+            float downY = centerY + angleDistance
+                    * (float) Math.tan(Math.toRadians(angleDegrees(downAngle))) * scale;
+            if (Math.hypot(x - angleX, y - upY) <= hit) return DRAG_UP_ANGLE;
+            if (Math.hypot(x - angleX, y - downY) <= hit) return DRAG_DOWN_ANGLE;
+            float verticalDistance = Math.max(32f, Math.min(shortDistanceDp,
+                    getWidth() / scale * 0.18f));
+            float verticalX = screenX(verticalDistance);
+            float minY = centerY - minVerticalDp * scale;
+            float maxY = centerY + minVerticalDp * scale;
+            if (Math.hypot(x - verticalX, y - minY) <= hit
+                    || Math.hypot(x - verticalX, y - maxY) <= hit) return DRAG_MIN_VERTICAL;
             float shortX = handleX(shortDistanceDp);
             float shortY = centerY;
             float longX = handleX(longDistanceDp);

@@ -168,6 +168,10 @@ public final class SettingsStore {
     public static final int ASSISTANT_GESTURE_SIDE_BOTH = 2;
     public static final int DEFAULT_ASSISTANT_GESTURE_SIDE = ASSISTANT_GESTURE_SIDE_LEFT;
     public static final String KEY_ASSISTANT_GESTURE_DISTANCE_DP = "assistant_gesture_distance_dp";
+    public static final String KEY_ASSISTANT_GESTURE_UP_ANGLE = "assistant_gesture_up_angle";
+    public static final String KEY_ASSISTANT_GESTURE_DOWN_ANGLE = "assistant_gesture_down_angle";
+    public static final String KEY_ASSISTANT_GESTURE_MIN_VERTICAL_DP =
+            "assistant_gesture_min_vertical_dp";
     public static final String KEY_WORKSPACE_TOOLBAR_HEIGHT_DP = "workspace_toolbar_height_dp";
     public static final String KEY_WORKSPACE_TOOLBAR_POSITION_DP = "workspace_toolbar_position_dp";
     public static final String KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED =
@@ -188,6 +192,13 @@ public final class SettingsStore {
     public static final int DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP = 140;
     public static final int MIN_ASSISTANT_GESTURE_DISTANCE_DP = 0;
     public static final int MAX_ASSISTANT_GESTURE_DISTANCE_DP = 240;
+    public static final int DEFAULT_ASSISTANT_GESTURE_UP_ANGLE = 242;
+    public static final int DEFAULT_ASSISTANT_GESTURE_DOWN_ANGLE = 242;
+    public static final int MIN_ASSISTANT_GESTURE_ANGLE = 50;
+    public static final int MAX_ASSISTANT_GESTURE_ANGLE = 600;
+    public static final int DEFAULT_ASSISTANT_GESTURE_MIN_VERTICAL_DP = 24;
+    public static final int MIN_ASSISTANT_GESTURE_MIN_VERTICAL_DP = 0;
+    public static final int MAX_ASSISTANT_GESTURE_MIN_VERTICAL_DP = 120;
     public static final String KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED =
             "assistant_gesture_distance_split_enabled";
     public static final boolean DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED = false;
@@ -691,6 +702,9 @@ public final class SettingsStore {
             KEY_ASSISTANT_GESTURE_SCENES,
             KEY_ASSISTANT_GESTURE_SIDE,
             KEY_ASSISTANT_GESTURE_DISTANCE_DP,
+            KEY_ASSISTANT_GESTURE_UP_ANGLE,
+            KEY_ASSISTANT_GESTURE_DOWN_ANGLE,
+            KEY_ASSISTANT_GESTURE_MIN_VERTICAL_DP,
             KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
             KEY_ASSISTANT_GESTURE_TRIGGER_MODE,
             KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
@@ -1129,6 +1143,10 @@ public final class SettingsStore {
             case KEY_ASSISTANT_GESTURE_SCENES: return DEFAULT_ASSISTANT_GESTURE_SCENES;
             case KEY_ASSISTANT_GESTURE_SIDE: return DEFAULT_ASSISTANT_GESTURE_SIDE;
             case KEY_ASSISTANT_GESTURE_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
+            case KEY_ASSISTANT_GESTURE_UP_ANGLE: return DEFAULT_ASSISTANT_GESTURE_UP_ANGLE;
+            case KEY_ASSISTANT_GESTURE_DOWN_ANGLE: return DEFAULT_ASSISTANT_GESTURE_DOWN_ANGLE;
+            case KEY_ASSISTANT_GESTURE_MIN_VERTICAL_DP:
+                return DEFAULT_ASSISTANT_GESTURE_MIN_VERTICAL_DP;
             case KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_LONG_DISTANCE_DP;
             case KEY_ASSISTANT_GESTURE_TRIGGER_MODE: return DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE;
             case KEY_WORKSPACE_TOOLBAR_HEIGHT_DP: return DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;

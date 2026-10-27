@@ -7,11 +7,12 @@ final class AssistantGestureState {
     static final int DOWN = 2;
     private boolean tracking;
     private boolean claimed;
-    private float startX, startY, dx, dy, distance, backwardLimit, diagonalMin;
+    private float startX, startY, dx, dy, distance, backwardLimit;
+    private float upAngleTan, downAngleTan, minVertical;
     private int inwardDirection;
 
     void begin(float x, float y, float distance, float backwardLimit, boolean leftEdge,
-            float diagonalMin) {
+            float upAngleDegrees, float downAngleDegrees, float minVertical) {
         inwardDirection = leftEdge ? 1 : -1;
         tracking = true;
         claimed = false;
@@ -20,7 +21,9 @@ final class AssistantGestureState {
         dx = dy = 0;
         this.distance = distance;
         this.backwardLimit = backwardLimit;
-        this.diagonalMin = diagonalMin;
+        upAngleTan = (float) Math.tan(Math.toRadians(upAngleDegrees));
+        downAngleTan = (float) Math.tan(Math.toRadians(downAngleDegrees));
+        this.minVertical = minVertical;
     }
 
     void move(float x, float y, int pointerCount) {
@@ -38,7 +41,9 @@ final class AssistantGestureState {
     }
 
     int direction() {
-        if (dx <= 0 || Math.abs(dy) < Math.max(diagonalMin, dx * 0.45f)) return HORIZONTAL;
+        if (dx <= 0) return HORIZONTAL;
+        float threshold = Math.max(minVertical, dx * (dy < 0 ? upAngleTan : downAngleTan));
+        if (Math.abs(dy) < threshold) return HORIZONTAL;
         return dy < 0 ? UP : DOWN;
     }
 

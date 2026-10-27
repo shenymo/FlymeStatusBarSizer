@@ -158,7 +158,9 @@ final class AssistantGestureHooks {
             gestureStartX = rawX;
             shortDistancePx = config.assistantGestureDistanceDp * density;
             state.begin(rawX, rawY, shortDistancePx,
-                    12f * density, leftEdge, 24f * density);
+                    12f * density, leftEdge, config.assistantGestureUpAngle / 10f,
+                    config.assistantGestureDownAngle / 10f,
+                    config.assistantGestureMinVerticalDp * density);
             fromLeft = leftEdge;
             zoneOverlayEnabled = config.assistantGestureZoneOverlayEnabled;
             actionPreviewEnabled = config.assistantGesturePreviewEnabled;
@@ -193,10 +195,14 @@ final class AssistantGestureHooks {
             if (!gestureStarted && state.inwardDistance() > gestureTouchSlop) {
                 gestureStarted = true;
                 if (zoneOverlayEnabled) {
+                    ModuleConfig config = ModuleConfig.load(context);
+                    float density = context.getResources().getDisplayMetrics().density;
                     zoneOverlay.show(gestureStartX, state.startY(), fromLeft, shortDistancePx,
                             longDistancePx, distanceSplitEnabled, horizontalActionId, upActionId,
                             downActionId, horizontalLongActionId, upLongActionId,
-                            downLongActionId);
+                            downLongActionId, config.assistantGestureUpAngle / 10f,
+                            config.assistantGestureDownAngle / 10f,
+                            config.assistantGestureMinVerticalDp * density);
                 }
             }
             if (zoneOverlayEnabled && gestureStarted) zoneOverlay.updatePointer(rawX, rawY);

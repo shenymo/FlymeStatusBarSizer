@@ -145,6 +145,10 @@ public final class ModuleConfig {
     public int oneHandedModeAction = SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION;
     public int assistantGestureScenes = SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES;
     public int assistantGestureDistanceDp = SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
+    public int assistantGestureUpAngle = SettingsStore.DEFAULT_ASSISTANT_GESTURE_UP_ANGLE;
+    public int assistantGestureDownAngle = SettingsStore.DEFAULT_ASSISTANT_GESTURE_DOWN_ANGLE;
+    public int assistantGestureMinVerticalDp =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_MIN_VERTICAL_DP;
     public int assistantGestureTriggerMode = SettingsStore.DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE;
     public boolean assistantGestureDistanceSplitEnabled =
             SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED;
@@ -781,6 +785,22 @@ public final class ModuleConfig {
                     Math.min(SettingsStore.MAX_ASSISTANT_GESTURE_DISTANCE_DP, SettingsStore.readInt(prefs,
                             SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP,
                             SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP)));
+            config.assistantGestureUpAngle = Math.max(
+                    SettingsStore.MIN_ASSISTANT_GESTURE_ANGLE,
+                    Math.min(SettingsStore.MAX_ASSISTANT_GESTURE_ANGLE, SettingsStore.readInt(prefs,
+                            SettingsStore.KEY_ASSISTANT_GESTURE_UP_ANGLE,
+                            SettingsStore.DEFAULT_ASSISTANT_GESTURE_UP_ANGLE)));
+            config.assistantGestureDownAngle = Math.max(
+                    SettingsStore.MIN_ASSISTANT_GESTURE_ANGLE,
+                    Math.min(SettingsStore.MAX_ASSISTANT_GESTURE_ANGLE, SettingsStore.readInt(prefs,
+                            SettingsStore.KEY_ASSISTANT_GESTURE_DOWN_ANGLE,
+                            SettingsStore.DEFAULT_ASSISTANT_GESTURE_DOWN_ANGLE)));
+            config.assistantGestureMinVerticalDp = Math.max(
+                    SettingsStore.MIN_ASSISTANT_GESTURE_MIN_VERTICAL_DP,
+                    Math.min(SettingsStore.MAX_ASSISTANT_GESTURE_MIN_VERTICAL_DP,
+                            SettingsStore.readInt(prefs,
+                                    SettingsStore.KEY_ASSISTANT_GESTURE_MIN_VERTICAL_DP,
+                                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_MIN_VERTICAL_DP)));
             config.assistantGestureTriggerMode = SettingsStore.normalizeAssistantGestureTriggerMode(
                     SettingsStore.readInt(prefs, SettingsStore.KEY_ASSISTANT_GESTURE_TRIGGER_MODE,
                             SettingsStore.DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE));
