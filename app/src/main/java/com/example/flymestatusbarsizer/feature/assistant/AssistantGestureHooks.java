@@ -111,6 +111,8 @@ final class AssistantGestureHooks {
         boolean zoneOverlayEnabled;
         boolean distanceSplitEnabled;
         boolean gestureStarted;
+        boolean shortDistanceHapticFired;
+        boolean longDistanceHapticFired;
         float gestureTouchSlop;
         float gestureStartX;
         float shortDistancePx;
@@ -159,6 +161,8 @@ final class AssistantGestureHooks {
                     : ViewConfiguration.get(context).getScaledTouchSlop() * 0.75f;
             gestureStartX = rawX;
             shortDistancePx = config.assistantGestureDistanceDp * density;
+            shortDistanceHapticFired = false;
+            longDistanceHapticFired = false;
             state.begin(rawX, rawY, shortDistancePx,
                     12f * density, leftEdge, config.assistantGestureUpAngle / 10f,
                     config.assistantGestureDownAngle / 10f,
@@ -190,10 +194,12 @@ final class AssistantGestureHooks {
             for (int i = 0; i < event.getHistorySize(); i++) {
                 state.move(event.getHistoricalX(i) + rawOffsetX,
                         event.getHistoricalY(i) + rawOffsetY, event.getPointerCount());
+                updateDistanceHaptics();
             }
             float rawX = event.getRawX();
             float rawY = event.getRawY();
             state.move(rawX, rawY, event.getPointerCount());
+            updateDistanceHaptics();
             if (!gestureStarted && state.inwardDistance() > gestureTouchSlop) {
                 gestureStarted = true;
                 if (zoneOverlayEnabled) {
@@ -209,6 +215,26 @@ final class AssistantGestureHooks {
             }
             if (zoneOverlayEnabled && gestureStarted) zoneOverlay.updatePointer(rawX, rawY);
             remember(event);
+        }
+
+        void updateDistanceHaptics() {
+            if (!gestureStarted && state.inwardDistance() <= gestureTouchSlop) return;
+            float travel = state.travelDistance();
+            if (!shortDistanceHapticFired && state.ready()) {
+                shortDistanceHapticFired = true;
+                Object target = owner.get();
+                Object panel = target == null ? null : ReflectUtils.getField(target, "mEdgeBackPlugin");
+                handler.post(() -> HapticFeedbackUtils.perform(context,
+                        panel instanceof View ? (View) panel : null, HapticFeedbackConstants.CLOCK_TICK));
+            }
+            if (distanceSplitEnabled && !longDistanceHapticFired
+                    && travel >= longDistancePx && state.inwardDistance() >= shortDistancePx * 0.35f) {
+                longDistanceHapticFired = true;
+                Object target = owner.get();
+                Object panel = target == null ? null : ReflectUtils.getField(target, "mEdgeBackPlugin");
+                handler.post(() -> HapticFeedbackUtils.perform(context,
+                        panel instanceof View ? (View) panel : null, HapticFeedbackConstants.LONG_PRESS));
+            }
         }
 
         boolean tryClaim(boolean onRelease) {
@@ -389,6 +415,8 @@ final class AssistantGestureHooks {
             state.cancel();
             consumed = false;
             gestureStarted = false;
+            shortDistanceHapticFired = false;
+            longDistanceHapticFired = false;
             actionOverlay.hide();
             zoneOverlay.hide();
             if (last != null) { last.recycle(); last = null; }

@@ -51,6 +51,7 @@ final class AppLauncherPanel {
     private static final String TITLE = "FlymeStatusBarSizer:AppLauncher";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final long LONG_PRESS_MS = 800L;
+    private static final long CACHE_REFRESH_DELAY_MS = 300L;
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "FlymeAppLauncher");
         thread.setDaemon(true);
@@ -62,6 +63,7 @@ final class AppLauncherPanel {
     private static final List<Popup> pendingPopups = new ArrayList<>();
     private static boolean receiverRegistered;
     private static LauncherApps.Callback shortcutCallback;
+    private static final Runnable REFRESH_ACTIVE_POPUP = AppLauncherPanel::refreshActivePopup;
     private static boolean indexLoading;
     private static long cacheGeneration;
     private static Popup active;
@@ -95,20 +97,13 @@ final class AppLauncherPanel {
             if (appContext != null) context = appContext;
             BroadcastReceiver receiver = new BroadcastReceiver() {
                 @Override public void onReceive(Context receiverContext, Intent intent) {
-                    synchronized (CACHE_LOCK) {
-                        cachedApps = null;
-                        cacheGeneration++;
-                    }
-                    Popup popup;
-                    synchronized (AppLauncherPanel.class) { popup = active; }
-                    if (popup != null) popup.refreshAfterPackageChange();
+                    invalidateCache();
                 }
             };
             IntentFilter filter = new IntentFilter();
             filter.addAction(Intent.ACTION_PACKAGE_ADDED);
             filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
             filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
-            filter.addAction(Intent.ACTION_PACKAGE_CHANGED);
             filter.addDataScheme("package");
             if (Build.VERSION.SDK_INT >= 33) {
                 context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED);
@@ -118,15 +113,11 @@ final class AppLauncherPanel {
             LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
             if (launcherApps != null) {
                 shortcutCallback = new LauncherApps.Callback() {
-                    @Override public void onPackageRemoved(String packageName, UserHandle user) { invalidateCache(); }
-                    @Override public void onPackageAdded(String packageName, UserHandle user) { invalidateCache(); }
-                    @Override public void onPackageChanged(String packageName, UserHandle user) { invalidateCache(); }
-                    @Override public void onPackagesAvailable(String[] packageNames, UserHandle user, boolean replacing) {
-                        invalidateCache();
-                    }
-                    @Override public void onPackagesUnavailable(String[] packageNames, UserHandle user, boolean replacing) {
-                        invalidateCache();
-                    }
+                    @Override public void onPackageRemoved(String packageName, UserHandle user) { }
+                    @Override public void onPackageAdded(String packageName, UserHandle user) { }
+                    @Override public void onPackageChanged(String packageName, UserHandle user) { }
+                    @Override public void onPackagesAvailable(String[] packageNames, UserHandle user, boolean replacing) { }
+                    @Override public void onPackagesUnavailable(String[] packageNames, UserHandle user, boolean replacing) { }
                     @Override public void onShortcutsChanged(
                             String packageName, List<ShortcutInfo> shortcuts, UserHandle user) {
                         invalidateCache();
@@ -143,6 +134,11 @@ final class AppLauncherPanel {
             cachedApps = null;
             cacheGeneration++;
         }
+        MAIN.removeCallbacks(REFRESH_ACTIVE_POPUP);
+        MAIN.postDelayed(REFRESH_ACTIVE_POPUP, CACHE_REFRESH_DELAY_MS);
+    }
+
+    private static void refreshActivePopup() {
         Popup popup;
         synchronized (AppLauncherPanel.class) { popup = active; }
         if (popup != null) popup.refreshAfterPackageChange();

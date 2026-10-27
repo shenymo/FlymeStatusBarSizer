@@ -435,15 +435,15 @@ public final class RecentTaskSwitcher {
             setModuleIcon(miniWindow, R.drawable.ic_task_window, android.R.drawable.ic_menu_view);
             miniWindow.setOnClickListener(view -> openMiniWindow(card, miniWindow));
             if (fromLeft) {
-                row.addView(remove, new LinearLayout.LayoutParams(dp(26), dp(26)));
+                row.addView(miniWindow, new LinearLayout.LayoutParams(dp(29), dp(29)));
                 row.addView(icon, new LinearLayout.LayoutParams(iconSize, iconSize));
                 row.addView(name, new LinearLayout.LayoutParams(0, textHeight, 1f));
-                row.addView(miniWindow, new LinearLayout.LayoutParams(dp(29), dp(29)));
+                row.addView(remove, new LinearLayout.LayoutParams(dp(26), dp(26)));
             } else {
-                row.addView(miniWindow, new LinearLayout.LayoutParams(dp(29), dp(29)));
+                row.addView(remove, new LinearLayout.LayoutParams(dp(26), dp(26)));
                 row.addView(name, new LinearLayout.LayoutParams(0, textHeight, 1f));
                 row.addView(icon, new LinearLayout.LayoutParams(iconSize, iconSize));
-                row.addView(remove, new LinearLayout.LayoutParams(dp(26), dp(26)));
+                row.addView(miniWindow, new LinearLayout.LayoutParams(dp(29), dp(29)));
             }
             row.setOnClickListener(view -> {
                 view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
