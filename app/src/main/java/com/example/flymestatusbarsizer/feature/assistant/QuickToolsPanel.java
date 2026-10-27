@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.RectF;
@@ -14,6 +15,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.media.AudioManager;
+import android.view.KeyEvent;
 import android.net.wifi.WifiManager;
 import android.hardware.display.DisplayManager;
 import android.os.Binder;
@@ -32,6 +34,14 @@ import android.view.Display;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
+
+import com.airbnb.lottie.LottieComposition;
+import com.airbnb.lottie.LottieCompositionFactory;
+import com.airbnb.lottie.LottieDrawable;
+import com.airbnb.lottie.LottieProperty;
+import com.airbnb.lottie.SimpleColorFilter;
+import com.airbnb.lottie.model.KeyPath;
+import com.airbnb.lottie.value.LottieValueCallback;
 
 import com.example.flymestatusbarsizer.BuildConfig;
 import com.example.flymestatusbarsizer.R;
@@ -178,7 +188,7 @@ final class QuickToolsPanel {
     }
 
     private int panelHeight() {
-        return dp(198);
+        return dp(254);
     }
 
     private int dp(float value) {
@@ -225,14 +235,18 @@ final class QuickToolsPanel {
         private final RectF bounds = new RectF();
         private final RectF brightnessTrack = new RectF();
         private final RectF brightnessIcon = new RectF();
+        private final RectF volumeCard = new RectF();
         private final RectF volumeTrack = new RectF();
+        private final RectF[] mediaButtons = new RectF[5];
         private final RectF[] buttons = new RectF[TOOL_DESCRIPTIONS.length];
         private final Drawable[] buttonIcons = new Drawable[TOOL_DESCRIPTIONS.length];
         private final Drawable ringerNormalIcon;
         private final Drawable ringerVibrateIcon;
         private final Drawable ringerSilentIcon;
         private final Drawable brightnessDrawable;
-        private final Drawable volumeDrawable;
+        private final Drawable volumeMediaDrawable;
+        private final Drawable volumeMuteDrawable;
+        private final LottieDrawable volumeAnimation = new LottieDrawable();
         private final float density;
         private final Handler main = new Handler(Looper.getMainLooper());
         private final Runnable brightnessRefresh = new Runnable() {
@@ -240,8 +254,9 @@ final class QuickToolsPanel {
                 if (!attached || closing) return;
                 if (activeSlider == 0) {
                     refreshBrightnessState();
-                    invalidate();
                 }
+                if (activeSlider != 2) refreshVolumeState();
+                invalidate();
                 main.postDelayed(this, 120L);
             }
         };
@@ -256,11 +271,13 @@ final class QuickToolsPanel {
         private boolean brightnessAuto;
         private int volume;
         private int volumeMax;
+        private int volumeAnimationTint;
         private boolean wifi;
         private boolean bluetooth;
         private boolean rotationAuto;
         private boolean flashlight;
         private boolean recording;
+        private boolean volumeAnimationReady;
         private int ringerMode = AudioManager.RINGER_MODE_NORMAL;
 
         PanelView(Context context) {
@@ -278,14 +295,25 @@ final class QuickToolsPanel {
             ringerVibrateIcon = loadDrawable(resourceContext, R.drawable.quick_tool_vibrate);
             ringerSilentIcon = loadDrawable(resourceContext, R.drawable.quick_tool_mute);
             brightnessDrawable = loadDrawable(resourceContext, R.drawable.quick_tool_autobrightness);
-            volumeDrawable = loadDrawable(resourceContext, R.drawable.quick_tool_volume);
+            volumeMediaDrawable = loadDrawable(resourceContext, R.drawable.ic_qs_volume_media);
+            volumeMuteDrawable = loadDrawable(resourceContext, R.drawable.ic_qs_volume_media_mute);
+            try {
+                LottieComposition composition = LottieCompositionFactory
+                        .fromAssetSync(resourceContext, "volume.json").getValue();
+                if (composition != null) {
+                    volumeAnimation.setComposition(composition);
+                    volumeAnimationReady = true;
+                }
+            } catch (Throwable ignored) {
+            }
             setFocusable(false);
             darkMode = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                     == Configuration.UI_MODE_NIGHT_YES;
-            setContentDescription("快捷工具，亮度、音量、Wi-Fi、铃声模式、蓝牙、旋转、截图、锁屏、手电筒、录屏");
+            setContentDescription("快捷工具，亮度、音量、上一曲、播放暂停、下一曲、增加音量、减小音量、Wi-Fi、铃声模式、蓝牙、旋转、截图、锁屏、手电筒、录屏");
             setElevation(dp(7));
             updateBackground();
             for (int i = 0; i < buttons.length; i++) buttons[i] = new RectF();
+            for (int i = 0; i < mediaButtons.length; i++) mediaButtons[i] = new RectF();
         }
 
         private Context moduleResourceContext(Context context) {
@@ -382,10 +410,9 @@ final class QuickToolsPanel {
             refreshBrightnessState();
             AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
             if (audio != null) {
-                volume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
-                volumeMax = Math.max(1, audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
                 ringerMode = audio.getRingerMode();
             }
+            refreshVolumeState();
             WifiManager wifiManager = (WifiManager) getContext().getApplicationContext()
                     .getSystemService(Context.WIFI_SERVICE);
             wifi = wifiManager != null && wifiManager.isWifiEnabled();
@@ -396,6 +423,13 @@ final class QuickToolsPanel {
             } catch (Throwable ignored) { rotationAuto = true; }
             flashlight = flashlightState();
             recording = screenRecordState();
+        }
+
+        private void refreshVolumeState() {
+            AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+            if (audio == null) return;
+            volume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+            volumeMax = Math.max(1, audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
         }
 
         void startBrightnessRefresh() {
@@ -423,7 +457,8 @@ final class QuickToolsPanel {
                     == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC;
             setContentDescription("快捷工具，亮度、自动亮度"
                     + (brightnessAuto ? "开启" : "关闭")
-                    + "、音量、Wi-Fi、铃声模式、蓝牙、旋转、截图、锁屏、手电筒、录屏");
+                    + "、音量、上一曲、播放暂停、下一曲、增加音量、减小音量"
+                    + "、Wi-Fi、铃声模式、蓝牙、旋转、截图、锁屏、手电筒、录屏");
         }
 
         @Override protected void onDraw(Canvas canvas) {
@@ -434,11 +469,12 @@ final class QuickToolsPanel {
             float trackRight = getWidth() - dp(12);
             brightnessTrack.set(trackLeft, dp(17), trackRight, dp(22));
             brightnessIcon.set(trackLeft - dp(28), dp(3), trackLeft - dp(4), dp(35));
-            volumeTrack.set(trackLeft, dp(45), trackRight, dp(50));
+            volumeCard.set(dp(8), dp(35), getWidth() - dp(8), dp(112));
+            volumeTrack.set(dp(42), dp(53), getWidth() - dp(17), dp(59));
             drawSlider(canvas, brightnessTrack, brightnessFraction(), 0, brightnessAuto);
-            drawSlider(canvas, volumeTrack, volumeMax == 0 ? 0f : volume / (float) volumeMax, 1);
+            drawVolumeCard(canvas);
 
-            float gridTop = dp(64);
+            float gridTop = dp(120);
             float gap = dp(4);
             float cellWidth = (getWidth() - dp(12) - gap * 3) / 4f;
             float cellHeight = (getHeight() - gridTop - dp(10) - gap) / 2f;
@@ -449,6 +485,72 @@ final class QuickToolsPanel {
                 float cellTop = gridTop + row * (cellHeight + gap);
                 buttons[i].set(cellLeft, cellTop, cellLeft + cellWidth, cellTop + cellHeight);
                 drawButton(canvas, buttons[i], buttonActive(i), i);
+            }
+        }
+
+        private void drawVolumeCard(Canvas canvas) {
+            paint.setColor(darkMode ? 0xd52f3236 : 0xe9f1f2f3);
+            canvas.drawRoundRect(volumeCard, dp(12), dp(12), paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(1));
+            paint.setColor(darkMode ? 0x52ffffff : 0x30000000);
+            canvas.drawRoundRect(volumeCard, dp(12), dp(12), paint);
+            paint.setStyle(Paint.Style.FILL);
+            drawSliderIcon(canvas, volumeCard.left + dp(20), volumeTrack.centerY(), dp(10), 1, false);
+
+            paint.setColor(darkMode ? 0xff45494e : 0xffd4d8dc);
+            canvas.drawRoundRect(volumeTrack, dp(4), dp(4), paint);
+            paint.setColor(darkMode ? 0xfff1f3f4 : 0xff5a626a);
+            float x = volumeTrack.left + Math.max(0f, Math.min(1f,
+                    volume / (float) Math.max(1, volumeMax))) * volumeTrack.width();
+            canvas.drawRoundRect(new RectF(volumeTrack.left, volumeTrack.top,
+                    Math.max(volumeTrack.left, x), volumeTrack.bottom), dp(4), dp(4), paint);
+
+            float controlLeft = volumeCard.left + dp(8);
+            float controlWidth = (volumeCard.width() - dp(16)) / mediaButtons.length;
+            for (int i = 0; i < mediaButtons.length; i++) {
+                float left = controlLeft + i * controlWidth;
+                mediaButtons[i].set(left, dp(72), left + controlWidth, dp(104));
+                paint.setColor(darkMode ? 0xffe5e8ea : 0xff42484e);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(dp(1.8f));
+                paint.setStrokeCap(Paint.Cap.ROUND);
+                paint.setStrokeJoin(Paint.Join.ROUND);
+                drawMediaIcon(canvas, mediaButtons[i].centerX(), mediaButtons[i].centerY(), dp(7), i);
+                paint.setStyle(Paint.Style.FILL);
+            }
+        }
+
+        private void drawMediaIcon(Canvas canvas, float cx, float cy, float size, int index) {
+            Path icon = new Path();
+            if (index == 0 || index == 2) {
+                float direction = index == 0 ? -1f : 1f;
+                canvas.drawLine(cx + direction * size * 0.9f, cy - size,
+                        cx + direction * size * 0.9f, cy + size, paint);
+                icon.moveTo(cx - direction * size * 0.7f, cy - size);
+                icon.lineTo(cx + direction * size * 0.55f, cy);
+                icon.lineTo(cx - direction * size * 0.7f, cy + size);
+                icon.close();
+                canvas.drawPath(icon, paint);
+            } else if (index == 1) {
+                AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+                if (audio != null && audio.isMusicActive()) {
+                    canvas.drawLine(cx - size * 0.35f, cy - size, cx - size * 0.35f,
+                            cy + size, paint);
+                    canvas.drawLine(cx + size * 0.35f, cy - size, cx + size * 0.35f,
+                            cy + size, paint);
+                } else {
+                    icon.moveTo(cx - size * 0.55f, cy - size);
+                    icon.lineTo(cx + size * 0.85f, cy);
+                    icon.lineTo(cx - size * 0.55f, cy + size);
+                    icon.close();
+                    canvas.drawPath(icon, paint);
+                }
+            } else {
+                icon.moveTo(cx - size * 0.75f, cy + (index == 3 ? size * 0.45f : -size * 0.45f));
+                icon.lineTo(cx, cy + (index == 3 ? -size * 0.45f : size * 0.45f));
+                icon.lineTo(cx + size * 0.75f, cy + (index == 3 ? size * 0.45f : -size * 0.45f));
+                canvas.drawPath(icon, paint);
             }
         }
 
@@ -487,7 +589,32 @@ final class QuickToolsPanel {
 
         private void drawSliderIcon(Canvas canvas, float cx, float cy, float size,
                 int index, boolean active) {
-            Drawable drawable = index == 0 ? brightnessDrawable : volumeDrawable;
+            if (index == 1) {
+                Drawable icon = volume <= 0 ? volumeMuteDrawable
+                        : volumeAnimationReady ? volumeAnimation : volumeMediaDrawable;
+                int color = active ? (darkMode ? 0xff77c6c1 : 0xff287a78)
+                        : (darkMode ? 0xffaeb4b9 : 0xff61666e);
+                if (icon == volumeAnimation && volumeAnimationTint != color) {
+                    volumeAnimation.addValueCallback(new KeyPath("**"),
+                            LottieProperty.COLOR_FILTER,
+                            new LottieValueCallback<ColorFilter>(new SimpleColorFilter(color)));
+                    volumeAnimationTint = color;
+                }
+                if (icon != null) {
+                    if (volumeAnimationReady && icon == volumeAnimation) {
+                        int start = Math.round(volumeAnimation.getMinFrame());
+                        int end = Math.round(volumeAnimation.getMaxFrame());
+                        int frame = start + Math.round((end - start)
+                                * Math.max(0f, Math.min(1f, volume / (float) Math.max(1, volumeMax))));
+                        volumeAnimation.setFrame(frame);
+                    }
+                    drawSliderDrawable(canvas, icon, index, cx, cy, dp(16), color);
+                } else {
+                    drawVolumeLevelIcon(canvas, cx, cy, size, color);
+                }
+                return;
+            }
+            Drawable drawable = brightnessDrawable;
             if (drawable != null) {
                 drawSliderDrawable(canvas, drawable, index, cx, cy, dp(16),
                         active ? (darkMode ? 0xff77c6c1 : 0xff287a78)
@@ -525,6 +652,36 @@ final class QuickToolsPanel {
                 canvas.drawPath(speaker, paint);
                 canvas.drawArc(new RectF(cx - size * 0.12f, cy - size * 0.58f,
                         cx + size * 0.95f, cy + size * 0.58f), -55f, 110f, false, paint);
+            }
+            paint.setStyle(Paint.Style.FILL);
+        }
+
+        private void drawVolumeLevelIcon(Canvas canvas, float cx, float cy, float size, int color) {
+            paint.setColor(color);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(1.5f));
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            Path speaker = new Path();
+            speaker.moveTo(cx - size * 0.9f, cy - size * 0.28f);
+            speaker.lineTo(cx - size * 0.35f, cy - size * 0.28f);
+            speaker.lineTo(cx + size * 0.2f, cy - size * 0.72f);
+            speaker.lineTo(cx + size * 0.2f, cy + size * 0.72f);
+            speaker.lineTo(cx - size * 0.35f, cy + size * 0.28f);
+            speaker.lineTo(cx - size * 0.9f, cy + size * 0.28f);
+            speaker.close();
+            canvas.drawPath(speaker, paint);
+            if (volume <= 0) {
+                canvas.drawLine(cx + size * 0.4f, cy - size * 0.48f,
+                        cx + size * 0.95f, cy + size * 0.48f, paint);
+            } else {
+                float fraction = volume / (float) Math.max(1, volumeMax);
+                int waveCount = fraction <= 1f / 3f ? 1 : fraction <= 2f / 3f ? 2 : 3;
+                for (int i = 0; i < waveCount; i++) {
+                    float radius = size * (0.42f + i * 0.28f);
+                    canvas.drawArc(new RectF(cx - size * 0.12f, cy - radius,
+                            cx + radius, cy + radius), -55f, 110f, false, paint);
+                }
             }
             paint.setStyle(Paint.Style.FILL);
         }
@@ -655,7 +812,7 @@ final class QuickToolsPanel {
             float top = index == 0 ? 0.1f : 0.0833f;
             float right = index == 0 ? 0.9083f : 1f;
             float bottom = index == 0 ? 0.9083f : 0.9167f;
-            drawable.setTint(color);
+            if (drawable != volumeAnimation) drawable.setTint(color);
             int intrinsicWidth = Math.max(1, drawable.getIntrinsicWidth());
             int intrinsicHeight = Math.max(1, drawable.getIntrinsicHeight());
             float contentWidth = (right - left) * intrinsicWidth;
@@ -751,6 +908,12 @@ final class QuickToolsPanel {
                     toggleBrightnessAuto();
                     return true;
                 }
+                for (int i = 0; i < mediaButtons.length; i++) {
+                    if (mediaButtons[i].contains(x, y)) {
+                        executeMediaButton(i);
+                        return true;
+                    }
+                }
                 for (int i = 0; i < buttons.length; i++) {
                     if (buttons[i].contains(x, y)) {
                         executeButton(i);
@@ -779,6 +942,25 @@ final class QuickToolsPanel {
                 if (audio != null) audio.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0);
             }
             invalidate();
+        }
+
+        private void executeMediaButton(int index) {
+            performClickHaptic();
+            AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+            if (audio == null) return;
+            if (index == 3 || index == 4) {
+                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                        index == 3 ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER, 0);
+                refreshVolumeState();
+                invalidate();
+                return;
+            }
+            int keyCode = index == 0 ? KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                    : index == 1 ? KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                    : KeyEvent.KEYCODE_MEDIA_NEXT;
+            long now = SystemClock.uptimeMillis();
+            audio.dispatchMediaKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0));
+            audio.dispatchMediaKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0));
         }
 
         private void refreshBrightnessRange() {
