@@ -232,8 +232,12 @@ final class QuickToolsPanel {
     }
 
     private final class PanelView extends View {
+        private static final long REFRESH_IDLE_INTERVAL_MS = 500L;
+        private static final long REFRESH_ACTIVE_INTERVAL_MS = 120L;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF bounds = new RectF();
+        private final RectF drawRect = new RectF();
+        private final Path drawPath = new Path();
         private final RectF brightnessTrack = new RectF();
         private final RectF brightnessIcon = new RectF();
         private final RectF volumeCard = new RectF();
@@ -283,7 +287,8 @@ final class QuickToolsPanel {
                 }
                 if (activeSlider != 2) refreshVolumeState();
                 invalidate();
-                main.postDelayed(this, 120L);
+                main.postDelayed(this, activeSlider == 0
+                        ? REFRESH_IDLE_INTERVAL_MS : REFRESH_ACTIVE_INTERVAL_MS);
             }
         };
         private boolean fromLeft = true;
@@ -534,11 +539,11 @@ final class QuickToolsPanel {
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(dp(1));
             paint.setColor(darkMode ? 0x26000000 : 0x30000000);
-            canvas.drawRoundRect(new RectF(inset, inset, getWidth() - inset, getHeight() - inset),
-                    dp(15), dp(15), paint);
+            drawRect.set(inset, inset, getWidth() - inset, getHeight() - inset);
+            canvas.drawRoundRect(drawRect, dp(15), dp(15), paint);
             paint.setColor(darkMode ? 0x26ffffff : 0x66ffffff);
-            canvas.drawRoundRect(new RectF(dp(2.5f), dp(2.5f), getWidth() - dp(2.5f),
-                    getHeight() - dp(2.5f)), dp(14), dp(14), paint);
+            drawRect.set(dp(2.5f), dp(2.5f), getWidth() - dp(2.5f), getHeight() - dp(2.5f));
+            canvas.drawRoundRect(drawRect, dp(14), dp(14), paint);
             paint.setColor(darkMode ? 0x1fffffff : 0x35ffffff);
             canvas.drawLine(dp(15), dp(72), getWidth() - dp(15), dp(72), paint);
             paint.setColor(darkMode ? 0x26000000 : 0x26000000);
@@ -555,11 +560,11 @@ final class QuickToolsPanel {
             for (int i = 0; i < mediaButtons.length; i++) {
                 float left = controlLeft + i * controlWidth;
                 mediaButtons[i].set(left, dp(76), left + controlWidth, dp(108));
-                RectF capsule = new RectF(left + dp(3), dp(78), left + controlWidth - dp(3), dp(106));
+                drawRect.set(left + dp(3), dp(78), left + controlWidth - dp(3), dp(106));
                 boolean focus = i == 1;
                 paint.setColor(focus ? (darkMode ? 0xff5dbdb8 : 0xff419f9a)
                         : (darkMode ? 0x1effffff : 0x22000000));
-                canvas.drawRoundRect(capsule, dp(14), dp(14), paint);
+                canvas.drawRoundRect(drawRect, dp(14), dp(14), paint);
                 paint.setColor(focus ? (darkMode ? 0xff172326 : 0xfff3ffff)
                         : (darkMode ? 0xffe0e5e7 : 0xff374249));
                 paint.setStyle(focus ? Paint.Style.FILL : Paint.Style.STROKE);
@@ -597,35 +602,35 @@ final class QuickToolsPanel {
         }
 
         private void drawMediaIcon(Canvas canvas, float cx, float cy, float size, int index) {
-            Path icon = new Path();
+            drawPath.reset();
             if (index == 0 || index == 2) {
                 float direction = index == 0 ? -1f : 1f;
                 canvas.drawLine(cx + direction * size * 0.9f, cy - size,
                         cx + direction * size * 0.9f, cy + size, paint);
-                icon.moveTo(cx - direction * size * 0.7f, cy - size);
-                icon.lineTo(cx + direction * size * 0.55f, cy);
-                icon.lineTo(cx - direction * size * 0.7f, cy + size);
-                icon.close();
-                canvas.drawPath(icon, paint);
+                drawPath.moveTo(cx - direction * size * 0.7f, cy - size);
+                drawPath.lineTo(cx + direction * size * 0.55f, cy);
+                drawPath.lineTo(cx - direction * size * 0.7f, cy + size);
+                drawPath.close();
+                canvas.drawPath(drawPath, paint);
             } else if (index == 1) {
                 AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
                 if (audio != null && audio.isMusicActive()) {
-                    canvas.drawRoundRect(new RectF(cx - size * 0.55f, cy - size,
-                            cx - size * 0.05f, cy + size), dp(1), dp(1), paint);
-                    canvas.drawRoundRect(new RectF(cx + size * 0.05f, cy - size,
-                            cx + size * 0.55f, cy + size), dp(1), dp(1), paint);
+                    drawRect.set(cx - size * 0.55f, cy - size, cx - size * 0.05f, cy + size);
+                    canvas.drawRoundRect(drawRect, dp(1), dp(1), paint);
+                    drawRect.set(cx + size * 0.05f, cy - size, cx + size * 0.55f, cy + size);
+                    canvas.drawRoundRect(drawRect, dp(1), dp(1), paint);
                 } else {
-                    icon.moveTo(cx - size * 0.55f, cy - size);
-                    icon.lineTo(cx + size * 0.85f, cy);
-                    icon.lineTo(cx - size * 0.55f, cy + size);
-                    icon.close();
-                    canvas.drawPath(icon, paint);
+                    drawPath.moveTo(cx - size * 0.55f, cy - size);
+                    drawPath.lineTo(cx + size * 0.85f, cy);
+                    drawPath.lineTo(cx - size * 0.55f, cy + size);
+                    drawPath.close();
+                    canvas.drawPath(drawPath, paint);
                 }
             } else {
-                icon.moveTo(cx - size * 0.75f, cy + (index == 3 ? size * 0.45f : -size * 0.45f));
-                icon.lineTo(cx, cy + (index == 3 ? -size * 0.45f : size * 0.45f));
-                icon.lineTo(cx + size * 0.75f, cy + (index == 3 ? size * 0.45f : -size * 0.45f));
-                canvas.drawPath(icon, paint);
+                drawPath.moveTo(cx - size * 0.75f, cy + (index == 3 ? size * 0.45f : -size * 0.45f));
+                drawPath.lineTo(cx, cy + (index == 3 ? -size * 0.45f : size * 0.45f));
+                drawPath.lineTo(cx + size * 0.75f, cy + (index == 3 ? size * 0.45f : -size * 0.45f));
+                canvas.drawPath(drawPath, paint);
             }
         }
 
@@ -731,17 +736,18 @@ final class QuickToolsPanel {
                     canvas.drawLine(x1, y1, x2, y2, paint);
                 }
             } else {
-                Path speaker = new Path();
-                speaker.moveTo(cx - size * 0.9f, cy - size * 0.28f);
-                speaker.lineTo(cx - size * 0.35f, cy - size * 0.28f);
-                speaker.lineTo(cx + size * 0.25f, cy - size * 0.72f);
-                speaker.lineTo(cx + size * 0.25f, cy + size * 0.72f);
-                speaker.lineTo(cx - size * 0.35f, cy + size * 0.28f);
-                speaker.lineTo(cx - size * 0.9f, cy + size * 0.28f);
-                speaker.close();
-                canvas.drawPath(speaker, paint);
-                canvas.drawArc(new RectF(cx - size * 0.12f, cy - size * 0.58f,
-                        cx + size * 0.95f, cy + size * 0.58f), -55f, 110f, false, paint);
+                drawPath.reset();
+                drawPath.moveTo(cx - size * 0.9f, cy - size * 0.28f);
+                drawPath.lineTo(cx - size * 0.35f, cy - size * 0.28f);
+                drawPath.lineTo(cx + size * 0.25f, cy - size * 0.72f);
+                drawPath.lineTo(cx + size * 0.25f, cy + size * 0.72f);
+                drawPath.lineTo(cx - size * 0.35f, cy + size * 0.28f);
+                drawPath.lineTo(cx - size * 0.9f, cy + size * 0.28f);
+                drawPath.close();
+                canvas.drawPath(drawPath, paint);
+                drawRect.set(cx - size * 0.12f, cy - size * 0.58f,
+                        cx + size * 0.95f, cy + size * 0.58f);
+                canvas.drawArc(drawRect, -55f, 110f, false, paint);
             }
             paint.setStyle(Paint.Style.FILL);
         }
@@ -752,15 +758,15 @@ final class QuickToolsPanel {
             paint.setStrokeWidth(dp(1.5f));
             paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeJoin(Paint.Join.ROUND);
-            Path speaker = new Path();
-            speaker.moveTo(cx - size * 0.9f, cy - size * 0.28f);
-            speaker.lineTo(cx - size * 0.35f, cy - size * 0.28f);
-            speaker.lineTo(cx + size * 0.2f, cy - size * 0.72f);
-            speaker.lineTo(cx + size * 0.2f, cy + size * 0.72f);
-            speaker.lineTo(cx - size * 0.35f, cy + size * 0.28f);
-            speaker.lineTo(cx - size * 0.9f, cy + size * 0.28f);
-            speaker.close();
-            canvas.drawPath(speaker, paint);
+            drawPath.reset();
+            drawPath.moveTo(cx - size * 0.9f, cy - size * 0.28f);
+            drawPath.lineTo(cx - size * 0.35f, cy - size * 0.28f);
+            drawPath.lineTo(cx + size * 0.2f, cy - size * 0.72f);
+            drawPath.lineTo(cx + size * 0.2f, cy + size * 0.72f);
+            drawPath.lineTo(cx - size * 0.35f, cy + size * 0.28f);
+            drawPath.lineTo(cx - size * 0.9f, cy + size * 0.28f);
+            drawPath.close();
+            canvas.drawPath(drawPath, paint);
             if (volume <= 0) {
                 canvas.drawLine(cx + size * 0.4f, cy - size * 0.48f,
                         cx + size * 0.95f, cy + size * 0.48f, paint);
@@ -769,8 +775,8 @@ final class QuickToolsPanel {
                 int waveCount = fraction <= 1f / 3f ? 1 : fraction <= 2f / 3f ? 2 : 3;
                 for (int i = 0; i < waveCount; i++) {
                     float radius = size * (0.42f + i * 0.28f);
-                    canvas.drawArc(new RectF(cx - size * 0.12f, cy - radius,
-                            cx + radius, cy + radius), -55f, 110f, false, paint);
+                    drawRect.set(cx - size * 0.12f, cy - radius, cx + radius, cy + radius);
+                    canvas.drawArc(drawRect, -55f, 110f, false, paint);
                 }
             }
             paint.setStyle(Paint.Style.FILL);
@@ -791,21 +797,22 @@ final class QuickToolsPanel {
             paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeJoin(Paint.Join.ROUND);
             if (index == 0) {
-                canvas.drawArc(new RectF(cx - size, cy - size * 0.7f, cx + size, cy + size * 1.0f),
-                        225f, 90f, false, paint);
-                canvas.drawArc(new RectF(cx - size * 0.62f, cy - size * 0.28f,
-                        cx + size * 0.62f, cy + size * 0.78f), 225f, 90f, false, paint);
+                drawRect.set(cx - size, cy - size * 0.7f, cx + size, cy + size * 1.0f);
+                canvas.drawArc(drawRect, 225f, 90f, false, paint);
+                drawRect.set(cx - size * 0.62f, cy - size * 0.28f,
+                        cx + size * 0.62f, cy + size * 0.78f);
+                canvas.drawArc(drawRect, 225f, 90f, false, paint);
                 canvas.drawCircle(cx, cy + size * 0.42f, size * 0.12f, paint);
             } else if (index == 1) {
-                Path speaker = new Path();
-                speaker.moveTo(cx - size * 0.9f, cy - size * 0.28f);
-                speaker.lineTo(cx - size * 0.3f, cy - size * 0.28f);
-                speaker.lineTo(cx + size * 0.28f, cy - size * 0.74f);
-                speaker.lineTo(cx + size * 0.28f, cy + size * 0.74f);
-                speaker.lineTo(cx - size * 0.3f, cy + size * 0.28f);
-                speaker.lineTo(cx - size * 0.9f, cy + size * 0.28f);
-                speaker.close();
-                canvas.drawPath(speaker, paint);
+                drawPath.reset();
+                drawPath.moveTo(cx - size * 0.9f, cy - size * 0.28f);
+                drawPath.lineTo(cx - size * 0.3f, cy - size * 0.28f);
+                drawPath.lineTo(cx + size * 0.28f, cy - size * 0.74f);
+                drawPath.lineTo(cx + size * 0.28f, cy + size * 0.74f);
+                drawPath.lineTo(cx - size * 0.3f, cy + size * 0.28f);
+                drawPath.lineTo(cx - size * 0.9f, cy + size * 0.28f);
+                drawPath.close();
+                canvas.drawPath(drawPath, paint);
                 if (ringerMode == AudioManager.RINGER_MODE_SILENT) {
                     canvas.drawLine(cx - size * 0.95f, cy - size * 0.95f,
                             cx + size * 0.9f, cy + size * 0.95f, paint);
@@ -815,28 +822,29 @@ final class QuickToolsPanel {
                     canvas.drawLine(cx + size * 0.55f, cy + size * 0.55f,
                             cx + size * 0.88f, cy + size * 0.35f, paint);
                 } else {
-                    canvas.drawArc(new RectF(cx - size * 0.12f, cy - size * 0.62f,
-                            cx + size * 1.0f, cy + size * 0.62f), -55f, 110f, false, paint);
+                    drawRect.set(cx - size * 0.12f, cy - size * 0.62f,
+                            cx + size * 1.0f, cy + size * 0.62f);
+                    canvas.drawArc(drawRect, -55f, 110f, false, paint);
                 }
             } else if (index == 2) {
-                Path bluetooth = new Path();
-                bluetooth.moveTo(cx, cy - size);
-                bluetooth.lineTo(cx, cy + size);
-                bluetooth.moveTo(cx, cy - size);
-                bluetooth.lineTo(cx + size * 0.8f, cy - size * 0.25f);
-                bluetooth.lineTo(cx - size * 0.65f, cy + size * 0.7f);
-                bluetooth.moveTo(cx, cy + size);
-                bluetooth.lineTo(cx + size * 0.8f, cy + size * 0.25f);
-                bluetooth.lineTo(cx - size * 0.65f, cy - size * 0.7f);
-                canvas.drawPath(bluetooth, paint);
+                drawPath.reset();
+                drawPath.moveTo(cx, cy - size);
+                drawPath.lineTo(cx, cy + size);
+                drawPath.moveTo(cx, cy - size);
+                drawPath.lineTo(cx + size * 0.8f, cy - size * 0.25f);
+                drawPath.lineTo(cx - size * 0.65f, cy + size * 0.7f);
+                drawPath.moveTo(cx, cy + size);
+                drawPath.lineTo(cx + size * 0.8f, cy + size * 0.25f);
+                drawPath.lineTo(cx - size * 0.65f, cy - size * 0.7f);
+                canvas.drawPath(drawPath, paint);
             } else if (index == 3) {
-                RectF arc = new RectF(cx - size, cy - size, cx + size, cy + size);
-                canvas.drawArc(arc, 225f, 245f, false, paint);
-                Path arrow = new Path();
-                arrow.moveTo(cx - size * 0.95f, cy - size * 0.05f);
-                arrow.lineTo(cx - size * 0.95f, cy - size * 0.7f);
-                arrow.lineTo(cx - size * 0.35f, cy - size * 0.38f);
-                canvas.drawPath(arrow, paint);
+                drawRect.set(cx - size, cy - size, cx + size, cy + size);
+                canvas.drawArc(drawRect, 225f, 245f, false, paint);
+                drawPath.reset();
+                drawPath.moveTo(cx - size * 0.95f, cy - size * 0.05f);
+                drawPath.lineTo(cx - size * 0.95f, cy - size * 0.7f);
+                drawPath.lineTo(cx - size * 0.35f, cy - size * 0.38f);
+                canvas.drawPath(drawPath, paint);
             } else if (index == 4) {
                 canvas.drawRect(cx - size * 0.82f, cy - size * 0.66f,
                         cx + size * 0.82f, cy + size * 0.66f, paint);
@@ -849,20 +857,22 @@ final class QuickToolsPanel {
                 canvas.drawLine(cx + size * 0.95f, cy + size * 0.95f,
                         cx + size * 0.95f, cy + size * 0.5f, paint);
             } else if (index == 5) {
-                canvas.drawRoundRect(new RectF(cx - size * 0.72f, cy - size * 0.05f,
-                        cx + size * 0.72f, cy + size * 0.85f), size * 0.12f, size * 0.12f, paint);
-                canvas.drawArc(new RectF(cx - size * 0.48f, cy - size * 0.8f,
-                        cx + size * 0.48f, cy + size * 0.25f), 180f, 180f, false, paint);
+                drawRect.set(cx - size * 0.72f, cy - size * 0.05f,
+                        cx + size * 0.72f, cy + size * 0.85f);
+                canvas.drawRoundRect(drawRect, size * 0.12f, size * 0.12f, paint);
+                drawRect.set(cx - size * 0.48f, cy - size * 0.8f,
+                        cx + size * 0.48f, cy + size * 0.25f);
+                canvas.drawArc(drawRect, 180f, 180f, false, paint);
             } else if (index == 6) {
-                Path torch = new Path();
-                torch.moveTo(cx - size * 0.48f, cy - size * 0.82f);
-                torch.lineTo(cx + size * 0.48f, cy - size * 0.82f);
-                torch.lineTo(cx + size * 0.34f, cy - size * 0.35f);
-                torch.lineTo(cx + size * 0.2f, cy + size * 0.8f);
-                torch.lineTo(cx - size * 0.2f, cy + size * 0.8f);
-                torch.lineTo(cx - size * 0.34f, cy - size * 0.35f);
-                torch.close();
-                canvas.drawPath(torch, paint);
+                drawPath.reset();
+                drawPath.moveTo(cx - size * 0.48f, cy - size * 0.82f);
+                drawPath.lineTo(cx + size * 0.48f, cy - size * 0.82f);
+                drawPath.lineTo(cx + size * 0.34f, cy - size * 0.35f);
+                drawPath.lineTo(cx + size * 0.2f, cy + size * 0.8f);
+                drawPath.lineTo(cx - size * 0.2f, cy + size * 0.8f);
+                drawPath.lineTo(cx - size * 0.34f, cy - size * 0.35f);
+                drawPath.close();
+                canvas.drawPath(drawPath, paint);
                 canvas.drawLine(cx - size * 0.55f, cy - size * 0.35f,
                         cx + size * 0.55f, cy - size * 0.35f, paint);
             } else {
@@ -980,7 +990,11 @@ final class QuickToolsPanel {
                 else if (containsWithInset(brightnessTrack, x, y, dp(16))) activeSlider = 1;
                 else if (containsWithInset(volumeTrack, x, y, dp(16))) activeSlider = 2;
                 else activeSlider = 0;
-                if (activeSlider != 0) updateSlider(x);
+                if (activeSlider != 0) {
+                    main.removeCallbacks(brightnessRefresh);
+                    main.post(brightnessRefresh);
+                    updateSlider(x);
+                }
                 return true;
             }
             if (event.getActionMasked() == MotionEvent.ACTION_MOVE && activeSlider != 0) {

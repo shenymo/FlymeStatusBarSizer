@@ -16,7 +16,6 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.LruCache;
 import android.view.animation.AccelerateInterpolator;
-import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -153,7 +152,7 @@ public final class RecentTaskSwitcher {
             panelBlur = new AssistantPanelBlur(panel,
                     context.getResources().getDisplayMetrics().density);
             int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
-            int panelWidth = Math.min(dp(193), Math.max(dp(147), screenWidth - dp(22)));
+            int panelWidth = Math.min(dp(160), Math.max(dp(147), screenWidth - dp(22)));
             FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(panelWidth,
                     FrameLayout.LayoutParams.WRAP_CONTENT,
                     Gravity.TOP | (fromLeft ? Gravity.LEFT : Gravity.RIGHT));
@@ -294,12 +293,12 @@ public final class RecentTaskSwitcher {
                 List<RecentTaskCard> cards;
                 try { cards = getTaskAccess(context).candidates(); }
                 catch (Exception ignored) { cards = new ArrayList<>(); }
+                List<TaskEntry> loaded = new ArrayList<>(cards.size());
                 for (RecentTaskCard card : cards) {
                     if (!isCurrent()) return;
-                    TaskEntry entry = new TaskEntry(card, appMetadata(context, card));
-                    MAIN.post(() -> appendLoadedEntry(entry));
+                    loaded.add(new TaskEntry(card, appMetadata(context, card)));
                 }
-                MAIN.post(this::finishTaskLoading);
+                MAIN.post(() -> replaceEntries(loaded));
             });
         }
 
@@ -387,34 +386,6 @@ public final class RecentTaskSwitcher {
                     || entry.card.description.toLowerCase(Locale.getDefault()).contains(query);
         }
 
-        private void appendLoadedEntry(TaskEntry entry) {
-            if (!isCurrent()) return;
-            if (loadingRow != null) rows.removeView(loadingRow);
-            loadingRow = null;
-            entries.add(entry);
-
-            String query = search.getText().toString().trim().toLowerCase(Locale.getDefault());
-            if (matchesQuery(entry, query)) {
-                int visibleBefore = 0;
-                for (int i = 0; i < entries.size() - 1; i++) {
-                    if (matchesQuery(entries.get(i), query)) visibleBefore++;
-                }
-                if (visibleBefore > 0) {
-                    View divider = new View(context);
-                    divider.setBackgroundColor(paletteColor(0x18000000, 0x28ffffff));
-                    rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
-                }
-                View row = taskRow(entry);
-                row.setAlpha(0f);
-                row.setTranslationY(dp(4));
-                rows.addView(row, new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
-                row.animate().alpha(1f).translationY(0f)
-                        .setStartDelay(Math.min((entries.size() - 1) * 24L, 120L))
-                        .setDuration(180L).setInterpolator(new DecelerateInterpolator()).start();
-            }
-            if (loading) addLoadingRow();
-        }
-
         private void addLoadingRow() {
             FrameLayout row = new FrameLayout(context);
             ProgressBar spinner = new ProgressBar(context, null, android.R.attr.progressBarStyleSmall);
@@ -422,17 +393,6 @@ public final class RecentTaskSwitcher {
             row.addView(spinner, new FrameLayout.LayoutParams(dp(18), dp(18), Gravity.CENTER));
             rows.addView(row, new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
             loadingRow = row;
-        }
-
-        private void finishTaskLoading() {
-            if (!isCurrent()) return;
-            loading = false;
-            if (loadingRow != null) rows.removeView(loadingRow);
-            loadingRow = null;
-
-            String query = search.getText().toString().trim().toLowerCase(Locale.getDefault());
-            for (TaskEntry entry : entries) if (matchesQuery(entry, query)) return;
-            renderRows();
         }
 
         private View taskRow(TaskEntry entry) {
