@@ -654,7 +654,7 @@ final class QuickToolsPanel {
                 paint.setStyle(Paint.Style.FILL);
                 paint.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
                 paint.setTextSize(dp(7));
-                canvas.drawText("A", iconCenterX + dp(8), track.centerY() + dp(8), paint);
+                canvas.drawText("A", iconCenterX + dp(6), track.centerY() + dp(8), paint);
             }
             drawProgressTrack(canvas, track, fraction);
         }

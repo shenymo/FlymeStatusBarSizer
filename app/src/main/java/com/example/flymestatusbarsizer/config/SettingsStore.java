@@ -129,6 +129,7 @@ public final class SettingsStore {
     public static final int SIDE_GESTURE_ACTION_RECENTS = 5;
     public static final int SIDE_GESTURE_ACTION_TASK_SWITCHER = 6;
     public static final int SIDE_GESTURE_ACTION_QUICK_TOOLS = 7;
+    public static final int SIDE_GESTURE_ACTION_APP_LAUNCHER = 8;
     public static final int DEFAULT_SIDE_GESTURE_ACTION = SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
     public static final String KEY_SIDE_GESTURE_UP_ACTION = "side_gesture_up_action";
     public static final String KEY_SIDE_GESTURE_DOWN_ACTION = "side_gesture_down_action";
@@ -1583,6 +1584,7 @@ public final class SettingsStore {
             case SIDE_GESTURE_ACTION_RECENTS:
             case SIDE_GESTURE_ACTION_TASK_SWITCHER:
             case SIDE_GESTURE_ACTION_QUICK_TOOLS:
+            case SIDE_GESTURE_ACTION_APP_LAUNCHER:
                 return value;
             default:
                 return DEFAULT_SIDE_GESTURE_ACTION;

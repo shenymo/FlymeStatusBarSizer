@@ -101,6 +101,7 @@ final class AssistantGestureHooks {
         final SideGestureActions.Action globalAssistant;
         final SideGestureActions.Action taskSwitcher;
         final SideGestureActions.Action quickTools;
+        final SideGestureActions.Action appLauncher;
         final Method cancel, pilfer;
         MotionEvent last;
         boolean consumed;
@@ -130,6 +131,7 @@ final class AssistantGestureHooks {
             this.globalAssistant = globalAssistant;
             this.taskSwitcher = com.example.flymestatusbarsizer.feature.onehanded.RecentTaskSwitcher.action(context);
             this.quickTools = QuickToolsPanel.action(context);
+            this.appLauncher = AppLauncherPanel.action(context);
             this.actionOverlay = new AssistantGestureActionOverlay(context);
             this.zoneOverlay = new AssistantGestureZoneOverlay(context);
         }
@@ -234,7 +236,7 @@ final class AssistantGestureHooks {
             if (actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK) return false;
             SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant,
                     com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION,
-                    taskSwitcher, quickTools);
+                    taskSwitcher, quickTools, appLauncher);
             boolean noAction = actionId == SettingsStore.SIDE_GESTURE_ACTION_NONE;
             boolean navigation = isNavigationAction(actionId);
             if (!noAction && !navigation && (action == null || !action.isReady())) { reset(); return false; }
@@ -297,7 +299,7 @@ final class AssistantGestureHooks {
             }
             SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant,
                     com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION,
-                    taskSwitcher, quickTools);
+                    taskSwitcher, quickTools, appLauncher);
             if (actionId != SettingsStore.SIDE_GESTURE_ACTION_NONE
                     && !isNavigationAction(actionId)
                     && (action == null || !action.isReady())) {
