@@ -20,7 +20,6 @@ import android.view.KeyEvent;
 import android.net.wifi.WifiManager;
 import android.hardware.display.DisplayManager;
 import android.os.Binder;
-import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -347,8 +346,7 @@ final class QuickToolsPanel {
             volumeThread.start();
             volumeHandler = new Handler(volumeThread.getLooper());
             setFocusable(false);
-            darkMode = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
-                    == Configuration.UI_MODE_NIGHT_YES;
+            darkMode = isNightMode(getResources().getConfiguration());
             setContentDescription("快捷工具，亮度、音量、上一曲、播放暂停、下一曲、增加音量、减小音量、Wi-Fi、铃声模式、蓝牙、旋转、截图、锁屏、手电筒、录屏");
             setElevation(dp(7));
             updateBackground();
@@ -379,21 +377,22 @@ final class QuickToolsPanel {
         }
 
         void updateDarkMode(Configuration configuration) {
-            boolean nextDarkMode = (configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK)
-                    == Configuration.UI_MODE_NIGHT_YES;
+            boolean nextDarkMode = isNightMode(configuration);
             if (darkMode == nextDarkMode) return;
             darkMode = nextDarkMode;
             updateBackground();
             invalidate();
         }
 
+        private boolean isNightMode(Configuration configuration) {
+            return (configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                    == Configuration.UI_MODE_NIGHT_YES;
+        }
+
         private void updateBackground() {
             GradientDrawable background = new GradientDrawable();
-            int alpha = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? 0x98 : 0xf5;
-            background.setColor(darkMode ? (0x2a2c2f | (alpha << 24))
-                    : (0xffffff | (alpha << 24)));
-            background.setCornerRadius(dp(12));
-            background.setStroke(Math.round(dp(1)), darkMode ? 0x38ffffff : 0x24000000);
+            background.setColor(darkMode ? 0xd92b2f33 : 0xe6e8edef);
+            background.setCornerRadius(dp(16));
             setBackground(background);
         }
 
@@ -505,18 +504,19 @@ final class QuickToolsPanel {
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             bounds.set(0f, 0f, getWidth(), getHeight());
+            drawPanelDepth(canvas);
 
             float sliderLeft = dp(42);
             float sliderRight = getWidth() - dp(17);
-            brightnessTrack.set(sliderLeft, dp(12), sliderRight, dp(24));
-            volumeTrack.set(sliderLeft, dp(50), sliderRight, dp(62));
+            brightnessTrack.set(sliderLeft, dp(13), sliderRight, dp(25));
+            volumeTrack.set(sliderLeft, dp(52), sliderRight, dp(64));
             brightnessIcon.set(sliderLeft - dp(32), dp(2), sliderLeft, dp(34));
-            volumeCard.set(dp(8), dp(35), getWidth() - dp(8), dp(112));
+            volumeCard.set(dp(8), dp(38), getWidth() - dp(8), dp(116));
             drawSlider(canvas, brightnessTrack, brightnessFraction(), 0, brightnessAuto);
             drawVolumeCard(canvas);
 
-            float gridTop = dp(120);
-            float gap = dp(4);
+            float gridTop = dp(121);
+            float gap = dp(5);
             float cellWidth = (getWidth() - dp(12) - gap * 3) / 4f;
             float cellHeight = (getHeight() - gridTop - dp(10) - gap) / 2f;
             for (int i = 0; i < buttons.length; i++) {
@@ -529,24 +529,40 @@ final class QuickToolsPanel {
             }
         }
 
-        private void drawVolumeCard(Canvas canvas) {
-            paint.setColor(darkMode ? 0xd52f3236 : 0xe9f1f2f3);
-            canvas.drawRoundRect(volumeCard, dp(12), dp(12), paint);
+        private void drawPanelDepth(Canvas canvas) {
+            float inset = dp(1.5f);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(dp(1));
-            paint.setColor(darkMode ? 0x52ffffff : 0x30000000);
-            canvas.drawRoundRect(volumeCard, dp(12), dp(12), paint);
+            paint.setColor(darkMode ? 0x26000000 : 0x30000000);
+            canvas.drawRoundRect(new RectF(inset, inset, getWidth() - inset, getHeight() - inset),
+                    dp(15), dp(15), paint);
+            paint.setColor(darkMode ? 0x26ffffff : 0x66ffffff);
+            canvas.drawRoundRect(new RectF(dp(2.5f), dp(2.5f), getWidth() - dp(2.5f),
+                    getHeight() - dp(2.5f)), dp(14), dp(14), paint);
+            paint.setColor(darkMode ? 0x1fffffff : 0x35ffffff);
+            canvas.drawLine(dp(15), dp(72), getWidth() - dp(15), dp(72), paint);
+            paint.setColor(darkMode ? 0x26000000 : 0x26000000);
+            canvas.drawLine(dp(15), dp(73), getWidth() - dp(15), dp(73), paint);
             paint.setStyle(Paint.Style.FILL);
+        }
+
+        private void drawVolumeCard(Canvas canvas) {
             drawSliderIcon(canvas, volumeTrack.left - dp(16), volumeTrack.centerY(), dp(10), 1, false);
             drawProgressTrack(canvas, volumeTrack, volume / (float) Math.max(1, volumeMax));
 
-            float controlLeft = volumeCard.left + dp(8);
-            float controlWidth = (volumeCard.width() - dp(16)) / mediaButtons.length;
+            float controlLeft = volumeCard.left + dp(4);
+            float controlWidth = (volumeCard.width() - dp(8)) / mediaButtons.length;
             for (int i = 0; i < mediaButtons.length; i++) {
                 float left = controlLeft + i * controlWidth;
-                mediaButtons[i].set(left, dp(72), left + controlWidth, dp(104));
-                paint.setColor(darkMode ? 0xffe5e8ea : 0xff42484e);
-                paint.setStyle(Paint.Style.STROKE);
+                mediaButtons[i].set(left, dp(76), left + controlWidth, dp(108));
+                RectF capsule = new RectF(left + dp(3), dp(78), left + controlWidth - dp(3), dp(106));
+                boolean focus = i == 1;
+                paint.setColor(focus ? (darkMode ? 0xff5dbdb8 : 0xff419f9a)
+                        : (darkMode ? 0x1effffff : 0x22000000));
+                canvas.drawRoundRect(capsule, dp(14), dp(14), paint);
+                paint.setColor(focus ? (darkMode ? 0xff172326 : 0xfff3ffff)
+                        : (darkMode ? 0xffe0e5e7 : 0xff374249));
+                paint.setStyle(focus ? Paint.Style.FILL : Paint.Style.STROKE);
                 paint.setStrokeWidth(dp(1.8f));
                 paint.setStrokeCap(Paint.Cap.ROUND);
                 paint.setStrokeJoin(Paint.Join.ROUND);
@@ -558,15 +574,26 @@ final class QuickToolsPanel {
         private void drawProgressTrack(Canvas canvas, RectF track, float fraction) {
             float clampedFraction = Math.max(0f, Math.min(1f, fraction));
             float radius = track.height() / 2f;
-            paint.setColor(darkMode ? 0xffb9bdc1 : 0xffd4d8dc);
+            paint.setColor(darkMode ? 0xff555d62 : 0xffc0c8cd);
             canvas.drawRoundRect(track, radius, radius, paint);
             float progressRight = track.left + clampedFraction * track.width();
-            if (progressRight <= track.left) return;
-            int saveCount = canvas.save();
-            canvas.clipRect(track.left, track.top, progressRight, track.bottom);
-            paint.setColor(darkMode ? 0xfff6f7f8 : 0xff5a626a);
-            canvas.drawRoundRect(track, radius, radius, paint);
-            canvas.restoreToCount(saveCount);
+            if (progressRight > track.left) {
+                int saveCount = canvas.save();
+                canvas.clipRect(track.left, track.top, progressRight, track.bottom);
+                paint.setColor(darkMode ? 0xff66c9c3 : 0xff318f8a);
+                canvas.drawRoundRect(track, radius, radius, paint);
+                canvas.restoreToCount(saveCount);
+            }
+            drawSliderThumb(canvas, progressRight, track.centerY());
+        }
+
+        private void drawSliderThumb(Canvas canvas, float cx, float cy) {
+            paint.setColor(darkMode ? 0x55000000 : 0x42000000);
+            canvas.drawCircle(cx, cy + dp(1.5f), dp(7.5f), paint);
+            paint.setColor(0xfff5f7f7);
+            canvas.drawCircle(cx, cy, dp(6.5f), paint);
+            paint.setColor(darkMode ? 0xffb8e9e5 : 0xffd4f1ee);
+            canvas.drawCircle(cx - dp(1.5f), cy - dp(1.5f), dp(1.6f), paint);
         }
 
         private void drawMediaIcon(Canvas canvas, float cx, float cy, float size, int index) {
@@ -583,10 +610,10 @@ final class QuickToolsPanel {
             } else if (index == 1) {
                 AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
                 if (audio != null && audio.isMusicActive()) {
-                    canvas.drawLine(cx - size * 0.35f, cy - size, cx - size * 0.35f,
-                            cy + size, paint);
-                    canvas.drawLine(cx + size * 0.35f, cy - size, cx + size * 0.35f,
-                            cy + size, paint);
+                    canvas.drawRoundRect(new RectF(cx - size * 0.55f, cy - size,
+                            cx - size * 0.05f, cy + size), dp(1), dp(1), paint);
+                    canvas.drawRoundRect(new RectF(cx + size * 0.05f, cy - size,
+                            cx + size * 0.55f, cy + size), dp(1), dp(1), paint);
                 } else {
                     icon.moveTo(cx - size * 0.55f, cy - size);
                     icon.lineTo(cx + size * 0.85f, cy);
@@ -608,13 +635,13 @@ final class QuickToolsPanel {
 
         private void drawSlider(Canvas canvas, RectF track, float fraction, int icon, boolean iconActive) {
             float iconCenterX = track.left - dp(16);
-            int brightnessIconColor = darkMode ? 0xfff6f7f8 : 0xff3f464b;
+            int brightnessIconColor = darkMode ? 0xfff2f5f5 : 0xff3d474d;
             if (icon == 0) {
                 paint.setColor(brightnessIconColor);
             } else {
                 paint.setColor(iconActive
-                        ? (darkMode ? 0xff77c6c1 : 0xff287a78)
-                        : (darkMode ? 0xffaeb4b9 : 0xff61666e));
+                        ? (darkMode ? 0xff77c6c1 : 0xff2e8884)
+                        : (darkMode ? 0xffc5cccf : 0xff566169));
             }
             drawSliderIcon(canvas, iconCenterX, track.centerY(), dp(8), icon, iconActive);
             if (icon == 0 && brightnessAuto) {
@@ -628,11 +655,11 @@ final class QuickToolsPanel {
         }
 
         private void drawButton(Canvas canvas, RectF bounds, boolean active, int index) {
-            paint.setColor(active ? (darkMode ? 0x4277c6c1 : 0x30287a78)
-                    : (darkMode ? 0x18ffffff : 0x10000000));
+            paint.setColor(active ? (darkMode ? 0x4277c6c1 : 0x304ba8a4)
+                    : (darkMode ? 0x18ffffff : 0x18000000));
             canvas.drawRoundRect(bounds, dp(8), dp(8), paint);
-            paint.setColor(active ? (darkMode ? 0xffa9ded9 : 0xff216967)
-                    : (darkMode ? 0xffe2e6e7 : 0xff3f464b));
+            paint.setColor(active ? (darkMode ? 0xffa9ded9 : 0xff2d7d79)
+                    : (darkMode ? 0xffe2e6e7 : 0xff3d474d));
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(dp(1.8f));
             paint.setStrokeCap(Paint.Cap.ROUND);
@@ -647,7 +674,7 @@ final class QuickToolsPanel {
             if (index == 1) {
                 Drawable icon = volume <= 0 ? volumeMuteDrawable
                         : volumeAnimationReady ? volumeAnimation : volumeMediaDrawable;
-                int color = darkMode ? 0xfff6f7f8 : 0xff61666e;
+                int color = darkMode ? 0xfff2f5f5 : 0xff4c5961;
                 if (icon == volumeAnimation && volumeAnimationTint != color) {
                     volumeAnimation.addValueCallback(new KeyPath("**"),
                             LottieProperty.COLOR_FILTER,
@@ -669,7 +696,7 @@ final class QuickToolsPanel {
                 return;
             }
             if (brightnessAnimationReady) {
-                int color = darkMode ? 0xfff6f7f8 : 0xff3f464b;
+                int color = darkMode ? 0xfff2f5f5 : 0xff3d474d;
                 if (brightnessAnimationTint != color) {
                     brightnessAnimation.addValueCallback(new KeyPath("**"),
                             LottieProperty.COLOR_FILTER,
