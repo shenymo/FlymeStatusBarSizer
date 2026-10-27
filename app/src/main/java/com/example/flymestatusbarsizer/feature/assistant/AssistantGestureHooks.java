@@ -111,8 +111,7 @@ final class AssistantGestureHooks {
         boolean zoneOverlayEnabled;
         boolean distanceSplitEnabled;
         boolean gestureStarted;
-        boolean shortDistanceHapticFired;
-        boolean longDistanceHapticFired;
+        int hapticZone = -1;
         float gestureTouchSlop;
         float gestureStartX;
         float shortDistancePx;
@@ -161,8 +160,7 @@ final class AssistantGestureHooks {
                     : ViewConfiguration.get(context).getScaledTouchSlop() * 0.75f;
             gestureStartX = rawX;
             shortDistancePx = config.assistantGestureDistanceDp * density;
-            shortDistanceHapticFired = false;
-            longDistanceHapticFired = false;
+            hapticZone = -1;
             state.begin(rawX, rawY, shortDistancePx,
                     12f * density, leftEdge, config.assistantGestureUpAngle / 10f,
                     config.assistantGestureDownAngle / 10f,
@@ -218,23 +216,33 @@ final class AssistantGestureHooks {
         }
 
         void updateDistanceHaptics() {
-            if (!gestureStarted && state.inwardDistance() <= gestureTouchSlop) return;
-            float travel = state.travelDistance();
-            if (!shortDistanceHapticFired && state.ready()) {
-                shortDistanceHapticFired = true;
-                Object target = owner.get();
-                Object panel = target == null ? null : ReflectUtils.getField(target, "mEdgeBackPlugin");
-                handler.post(() -> HapticFeedbackUtils.perform(context,
-                        panel instanceof View ? (View) panel : null, HapticFeedbackConstants.CLOCK_TICK));
+            if (!state.ready()) {
+                hapticZone = -1;
+                return;
             }
-            if (distanceSplitEnabled && !longDistanceHapticFired
-                    && travel >= longDistancePx && state.inwardDistance() >= shortDistancePx * 0.35f) {
-                longDistanceHapticFired = true;
-                Object target = owner.get();
-                Object panel = target == null ? null : ReflectUtils.getField(target, "mEdgeBackPlugin");
-                handler.post(() -> HapticFeedbackUtils.perform(context,
-                        panel instanceof View ? (View) panel : null, HapticFeedbackConstants.LONG_PRESS));
+            int direction = state.direction();
+            boolean longDistance = distanceSplitEnabled && state.travelDistance() >= longDistancePx;
+            int zone = direction + (longDistance ? 3 : 0);
+            if (zone == hapticZone) return;
+            hapticZone = zone;
+            int actionId = actionId(direction);
+            if (actionId == SettingsStore.SIDE_GESTURE_ACTION_NONE
+                    || actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK) return;
+            Object target = owner.get();
+            if (target == null
+                    || (actionId == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                    && !AssistantGestureScenes.allows(ModuleConfig.load(context).assistantGestureScenes, target))) {
+                return;
             }
+            SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant,
+                    com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION,
+                    taskSwitcher, quickTools, appLauncher);
+            if (!isNavigationAction(actionId) && (action == null || !action.isReady())) return;
+            Object panel = target == null ? null : ReflectUtils.getField(target, "mEdgeBackPlugin");
+            int feedback = longDistance ? HapticFeedbackConstants.LONG_PRESS
+                    : HapticFeedbackConstants.CLOCK_TICK;
+            handler.post(() -> HapticFeedbackUtils.perform(context,
+                    panel instanceof View ? (View) panel : null, feedback));
         }
 
         boolean tryClaim(boolean onRelease) {
@@ -272,16 +280,12 @@ final class AssistantGestureHooks {
                 cancel.invoke(target, last);
                 state.claim();
                 consumed = true;
-                Object panel = ReflectUtils.getField(target, "mEdgeBackPlugin");
-                Runnable haptic = () -> handler.post(() -> HapticFeedbackUtils.perform(
-                        context, panel instanceof View ? (View) panel : null, HapticFeedbackConstants.LONG_PRESS));
                 if (noAction) {
                     return true;
                 } else if (navigation) {
                     executeNavigationAction(target, actionId);
-                    haptic.run();
                 } else {
-                    action.execute(fromLeft, (state.startY() + state.currentY()) / 2f, haptic);
+                    action.execute(fromLeft, (state.startY() + state.currentY()) / 2f, () -> { });
                 }
                 return true;
             } catch (Throwable t) {
@@ -415,8 +419,7 @@ final class AssistantGestureHooks {
             state.cancel();
             consumed = false;
             gestureStarted = false;
-            shortDistanceHapticFired = false;
-            longDistanceHapticFired = false;
+            hapticZone = -1;
             actionOverlay.hide();
             zoneOverlay.hide();
             if (last != null) { last.recycle(); last = null; }
