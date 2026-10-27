@@ -5,6 +5,8 @@ import android.content.Context;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.LauncherApps;
+import android.content.pm.ShortcutInfo;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
@@ -15,10 +17,12 @@ import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.UserHandle;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -26,6 +30,10 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import com.example.flymestatusbarsizer.feature.windowmode.FlymeMiniWindowLauncher;
+import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -41,6 +49,7 @@ final class AppLauncherPanel {
     private static final int[] WINDOW_TYPES = {2041, 2017, 2040};
     private static final String TITLE = "FlymeStatusBarSizer:AppLauncher";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
+    private static final long LONG_PRESS_MS = 800L;
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "FlymeAppLauncher");
         thread.setDaemon(true);
@@ -51,6 +60,7 @@ final class AppLauncherPanel {
     private static volatile List<AppEntry> cachedApps;
     private static final List<Popup> pendingPopups = new ArrayList<>();
     private static boolean receiverRegistered;
+    private static LauncherApps.Callback shortcutCallback;
     private static boolean indexLoading;
     private static long cacheGeneration;
     private static Popup active;
@@ -104,24 +114,63 @@ final class AppLauncherPanel {
             } else {
                 context.registerReceiver(receiver, filter);
             }
+            LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
+            if (launcherApps != null) {
+                shortcutCallback = new LauncherApps.Callback() {
+                    @Override public void onPackageRemoved(String packageName, UserHandle user) { invalidateCache(); }
+                    @Override public void onPackageAdded(String packageName, UserHandle user) { invalidateCache(); }
+                    @Override public void onPackageChanged(String packageName, UserHandle user) { invalidateCache(); }
+                    @Override public void onPackagesAvailable(String[] packageNames, UserHandle user, boolean replacing) {
+                        invalidateCache();
+                    }
+                    @Override public void onPackagesUnavailable(String[] packageNames, UserHandle user, boolean replacing) {
+                        invalidateCache();
+                    }
+                    @Override public void onShortcutsChanged(
+                            String packageName, List<ShortcutInfo> shortcuts, UserHandle user) {
+                        invalidateCache();
+                    }
+                };
+                launcherApps.registerCallback(shortcutCallback, MAIN);
+            }
             receiverRegistered = true;
         }
+    }
+
+    private static void invalidateCache() {
+        synchronized (CACHE_LOCK) {
+            cachedApps = null;
+            cacheGeneration++;
+        }
+        Popup popup;
+        synchronized (AppLauncherPanel.class) { popup = active; }
+        if (popup != null) popup.refreshAfterPackageChange();
     }
 
     private static final class AppEntry {
         final String label;
         final Drawable icon;
         final Intent launchIntent;
+        final String packageName;
+        final String shortcutId;
+        final UserHandle user;
         final String[] keys;
 
-        AppEntry(String label, Drawable icon, Intent launchIntent, String[] keys) {
+        AppEntry(String label, Drawable icon, Intent launchIntent, String packageName,
+                String shortcutId, UserHandle user, String[] keys) {
             this.label = label;
             this.icon = icon;
             this.launchIntent = launchIntent;
+            this.packageName = packageName;
+            this.shortcutId = shortcutId;
+            this.user = user;
             this.keys = keys;
         }
 
-        boolean matches(List<String> query) {
+        boolean isShortcut() { return shortcutId != null; }
+
+        int matchScore(List<String> query) {
+            int best = Integer.MAX_VALUE;
             for (String key : keys) {
                 if (key.length() < query.size()) continue;
                 for (int start = 0; start <= key.length() - query.size(); start++) {
@@ -132,10 +181,15 @@ final class AppLauncherPanel {
                             break;
                         }
                     }
-                    if (matched) return true;
+                    if (matched) {
+                        int score = (start == 0 ? 0 : 1_000_000)
+                                + start * 1_000 + key.length();
+                        best = Math.min(best, score);
+                        break;
+                    }
                 }
             }
-            return false;
+            return best;
         }
     }
 
@@ -158,6 +212,11 @@ final class AppLauncherPanel {
         private boolean loading;
         private boolean indexRequested;
         private volatile int loadRequestId;
+        private View holdView;
+        private ImageView holdIcon;
+        private Runnable holdRunnable;
+        private boolean holdTriggered;
+        private boolean holdCanceled;
 
         Popup(Context context, boolean fromLeft, float anchorY) {
             this.context = context;
@@ -360,11 +419,56 @@ final class AppLauncherPanel {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
                 String latin = PINYIN.transliterate(label).toLowerCase(Locale.ROOT);
                 found.put(activity.packageName, new AppEntry(label, icon, launch,
-                        new String[]{normalize(latin), initials(latin), normalize(label.toLowerCase(Locale.ROOT))}));
+                        activity.packageName, null, null, buildKeys(label)));
+            }
+            LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
+            if (launcherApps != null) {
+                for (UserHandle user : launcherApps.getProfiles()) {
+                    for (android.content.pm.ApplicationInfo application : pm.getInstalledApplications(0)) {
+                        if (context.getPackageName().equals(application.packageName)) continue;
+                        LauncherApps.ShortcutQuery shortcutQuery = new LauncherApps.ShortcutQuery()
+                                .setPackage(application.packageName)
+                                .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED);
+                        List<ShortcutInfo> shortcuts;
+                        try { shortcuts = launcherApps.getShortcuts(shortcutQuery, user); }
+                        catch (RuntimeException ignored) { continue; }
+                        if (shortcuts == null) continue;
+                        CharSequence appLabel = application.loadLabel(pm);
+                        for (ShortcutInfo shortcut : shortcuts) {
+                            if (!shortcut.isPinned()) continue;
+                            CharSequence rawLabel = shortcut.getShortLabel();
+                            if (rawLabel == null || rawLabel.length() == 0) rawLabel = shortcut.getLongLabel();
+                            if (rawLabel == null || rawLabel.length() == 0) continue;
+                            Drawable shortcutIcon = launcherApps.getShortcutIconDrawable(shortcut, dp(context, 34));
+                            if (shortcutIcon == null) shortcutIcon = application.loadIcon(pm);
+                            String label = rawLabel.toString();
+                            found.put(application.packageName + "#" + user + "#" + shortcut.getId(),
+                                    new AppEntry(label, shortcutIcon, null, application.packageName,
+                                            shortcut.getId(), user, buildKeys(label, appLabel == null ? null : appLabel.toString())));
+                        }
+                    }
+                }
             }
             List<AppEntry> result = new ArrayList<>(found.values());
             Collections.sort(result, (left, right) -> left.label.compareToIgnoreCase(right.label));
             return result;
+        }
+
+        private static int dp(Context context, float value) {
+            return Math.round(value * context.getResources().getDisplayMetrics().density);
+        }
+
+        private static String[] buildKeys(String... labels) {
+            List<String> keys = new ArrayList<>();
+            for (String label : labels) {
+                if (label == null) continue;
+                String lower = label.toLowerCase(Locale.ROOT);
+                String latin = PINYIN.transliterate(lower);
+                keys.add(normalize(latin));
+                keys.add(initials(latin));
+                keys.add(normalize(lower));
+            }
+            return keys.toArray(new String[0]);
         }
 
         private void refreshAfterPackageChange() {
@@ -391,7 +495,13 @@ final class AppLauncherPanel {
                 return;
             }
             List<AppEntry> matches = new ArrayList<>();
-            for (AppEntry entry : entries) if (entry.matches(query)) matches.add(entry);
+            for (AppEntry entry : entries) {
+                if (entry.matchScore(query) != Integer.MAX_VALUE) matches.add(entry);
+            }
+            matches.sort((left, right) -> {
+                int score = Integer.compare(left.matchScore(query), right.matchScore(query));
+                return score != 0 ? score : left.label.compareToIgnoreCase(right.label);
+            });
             if (matches.isEmpty()) {
                 addMessage(query.isEmpty() ? "没有可启动的应用" : "未找到匹配应用");
                 return;
@@ -432,13 +542,98 @@ final class AppLauncherPanel {
             name.setTextColor(paletteColor(0xff202426, 0xfff2f4f5));
             name.setGravity(Gravity.CENTER);
             cell.addView(name, new LinearLayout.LayoutParams(-1, dp(16)));
-            cell.setOnClickListener(view -> {
-                view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
-                close();
-                try { context.startActivity(entry.launchIntent); }
-                catch (Throwable ignored) { }
-            });
+            cell.setOnTouchListener((view, event) -> handleEntryTouch(view, icon, entry, event));
             row.addView(cell, new LinearLayout.LayoutParams(0, -1, 1f));
+        }
+
+        private boolean handleEntryTouch(View view, ImageView icon, AppEntry entry, MotionEvent event) {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    cancelHold();
+                    holdView = view;
+                    holdIcon = icon;
+                    holdTriggered = false;
+                    holdCanceled = false;
+                    float downX = event.getX();
+                    float downY = event.getY();
+                    int slop = ViewConfiguration.get(context).getScaledTouchSlop();
+                    holdRunnable = () -> {
+                        if (holdView != view || closing) return;
+                        holdTriggered = true;
+                        HapticFeedbackUtils.perform(context, view, HapticFeedbackConstants.LONG_PRESS);
+                    };
+                    icon.animate().scaleX(0.8f).scaleY(0.8f).setDuration(LONG_PRESS_MS).start();
+                    view.setTag(new float[]{downX, downY, slop});
+                    MAIN.postDelayed(holdRunnable, LONG_PRESS_MS);
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    Object tag = view.getTag();
+                    if (tag instanceof float[]) {
+                        float[] down = (float[]) tag;
+                        if (Math.abs(event.getX() - down[0]) > down[2]
+                                || Math.abs(event.getY() - down[1]) > down[2]
+                                || event.getX() < 0 || event.getY() < 0
+                                || event.getX() > view.getWidth() || event.getY() > view.getHeight()) {
+                            holdCanceled = true;
+                            cancelHold();
+                        }
+                    }
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    boolean longPress = holdTriggered && holdView == view;
+                    boolean canceled = holdCanceled;
+                    cancelHold();
+                    if (!canceled) {
+                        if (longPress) launchMiniWindow(entry);
+                        else launchEntry(entry, view);
+                    }
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    holdCanceled = true;
+                    cancelHold();
+                    return true;
+                default:
+                    return true;
+            }
+        }
+
+        private void cancelHold() {
+            if (holdRunnable != null) MAIN.removeCallbacks(holdRunnable);
+            if (holdIcon != null) holdIcon.animate().cancel();
+            if (holdIcon != null) holdIcon.animate().scaleX(1f).scaleY(1f).setDuration(100L).start();
+            holdRunnable = null;
+            holdView = null;
+            holdIcon = null;
+            holdTriggered = false;
+        }
+
+        private void launchEntry(AppEntry entry, View target) {
+            HapticFeedbackUtils.perform(context, target, HapticFeedbackConstants.CONTEXT_CLICK);
+            close();
+            try {
+                if (entry.isShortcut()) {
+                    LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
+                    launcherApps.startShortcut(entry.packageName, entry.shortcutId, null, null, entry.user);
+                } else {
+                    context.startActivity(entry.launchIntent);
+                }
+            } catch (Throwable ignored) { }
+        }
+
+        private void launchMiniWindow(AppEntry entry) {
+            close();
+            try {
+                if (entry.isShortcut()) {
+                    LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
+                    FlymeMiniWindowLauncher.startShortcutInMiniWindow(
+                            context, launcherApps, entry.packageName, entry.shortcutId, entry.user);
+                } else {
+                    FlymeMiniWindowLauncher.startActivityInMiniWindow(
+                            context, entry.launchIntent, entry.packageName);
+                }
+            } catch (Throwable error) {
+                Toast.makeText(context, "无法打开小窗", Toast.LENGTH_SHORT).show();
+            }
         }
 
         private void updateSearch() {
@@ -497,6 +692,7 @@ final class AppLauncherPanel {
         private void close() {
             if (!attached || closing) return;
             closing = true;
+            cancelHold();
             panel.animate().cancel();
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
             panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));

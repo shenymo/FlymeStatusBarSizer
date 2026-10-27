@@ -2,10 +2,13 @@ package com.example.flymestatusbarsizer.feature.windowmode;
 
 import android.app.ActivityOptions;
 import android.content.Context;
+import android.content.Intent;
+import android.content.pm.LauncherApps;
 import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.UserHandle;
 
 import java.lang.reflect.Method;
 
@@ -36,18 +39,28 @@ public final class FlymeMiniWindowLauncher {
         if (activityTaskManager == null || startActivityFromRecents == null) {
             throw new IllegalStateException("Recent task service is unavailable");
         }
-        Object windowManagerExt = resolveWindowManagerExtInstance(context);
-        Method setWindowMode = resolveSetStartWindowModeMethod();
-        if (windowManagerExt == null || setWindowMode == null) {
-            throw new IllegalStateException("Flyme mini window mode is unavailable");
-        }
-        setWindowMode.invoke(windowManagerExt, packageName);
+        setStartWindowMode(context, packageName);
 
         Bundle options = buildMiniWindowTaskOptions(context);
         Object result = startActivityFromRecents.invoke(activityTaskManager, taskId, options);
         if (result instanceof Number && ((Number) result).intValue() < 0) {
             throw new IllegalStateException("Cannot open task in Flyme mini window");
         }
+    }
+
+    public static void startActivityInMiniWindow(
+            Context context, Intent intent, String packageName) throws ReflectiveOperationException {
+        setStartWindowMode(context, packageName);
+        context.startActivity(intent, buildMiniWindowTaskOptions(context));
+    }
+
+    public static void startShortcutInMiniWindow(
+            Context context, LauncherApps launcherApps, String packageName,
+            String shortcutId, UserHandle user) throws ReflectiveOperationException {
+        if (launcherApps == null) throw new IllegalStateException("Launcher shortcuts are unavailable");
+        setStartWindowMode(context, packageName);
+        launcherApps.startShortcut(packageName, shortcutId, null,
+                buildMiniWindowTaskOptions(context), user);
     }
 
     public static boolean isTaskInMiniWindow(Context context, int displayId, int taskId)
@@ -96,6 +109,16 @@ public final class FlymeMiniWindowLauncher {
         }
         options.putBoolean(START_WINDOW_MODE_KEY, true);
         return options;
+    }
+
+    private static void setStartWindowMode(Context context, String packageName)
+            throws ReflectiveOperationException {
+        Object windowManagerExt = resolveWindowManagerExtInstance(context);
+        Method setWindowMode = resolveSetStartWindowModeMethod();
+        if (windowManagerExt == null || setWindowMode == null) {
+            throw new IllegalStateException("Flyme mini window mode is unavailable");
+        }
+        setWindowMode.invoke(windowManagerExt, packageName);
     }
 
     private static Object resolveWindowManagerExtInstance(Context context)
