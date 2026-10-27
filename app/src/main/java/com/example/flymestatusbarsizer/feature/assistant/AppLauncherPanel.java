@@ -124,14 +124,16 @@ final class AppLauncherPanel {
         boolean matches(List<String> query) {
             for (String key : keys) {
                 if (key.length() < query.size()) continue;
-                boolean matched = true;
-                for (int i = 0; i < query.size(); i++) {
-                    if (query.get(i).indexOf(key.charAt(i)) < 0) {
-                        matched = false;
-                        break;
+                for (int start = 0; start <= key.length() - query.size(); start++) {
+                    boolean matched = true;
+                    for (int i = 0; i < query.size(); i++) {
+                        if (query.get(i).indexOf(key.charAt(start + i)) < 0) {
+                            matched = false;
+                            break;
+                        }
                     }
+                    if (matched) return true;
                 }
-                if (matched) return true;
             }
             return false;
         }
