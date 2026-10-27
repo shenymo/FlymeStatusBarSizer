@@ -508,15 +508,7 @@ final class QuickToolsPanel {
             canvas.drawRoundRect(volumeCard, dp(12), dp(12), paint);
             paint.setStyle(Paint.Style.FILL);
             drawSliderIcon(canvas, volumeTrack.left - dp(16), volumeTrack.centerY(), dp(10), 1, false);
-
-            paint.setColor(darkMode ? 0xffb9bdc1 : 0xffd4d8dc);
-            float volumeRadius = volumeTrack.height() / 2f;
-            canvas.drawRoundRect(volumeTrack, volumeRadius, volumeRadius, paint);
-            paint.setColor(darkMode ? 0xfff6f7f8 : 0xff5a626a);
-            float x = volumeTrack.left + Math.max(0f, Math.min(1f,
-                    volume / (float) Math.max(1, volumeMax))) * volumeTrack.width();
-            canvas.drawRoundRect(new RectF(volumeTrack.left, volumeTrack.top,
-                    Math.max(volumeTrack.left, x), volumeTrack.bottom), volumeRadius, volumeRadius, paint);
+            drawProgressTrack(canvas, volumeTrack, volume / (float) Math.max(1, volumeMax));
 
             float controlLeft = volumeCard.left + dp(8);
             float controlWidth = (volumeCard.width() - dp(16)) / mediaButtons.length;
@@ -531,6 +523,20 @@ final class QuickToolsPanel {
                 drawMediaIcon(canvas, mediaButtons[i].centerX(), mediaButtons[i].centerY(), dp(7), i);
                 paint.setStyle(Paint.Style.FILL);
             }
+        }
+
+        private void drawProgressTrack(Canvas canvas, RectF track, float fraction) {
+            float clampedFraction = Math.max(0f, Math.min(1f, fraction));
+            float radius = track.height() / 2f;
+            paint.setColor(darkMode ? 0xffb9bdc1 : 0xffd4d8dc);
+            canvas.drawRoundRect(track, radius, radius, paint);
+            float progressRight = track.left + clampedFraction * track.width();
+            if (progressRight <= track.left) return;
+            int saveCount = canvas.save();
+            canvas.clipRect(track.left, track.top, progressRight, track.bottom);
+            paint.setColor(darkMode ? 0xfff6f7f8 : 0xff5a626a);
+            canvas.drawRoundRect(track, radius, radius, paint);
+            canvas.restoreToCount(saveCount);
         }
 
         private void drawMediaIcon(Canvas canvas, float cx, float cy, float size, int index) {
@@ -588,13 +594,7 @@ final class QuickToolsPanel {
                 paint.setTextSize(dp(7));
                 canvas.drawText("A", iconCenterX + dp(8), track.centerY() + dp(8), paint);
             }
-            paint.setColor(darkMode ? 0xffb9bdc1 : 0xffd4d8dc);
-            float trackRadius = track.height() / 2f;
-            canvas.drawRoundRect(track, trackRadius, trackRadius, paint);
-            paint.setColor(darkMode ? 0xfff6f7f8 : 0xff5a626a);
-            float x = track.left + Math.max(0f, Math.min(1f, fraction)) * track.width();
-            canvas.drawRoundRect(track.left, track.top, x, track.bottom,
-                    trackRadius, trackRadius, paint);
+            drawProgressTrack(canvas, track, fraction);
         }
 
         private void drawButton(Canvas canvas, RectF bounds, boolean active, int index) {
