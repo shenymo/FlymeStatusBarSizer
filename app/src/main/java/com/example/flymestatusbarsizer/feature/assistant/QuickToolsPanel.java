@@ -22,6 +22,7 @@ import android.hardware.display.DisplayManager;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
@@ -250,6 +251,31 @@ final class QuickToolsPanel {
         private final LottieDrawable volumeAnimation = new LottieDrawable();
         private final float density;
         private final Handler main = new Handler(Looper.getMainLooper());
+        private final HandlerThread volumeThread = new HandlerThread("FlymeVolumeWriter");
+        private final Handler volumeHandler;
+        private final Object volumeWriteLock = new Object();
+        private volatile boolean volumeWriteQueued;
+        private int pendingVolume = -1;
+        private final Runnable volumeWriter = new Runnable() {
+            @Override public void run() {
+                while (true) {
+                    int target;
+                    synchronized (volumeWriteLock) {
+                        target = pendingVolume;
+                        pendingVolume = -1;
+                        if (target < 0) {
+                            volumeWriteQueued = false;
+                            return;
+                        }
+                    }
+                    AudioManager audio = (AudioManager) getContext()
+                            .getSystemService(Context.AUDIO_SERVICE);
+                    if (audio != null) {
+                        audio.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0);
+                    }
+                }
+            }
+        };
         private final Runnable brightnessRefresh = new Runnable() {
             @Override public void run() {
                 if (!attached || closing) return;
@@ -317,6 +343,9 @@ final class QuickToolsPanel {
                 }
             } catch (Throwable ignored) {
             }
+
+            volumeThread.start();
+            volumeHandler = new Handler(volumeThread.getLooper());
             setFocusable(false);
             darkMode = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                     == Configuration.UI_MODE_NIGHT_YES;
@@ -437,6 +466,7 @@ final class QuickToolsPanel {
         }
 
         private void refreshVolumeState() {
+            if (activeSlider == 2 || volumeWriteQueued) return;
             AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
             if (audio == null) return;
             volume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
@@ -971,10 +1001,18 @@ final class QuickToolsPanel {
                 setTemporaryBrightness();
             } else {
                 volume = Math.round(fraction * volumeMax);
-                AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
-                if (audio != null) audio.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0);
+                requestVolumeUpdate(volume);
             }
             invalidate();
+        }
+
+        private void requestVolumeUpdate(int target) {
+            synchronized (volumeWriteLock) {
+                pendingVolume = target;
+                if (volumeWriteQueued) return;
+                volumeWriteQueued = true;
+            }
+            volumeHandler.post(volumeWriter);
         }
 
         private void executeMediaButton(int index) {
