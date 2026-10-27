@@ -10,6 +10,7 @@ import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.RectF;
 import android.graphics.Path;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.hardware.camera2.CameraCharacteristics;
@@ -243,9 +244,9 @@ final class QuickToolsPanel {
         private final Drawable ringerNormalIcon;
         private final Drawable ringerVibrateIcon;
         private final Drawable ringerSilentIcon;
-        private final Drawable brightnessDrawable;
         private final Drawable volumeMediaDrawable;
         private final Drawable volumeMuteDrawable;
+        private final LottieDrawable brightnessAnimation = new LottieDrawable();
         private final LottieDrawable volumeAnimation = new LottieDrawable();
         private final float density;
         private final Handler main = new Handler(Looper.getMainLooper());
@@ -271,12 +272,14 @@ final class QuickToolsPanel {
         private boolean brightnessAuto;
         private int volume;
         private int volumeMax;
+        private int brightnessAnimationTint;
         private int volumeAnimationTint;
         private boolean wifi;
         private boolean bluetooth;
         private boolean rotationAuto;
         private boolean flashlight;
         private boolean recording;
+        private boolean brightnessAnimationReady;
         private boolean volumeAnimationReady;
         private int ringerMode = AudioManager.RINGER_MODE_NORMAL;
 
@@ -294,9 +297,17 @@ final class QuickToolsPanel {
             ringerNormalIcon = loadDrawable(resourceContext, R.drawable.quick_tool_bell);
             ringerVibrateIcon = loadDrawable(resourceContext, R.drawable.quick_tool_vibrate);
             ringerSilentIcon = loadDrawable(resourceContext, R.drawable.quick_tool_mute);
-            brightnessDrawable = loadDrawable(resourceContext, R.drawable.quick_tool_autobrightness);
             volumeMediaDrawable = loadDrawable(resourceContext, R.drawable.ic_qs_volume_media);
             volumeMuteDrawable = loadDrawable(resourceContext, R.drawable.ic_qs_volume_media_mute);
+            try {
+                LottieComposition composition = LottieCompositionFactory
+                        .fromAssetSync(resourceContext, "brightness.json").getValue();
+                if (composition != null) {
+                    brightnessAnimation.setComposition(composition);
+                    brightnessAnimationReady = true;
+                }
+            } catch (Throwable ignored) {
+            }
             try {
                 LottieComposition composition = LottieCompositionFactory
                         .fromAssetSync(resourceContext, "volume.json").getValue();
@@ -465,12 +476,12 @@ final class QuickToolsPanel {
             super.onDraw(canvas);
             bounds.set(0f, 0f, getWidth(), getHeight());
 
-            float trackLeft = dp(29);
-            float trackRight = getWidth() - dp(12);
-            brightnessTrack.set(trackLeft, dp(17), trackRight, dp(22));
-            brightnessIcon.set(trackLeft - dp(28), dp(3), trackLeft - dp(4), dp(35));
+            float sliderLeft = dp(42);
+            float sliderRight = getWidth() - dp(17);
+            brightnessTrack.set(sliderLeft, dp(12), sliderRight, dp(24));
+            volumeTrack.set(sliderLeft, dp(50), sliderRight, dp(62));
+            brightnessIcon.set(sliderLeft - dp(32), dp(2), sliderLeft, dp(34));
             volumeCard.set(dp(8), dp(35), getWidth() - dp(8), dp(112));
-            volumeTrack.set(dp(42), dp(53), getWidth() - dp(17), dp(59));
             drawSlider(canvas, brightnessTrack, brightnessFraction(), 0, brightnessAuto);
             drawVolumeCard(canvas);
 
@@ -496,15 +507,16 @@ final class QuickToolsPanel {
             paint.setColor(darkMode ? 0x52ffffff : 0x30000000);
             canvas.drawRoundRect(volumeCard, dp(12), dp(12), paint);
             paint.setStyle(Paint.Style.FILL);
-            drawSliderIcon(canvas, volumeCard.left + dp(20), volumeTrack.centerY(), dp(10), 1, false);
+            drawSliderIcon(canvas, volumeTrack.left - dp(16), volumeTrack.centerY(), dp(10), 1, false);
 
-            paint.setColor(darkMode ? 0xff45494e : 0xffd4d8dc);
-            canvas.drawRoundRect(volumeTrack, dp(4), dp(4), paint);
-            paint.setColor(darkMode ? 0xfff1f3f4 : 0xff5a626a);
+            paint.setColor(darkMode ? 0xffb9bdc1 : 0xffd4d8dc);
+            float volumeRadius = volumeTrack.height() / 2f;
+            canvas.drawRoundRect(volumeTrack, volumeRadius, volumeRadius, paint);
+            paint.setColor(darkMode ? 0xfff6f7f8 : 0xff5a626a);
             float x = volumeTrack.left + Math.max(0f, Math.min(1f,
                     volume / (float) Math.max(1, volumeMax))) * volumeTrack.width();
             canvas.drawRoundRect(new RectF(volumeTrack.left, volumeTrack.top,
-                    Math.max(volumeTrack.left, x), volumeTrack.bottom), dp(4), dp(4), paint);
+                    Math.max(volumeTrack.left, x), volumeTrack.bottom), volumeRadius, volumeRadius, paint);
 
             float controlLeft = volumeCard.left + dp(8);
             float controlWidth = (volumeCard.width() - dp(16)) / mediaButtons.length;
@@ -559,17 +571,30 @@ final class QuickToolsPanel {
         }
 
         private void drawSlider(Canvas canvas, RectF track, float fraction, int icon, boolean iconActive) {
-            paint.setColor(iconActive
-                    ? (darkMode ? 0xff77c6c1 : 0xff287a78)
-                    : (darkMode ? 0xffaeb4b9 : 0xff61666e));
-            drawSliderIcon(canvas, track.left - dp(16), track.centerY(), dp(8), icon, iconActive);
-            paint.setColor(darkMode ? 0x44ffffff : 0x22000000);
-            canvas.drawRoundRect(track, dp(4), dp(4), paint);
-            paint.setColor(darkMode ? 0xff77c6c1 : 0xff287a78);
+            float iconCenterX = track.left - dp(16);
+            int brightnessIconColor = darkMode ? 0xfff6f7f8 : 0xff3f464b;
+            if (icon == 0) {
+                paint.setColor(brightnessIconColor);
+            } else {
+                paint.setColor(iconActive
+                        ? (darkMode ? 0xff77c6c1 : 0xff287a78)
+                        : (darkMode ? 0xffaeb4b9 : 0xff61666e));
+            }
+            drawSliderIcon(canvas, iconCenterX, track.centerY(), dp(8), icon, iconActive);
+            if (icon == 0 && brightnessAuto) {
+                paint.setColor(brightnessIconColor);
+                paint.setStyle(Paint.Style.FILL);
+                paint.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+                paint.setTextSize(dp(7));
+                canvas.drawText("A", iconCenterX + dp(8), track.centerY() + dp(8), paint);
+            }
+            paint.setColor(darkMode ? 0xffb9bdc1 : 0xffd4d8dc);
+            float trackRadius = track.height() / 2f;
+            canvas.drawRoundRect(track, trackRadius, trackRadius, paint);
+            paint.setColor(darkMode ? 0xfff6f7f8 : 0xff5a626a);
             float x = track.left + Math.max(0f, Math.min(1f, fraction)) * track.width();
-            canvas.drawRoundRect(track.left, track.top, x, track.bottom, dp(4), dp(4), paint);
-            paint.setColor(darkMode ? 0xffb3e3df : 0xff216967);
-            canvas.drawCircle(x, track.centerY(), dp(7), paint);
+            canvas.drawRoundRect(track.left, track.top, x, track.bottom,
+                    trackRadius, trackRadius, paint);
         }
 
         private void drawButton(Canvas canvas, RectF bounds, boolean active, int index) {
@@ -592,8 +617,7 @@ final class QuickToolsPanel {
             if (index == 1) {
                 Drawable icon = volume <= 0 ? volumeMuteDrawable
                         : volumeAnimationReady ? volumeAnimation : volumeMediaDrawable;
-                int color = active ? (darkMode ? 0xff77c6c1 : 0xff287a78)
-                        : (darkMode ? 0xffaeb4b9 : 0xff61666e);
+                int color = darkMode ? 0xfff6f7f8 : 0xff61666e;
                 if (icon == volumeAnimation && volumeAnimationTint != color) {
                     volumeAnimation.addValueCallback(new KeyPath("**"),
                             LottieProperty.COLOR_FILTER,
@@ -614,11 +638,20 @@ final class QuickToolsPanel {
                 }
                 return;
             }
-            Drawable drawable = brightnessDrawable;
-            if (drawable != null) {
-                drawSliderDrawable(canvas, drawable, index, cx, cy, dp(16),
-                        active ? (darkMode ? 0xff77c6c1 : 0xff287a78)
-                                : (darkMode ? 0xffaeb4b9 : 0xff61666e));
+            if (brightnessAnimationReady) {
+                int color = darkMode ? 0xfff6f7f8 : 0xff3f464b;
+                if (brightnessAnimationTint != color) {
+                    brightnessAnimation.addValueCallback(new KeyPath("**"),
+                            LottieProperty.COLOR_FILTER,
+                            new LottieValueCallback<ColorFilter>(new SimpleColorFilter(color)));
+                    brightnessAnimationTint = color;
+                }
+                int start = Math.round(brightnessAnimation.getMinFrame());
+                int end = Math.round(brightnessAnimation.getMaxFrame());
+                int frame = start + Math.round((end - start)
+                        * Math.max(0f, Math.min(1f, brightnessFraction())));
+                brightnessAnimation.setFrame(frame);
+                drawSliderDrawable(canvas, brightnessAnimation, index, cx, cy, dp(16), color);
                 return;
             }
             paint.setStyle(Paint.Style.STROKE);
