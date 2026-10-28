@@ -6,8 +6,15 @@
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="@color/flyme_primary"
-        android:strokeWidth="1.8"
+        android:strokeWidth="1.7"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M3,3 L21,3 L21,21 L3,21 Z M8,8 L16,8 L16,16 L8,16 Z" />
+        android:pathData="M3.5,8 H11.5 M3.5,8 V18.5 Q3.5,20 5,20 H15 Q16.5,20 16.5,18.5 V12.5 M3.5,11 H10" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="@color/flyme_primary"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M13.5,3.5 H18.5 Q20.5,3.5 20.5,5.5 V10.5 Q20.5,12.5 18.5,12.5 H13.5 Q11.5,12.5 11.5,10.5 V5.5 Q11.5,3.5 13.5,3.5 Z M12.5,6.5 H19.5" />
 </vector>

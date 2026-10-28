@@ -418,7 +418,9 @@ public final class RecentTaskSwitcher {
             remove.setTextColor(paletteColor(0xff444444, 0xffd4d8dc));
             remove.setGravity(Gravity.CENTER);
             remove.setContentDescription("关闭" + label);
-            remove.setOnClickListener(view -> removeTask(card));
+            remove.setBackground(new RippleDrawable(
+                    ColorStateList.valueOf(paletteColor(0x243a8885, 0x3877c6c1)), null, null));
+            setButtonFeedback(remove);
 
             ImageView icon = new ImageView(context);
             if (entry.icon != null) icon.setImageDrawable(entry.icon);
@@ -432,6 +434,8 @@ public final class RecentTaskSwitcher {
             miniWindow.setContentDescription("以小窗打开" + label);
             miniWindow.setTooltipText("以小窗打开");
             setModuleIcon(miniWindow, R.drawable.ic_task_window, android.R.drawable.ic_menu_view);
+            setButtonFeedback(miniWindow);
+            remove.setOnClickListener(view -> removeTask(card, row));
             miniWindow.setOnClickListener(view -> openMiniWindow(card, miniWindow));
             if (fromLeft) {
                 row.addView(miniWindow, new LinearLayout.LayoutParams(dp(29), dp(29)));
@@ -449,6 +453,26 @@ public final class RecentTaskSwitcher {
                 activate(card);
             });
             return row;
+        }
+
+        private void setButtonFeedback(View button) {
+            button.setOnTouchListener((view, event) -> {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        view.animate().cancel();
+                        view.setScaleX(0.88f);
+                        view.setScaleY(0.88f);
+                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
+                        break;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        view.animate().scaleX(1f).scaleY(1f).setDuration(90L).start();
+                        break;
+                    default:
+                        break;
+                }
+                return false;
+            });
         }
 
         private void setModuleIcon(ImageView view, int resource, int fallback) {
@@ -533,9 +557,16 @@ public final class RecentTaskSwitcher {
             });
         }
 
-        private void removeTask(RecentTaskCard card) {
+        private void removeTask(RecentTaskCard card, View row) {
             entries.removeIf(entry -> entry.card.sameTask(card));
-            renderRows();
+            row.setEnabled(false);
+            row.animate().alpha(0f).translationX(fromLeft ? -dp(6) : dp(6))
+                    .setDuration(140L)
+                    .withEndAction(() -> {
+                        row.setAlpha(1f);
+                        row.setTranslationX(0f);
+                        renderRows();
+                    }).start();
             WORKER.execute(() -> {
                 try { getTaskAccess(context).remove(card); }
                 catch (Exception ignored) { }
