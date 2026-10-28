@@ -154,6 +154,30 @@ public final class SettingsStore {
     // Keep the original gesture keys so upgrades and old backups retain their settings.
     public static final String KEY_ASSISTANT_GESTURE_ENABLED = "assistant_gesture_enabled";
     public static final String KEY_SIDE_BACK_ANIMATION_STYLE = "side_back_animation_style";
+    public static final String KEY_SIDE_BACK_ARROW_LENGTH_DP = "side_back_arrow_length_dp";
+    public static final String KEY_SIDE_BACK_ARROW_STROKE_DP = "side_back_arrow_stroke_dp";
+    public static final String KEY_SIDE_BACK_ARROW_OPENING_ANGLE = "side_back_arrow_opening_angle";
+    public static final String KEY_SIDE_BACK_ARROW_EDGE_OFFSET_DP = "side_back_arrow_edge_offset_dp";
+    public static final String KEY_SIDE_BACK_ARROW_LONG_EXTRA_DISTANCE_DP =
+            "side_back_arrow_long_extra_distance_dp";
+    public static final String KEY_SIDE_BACK_ARROW_ANIMATION_DURATION_MS =
+            "side_back_arrow_animation_duration_ms";
+    public static final String KEY_SIDE_BACK_ARROW_SHORT_COLOR = "side_back_arrow_short_color";
+    public static final String KEY_SIDE_BACK_ARROW_LONG_COLOR = "side_back_arrow_long_color";
+    public static final String KEY_SIDE_BACK_ARROW_SHORT_OUTLINE_COLOR =
+            "side_back_arrow_short_outline_color";
+    public static final String KEY_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR =
+            "side_back_arrow_long_outline_color";
+    public static final int DEFAULT_SIDE_BACK_ARROW_LENGTH_DP = 7;
+    public static final int DEFAULT_SIDE_BACK_ARROW_STROKE_DP = 3;
+    public static final int DEFAULT_SIDE_BACK_ARROW_OPENING_ANGLE = 80;
+    public static final int DEFAULT_SIDE_BACK_ARROW_EDGE_OFFSET_DP = 16;
+    public static final int DEFAULT_SIDE_BACK_ARROW_LONG_EXTRA_DISTANCE_DP = 20;
+    public static final int DEFAULT_SIDE_BACK_ARROW_ANIMATION_DURATION_MS = 180;
+    public static final int DEFAULT_SIDE_BACK_ARROW_SHORT_COLOR = 0xFFFFFFFF;
+    public static final int DEFAULT_SIDE_BACK_ARROW_LONG_COLOR = 0xFFFFFFFF;
+    public static final int DEFAULT_SIDE_BACK_ARROW_SHORT_OUTLINE_COLOR = 0xFF000000;
+    public static final int DEFAULT_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR = 0xFF000000;
     public static final int SIDE_BACK_ANIMATION_RIBBON = 0;
     public static final int SIDE_BACK_ANIMATION_FLOATING_ARROW = 1;
     // Keep the previous name for configuration compatibility.
@@ -710,6 +734,16 @@ public final class SettingsStore {
             KEY_ASSISTANT_GESTURE_SCENES,
             KEY_ASSISTANT_GESTURE_SIDE,
             KEY_SIDE_BACK_ANIMATION_STYLE,
+            KEY_SIDE_BACK_ARROW_LENGTH_DP,
+            KEY_SIDE_BACK_ARROW_STROKE_DP,
+            KEY_SIDE_BACK_ARROW_OPENING_ANGLE,
+            KEY_SIDE_BACK_ARROW_EDGE_OFFSET_DP,
+            KEY_SIDE_BACK_ARROW_LONG_EXTRA_DISTANCE_DP,
+            KEY_SIDE_BACK_ARROW_ANIMATION_DURATION_MS,
+            KEY_SIDE_BACK_ARROW_SHORT_COLOR,
+            KEY_SIDE_BACK_ARROW_LONG_COLOR,
+            KEY_SIDE_BACK_ARROW_SHORT_OUTLINE_COLOR,
+            KEY_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR,
             KEY_ASSISTANT_GESTURE_DISTANCE_DP,
             KEY_ASSISTANT_GESTURE_UP_ANGLE,
             KEY_ASSISTANT_GESTURE_DOWN_ANGLE,
@@ -1152,6 +1186,20 @@ public final class SettingsStore {
             case KEY_ASSISTANT_GESTURE_SCENES: return DEFAULT_ASSISTANT_GESTURE_SCENES;
             case KEY_ASSISTANT_GESTURE_SIDE: return DEFAULT_ASSISTANT_GESTURE_SIDE;
             case KEY_SIDE_BACK_ANIMATION_STYLE: return DEFAULT_SIDE_BACK_ANIMATION_STYLE;
+            case KEY_SIDE_BACK_ARROW_LENGTH_DP: return DEFAULT_SIDE_BACK_ARROW_LENGTH_DP;
+            case KEY_SIDE_BACK_ARROW_STROKE_DP: return DEFAULT_SIDE_BACK_ARROW_STROKE_DP;
+            case KEY_SIDE_BACK_ARROW_OPENING_ANGLE: return DEFAULT_SIDE_BACK_ARROW_OPENING_ANGLE;
+            case KEY_SIDE_BACK_ARROW_EDGE_OFFSET_DP: return DEFAULT_SIDE_BACK_ARROW_EDGE_OFFSET_DP;
+            case KEY_SIDE_BACK_ARROW_LONG_EXTRA_DISTANCE_DP:
+                return DEFAULT_SIDE_BACK_ARROW_LONG_EXTRA_DISTANCE_DP;
+            case KEY_SIDE_BACK_ARROW_ANIMATION_DURATION_MS:
+                return DEFAULT_SIDE_BACK_ARROW_ANIMATION_DURATION_MS;
+            case KEY_SIDE_BACK_ARROW_SHORT_COLOR: return DEFAULT_SIDE_BACK_ARROW_SHORT_COLOR;
+            case KEY_SIDE_BACK_ARROW_LONG_COLOR: return DEFAULT_SIDE_BACK_ARROW_LONG_COLOR;
+            case KEY_SIDE_BACK_ARROW_SHORT_OUTLINE_COLOR:
+                return DEFAULT_SIDE_BACK_ARROW_SHORT_OUTLINE_COLOR;
+            case KEY_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR:
+                return DEFAULT_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR;
             case KEY_ASSISTANT_GESTURE_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
             case KEY_ASSISTANT_GESTURE_UP_ANGLE: return DEFAULT_ASSISTANT_GESTURE_UP_ANGLE;
             case KEY_ASSISTANT_GESTURE_DOWN_ANGLE: return DEFAULT_ASSISTANT_GESTURE_DOWN_ANGLE;

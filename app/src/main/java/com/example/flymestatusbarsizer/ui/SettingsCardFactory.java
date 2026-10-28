@@ -376,6 +376,46 @@ public final class SettingsCardFactory {
     public View createSideGestureSettingsCard() {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout arrowOptions = new LinearLayout(activity);
+        arrowOptions.setOrientation(LinearLayout.VERTICAL);
+        activity.addSliderRow(arrowOptions, "箭头长度", "调整返回箭头沿指向方向的长度。",
+                SettingsStore.KEY_SIDE_BACK_ARROW_LENGTH_DP,
+                SettingsStore.DEFAULT_SIDE_BACK_ARROW_LENGTH_DP, 3, 20, "dp");
+        activity.addSliderRow(arrowOptions, "线条粗细", "调整箭头线条粗细，外描边会随之保持清晰对比。",
+                SettingsStore.KEY_SIDE_BACK_ARROW_STROKE_DP,
+                SettingsStore.DEFAULT_SIDE_BACK_ARROW_STROKE_DP, 1, 8, "dp");
+        activity.addSliderRow(arrowOptions, "开合角度", "调整〈的张角，角度越大箭头越展开。",
+                SettingsStore.KEY_SIDE_BACK_ARROW_OPENING_ANGLE,
+                SettingsStore.DEFAULT_SIDE_BACK_ARROW_OPENING_ANGLE, 40, 140, "°");
+        activity.addSliderRow(arrowOptions, "边缘间距", "调整箭头初始位置与屏幕边缘的距离。",
+                SettingsStore.KEY_SIDE_BACK_ARROW_EDGE_OFFSET_DP,
+                SettingsStore.DEFAULT_SIDE_BACK_ARROW_EDGE_OFFSET_DP, 0, 48, "dp");
+        activity.addSliderRow(arrowOptions, "长距离额外移动", "完成长距离返回时，箭头沿指向方向继续移动的距离。",
+                SettingsStore.KEY_SIDE_BACK_ARROW_LONG_EXTRA_DISTANCE_DP,
+                SettingsStore.DEFAULT_SIDE_BACK_ARROW_LONG_EXTRA_DISTANCE_DP, 0, 80, "dp");
+        activity.addSliderRow(arrowOptions, "长短距离切换时长", "短距离和长距离状态切换时的平滑移动时间。",
+                SettingsStore.KEY_SIDE_BACK_ARROW_ANIMATION_DURATION_MS,
+                SettingsStore.DEFAULT_SIDE_BACK_ARROW_ANIMATION_DURATION_MS, 80, 500, "ms");
+        activity.addDivider(arrowOptions);
+        ColorPreferenceEditor colorEditor = new ColorPreferenceEditor(activity);
+        colorEditor.addColor(arrowOptions, "短距离内线颜色",
+                SettingsStore.KEY_SIDE_BACK_ARROW_SHORT_COLOR,
+                SettingsStore.DEFAULT_SIDE_BACK_ARROW_SHORT_COLOR);
+        colorEditor.addColor(arrowOptions, "长距离内线颜色",
+                SettingsStore.KEY_SIDE_BACK_ARROW_LONG_COLOR,
+                SettingsStore.DEFAULT_SIDE_BACK_ARROW_LONG_COLOR);
+        colorEditor.addColor(arrowOptions, "短距离外描边颜色",
+                SettingsStore.KEY_SIDE_BACK_ARROW_SHORT_OUTLINE_COLOR,
+                SettingsStore.DEFAULT_SIDE_BACK_ARROW_SHORT_OUTLINE_COLOR);
+        colorEditor.addColor(arrowOptions, "长距离外描边颜色",
+                SettingsStore.KEY_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR,
+                SettingsStore.DEFAULT_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR);
+        View arrowOptionsCard = activity.buildSectionCard("悬浮返回箭头自定义",
+                "调整箭头尺寸、位置、长距离位移、动画速度和短长距离颜色。", arrowOptions, false);
+        arrowOptionsCard.setVisibility(SettingsStore.readInt(activity.prefs(),
+                SettingsStore.KEY_SIDE_BACK_ANIMATION_STYLE,
+                SettingsStore.DEFAULT_SIDE_BACK_ANIMATION_STYLE)
+                == SettingsStore.SIDE_BACK_ANIMATION_FLOATING_ARROW ? View.VISIBLE : View.GONE);
         activity.addSwitchRow(page, "启用侧边手势增强",
                 "扩展系统侧滑手势；锁屏时不会触发。需在 LSPosed 启用 SystemUI 范围并重启 SystemUI。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED, SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
@@ -385,7 +425,11 @@ public final class SettingsCardFactory {
                 SettingsStore.DEFAULT_SIDE_BACK_ANIMATION_STYLE,
                 new int[]{SettingsStore.SIDE_BACK_ANIMATION_RIBBON,
                         SettingsStore.SIDE_BACK_ANIMATION_FLOATING_ARROW},
-                new String[]{"Ribbon", "悬浮返回箭头"});
+                new String[]{"Ribbon", "悬浮返回箭头"},
+                value -> arrowOptionsCard.setVisibility(
+                        value == SettingsStore.SIDE_BACK_ANIMATION_FLOATING_ARROW
+                                ? View.VISIBLE : View.GONE));
+        page.addView(arrowOptionsCard, PageViewUtils.matchWrap());
         activity.addActionButtonRow(page, "手势动作与触发设置",
                 "分别设置左右边缘的动作、触发距离和预览。", "打开",
                 () -> activity.openPage(MainActivity.Page.SIDE_GESTURE_SETTINGS));

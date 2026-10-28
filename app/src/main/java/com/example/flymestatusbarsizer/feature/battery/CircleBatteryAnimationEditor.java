@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.battery;
 
 import com.example.flymestatusbarsizer.MainActivity;
+import com.example.flymestatusbarsizer.ui.ColorPreferenceEditor;
 
 import android.widget.LinearLayout;
 
@@ -20,7 +21,7 @@ public final class CircleBatteryAnimationEditor {
         activity.addChoiceRow(root, "普通配色", "只改变普通状态；充电、低电量和省电沿用各自颜色。",
                 CircleBatteryAnimationConfig.PALETTE, CircleBatteryAnimationConfig.STATE_COLOR,
                 new int[]{0, 1, 2}, new String[]{"跟随状态色", "双色渐变", "彩虹"});
-        CircleBatteryAppearanceEditor colors = new CircleBatteryAppearanceEditor(activity);
+        ColorPreferenceEditor colors = new ColorPreferenceEditor(activity);
         colors.addColor(root, "双色 · 起始", CircleBatteryAnimationConfig.COLOR_START, 0xFF088BFF);
         colors.addColor(root, "双色 · 结束", CircleBatteryAnimationConfig.COLOR_END, 0xFF00DCC8);
         activity.addChoiceRow(root, "动画速度", "标准：流光 8 秒、彗星 2.5 秒、呼吸和整体旋转 3 秒一轮；旧彩虹保留 3 秒一圈。",

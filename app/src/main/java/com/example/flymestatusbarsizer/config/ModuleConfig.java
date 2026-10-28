@@ -126,6 +126,20 @@ public final class ModuleConfig {
     public boolean assistantBackgroundBlur = SettingsStore.DEFAULT_ASSISTANT_BACKGROUND_BLUR;
     public boolean assistantGestureEnabled = SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED;
     public int sideBackAnimationStyle = SettingsStore.DEFAULT_SIDE_BACK_ANIMATION_STYLE;
+    public int sideBackArrowLengthDp = SettingsStore.DEFAULT_SIDE_BACK_ARROW_LENGTH_DP;
+    public int sideBackArrowStrokeDp = SettingsStore.DEFAULT_SIDE_BACK_ARROW_STROKE_DP;
+    public int sideBackArrowOpeningAngle = SettingsStore.DEFAULT_SIDE_BACK_ARROW_OPENING_ANGLE;
+    public int sideBackArrowEdgeOffsetDp = SettingsStore.DEFAULT_SIDE_BACK_ARROW_EDGE_OFFSET_DP;
+    public int sideBackArrowLongExtraDistanceDp =
+            SettingsStore.DEFAULT_SIDE_BACK_ARROW_LONG_EXTRA_DISTANCE_DP;
+    public int sideBackArrowAnimationDurationMs =
+            SettingsStore.DEFAULT_SIDE_BACK_ARROW_ANIMATION_DURATION_MS;
+    public int sideBackArrowShortColor = SettingsStore.DEFAULT_SIDE_BACK_ARROW_SHORT_COLOR;
+    public int sideBackArrowLongColor = SettingsStore.DEFAULT_SIDE_BACK_ARROW_LONG_COLOR;
+    public int sideBackArrowShortOutlineColor =
+            SettingsStore.DEFAULT_SIDE_BACK_ARROW_SHORT_OUTLINE_COLOR;
+    public int sideBackArrowLongOutlineColor =
+            SettingsStore.DEFAULT_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR;
     public boolean assistantGesturePreviewEnabled =
             SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED;
     public boolean assistantGestureZoneOverlayEnabled =
@@ -742,6 +756,38 @@ public final class ModuleConfig {
             config.sideBackAnimationStyle = SettingsStore.normalizeSideBackAnimationStyle(
                     SettingsStore.readInt(prefs, SettingsStore.KEY_SIDE_BACK_ANIMATION_STYLE,
                             SettingsStore.DEFAULT_SIDE_BACK_ANIMATION_STYLE));
+            config.sideBackArrowLengthDp = Math.max(3, Math.min(20, SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_SIDE_BACK_ARROW_LENGTH_DP,
+                    SettingsStore.DEFAULT_SIDE_BACK_ARROW_LENGTH_DP)));
+            config.sideBackArrowStrokeDp = Math.max(1, Math.min(8, SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_SIDE_BACK_ARROW_STROKE_DP,
+                    SettingsStore.DEFAULT_SIDE_BACK_ARROW_STROKE_DP)));
+            config.sideBackArrowOpeningAngle = Math.max(40, Math.min(140, SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_SIDE_BACK_ARROW_OPENING_ANGLE,
+                    SettingsStore.DEFAULT_SIDE_BACK_ARROW_OPENING_ANGLE)));
+            config.sideBackArrowEdgeOffsetDp = Math.max(0, Math.min(48, SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_SIDE_BACK_ARROW_EDGE_OFFSET_DP,
+                    SettingsStore.DEFAULT_SIDE_BACK_ARROW_EDGE_OFFSET_DP)));
+            config.sideBackArrowLongExtraDistanceDp = Math.max(0, Math.min(80,
+                    SettingsStore.readInt(prefs,
+                            SettingsStore.KEY_SIDE_BACK_ARROW_LONG_EXTRA_DISTANCE_DP,
+                            SettingsStore.DEFAULT_SIDE_BACK_ARROW_LONG_EXTRA_DISTANCE_DP)));
+            config.sideBackArrowAnimationDurationMs = Math.max(80, Math.min(500,
+                    SettingsStore.readInt(prefs,
+                            SettingsStore.KEY_SIDE_BACK_ARROW_ANIMATION_DURATION_MS,
+                            SettingsStore.DEFAULT_SIDE_BACK_ARROW_ANIMATION_DURATION_MS)));
+            config.sideBackArrowShortColor = SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_SIDE_BACK_ARROW_SHORT_COLOR,
+                    SettingsStore.DEFAULT_SIDE_BACK_ARROW_SHORT_COLOR);
+            config.sideBackArrowLongColor = SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_SIDE_BACK_ARROW_LONG_COLOR,
+                    SettingsStore.DEFAULT_SIDE_BACK_ARROW_LONG_COLOR);
+            config.sideBackArrowShortOutlineColor = SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_SIDE_BACK_ARROW_SHORT_OUTLINE_COLOR,
+                    SettingsStore.DEFAULT_SIDE_BACK_ARROW_SHORT_OUTLINE_COLOR);
+            config.sideBackArrowLongOutlineColor = SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR,
+                    SettingsStore.DEFAULT_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR);
             config.assistantGesturePreviewEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
                     SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED);
