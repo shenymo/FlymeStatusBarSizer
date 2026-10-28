@@ -153,6 +153,13 @@ public final class SettingsStore {
     public static final int DEFAULT_ONE_HANDED_MODE_ACTION = ONE_HANDED_MODE_ACTION_SYSTEM;
     // Keep the original gesture keys so upgrades and old backups retain their settings.
     public static final String KEY_ASSISTANT_GESTURE_ENABLED = "assistant_gesture_enabled";
+    public static final String KEY_SIDE_BACK_ANIMATION_STYLE = "side_back_animation_style";
+    public static final int SIDE_BACK_ANIMATION_RIBBON = 0;
+    public static final int SIDE_BACK_ANIMATION_FLOATING_ARROW = 1;
+    // Keep the previous name for configuration compatibility.
+    public static final int SIDE_BACK_ANIMATION_DIRECTIONAL_RIBBON =
+            SIDE_BACK_ANIMATION_FLOATING_ARROW;
+    public static final int DEFAULT_SIDE_BACK_ANIMATION_STYLE = SIDE_BACK_ANIMATION_RIBBON;
     public static final String KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED =
             "assistant_gesture_preview_enabled";
     public static final String KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED =
@@ -702,6 +709,7 @@ public final class SettingsStore {
             KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE,
             KEY_ASSISTANT_GESTURE_SCENES,
             KEY_ASSISTANT_GESTURE_SIDE,
+            KEY_SIDE_BACK_ANIMATION_STYLE,
             KEY_ASSISTANT_GESTURE_DISTANCE_DP,
             KEY_ASSISTANT_GESTURE_UP_ANGLE,
             KEY_ASSISTANT_GESTURE_DOWN_ANGLE,
@@ -1143,6 +1151,7 @@ public final class SettingsStore {
             case KEY_ONE_HANDED_MODE_ACTION: return DEFAULT_ONE_HANDED_MODE_ACTION;
             case KEY_ASSISTANT_GESTURE_SCENES: return DEFAULT_ASSISTANT_GESTURE_SCENES;
             case KEY_ASSISTANT_GESTURE_SIDE: return DEFAULT_ASSISTANT_GESTURE_SIDE;
+            case KEY_SIDE_BACK_ANIMATION_STYLE: return DEFAULT_SIDE_BACK_ANIMATION_STYLE;
             case KEY_ASSISTANT_GESTURE_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
             case KEY_ASSISTANT_GESTURE_UP_ANGLE: return DEFAULT_ASSISTANT_GESTURE_UP_ANGLE;
             case KEY_ASSISTANT_GESTURE_DOWN_ANGLE: return DEFAULT_ASSISTANT_GESTURE_DOWN_ANGLE;
@@ -1614,6 +1623,11 @@ public final class SettingsStore {
     public static int normalizeAssistantGestureSide(int value) {
         return value == ASSISTANT_GESTURE_SIDE_RIGHT || value == ASSISTANT_GESTURE_SIDE_BOTH
                 ? value : DEFAULT_ASSISTANT_GESTURE_SIDE;
+    }
+
+    public static int normalizeSideBackAnimationStyle(int value) {
+        return value == SIDE_BACK_ANIMATION_FLOATING_ARROW
+                ? value : DEFAULT_SIDE_BACK_ANIMATION_STYLE;
     }
 
     public static int normalizeAssistantGestureTriggerMode(int value) {

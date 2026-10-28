@@ -125,6 +125,7 @@ public final class ModuleConfig {
     public int assistantBackgroundForegroundMode = SettingsStore.ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR;
     public boolean assistantBackgroundBlur = SettingsStore.DEFAULT_ASSISTANT_BACKGROUND_BLUR;
     public boolean assistantGestureEnabled = SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED;
+    public int sideBackAnimationStyle = SettingsStore.DEFAULT_SIDE_BACK_ANIMATION_STYLE;
     public boolean assistantGesturePreviewEnabled =
             SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED;
     public boolean assistantGestureZoneOverlayEnabled =
@@ -738,6 +739,9 @@ public final class ModuleConfig {
                     SettingsStore.KEY_ASSISTANT_BACKGROUND_BLUR, SettingsStore.DEFAULT_ASSISTANT_BACKGROUND_BLUR);
             config.assistantGestureEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED, SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
+            config.sideBackAnimationStyle = SettingsStore.normalizeSideBackAnimationStyle(
+                    SettingsStore.readInt(prefs, SettingsStore.KEY_SIDE_BACK_ANIMATION_STYLE,
+                            SettingsStore.DEFAULT_SIDE_BACK_ANIMATION_STYLE));
             config.assistantGesturePreviewEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
                     SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED);
