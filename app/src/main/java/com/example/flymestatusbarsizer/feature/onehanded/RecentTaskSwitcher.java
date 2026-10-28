@@ -15,8 +15,7 @@ import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.LruCache;
-import android.view.animation.AccelerateInterpolator;
-import android.view.animation.OvershootInterpolator;
+import android.view.animation.PathInterpolator;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -262,7 +261,7 @@ public final class RecentTaskSwitcher {
             panel.setAlpha(0.15f);
             panel.setTranslationX(fromLeft ? -dp(5) : dp(5));
             panel.animate().scaleX(1f).scaleY(1f).alpha(1f).translationX(0f)
-                    .setDuration(360L).setInterpolator(new OvershootInterpolator(0.55f)).start();
+                    .setDuration(360L).setInterpolator(new PathInterpolator(0.2f, 0.8f, 0.2f, 1f)).start();
         }
 
         private WindowManager.LayoutParams buildLayoutParams() {
@@ -580,7 +579,7 @@ public final class RecentTaskSwitcher {
             panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));
             panel.animate().scaleX(0.04f).scaleY(0.08f).alpha(0f)
                     .translationX(fromLeft ? -dp(5) : dp(5)).setDuration(230L)
-                    .setInterpolator(new AccelerateInterpolator(1.35f))
+                    .setInterpolator(new PathInterpolator(0.4f, 0f, 1f, 1f))
                     .withEndAction(this::finishClose).start();
         }
 

@@ -32,8 +32,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.Display;
-import android.view.animation.AccelerateInterpolator;
-import android.view.animation.OvershootInterpolator;
+import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
 
 import com.airbnb.lottie.LottieComposition;
@@ -425,7 +424,7 @@ final class QuickToolsPanel {
             setAlpha(0.15f);
             setTranslationX(fromLeft ? -dp(5) : dp(5));
             animate().scaleX(1f).scaleY(1f).alpha(1f).translationX(0f)
-                    .setDuration(360L).setInterpolator(new OvershootInterpolator(0.55f)).start();
+                    .setDuration(360L).setInterpolator(new PathInterpolator(0.2f, 0.8f, 0.2f, 1f)).start();
         }
 
         void animateClose() {
@@ -437,7 +436,7 @@ final class QuickToolsPanel {
             setPivotY(Math.max(0f, Math.min(getHeight(), anchorY - getTop())));
             animate().scaleX(0.04f).scaleY(0.08f).alpha(0f)
                     .translationX(fromLeft ? -dp(5) : dp(5)).setDuration(230L)
-                    .setInterpolator(new AccelerateInterpolator(1.35f))
+                    .setInterpolator(new PathInterpolator(0.4f, 0f, 1f, 1f))
                     .withEndAction(() -> {
                         panelBlur.stop();
                         if (attached) {
