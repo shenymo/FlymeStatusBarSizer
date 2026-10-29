@@ -6,7 +6,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Rect;
 
-import com.example.flymestatusbarsizer.BuildConfig;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import java.lang.reflect.Method;
@@ -111,7 +110,7 @@ final class OneStepRecentTasks {
         if (!(component instanceof ComponentName)) return null;
         if (OneStepActivityProtocol.isActivity((ComponentName) component)) return null;
         String packageName = ((ComponentName) component).getPackageName();
-        if ("com.android.systemui".equals(packageName) || BuildConfig.APPLICATION_ID.equals(packageName)) return null;
+        if ("com.android.systemui".equals(packageName)) return null;
         Object label = ReflectUtils.invokeNoArg(ReflectUtils.getField(info, "taskDescription"), "getLabel");
         String description = label instanceof String && !((String) label).isEmpty()
                 ? (String) label : ((ComponentName) component).getPackageName();

@@ -64,13 +64,16 @@ public final class RecentTaskSwitcher {
 
     private static final class TaskEntry {
         final RecentTaskCard card;
-        final String label;
-        final Drawable icon;
+        String label;
+        Drawable icon;
+        boolean metadataLoaded;
+        boolean metadataLoading;
+        TextView nameView;
+        ImageView iconView;
 
-        TaskEntry(RecentTaskCard card, AppMetadata metadata) {
+        TaskEntry(RecentTaskCard card) {
             this.card = card;
-            label = metadata.label;
-            icon = metadata.icon;
+            label = card.description;
         }
     }
 
@@ -159,6 +162,8 @@ public final class RecentTaskSwitcher {
             scroll = new ScrollView(context);
             scroll.setFillViewport(true);
             scroll.setVerticalScrollBarEnabled(false);
+            scroll.setOnScrollChangeListener((view, scrollX, scrollY, oldScrollX, oldScrollY) ->
+                    loadVisibleMetadata());
             scroll.addView(rows, new ScrollView.LayoutParams(-1, -2));
             panel.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
@@ -253,25 +258,18 @@ public final class RecentTaskSwitcher {
             loading = true;
             renderRows();
             WORKER.execute(() -> {
-                List<RecentTaskCard> cards;
-                try { cards = getTaskAccess(context).candidates(); }
-                catch (Exception ignored) { cards = new ArrayList<>(); }
-                List<TaskEntry> loaded = new ArrayList<>(cards.size());
-                for (RecentTaskCard card : cards) {
-                    if (!isCurrent()) return;
-                    loaded.add(new TaskEntry(card, appMetadata(context, card)));
-                }
-                MAIN.post(() -> replaceEntries(loaded));
+                List<RecentTaskCard> cards = new ArrayList<>();
+                try { cards.addAll(getTaskAccess(context).candidates()); }
+                catch (Exception ignored) { }
+                MAIN.post(() -> replaceCards(cards));
             });
         }
 
-        private static List<TaskEntry> loadEntries(Context context) {
-            List<TaskEntry> result = new ArrayList<>();
+        private static List<RecentTaskCard> loadCards(Context context) {
+            List<RecentTaskCard> result = new ArrayList<>();
             try {
                 OneStepTaskAccess tasks = getTaskAccess(context);
-                for (RecentTaskCard card : tasks.candidates()) {
-                    result.add(new TaskEntry(card, appMetadata(context, card)));
-                }
+                result.addAll(tasks.candidates());
             } catch (Exception ignored) { }
             return result;
         }
@@ -342,6 +340,50 @@ public final class RecentTaskSwitcher {
             if (loading) addLoadingRow();
         }
 
+        private void loadVisibleMetadata() {
+            if (!isCurrent() || loading || entries.isEmpty()) return;
+            int height = scroll.getHeight();
+            if (height <= 0) {
+                scroll.post(this::loadVisibleMetadata);
+                return;
+            }
+            int rowHeight = dp(ROW_HEIGHT_DP) + 1;
+            int first = Math.max(0, scroll.getScrollY() / rowHeight - 1);
+            int last = Math.min(entries.size(),
+                    (scroll.getScrollY() + height) / rowHeight + 2);
+            List<TaskEntry> pending = new ArrayList<>();
+            for (int i = first; i < last; i++) {
+                TaskEntry entry = entries.get(i);
+                if (!entry.metadataLoaded && !entry.metadataLoading) {
+                    entry.metadataLoading = true;
+                    pending.add(entry);
+                }
+            }
+            if (pending.isEmpty()) return;
+            WORKER.execute(() -> {
+                List<AppMetadata> metadata = new ArrayList<>(pending.size());
+                for (TaskEntry entry : pending) {
+                    if (!isCurrent()) return;
+                    metadata.add(appMetadata(context, entry.card));
+                }
+                MAIN.post(() -> {
+                    if (!isCurrent()) return;
+                    for (int i = 0; i < pending.size(); i++) {
+                        TaskEntry entry = pending.get(i);
+                        AppMetadata loaded = metadata.get(i);
+                        entry.metadataLoading = false;
+                        entry.metadataLoaded = true;
+                        entry.label = loaded.label;
+                        entry.icon = loaded.icon;
+                        if (entry.nameView != null) entry.nameView.setText(entry.label);
+                        if (entry.iconView != null && entry.icon != null) {
+                            entry.iconView.setImageDrawable(entry.icon);
+                        }
+                    }
+                });
+            });
+        }
+
         private void addLoadingRow() {
             FrameLayout row = new FrameLayout(context);
             ProgressBar spinner = new ProgressBar(context, null, android.R.attr.progressBarStyleSmall);
@@ -382,6 +424,8 @@ public final class RecentTaskSwitcher {
             ImageView icon = new ImageView(context);
             if (entry.icon != null) icon.setImageDrawable(entry.icon);
             else icon.setImageResource(android.R.drawable.sym_def_app_icon);
+            entry.nameView = name;
+            entry.iconView = icon;
             int iconSize = dp(16);
             ImageButton miniWindow = new ImageButton(context);
             miniWindow.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
@@ -514,10 +558,10 @@ public final class RecentTaskSwitcher {
                 Exception failure = null;
                 try { getTaskAccess(context).remove(card); }
                 catch (Exception error) { failure = error; }
-                List<TaskEntry> loaded = loadEntries(context);
+                List<RecentTaskCard> loaded = loadCards(context);
                 boolean failed = failure != null;
                 MAIN.post(() -> {
-                    replaceEntries(loaded);
+                    replaceCards(loaded);
                     if (failed) Toast.makeText(context, "关闭任务失败", Toast.LENGTH_SHORT).show();
                 });
             });
@@ -538,21 +582,22 @@ public final class RecentTaskSwitcher {
                         catch (Exception error) { failed = true; }
                     }
                 } catch (Exception error) { failed = true; }
-                List<TaskEntry> loaded = loadEntries(context);
+                List<RecentTaskCard> loaded = loadCards(context);
                 boolean operationFailed = failed;
                 MAIN.post(() -> {
-                    replaceEntries(loaded);
+                    replaceCards(loaded);
                     if (operationFailed) Toast.makeText(context, "部分任务关闭失败", Toast.LENGTH_SHORT).show();
                 });
             });
         }
 
-        private void replaceEntries(List<TaskEntry> loaded) {
+        private void replaceCards(List<RecentTaskCard> loaded) {
             if (!isCurrent()) return;
             entries.clear();
-            entries.addAll(loaded);
+            for (RecentTaskCard card : loaded) entries.add(new TaskEntry(card));
             loading = false;
             renderRows();
+            scroll.post(this::loadVisibleMetadata);
         }
 
         private void close() {
