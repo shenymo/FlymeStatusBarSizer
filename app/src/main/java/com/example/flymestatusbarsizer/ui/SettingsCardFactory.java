@@ -416,9 +416,10 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_SIDE_BACK_ANIMATION_STYLE,
                 SettingsStore.DEFAULT_SIDE_BACK_ANIMATION_STYLE)
                 == SettingsStore.SIDE_BACK_ANIMATION_FLOATING_ARROW ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(page, "启用侧边手势增强",
-                "扩展系统侧滑手势；锁屏时不会触发。需在 LSPosed 启用 SystemUI 范围并重启 SystemUI。",
-                SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED, SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
+        activity.addSwitchRow(page, "桌面启用侧边手势",
+                "开启后，桌面边缘滑动交由侧边手势增强处理，不再用于左右翻页；重启桌面生效。",
+                SettingsStore.KEY_LAUNCHER_SIDE_GESTURE_ENABLED,
+                SettingsStore.DEFAULT_LAUNCHER_SIDE_GESTURE_ENABLED);
         activity.addChoiceRow(page, "返回动画样式",
                 "选择侧边返回时显示的动画；悬浮箭头会跟随斜滑方向并轻微区分长短距离。",
                 SettingsStore.KEY_SIDE_BACK_ANIMATION_STYLE,
@@ -433,7 +434,10 @@ public final class SettingsCardFactory {
         activity.addActionButtonRow(page, "手势动作与触发设置",
                 "分别设置左右边缘的动作、触发距离和预览。", "打开",
                 () -> activity.openPage(MainActivity.Page.SIDE_GESTURE_SETTINGS));
-        return activity.buildSectionCard("侧边手势增强", null, page);
+        return activity.buildSectionCard("侧边手势增强",
+                "扩展系统侧滑手势；锁屏时不会触发。需在 LSPosed 启用 SystemUI 范围并重启 SystemUI。",
+                page, false, SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
     }
 
     public View createSideGestureSettingsPage() {

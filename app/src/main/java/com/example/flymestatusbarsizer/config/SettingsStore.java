@@ -153,6 +153,8 @@ public final class SettingsStore {
     public static final int DEFAULT_ONE_HANDED_MODE_ACTION = ONE_HANDED_MODE_ACTION_SYSTEM;
     // Keep the original gesture keys so upgrades and old backups retain their settings.
     public static final String KEY_ASSISTANT_GESTURE_ENABLED = "assistant_gesture_enabled";
+    public static final String KEY_LAUNCHER_SIDE_GESTURE_ENABLED = "launcher_side_gesture_enabled";
+    public static final boolean DEFAULT_LAUNCHER_SIDE_GESTURE_ENABLED = true;
     public static final String KEY_SIDE_BACK_ANIMATION_STYLE = "side_back_animation_style";
     public static final String KEY_SIDE_BACK_ARROW_LENGTH_DP = "side_back_arrow_length_dp";
     public static final String KEY_SIDE_BACK_ARROW_STROKE_DP = "side_back_arrow_stroke_dp";
@@ -888,6 +890,7 @@ public final class SettingsStore {
             KEY_ASSISTANT_BACKGROUND_CUSTOM,
             KEY_ASSISTANT_BACKGROUND_BLUR,
             KEY_ASSISTANT_GESTURE_ENABLED,
+            KEY_LAUNCHER_SIDE_GESTURE_ENABLED,
             KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
             KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED,
             KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
@@ -1443,6 +1446,8 @@ public final class SettingsStore {
         switch (key) {
             case KEY_ASSISTANT_BACKGROUND_BLUR: return DEFAULT_ASSISTANT_BACKGROUND_BLUR;
             case KEY_ASSISTANT_GESTURE_ENABLED: return DEFAULT_ASSISTANT_GESTURE_ENABLED;
+            case KEY_LAUNCHER_SIDE_GESTURE_ENABLED:
+                return DEFAULT_LAUNCHER_SIDE_GESTURE_ENABLED;
             case KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED:
                 return DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED;
             case KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED:

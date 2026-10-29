@@ -310,6 +310,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private void hookFlymeLauncher(ClassLoader loader) {
         com.example.flymestatusbarsizer.feature.onehanded.OneStepLauncherBridge.install(this, loader);
         StatusBarTintHooks.installLauncher(this, loader);
+        com.example.flymestatusbarsizer.feature.launcher.LauncherSideGestureHooks.install(this, loader);
         LauncherOrganizer.install(this, loader);
         LauncherAppearanceHooks.install(this, loader);
         LauncherRecentsHooks.install(this, loader);

@@ -2915,6 +2915,41 @@ public class MainActivity extends Activity {
         return card;
     }
 
+    public View buildSectionCard(String titleText, String subtitleText, View content,
+            boolean expanded, String switchKey, boolean switchDefaultValue) {
+        LinearLayout card = (LinearLayout) buildSectionCard(titleText, subtitleText, content, expanded);
+        LinearLayout header = (LinearLayout) card.getChildAt(0);
+        Switch toggle = new Switch(this);
+        styleSwitch(toggle);
+        toggle.setChecked(SettingsStore.readBoolean(prefs, switchKey, switchDefaultValue));
+        toggle.setContentDescription(titleText);
+        toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (buttonView.isPressed()) {
+                performTapHaptic(buttonView);
+            }
+            putBooleanSetting(switchKey, isChecked);
+            setEnabledRecursively(content, isChecked);
+            content.setAlpha(isChecked ? 1f : 0.45f);
+        });
+        setEnabledRecursively(content, toggle.isChecked());
+        content.setAlpha(toggle.isChecked() ? 1f : 0.45f);
+        header.addView(toggle, 1, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        return card;
+    }
+
+    private void setEnabledRecursively(View view, boolean enabled) {
+        view.setEnabled(enabled);
+        if (!(view instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            setEnabledRecursively(group.getChildAt(i), enabled);
+        }
+    }
+
     private final class PositionOffsetSliderBinding {
         private final TextView valueView;
         private final SeekBar seekBar;
