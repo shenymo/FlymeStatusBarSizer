@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Bundle;
 
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.config.SettingsStore;
@@ -16,15 +17,43 @@ final class SideGestureLaunchAction {
     static SideGestureActions.Action action(Context context, int actionId) {
         return new SideGestureActions.Action() {
             @Override public boolean isReady() {
+                SideGestureTargetStore.Target target = findTarget(context, actionId);
+                if (target != null && target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY
+                        && target.root) {
+                    return ComponentName.unflattenFromString(target.value) != null;
+                }
                 Intent intent = resolveIntent(context, actionId);
                 return intent != null && context.getPackageManager().resolveActivity(
                         intent, PackageManager.MATCH_DEFAULT_ONLY) != null;
             }
 
             @Override public void execute(boolean fromLeft, Runnable onSuccess) {
+                SideGestureTargetStore.Target target = findTarget(context, actionId);
+                if (target != null && target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY
+                        && target.root) {
+                    ComponentName component = ComponentName.unflattenFromString(target.value);
+                    if (component == null) return;
+                    String command = "am start -n " + shellQuote(component.flattenToString());
+                    new Thread(() -> {
+                        try {
+                            Process process = new ProcessBuilder("su", "-c", command)
+                                    .redirectErrorStream(true).start();
+                            byte[] buffer = new byte[1024];
+                            while (process.getInputStream().read(buffer) != -1) { }
+                            if (process.waitFor() == 0 && onSuccess != null) onSuccess.run();
+                            else AssistantHooks.warn("Root Activity launch failed", null);
+                        } catch (Throwable error) {
+                            AssistantHooks.warn("Root Activity launch failed", error);
+                        }
+                    }, "side-gesture-root-activity").start();
+                    return;
+                }
                 Intent intent = resolveIntent(context, actionId);
                 if (intent == null) return;
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                if (target == null || target.type != SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY
+                        || target.newTask) {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                }
                 try {
                     context.startActivity(intent);
                     if (onSuccess != null) onSuccess.run();
@@ -36,10 +65,9 @@ final class SideGestureLaunchAction {
     }
 
     private static Intent resolveIntent(Context context, int actionId) {
-        ModuleConfig config = ModuleConfig.load(context);
-        SideGestureTargetStore.Target target = SideGestureTargetStore.find(
-                config.sideGestureTargetsJson, actionId);
+        SideGestureTargetStore.Target target = findTarget(context, actionId);
         if (target != null) return resolveTargetIntent(context, target);
+        ModuleConfig config = ModuleConfig.load(context);
         switch (actionId) {
             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP:
                 return config.sideGestureTargetApp.isEmpty() ? null
@@ -70,7 +98,19 @@ final class SideGestureLaunchAction {
                 return context.getPackageManager().getLaunchIntentForPackage(target.value);
             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY:
                 ComponentName component = ComponentName.unflattenFromString(target.value);
-                return component == null ? null : new Intent().setComponent(component);
+                if (component == null) return null;
+                Intent intent = (target.action.isEmpty()
+                        ? new Intent() : new Intent(target.action)).setComponent(component);
+                if (!target.dataUri.isEmpty()) intent.setData(Uri.parse(target.dataUri));
+                Bundle extras = new Bundle();
+                for (String line : target.extras.split("\\r?\\n")) {
+                    int separator = line.indexOf('=');
+                    if (separator <= 0) continue;
+                    String key = line.substring(0, separator).trim();
+                    if (!key.isEmpty()) extras.putString(key, line.substring(separator + 1).trim());
+                }
+                if (!extras.isEmpty()) intent.putExtras(extras);
+                return intent;
             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI:
                 try {
                     return Intent.parseUri(target.value, Intent.URI_INTENT_SCHEME);
@@ -82,5 +122,13 @@ final class SideGestureLaunchAction {
             default:
                 return null;
         }
+    }
+
+    private static SideGestureTargetStore.Target findTarget(Context context, int actionId) {
+        return SideGestureTargetStore.find(ModuleConfig.load(context).sideGestureTargetsJson, actionId);
+    }
+
+    private static String shellQuote(String value) {
+        return "'" + value.replace("'", "'\\''") + "'";
     }
 }

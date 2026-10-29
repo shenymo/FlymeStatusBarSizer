@@ -34,9 +34,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
-import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Rect;
@@ -66,12 +66,17 @@ import android.view.inputmethod.EditorInfo;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 import android.widget.CompoundButton;
+import android.widget.ArrayAdapter;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ListView;
 import android.widget.PopupMenu;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.ScrollView;
 import android.widget.Switch;
@@ -94,6 +99,7 @@ import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.regex.Pattern;
 
@@ -774,37 +780,10 @@ public class MainActivity extends Activity {
             showActivityAppPicker(onSelected);
             return;
         }
-        Intent launcher = new Intent(Intent.ACTION_MAIN);
-        launcher.addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> resolved = getPackageManager().queryIntentActivities(launcher,
-                PackageManager.MATCH_DEFAULT_ONLY);
-        LinkedHashMap<String, String> labels = new LinkedHashMap<>();
-        for (ResolveInfo info : resolved) {
-            if (info.activityInfo == null) continue;
-            String packageName = info.activityInfo.packageName;
-            if (labels.containsKey(packageName)) continue;
-            CharSequence label = info.loadLabel(getPackageManager());
-            labels.put(packageName, (label == null ? packageName : label) + "\n" + packageName);
-        }
-        if (labels.isEmpty()) {
-            showToast("没有找到可启动的应用");
-            return;
-        }
-        String[] packages = labels.keySet().toArray(new String[0]);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("选择指定应用")
-                .setItems(labels.values().toArray(new String[0]), (d, which) -> {
-                    String packageName = packages[which];
-                    CharSequence appLabel = labels.get(packageName);
-                    int id = appendSideGestureTarget(type,
-                            appLabel == null ? packageName : appLabel.toString().split("\\n", 2)[0], packageName);
-                    if (onSelected != null) onSelected.accept(id);
-                })
-                .setNegativeButton("取消", null)
-                .create();
-        dialog.show();
-        styleDialog(dialog);
-        attachDialogButtonHaptics(dialog);
+        showInstalledAppPicker("选择指定应用", true, choice -> {
+            int id = appendSideGestureTarget(type, choice.label, choice.packageName);
+            if (onSelected != null) onSelected.accept(id);
+        });
     }
 
     public void showSideGestureTargetDetails(SideGestureTargetStore.Target target,
@@ -828,9 +807,21 @@ public class MainActivity extends Activity {
                 break;
         }
         TextView details = new TextView(this);
-        String detailText = target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI
-                || target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL
-                ? target.value : target.label + "\n\n" + target.value;
+        String detailText;
+        if (target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY) {
+            StringBuilder activityDetails = new StringBuilder(target.label)
+                    .append("\n\n组件：").append(target.value);
+            if (!target.action.isEmpty()) activityDetails.append("\nAction：").append(target.action);
+            if (!target.dataUri.isEmpty()) activityDetails.append("\nData：").append(target.dataUri);
+            if (!target.extras.trim().isEmpty()) activityDetails.append("\nExtras：\n").append(target.extras);
+            activityDetails.append("\nNEW_TASK：").append(target.newTask ? "开启" : "关闭")
+                    .append("\nRoot：").append(target.root ? "开启" : "关闭");
+            detailText = activityDetails.toString();
+        } else {
+            detailText = target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI
+                    || target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL
+                    ? target.value : target.label + "\n\n" + target.value;
+        }
         details.setText(detailText);
         details.setTextSize(15f);
         details.setTextColor(colorText);
@@ -850,33 +841,222 @@ public class MainActivity extends Activity {
     }
 
     private void showActivityAppPicker(IntConsumer onSelected) {
-        Intent launcher = new Intent(Intent.ACTION_MAIN);
-        launcher.addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> resolved = getPackageManager().queryIntentActivities(launcher,
-                PackageManager.MATCH_DEFAULT_ONLY);
-        LinkedHashMap<String, String> labels = new LinkedHashMap<>();
-        for (ResolveInfo info : resolved) {
-            if (info.activityInfo == null) continue;
-            String packageName = info.activityInfo.packageName;
-            if (labels.containsKey(packageName)) continue;
-            CharSequence label = info.loadLabel(getPackageManager());
-            labels.put(packageName, (label == null ? packageName : label) + "\n" + packageName);
+        showInstalledAppPicker("先选择 Activity 所属应用", false,
+                choice -> {
+                    if (choice.activityInfo != null) {
+                        saveActivityTarget(choice.activityInfo, choice.label, onSelected);
+                    } else {
+                        showActivityPicker(choice.packageName, choice.label, onSelected);
+                    }
+                });
+    }
+
+    private static final class AppChoice {
+        final String packageName;
+        final String label;
+        final ActivityInfo activityInfo;
+
+        AppChoice(String packageName, String label) {
+            this(packageName, label, null);
         }
-        if (labels.isEmpty()) {
-            showToast("没有找到可启动的应用");
-            return;
+
+        AppChoice(String packageName, String label, ActivityInfo activityInfo) {
+            this.packageName = packageName;
+            this.label = label;
+            this.activityInfo = activityInfo;
         }
-        String[] packages = labels.keySet().toArray(new String[0]);
-        AlertDialog appDialog = new AlertDialog.Builder(this)
-                .setTitle("先选择 Activity 所属应用")
-                .setItems(labels.values().toArray(new String[0]),
-                        (d, which) -> showActivityPicker(packages[which],
-                                labels.get(packages[which]), onSelected))
+    }
+
+    private void showInstalledAppPicker(String title, boolean requireLauncher,
+            Consumer<AppChoice> onSelected) {
+        EditText search = new EditText(this);
+        search.setSingleLine(true);
+        search.setHint(requireLauncher
+                ? "搜索应用名称或包名" : "搜索应用；输入 包名/Activity全名 可直接搜索 Activity");
+        search.setTextColor(colorText);
+        search.setHintTextColor(colorSubtext);
+        search.setInputType(InputType.TYPE_CLASS_TEXT);
+        search.setPadding(dp(16), 0, dp(16), 0);
+        search.setBackground(roundRect(colorSurfaceStrong, 12));
+
+        TextView status = new TextView(this);
+        status.setText("正在加载应用列表…");
+        status.setTextColor(colorSubtext);
+        status.setGravity(Gravity.CENTER);
+        status.setPadding(dp(12), dp(12), dp(12), dp(12));
+
+        ArrayList<AppChoice> visible = new ArrayList<>();
+        ArrayList<AppChoice> loaded = new ArrayList<>();
+        ArrayAdapter<AppChoice> adapter = new ArrayAdapter<AppChoice>(this, 0, visible) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                TextView row = convertView instanceof TextView
+                        ? (TextView) convertView : new TextView(MainActivity.this);
+                AppChoice choice = getItem(position);
+                String target = choice == null ? "" : choice.packageName
+                        + (choice.activityInfo == null ? "" : "/" + choice.activityInfo.name);
+                row.setText(choice == null ? "" : choice.label + "\n" + target);
+                row.setTextColor(colorText);
+                row.setTextSize(15f);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(dp(18), dp(10), dp(18), dp(10));
+                row.setMinHeight(dp(56));
+                return row;
+            }
+        };
+        ListView list = new ListView(this);
+        list.setAdapter(adapter);
+        list.setDivider(null);
+        list.setVisibility(View.GONE);
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), 0, dp(18), dp(8));
+        content.addView(search, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(50)));
+        content.addView(status, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(64)));
+        content.addView(list, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(360)));
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setView(content)
                 .setNegativeButton("取消", null)
                 .create();
-        appDialog.show();
-        styleDialog(appDialog);
-        attachDialogButtonHaptics(appDialog);
+        dialog.show();
+        styleDialog(dialog);
+        attachDialogButtonHaptics(dialog);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        }
+
+        Handler mainHandler = new Handler(Looper.getMainLooper());
+        Runnable[] pendingComponentSearch = new Runnable[1];
+        Runnable filter = () -> {
+            String query = search.getText().toString().trim().toLowerCase(Locale.ROOT);
+            if (!requireLauncher && query.contains("/")) {
+                visible.clear();
+                adapter.notifyDataSetChanged();
+                list.setVisibility(View.GONE);
+                status.setText("正在搜索 Activity…");
+                status.setVisibility(View.VISIBLE);
+                String[] component = query.split("/", 2);
+                String packageName = component[0].trim();
+                String componentQuery = query;
+                if (packageName.isEmpty()) return;
+                if (pendingComponentSearch[0] != null) {
+                    mainHandler.removeCallbacks(pendingComponentSearch[0]);
+                }
+                pendingComponentSearch[0] = () -> new Thread(() -> {
+                        ArrayList<AppChoice> matches = new ArrayList<>();
+                        try {
+                            PackageInfo packageInfo = getPackageManager().getPackageInfo(packageName,
+                                    PackageManager.GET_ACTIVITIES);
+                            if (packageInfo.activities != null) {
+                                for (ActivityInfo activityInfo : packageInfo.activities) {
+                                    if (activityInfo == null) continue;
+                                    String componentName = activityInfo.packageName + "/" + activityInfo.name;
+                                    if (!componentName.toLowerCase(Locale.ROOT).contains(componentQuery)) continue;
+                                    matches.add(new AppChoice(activityInfo.packageName,
+                                            activityDisplayLabel(activityInfo), activityInfo));
+                                }
+                            }
+                        } catch (PackageManager.NameNotFoundException ignored) {
+                        }
+                        mainHandler.post(() -> {
+                            if (!search.getText().toString().trim().equalsIgnoreCase(componentQuery)) return;
+                            visible.addAll(matches);
+                            adapter.notifyDataSetChanged();
+                            status.setText(matches.isEmpty() ? "没有找到匹配的 Activity" : "");
+                            status.setVisibility(matches.isEmpty() ? View.VISIBLE : View.GONE);
+                            list.setVisibility(matches.isEmpty() ? View.GONE : View.VISIBLE);
+                        });
+                    }, "side-gesture-activity-search").start();
+                mainHandler.postDelayed(pendingComponentSearch[0], 250);
+                return;
+            }
+            if (pendingComponentSearch[0] != null) {
+                mainHandler.removeCallbacks(pendingComponentSearch[0]);
+                pendingComponentSearch[0] = null;
+            }
+            visible.clear();
+            for (AppChoice choice : loaded) {
+                if (query.isEmpty() || choice.label.toLowerCase(Locale.ROOT).contains(query)
+                        || choice.packageName.toLowerCase(Locale.ROOT).contains(query)) {
+                    visible.add(choice);
+                }
+            }
+            adapter.notifyDataSetChanged();
+        };
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                filter.run();
+            }
+            @Override public void afterTextChanged(Editable s) { }
+        });
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            AppChoice choice = visible.get(position);
+            dialog.dismiss();
+            onSelected.accept(choice);
+        });
+
+        new Thread(() -> {
+            List<ApplicationInfo> installed = getPackageManager().getInstalledApplications(
+                    PackageManager.MATCH_ALL);
+            ArrayList<AppChoice> batch = new ArrayList<>(24);
+            for (ApplicationInfo appInfo : installed) {
+                if (appInfo == null || !appInfo.enabled) continue;
+                String packageName = appInfo.packageName;
+                if (requireLauncher) {
+                    if (getPackageManager().getLaunchIntentForPackage(packageName) == null) continue;
+                } else {
+                    try {
+                        PackageInfo packageInfo = getPackageManager().getPackageInfo(packageName,
+                                PackageManager.GET_ACTIVITIES);
+                        if (packageInfo.activities == null || packageInfo.activities.length == 0) continue;
+                    } catch (PackageManager.NameNotFoundException ignored) {
+                        continue;
+                    }
+                }
+                CharSequence label = appInfo.loadLabel(getPackageManager());
+                batch.add(new AppChoice(packageName,
+                        (label == null ? packageName : label).toString()));
+                if (batch.size() >= 24) {
+                    ArrayList<AppChoice> ready = new ArrayList<>(batch);
+                    batch.clear();
+                    mainHandler.post(() -> {
+                        loaded.addAll(ready);
+                        if (requireLauncher || !search.getText().toString().contains("/")) {
+                            list.setVisibility(View.VISIBLE);
+                            status.setVisibility(View.GONE);
+                            filter.run();
+                        }
+                    });
+                }
+            }
+            if (!batch.isEmpty()) {
+                ArrayList<AppChoice> ready = new ArrayList<>(batch);
+                mainHandler.post(() -> {
+                    loaded.addAll(ready);
+                    if (requireLauncher || !search.getText().toString().contains("/")) {
+                        list.setVisibility(View.VISIBLE);
+                        filter.run();
+                    }
+                });
+            }
+            mainHandler.post(() -> {
+                if (loaded.isEmpty() && (requireLauncher
+                        || !search.getText().toString().contains("/"))) {
+                    status.setText("没有找到可选择的应用");
+                    status.setVisibility(View.VISIBLE);
+                    list.setVisibility(View.GONE);
+                } else {
+                    status.setVisibility(View.GONE);
+                }
+            });
+        }, "side-gesture-app-loader").start();
     }
 
     private void showActivityPicker(String packageName, String appLabel, IntConsumer onSelected) {
@@ -893,33 +1073,227 @@ public class MainActivity extends Activity {
             showToast("该应用没有可选择的 Activity");
             return;
         }
-        ArrayList<ActivityInfo> candidates = new ArrayList<>();
-        ArrayList<String> labels = new ArrayList<>();
+        LinkedHashMap<ActivityInfo, String> labels = new LinkedHashMap<>();
         for (ActivityInfo activityInfo : activities) {
-            if (activityInfo == null || !activityInfo.enabled || !activityInfo.exported) continue;
-            candidates.add(activityInfo);
-            CharSequence label = activityInfo.loadLabel(getPackageManager());
-            labels.add((label == null ? activityInfo.name : label) + "\n" + activityInfo.name);
+            if (activityInfo == null) continue;
+            labels.put(activityInfo, activityDisplayLabel(activityInfo));
         }
-        if (candidates.isEmpty()) {
+        if (labels.isEmpty()) {
             showToast("该应用没有可直接打开的 Activity");
             return;
         }
+        EditText search = new EditText(this);
+        search.setSingleLine(true);
+        search.setHint("搜索 Activity 名称或组件名");
+        search.setTextColor(colorText);
+        search.setHintTextColor(colorSubtext);
+        search.setInputType(InputType.TYPE_CLASS_TEXT);
+        search.setPadding(dp(16), 0, dp(16), 0);
+        search.setBackground(roundRect(colorSurfaceStrong, 12));
+        ArrayList<ActivityInfo> visible = new ArrayList<>();
+        ArrayAdapter<ActivityInfo> adapter = new ArrayAdapter<ActivityInfo>(this, 0, visible) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                TextView row = convertView instanceof TextView
+                        ? (TextView) convertView : new TextView(MainActivity.this);
+                ActivityInfo target = getItem(position);
+                row.setText(target == null ? "" : labels.get(target) + "\n"
+                        + target.packageName + "/" + target.name);
+                row.setTextColor(colorText);
+                row.setTextSize(14f);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(dp(18), dp(10), dp(18), dp(10));
+                row.setMinHeight(dp(56));
+                return row;
+            }
+        };
+        ListView list = new ListView(this);
+        list.setAdapter(adapter);
+        list.setDivider(null);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), 0, dp(18), dp(8));
+        content.addView(search, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(50)));
+        content.addView(list, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(360)));
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("选择 Activity")
-                .setItems(labels.toArray(new String[0]), (d, which) -> {
-                    ActivityInfo target = candidates.get(which);
-                    int id = appendSideGestureTarget(SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY,
-                            (appLabel == null ? packageName : appLabel.split("\\n", 2)[0])
-                                    + " / " + target.name,
-                            target.packageName + "/" + target.name);
-                    if (onSelected != null) onSelected.accept(id);
-                })
+                .setView(content)
                 .setNegativeButton("取消", null)
                 .create();
         dialog.show();
         styleDialog(dialog);
         attachDialogButtonHaptics(dialog);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        }
+        Runnable filter = () -> {
+            String query = search.getText().toString().trim().toLowerCase(Locale.ROOT);
+            visible.clear();
+            for (Map.Entry<ActivityInfo, String> entry : labels.entrySet()) {
+                ActivityInfo target = entry.getKey();
+                String component = target.packageName + "/" + target.name;
+                if (query.isEmpty() || entry.getValue().toLowerCase(Locale.ROOT).contains(query)
+                        || component.toLowerCase(Locale.ROOT).contains(query)) {
+                    visible.add(target);
+                }
+            }
+            adapter.notifyDataSetChanged();
+        };
+        filter.run();
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                filter.run();
+            }
+            @Override public void afterTextChanged(Editable s) { }
+        });
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            saveActivityTarget(visible.get(position), appLabel, onSelected);
+            dialog.dismiss();
+        });
+    }
+
+    private void saveActivityTarget(ActivityInfo target, String appLabel, IntConsumer onSelected) {
+        if (target.applicationInfo != null) {
+            CharSequence installedAppLabel = target.applicationInfo.loadLabel(getPackageManager());
+            if (installedAppLabel != null) appLabel = installedAppLabel.toString();
+        }
+        showActivityTargetConfig(target, appLabel, onSelected);
+    }
+
+    private void showActivityTargetConfig(ActivityInfo target, String appLabel,
+            IntConsumer onSelected) {
+        String component = target.packageName + "/" + target.name;
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(18), 0, dp(18), dp(8));
+
+        TextView componentView = new TextView(this);
+        componentView.setText((appLabel == null ? target.packageName : appLabel)
+                + "\n" + component);
+        componentView.setTextColor(colorSubtext);
+        componentView.setTextSize(13f);
+        componentView.setPadding(0, dp(4), 0, dp(10));
+        form.addView(componentView);
+
+        EditText dataInput = activityTargetInput("附加 Data (Uri)", false);
+        EditText extrasInput = activityTargetInput("附加 Extra（每行一个，key=value）", true);
+        form.addView(dataInput);
+        form.addView(extrasInput);
+
+        TextView actionTitle = new TextView(this);
+        actionTitle.setText("Action");
+        actionTitle.setTextColor(colorSubtext);
+        actionTitle.setTextSize(14f);
+        actionTitle.setPadding(0, dp(10), 0, dp(2));
+        form.addView(actionTitle);
+
+        RadioGroup actionGroup = new RadioGroup(this);
+        actionGroup.setOrientation(RadioGroup.VERTICAL);
+        RadioButton viewAction = new RadioButton(this);
+        viewAction.setText("android.intent.action.VIEW");
+        viewAction.setTextColor(colorText);
+        RadioButton mainAction = new RadioButton(this);
+        mainAction.setText("android.intent.action.MAIN");
+        mainAction.setTextColor(colorText);
+        RadioButton customAction = new RadioButton(this);
+        customAction.setId(View.generateViewId());
+        customAction.setText("自定义 Action");
+        customAction.setTextColor(colorText);
+        actionGroup.addView(viewAction);
+        actionGroup.addView(mainAction);
+        actionGroup.addView(customAction);
+        viewAction.setChecked(true);
+        form.addView(actionGroup);
+
+        EditText customActionInput = activityTargetInput("输入自定义 Action", false);
+        customActionInput.setVisibility(View.GONE);
+        form.addView(customActionInput);
+        actionGroup.setOnCheckedChangeListener((group, checkedId) ->
+                customActionInput.setVisibility(checkedId == customAction.getId()
+                        ? View.VISIBLE : View.GONE));
+
+        CheckBox newTask = new CheckBox(this);
+        newTask.setText("Intent.FLAG_ACTIVITY_NEW_TASK");
+        newTask.setTextColor(colorText);
+        newTask.setChecked(true);
+        form.addView(newTask);
+        CheckBox root = new CheckBox(this);
+        root.setText("使用 Root 打开（仅识别包名和 Activity，忽略其他参数）");
+        root.setTextColor(colorText);
+        form.addView(root);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(form);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("配置 Activity 启动参数")
+                .setView(scroll)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("保存", (d, which) -> {
+                    String action = viewAction.isChecked()
+                            ? "android.intent.action.VIEW"
+                            : mainAction.isChecked() ? "android.intent.action.MAIN"
+                            : customActionInput.getText().toString().trim();
+                    int id = appendSideGestureActivityTarget(
+                            appLabel == null ? target.packageName : appLabel.split("\\n", 2)[0],
+                            component,
+                            dataInput.getText().toString().trim(),
+                            extrasInput.getText().toString(), action,
+                            newTask.isChecked(), root.isChecked());
+                    if (onSelected != null) onSelected.accept(id);
+                })
+                .create();
+        dialog.show();
+        styleDialog(dialog);
+        attachDialogButtonHaptics(dialog);
+    }
+
+    private EditText activityTargetInput(String hint, boolean multiline) {
+        EditText input = new EditText(this);
+        input.setHint(hint);
+        input.setTextColor(colorText);
+        input.setHintTextColor(colorSubtext);
+        input.setTextSize(15f);
+        input.setPadding(dp(12), dp(6), dp(12), dp(6));
+        input.setBackground(outlinedRect(colorSurface, colorStroke, 1, 8));
+        if (multiline) {
+            input.setGravity(Gravity.TOP | Gravity.START);
+            input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+            input.setMinHeight(dp(96));
+        } else {
+            input.setSingleLine(true);
+            input.setInputType(InputType.TYPE_CLASS_TEXT);
+            input.setMinHeight(dp(48));
+        }
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.bottomMargin = dp(8);
+        input.setLayoutParams(params);
+        return input;
+    }
+
+    private int appendSideGestureActivityTarget(String label, String component, String dataUri,
+            String extras, String action, boolean newTask, boolean root) {
+        List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
+                SideGestureTargetStore.readRaw(prefs));
+        int id = SideGestureTargetStore.nextId(targets);
+        targets.add(new SideGestureTargetStore.Target(id,
+                SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY, label, component,
+                dataUri, extras, action, newTask, root));
+        putStringSetting(SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON,
+                SideGestureTargetStore.encode(targets));
+        showToast("已添加启动目标");
+        return id;
+    }
+
+    private String activityDisplayLabel(ActivityInfo activityInfo) {
+        CharSequence label = activityInfo.loadLabel(getPackageManager());
+        String text = (label == null ? activityInfo.name : label).toString();
+        if (!activityInfo.enabled) return text + "（已禁用）";
+        if (!activityInfo.exported) return text + "（未导出）";
+        return text;
     }
 
     private int appendSideGestureTarget(int type, String label, String value) {

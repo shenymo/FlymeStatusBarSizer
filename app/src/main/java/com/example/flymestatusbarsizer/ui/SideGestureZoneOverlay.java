@@ -161,8 +161,10 @@ public final class SideGestureZoneOverlay {
         System.arraycopy(ACTION_VALUES, 0, availableActionValues, 0, ACTION_VALUES.length);
         System.arraycopy(ACTION_LABELS, 0, availableActionLabels, 0, ACTION_LABELS.length);
         for (int i = 0; i < targets.size(); i++) {
-            availableActionValues[ACTION_VALUES.length + i] = targets.get(i).id;
-            availableActionLabels[ACTION_LABELS.length + i] = "打开：" + targets.get(i).label;
+            SideGestureTargetStore.Target target = targets.get(i);
+            availableActionValues[ACTION_VALUES.length + i] = target.id;
+            availableActionLabels[ACTION_LABELS.length + i] = "打开："
+                    + SideGestureTargetStore.shortLabel(target);
         }
     }
 

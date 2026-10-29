@@ -16,12 +16,27 @@ public final class SideGestureTargetStore {
         public final int type;
         public final String label;
         public final String value;
+        public final String dataUri;
+        public final String extras;
+        public final String action;
+        public final boolean newTask;
+        public final boolean root;
 
         public Target(int id, int type, String label, String value) {
+            this(id, type, label, value, "", "", "", true, false);
+        }
+
+        public Target(int id, int type, String label, String value, String dataUri,
+                String extras, String action, boolean newTask, boolean root) {
             this.id = id;
             this.type = type;
             this.label = label;
             this.value = value;
+            this.dataUri = dataUri;
+            this.extras = extras;
+            this.action = action;
+            this.newTask = newTask;
+            this.root = root;
         }
     }
 
@@ -41,7 +56,12 @@ public final class SideGestureTargetStore {
                 String value = item.optString("value", "").trim();
                 if (id < DYNAMIC_ACTION_BASE || !isTargetType(type)
                         || label.isEmpty() || value.isEmpty()) continue;
-                result.add(new Target(id, type, label, value));
+                result.add(new Target(id, type, label, value,
+                        item.optString("dataUri", "").trim(),
+                        item.optString("extras", ""),
+                        item.optString("action", "").trim(),
+                        item.optBoolean("newTask", true),
+                        item.optBoolean("root", false)));
             }
         } catch (Exception ignored) {
             return new ArrayList<>();
@@ -58,6 +78,11 @@ public final class SideGestureTargetStore {
                 item.put("type", target.type);
                 item.put("label", target.label);
                 item.put("value", target.value);
+                item.put("dataUri", target.dataUri);
+                item.put("extras", target.extras);
+                item.put("action", target.action);
+                item.put("newTask", target.newTask);
+                item.put("root", target.root);
                 array.put(item);
             } catch (Exception ignored) {
             }
@@ -87,6 +112,16 @@ public final class SideGestureTargetStore {
 
     public static boolean isDynamicAction(int action) {
         return action >= DYNAMIC_ACTION_BASE;
+    }
+
+    public static String shortLabel(Target target) {
+        if (target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY) {
+            int separator = target.label.indexOf(" / ");
+            return separator > 0 ? target.label.substring(0, separator) : target.label;
+        }
+        if (target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI) return "Intent";
+        if (target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL) return "Scheme URL";
+        return target.label;
     }
 
     public static String readRaw(SharedPreferences prefs) {
