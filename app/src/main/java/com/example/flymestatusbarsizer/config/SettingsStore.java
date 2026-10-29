@@ -121,6 +121,7 @@ public final class SettingsStore {
     public static final int ASSISTANT_FOREGROUND_BLACK = 1;
     public static final int ASSISTANT_FOREGROUND_WHITE = 2;
     public static final String KEY_SIDE_GESTURE_ACTION = "side_gesture_action";
+    public static final String KEY_TASK_SWITCHER_LOCKED_APPS = "task_switcher_locked_apps";
     public static final int SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT = 0;
     public static final int SIDE_GESTURE_ACTION_TASK_SCALE = 1;
     public static final int SIDE_GESTURE_ACTION_NONE = 2;
@@ -995,6 +996,7 @@ public final class SettingsStore {
             KEY_SIDE_GESTURE_TARGET_INTENT_URI,
             KEY_SIDE_GESTURE_TARGET_SCHEME_URL,
             KEY_SIDE_GESTURE_TARGETS_JSON,
+            KEY_TASK_SWITCHER_LOCKED_APPS,
             KEY_LAUNCHER_AICY_ENTRY_TEXT,
             KEY_LAUNCHER_AICY_ENTRY_TARGET,
             KEY_LAUNCHER_FOLDER_BG_COLOR,

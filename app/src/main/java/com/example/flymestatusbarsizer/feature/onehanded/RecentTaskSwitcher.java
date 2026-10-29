@@ -29,13 +29,21 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.flymestatusbarsizer.R;
+import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.feature.assistant.AssistantPanelBlur;
 import com.example.flymestatusbarsizer.feature.assistant.SideGestureActions;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import org.json.JSONArray;
+import org.json.JSONException;
 
 /** Compact recent-task switcher opened by a configured side gesture. */
 public final class RecentTaskSwitcher {
@@ -104,6 +112,7 @@ public final class RecentTaskSwitcher {
         private boolean darkMode;
         private final WindowManager windowManager;
         private final List<TaskEntry> entries = new ArrayList<>();
+        private final Set<String> lockedApps;
         private final FrameLayout root;
         private final LinearLayout panel;
         private final AssistantPanelBlur panelBlur;
@@ -113,14 +122,15 @@ public final class RecentTaskSwitcher {
         private View loadingRow;
         private boolean attached;
         private boolean closing;
+        private boolean closingAll;
         private boolean loading = true;
-        private boolean moduleIconLoaded;
-        private Drawable.ConstantState moduleIconState;
+        private final Map<Integer, Drawable.ConstantState> moduleIconStates = new HashMap<>();
 
         Popup(Context context, boolean fromLeft, float anchorY) {
             this.context = context;
             this.fromLeft = fromLeft;
             this.anchorY = anchorY;
+            lockedApps = loadLockedApps(context);
             darkMode = (context.getResources().getConfiguration().uiMode
                     & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
             windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
@@ -387,6 +397,7 @@ public final class RecentTaskSwitcher {
         private View taskRow(TaskEntry entry) {
             RecentTaskCard card = entry.card;
             String label = entry.label;
+            boolean locked = isLocked(card);
             LinearLayout row = new LinearLayout(context);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setBackground(new RippleDrawable(
@@ -400,11 +411,12 @@ public final class RecentTaskSwitcher {
             name.setGravity(Gravity.CENTER_VERTICAL);
             if (!fromLeft) name.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
             name.setPadding(dp(6), 0, dp(4), 0);
+            name.setTooltipText("长按锁定或解锁");
             int textHeight = name.getLineHeight();
 
             TextView remove = new TextView(context);
             remove.setText("×");
-            remove.setTextSize(13);
+            remove.setTextSize(17);
             remove.setTextColor(paletteColor(0xff444444, 0xffd4d8dc));
             remove.setGravity(Gravity.CENTER);
             remove.setContentDescription("关闭" + label);
@@ -418,6 +430,17 @@ public final class RecentTaskSwitcher {
             entry.nameView = name;
             entry.iconView = icon;
             int iconSize = dp(16);
+            ImageView lockIcon = new ImageView(context);
+            lockIcon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            lockIcon.setPadding(dp(5), dp(5), dp(5), dp(5));
+            lockIcon.setContentDescription("已锁定应用");
+            lockIcon.setTooltipText("已锁定");
+            setModuleIcon(lockIcon, R.drawable.quick_tool_lock, android.R.drawable.ic_lock_lock);
+            lockIcon.setColorFilter(accentColor());
+            lockIcon.setVisibility(locked ? View.VISIBLE : View.INVISIBLE);
+            FrameLayout actionSlot = new FrameLayout(context);
+            actionSlot.addView(remove, new FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER));
+            actionSlot.addView(lockIcon, new FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER));
             ImageButton miniWindow = new ImageButton(context);
             miniWindow.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
             miniWindow.setPadding(dp(5), dp(5), dp(5), dp(5));
@@ -427,15 +450,21 @@ public final class RecentTaskSwitcher {
             miniWindow.setTooltipText("以小窗打开");
             setModuleIcon(miniWindow, R.drawable.ic_task_window, android.R.drawable.ic_menu_view);
             setButtonFeedback(miniWindow);
+            remove.setVisibility(locked ? View.GONE : View.VISIBLE);
+            name.setOnLongClickListener(view -> {
+                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                toggleLock(entry, lockIcon, remove);
+                return true;
+            });
             remove.setOnClickListener(view -> removeTask(card, row));
             miniWindow.setOnClickListener(view -> openMiniWindow(card, miniWindow));
             if (fromLeft) {
                 row.addView(miniWindow, new LinearLayout.LayoutParams(dp(29), dp(29)));
                 row.addView(icon, new LinearLayout.LayoutParams(iconSize, iconSize));
                 row.addView(name, new LinearLayout.LayoutParams(0, textHeight, 1f));
-                row.addView(remove, new LinearLayout.LayoutParams(dp(26), dp(26)));
+                row.addView(actionSlot, new LinearLayout.LayoutParams(dp(26), dp(26)));
             } else {
-                row.addView(remove, new LinearLayout.LayoutParams(dp(26), dp(26)));
+                row.addView(actionSlot, new LinearLayout.LayoutParams(dp(26), dp(26)));
                 row.addView(name, new LinearLayout.LayoutParams(0, textHeight, 1f));
                 row.addView(icon, new LinearLayout.LayoutParams(iconSize, iconSize));
                 row.addView(miniWindow, new LinearLayout.LayoutParams(dp(29), dp(29)));
@@ -444,6 +473,7 @@ public final class RecentTaskSwitcher {
                 view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
                 activate(card);
             });
+            name.setOnClickListener(view -> row.performClick());
             return row;
         }
 
@@ -468,17 +498,18 @@ public final class RecentTaskSwitcher {
         }
 
         private void setModuleIcon(ImageView view, int resource, int fallback) {
-            if (!moduleIconLoaded) {
-                moduleIconLoaded = true;
+            Drawable.ConstantState iconState = moduleIconStates.get(resource);
+            if (iconState == null) {
                 try {
                     Context module = context.createPackageContext(
                             com.example.flymestatusbarsizer.BuildConfig.APPLICATION_ID, 0);
                     Drawable icon = module.getDrawable(resource);
-                    moduleIconState = icon != null ? icon.getConstantState() : null;
+                    iconState = icon != null ? icon.getConstantState() : null;
+                    if (iconState != null) moduleIconStates.put(resource, iconState);
                 } catch (Exception ignored) { }
             }
-            if (moduleIconState != null) {
-                view.setImageDrawable(moduleIconState.newDrawable().mutate());
+            if (iconState != null) {
+                view.setImageDrawable(iconState.newDrawable().mutate());
             } else {
                 view.setImageResource(fallback);
                 view.setColorFilter(accentColor());
@@ -511,7 +542,44 @@ public final class RecentTaskSwitcher {
             return paletteColor(0xff287a78, 0xff77c6c1);
         }
 
+        private Set<String> loadLockedApps(Context context) {
+            Set<String> result = new HashSet<>();
+            try {
+                JSONArray stored = new JSONArray(SettingsStore.readString(
+                        SettingsStore.prefs(context), SettingsStore.KEY_TASK_SWITCHER_LOCKED_APPS, "[]"));
+                for (int i = 0; i < stored.length(); i++) {
+                    String packageName = stored.optString(i, "");
+                    if (!packageName.isEmpty()) result.add(packageName);
+                }
+            } catch (JSONException ignored) { }
+            return result;
+        }
+
+        private boolean isLocked(RecentTaskCard card) {
+            return lockedApps.contains(card.component.getPackageName());
+        }
+
+        private void toggleLock(TaskEntry entry, ImageView lockIcon, TextView remove) {
+            if (closingAll) return;
+            String packageName = entry.card.component.getPackageName();
+            boolean locked;
+            if (lockedApps.remove(packageName)) {
+                locked = false;
+            } else {
+                lockedApps.add(packageName);
+                locked = true;
+            }
+            lockIcon.setVisibility(locked ? View.VISIBLE : View.INVISIBLE);
+            remove.setVisibility(locked ? View.GONE : View.VISIBLE);
+            SettingsStore.prefs(context).edit()
+                    .putString(SettingsStore.KEY_TASK_SWITCHER_LOCKED_APPS,
+                            new JSONArray(lockedApps).toString())
+                    .apply();
+            SettingsStore.notifyChanged(context);
+        }
+
         private void openMiniWindow(RecentTaskCard card, ImageButton button) {
+            if (closingAll) return;
             button.setEnabled(false);
             WORKER.execute(() -> {
                 try {
@@ -528,6 +596,7 @@ public final class RecentTaskSwitcher {
         }
 
         private void activate(RecentTaskCard card) {
+            if (closingAll) return;
             close();
             WORKER.execute(() -> {
                 try { getTaskAccess(context).activate(card); }
@@ -536,6 +605,7 @@ public final class RecentTaskSwitcher {
         }
 
         private void removeTask(RecentTaskCard card, View row) {
+            if (closingAll || isLocked(card)) return;
             row.setEnabled(false);
             row.animate().alpha(0f).translationX(fromLeft ? -dp(6) : dp(6))
                     .setDuration(140L).start();
@@ -572,11 +642,18 @@ public final class RecentTaskSwitcher {
         }
 
         private void closeAllTasks() {
+            if (closingAll) return;
             List<RecentTaskCard> removing = new ArrayList<>();
-            for (TaskEntry entry : entries) removing.add(entry.card);
+            for (TaskEntry entry : entries) {
+                if (!isLocked(entry.card)) removing.add(entry.card);
+            }
+            if (removing.isEmpty()) return;
+            closingAll = true;
             closeAllButton.setEnabled(false);
-            for (int i = 0; i < rows.getChildCount(); i += 2) {
-                rows.getChildAt(i).animate().alpha(0f).setDuration(140L).start();
+            for (int i = 0; i < entries.size(); i++) {
+                if (!isLocked(entries.get(i).card)) {
+                    rows.getChildAt(i * 2).animate().alpha(0f).setDuration(140L).start();
+                }
             }
             WORKER.execute(() -> {
                 List<RecentTaskCard> failedCards = new ArrayList<>();
@@ -597,14 +674,31 @@ public final class RecentTaskSwitcher {
                 List<RecentTaskCard> remaining = failedCards;
                 MAIN.post(() -> {
                     if (!isCurrent()) return;
-                    entries.clear();
-                    for (RecentTaskCard card : remaining) entries.add(new TaskEntry(card));
-                    loading = false;
-                    rows.removeAllViews();
-                    renderRows();
+                    closingAll = false;
+                    closeAllButton.setEnabled(true);
+                    for (int i = entries.size() - 1; i >= 0; i--) {
+                        TaskEntry entry = entries.get(i);
+                        if (isLocked(entry.card)) continue;
+                        View row = rows.getChildAt(i * 2);
+                        boolean failed = false;
+                        for (RecentTaskCard card : remaining) {
+                            if (entry.card.sameTask(card)) {
+                                failed = true;
+                                break;
+                            }
+                        }
+                        if (failed) {
+                            row.animate().alpha(1f).setDuration(120L).start();
+                        } else {
+                            entries.remove(i);
+                            int rowIndex = rows.indexOfChild(row);
+                            rows.removeViewAt(rowIndex);
+                            if (rowIndex > 0) rows.removeViewAt(rowIndex - 1);
+                            else if (rows.getChildCount() > 0) rows.removeViewAt(0);
+                        }
+                    }
+                    if (entries.isEmpty()) renderRows();
                     if (!remaining.isEmpty()) {
-                        closeAllButton.setEnabled(true);
-                        scroll.post(this::loadVisibleMetadata);
                         Toast.makeText(context, "部分任务关闭失败", Toast.LENGTH_SHORT).show();
                     }
                 });
