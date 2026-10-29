@@ -38,6 +38,7 @@ google-services.json
 .ace-tool/
 lsposed-reflection-replacement-plan.md
 AGENTS.md
+*.bak
 桌面进入后台动画修复记录.md
 dumpdex/
 jadx/
@@ -64,5 +65,3 @@ com.android.systemui_dumpdex_jadx/
 /device_sources/
 /com.flyme.systemuitools/
 /reverse_engineering/
-.yceignore
-.gitignore.bak
