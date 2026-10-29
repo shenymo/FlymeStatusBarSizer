@@ -41,6 +41,7 @@ AGENTS.md
 桌面进入后台动画修复记录.md
 dumpdex/
 jadx/
+/services_jadx/
 apk/
 com.meizu.flyme.launcher_dumpdex_jadx/
 skills/
@@ -56,7 +57,11 @@ com.android.systemui_dumpdex_jadx/
 /.codex
 /com.android.systemui/
 /com.android.intentresolver/
+/com.android.settings/
 /com.meizu.flyme.launcher/
 /com.meizu.assistant/
-/docs
-/com.flyme.systemuitools
+/docs/
+/device_sources/
+/com.flyme.systemuitools/
+/reverse_engineering/
+.yceignore
