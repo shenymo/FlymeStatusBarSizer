@@ -12,8 +12,6 @@ import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.Editable;
-import android.text.TextWatcher;
 import android.util.LruCache;
 import android.view.animation.PathInterpolator;
 import android.view.Gravity;
@@ -21,8 +19,6 @@ import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.view.inputmethod.InputMethodManager;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.ImageButton;
@@ -38,7 +34,6 @@ import com.example.flymestatusbarsizer.feature.assistant.SideGestureActions;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -111,14 +106,13 @@ public final class RecentTaskSwitcher {
         private final AssistantPanelBlur panelBlur;
         private final LinearLayout rows;
         private final ScrollView scroll;
-        private final EditText search;
-        private final LinearLayout searchContainer;
-        private final TextView searchButton;
         private final TextView closeAllButton;
         private View loadingRow;
         private boolean attached;
         private boolean closing;
         private boolean loading = true;
+        private boolean moduleIconLoaded;
+        private Drawable.ConstantState moduleIconState;
 
         Popup(Context context, boolean fromLeft, float anchorY) {
             this.context = context;
@@ -160,28 +154,6 @@ public final class RecentTaskSwitcher {
             panelParams.topMargin = Math.max(0, Math.round(anchorY - dp(156)));
             root.addView(panel, panelParams);
 
-            searchContainer = new LinearLayout(context);
-            searchContainer.setGravity(Gravity.CENTER_VERTICAL);
-            searchContainer.setVisibility(View.GONE);
-            search = new EditText(context);
-            search.setSingleLine(true);
-            search.setTextSize(12);
-            search.setTextColor(paletteColor(0xff222222, 0xfff1f3f4));
-            search.setHintTextColor(paletteColor(0xff888888, 0xffaeb4b9));
-            search.setHint("搜索应用");
-            search.setPadding(dp(7), 0, dp(7), 0);
-            search.setBackground(background(
-                    paletteColor(0x11000000, 0x18ffffff), dp(7), Color.TRANSPARENT));
-            searchContainer.addView(search, new LinearLayout.LayoutParams(-1, dp(24)));
-            panel.addView(searchContainer, new LinearLayout.LayoutParams(-1, dp(27)));
-            search.addTextChangedListener(new TextWatcher() {
-                @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
-                @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
-                    renderRows();
-                }
-                @Override public void afterTextChanged(Editable s) { }
-            });
-
             rows = new LinearLayout(context);
             rows.setOrientation(LinearLayout.VERTICAL);
             scroll = new ScrollView(context);
@@ -192,14 +164,6 @@ public final class RecentTaskSwitcher {
 
             LinearLayout footer = new LinearLayout(context);
             footer.setGravity(Gravity.CENTER_VERTICAL);
-            searchButton = new TextView(context);
-            searchButton.setText("⌕");
-            searchButton.setTextSize(19);
-            searchButton.setTextColor(accentColor());
-            searchButton.setGravity(Gravity.CENTER);
-            searchButton.setContentDescription("搜索任务");
-            footer.addView(searchButton, new LinearLayout.LayoutParams(dp(28), dp(27)));
-            searchButton.setOnClickListener(view -> toggleSearch());
             View spacer = new View(context);
             footer.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
             closeAllButton = new TextView(context);
@@ -357,10 +321,8 @@ public final class RecentTaskSwitcher {
         private void renderRows() {
             rows.removeAllViews();
             loadingRow = null;
-            String query = search.getText().toString().trim().toLowerCase(Locale.getDefault());
             int count = 0;
             for (TaskEntry entry : entries) {
-                if (!matchesQuery(entry, query)) continue;
                 if (count > 0) {
                     View divider = new View(context);
                     divider.setBackgroundColor(paletteColor(0x18000000, 0x28ffffff));
@@ -371,18 +333,13 @@ public final class RecentTaskSwitcher {
             }
             if (count == 0 && !loading) {
                 TextView empty = new TextView(context);
-                empty.setText(entries.isEmpty() ? "没有最近任务" : "没有匹配的任务");
+                empty.setText("没有最近任务");
                 empty.setTextColor(paletteColor(0xff777777, 0xffb8bec3));
                 empty.setTextSize(14);
                 empty.setGravity(Gravity.CENTER);
                 rows.addView(empty, new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
             }
             if (loading) addLoadingRow();
-        }
-
-        private boolean matchesQuery(TaskEntry entry, String query) {
-            return query.isEmpty() || entry.label.toLowerCase(Locale.getDefault()).contains(query)
-                    || entry.card.description.toLowerCase(Locale.getDefault()).contains(query);
         }
 
         private void addLoadingRow() {
@@ -476,11 +433,18 @@ public final class RecentTaskSwitcher {
         }
 
         private void setModuleIcon(ImageView view, int resource, int fallback) {
-            try {
-                Context module = context.createPackageContext(
-                        com.example.flymestatusbarsizer.BuildConfig.APPLICATION_ID, 0);
-                view.setImageDrawable(module.getDrawable(resource));
-            } catch (Exception error) {
+            if (!moduleIconLoaded) {
+                moduleIconLoaded = true;
+                try {
+                    Context module = context.createPackageContext(
+                            com.example.flymestatusbarsizer.BuildConfig.APPLICATION_ID, 0);
+                    Drawable icon = module.getDrawable(resource);
+                    moduleIconState = icon != null ? icon.getConstantState() : null;
+                } catch (Exception ignored) { }
+            }
+            if (moduleIconState != null) {
+                view.setImageDrawable(moduleIconState.newDrawable().mutate());
+            } else {
                 view.setImageResource(fallback);
                 view.setColorFilter(accentColor());
             }
@@ -504,11 +468,6 @@ public final class RecentTaskSwitcher {
             if (!attached || darkMode == nextDarkMode) return;
             darkMode = nextDarkMode;
             panel.setBackground(panelBackground());
-            search.setTextColor(paletteColor(0xff222222, 0xfff1f3f4));
-            search.setHintTextColor(paletteColor(0xff888888, 0xffaeb4b9));
-            search.setBackground(background(
-                    paletteColor(0x11000000, 0x18ffffff), dp(7), Color.TRANSPARENT));
-            searchButton.setTextColor(accentColor());
             closeAllButton.setTextColor(accentColor());
             renderRows();
         }
@@ -533,22 +492,6 @@ public final class RecentTaskSwitcher {
             });
         }
 
-        private void toggleSearch() {
-            boolean visible = searchContainer.getVisibility() != View.VISIBLE;
-            searchContainer.setVisibility(visible ? View.VISIBLE : View.GONE);
-            if (visible) {
-                search.requestFocus();
-                Object input = context.getSystemService(Context.INPUT_METHOD_SERVICE);
-                if (input instanceof InputMethodManager) ((InputMethodManager) input).showSoftInput(search,
-                        InputMethodManager.SHOW_IMPLICIT);
-            } else {
-                search.setText("");
-                Object input = context.getSystemService(Context.INPUT_METHOD_SERVICE);
-                if (input instanceof InputMethodManager) ((InputMethodManager) input).hideSoftInputFromWindow(
-                        search.getWindowToken(), 0);
-            }
-        }
-
         private void activate(RecentTaskCard card) {
             close();
             WORKER.execute(() -> {
@@ -568,10 +511,15 @@ public final class RecentTaskSwitcher {
                         renderRows();
                     }).start();
             WORKER.execute(() -> {
+                Exception failure = null;
                 try { getTaskAccess(context).remove(card); }
-                catch (Exception ignored) { }
+                catch (Exception error) { failure = error; }
                 List<TaskEntry> loaded = loadEntries(context);
-                MAIN.post(() -> replaceEntries(loaded));
+                boolean failed = failure != null;
+                MAIN.post(() -> {
+                    replaceEntries(loaded);
+                    if (failed) Toast.makeText(context, "关闭任务失败", Toast.LENGTH_SHORT).show();
+                });
             });
         }
 
@@ -582,15 +530,20 @@ public final class RecentTaskSwitcher {
             loading = true;
             renderRows();
             WORKER.execute(() -> {
+                boolean failed = false;
                 try {
                     OneStepTaskAccess tasks = getTaskAccess(context);
                     for (RecentTaskCard card : removing) {
                         try { tasks.remove(card); }
-                        catch (Exception ignored) { }
+                        catch (Exception error) { failed = true; }
                     }
-                } catch (Exception ignored) { }
+                } catch (Exception error) { failed = true; }
                 List<TaskEntry> loaded = loadEntries(context);
-                MAIN.post(() -> replaceEntries(loaded));
+                boolean operationFailed = failed;
+                MAIN.post(() -> {
+                    replaceEntries(loaded);
+                    if (operationFailed) Toast.makeText(context, "部分任务关闭失败", Toast.LENGTH_SHORT).show();
+                });
             });
         }
 
