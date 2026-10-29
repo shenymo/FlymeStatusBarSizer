@@ -265,15 +265,6 @@ public final class RecentTaskSwitcher {
             });
         }
 
-        private static List<RecentTaskCard> loadCards(Context context) {
-            List<RecentTaskCard> result = new ArrayList<>();
-            try {
-                OneStepTaskAccess tasks = getTaskAccess(context);
-                result.addAll(tasks.candidates());
-            } catch (Exception ignored) { }
-            return result;
-        }
-
         private static OneStepTaskAccess getTaskAccess(Context context) throws ReflectiveOperationException {
             if (taskAccess == null) taskAccess = new OneStepTaskAccess(context);
             return taskAccess;
@@ -545,24 +536,37 @@ public final class RecentTaskSwitcher {
         }
 
         private void removeTask(RecentTaskCard card, View row) {
-            entries.removeIf(entry -> entry.card.sameTask(card));
             row.setEnabled(false);
             row.animate().alpha(0f).translationX(fromLeft ? -dp(6) : dp(6))
-                    .setDuration(140L)
-                    .withEndAction(() -> {
-                        row.setAlpha(1f);
-                        row.setTranslationX(0f);
-                        renderRows();
-                    }).start();
+                    .setDuration(140L).start();
             WORKER.execute(() -> {
-                Exception failure = null;
-                try { getTaskAccess(context).remove(card); }
-                catch (Exception error) { failure = error; }
-                List<RecentTaskCard> loaded = loadCards(context);
-                boolean failed = failure != null;
+                boolean failed;
+                try {
+                    getTaskAccess(context).remove(card);
+                    failed = false;
+                } catch (Exception error) {
+                    failed = true;
+                }
+                boolean taskFailed = failed;
                 MAIN.post(() -> {
-                    replaceCards(loaded);
-                    if (failed) Toast.makeText(context, "关闭任务失败", Toast.LENGTH_SHORT).show();
+                    if (!isCurrent()) return;
+                    if (taskFailed) {
+                        row.animate().alpha(1f).translationX(0f).setDuration(120L).start();
+                        row.setEnabled(true);
+                        Toast.makeText(context, "关闭任务失败", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    entries.removeIf(entry -> entry.card.sameTask(card));
+                    int index = rows.indexOfChild(row);
+                    if (index >= 0) {
+                        rows.removeViewAt(index);
+                        if (index > 0) {
+                            rows.removeViewAt(index - 1);
+                        } else if (rows.getChildCount() > 0) {
+                            rows.removeViewAt(0);
+                        }
+                    }
+                    if (entries.isEmpty()) renderRows();
                 });
             });
         }
@@ -570,23 +574,39 @@ public final class RecentTaskSwitcher {
         private void closeAllTasks() {
             List<RecentTaskCard> removing = new ArrayList<>();
             for (TaskEntry entry : entries) removing.add(entry.card);
-            entries.clear();
-            loading = true;
-            renderRows();
+            closeAllButton.setEnabled(false);
+            for (int i = 0; i < rows.getChildCount(); i += 2) {
+                rows.getChildAt(i).animate().alpha(0f).setDuration(140L).start();
+            }
             WORKER.execute(() -> {
-                boolean failed = false;
-                try {
-                    OneStepTaskAccess tasks = getTaskAccess(context);
-                    for (RecentTaskCard card : removing) {
-                        try { tasks.remove(card); }
-                        catch (Exception error) { failed = true; }
+                List<RecentTaskCard> failedCards = new ArrayList<>();
+                OneStepTaskAccess tasks = null;
+                try { tasks = getTaskAccess(context); }
+                catch (Exception ignored) { }
+                for (RecentTaskCard card : removing) {
+                    if (tasks == null) {
+                        failedCards.add(card);
+                        continue;
                     }
-                } catch (Exception error) { failed = true; }
-                List<RecentTaskCard> loaded = loadCards(context);
-                boolean operationFailed = failed;
+                    try {
+                        tasks.remove(card);
+                    } catch (Exception error) {
+                        failedCards.add(card);
+                    }
+                }
+                List<RecentTaskCard> remaining = failedCards;
                 MAIN.post(() -> {
-                    replaceCards(loaded);
-                    if (operationFailed) Toast.makeText(context, "部分任务关闭失败", Toast.LENGTH_SHORT).show();
+                    if (!isCurrent()) return;
+                    entries.clear();
+                    for (RecentTaskCard card : remaining) entries.add(new TaskEntry(card));
+                    loading = false;
+                    rows.removeAllViews();
+                    renderRows();
+                    if (!remaining.isEmpty()) {
+                        closeAllButton.setEnabled(true);
+                        scroll.post(this::loadVisibleMetadata);
+                        Toast.makeText(context, "部分任务关闭失败", Toast.LENGTH_SHORT).show();
+                    }
                 });
             });
         }
