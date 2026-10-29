@@ -157,6 +157,11 @@ public final class ModuleConfig {
     public int sideGestureRightLongAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
     public int sideGestureRightUpLongAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
     public int sideGestureRightDownLongAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
+    public String sideGestureTargetApp = "";
+    public String sideGestureTargetActivity = "";
+    public String sideGestureTargetIntentUri = "";
+    public String sideGestureTargetSchemeUrl = "";
+    public String sideGestureTargetsJson = "[]";
     public boolean oneHandedModeEnabled = SettingsStore.DEFAULT_ONE_HANDED_MODE_ENABLED;
     public int oneHandedModeAction = SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION;
     public int assistantGestureScenes = SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES;
@@ -828,6 +833,15 @@ public final class ModuleConfig {
             config.sideGestureRightDownLongAction = SettingsStore.readSideGestureActionWithFallback(prefs,
                     SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_LONG_ACTION,
                     SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION, SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION);
+            config.sideGestureTargetApp = SettingsStore.readString(prefs,
+                    SettingsStore.KEY_SIDE_GESTURE_TARGET_APP, "");
+            config.sideGestureTargetActivity = SettingsStore.readString(prefs,
+                    SettingsStore.KEY_SIDE_GESTURE_TARGET_ACTIVITY, "");
+            config.sideGestureTargetIntentUri = SettingsStore.readString(prefs,
+                    SettingsStore.KEY_SIDE_GESTURE_TARGET_INTENT_URI, "");
+            config.sideGestureTargetSchemeUrl = SettingsStore.readString(prefs,
+                    SettingsStore.KEY_SIDE_GESTURE_TARGET_SCHEME_URL, "");
+            config.sideGestureTargetsJson = SideGestureTargetStore.readRaw(prefs);
             config.oneHandedModeEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_ONE_HANDED_MODE_ENABLED, SettingsStore.DEFAULT_ONE_HANDED_MODE_ENABLED);
             config.oneHandedModeAction = SettingsStore.normalizeOneHandedModeAction(SettingsStore.readInt(prefs,

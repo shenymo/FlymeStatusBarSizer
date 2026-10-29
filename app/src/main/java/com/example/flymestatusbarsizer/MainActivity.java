@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer;
 
 import com.example.flymestatusbarsizer.config.SettingsStore;
+import com.example.flymestatusbarsizer.config.SideGestureTargetStore;
 import com.example.flymestatusbarsizer.config.RemoteSettingsSync;
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAnimationConfig;
 import com.example.flymestatusbarsizer.feature.clock.ClockDetailActionGridEditor;
@@ -33,6 +34,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.pm.ActivityInfo;
+import android.content.pm.PackageInfo;
+import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Rect;
@@ -90,6 +94,7 @@ import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntConsumer;
 import java.util.regex.Pattern;
 
 public class MainActivity extends Activity {
@@ -744,6 +749,188 @@ public class MainActivity extends Activity {
 
     public void openSideGestureZoneOverlay() {
         showSideGestureZoneOverlay();
+    }
+
+    public void configureSideGestureTarget(int type, IntConsumer onSelected) {
+        if (type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI) {
+            showTextInputDialog("输入 Intent URI", "", "输入 Android intent: URI。",
+                    "intent:#Intent;...;end", false, value -> {
+                        if (value.trim().isEmpty()) return;
+                        int id = appendSideGestureTarget(type, value.trim(), value.trim());
+                        if (onSelected != null) onSelected.accept(id);
+                    });
+            return;
+        }
+        if (type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL) {
+            showTextInputDialog("输入 Scheme URL", "", "输入 https:// 或自定义 scheme URL。",
+                    "https://example.com 或 app://...", false, value -> {
+                        if (value.trim().isEmpty()) return;
+                        int id = appendSideGestureTarget(type, value.trim(), value.trim());
+                        if (onSelected != null) onSelected.accept(id);
+                    });
+            return;
+        }
+        if (type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY) {
+            showActivityAppPicker(onSelected);
+            return;
+        }
+        Intent launcher = new Intent(Intent.ACTION_MAIN);
+        launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> resolved = getPackageManager().queryIntentActivities(launcher,
+                PackageManager.MATCH_DEFAULT_ONLY);
+        LinkedHashMap<String, String> labels = new LinkedHashMap<>();
+        for (ResolveInfo info : resolved) {
+            if (info.activityInfo == null) continue;
+            String packageName = info.activityInfo.packageName;
+            if (labels.containsKey(packageName)) continue;
+            CharSequence label = info.loadLabel(getPackageManager());
+            labels.put(packageName, (label == null ? packageName : label) + "\n" + packageName);
+        }
+        if (labels.isEmpty()) {
+            showToast("没有找到可启动的应用");
+            return;
+        }
+        String[] packages = labels.keySet().toArray(new String[0]);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("选择指定应用")
+                .setItems(labels.values().toArray(new String[0]), (d, which) -> {
+                    String packageName = packages[which];
+                    CharSequence appLabel = labels.get(packageName);
+                    int id = appendSideGestureTarget(type,
+                            appLabel == null ? packageName : appLabel.toString().split("\\n", 2)[0], packageName);
+                    if (onSelected != null) onSelected.accept(id);
+                })
+                .setNegativeButton("取消", null)
+                .create();
+        dialog.show();
+        styleDialog(dialog);
+        attachDialogButtonHaptics(dialog);
+    }
+
+    public void showSideGestureTargetDetails(SideGestureTargetStore.Target target,
+            Runnable onReplace) {
+        String title;
+        switch (target.type) {
+            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP:
+                title = "打开应用";
+                break;
+            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY:
+                title = "打开 Activity";
+                break;
+            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI:
+                title = "打开 Intent";
+                break;
+            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL:
+                title = "打开 Scheme URL";
+                break;
+            default:
+                title = "启动目标";
+                break;
+        }
+        TextView details = new TextView(this);
+        String detailText = target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI
+                || target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL
+                ? target.value : target.label + "\n\n" + target.value;
+        details.setText(detailText);
+        details.setTextSize(15f);
+        details.setTextColor(colorText);
+        details.setTextIsSelectable(true);
+        details.setPadding(dp(24), dp(4), dp(24), dp(8));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setView(details)
+                .setNegativeButton("关闭", null)
+                .setPositiveButton("更换目标", (d, which) -> {
+                    if (onReplace != null) onReplace.run();
+                })
+                .create();
+        dialog.show();
+        styleDialog(dialog);
+        attachDialogButtonHaptics(dialog);
+    }
+
+    private void showActivityAppPicker(IntConsumer onSelected) {
+        Intent launcher = new Intent(Intent.ACTION_MAIN);
+        launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> resolved = getPackageManager().queryIntentActivities(launcher,
+                PackageManager.MATCH_DEFAULT_ONLY);
+        LinkedHashMap<String, String> labels = new LinkedHashMap<>();
+        for (ResolveInfo info : resolved) {
+            if (info.activityInfo == null) continue;
+            String packageName = info.activityInfo.packageName;
+            if (labels.containsKey(packageName)) continue;
+            CharSequence label = info.loadLabel(getPackageManager());
+            labels.put(packageName, (label == null ? packageName : label) + "\n" + packageName);
+        }
+        if (labels.isEmpty()) {
+            showToast("没有找到可启动的应用");
+            return;
+        }
+        String[] packages = labels.keySet().toArray(new String[0]);
+        AlertDialog appDialog = new AlertDialog.Builder(this)
+                .setTitle("先选择 Activity 所属应用")
+                .setItems(labels.values().toArray(new String[0]),
+                        (d, which) -> showActivityPicker(packages[which],
+                                labels.get(packages[which]), onSelected))
+                .setNegativeButton("取消", null)
+                .create();
+        appDialog.show();
+        styleDialog(appDialog);
+        attachDialogButtonHaptics(appDialog);
+    }
+
+    private void showActivityPicker(String packageName, String appLabel, IntConsumer onSelected) {
+        ActivityInfo[] activities;
+        try {
+            PackageInfo packageInfo = getPackageManager().getPackageInfo(packageName,
+                    PackageManager.GET_ACTIVITIES);
+            activities = packageInfo.activities;
+        } catch (PackageManager.NameNotFoundException error) {
+            showToast("指定应用已卸载");
+            return;
+        }
+        if (activities == null || activities.length == 0) {
+            showToast("该应用没有可选择的 Activity");
+            return;
+        }
+        ArrayList<ActivityInfo> candidates = new ArrayList<>();
+        ArrayList<String> labels = new ArrayList<>();
+        for (ActivityInfo activityInfo : activities) {
+            if (activityInfo == null || !activityInfo.enabled || !activityInfo.exported) continue;
+            candidates.add(activityInfo);
+            CharSequence label = activityInfo.loadLabel(getPackageManager());
+            labels.add((label == null ? activityInfo.name : label) + "\n" + activityInfo.name);
+        }
+        if (candidates.isEmpty()) {
+            showToast("该应用没有可直接打开的 Activity");
+            return;
+        }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("选择 Activity")
+                .setItems(labels.toArray(new String[0]), (d, which) -> {
+                    ActivityInfo target = candidates.get(which);
+                    int id = appendSideGestureTarget(SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY,
+                            (appLabel == null ? packageName : appLabel.split("\\n", 2)[0])
+                                    + " / " + target.name,
+                            target.packageName + "/" + target.name);
+                    if (onSelected != null) onSelected.accept(id);
+                })
+                .setNegativeButton("取消", null)
+                .create();
+        dialog.show();
+        styleDialog(dialog);
+        attachDialogButtonHaptics(dialog);
+    }
+
+    private int appendSideGestureTarget(int type, String label, String value) {
+        List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
+                SideGestureTargetStore.readRaw(prefs));
+        int id = SideGestureTargetStore.nextId(targets);
+        targets.add(new SideGestureTargetStore.Target(id, type, label, value));
+        putStringSetting(SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON,
+                SideGestureTargetStore.encode(targets));
+        showToast("已添加启动目标");
+        return id;
     }
 
     private void showSideGestureZoneOverlay() {

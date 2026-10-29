@@ -10,10 +10,14 @@ import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 
 import com.example.flymestatusbarsizer.MainActivity;
 import com.example.flymestatusbarsizer.config.SettingsStore;
+import com.example.flymestatusbarsizer.config.SideGestureTargetStore;
+
+import java.util.List;
 
 /** Interactive trigger-zone editor drawn above the settings screen. */
 public final class SideGestureZoneOverlay {
@@ -50,10 +54,15 @@ public final class SideGestureZoneOverlay {
             SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE,
             SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER,
             SettingsStore.SIDE_GESTURE_ACTION_QUICK_TOOLS,
-            SettingsStore.SIDE_GESTURE_ACTION_APP_LAUNCHER
+            SettingsStore.SIDE_GESTURE_ACTION_APP_LAUNCHER,
+            SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP,
+            SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY,
+            SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI,
+            SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL
     };
     private static final String[] ACTION_LABELS = {
-            "无动作", "返回", "主页", "后台多任务界面", "全局负一屏", "多应用工作台", "任务切换器", "快捷工具", "应用启动器"
+            "无动作", "返回", "主页", "后台多任务界面", "全局负一屏", "多应用工作台", "任务切换器", "快捷工具", "应用启动器",
+            "打开指定应用", "打开 Activity", "打开 Intent", "打开 Scheme URL"
     };
     private static final int MAX_DISTANCE_DP = SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP;
     private static final int DRAG_NONE = 0;
@@ -79,6 +88,8 @@ public final class SideGestureZoneOverlay {
     private boolean leftSide = true;
     private boolean splitEnabled;
     private boolean attached;
+    private int[] availableActionValues;
+    private String[] availableActionLabels;
 
     public SideGestureZoneOverlay(MainActivity activity, SharedPreferences prefs, int accentColor,
             Runnable onActionChanged, Runnable onClosed) {
@@ -89,6 +100,7 @@ public final class SideGestureZoneOverlay {
         this.onClosed = onClosed;
         this.view = new OverlayView(activity);
         loadFromPreferences();
+        loadAvailableActions();
     }
 
     public boolean show() {
@@ -139,6 +151,19 @@ public final class SideGestureZoneOverlay {
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_MIN_VERTICAL_DP,
                 SettingsStore.MIN_ASSISTANT_GESTURE_MIN_VERTICAL_DP,
                 SettingsStore.MAX_ASSISTANT_GESTURE_MIN_VERTICAL_DP);
+    }
+
+    private void loadAvailableActions() {
+        List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
+                SideGestureTargetStore.readRaw(prefs));
+        availableActionValues = new int[ACTION_VALUES.length + targets.size()];
+        availableActionLabels = new String[ACTION_LABELS.length + targets.size()];
+        System.arraycopy(ACTION_VALUES, 0, availableActionValues, 0, ACTION_VALUES.length);
+        System.arraycopy(ACTION_LABELS, 0, availableActionLabels, 0, ACTION_LABELS.length);
+        for (int i = 0; i < targets.size(); i++) {
+            availableActionValues[ACTION_VALUES.length + i] = targets.get(i).id;
+            availableActionLabels[ACTION_LABELS.length + i] = "打开：" + targets.get(i).label;
+        }
     }
 
     private int readDistance(String key, int defaultValue, int min, int max) {
@@ -194,6 +219,10 @@ public final class SideGestureZoneOverlay {
         private int pickerDirection = -1;
         private boolean pickerLongDistance;
         private boolean pickerGestureActive;
+        private boolean pickerTouchMoved;
+        private boolean sideControlTouchActive;
+        private float pickerTouchStartY;
+        private int pickerScrollIndex;
         private float dragOffsetX;
 
         OverlayView(Context context) {
@@ -608,7 +637,9 @@ public final class SideGestureZoneOverlay {
             float panelRight = width - dp(22);
             float panelTop = top + dp(66);
             float rowHeight = dp(44);
-            float panelBottom = panelTop + dp(38) + rowHeight * ACTION_LABELS.length;
+            float rowStart = panelTop + dp(38);
+            int visibleRows = pickerVisibleRows(getHeight(), rowStart, rowHeight);
+            float panelBottom = rowStart + rowHeight * visibleRows;
             controlPaint.setColor(0xe62a313a);
             canvas.drawRoundRect(panelLeft, panelTop, panelRight, panelBottom,
                     dp(14), dp(14), controlPaint);
@@ -619,18 +650,28 @@ public final class SideGestureZoneOverlay {
             canvas.drawText(directionName(pickerDirection) + " · "
                     + (longDistance ? "长距离动作" : "短距离动作"),
                     (panelLeft + panelRight) / 2f, panelTop + dp(25), textPaint);
-            for (int i = 0; i < ACTION_LABELS.length; i++) {
-                float rowTop = panelTop + dp(38) + i * rowHeight;
-                if (ACTION_VALUES[i] == action) {
+            canvas.save();
+            canvas.clipRect(panelLeft, rowStart, panelRight, panelBottom);
+            for (int row = 0; row < visibleRows; row++) {
+                int i = pickerScrollIndex + row;
+                if (i >= availableActionLabels.length) break;
+                float rowTop = rowStart + row * rowHeight;
+                if (availableActionValues[i] == action) {
                     selectedControlPaint.setColor(accentColor);
                     canvas.drawRoundRect(panelLeft + dp(8), rowTop + dp(2),
                             panelRight - dp(8), rowTop + rowHeight - dp(2),
                             dp(8), dp(8), selectedControlPaint);
                 }
-                canvas.drawText(ACTION_LABELS[i], (panelLeft + panelRight) / 2f,
+                String label = availableActionLabels[i];
+                float maxLabelWidth = panelRight - panelLeft - dp(32);
+                while (textPaint.measureText(label) > maxLabelWidth && label.length() > 8) {
+                    label = label.substring(0, label.length() - 4) + "...";
+                }
+                canvas.drawText(label, (panelLeft + panelRight) / 2f,
                         rowTop + rowHeight / 2f - (textPaint.ascent() + textPaint.descent()) / 2f,
                         textPaint);
             }
+            canvas.restore();
         }
 
         @Override
@@ -639,17 +680,33 @@ public final class SideGestureZoneOverlay {
             float y = event.getY();
             int action = event.getActionMasked();
             if (pickerGestureActive) {
+                if (action == MotionEvent.ACTION_MOVE
+                        && Math.abs(y - pickerTouchStartY) > ViewConfiguration.get(getContext())
+                                .getScaledTouchSlop()) {
+                    int rows = Math.max(1, Math.round((y - pickerTouchStartY) / dp(44)));
+                    pickerScrollIndex = clamp(pickerScrollIndex - rows, 0,
+                            Math.max(0, availableActionLabels.length
+                                    - pickerVisibleRows(getHeight(), pickerRowStart(), dp(44))));
+                    pickerTouchStartY = y;
+                    pickerTouchMoved = true;
+                    invalidate();
+                }
                 if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    if (action == MotionEvent.ACTION_UP && !pickerTouchMoved) handlePickerTap(x, y);
                     pickerGestureActive = false;
+                    if (action == MotionEvent.ACTION_UP) {
+                        pickerDirection = -1;
+                        pickerScrollIndex = 0;
+                        invalidate();
+                    }
                 }
                 return true;
             }
             if (action == MotionEvent.ACTION_DOWN) {
                 if (pickerDirection >= 0) {
                     pickerGestureActive = true;
-                    if (handlePickerTap(x, y)) return true;
-                    pickerDirection = -1;
-                    invalidate();
+                    pickerTouchStartY = y;
+                    pickerTouchMoved = false;
                     return true;
                 }
                 if (exitControl.contains(x, y)) {
@@ -662,11 +719,13 @@ public final class SideGestureZoneOverlay {
                 }
                 if (leftControl.contains(x, y)) {
                     leftSide = true;
+                    sideControlTouchActive = true;
                     invalidate();
                     return true;
                 }
                 if (rightControl.contains(x, y)) {
                     leftSide = false;
+                    sideControlTouchActive = true;
                     invalidate();
                     return true;
                 }
@@ -712,6 +771,11 @@ public final class SideGestureZoneOverlay {
                     return true;
                 }
             } else if (action == MotionEvent.ACTION_UP) {
+                if (sideControlTouchActive) {
+                    sideControlTouchActive = false;
+                    activity.performTapHaptic(this);
+                    return true;
+                }
                 if (dragging != DRAG_NONE) {
                     dragging = DRAG_NONE;
                     activity.performTapHaptic(this);
@@ -719,8 +783,27 @@ public final class SideGestureZoneOverlay {
                 }
                 int actionLabel = hitActionLabel(x, y);
                 if (actionLabel >= 0) {
+                    int directionIndex = actionLabel % 3;
+                    boolean longDistance = actionLabel >= 3;
+                    int slot = (leftSide ? 0 : 3) + directionIndex;
+                    int selectedAction = longDistance ? longActions[slot] : shortActions[slot];
+                    if (SideGestureTargetStore.isDynamicAction(selectedAction)) {
+                        SideGestureTargetStore.Target target = SideGestureTargetStore.find(
+                                SideGestureTargetStore.readRaw(prefs), selectedAction);
+                        if (target != null) {
+                            activity.showSideGestureTargetDetails(target, () ->
+                                    activity.configureSideGestureTarget(target.type, targetId -> {
+                                        if (longDistance) longActions[slot] = targetId;
+                                        else shortActions[slot] = targetId;
+                                        loadAvailableActions();
+                                        invalidate();
+                                    }));
+                            return true;
+                        }
+                    }
                     pickerDirection = actionLabel % 3;
                     pickerLongDistance = actionLabel >= 3;
+                    pickerScrollIndex = 0;
                     invalidate();
                     return true;
                 }
@@ -735,11 +818,13 @@ public final class SideGestureZoneOverlay {
                     if (distanceDp > 8f) {
                         pickerDirection = directionIndex;
                         pickerLongDistance = splitEnabled && distanceDp >= longDistanceDp;
+                        pickerScrollIndex = 0;
                         invalidate();
                     }
                 }
                 return true;
             } else if (action == MotionEvent.ACTION_CANCEL) {
+                sideControlTouchActive = false;
                 dragging = DRAG_NONE;
             }
             return true;
@@ -748,19 +833,46 @@ public final class SideGestureZoneOverlay {
         private boolean handlePickerTap(float x, float y) {
             float panelLeft = dp(22);
             float panelRight = getWidth() - dp(22);
-            float panelTop = topInset() + dp(66);
             float rowHeight = dp(44);
-            float rowStart = panelTop + dp(38);
+            float rowStart = pickerRowStart();
+            int visibleRows = pickerVisibleRows(getHeight(), rowStart, rowHeight);
             if (x < panelLeft || x > panelRight || y < rowStart
-                    || y >= rowStart + rowHeight * ACTION_LABELS.length) return false;
-            int actionIndex = (int) ((y - rowStart) / rowHeight);
+                    || y >= rowStart + rowHeight * visibleRows) return false;
+            int actionIndex = pickerScrollIndex + (int) ((y - rowStart) / rowHeight);
+            if (actionIndex >= availableActionValues.length) return false;
             int index = (leftSide ? 0 : 3) + pickerDirection;
-            if (splitEnabled && pickerLongDistance) longActions[index] = ACTION_VALUES[actionIndex];
-            else shortActions[index] = ACTION_VALUES[actionIndex];
+            int selected = availableActionValues[actionIndex];
+            if (selected == SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP
+                    || selected == SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY
+                    || selected == SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI
+                    || selected == SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL) {
+                int slot = index;
+                activity.configureSideGestureTarget(selected, targetId -> {
+                    if (splitEnabled && pickerLongDistance) longActions[slot] = targetId;
+                    else shortActions[slot] = targetId;
+                    loadAvailableActions();
+                    pickerDirection = -1;
+                    invalidate();
+                });
+            } else if (splitEnabled && pickerLongDistance) {
+                longActions[index] = selected;
+            } else {
+                shortActions[index] = selected;
+            }
             pickerDirection = -1;
+            pickerScrollIndex = 0;
             invalidate();
             activity.performTapHaptic(this);
             return true;
+        }
+
+        private float pickerRowStart() {
+            return topInset() + dp(66 + 38);
+        }
+
+        private int pickerVisibleRows(float height, float rowStart, float rowHeight) {
+            int room = (int) ((height - navigationBarHeight() - dp(74) - rowStart) / rowHeight);
+            return Math.max(3, Math.min(availableActionLabels.length, room));
         }
 
         private int hitHandle(float x, float y) {
@@ -820,7 +932,24 @@ public final class SideGestureZoneOverlay {
                 case SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER: return "任务切换器";
                 case SettingsStore.SIDE_GESTURE_ACTION_QUICK_TOOLS: return "快捷工具";
                 case SettingsStore.SIDE_GESTURE_ACTION_APP_LAUNCHER: return "应用启动器";
-                default: return "无动作";
+                case SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP: return "指定应用";
+                case SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY: return "指定 Activity";
+                case SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI: return "Intent URI";
+                case SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL: return "Scheme URL";
+                default:
+                    SideGestureTargetStore.Target target = SideGestureTargetStore.find(
+                            SettingsStore.readString(prefs,
+                                    SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON, "[]"), action);
+                    if (target != null) {
+                        switch (target.type) {
+                            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP: return "打开应用";
+                            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY: return "打开 Activity";
+                            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI: return "打开 Intent";
+                            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL:
+                                return "打开 Scheme URL";
+                        }
+                    }
+                    return "无动作";
             }
         }
 

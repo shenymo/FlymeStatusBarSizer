@@ -236,7 +236,7 @@ final class AssistantGestureHooks {
             }
             SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant,
                     com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION,
-                    taskSwitcher, quickTools, appLauncher);
+                    taskSwitcher, quickTools, appLauncher, context);
             if (!isNavigationAction(actionId) && (action == null || !action.isReady())) return;
             Object panel = target == null ? null : ReflectUtils.getField(target, "mEdgeBackPlugin");
             int feedback = longDistance ? HapticFeedbackConstants.LONG_PRESS
@@ -270,7 +270,7 @@ final class AssistantGestureHooks {
             if (actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK) return false;
             SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant,
                     com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION,
-                    taskSwitcher, quickTools, appLauncher);
+                    taskSwitcher, quickTools, appLauncher, context);
             boolean noAction = actionId == SettingsStore.SIDE_GESTURE_ACTION_NONE;
             boolean navigation = isNavigationAction(actionId);
             if (!noAction && !navigation && (action == null || !action.isReady())) { reset(); return false; }
@@ -329,7 +329,7 @@ final class AssistantGestureHooks {
             }
             SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant,
                     com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION,
-                    taskSwitcher, quickTools, appLauncher);
+                    taskSwitcher, quickTools, appLauncher, context);
             if (actionId != SettingsStore.SIDE_GESTURE_ACTION_NONE
                     && !isNavigationAction(actionId)
                     && (action == null || !action.isReady())) {
@@ -343,7 +343,7 @@ final class AssistantGestureHooks {
                     + Math.min(170f * density, state.inwardDistance() * 0.72f);
             float anchorX = edge + horizontalDirection * reach;
             float anchorY = state.startY() + state.verticalDelta() * 0.58f;
-            actionOverlay.show(SideGestureActions.label(actionId), anchorX, anchorY);
+            actionOverlay.show(SideGestureActions.label(actionId, context), anchorX, anchorY);
         }
 
         int configuredAction(ModuleConfig config, int direction, boolean longDistance) {

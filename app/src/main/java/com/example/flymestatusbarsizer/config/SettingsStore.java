@@ -130,7 +130,16 @@ public final class SettingsStore {
     public static final int SIDE_GESTURE_ACTION_TASK_SWITCHER = 6;
     public static final int SIDE_GESTURE_ACTION_QUICK_TOOLS = 7;
     public static final int SIDE_GESTURE_ACTION_APP_LAUNCHER = 8;
+    public static final int SIDE_GESTURE_ACTION_OPEN_APP = 9;
+    public static final int SIDE_GESTURE_ACTION_OPEN_ACTIVITY = 10;
+    public static final int SIDE_GESTURE_ACTION_OPEN_INTENT_URI = 11;
+    public static final int SIDE_GESTURE_ACTION_OPEN_SCHEME_URL = 12;
     public static final int DEFAULT_SIDE_GESTURE_ACTION = SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
+    public static final String KEY_SIDE_GESTURE_TARGET_APP = "side_gesture_target_app";
+    public static final String KEY_SIDE_GESTURE_TARGET_ACTIVITY = "side_gesture_target_activity";
+    public static final String KEY_SIDE_GESTURE_TARGET_INTENT_URI = "side_gesture_target_intent_uri";
+    public static final String KEY_SIDE_GESTURE_TARGET_SCHEME_URL = "side_gesture_target_scheme_url";
+    public static final String KEY_SIDE_GESTURE_TARGETS_JSON = "side_gesture_targets_json";
     public static final String KEY_SIDE_GESTURE_UP_ACTION = "side_gesture_up_action";
     public static final String KEY_SIDE_GESTURE_DOWN_ACTION = "side_gesture_down_action";
     public static final String KEY_SIDE_GESTURE_LEFT_ACTION = "side_gesture_left_action";
@@ -981,6 +990,11 @@ public final class SettingsStore {
             KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON,
             KEY_MBACK_LONG_TOUCH_INTENT_URI,
             KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
+            KEY_SIDE_GESTURE_TARGET_APP,
+            KEY_SIDE_GESTURE_TARGET_ACTIVITY,
+            KEY_SIDE_GESTURE_TARGET_INTENT_URI,
+            KEY_SIDE_GESTURE_TARGET_SCHEME_URL,
+            KEY_SIDE_GESTURE_TARGETS_JSON,
             KEY_LAUNCHER_AICY_ENTRY_TEXT,
             KEY_LAUNCHER_AICY_ENTRY_TARGET,
             KEY_LAUNCHER_FOLDER_BG_COLOR,
@@ -1637,6 +1651,7 @@ public final class SettingsStore {
     }
 
     public static int normalizeSideGestureAction(int value) {
+        if (SideGestureTargetStore.isDynamicAction(value)) return value;
         switch (value) {
             case SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT:
             case SIDE_GESTURE_ACTION_TASK_SCALE:
@@ -1647,6 +1662,10 @@ public final class SettingsStore {
             case SIDE_GESTURE_ACTION_TASK_SWITCHER:
             case SIDE_GESTURE_ACTION_QUICK_TOOLS:
             case SIDE_GESTURE_ACTION_APP_LAUNCHER:
+            case SIDE_GESTURE_ACTION_OPEN_APP:
+            case SIDE_GESTURE_ACTION_OPEN_ACTIVITY:
+            case SIDE_GESTURE_ACTION_OPEN_INTENT_URI:
+            case SIDE_GESTURE_ACTION_OPEN_SCHEME_URL:
                 return value;
             default:
                 return DEFAULT_SIDE_GESTURE_ACTION;
