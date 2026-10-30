@@ -33,6 +33,9 @@ public final class SystemAppearancePageController {
         activity.addActionButtonRow(organizer, "AI 桌面整理",
                 "按应用用途生成文件夹，支持预览、调整和撤销。保留底栏、小组件及特殊快捷方式。",
                 "打开", activity::showLauncherOrganizerPage);
+        activity.addActionButtonRow(organizer, "按使用情况排序",
+                "按最近使用频率整理所有文件夹内的应用，与 AI 桌面整理分开使用。",
+                "打开", () -> activity.openPage(MainActivity.Page.LAUNCHER_USAGE_SORT));
         root.addView(activity.buildSectionCard("桌面整理", "", organizer), PageViewUtils.matchWrap());
         root.addView(activity.createSystemAppearanceSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
     }

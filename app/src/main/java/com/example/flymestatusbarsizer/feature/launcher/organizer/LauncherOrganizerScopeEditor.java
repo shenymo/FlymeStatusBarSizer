@@ -51,12 +51,10 @@ final class LauncherOrganizerScopeEditor {
         this.scope = scope;
         root.removeAllViews();
         if (desktop == null) {
-            label(root, "读取桌面后，按原有布局勾选需要整理的应用。默认只选散落图标，并保留首屏。");
             return;
         }
         try {
             label(root, summary(desktop, scope));
-            label(root, "点击应用勾选；点击文件夹角标整组选中，点击文件夹打开后逐个勾选。灰色内容不参与整理。");
             button(root, "快捷选择：" + LauncherOrganizerScope.MODES[scope.mode] + " ▾", this::choosePreset);
             toggle(root, "保留首屏（含空白位置）", scope.keepFirstScreen, value -> {
                 LauncherOrganizerScope next = copy();
@@ -78,8 +76,7 @@ final class LauncherOrganizerScopeEditor {
         for (int i = 0; i < apps.length(); i++) if (!apps.getJSONObject(i).getBoolean("newApp")) existing++;
         for (int i = 0; i < selected.length(); i++) if (!selected.getJSONObject(i).getBoolean("newApp")) selectedExisting++;
         return "已勾选 " + selectedExisting + " 个桌面应用，添加 " + (selected.length() - selectedExisting) + " 个应用\n"
-                + "未选 " + (existing - selectedExisting) + " 个桌面应用，整页保留 " + scope.protectedScreens(desktop).size() + " 页。\n"
-                + "文件夹只选部分应用时，其余应用留在原文件夹，内部位置可能由桌面自动调整。";
+                + "未选 " + (existing - selectedExisting) + " 个桌面应用，整页保留 " + scope.protectedScreens(desktop).size() + " 页。";
     }
 
     private void choosePreset() {
@@ -131,7 +128,7 @@ final class LauncherOrganizerScopeEditor {
         });
         List<JSONObject> pageApps = apps(currentScreen, false);
         Set<String> selected = selectedIds(scope);
-        label(root, locked ? "本页已保留，取消保留后可勾选。" : "本页已选 " + selectedCount(pageApps, selected) + "/" + pageApps.size() + " 个应用");
+        label(root, "本页已选 " + selectedCount(pageApps, selected) + "/" + pageApps.size() + " 个应用");
         LinearLayout actions = row(root);
         button(actions, "全选本页", () -> select(pageApps, true)).setEnabled(!locked && !pageApps.isEmpty());
         button(actions, "清空本页", () -> select(pageApps, false)).setEnabled(!locked && !pageApps.isEmpty());
@@ -150,7 +147,6 @@ final class LauncherOrganizerScopeEditor {
             grid.addItem(tile, item.getInt("cellX"), item.getInt("cellY"), item.getInt("spanX"), item.getInt("spanY"));
         }
         root.addView(grid, activity.matchWrapWithTop(8));
-        label(root, "空白处对应桌面留白；小组件和特殊快捷方式仅显示占位。底栏保持不动。");
     }
 
     private View itemTile(JSONObject item, Set<String> selected, boolean locked) throws Exception {
@@ -202,7 +198,6 @@ final class LauncherOrganizerScopeEditor {
             content.addView(count);
             Runnable updateCount = () -> count.setText("已选 " + selectedCount(apps, selected) + "/" + apps.size() + " 个应用");
             updateCount.run();
-            if (folder) label(content, "勾选的应用将参与重新分类；未选应用留在此文件夹，内部位置可能自动调整。");
             LinearLayout actions = row(content);
             List<CheckBox> boxes = new ArrayList<>();
             button(actions, "全选", () -> { for (CheckBox box : boxes) box.setChecked(true); });

@@ -28,6 +28,7 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -156,6 +157,12 @@ public final class LauncherOrganizer {
                     }
                     LauncherOrganizerScope scope = new LauncherOrganizerScope(plan.getJSONObject("scope"));
                     apply(activity, profile, controller, db, state, plan.getJSONArray("groups"), scope);
+                } else if ("sort_usage".equals(action)) {
+                    JSONObject plan = new JSONObject(request.getString("data"));
+                    if (!state.getString("hash").equals(plan.getString("hash"))) {
+                        throw new IllegalStateException("桌面或应用列表已变化，请重新读取后重试");
+                    }
+                    sortExistingFolders(profile, activity.getClassLoader(), db, state, plan.getJSONObject("usage"));
                 } else {
                     throw new IllegalArgumentException("未知桌面操作");
                 }
@@ -291,6 +298,12 @@ public final class LauncherOrganizer {
         }
         JSONArray items = state.getJSONArray("items");
         Set<Integer> removedFolders = LauncherOrganizerScope.removableFolders(items, moving);
+        Set<Integer> targetFolders = new HashSet<>();
+        for (int i = 0; i < groups.length(); i++) {
+            int targetFolder = groups.getJSONObject(i).optInt("folderId", -1);
+            if (targetFolder >= 0) targetFolders.add(targetFolder);
+        }
+        removedFolders.removeAll(targetFolders);
         List<Integer> screens = new ArrayList<>();
         JSONArray screenIds = state.getJSONArray("screens");
         for (int i = 0; i < screenIds.length(); i++) screens.add(screenIds.getInt(i));
@@ -304,30 +317,57 @@ public final class LauncherOrganizer {
             }
         }
         List<int[]> sizes = new ArrayList<>();
+        List<Integer> positionedGroups = new ArrayList<>();
+        Map<Integer, int[]> groupSizes = new HashMap<>();
+        Set<Integer> validFolders = new HashSet<>();
+        JSONArray folderInfo = state.getJSONArray("folders");
+        for (int i = 0; i < folderInfo.length(); i++) validFolders.add(folderInfo.getJSONObject(i).getInt("id"));
         for (int i = 0; i < groups.length(); i++) {
             JSONObject group = groups.getJSONObject(i);
-            sizes.add(LauncherOrganizerLayout.folderSpan(LauncherOrganizerLayout.folderType(
-                    group.optInt("folderType", -1), group.getJSONArray("apps").length(),
-                    state.getInt("columns"), state.getInt("rows"))));
+            int targetFolder = group.optInt("folderId", -1);
+            if (targetFolder >= 0 && !validFolders.contains(targetFolder)) {
+                throw new IllegalArgumentException("目标文件夹已不存在，请重新读取桌面");
+            }
+            if (targetFolder < 0) {
+                positionedGroups.add(i);
+                int[] size = LauncherOrganizerLayout.folderSpan(LauncherOrganizerLayout.folderType(
+                        group.optInt("folderType", -1), group.getJSONArray("apps").length(),
+                        state.getInt("columns"), state.getInt("rows")));
+                sizes.add(size);
+                groupSizes.put(i, size);
+            }
         }
         List<int[]> positions = LauncherOrganizerLayout.place(state.getInt("columns"), state.getInt("rows"),
                 screens, reserved, sizes, scope.protectedScreens(state));
+        Map<Integer, int[]> groupPositions = new HashMap<>();
+        for (int i = 0; i < positionedGroups.size(); i++) groupPositions.put(positionedGroups.get(i), positions.get(i));
         JSONArray writes = new JSONArray();
         ClassLoader loader = context.getClassLoader();
+        Map<Integer, Integer> appendedCounts = new HashMap<>();
         for (int i = 0; i < groups.length(); i++) {
             JSONObject group = groups.getJSONObject(i);
             JSONArray ids = group.getJSONArray("apps");
-            int[] pos = positions.get(i);
-            int container = -100;
+            int targetFolder = group.optInt("folderId", -1);
+            int[] pos = groupPositions.get(i);
+            int container = targetFolder >= 0 ? targetFolder : -100;
+            int screen = targetFolder >= 0 ? folder(folderInfo, targetFolder).getInt("screen") : pos[0];
+            int startRank = 0;
             Object grid = null;
-            if (ids.length() > 1) {
+            if (targetFolder >= 0) {
+                startRank = folderNextRank(items, targetFolder)
+                        + appendedCounts.getOrDefault(targetFolder, 0);
+                Class<?> gridType = Class.forName(BASE + "folder.FolderGridOrganizer", false, loader);
+                grid = gridType.getConstructor(int.class, int.class).newInstance(
+                        (int) requiredField(profile, "numFolderColumns"), (int) requiredField(profile, "numFolderRows"));
+                call(grid, "setContentSize", int.class, startRank + ids.length());
+            } else if (ids.length() > 1) {
                 Class<?> gridType = Class.forName(BASE + "folder.FolderGridOrganizer", false, loader);
                 int folderId = (int) call(controller, "generateNewItemId");
                 JSONObject folder = new JSONObject().put("_id", folderId).put("itemType", 2)
                         .put("title", group.getString("name")).put("profileId", context.getSystemService(UserManager.class).getSerialNumberForUser(Process.myUserHandle()))
                         .put("options", 8).put("category", -2).put("cloneId", 0);
                 position(folder, -100, pos[0], pos[1], pos[2], 0);
-                folder.put("spanX", sizes.get(i)[0]).put("spanY", sizes.get(i)[1]);
+                folder.put("spanX", groupSizes.get(i)[0]).put("spanY", groupSizes.get(i)[1]);
                 writes.put(folder);
                 container = folderId;
                 grid = gridType.getConstructor(int.class, int.class).newInstance(
@@ -340,10 +380,13 @@ public final class LauncherOrganizer {
                     int newId = (int) call(controller, "generateNewItemId");
                     row.put("_id", newId);
                 }
-                Point cell = grid == null ? new Point(pos[1], pos[2]) : (Point) call(grid, "getPosForRank", int.class, rank);
-                position(row, container, pos[0], cell.x, cell.y, rank);
+                int effectiveRank = startRank + rank;
+                Point cell = grid == null ? new Point(pos[1], pos[2]) : (Point) call(grid, "getPosForRank", int.class, effectiveRank);
+                position(row, container, screen, cell.x, cell.y, effectiveRank);
                 writes.put(row);
             }
+            if (targetFolder >= 0) appendedCounts.put(targetFolder,
+                    appendedCounts.getOrDefault(targetFolder, 0) + ids.length());
         }
         db.beginTransaction();
         try {
@@ -366,9 +409,119 @@ public final class LauncherOrganizer {
         }
     }
 
+    private static void sortExistingFolders(Object profile, ClassLoader loader, SQLiteDatabase db,
+            JSONObject state, JSONObject usage) throws Exception {
+        JSONArray folderInfo = state.getJSONArray("folders");
+        Set<Integer> folders = new HashSet<>();
+        for (int i = 0; i < folderInfo.length(); i++) folders.add(folderInfo.getJSONObject(i).getInt("id"));
+        JSONArray writes = sortTargetFolders(profile, loader, state.getJSONArray("items"),
+                new JSONArray(), folders, usage, folderInfo, new HashSet<>());
+        db.beginTransaction();
+        try {
+            if (!state.getString("layoutHash").equals(layoutHash(state, readRows(db)))) {
+                throw new IllegalStateException("布局已变化，请重新读取后重试");
+            }
+            for (int i = 0; i < writes.length(); i++) {
+                JSONObject row = writes.getJSONObject(i);
+                ContentValues values = contentValues(row);
+                if (db.update("favorites", values, "_id=?", new String[]{Integer.toString(row.getInt("_id"))}) != 1) {
+                    throw new IllegalStateException("应用记录已变化，请重新读取后重试");
+                }
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    private static JSONArray sortTargetFolders(Object profile, ClassLoader loader,
+            JSONArray items, JSONArray writes, Set<Integer> targetFolders, JSONObject usage,
+            JSONArray folderInfo, Set<Integer> moving) throws Exception {
+        Map<Integer, Map<Integer, JSONObject>> childrenByFolder = new HashMap<>();
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject row = items.getJSONObject(i);
+            int folder = row.optInt("container", -1);
+            if (targetFolders.contains(folder) && row.optInt("itemType", -1) == 0
+                    && !moving.contains(row.getInt("_id"))) {
+                childrenByFolder.computeIfAbsent(folder, ignored -> new LinkedHashMap<>()).put(row.getInt("_id"), row);
+            }
+        }
+        for (int i = 0; i < writes.length(); i++) {
+            JSONObject row = writes.getJSONObject(i);
+            int folder = row.optInt("container", -1);
+            if (targetFolders.contains(folder) && row.optInt("itemType", -1) == 0) {
+                childrenByFolder.computeIfAbsent(folder, ignored -> new LinkedHashMap<>()).put(row.getInt("_id"), row);
+            }
+        }
+        JSONArray result = new JSONArray();
+        for (int i = 0; i < writes.length(); i++) {
+            JSONObject row = writes.getJSONObject(i);
+            if (!targetFolders.contains(row.optInt("container", -1))) result.put(row);
+        }
+        int columns = (int) requiredField(profile, "numFolderColumns");
+        int rows = (int) requiredField(profile, "numFolderRows");
+        Class<?> gridType = Class.forName(BASE + "folder.FolderGridOrganizer", false, loader);
+        for (int folderId : targetFolders) {
+            List<FolderChild> children = new ArrayList<>();
+            for (JSONObject row : childrenByFolder.getOrDefault(folderId, new LinkedHashMap<>()).values()) {
+                JSONObject score = usage.optJSONObject(packageName(row));
+                children.add(new FolderChild(row, score == null ? 0 : score.optLong("count"),
+                        score == null ? 0 : score.optLong("last")));
+            }
+            children.sort((left, right) -> {
+                int countOrder = Long.compare(right.count, left.count);
+                if (countOrder != 0) return countOrder;
+                int recentOrder = Long.compare(right.last, left.last);
+                return recentOrder != 0 ? recentOrder
+                        : Integer.compare(left.row.optInt("rank", 0), right.row.optInt("rank", 0));
+            });
+            Object grid = gridType.getConstructor(int.class, int.class).newInstance(columns, rows);
+            call(grid, "setContentSize", int.class, children.size());
+            int screen = folder(folderInfo, folderId).getInt("screen");
+            for (int rank = 0; rank < children.size(); rank++) {
+                JSONObject row = children.get(rank).row;
+                Point cell = (Point) call(grid, "getPosForRank", int.class, rank);
+                position(row, folderId, screen, cell.x, cell.y, rank);
+                result.put(row);
+            }
+        }
+        return result;
+    }
+
+    private static final class FolderChild {
+        final JSONObject row;
+        final long count;
+        final long last;
+
+        FolderChild(JSONObject row, long count, long last) {
+            this.row = row;
+            this.count = count;
+            this.last = last;
+        }
+    }
+
     private static void position(JSONObject row, int container, int screen, int x, int y, int rank) throws Exception {
         row.put("container", container).put("screen", screen).put("cellX", x).put("cellY", y)
                 .put("spanX", 1).put("spanY", 1).put("rank", rank);
+    }
+
+    private static JSONObject folder(JSONArray folders, int folderId) throws Exception {
+        for (int i = 0; i < folders.length(); i++) {
+            JSONObject folder = folders.getJSONObject(i);
+            if (folder.getInt("id") == folderId) return folder;
+        }
+        return null;
+    }
+
+    private static int folderNextRank(JSONArray items, int folderId) throws Exception {
+        int nextRank = 0;
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject row = items.getJSONObject(i);
+            if (row.optInt("container", -1) == folderId && row.optInt("itemType", -1) == 0) {
+                nextRank = Math.max(nextRank, row.optInt("rank", -1) + 1);
+            }
+        }
+        return nextRank;
     }
 
     private static boolean onDesktop(JSONObject row) {

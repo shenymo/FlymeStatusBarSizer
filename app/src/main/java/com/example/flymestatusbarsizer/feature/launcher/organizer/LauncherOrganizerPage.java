@@ -18,6 +18,7 @@ import android.view.View;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.Switch;
 import android.widget.TextView;
 
 import org.json.JSONArray;
@@ -43,9 +44,10 @@ public final class LauncherOrganizerPage {
             + "优先按照用户的分类要求决定分类名称、应用归属和排列顺序。\n"
             + "用户未指定时，按应用用途归入数量适当、名称简短清楚的中文分类，不要按首字母或品牌机械分类，尽量避免只有一个应用的分类。\n"
             + "同一应用最多出现一次，不得新增输入中不存在的 id。分类名称须非空、互不重复且不超过30字，不输出空分类。\n"
+            + "只有用户明确允许复用现有文件夹时，才可将适合的应用放入现有文件夹，并设置对应 folderId。\n"
             + "无法确定分类的应用不要加入任何分类，也不要创建未分类文件夹，这些应用会直接放到桌面。\n"
-            + "分类顺序和分类内应用顺序就是桌面排列顺序。仅返回 JSON：\n"
-            + "{\"groups\":[{\"name\":\"社交通讯\",\"apps\":[\"a0\",\"a1\"]}]}";
+            + "分类顺序和分类内应用顺序就是桌面排列顺序。仅返回 JSON；folderId 只能使用输入中现有文件夹的 id：\n"
+            + "{\"groups\":[{\"name\":\"社交通讯\",\"folderId\":123,\"apps\":[\"a0\",\"a1\"]}]}";
 
     private final MainActivity activity;
     private final SharedPreferences prefs;
@@ -54,6 +56,13 @@ public final class LauncherOrganizerPage {
     private final TextView configStatus;
     private final TextView promptStatus;
     private final TextView liveOutput;
+    private final TextView readStep;
+    private final TextView selectStep;
+    private final TextView previewStep;
+    private final TextView readButton;
+    private final TextView generateButton;
+    private final TextView applyButton;
+    private final Switch reuseExistingFolders;
     private final ProgressBar progress;
     private final EditText endpoint;
     private final EditText model;
@@ -95,8 +104,9 @@ public final class LauncherOrganizerPage {
         model = input(settings, "模型名称", "填写服务商提供的模型名称", prefs.getString("model", ""), false);
         key = input(settings, "API Key", "仅保存在本机模块内", prefs.getString("key", ""), true);
         LinearLayout classification = column();
-        promptStatus = label(classification, "修改后保存，用于下次生成分类。", 13);
+        promptStatus = label(classification, "", 13);
         promptStatus.setTextColor(activity.subtextColor());
+        promptStatus.setVisibility(View.GONE);
         LinearLayout promptEditor = column();
         customPrompt = promptInput(promptEditor, "分类要求（选填）", "例如：分成工作、生活、娱乐；微信和企业微信放入工作。",
                 prefs.getString("prompt", ""), 3, 5);
@@ -111,16 +121,19 @@ public final class LauncherOrganizerPage {
                     .putString("prompt", customPrompt.getText().toString()).commit();
             if (saved) promptsChanged = false;
             promptStatus.setText(saved ? "提示词已保存。" : "保存失败，请重试。");
+            promptStatus.setVisibility(View.VISIBLE);
         });
         TextView resetPrompt = actionButton("恢复默认核心提示词");
         activity.setTapClickListener(resetPrompt, view -> corePrompt.setText(DEFAULT_CORE_PROMPT));
         promptEditor.addView(resetPrompt, activity.matchWrapWithTop(8));
         controls.add(resetPrompt);
         classification.addView(promptEditor, PageViewUtils.matchWrap());
-        configStatus = label(settings, "接口信息自动保存在本机，下次打开自动填入。", 13);
+        configStatus = label(settings, "", 13);
+        configStatus.setVisibility(View.GONE);
         button(settings, "保存接口", () -> {
             boolean saved = configEditor().commit();
             configStatus.setText(saved ? "接口配置已保存，下次打开自动填入。" : "保存失败，请重试。");
+            configStatus.setVisibility(View.VISIBLE);
         });
         TextWatcher save = new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
@@ -136,36 +149,61 @@ public final class LauncherOrganizerPage {
             @Override public void afterTextChanged(Editable text) {
                 promptsChanged = !corePrompt.getText().toString().equals(prefs.getString("core_prompt", DEFAULT_CORE_PROMPT))
                         || !customPrompt.getText().toString().equals(prefs.getString("prompt", ""));
-                promptStatus.setText(promptsChanged ? "有未保存的修改，请点击保存提示词。" : "修改后保存，用于下次生成分类。");
+                promptStatus.setText(promptsChanged ? "有未保存的修改，请点击保存提示词。" : "提示词已保存。");
+                promptStatus.setVisibility(View.VISIBLE);
             }
         };
         corePrompt.addTextChangedListener(promptChanges);
         customPrompt.addTextChangedListener(promptChanges);
-        root.addView(activity.buildSectionCard("AI 接口", "使用兼容 Chat Completions 的接口。仅发送本次参与整理的应用名称和包名。", settings), PageViewUtils.matchWrap());
-        root.addView(activity.buildSectionCard("提示词", "展开后编辑并保存。收起保留当前编辑内容，恢复默认只重置核心提示词。", classification), PageViewUtils.matchWrapWithTop(activity, 8));
         LinearLayout actions = column();
-        button(actions, "读取桌面", () -> run(() -> {
+        LinearLayout steps = new LinearLayout(activity);
+        steps.setOrientation(LinearLayout.HORIZONTAL);
+        readStep = step(steps, "1 读取桌面");
+        selectStep = step(steps, "2 选择应用");
+        previewStep = step(steps, "3 预览应用");
+        actions.addView(steps, PageViewUtils.matchWrap());
+        readButton = button(actions, "读取桌面", () -> run(() -> {
             desktop = new JSONObject(command("read", null));
             scope.retainAvailable(desktop);
             groups = null;
             savePreview();
             return "已读取 " + desktop.getJSONArray("apps").length() + " 个应用";
         }));
-        button(actions, "生成 AI 分类", this::generate);
-        button(actions, "应用整理", this::confirmApply);
-        status = label(actions, "先读取桌面，选择整理范围，再生成分类。", 14);
+        readButton.setTextSize(16);
+        generateButton = button(actions, "生成 AI 分类", this::generate);
+        reuseExistingFolders = new Switch(activity);
+        activity.styleSwitch(reuseExistingFolders);
+        reuseExistingFolders.setText("允许 AI 使用现有文件夹");
+        reuseExistingFolders.setTextColor(activity.textColor());
+        reuseExistingFolders.setChecked(prefs.getBoolean("reuse_existing_folders", false));
+        activity.addSearchItem(reuseExistingFolders, "允许 AI 使用现有文件夹", "");
+        actions.addView(reuseExistingFolders, activity.matchWrapWithTop(4));
+        controls.add(reuseExistingFolders);
+        applyButton = button(actions, "应用到桌面", this::confirmApply);
+        status = label(actions, "", 14);
+        reuseExistingFolders.setOnCheckedChangeListener((buttonView, checked) -> {
+            prefs.edit().putBoolean("reuse_existing_folders", checked).apply();
+            if (groups != null && desktop != null && !busy) {
+                groups = null;
+                try { savePreview(); } catch (Exception error) { status.setText(error.getMessage()); }
+                renderPreview();
+                status.setText("设置已改变，请重新生成 AI 分类。");
+            }
+        });
         progress = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
         progress.setVisibility(View.GONE);
         actions.addView(progress, activity.matchWrapWithTop(8));
         liveOutput = label(actions, "", 14);
         liveOutput.setVisibility(View.GONE);
-        root.addView(activity.buildSectionCard("操作", "保留底栏、小组件和特殊快捷方式。单应用分类和未分类应用直接放在桌面。", actions), PageViewUtils.matchWrapWithTop(activity, 8));
+        root.addView(activity.buildSectionCard("整理流程", "", actions, true), PageViewUtils.matchWrap());
         LinearLayout scopeRoot = column();
         scopeEditor = new LauncherOrganizerScopeEditor(activity, scopeRoot, this::changeScope);
-        root.addView(activity.buildSectionCard("整理范围", "按桌面原有布局勾选应用，支持文件夹整选。保留整页也保留留白，修改范围后需重新生成分类。", scopeRoot), PageViewUtils.matchWrapWithTop(activity, 8));
+        root.addView(activity.buildSectionCard("选择应用", "", scopeRoot, true), PageViewUtils.matchWrapWithTop(activity, 8));
         preview = column();
-        root.addView(activity.buildSectionCard("分类预览", "文件夹默认按应用数量自动选尺寸，也可手动选择。点击应用可调整归属。", preview), PageViewUtils.matchWrapWithTop(activity, 8));
+        root.addView(activity.buildSectionCard("分类预览", "", preview, true), PageViewUtils.matchWrapWithTop(activity, 8));
+        root.addView(activity.buildSectionCard("AI 接口", "", settings), PageViewUtils.matchWrapWithTop(activity, 8));
+        root.addView(activity.buildSectionCard("提示词", "", classification), PageViewUtils.matchWrapWithTop(activity, 8));
         try {
             String saved = prefs.getString("preview", "");
             if (!saved.isEmpty()) {
@@ -182,6 +220,7 @@ public final class LauncherOrganizerPage {
             }
         } catch (Exception ignored) { desktop = null; groups = null; }
         renderPreview();
+        updateFlowState();
     }
 
     private void generate() {
@@ -195,13 +234,15 @@ public final class LauncherOrganizerPage {
         if (address.isEmpty() || modelName.isEmpty()) { status.setText("请填写接口地址和模型名称"); return; }
         if (systemPrompt.isEmpty()) { status.setText("请填写核心提示词，或点击恢复默认提示词"); return; }
         final JSONArray selected;
+        final boolean allowExistingFolders = reuseExistingFolders.isChecked();
         try {
             selected = requireSelectedApps();
             if (groups != null) { collectNames(); savePreview(); }
         } catch (Exception error) { status.setText(error.getMessage()); return; }
         configEditor().apply();
         run(() -> {
-            JSONArray generated = classify(selected, address, modelName, apiKey, systemPrompt, instructions);
+            JSONArray generated = classify(selected, desktop, address, modelName, apiKey, systemPrompt,
+                    instructions, allowExistingFolders);
             // Publish the parsed result before validation so a malformed AI grouping remains
             // visible for correction instead of looking like no result was generated.
             groups = generated;
@@ -271,7 +312,8 @@ public final class LauncherOrganizerPage {
         throw new IllegalStateException("桌面响应超时。请确认桌面范围已启用，重启桌面后再读取；已开始的操作可返回桌面查看结果。");
     }
 
-    private JSONArray classify(JSONArray apps, String address, String model, String key, String systemPrompt, String instructions) throws Exception {
+    private JSONArray classify(JSONArray apps, JSONObject desktop, String address, String model, String key,
+            String systemPrompt, String instructions, boolean allowExistingFolders) throws Exception {
         phase = "正在准备 " + apps.length() + " 个应用的分类请求";
         URL url = new URL(address);
         if (!"https".equalsIgnoreCase(url.getProtocol()) || url.getHost().isEmpty() || url.getUserInfo() != null) {
@@ -285,11 +327,33 @@ public final class LauncherOrganizerPage {
             ids.put(id, app.getString("id"));
             input.put(new JSONObject().put("id", id).put("name", app.getString("name")).put("package", app.getString("package")));
         }
+        JSONArray existingFolders = new JSONArray();
+        JSONArray desktopApps = desktop.getJSONArray("apps");
+        JSONArray folders = desktop.getJSONArray("folders");
+        for (int i = 0; allowExistingFolders && i < folders.length(); i++) {
+            JSONObject folder = folders.getJSONObject(i);
+            JSONArray members = new JSONArray();
+            int folderId = folder.getInt("id");
+            for (int j = 0; j < desktopApps.length(); j++) {
+                JSONObject app = desktopApps.getJSONObject(j);
+                if (app.getInt("folderId") == folderId) {
+                    members.put(new JSONObject().put("name", app.getString("name"))
+                            .put("package", app.getString("package")));
+                }
+            }
+            existingFolders.put(new JSONObject().put("id", folderId)
+                    .put("name", folder.getString("name")).put("apps", members));
+        }
+        JSONObject inputData = new JSONObject().put("apps", input).put("existingFolders", existingFolders);
+        String userContent = (instructions.isEmpty() ? "" : "分类要求：\n" + instructions + "\n\n")
+                + (allowExistingFolders
+                        ? "请参考 existingFolders 中的名称和已有应用，把用途匹配的待整理应用直接分到相应文件夹，并在该分类中返回对应的数字 folderId。没有合适文件夹时正常新建分类，不要编造 folderId。\n"
+                        : "不要使用现有文件夹或返回 folderId，按普通分类创建新文件夹。\n")
+                + "待分类应用和现有文件夹（JSON 数据）：\n" + inputData;
         JSONObject request = new JSONObject().put("model", model).put("stream", true)
                 .put("messages", new JSONArray()
                         .put(new JSONObject().put("role", "system").put("content", systemPrompt))
-                        .put(new JSONObject().put("role", "user").put("content", instructions.isEmpty() ? input.toString()
-                                : "分类要求：\n" + instructions + "\n\n待分类应用（JSON 数据）：\n" + input)));
+                        .put(new JSONObject().put("role", "user").put("content", userContent)));
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         try {
             phase = "正在连接 AI 接口";
@@ -388,9 +452,21 @@ public final class LauncherOrganizerPage {
                 text = text.substring(newline + 1, text.length() - 3).trim();
             }
             JSONArray groups = new JSONObject(text).getJSONArray("groups");
+            Set<Integer> folderIds = new HashSet<>();
+            JSONArray folderInfo = desktop.getJSONArray("folders");
+            for (int i = 0; i < folderInfo.length(); i++) folderIds.add(folderInfo.getJSONObject(i).getInt("id"));
             for (int i = 0; i < groups.length(); i++) {
-                groups.getJSONObject(i).remove("folderType");
-                JSONArray members = groups.getJSONObject(i).getJSONArray("apps");
+                JSONObject group = groups.getJSONObject(i);
+                group.remove("folderType");
+                if (group.has("folderId")) {
+                    if (!allowExistingFolders) group.remove("folderId");
+                    else {
+                        int folderId = group.optInt("folderId", -1);
+                        if (!folderIds.contains(folderId)) throw new IllegalArgumentException("AI 返回了不存在的现有文件夹");
+                        group.put("folderId", folderId);
+                    }
+                }
+                JSONArray members = group.getJSONArray("apps");
                 for (int j = 0; j < members.length(); j++) {
                     members.put(j, ids.getOrDefault(members.getString(j), ""));
                 }
@@ -431,6 +507,7 @@ public final class LauncherOrganizerPage {
                 liveOutput.setVisibility(groups == null && !liveText.isEmpty() ? View.VISIBLE : View.GONE);
                 preview.setVisibility(View.VISIBLE);
                 renderPreview();
+                updateFlowState();
             });
         }, "FlymeOrganizer").start();
     }
@@ -475,7 +552,7 @@ public final class LauncherOrganizerPage {
         preview.removeAllViews();
         names.clear();
         if (desktop == null || groups == null) {
-            label(preview, desktop == null ? "读取桌面并生成分类后，在这里预览。" : "选择整理范围后，点击“生成 AI 分类”继续。", 14);
+            updateFlowState();
             return;
         }
         try {
@@ -509,12 +586,20 @@ public final class LauncherOrganizerPage {
                 int requested = group.optInt("folderType", -1);
                 int type = LauncherOrganizerLayout.folderType(requested, members.length(),
                         desktop.getInt("columns"), desktop.getInt("rows"));
-                TextView folderType = actionButton(members.length() == 1 ? "单应用直接放到桌面"
-                        : members.length() + " 个应用 · " + (requested == -1 ? "自动：" : "手动：")
-                                + LauncherOrganizerLayout.FOLDER_TYPES[type] + " ▾");
-                folderType.setEnabled(members.length() > 1);
+                int targetFolder = group.optInt("folderId", -1);
+                TextView folderType = actionButton(targetFolder >= 0 ? "现有文件夹 · 保持原布局"
+                        : members.length() == 1 ? "单应用直接放到桌面"
+                                : members.length() + " 个应用 · " + (requested == -1 ? "自动：" : "手动：")
+                                        + LauncherOrganizerLayout.FOLDER_TYPES[type] + " ▾");
+                folderType.setEnabled(members.length() > 1 && targetFolder < 0);
                 activity.setTapClickListener(folderType, view -> selectFolderType(groupIndex));
                 groupView.addView(folderType, activity.matchWrapWithTop(4));
+                String targetName = existingFolderName(targetFolder);
+                TextView destination = actionButton(targetFolder < 0
+                        ? (members.length() == 1 ? "目标：直接放到桌面 ▾" : "目标：新建文件夹 ▾")
+                        : "目标：放入「" + targetName + "」 ▾");
+                activity.setTapClickListener(destination, view -> selectDestination(groupIndex));
+                groupView.addView(destination, activity.matchWrapWithTop(4));
                 for (int j = 0; j < members.length(); j++) {
                     assigned.add(members.getString(j));
                     int memberIndex = j;
@@ -545,7 +630,7 @@ public final class LauncherOrganizerPage {
             }
             int unclassifiedCount = 0;
             for (String id : labels.keySet()) if (!assigned.contains(id)) unclassifiedCount++;
-            label(preview, "未分类应用（" + unclassifiedCount + " 个）· 直接放到桌面", 16);
+            label(preview, "未分类应用（" + unclassifiedCount + " 个）· 默认直接放到桌面", 16);
             for (int i = 0; i < apps.length(); i++) {
                 JSONObject app = apps.getJSONObject(i);
                 if (assigned.contains(app.getString("id"))) continue;
@@ -559,12 +644,47 @@ public final class LauncherOrganizerPage {
                 activity.setTapClickListener(name, view -> moveApp(-1, appIndex));
                 row.addView(name, new LinearLayout.LayoutParams(0,
                         LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+                if (app.getInt("folderId") < 0 && desktop.getJSONArray("folders").length() > 0) {
+                    TextView addToFolder = actionButton("放入已有文件夹");
+                    activity.setTapClickListener(addToFolder, view -> addUnclassifiedToExistingFolder(appIndex));
+                    row.addView(addToFolder);
+                }
                 TextView move = actionButton("移动");
                 activity.setTapClickListener(move, view -> moveApp(-1, appIndex));
                 row.addView(move);
                 preview.addView(row, activity.matchWrapWithTop(4));
             }
         } catch (Exception error) { status.setText(error.getMessage()); }
+        updateFlowState();
+    }
+
+    private TextView step(LinearLayout parent, String title) {
+        TextView view = new TextView(activity);
+        view.setText(title);
+        view.setTextSize(12);
+        view.setGravity(android.view.Gravity.CENTER);
+        view.setPadding(activity.dp(4), activity.dp(8), activity.dp(4), activity.dp(8));
+        parent.addView(view, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        return view;
+    }
+
+    private void updateFlowState() {
+        boolean hasDesktop = desktop != null;
+        boolean hasGroups = groups != null;
+        readButton.setEnabled(!busy);
+        readButton.setAlpha(busy ? 0.45f : 1f);
+        generateButton.setEnabled(hasDesktop && !busy);
+        generateButton.setAlpha(hasDesktop && !busy ? 1f : 0.45f);
+        applyButton.setEnabled(hasDesktop && hasGroups && !busy);
+        applyButton.setAlpha(hasDesktop && hasGroups && !busy ? 1f : 0.45f);
+        readStep.setTextColor(activity.primaryColor());
+        selectStep.setTextColor(hasDesktop ? activity.primaryColor() : activity.subtextColor());
+        previewStep.setTextColor(hasGroups ? activity.primaryColor() : activity.subtextColor());
+        readStep.setTypeface(null, hasDesktop ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        selectStep.setTypeface(null, hasDesktop && !hasGroups
+                ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        previewStep.setTypeface(null, hasGroups ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
     }
 
     private void collectNames() throws Exception {
@@ -614,6 +734,97 @@ public final class LauncherOrganizerPage {
                         } catch (Exception error) { status.setText(error.getMessage()); }
                     }).setNegativeButton("取消", null).show();
         } catch (Exception error) { status.setText(error.getMessage()); }
+    }
+
+    private void selectDestination(int groupIndex) {
+        if (busy) return;
+        try {
+            collectNames();
+            List<Integer> ids = new ArrayList<>();
+            List<String> choices = new ArrayList<>();
+            JSONObject group = groups.getJSONObject(groupIndex);
+            if (group.getJSONArray("apps").length() == 1) {
+                ids.add(-1);
+                choices.add("直接放到桌面");
+            } else {
+                ids.add(-1);
+                choices.add("新建文件夹");
+            }
+            JSONArray folders = desktop.getJSONArray("folders");
+            for (int i = 0; i < folders.length(); i++) {
+                JSONObject folder = folders.getJSONObject(i);
+                ids.add(folder.getInt("id"));
+                choices.add("放入「" + folder.getString("name") + "」");
+            }
+            int selected = ids.indexOf(group.optInt("folderId", -1));
+            new AlertDialog.Builder(activity).setTitle("选择整理目标")
+                    .setSingleChoiceItems(choices.toArray(new String[0]), selected, (dialog, which) -> {
+                        try {
+                            int folderId = ids.get(which);
+                            if (folderId < 0) group.remove("folderId");
+                            else group.put("folderId", folderId);
+                            savePreview();
+                            renderPreview();
+                            dialog.dismiss();
+                        } catch (Exception error) { status.setText(error.getMessage()); }
+                    }).setNegativeButton("取消", null).show();
+        } catch (Exception error) { status.setText(error.getMessage()); }
+    }
+
+    private String existingFolderName(int folderId) throws Exception {
+        if (folderId < 0) return "";
+        JSONArray folders = desktop.getJSONArray("folders");
+        for (int i = 0; i < folders.length(); i++) {
+            JSONObject folder = folders.getJSONObject(i);
+            if (folder.getInt("id") == folderId) return folder.getString("name");
+        }
+        return "未知文件夹";
+    }
+
+    private void addUnclassifiedToExistingFolder(int appIndex) {
+        if (busy) return;
+        try {
+            JSONArray folders = desktop.getJSONArray("folders");
+            String[] choices = new String[folders.length()];
+            for (int i = 0; i < folders.length(); i++) {
+                choices[i] = folders.getJSONObject(i).getString("name");
+            }
+            new AlertDialog.Builder(activity).setTitle("放入已有文件夹")
+                    .setItems(choices, (dialog, which) -> {
+                        try {
+                            JSONArray apps = selectedApps();
+                            String appId = apps.getJSONObject(appIndex).getString("id");
+                            int folderId = folders.getJSONObject(which).getInt("id");
+                            JSONObject target = null;
+                            for (int i = 0; i < groups.length(); i++) {
+                                JSONObject group = groups.getJSONObject(i);
+                                if (group.optInt("folderId", -1) == folderId) {
+                                    target = group;
+                                    break;
+                                }
+                            }
+                            if (target == null) {
+                                String baseName = "放入文件夹：" + choices[which];
+                                String name = baseName;
+                                int suffix = 2;
+                                while (containsGroupName(name)) name = baseName + " " + suffix++;
+                                target = new JSONObject().put("name", name).put("folderId", folderId)
+                                        .put("apps", new JSONArray());
+                                groups.put(target);
+                            }
+                            target.getJSONArray("apps").put(appId);
+                            savePreview();
+                            renderPreview();
+                        } catch (Exception error) { status.setText(error.getMessage()); }
+                    }).setNegativeButton("取消", null).show();
+        } catch (Exception error) { status.setText(error.getMessage()); }
+    }
+
+    private boolean containsGroupName(String name) throws Exception {
+        for (int i = 0; i < groups.length(); i++) {
+            if (name.equals(groups.getJSONObject(i).getString("name"))) return true;
+        }
+        return false;
     }
 
     private void moveApp(int source, int member) {
@@ -788,11 +999,12 @@ public final class LauncherOrganizerPage {
         return edit;
     }
 
-    private void button(LinearLayout root, String title, Runnable action) {
+    private TextView button(LinearLayout root, String title, Runnable action) {
         TextView button = activity.filledButton(title, activity.primaryColor(), Color.WHITE);
         activity.setTapClickListener(button, view -> action.run());
         activity.addSearchItem(button, title, "");
         root.addView(button, activity.matchWrapWithTop(8));
         controls.add(button);
+        return button;
     }
 }

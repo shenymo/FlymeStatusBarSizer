@@ -68,7 +68,7 @@ public final class LauncherOrganizerProvider extends ContentProvider {
                 if (("pending".equals(state) || "running".equals(state)) && age < 120_000) {
                     throw new IllegalStateException("上一项桌面操作尚未完成");
                 }
-                if (!"read".equals(arg) && !"apply".equals(arg)) {
+                if (!"read".equals(arg) && !"apply".equals(arg) && !"sort_usage".equals(arg)) {
                     throw new IllegalArgumentException("未知操作");
                 }
                 String id = UUID.randomUUID().toString();
