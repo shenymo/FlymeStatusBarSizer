@@ -20,6 +20,7 @@ import android.os.Looper;
 import android.os.UserHandle;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -250,8 +251,17 @@ final class AppLauncherPanel {
                     super.onConfigurationChanged(configuration);
                     updateDarkMode(configuration);
                 }
+
+                @Override public boolean dispatchKeyEvent(KeyEvent event) {
+                    if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
+                        if (event.getAction() == KeyEvent.ACTION_UP) close();
+                        return true;
+                    }
+                    return super.dispatchKeyEvent(event);
+                }
             };
             root.setBackgroundColor(Color.TRANSPARENT);
+            root.setFocusableInTouchMode(true);
             root.setOnTouchListener((view, event) -> {
                 if (event.getActionMasked() == MotionEvent.ACTION_OUTSIDE
                         || event.getActionMasked() == MotionEvent.ACTION_DOWN) close();
@@ -321,6 +331,7 @@ final class AppLauncherPanel {
                 try {
                     windowManager.addView(root, params);
                     attached = true;
+                    root.requestFocus();
                     panelBlur.start();
                     panel.post(() -> {
                         alignToGestureAnchor();

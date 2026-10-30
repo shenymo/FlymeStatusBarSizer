@@ -16,6 +16,7 @@ import android.util.LruCache;
 import android.view.animation.PathInterpolator;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -141,8 +142,18 @@ public final class RecentTaskSwitcher {
                     super.onConfigurationChanged(configuration);
                     updateDarkMode(configuration);
                 }
+
+                @Override
+                public boolean dispatchKeyEvent(KeyEvent event) {
+                    if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
+                        if (event.getAction() == KeyEvent.ACTION_UP) close();
+                        return true;
+                    }
+                    return super.dispatchKeyEvent(event);
+                }
             };
             root.setBackgroundColor(Color.TRANSPARENT);
+            root.setFocusableInTouchMode(true);
             root.setOnClickListener(view -> close());
             root.setOnTouchListener((view, event) -> {
                 if (event.getActionMasked() == MotionEvent.ACTION_OUTSIDE) close();
@@ -208,6 +219,7 @@ public final class RecentTaskSwitcher {
                 try {
                     windowManager.addView(root, params);
                     attached = true;
+                    root.requestFocus();
                     panelBlur.start();
                     panel.post(() -> {
                         alignToGestureAnchor();
@@ -336,7 +348,7 @@ public final class RecentTaskSwitcher {
                 empty.setTextColor(paletteColor(0xff777777, 0xffb8bec3));
                 empty.setTextSize(14);
                 empty.setGravity(Gravity.CENTER);
-                rows.addView(empty, new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
+                rows.addView(empty, new LinearLayout.LayoutParams(-1, -1));
             }
             if (loading) addLoadingRow();
         }
