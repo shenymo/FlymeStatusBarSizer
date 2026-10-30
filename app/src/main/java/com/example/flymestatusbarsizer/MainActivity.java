@@ -1278,6 +1278,16 @@ public class MainActivity extends Activity {
             String extras, String action, boolean newTask, boolean root) {
         List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
                 SideGestureTargetStore.readRaw(prefs));
+        for (SideGestureTargetStore.Target target : targets) {
+            if (target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY
+                    && target.label.equals(label) && target.value.equals(component)
+                    && target.dataUri.equals(dataUri) && target.extras.equals(extras)
+                    && target.action.equals(action) && target.newTask == newTask
+                    && target.root == root) {
+                showToast("已使用已有启动目标");
+                return target.id;
+            }
+        }
         int id = SideGestureTargetStore.nextId(targets);
         targets.add(new SideGestureTargetStore.Target(id,
                 SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY, label, component,
@@ -1299,6 +1309,12 @@ public class MainActivity extends Activity {
     private int appendSideGestureTarget(int type, String label, String value) {
         List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
                 SideGestureTargetStore.readRaw(prefs));
+        for (SideGestureTargetStore.Target target : targets) {
+            if (target.type == type && target.label.equals(label) && target.value.equals(value)) {
+                showToast("已使用已有启动目标");
+                return target.id;
+            }
+        }
         int id = SideGestureTargetStore.nextId(targets);
         targets.add(new SideGestureTargetStore.Target(id, type, label, value));
         putStringSetting(SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON,
