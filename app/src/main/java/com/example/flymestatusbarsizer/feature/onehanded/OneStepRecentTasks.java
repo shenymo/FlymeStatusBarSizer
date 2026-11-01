@@ -110,10 +110,17 @@ final class OneStepRecentTasks {
         if (!(component instanceof ComponentName)) return null;
         if (OneStepActivityProtocol.isActivity((ComponentName) component)) return null;
         String packageName = ((ComponentName) component).getPackageName();
+        String lockPackageName = packageName;
+        if (intent instanceof Intent) {
+            ComponentName baseComponent = ((Intent) intent).getComponent();
+            if (baseComponent != null) lockPackageName = baseComponent.getPackageName();
+            else if (((Intent) intent).getPackage() != null) lockPackageName = ((Intent) intent).getPackage();
+        }
         if ("com.android.systemui".equals(packageName)) return null;
         Object label = ReflectUtils.invokeNoArg(ReflectUtils.getField(info, "taskDescription"), "getLabel");
         String description = label instanceof String && !((String) label).isEmpty()
                 ? (String) label : ((ComponentName) component).getPackageName();
-        return new RecentTaskCard(taskId, taskUserId, token, description, (ComponentName) component);
+        return new RecentTaskCard(taskId, taskUserId, token, description, (ComponentName) component,
+                lockPackageName);
     }
 }

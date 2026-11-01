@@ -9,19 +9,31 @@ final class RecentTaskCard {
     final Object token;
     final String description;
     final ComponentName component;
+    final String lockPackageName;
     final boolean home;
     boolean temporary;
 
     RecentTaskCard(int taskId, int userId, Object token, String description, ComponentName component) {
-        this(taskId, userId, token, description, component, false);
+        this(taskId, userId, token, description, component, component.getPackageName(), false);
     }
 
     RecentTaskCard(int taskId, int userId, Object token, String description, ComponentName component, boolean home) {
+        this(taskId, userId, token, description, component, component.getPackageName(), home);
+    }
+
+    RecentTaskCard(int taskId, int userId, Object token, String description, ComponentName component,
+            String lockPackageName) {
+        this(taskId, userId, token, description, component, lockPackageName, false);
+    }
+
+    private RecentTaskCard(int taskId, int userId, Object token, String description, ComponentName component,
+            String lockPackageName, boolean home) {
         this.taskId = taskId;
         this.userId = userId;
         this.token = token;
         this.description = description;
         this.component = component;
+        this.lockPackageName = lockPackageName;
         this.home = home;
     }
 

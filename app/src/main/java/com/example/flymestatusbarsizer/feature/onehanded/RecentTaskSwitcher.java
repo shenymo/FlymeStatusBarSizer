@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.onehanded;
 
 import android.content.Context;
+import android.database.ContentObserver;
 import android.content.res.Configuration;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -12,6 +13,7 @@ import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.util.LruCache;
 import android.view.animation.PathInterpolator;
 import android.view.Gravity;
@@ -30,21 +32,17 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.flymestatusbarsizer.R;
-import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.feature.assistant.AssistantPanelBlur;
 import com.example.flymestatusbarsizer.feature.assistant.SideGestureActions;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import org.json.JSONArray;
-import org.json.JSONException;
 
 /** Compact recent-task switcher opened by a configured side gesture. */
 public final class RecentTaskSwitcher {
@@ -114,6 +112,7 @@ public final class RecentTaskSwitcher {
         private final WindowManager windowManager;
         private final List<TaskEntry> entries = new ArrayList<>();
         private final Set<String> lockedApps;
+        private final ContentObserver lockObserver;
         private final FrameLayout root;
         private final LinearLayout panel;
         private final AssistantPanelBlur panelBlur;
@@ -131,7 +130,15 @@ public final class RecentTaskSwitcher {
             this.context = context;
             this.fromLeft = fromLeft;
             this.anchorY = anchorY;
-            lockedApps = loadLockedApps(context);
+            FlymeRecentLockState.migrateLegacy(context);
+            lockedApps = FlymeRecentLockState.read(context);
+            lockObserver = new ContentObserver(MAIN) {
+                @Override public void onChange(boolean selfChange) {
+                    lockedApps.clear();
+                    lockedApps.addAll(FlymeRecentLockState.read(Popup.this.context));
+                    if (isCurrent() && !loading) renderRows();
+                }
+            };
             darkMode = (context.getResources().getConfiguration().uiMode
                     & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
             windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
@@ -219,6 +226,8 @@ public final class RecentTaskSwitcher {
                 try {
                     windowManager.addView(root, params);
                     attached = true;
+                    context.getContentResolver().registerContentObserver(
+                            Settings.System.getUriFor(FlymeRecentLockState.SETTING), false, lockObserver);
                     root.requestFocus();
                     panelBlur.start();
                     panel.post(() -> {
@@ -554,40 +563,23 @@ public final class RecentTaskSwitcher {
             return paletteColor(0xff287a78, 0xff77c6c1);
         }
 
-        private Set<String> loadLockedApps(Context context) {
-            Set<String> result = new HashSet<>();
-            try {
-                JSONArray stored = new JSONArray(SettingsStore.readString(
-                        SettingsStore.prefs(context), SettingsStore.KEY_TASK_SWITCHER_LOCKED_APPS, "[]"));
-                for (int i = 0; i < stored.length(); i++) {
-                    String packageName = stored.optString(i, "");
-                    if (!packageName.isEmpty()) result.add(packageName);
-                }
-            } catch (JSONException ignored) { }
-            return result;
-        }
-
         private boolean isLocked(RecentTaskCard card) {
-            return lockedApps.contains(card.component.getPackageName());
+            return lockedApps.contains(FlymeRecentLockState.key(card));
         }
 
         private void toggleLock(TaskEntry entry, ImageView lockIcon, TextView remove) {
             if (closingAll) return;
-            String packageName = entry.card.component.getPackageName();
+            String taskKey = FlymeRecentLockState.key(entry.card);
             boolean locked;
-            if (lockedApps.remove(packageName)) {
+            if (lockedApps.remove(taskKey)) {
                 locked = false;
             } else {
-                lockedApps.add(packageName);
+                lockedApps.add(taskKey);
                 locked = true;
             }
             lockIcon.setVisibility(locked ? View.VISIBLE : View.INVISIBLE);
             remove.setVisibility(locked ? View.GONE : View.VISIBLE);
-            SettingsStore.prefs(context).edit()
-                    .putString(SettingsStore.KEY_TASK_SWITCHER_LOCKED_APPS,
-                            new JSONArray(lockedApps).toString())
-                    .apply();
-            SettingsStore.notifyChanged(context);
+            FlymeRecentLockState.write(context, lockedApps);
         }
 
         private void openMiniWindow(RecentTaskCard card, ImageButton button) {
@@ -740,6 +732,7 @@ public final class RecentTaskSwitcher {
 
         private void finishClose() {
             panelBlur.stop();
+            context.getContentResolver().unregisterContentObserver(lockObserver);
             if (attached) {
                 try { windowManager.removeViewImmediate(root); }
                 catch (Throwable ignored) { }

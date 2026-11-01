@@ -59,9 +59,16 @@ final class OneStepTaskAccess {
         if (!(component instanceof ComponentName)) component = ReflectUtils.getField(info, "baseActivity");
         if (!(component instanceof ComponentName) || token(info) == null || taskId(info) < 0
                 || OneStepActivityProtocol.isActivity((ComponentName) component)) return null;
-        RecentTaskCard card = new RecentTaskCard(taskId(info), ReflectUtils.getIntField(info, "userId", -1),
-                token(info), ((ComponentName) component).getPackageName(), (ComponentName) component);
         Object intent = ReflectUtils.getField(info, "baseIntent");
+        String lockPackageName = ((ComponentName) component).getPackageName();
+        if (intent instanceof Intent) {
+            ComponentName baseComponent = ((Intent) intent).getComponent();
+            if (baseComponent != null) lockPackageName = baseComponent.getPackageName();
+            else if (((Intent) intent).getPackage() != null) lockPackageName = ((Intent) intent).getPackage();
+        }
+        RecentTaskCard card = new RecentTaskCard(taskId(info), ReflectUtils.getIntField(info, "userId", -1),
+                token(info), ((ComponentName) component).getPackageName(), (ComponentName) component,
+                lockPackageName);
         String name = card.component.getClassName();
         String action = intent instanceof Intent ? ((Intent) intent).getAction() : null;
         card.temporary = (intent instanceof Intent
