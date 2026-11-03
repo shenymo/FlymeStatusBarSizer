@@ -726,12 +726,12 @@ final class AppLauncherPanel {
         private void animateIn() {
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
             panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));
-            panel.setScaleX(0.84f);
-            panel.setScaleY(0.92f);
-            panel.setAlpha(0.86f);
-            panel.setTranslationX(fromLeft ? -dp(5) : dp(5));
+            panel.setScaleX(0.08f);
+            panel.setScaleY(0.28f);
+            panel.setAlpha(0.9f);
+            panel.setTranslationX(fromLeft ? -dp(14) : dp(14));
             panel.animate().scaleX(1f).scaleY(1f).alpha(1f).translationX(0f)
-                    .setDuration(240L).setInterpolator(new PathInterpolator(0.2f, 0.8f, 0.2f, 1f)).start();
+                    .setDuration(320L).setInterpolator(new PathInterpolator(0.4f, 0f, 0.6f, 1f)).start();
         }
 
         private WindowManager.LayoutParams buildLayoutParams() {
@@ -762,9 +762,9 @@ final class AppLauncherPanel {
             panel.animate().cancel();
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
             panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));
-            panel.animate().scaleX(0.84f).scaleY(0.92f).alpha(0f)
-                    .translationX(fromLeft ? -dp(5) : dp(5)).setDuration(180L)
-                    .setInterpolator(new PathInterpolator(0.4f, 0f, 1f, 1f))
+            panel.animate().scaleX(0.08f).scaleY(0.28f).alpha(0.9f)
+                    .translationX(fromLeft ? -dp(14) : dp(14)).setDuration(320L)
+                    .setInterpolator(new PathInterpolator(0.4f, 0f, 0.6f, 1f))
                     .withEndAction(this::finishClose).start();
         }
 

@@ -158,6 +158,12 @@ final class OneStepTaskAccess {
         return null;
     }
 
+    List<RecentTaskCard> currentUserRecentTasks() throws ReflectiveOperationException {
+        return recent.currentUserRecentTasks();
+    }
+    List<RecentTaskCard> secondaryTasks(List<RecentTaskCard> existing) throws ReflectiveOperationException {
+        return recent.secondaryTasks(existing);
+    }
     List<RecentTaskCard> candidates() throws ReflectiveOperationException { return recent.recentTasks(); }
 
     Object recentTaskInfo(RecentTaskCard card) throws ReflectiveOperationException { return recent.taskInfo(card); }

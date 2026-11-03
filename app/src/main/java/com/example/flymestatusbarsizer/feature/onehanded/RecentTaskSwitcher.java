@@ -126,6 +126,7 @@ public final class RecentTaskSwitcher {
         private boolean closing;
         private boolean closingAll;
         private boolean loading = true;
+        private boolean secondaryLoading;
         private final Map<Integer, Drawable.ConstantState> moduleIconStates = new HashMap<>();
 
         Popup(Context context) {
@@ -268,12 +269,12 @@ public final class RecentTaskSwitcher {
             if (!attached) return;
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
             panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));
-            panel.setScaleX(0.84f);
-            panel.setScaleY(0.92f);
-            panel.setAlpha(0.86f);
-            panel.setTranslationX(fromLeft ? -dp(5) : dp(5));
+            panel.setScaleX(0.08f);
+            panel.setScaleY(0.28f);
+            panel.setAlpha(0.9f);
+            panel.setTranslationX(fromLeft ? -dp(14) : dp(14));
             panel.animate().scaleX(1f).scaleY(1f).alpha(1f).translationX(0f)
-                    .setDuration(240L).setInterpolator(new PathInterpolator(0.2f, 0.8f, 0.2f, 1f)).start();
+                    .setDuration(320L).setInterpolator(new PathInterpolator(0.4f, 0f, 0.6f, 1f)).start();
         }
 
         private WindowManager.LayoutParams buildLayoutParams() {
@@ -299,12 +300,14 @@ public final class RecentTaskSwitcher {
 
         private void loadTasksAsync() {
             loading = true;
+            secondaryLoading = false;
+            entries.clear();
             renderRows();
             WORKER.execute(() -> {
                 List<RecentTaskCard> cards = new ArrayList<>();
-                try { cards.addAll(getTaskAccess(context).candidates()); }
+                try { cards.addAll(getTaskAccess(context).currentUserRecentTasks()); }
                 catch (Exception ignored) { }
-                MAIN.post(() -> replaceCards(cards));
+                MAIN.post(() -> showFirstBatch(cards));
             });
         }
 
@@ -321,24 +324,24 @@ public final class RecentTaskSwitcher {
             }
             String label = card.description;
             Drawable icon = null;
+            android.content.pm.PackageManager pm = context.getPackageManager();
             try {
-                android.content.pm.PackageManager pm = context.getPackageManager();
-                try {
-                    CharSequence activityLabel = pm.getActivityInfo(card.component, 0).loadLabel(pm);
-                    if (activityLabel != null && activityLabel.length() > 0) label = activityLabel.toString();
-                } catch (Exception ignored) {
-                    try {
-                        CharSequence appLabel = pm.getApplicationLabel(pm.getApplicationInfo(
-                                card.component.getPackageName(), 0));
-                        if (appLabel != null && appLabel.length() > 0) label = appLabel.toString();
-                    } catch (Exception ignoredAgain) { }
-                }
-                try { icon = pm.getActivityIcon(card.component); }
-                catch (Exception ignored) {
-                    try { icon = pm.getApplicationIcon(card.component.getPackageName()); }
-                    catch (Exception ignoredAgain) { icon = context.getDrawable(android.R.drawable.sym_def_app_icon); }
-                }
+                CharSequence activityLabel = pm.getActivityInfo(card.component, 0).loadLabel(pm);
+                if (activityLabel != null && activityLabel.length() > 0) label = activityLabel.toString();
             } catch (Exception ignored) { }
+            if (label.equals(card.component.getPackageName())) {
+                try {
+                    CharSequence appLabel = pm.getApplicationLabel(pm.getApplicationInfo(
+                            card.component.getPackageName(), 0));
+                    if (appLabel != null && appLabel.length() > 0) label = appLabel.toString();
+                } catch (Exception ignored) { }
+            }
+            if (label.equals(card.component.getPackageName())) label = "未命名应用";
+            try { icon = pm.getActivityIcon(card.component); }
+            catch (Exception ignored) {
+                try { icon = pm.getApplicationIcon(card.component.getPackageName()); }
+                catch (Exception ignoredAgain) { icon = context.getDrawable(android.R.drawable.sym_def_app_icon); }
+            }
             AppMetadata metadata = new AppMetadata(label, icon);
             synchronized (APP_METADATA) { APP_METADATA.put(key, metadata); }
             return metadata;
@@ -721,13 +724,75 @@ public final class RecentTaskSwitcher {
             });
         }
 
-        private void replaceCards(List<RecentTaskCard> loaded) {
+        private void showFirstBatch(List<RecentTaskCard> loaded) {
             if (!isCurrent()) return;
-            entries.clear();
-            for (RecentTaskCard card : loaded) entries.add(new TaskEntry(card));
-            loading = false;
-            renderRows();
-            scroll.post(this::loadVisibleMetadata);
+            if (loaded.isEmpty()) {
+                loading = false;
+                renderRows();
+                loadSecondaryTasks();
+                return;
+            }
+            loadNextTask(loaded, 0, true);
+        }
+
+        private void loadSecondaryTasks() {
+            if (secondaryLoading || !isCurrent()) return;
+            secondaryLoading = true;
+            List<RecentTaskCard> existing = new ArrayList<>();
+            for (TaskEntry entry : entries) existing.add(entry.card);
+            WORKER.execute(() -> {
+                List<RecentTaskCard> loaded = new ArrayList<>();
+                try {
+                    loaded.addAll(getTaskAccess(context).secondaryTasks(existing));
+                } catch (Exception ignored) { }
+                MAIN.post(() -> {
+                    if (!isCurrent()) return;
+                    secondaryLoading = false;
+                    if (loaded.isEmpty()) {
+                        loadVisibleMetadata();
+                        return;
+                    }
+                    loadNextTask(loaded, 0, false);
+                });
+            });
+        }
+
+        private void loadNextTask(List<RecentTaskCard> loaded, int index, boolean loadSecondaryAfter) {
+            WORKER.execute(() -> {
+                if (!isCurrent()) return;
+                RecentTaskCard card = loaded.get(index);
+                AppMetadata metadata = appMetadata(context, card);
+                MAIN.post(() -> {
+                    if (!isCurrent()) return;
+                    TaskEntry entry = new TaskEntry(card);
+                    applyMetadata(entry, metadata);
+                    appendEntry(entry);
+                    if (index + 1 < loaded.size()) loadNextTask(loaded, index + 1, loadSecondaryAfter);
+                    else if (loadSecondaryAfter) loadSecondaryTasks();
+                    else loadVisibleMetadata();
+                });
+            });
+        }
+
+        private void appendEntry(TaskEntry entry) {
+            if (entries.isEmpty()) {
+                loading = false;
+                rows.removeAllViews();
+                loadingRow = null;
+            } else {
+                View divider = new View(context);
+                divider.setBackgroundColor(paletteColor(0x18000000, 0x28ffffff));
+                rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+            }
+            entries.add(entry);
+            rows.addView(taskRow(entry), new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
+        }
+
+        private void applyMetadata(TaskEntry entry, AppMetadata metadata) {
+            entry.metadataLoading = false;
+            entry.metadataLoaded = true;
+            entry.label = metadata.label;
+            entry.icon = metadata.icon;
         }
 
         private void close() {
@@ -736,9 +801,9 @@ public final class RecentTaskSwitcher {
             panel.animate().cancel();
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
             panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));
-            panel.animate().scaleX(0.84f).scaleY(0.92f).alpha(0f)
-                    .translationX(fromLeft ? -dp(5) : dp(5)).setDuration(180L)
-                    .setInterpolator(new PathInterpolator(0.4f, 0f, 1f, 1f))
+            panel.animate().scaleX(0.08f).scaleY(0.28f).alpha(0.9f)
+                    .translationX(fromLeft ? -dp(14) : dp(14)).setDuration(320L)
+                    .setInterpolator(new PathInterpolator(0.4f, 0f, 0.6f, 1f))
                     .withEndAction(this::finishClose).start();
         }
 

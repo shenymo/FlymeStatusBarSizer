@@ -33,13 +33,29 @@ final class OneStepRecentTasks {
         runningTasks = manager.getMethod("getTasks", int.class, boolean.class);
     }
 
-    List<RecentTaskCard> recentTasks() throws ReflectiveOperationException {
+    List<RecentTaskCard> currentUserRecentTasks() throws ReflectiveOperationException {
         int userId = ((Number) currentUser.invoke(wrapper)).intValue();
         List<RecentTaskCard> cards = new ArrayList<>();
         HashSet<Long> seen = new HashSet<>();
         addRecentTasks(cards, seen, userId, false);
+        return cards;
+    }
+
+    List<RecentTaskCard> secondaryTasks(List<RecentTaskCard> existing) throws ReflectiveOperationException {
+        int userId = ((Number) currentUser.invoke(wrapper)).intValue();
+        List<RecentTaskCard> cards = new ArrayList<>();
+        HashSet<Long> seen = new HashSet<>();
+        for (RecentTaskCard card : existing) {
+            seen.add(((long) card.userId << 32) | (card.taskId & 0xffffffffL));
+        }
         if (userId != CLONE_USER_ID) addRecentTasks(cards, seen, CLONE_USER_ID, true);
         addRunningTasks(cards, seen);
+        return cards;
+    }
+
+    List<RecentTaskCard> recentTasks() throws ReflectiveOperationException {
+        List<RecentTaskCard> cards = currentUserRecentTasks();
+        cards.addAll(secondaryTasks(cards));
         return cards;
     }
 
