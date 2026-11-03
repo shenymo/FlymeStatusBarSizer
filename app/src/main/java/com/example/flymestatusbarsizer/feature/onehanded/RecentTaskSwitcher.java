@@ -47,6 +47,13 @@ import java.util.concurrent.Executors;
 /** Compact recent-task switcher opened by a configured side gesture. */
 public final class RecentTaskSwitcher {
     private static final int[] WINDOW_TYPES = {2041, 2017, 2040};
+    private static final int INITIAL_TASK_COUNT = 0;
+    private static final int APPEND_TASK_BATCH_SIZE = 4;
+    private static final long DEFERRED_TASK_BATCH_DELAY_MS = 360L;
+    private static final long APPEND_TASK_BATCH_DELAY_MS = 72L;
+    private static final long APPEND_ROW_ANIMATION_DURATION_MS = 180L;
+    private static final long APPEND_ROW_ANIMATION_STAGGER_MS = 24L;
+    private static final long INITIAL_ROW_ANIMATION_DELAY_MS = 100L;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "RecentTaskSwitcher");
@@ -354,6 +361,10 @@ public final class RecentTaskSwitcher {
         }
 
         private void renderRows() {
+            renderRows(false);
+        }
+
+        private void renderRows(boolean animateRows) {
             rows.removeAllViews();
             loadingRow = null;
             int count = 0;
@@ -363,7 +374,18 @@ public final class RecentTaskSwitcher {
                     divider.setBackgroundColor(paletteColor(0x18000000, 0x28ffffff));
                     rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
                 }
-                rows.addView(taskRow(entry), new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
+                View taskRow = taskRow(entry);
+                rows.addView(taskRow, new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
+                if (animateRows) {
+                    int rowIndex = count;
+                    taskRow.setAlpha(0f);
+                    taskRow.setTranslationX(fromLeft ? -dp(6) : dp(6));
+                    rows.postDelayed(() -> {
+                        if (isCurrent() && taskRow.getParent() == rows) {
+                            animateTaskRow(taskRow, rowIndex);
+                        }
+                    }, INITIAL_ROW_ANIMATION_DELAY_MS);
+                }
                 count++;
             }
             if (count == 0 && !loading) {
@@ -732,7 +754,34 @@ public final class RecentTaskSwitcher {
                 loadSecondaryTasks();
                 return;
             }
-            loadNextTask(loaded, 0, true);
+            int initialCount = Math.min(INITIAL_TASK_COUNT, loaded.size());
+            if (initialCount == 0) {
+                loadRemainingTaskBatches(loaded, 0, this::loadSecondaryTasks);
+                return;
+            }
+            loadTaskBatch(loaded, 0, initialCount, () -> {
+                if (initialCount >= loaded.size()) {
+                    loadSecondaryTasks();
+                    return;
+                }
+                MAIN.postDelayed(() -> loadRemainingTaskBatches(
+                        loaded, initialCount, this::loadSecondaryTasks),
+                        DEFERRED_TASK_BATCH_DELAY_MS);
+            });
+        }
+
+        private void loadRemainingTaskBatches(List<RecentTaskCard> loaded, int start,
+                Runnable after) {
+            if (!isCurrent()) return;
+            int end = Math.min(loaded.size(), start + APPEND_TASK_BATCH_SIZE);
+            loadTaskBatch(loaded, start, end, () -> {
+                if (end >= loaded.size()) {
+                    if (after != null) after.run();
+                    return;
+                }
+                MAIN.postDelayed(() -> loadRemainingTaskBatches(loaded, end, after),
+                        APPEND_TASK_BATCH_DELAY_MS);
+            });
         }
 
         private void loadSecondaryTasks() {
@@ -752,40 +801,67 @@ public final class RecentTaskSwitcher {
                         loadVisibleMetadata();
                         return;
                     }
-                    loadNextTask(loaded, 0, false);
+                    loadRemainingTaskBatches(loaded, 0, this::loadVisibleMetadata);
                 });
             });
         }
 
-        private void loadNextTask(List<RecentTaskCard> loaded, int index, boolean loadSecondaryAfter) {
+        private void loadTaskBatch(List<RecentTaskCard> loaded, int start, int end,
+                Runnable after) {
+            boolean firstBatch = entries.isEmpty();
             WORKER.execute(() -> {
                 if (!isCurrent()) return;
-                RecentTaskCard card = loaded.get(index);
-                AppMetadata metadata = appMetadata(context, card);
+                List<AppMetadata> metadata = new ArrayList<>(end - start);
+                for (int i = start; i < end; i++) {
+                    if (!isCurrent()) return;
+                    metadata.add(appMetadata(context, loaded.get(i)));
+                }
                 MAIN.post(() -> {
                     if (!isCurrent()) return;
-                    TaskEntry entry = new TaskEntry(card);
-                    applyMetadata(entry, metadata);
-                    appendEntry(entry);
-                    if (index + 1 < loaded.size()) loadNextTask(loaded, index + 1, loadSecondaryAfter);
-                    else if (loadSecondaryAfter) loadSecondaryTasks();
-                    else loadVisibleMetadata();
+                    List<TaskEntry> addedEntries = new ArrayList<>(end - start);
+                    for (int i = start; i < end; i++) {
+                        TaskEntry entry = new TaskEntry(loaded.get(i));
+                        applyMetadata(entry, metadata.get(i - start));
+                        entries.add(entry);
+                        addedEntries.add(entry);
+                    }
+                    loading = false;
+                    if (firstBatch) {
+                        renderRows(true);
+                    } else {
+                        appendTaskRows(addedEntries);
+                    }
+                    if (after != null) after.run();
                 });
             });
         }
 
-        private void appendEntry(TaskEntry entry) {
-            if (entries.isEmpty()) {
-                loading = false;
-                rows.removeAllViews();
+        private void appendTaskRows(List<TaskEntry> addedEntries) {
+            if (loadingRow != null) {
+                rows.removeView(loadingRow);
                 loadingRow = null;
-            } else {
-                View divider = new View(context);
-                divider.setBackgroundColor(paletteColor(0x18000000, 0x28ffffff));
-                rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
             }
-            entries.add(entry);
-            rows.addView(taskRow(entry), new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
+            for (int i = 0; i < addedEntries.size(); i++) {
+                TaskEntry entry = addedEntries.get(i);
+                if (rows.getChildCount() > 0) {
+                    View divider = new View(context);
+                    divider.setBackgroundColor(paletteColor(0x18000000, 0x28ffffff));
+                    rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+                }
+                View row = taskRow(entry);
+                rows.addView(row, new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
+                animateTaskRow(row, i);
+            }
+        }
+
+        private void animateTaskRow(View row, int index) {
+            row.setAlpha(0f);
+            row.setTranslationX(fromLeft ? -dp(6) : dp(6));
+            row.animate().alpha(1f).translationX(0f)
+                    .setStartDelay(index * APPEND_ROW_ANIMATION_STAGGER_MS)
+                    .setDuration(APPEND_ROW_ANIMATION_DURATION_MS)
+                    .setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f))
+                    .start();
         }
 
         private void applyMetadata(TaskEntry entry, AppMetadata metadata) {
