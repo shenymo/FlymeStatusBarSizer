@@ -75,6 +75,8 @@ final class AppLauncherPanel {
     static SideGestureActions.Action action(Context context) {
         ensurePackageReceiver(context);
         return new SideGestureActions.Action() {
+            private final Popup popup = new Popup(context);
+
             @Override public boolean isReady() {
                 return context != null && context.getSystemService(Context.WINDOW_SERVICE) != null;
             }
@@ -85,7 +87,7 @@ final class AppLauncherPanel {
 
             @Override public void execute(boolean fromLeft, float anchorY, Runnable onSuccess) {
                 if (isReady()) {
-                    new Popup(context, fromLeft, anchorY).show();
+                    popup.show(fromLeft, anchorY);
                     if (onSuccess != null) onSuccess.run();
                 }
             }
@@ -215,8 +217,8 @@ final class AppLauncherPanel {
 
     private static final class Popup {
         private final Context context;
-        private final boolean fromLeft;
-        private final float anchorY;
+        private boolean fromLeft;
+        private float anchorY;
         private final WindowManager windowManager;
         private final FrameLayout root;
         private final LinearLayout panel;
@@ -239,10 +241,8 @@ final class AppLauncherPanel {
         private boolean holdTriggered;
         private boolean holdCanceled;
 
-        Popup(Context context, boolean fromLeft, float anchorY) {
+        Popup(Context context) {
             this.context = context;
-            this.fromLeft = fromLeft;
-            this.anchorY = anchorY;
             darkMode = isNightMode(context.getResources().getConfiguration());
             windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
 
@@ -320,10 +320,22 @@ final class AppLauncherPanel {
             panel.addView(keyboard, new LinearLayout.LayoutParams(-1, dp(108)));
         }
 
-        void show() {
+        void show(boolean fromLeft, float anchorY) {
+            this.fromLeft = fromLeft;
+            this.anchorY = anchorY;
             synchronized (AppLauncherPanel.class) {
-                if (active != null) active.close();
+                if (active != null && active != this) active.close();
                 active = this;
+            }
+            query.clear();
+            updateSearch();
+            renderRows();
+            if (attached) {
+                closing = false;
+                panel.animate().cancel();
+                alignToGestureAnchor();
+                animateIn();
+                return;
             }
             WindowManager.LayoutParams params = buildLayoutParams();
             for (int type : WINDOW_TYPES) {
@@ -331,6 +343,7 @@ final class AppLauncherPanel {
                 try {
                     windowManager.addView(root, params);
                     attached = true;
+                    closing = false;
                     root.requestFocus();
                     panelBlur.start();
                     panel.post(() -> {
@@ -703,6 +716,7 @@ final class AppLauncherPanel {
         private void alignToGestureAnchor() {
             if (!attached || root.getHeight() <= 0 || panel.getHeight() <= 0) return;
             FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) panel.getLayoutParams();
+            params.gravity = Gravity.TOP | (fromLeft ? Gravity.LEFT : Gravity.RIGHT);
             int maxTop = Math.max(0, root.getHeight() - panel.getHeight());
             params.topMargin = Math.max(0, Math.min(maxTop,
                     Math.round(anchorY - panel.getHeight() / 2f)));
@@ -712,12 +726,12 @@ final class AppLauncherPanel {
         private void animateIn() {
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
             panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));
-            panel.setScaleX(0.04f);
-            panel.setScaleY(0.08f);
-            panel.setAlpha(0.15f);
+            panel.setScaleX(0.84f);
+            panel.setScaleY(0.92f);
+            panel.setAlpha(0.86f);
             panel.setTranslationX(fromLeft ? -dp(5) : dp(5));
             panel.animate().scaleX(1f).scaleY(1f).alpha(1f).translationX(0f)
-                    .setDuration(360L).setInterpolator(new PathInterpolator(0.2f, 0.8f, 0.2f, 1f)).start();
+                    .setDuration(240L).setInterpolator(new PathInterpolator(0.2f, 0.8f, 0.2f, 1f)).start();
         }
 
         private WindowManager.LayoutParams buildLayoutParams() {
@@ -748,8 +762,8 @@ final class AppLauncherPanel {
             panel.animate().cancel();
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
             panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));
-            panel.animate().scaleX(0.04f).scaleY(0.08f).alpha(0f)
-                    .translationX(fromLeft ? -dp(5) : dp(5)).setDuration(230L)
+            panel.animate().scaleX(0.84f).scaleY(0.92f).alpha(0f)
+                    .translationX(fromLeft ? -dp(5) : dp(5)).setDuration(180L)
                     .setInterpolator(new PathInterpolator(0.4f, 0f, 1f, 1f))
                     .withEndAction(this::finishClose).start();
         }
@@ -758,6 +772,7 @@ final class AppLauncherPanel {
             panelBlur.stop();
             try { windowManager.removeViewImmediate(root); } catch (Throwable ignored) { }
             attached = false;
+            closing = false;
             synchronized (CACHE_LOCK) { pendingPopups.remove(this); }
             synchronized (AppLauncherPanel.class) { if (active == this) active = null; }
         }

@@ -123,7 +123,7 @@ final class QuickToolsPanel {
         view.fromLeft = fromLeft;
         view.anchorY = anchorY;
         view.updateDarkMode(context.getResources().getConfiguration());
-        view.refreshState();
+        view.main.post(view::refreshState);
         if (attached) {
             view.startBrightnessRefresh();
             view.alignToGestureAnchor();
@@ -419,12 +419,12 @@ final class QuickToolsPanel {
             animate().cancel();
             setPivotX(fromLeft ? 0f : getWidth());
             setPivotY(Math.max(0f, Math.min(getHeight(), anchorY - getTop())));
-            setScaleX(0.04f);
-            setScaleY(0.08f);
-            setAlpha(0.15f);
+            setScaleX(0.84f);
+            setScaleY(0.92f);
+            setAlpha(0.86f);
             setTranslationX(fromLeft ? -dp(5) : dp(5));
             animate().scaleX(1f).scaleY(1f).alpha(1f).translationX(0f)
-                    .setDuration(360L).setInterpolator(new PathInterpolator(0.2f, 0.8f, 0.2f, 1f)).start();
+                    .setDuration(240L).setInterpolator(new PathInterpolator(0.2f, 0.8f, 0.2f, 1f)).start();
         }
 
         void animateClose() {
@@ -434,8 +434,8 @@ final class QuickToolsPanel {
             animate().cancel();
             setPivotX(fromLeft ? 0f : getWidth());
             setPivotY(Math.max(0f, Math.min(getHeight(), anchorY - getTop())));
-            animate().scaleX(0.04f).scaleY(0.08f).alpha(0f)
-                    .translationX(fromLeft ? -dp(5) : dp(5)).setDuration(230L)
+            animate().scaleX(0.84f).scaleY(0.92f).alpha(0f)
+                    .translationX(fromLeft ? -dp(5) : dp(5)).setDuration(180L)
                     .setInterpolator(new PathInterpolator(0.4f, 0f, 1f, 1f))
                     .withEndAction(() -> {
                         panelBlur.stop();

@@ -7,6 +7,7 @@ final class AssistantGestureState {
     static final int DOWN = 2;
     private boolean tracking;
     private boolean claimed;
+    private int lockedDirection = HORIZONTAL;
     private float startX, startY, dx, dy, distance, backwardLimit;
     private float upAngleTan, downAngleTan, minVertical;
     private int inwardDirection;
@@ -16,6 +17,7 @@ final class AssistantGestureState {
         inwardDirection = leftEdge ? 1 : -1;
         tracking = true;
         claimed = false;
+        lockedDirection = HORIZONTAL;
         startX = x;
         startY = y;
         dx = dy = 0;
@@ -41,10 +43,18 @@ final class AssistantGestureState {
     }
 
     int direction() {
-        if (dx <= 0) return HORIZONTAL;
+        if (dx <= 0) {
+            lockedDirection = HORIZONTAL;
+            return HORIZONTAL;
+        }
         float threshold = Math.max(minVertical, dx * (dy < 0 ? upAngleTan : downAngleTan));
-        if (Math.abs(dy) < threshold) return HORIZONTAL;
-        return dy < 0 ? UP : DOWN;
+        int candidate = Math.abs(dy) < threshold ? HORIZONTAL : (dy < 0 ? UP : DOWN);
+        if (lockedDirection == HORIZONTAL) {
+            if (candidate != HORIZONTAL) lockedDirection = candidate;
+        } else if (candidate != HORIZONTAL && candidate != lockedDirection) {
+            lockedDirection = candidate;
+        }
+        return lockedDirection;
     }
 
     float startY() { return startY; }

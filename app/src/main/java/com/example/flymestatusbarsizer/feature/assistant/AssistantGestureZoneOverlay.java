@@ -41,24 +41,24 @@ final class AssistantGestureZoneOverlay {
             attempted = true;
             attach();
         }
-        if (attached) view.invalidate();
+        if (attached) {
+            view.setVisibility(View.VISIBLE);
+            view.postInvalidateOnAnimation();
+        }
     }
 
     void hide() {
         if (attached) {
-            try {
-                windowManager.removeViewImmediate(view);
-            } catch (Throwable ignored) {
-            }
+            view.setVisibility(View.INVISIBLE);
+        } else {
+            attempted = false;
         }
-        attached = false;
-        attempted = false;
     }
 
     void updatePointer(float x, float y) {
         view.pointerX = x;
         view.pointerY = y;
-        if (attached) view.invalidate();
+        if (attached) view.postInvalidateOnAnimation();
     }
 
     private void attach() {
@@ -67,6 +67,7 @@ final class AssistantGestureZoneOverlay {
         for (int type : WINDOW_TYPES) {
             WindowManager.LayoutParams params = buildLayoutParams(type);
             try {
+                view.setVisibility(View.INVISIBLE);
                 windowManager.addView(view, params);
                 attached = true;
                 return;
