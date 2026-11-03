@@ -559,9 +559,9 @@ public final class SettingsCardFactory {
     public View createOneHandedModeSettingsCard() {
         LinearLayout options = new LinearLayout(activity);
         options.setOrientation(LinearLayout.VERTICAL);
-        activity.addSwitchRow(options, "启用底部上滑手势", "关闭后不接管系统单手手势，系统原生单手缩放继续工作。",
+        activity.addSwitchRow(options, "启用底部下滑手势", "关闭后不接管系统单手手势，系统原生单手缩放继续工作。",
                 SettingsStore.KEY_ONE_HANDED_MODE_ENABLED, SettingsStore.DEFAULT_ONE_HANDED_MODE_ENABLED);
-        activity.addChoiceRow(options, "触发动作", "选择从屏幕底部上滑触发的功能，不影响侧边手势。",
+        activity.addChoiceRow(options, "触发动作", "选择从屏幕底部下滑触发的功能，不影响侧边手势。",
                 SettingsStore.KEY_ONE_HANDED_MODE_ACTION, SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION,
                 new int[]{SettingsStore.ONE_HANDED_MODE_ACTION_SYSTEM,
                         SettingsStore.ONE_HANDED_MODE_ACTION_TASK_SCALE},
@@ -571,8 +571,8 @@ public final class SettingsCardFactory {
                 SettingsStore.normalizeOneHandedModeAction(SettingsStore.readInt(activity.prefs(),
                         SettingsStore.KEY_ONE_HANDED_MODE_ACTION,
                         SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION)));
-        return activity.buildSectionCard("底部上滑模式",
-                "从屏幕底部上滑触发所选功能；此处设置与侧边手势分别保存。", options, false);
+        return activity.buildSectionCard("底部下滑模式",
+                "从屏幕底部下滑触发所选功能；此处设置与侧边手势分别保存。", options, false);
     }
 
     private void updateOneHandedWorkbenchVisibility(LinearLayout options, int action) {
