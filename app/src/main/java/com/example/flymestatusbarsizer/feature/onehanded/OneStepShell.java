@@ -26,6 +26,7 @@ import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.WindowMetrics;
 
+import com.example.flymestatusbarsizer.feature.tasks.RecentTaskCard;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import org.json.JSONArray;

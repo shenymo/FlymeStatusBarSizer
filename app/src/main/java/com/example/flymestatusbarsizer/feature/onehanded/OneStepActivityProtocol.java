@@ -8,7 +8,7 @@ import android.os.RemoteException;
 import com.example.flymestatusbarsizer.BuildConfig;
 
 /** A separate Binder capability is issued for each workspace launch. */
-final class OneStepActivityProtocol {
+public final class OneStepActivityProtocol {
     static final String ACTIVITY = "com.example.flymestatusbarsizer.feature.onehanded.OneStepActivity";
     static final String CONTROL = BuildConfig.APPLICATION_ID + ".workspace.control";
     static final String CALLBACK = CONTROL + ".callback";
@@ -28,7 +28,7 @@ final class OneStepActivityProtocol {
 
     private OneStepActivityProtocol() {}
 
-    static boolean isActivity(ComponentName component) {
+    public static boolean isActivity(ComponentName component) {
         return component != null && BuildConfig.APPLICATION_ID.equals(component.getPackageName())
                 && ACTIVITY.equals(component.getClassName());
     }

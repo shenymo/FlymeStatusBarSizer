@@ -1,27 +1,27 @@
-package com.example.flymestatusbarsizer.feature.onehanded;
+package com.example.flymestatusbarsizer.feature.tasks;
 
 import android.content.ComponentName;
 
 /** A recent task's identity and icon source. Labels are accessibility-only. */
-final class RecentTaskCard {
-    final int taskId;
-    final int userId;
-    final Object token;
-    final String description;
-    final ComponentName component;
-    final String lockPackageName;
-    final boolean home;
-    boolean temporary;
+public final class RecentTaskCard {
+    public final int taskId;
+    public final int userId;
+    public final Object token;
+    public final String description;
+    public final ComponentName component;
+    public final String lockPackageName;
+    public final boolean home;
+    public boolean temporary;
 
-    RecentTaskCard(int taskId, int userId, Object token, String description, ComponentName component) {
+    public RecentTaskCard(int taskId, int userId, Object token, String description, ComponentName component) {
         this(taskId, userId, token, description, component, component.getPackageName(), false);
     }
 
-    RecentTaskCard(int taskId, int userId, Object token, String description, ComponentName component, boolean home) {
+    public RecentTaskCard(int taskId, int userId, Object token, String description, ComponentName component, boolean home) {
         this(taskId, userId, token, description, component, component.getPackageName(), home);
     }
 
-    RecentTaskCard(int taskId, int userId, Object token, String description, ComponentName component,
+    public RecentTaskCard(int taskId, int userId, Object token, String description, ComponentName component,
             String lockPackageName) {
         this(taskId, userId, token, description, component, lockPackageName, false);
     }
@@ -37,7 +37,7 @@ final class RecentTaskCard {
         this.home = home;
     }
 
-    boolean sameTask(RecentTaskCard other) {
+    public boolean sameTask(RecentTaskCard other) {
         return other != null && taskId == other.taskId && userId == other.userId
                 && token != null && token.equals(other.token);
     }

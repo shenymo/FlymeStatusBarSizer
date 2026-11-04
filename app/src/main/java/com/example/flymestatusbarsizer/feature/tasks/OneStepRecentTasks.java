@@ -1,4 +1,4 @@
-package com.example.flymestatusbarsizer.feature.onehanded;
+package com.example.flymestatusbarsizer.feature.tasks;
 
 import android.app.ActivityManager;
 import android.content.ComponentName;
@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Rect;
 
+import com.example.flymestatusbarsizer.feature.onehanded.OneStepActivityProtocol;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import java.lang.reflect.Method;
@@ -14,15 +15,15 @@ import java.util.HashSet;
 import java.util.List;
 
 /** Combines recent tasks with live application tasks from ActivityTaskManager. */
-final class OneStepRecentTasks {
-    static final int CLONE_USER_ID = 999;
+public final class OneStepRecentTasks {
+    public static final int CLONE_USER_ID = 999;
     private final Object wrapper;
     private final Object taskManager;
     private final Method currentUser;
     private final Method recentTasks;
     private final Method runningTasks;
 
-    OneStepRecentTasks(Context context) throws ReflectiveOperationException {
+    public OneStepRecentTasks(Context context) throws ReflectiveOperationException {
         Class<?> wrapperClass = Class.forName("com.android.systemui.shared.system.ActivityManagerWrapper",
                 false, context.getClassLoader());
         wrapper = wrapperClass.getMethod("getInstance").invoke(null);
@@ -33,7 +34,7 @@ final class OneStepRecentTasks {
         runningTasks = manager.getMethod("getTasks", int.class, boolean.class);
     }
 
-    List<RecentTaskCard> currentUserRecentTasks() throws ReflectiveOperationException {
+    public List<RecentTaskCard> currentUserRecentTasks() throws ReflectiveOperationException {
         int userId = ((Number) currentUser.invoke(wrapper)).intValue();
         List<RecentTaskCard> cards = new ArrayList<>();
         HashSet<Long> seen = new HashSet<>();
@@ -41,7 +42,7 @@ final class OneStepRecentTasks {
         return cards;
     }
 
-    List<RecentTaskCard> secondaryTasks(List<RecentTaskCard> existing) throws ReflectiveOperationException {
+    public List<RecentTaskCard> secondaryTasks(List<RecentTaskCard> existing) throws ReflectiveOperationException {
         int userId = ((Number) currentUser.invoke(wrapper)).intValue();
         List<RecentTaskCard> cards = new ArrayList<>();
         HashSet<Long> seen = new HashSet<>();
@@ -53,7 +54,7 @@ final class OneStepRecentTasks {
         return cards;
     }
 
-    List<RecentTaskCard> recentTasks() throws ReflectiveOperationException {
+    public List<RecentTaskCard> recentTasks() throws ReflectiveOperationException {
         List<RecentTaskCard> cards = currentUserRecentTasks();
         cards.addAll(secondaryTasks(cards));
         return cards;
@@ -90,7 +91,7 @@ final class OneStepRecentTasks {
         cards.add(card);
     }
 
-    Object taskInfo(RecentTaskCard requested) throws ReflectiveOperationException {
+    public Object taskInfo(RecentTaskCard requested) throws ReflectiveOperationException {
         Object result = recentTasks.invoke(taskManager, 32, ActivityManager.RECENT_IGNORE_UNAVAILABLE, requested.userId);
         if (result instanceof List) for (Object info : (List<?>) result) {
             RecentTaskCard card = candidate(info, requested.userId, false);
@@ -99,7 +100,7 @@ final class OneStepRecentTasks {
         return null;
     }
 
-    static RecentTaskCard candidate(Object info, int userId) {
+    public static RecentTaskCard candidate(Object info, int userId) {
         return candidate(info, userId, false);
     }
 

@@ -1,4 +1,4 @@
-package com.example.flymestatusbarsizer.feature.onehanded;
+package com.example.flymestatusbarsizer.feature.taskswitcher;
 
 import android.content.Context;
 import android.content.BroadcastReceiver;
@@ -38,6 +38,8 @@ import android.widget.Toast;
 import com.example.flymestatusbarsizer.R;
 import com.example.flymestatusbarsizer.feature.assistant.AssistantPanelBlur;
 import com.example.flymestatusbarsizer.feature.assistant.SideGestureActions;
+import com.example.flymestatusbarsizer.feature.onehanded.OneStepTaskAccess;
+import com.example.flymestatusbarsizer.feature.tasks.RecentTaskCard;
 
 import java.util.ArrayList;
 import java.util.HashMap;

@@ -33,10 +33,11 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
-import com.example.flymestatusbarsizer.util.ReflectUtils;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.config.SettingsStore;
+import com.example.flymestatusbarsizer.feature.tasks.RecentTaskCard;
+import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
+import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -13,6 +13,8 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 
 import com.example.flymestatusbarsizer.R;
+import com.example.flymestatusbarsizer.feature.tasks.OneStepRecentTasks;
+import com.example.flymestatusbarsizer.feature.tasks.RecentTaskCard;
 
 import java.util.ArrayList;
 import java.util.List;

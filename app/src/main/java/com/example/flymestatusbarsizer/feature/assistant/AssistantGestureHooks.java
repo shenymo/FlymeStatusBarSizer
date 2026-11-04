@@ -145,7 +145,7 @@ final class AssistantGestureHooks {
             this.pilfer = pilfer;
             this.sendEvent = sendEvent;
             this.globalAssistant = globalAssistant;
-            this.taskSwitcher = com.example.flymestatusbarsizer.feature.onehanded.RecentTaskSwitcher.action(context);
+            this.taskSwitcher = com.example.flymestatusbarsizer.feature.taskswitcher.RecentTaskSwitcher.action(context);
             this.quickTools = QuickToolsPanel.action(context);
             this.appLauncher = AppLauncherPanel.action(context);
             this.actionOverlay = new AssistantGestureActionOverlay(context);

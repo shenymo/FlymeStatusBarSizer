@@ -5,6 +5,8 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.view.SurfaceControl;
 
+import com.example.flymestatusbarsizer.feature.tasks.RecentTaskCard;
+
 /** Shell-executor-owned surface bridge between a fullscreen task and its TaskView. */
 final class OneStepWorkspaceTransition {
     final RecentTaskCard card;

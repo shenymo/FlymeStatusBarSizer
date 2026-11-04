@@ -1,10 +1,11 @@
-package com.example.flymestatusbarsizer.feature.onehanded;
+package com.example.flymestatusbarsizer.feature.taskswitcher;
 
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.provider.Settings;
 
 import com.example.flymestatusbarsizer.config.SettingsStore;
+import com.example.flymestatusbarsizer.feature.tasks.RecentTaskCard;
 
 import java.util.HashSet;
 import java.util.Set;

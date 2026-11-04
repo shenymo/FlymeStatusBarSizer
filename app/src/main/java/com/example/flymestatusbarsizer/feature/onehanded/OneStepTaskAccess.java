@@ -12,6 +12,8 @@ import android.os.SystemClock;
 import android.os.UserHandle;
 
 import com.example.flymestatusbarsizer.BuildConfig;
+import com.example.flymestatusbarsizer.feature.tasks.OneStepRecentTasks;
+import com.example.flymestatusbarsizer.feature.tasks.RecentTaskCard;
 import com.example.flymestatusbarsizer.feature.windowmode.FlymeMiniWindowLauncher;
 
 import com.example.flymestatusbarsizer.util.ReflectUtils;
@@ -21,7 +23,7 @@ import java.lang.reflect.Proxy;
 import java.util.List;
 
 /** Task discovery and focus under SystemUI; rendering is owned by OneStepShell. */
-final class OneStepTaskAccess {
+public final class OneStepTaskAccess {
     private final Context context;
     private final Object service;
     private final Method roots;
@@ -31,7 +33,7 @@ final class OneStepTaskAccess {
     private final OneStepRecentTasks recent;
     private Object taskListener;
 
-    OneStepTaskAccess(Context context) throws ReflectiveOperationException {
+    public OneStepTaskAccess(Context context) throws ReflectiveOperationException {
         this.context = context;
         service = Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null);
         Class<?> tasks = Class.forName("android.app.IActivityTaskManager");
@@ -158,10 +160,10 @@ final class OneStepTaskAccess {
         return null;
     }
 
-    List<RecentTaskCard> currentUserRecentTasks() throws ReflectiveOperationException {
+    public List<RecentTaskCard> currentUserRecentTasks() throws ReflectiveOperationException {
         return recent.currentUserRecentTasks();
     }
-    List<RecentTaskCard> secondaryTasks(List<RecentTaskCard> existing) throws ReflectiveOperationException {
+    public List<RecentTaskCard> secondaryTasks(List<RecentTaskCard> existing) throws ReflectiveOperationException {
         return recent.secondaryTasks(existing);
     }
     List<RecentTaskCard> candidates() throws ReflectiveOperationException { return recent.recentTasks(); }
@@ -175,7 +177,7 @@ final class OneStepTaskAccess {
         return null;
     }
 
-    void activate(RecentTaskCard requested) throws ReflectiveOperationException {
+    public void activate(RecentTaskCard requested) throws ReflectiveOperationException {
         if (findCandidate(requested) == null) throw new IllegalStateException("Selected task no longer exists");
         ActivityOptions options = ActivityOptions.makeCustomAnimation(context, 0, 0);
         // Resume dormant recents behind the opaque host. Shell moves the task above
@@ -187,7 +189,7 @@ final class OneStepTaskAccess {
         }
     }
 
-    void openMiniWindow(RecentTaskCard requested) throws ReflectiveOperationException {
+    public void openMiniWindow(RecentTaskCard requested) throws ReflectiveOperationException {
         RecentTaskCard current = findCandidate(requested);
         if (current == null || !(current.token instanceof IBinder)) {
             throw new IllegalStateException("Selected task no longer exists");
@@ -203,7 +205,7 @@ final class OneStepTaskAccess {
         throw new IllegalStateException("Flyme mini window was not entered");
     }
 
-    void remove(RecentTaskCard requested) throws ReflectiveOperationException {
+    public void remove(RecentTaskCard requested) throws ReflectiveOperationException {
         Object result = removeTask.invoke(service, requested.taskId);
         if (Boolean.FALSE.equals(result)) throw new IllegalStateException("Cannot remove recent task");
     }
