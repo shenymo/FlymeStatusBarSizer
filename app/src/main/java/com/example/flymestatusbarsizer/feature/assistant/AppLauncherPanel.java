@@ -763,7 +763,7 @@ final class AppLauncherPanel {
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
             panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));
             panel.animate().scaleX(0.08f).scaleY(0.28f).alpha(0.9f)
-                    .translationX(fromLeft ? -dp(14) : dp(14)).setDuration(320L)
+                    .translationX(fromLeft ? -dp(14) : dp(14)).setDuration(240L)
                     .setInterpolator(new PathInterpolator(0.4f, 0f, 0.6f, 1f))
                     .withEndAction(this::finishClose).start();
         }
