@@ -1,6 +1,9 @@
 package com.example.flymestatusbarsizer.feature.onehanded;
 
 import android.content.Context;
+import android.content.BroadcastReceiver;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.database.ContentObserver;
 import android.content.res.Configuration;
 import android.content.res.ColorStateList;
@@ -123,6 +126,11 @@ public final class RecentTaskSwitcher {
         private final List<TaskEntry> entries = new ArrayList<>();
         private final Set<String> lockedApps;
         private final ContentObserver lockObserver;
+        private final BroadcastReceiver configurationReceiver = new BroadcastReceiver() {
+            @Override public void onReceive(Context receiverContext, Intent intent) {
+                updateDarkMode(root.getResources().getConfiguration());
+            }
+        };
         private final FrameLayout root;
         private final LinearLayout panel;
         private final AssistantPanelBlur panelBlur;
@@ -251,6 +259,8 @@ public final class RecentTaskSwitcher {
                     closing = false;
                     context.getContentResolver().registerContentObserver(
                             Settings.System.getUriFor(FlymeRecentLockState.SETTING), false, lockObserver);
+                    context.registerReceiver(configurationReceiver,
+                            new IntentFilter(Intent.ACTION_CONFIGURATION_CHANGED));
                     root.requestFocus();
                     panelBlur.start();
                     panel.post(() -> {
@@ -893,6 +903,7 @@ public final class RecentTaskSwitcher {
         private void finishClose() {
             panelBlur.stop();
             context.getContentResolver().unregisterContentObserver(lockObserver);
+            context.unregisterReceiver(configurationReceiver);
             if (attached) {
                 try { windowManager.removeViewImmediate(root); }
                 catch (Throwable ignored) { }
