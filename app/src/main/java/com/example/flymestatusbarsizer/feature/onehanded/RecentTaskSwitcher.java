@@ -13,6 +13,7 @@ import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.LruCache;
 import android.view.animation.PathInterpolator;
@@ -134,6 +135,9 @@ public final class RecentTaskSwitcher {
         private boolean closingAll;
         private boolean loading = true;
         private boolean secondaryLoading;
+        private long rowAnimationStartUptime;
+        private long nextRowAnimationStartUptime;
+        private int nextRowAnimationIndex;
         private final Map<Integer, Drawable.ConstantState> moduleIconStates = new HashMap<>();
 
         Popup(Context context) {
@@ -308,6 +312,9 @@ public final class RecentTaskSwitcher {
         private void loadTasksAsync() {
             loading = true;
             secondaryLoading = false;
+            rowAnimationStartUptime = 0L;
+            nextRowAnimationStartUptime = 0L;
+            nextRowAnimationIndex = 0;
             entries.clear();
             renderRows();
             WORKER.execute(() -> {
@@ -377,14 +384,7 @@ public final class RecentTaskSwitcher {
                 View taskRow = taskRow(entry);
                 rows.addView(taskRow, new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
                 if (animateRows) {
-                    int rowIndex = count;
-                    taskRow.setAlpha(0f);
-                    taskRow.setTranslationX(fromLeft ? -dp(6) : dp(6));
-                    rows.postDelayed(() -> {
-                        if (isCurrent() && taskRow.getParent() == rows) {
-                            animateTaskRow(taskRow, rowIndex);
-                        }
-                    }, INITIAL_ROW_ANIMATION_DELAY_MS);
+                    animateTaskRow(taskRow, nextRowAnimationIndex++);
                 }
                 count++;
             }
@@ -827,6 +827,8 @@ public final class RecentTaskSwitcher {
                     }
                     loading = false;
                     if (firstBatch) {
+                        rowAnimationStartUptime = SystemClock.uptimeMillis()
+                                + INITIAL_ROW_ANIMATION_DELAY_MS;
                         renderRows(true);
                     } else {
                         appendTaskRows(addedEntries);
@@ -850,15 +852,20 @@ public final class RecentTaskSwitcher {
                 }
                 View row = taskRow(entry);
                 rows.addView(row, new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
-                animateTaskRow(row, i);
+                animateTaskRow(row, nextRowAnimationIndex++);
             }
         }
 
         private void animateTaskRow(View row, int index) {
             row.setAlpha(0f);
             row.setTranslationX(fromLeft ? -dp(6) : dp(6));
+            long now = SystemClock.uptimeMillis();
+            long startAt = Math.max(now, Math.max(rowAnimationStartUptime
+                    + index * APPEND_ROW_ANIMATION_STAGGER_MS, nextRowAnimationStartUptime));
+            nextRowAnimationStartUptime = startAt + APPEND_ROW_ANIMATION_STAGGER_MS;
+            long delay = startAt - now;
             row.animate().alpha(1f).translationX(0f)
-                    .setStartDelay(index * APPEND_ROW_ANIMATION_STAGGER_MS)
+                    .setStartDelay(delay)
                     .setDuration(APPEND_ROW_ANIMATION_DURATION_MS)
                     .setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f))
                     .start();
