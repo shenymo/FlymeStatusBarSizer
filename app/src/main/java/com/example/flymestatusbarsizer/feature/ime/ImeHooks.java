@@ -137,6 +137,9 @@ public final class ImeHooks {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 FlymeStatusBarSizer.dp(inputView.getContext(), TOOLBAR_HEIGHT_DP),
                 Gravity.BOTTOM);
+        toolbarParams.bottomMargin = Math.round(
+                (config.imeControlBarYOffsetTenthDp / 10f)
+                        * inputView.getResources().getDisplayMetrics().density);
         inputFrame.addView(toolbar, toolbarParams);
         OVERLAY_STATES.put(service, new OverlayState(
                 inputView, toolbar, config, ImeToolbarIcons.resolveIconColor(inputView.getContext())));

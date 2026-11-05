@@ -1161,12 +1161,6 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_WIFI_Y_OFFSET_DP,
                 SettingsStore.DEFAULT_WIFI_Y_OFFSET_DP * 10);
 
-        content = addSection(root, "输入法控制栏", "这里单独调整输入法控制栏的位置。");
-        activity.addPositionOffsetSliderRow(content, "输入法控制栏抬高",
-                "正数向上、负数向下；滑块按 1dp 粗调，点右侧数值可输入 0.1dp。",
-                SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP,
-                SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10);
-
         content = addSection(root, "应用与重置", "");
         activity.addActionButtonRow(content, "应用当前调整",
                 "将本页待应用的调整一次性保存，并刷新当前状态栏。",

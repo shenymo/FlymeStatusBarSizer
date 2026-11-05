@@ -139,8 +139,7 @@ public class MainActivity extends Activity {
             SettingsStore.KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
             SettingsStore.KEY_SIGNAL_BADGE_Y_OFFSET_DP,
             SettingsStore.KEY_SIGNAL_DUAL_Y_OFFSET_DP,
-            SettingsStore.KEY_WIFI_Y_OFFSET_DP,
-            SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP
+            SettingsStore.KEY_WIFI_Y_OFFSET_DP
     };
 
     private SharedPreferences prefs;
@@ -1677,7 +1676,7 @@ public class MainActivity extends Activity {
         root.addView(row, matchWrap());
     }
 
-    void addApplyPositionOffsetSliderRow(LinearLayout root, String titleText,
+    public void addApplyPositionOffsetSliderRow(LinearLayout root, String titleText,
             String subtitleText, String key, int defaultValueTenthDp) {
         addApplyPositionOffsetSliderRow(
                 root,
@@ -1689,7 +1688,7 @@ public class MainActivity extends Activity {
                 getPositionOffsetMaxTenthDp(key));
     }
 
-    void addApplyPositionOffsetSliderRow(LinearLayout root, String titleText,
+    public void addApplyPositionOffsetSliderRow(LinearLayout root, String titleText,
             String subtitleText, String key, int defaultValueTenthDp,
             int minTenthDp, int maxTenthDp) {
         LinearLayout row = new LinearLayout(this);

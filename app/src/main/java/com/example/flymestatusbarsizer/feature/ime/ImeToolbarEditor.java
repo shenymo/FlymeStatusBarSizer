@@ -63,6 +63,11 @@ public final class ImeToolbarEditor {
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
                 10, 100, "%");
         activity.addDivider(details);
+        activity.addApplyPositionOffsetSliderRow(details, "输入法控制栏上下位置",
+                "正数向上、负数向下；滑块按 1dp 粗调，点右侧数值可输入 0.1dp。",
+                SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10);
+        activity.addDivider(details);
         activity.addProfileSectionHeader(details, "按钮位置与显隐",
                 "长按按钮拖到下面固定槽位里就会显示；拖回按钮池就会隐藏。从左到右就是工具栏里的实际位置；拖拽后点击应用才会写入配置并刷新当前输入法界面。");
 
