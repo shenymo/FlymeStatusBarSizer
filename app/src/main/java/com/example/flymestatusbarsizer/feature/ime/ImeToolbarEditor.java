@@ -1,9 +1,13 @@
 package com.example.flymestatusbarsizer.feature.ime;
 
 import com.example.flymestatusbarsizer.MainActivity;
+import com.example.flymestatusbarsizer.config.RemoteSettingsSync;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 
 import android.content.ClipData;
+import android.inputmethodservice.InputMethodService;
+import android.view.inputmethod.InputMethodInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.text.TextUtils;
@@ -12,9 +16,16 @@ import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.widget.LinearLayout;
+import android.widget.CheckBox;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import io.github.libxposed.service.XposedService;
 
 public final class ImeToolbarEditor {
     private final MainActivity activity;
@@ -34,6 +45,11 @@ public final class ImeToolbarEditor {
     public LinearLayout buildSettingsContent() {
         LinearLayout details = new LinearLayout(activity);
         details.setOrientation(LinearLayout.VERTICAL);
+
+        activity.addActionButtonRow(details, "输入法作用域",
+                "只显示系统当前启用的输入法。新增范围需经 LSPosed 确认。",
+                "管理", this::showImeScopes);
+        activity.addDivider(details);
 
         activity.addApplySliderRow(details, "输入法图标大小",
                 "调节覆盖层里图标的大小。数值越大，图标越大。",
@@ -57,6 +73,81 @@ public final class ImeToolbarEditor {
         loadConfig();
         renderEditor();
         return details;
+    }
+
+    private void showImeScopes() {
+        activity.showToast("正在读取输入法作用域…");
+        new Thread(() -> {
+            Set<String> enabledScope = RemoteSettingsSync.readEnabledScope();
+            InputMethodManager manager = (InputMethodManager)
+                    activity.getSystemService(InputMethodService.INPUT_METHOD_SERVICE);
+            List<InputMethodInfo> inputMethods = manager == null
+                    ? new ArrayList<>() : manager.getEnabledInputMethodList();
+            activity.runOnUiThread(() -> renderImeScopes(inputMethods, enabledScope));
+        }, "ime-scope-reader").start();
+    }
+
+    private void renderImeScopes(List<InputMethodInfo> inputMethods, Set<String> enabledScope) {
+        if (enabledScope == null) {
+            activity.showToast("无法连接 LSPosed 服务，请确认模块已启用后重试");
+            return;
+        }
+        if (inputMethods.isEmpty()) {
+            activity.showToast("系统没有已启用的输入法");
+            return;
+        }
+        LinearLayout list = new LinearLayout(activity);
+        list.setOrientation(LinearLayout.VERTICAL);
+        Set<String> displayedPackages = new HashSet<>();
+        for (InputMethodInfo inputMethod : inputMethods) {
+            String packageName = inputMethod.getPackageName();
+            if (!displayedPackages.add(packageName)) {
+                continue;
+            }
+            CheckBox checkbox = new CheckBox(activity);
+            checkbox.setText(inputMethod.loadLabel(activity.getPackageManager())
+                    + "\n" + packageName);
+            checkbox.setTextColor(activity.textColor());
+            checkbox.setMinHeight(activity.dp(52));
+            checkbox.setChecked(enabledScope.contains(packageName));
+            checkbox.setOnCheckedChangeListener((button, checked) -> {
+                button.setEnabled(false);
+                if (checked) {
+                    RemoteSettingsSync.requestScope(List.of(packageName),
+                            new XposedService.OnScopeEventListener() {
+                                @Override
+                                public void onScopeRequestApproved(List<String> approved) {
+                                    activity.runOnUiThread(() -> {
+                                        button.setEnabled(true);
+                                        button.setChecked(true);
+                                        activity.showToast("已添加输入法作用域");
+                                    });
+                                }
+
+                                @Override
+                                public void onScopeRequestFailed(String message) {
+                                    activity.runOnUiThread(() -> {
+                                        button.setEnabled(true);
+                                        button.setChecked(false);
+                                        activity.showToast("添加失败：" + message);
+                                    });
+                                }
+                            });
+                } else {
+                    RemoteSettingsSync.removeScope(List.of(packageName));
+                    button.setEnabled(true);
+                    activity.showToast("已移除输入法作用域");
+                }
+            });
+            list.addView(checkbox, activity.matchWrap());
+        }
+        ScrollView scroll = new ScrollView(activity);
+        scroll.addView(list);
+        new android.app.AlertDialog.Builder(activity)
+                .setTitle("输入法作用域")
+                .setView(scroll)
+                .setPositiveButton("完成", null)
+                .show();
     }
 
     private void loadConfig() {

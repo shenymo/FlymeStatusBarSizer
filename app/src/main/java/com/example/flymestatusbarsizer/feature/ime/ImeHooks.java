@@ -21,7 +21,6 @@ import java.util.WeakHashMap;
 public final class ImeHooks {
     private static final String PACKAGE_ANDROID = "android";
     private static final String PACKAGE_SYSTEM = "system";
-    private static final String TAG_OVERLAY_ROOT = "flyme_status_bar_sizer_ime_overlay";
     private static final int TOOLBAR_HEIGHT_DP = 40;
 
     private static final WeakHashMap<Object, View> TRACKED_INPUT_METHOD_VIEWS = new WeakHashMap<>();
@@ -127,35 +126,18 @@ public final class ImeHooks {
         }
         OverlayState current = OVERLAY_STATES.get(service);
         if (current != null && current.inputView == inputView
-                && current.root.getParent() == inputFrame && current.matches(config)) {
+                && current.toolbar.getParent() == inputFrame && current.matches(config)) {
             ImeToolbarActions.refreshActionButtonStates(service, current.toolbar);
             return;
         }
         detachOverlay(service);
-        if (inputView.getParent() != inputFrame) {
-            return;
-        }
-        ViewGroup.LayoutParams originalParams = inputView.getLayoutParams();
-        int originalWidth = originalParams == null
-                ? ViewGroup.LayoutParams.MATCH_PARENT : originalParams.width;
-        int originalHeight = originalParams == null
-                ? ViewGroup.LayoutParams.WRAP_CONTENT : originalParams.height;
-        inputFrame.removeView(inputView);
-        FrameLayout root = new FrameLayout(inputView.getContext());
-        root.setTag(TAG_OVERLAY_ROOT);
-        root.setClipChildren(false);
-        root.setClipToPadding(false);
         LinearLayout toolbar = createToolbar(inputView.getContext(), service, config);
-        root.addView(inputView, new FrameLayout.LayoutParams(
-                originalWidth, originalHeight));
         FrameLayout.LayoutParams toolbarParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 FlymeStatusBarSizer.dp(inputView.getContext(), TOOLBAR_HEIGHT_DP),
                 Gravity.BOTTOM);
-        root.addView(toolbar, toolbarParams);
-        inputFrame.addView(root, new FrameLayout.LayoutParams(originalWidth, originalHeight));
-        OVERLAY_STATES.put(service, new OverlayState(
-                inputView, root, toolbar, originalParams, config));
+        inputFrame.addView(toolbar, toolbarParams);
+        OVERLAY_STATES.put(service, new OverlayState(inputView, toolbar, config));
         inputFrame.requestLayout();
         inputFrame.invalidate();
     }
@@ -211,21 +193,11 @@ public final class ImeHooks {
         if (state == null) {
             return;
         }
-        ViewGroup inputParent = asViewGroup(state.inputView.getParent());
-        if (inputParent != null) {
-            inputParent.removeView(state.inputView);
-        }
-        ViewGroup parent = asViewGroup(state.root.getParent());
+        ViewGroup parent = asViewGroup(state.toolbar.getParent());
         if (parent != null) {
-            parent.removeView(state.root);
-        }
-        if (parent != null && state.inputView.getParent() == null) {
-            parent.addView(state.inputView, state.originalParams);
+            parent.removeView(state.toolbar);
             parent.requestLayout();
             parent.invalidate();
-        } else if (inputParent != null) {
-            inputParent.requestLayout();
-            inputParent.invalidate();
         }
     }
 
@@ -244,21 +216,16 @@ public final class ImeHooks {
 
     private static final class OverlayState {
         final View inputView;
-        final FrameLayout root;
         final LinearLayout toolbar;
-        final ViewGroup.LayoutParams originalParams;
         final String buttonSlots;
         final int iconScale;
         final int iconAlpha;
         final int yOffset;
 
-        OverlayState(View inputView, FrameLayout root, LinearLayout toolbar,
-                ViewGroup.LayoutParams originalParams,
+        OverlayState(View inputView, LinearLayout toolbar,
                 FlymeStatusBarSizer.ImeConfigSnapshot config) {
             this.inputView = inputView;
-            this.root = root;
             this.toolbar = toolbar;
-            this.originalParams = originalParams;
             this.buttonSlots = config.imeControlBarButtonSlots;
             this.iconScale = config.imeControlBarIconScalePercent;
             this.iconAlpha = config.imeControlBarIconAlphaPercent;

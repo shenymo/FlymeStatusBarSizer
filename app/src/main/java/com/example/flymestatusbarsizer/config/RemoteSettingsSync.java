@@ -6,6 +6,7 @@ import android.util.Log;
 
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -117,6 +118,23 @@ public final class RemoteSettingsSync {
             Log.w(TAG, "Failed to read module scope from Xposed service", e);
             return null;
         }
+    }
+
+    public static void requestScope(List<String> packageNames,
+            XposedService.OnScopeEventListener listener) {
+        XposedService service = xposedService;
+        if (service == null) {
+            throw new IllegalStateException("LSPosed service is unavailable");
+        }
+        service.requestScope(packageNames, listener);
+    }
+
+    public static void removeScope(List<String> packageNames) {
+        XposedService service = xposedService;
+        if (service == null) {
+            throw new IllegalStateException("LSPosed service is unavailable");
+        }
+        service.removeScope(packageNames);
     }
 
     // XposedServiceHelper has a single listener slot; share the existing connection with UI.
