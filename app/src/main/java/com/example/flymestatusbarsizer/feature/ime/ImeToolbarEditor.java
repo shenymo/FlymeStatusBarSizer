@@ -35,25 +35,20 @@ public final class ImeToolbarEditor {
         LinearLayout details = new LinearLayout(activity);
         details.setOrientation(LinearLayout.VERTICAL);
 
-        activity.addSwitchRow(details, "替换原生输入法控制栏",
-                "打开后统一接管输入法控制栏：替换当前控制栏、去掉深灰背景、同步输入法背景，并把工具按钮合并进控制栏。",
-                SettingsStore.KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
-                SettingsStore.DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR);
-        activity.addDivider(details);
         activity.addApplySliderRow(details, "输入法图标大小",
-                "调节底部 7 格里图标的占位比例。数值越大，图标越大，也更接近铺满整条控制栏。",
+                "调节覆盖层里图标的大小。数值越大，图标越大。",
                 SettingsStore.KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
                 60, 180, "%");
         activity.addDivider(details);
         activity.addApplySliderRow(details, "输入法图标透明度",
-                "调节输入法控制栏图标透明度。100% 完全不透明，数值越小越淡。",
+                "调节覆盖层图标透明度。100% 完全不透明，数值越小越淡。",
                 SettingsStore.KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
                 10, 100, "%");
         activity.addDivider(details);
         activity.addProfileSectionHeader(details, "按钮位置与显隐",
-                "长按按钮拖到下面固定槽位里就会显示；拖回按钮池就会隐藏。从左到右就是输入法控制栏里的实际位置；拖拽后先保存在页面草稿里，点击应用才会写入配置并刷新当前输入法界面。");
+                "长按按钮拖到下面固定槽位里就会显示；拖回按钮池就会隐藏。从左到右就是工具栏里的实际位置；拖拽后点击应用才会写入配置并刷新当前输入法界面。");
 
         buttonContainer = new LinearLayout(activity);
         buttonContainer.setOrientation(LinearLayout.VERTICAL);
@@ -87,8 +82,8 @@ public final class ImeToolbarEditor {
         buttonPoolContainer.setOnDragListener(this::handlePoolDrag);
         buttonContainer.addView(buttonPoolContainer, activity.matchWrapWithTop(8));
 
-        activity.addProfileSectionHeader(buttonContainer, "底部 7 个固定槽位",
-                "从左到右对应输入法控制栏的实际位置；空槽位会保留占位，验证码占 2 格。");
+        activity.addProfileSectionHeader(buttonContainer, "7 个固定槽位",
+                "从左到右对应工具栏的实际位置；空槽位会保留占位。");
 
         buttonSlotContainer = new LinearLayout(activity);
         buttonSlotContainer.setOrientation(LinearLayout.HORIZONTAL);

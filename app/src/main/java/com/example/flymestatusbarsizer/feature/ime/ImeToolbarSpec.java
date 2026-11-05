@@ -8,13 +8,11 @@ import java.util.ArrayList;
 
 public final class ImeToolbarSpec {
     static final String STOCK_CONTROL_BAR_BACK = "stock_back";
-    static final String STOCK_CONTROL_BAR_PLACEHOLDER = "stock_placeholder";
-    private static final String CAPTCHA = "captcha";
     private static final String[] ACTION_BUTTONS = {
-            "paste", "undo", "delete", "select_all", "copy", "switch_ime", CAPTCHA
+            "paste", "undo", "delete", "select_all", "copy", "switch_ime"
     };
     private static final String[] ALL_BUTTONS = {
-            "paste", "undo", "delete", "select_all", "copy", "switch_ime", CAPTCHA,
+            "paste", "undo", "delete", "select_all", "copy", "switch_ime",
             STOCK_CONTROL_BAR_BACK
     };
     private static final String[] DEFAULT_BUTTONS = {
@@ -22,8 +20,6 @@ public final class ImeToolbarSpec {
             STOCK_CONTROL_BAR_BACK
     };
     private static final int STOCK_CONTROL_BAR_SLOT_COUNT = 7;
-    private static final String STOCK_CONTROL_BAR_BUTTON_SIZE = "[7WC]";
-    private static final String STOCK_CONTROL_BAR_WIDE_BUTTON_SIZE = "[14WC]";
     private static final String SLOT_EMPTY_TOKEN = "__empty__";
 
     private ImeToolbarSpec() {
@@ -49,10 +45,6 @@ public final class ImeToolbarSpec {
         return isValidAction(button) || STOCK_CONTROL_BAR_BACK.equals(button);
     }
 
-    public static boolean isPlaceholderName(String button) {
-        return STOCK_CONTROL_BAR_PLACEHOLDER.equals(button);
-    }
-
     public static String getButtonLabel(String button) {
         if ("paste".equals(button)) {
             return "粘贴";
@@ -72,9 +64,6 @@ public final class ImeToolbarSpec {
         if ("switch_ime".equals(button)) {
             return "切换输入法";
         }
-        if (CAPTCHA.equals(button)) {
-            return "验证码";
-        }
         if (STOCK_CONTROL_BAR_BACK.equals(button)) {
             return "返回";
         }
@@ -82,17 +71,11 @@ public final class ImeToolbarSpec {
     }
 
     public static int getButtonSpan(String button) {
-        return CAPTCHA.equals(button) ? 2 : 1;
+        return 1;
     }
 
-    static boolean isCaptchaButton(String button) {
-        return CAPTCHA.equals(button);
-    }
-
-    static boolean shouldReplaceOriginalControlBar(FlymeStatusBarSizer.ImeConfigSnapshot config) {
-        return config != null
-                && config.enabled
-                && config.imeReplaceOriginalControlBar;
+    static boolean isBackButton(String button) {
+        return STOCK_CONTROL_BAR_BACK.equals(button);
     }
 
     static ArrayList<String> resolveButtonSlots(FlymeStatusBarSizer.ImeConfigSnapshot config) {
@@ -109,10 +92,6 @@ public final class ImeToolbarSpec {
         return parseButtonSlots(slotRaw);
     }
 
-    static String buildStockControlBarLayout(FlymeStatusBarSizer.ImeConfigSnapshot config) {
-        return buildFixedSlotLayout(resolveButtonSlots(config));
-    }
-
     public static String serializeButtonSlots(ArrayList<String> slots) {
         ArrayList<String> normalized = normalizeButtonSlots(slots);
         StringBuilder builder = new StringBuilder();
@@ -124,25 +103,6 @@ public final class ImeToolbarSpec {
             builder.append(TextUtils.isEmpty(button) ? SLOT_EMPTY_TOKEN : button);
         }
         return builder.toString();
-    }
-
-    private static String buildFixedSlotLayout(ArrayList<String> slots) {
-        ArrayList<String> normalized = normalizeButtonSlots(slots);
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < normalized.size(); i++) {
-            if (i > 0) {
-                builder.append(',');
-            }
-            String button = normalized.get(i);
-            if (isCaptchaButton(button)) {
-                builder.append(button).append(STOCK_CONTROL_BAR_WIDE_BUTTON_SIZE);
-                i++;
-                continue;
-            }
-            builder.append(TextUtils.isEmpty(button) ? STOCK_CONTROL_BAR_PLACEHOLDER : button)
-                    .append(STOCK_CONTROL_BAR_BUTTON_SIZE);
-        }
-        return builder.append(";;").toString();
     }
 
     private static ArrayList<String> parseButtonSlots(String raw) {
