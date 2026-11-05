@@ -70,6 +70,10 @@
                     android:scheme="flymestatusbarsizer"
                     android:host="workspace"
                     android:path="/open" />
+                <data
+                    android:scheme="flymestatusbarsizer"
+                    android:host="window"
+                    android:path="/welt" />
             </intent-filter>
         </activity>
 

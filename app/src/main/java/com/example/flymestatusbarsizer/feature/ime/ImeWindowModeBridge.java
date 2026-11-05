@@ -11,8 +11,10 @@ import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Process;
 import android.view.Display;
 
+import com.example.flymestatusbarsizer.BuildConfig;
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
@@ -37,7 +39,7 @@ public final class ImeWindowModeBridge {
     private ImeWindowModeBridge() {
     }
 
-    static void request(Context context) {
+    public static void request(Context context) {
         if (context == null) {
             return;
         }
@@ -108,7 +110,10 @@ public final class ImeWindowModeBridge {
         return "com.android.inputmethod.latin".equals(packageName)
                 || "com.google.android.inputmethod.latin".equals(packageName)
                 || "com.tencent.wetype".equals(packageName)
-                || "flyme.inputmethod".equals(packageName);
+                || "flyme.inputmethod".equals(packageName)
+                || BuildConfig.APPLICATION_ID.equals(packageName)
+                || receiver.getSentFromUid() == Process.SHELL_UID
+                || receiver.getSentFromUid() == Process.ROOT_UID;
     }
 
     private static void handleRequest(Context context) {
