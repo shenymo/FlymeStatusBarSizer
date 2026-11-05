@@ -40,6 +40,8 @@ final class ImeToolbarActions {
                 performEditorAction(inputMethodService, android.R.id.copy);
             } else if ("switch_ime".equals(action)) {
                 showInputMethodPicker(v.getContext());
+            } else if ("welt_window".equals(action)) {
+                ImeWindowModeBridge.request(v.getContext());
             }
         });
     }

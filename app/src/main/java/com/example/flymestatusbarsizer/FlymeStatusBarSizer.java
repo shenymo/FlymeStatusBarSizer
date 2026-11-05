@@ -295,6 +295,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private void hookSystemUi(ClassLoader loader) {
+        com.example.flymestatusbarsizer.feature.ime.ImeWindowModeBridge.install(this, loader);
         com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.install(this, loader);
         CameraCutoutHooks.install(this, loader);
         StatusBarTintHooks.installSystemUi(this, loader);

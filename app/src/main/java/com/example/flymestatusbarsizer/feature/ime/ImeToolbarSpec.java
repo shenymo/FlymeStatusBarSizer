@@ -9,10 +9,10 @@ import java.util.ArrayList;
 public final class ImeToolbarSpec {
     static final String STOCK_CONTROL_BAR_BACK = "stock_back";
     private static final String[] ACTION_BUTTONS = {
-            "paste", "undo", "delete", "select_all", "copy", "switch_ime"
+            "paste", "undo", "delete", "select_all", "copy", "switch_ime", "welt_window"
     };
     private static final String[] ALL_BUTTONS = {
-            "paste", "undo", "delete", "select_all", "copy", "switch_ime",
+            "paste", "undo", "delete", "select_all", "copy", "switch_ime", "welt_window",
             STOCK_CONTROL_BAR_BACK
     };
     private static final String[] DEFAULT_BUTTONS = {
@@ -63,6 +63,9 @@ public final class ImeToolbarSpec {
         }
         if ("switch_ime".equals(button)) {
             return "切换输入法";
+        }
+        if ("welt_window".equals(button)) {
+            return "贴边";
         }
         if (STOCK_CONTROL_BAR_BACK.equals(button)) {
             return "返回";

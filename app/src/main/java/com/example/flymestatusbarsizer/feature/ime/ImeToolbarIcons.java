@@ -11,6 +11,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.view.View;
@@ -34,6 +35,12 @@ final class ImeToolbarIcons {
     }
 
     static Drawable createIconDrawable(Context context, String iconType) {
+        if ("welt_window".equals(iconType)) {
+            return context == null ? null : new TextDrawable(
+                    "贴边",
+                    Math.max(1, FlymeStatusBarSizer.dp(context, 24)),
+                    resolveIconColor(context));
+        }
         String pathData = getIconPathData(iconType);
         if (TextUtils.isEmpty(pathData) || context == null) {
             return null;
@@ -91,6 +98,63 @@ final class ImeToolbarIcons {
 
     private static String getKeyboardDismissPathData() {
         return "M480,760L240,520L296,464L480,647L664,464L720,520L480,760ZM480,520L240,280L296,224L480,407L664,224L720,280L480,520Z";
+    }
+
+    private static final class TextDrawable extends Drawable {
+        private final String text;
+        private final int intrinsicSize;
+        private final Paint paint;
+        private int alpha = 255;
+
+        TextDrawable(String text, int intrinsicSize, int color) {
+            this.text = text;
+            this.intrinsicSize = intrinsicSize;
+            this.paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            this.paint.setColor(color);
+            this.paint.setTextAlign(Paint.Align.CENTER);
+            this.paint.setTypeface(Typeface.DEFAULT_BOLD);
+            this.paint.setTextSize(intrinsicSize * 0.37f);
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            Rect bounds = getBounds();
+            if (bounds.isEmpty()) {
+                return;
+            }
+            Paint.FontMetrics metrics = paint.getFontMetrics();
+            float x = bounds.centerX();
+            float y = bounds.centerY() - (metrics.ascent + metrics.descent) / 2f;
+            canvas.drawText(text, x, y, paint);
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+            this.alpha = alpha;
+            paint.setAlpha(alpha);
+            invalidateSelf();
+        }
+
+        @Override
+        public void setColorFilter(ColorFilter colorFilter) {
+            paint.setColorFilter(colorFilter);
+            invalidateSelf();
+        }
+
+        @Override
+        public int getOpacity() {
+            return alpha < 255 ? PixelFormat.TRANSLUCENT : PixelFormat.OPAQUE;
+        }
+
+        @Override
+        public int getIntrinsicWidth() {
+            return intrinsicSize;
+        }
+
+        @Override
+        public int getIntrinsicHeight() {
+            return intrinsicSize;
+        }
     }
 
     private static final class PathDrawable extends Drawable {
