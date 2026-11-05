@@ -126,7 +126,8 @@ public final class ImeHooks {
         }
         OverlayState current = OVERLAY_STATES.get(service);
         if (current != null && current.inputView == inputView
-                && current.toolbar.getParent() == inputFrame && current.matches(config)) {
+                && current.toolbar.getParent() == inputFrame
+                && current.matches(config, ImeToolbarIcons.resolveIconColor(inputView.getContext()))) {
             ImeToolbarActions.refreshActionButtonStates(service, current.toolbar);
             return;
         }
@@ -137,7 +138,8 @@ public final class ImeHooks {
                 FlymeStatusBarSizer.dp(inputView.getContext(), TOOLBAR_HEIGHT_DP),
                 Gravity.BOTTOM);
         inputFrame.addView(toolbar, toolbarParams);
-        OVERLAY_STATES.put(service, new OverlayState(inputView, toolbar, config));
+        OVERLAY_STATES.put(service, new OverlayState(
+                inputView, toolbar, config, ImeToolbarIcons.resolveIconColor(inputView.getContext())));
         inputFrame.requestLayout();
         inputFrame.invalidate();
     }
@@ -221,21 +223,24 @@ public final class ImeHooks {
         final int iconScale;
         final int iconAlpha;
         final int yOffset;
+        final int iconColor;
 
         OverlayState(View inputView, LinearLayout toolbar,
-                FlymeStatusBarSizer.ImeConfigSnapshot config) {
+                FlymeStatusBarSizer.ImeConfigSnapshot config, int iconColor) {
             this.inputView = inputView;
             this.toolbar = toolbar;
             this.buttonSlots = config.imeControlBarButtonSlots;
             this.iconScale = config.imeControlBarIconScalePercent;
             this.iconAlpha = config.imeControlBarIconAlphaPercent;
             this.yOffset = config.imeControlBarYOffsetTenthDp;
+            this.iconColor = iconColor;
         }
 
-        boolean matches(FlymeStatusBarSizer.ImeConfigSnapshot config) {
+        boolean matches(FlymeStatusBarSizer.ImeConfigSnapshot config, int currentIconColor) {
             return iconScale == config.imeControlBarIconScalePercent
                     && iconAlpha == config.imeControlBarIconAlphaPercent
                     && yOffset == config.imeControlBarYOffsetTenthDp
+                    && iconColor == currentIconColor
                     && java.util.Objects.equals(buttonSlots, config.imeControlBarButtonSlots);
         }
     }

@@ -42,7 +42,8 @@ final class ImeToolbarIcons {
             return new PathDrawable(
                     pathData,
                     Math.max(1, FlymeStatusBarSizer.dp(context, 24)),
-                    "undo".equals(iconType));
+                    "undo".equals(iconType),
+                    resolveIconColor(context));
         } catch (Throwable t) {
             FlymeStatusBarSizer.logImeWarning("Failed to create ime toolbar drawable: " + iconType, t);
             return null;
@@ -58,7 +59,8 @@ final class ImeToolbarIcons {
             return new PathDrawable(
                     pathData,
                     Math.max(1, FlymeStatusBarSizer.dp(context, 24)),
-                    false);
+                    false,
+                    resolveIconColor(context));
         } catch (Throwable t) {
             FlymeStatusBarSizer.logImeWarning("Failed to create keyboard dismiss drawable", t);
             return null;
@@ -98,13 +100,13 @@ final class ImeToolbarIcons {
         private final boolean autoMirrorInRtl;
         private int alpha = 255;
 
-        PathDrawable(String pathData, int intrinsicSize, boolean autoMirrorInRtl) {
+        PathDrawable(String pathData, int intrinsicSize, boolean autoMirrorInRtl, int color) {
             this.path = PathDataParser.parse(pathData);
             this.intrinsicSize = intrinsicSize;
             this.autoMirrorInRtl = autoMirrorInRtl;
             this.paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             this.paint.setStyle(Paint.Style.FILL);
-            this.paint.setColor(Color.WHITE);
+            this.paint.setColor(color);
         }
 
         @Override
