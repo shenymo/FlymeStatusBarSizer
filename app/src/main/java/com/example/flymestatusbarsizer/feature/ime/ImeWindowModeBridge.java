@@ -12,7 +12,6 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Process;
-import android.os.SystemClock;
 import android.view.Display;
 
 import com.example.flymestatusbarsizer.BuildConfig;
@@ -32,12 +31,10 @@ public final class ImeWindowModeBridge {
     private static final long MOVE_DELAY_MS = 220L;
     private static final long MODE_SWITCH_DELAY_MS = 350L;
     private static final int MODE_SWITCH_RETRY_COUNT = 5;
-    private static final long REQUEST_DEBOUNCE_MS = 1500L;
     private static final String EXTRA_TARGET_PACKAGE =
             "com.fiyme.statusbarsizer.extra.IME_TARGET_PACKAGE";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static boolean receiverRegistered;
-    private static long requestBlockedUntil;
     private static Method windowManagerExtGetInstance;
     private static Method getVirtualWindowingModeByTask;
     private static Method getWindowModeBound;
@@ -134,10 +131,6 @@ public final class ImeWindowModeBridge {
 
     private static void handleRequest(Context context, String targetPackage) {
         try {
-            long now = SystemClock.uptimeMillis();
-            if (now < requestBlockedUntil) {
-                return;
-            }
             Object windowManager = windowManagerExt(context);
             if (windowManager == null) {
                 return;
@@ -155,7 +148,6 @@ public final class ImeWindowModeBridge {
             if (currentMode <= 0) {
                 return;
             }
-            requestBlockedUntil = now + REQUEST_DEBOUNCE_MS;
             moveTargetToSideMini(context, windowManager, displayId, taskId, currentMode);
         } catch (Throwable error) {
             FlymeStatusBarSizer.logWindowModeWarning(
