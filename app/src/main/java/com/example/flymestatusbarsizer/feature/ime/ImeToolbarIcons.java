@@ -99,16 +99,12 @@ final class ImeToolbarIcons {
     }
 
     private static final class WeltWindowDrawable extends Drawable {
-        private static final String[] PATH_DATA = {
-                "M7.5,2h9c1.38,0 2.5,1.12 2.5,2.5v15c0,1.38 -1.12,2.5 -2.5,2.5h-9C6.12,22 5,20.88 5,19.5v-15C5,3.12 6.12,2 7.5,2z",
-                "M10.5,4.2h3",
-                "M11,7h6c0.83,0 1.5,0.67 1.5,1.5v7.5c0,0.83 -0.67,1.5 -1.5,1.5h-6c-0.83,0 -1.5,-0.67 -1.5,-1.5v-7.5c0,-0.83 0.67,-1.5 1.5,-1.5z",
-                "M9.5,9.5h9",
-                "M11.5,12.5h5",
-                "M11.5,14.8h3"
-        };
-        private static final float[] STROKE_WIDTHS = {1.8f, 1.2f, 1.6f, 1.2f, 1.2f, 1.2f};
-        private final Path[] paths = new Path[PATH_DATA.length];
+        private static final String PATH_DATA =
+                "M6.5,2C5.12,2 4,3.12 4,4.5v15C4,20.88 5.12,22 6.5,22h11c1.38,0 2.5,-1.12 2.5,-2.5v-15C20,3.12 18.88,2 17.5,2H6.5z"
+                + "M6,4.5C6,4.22 6.22,4 6.5,4h11C17.78,4 18,4.22 18,4.5V5.5h-6C10.9,5.5 10,6.4 10,7.5v9c0,1.1 0.9,2 2,2h6v1c0,0.28 -0.22,0.5 -0.5,0.5H6.5C6.22,20 6,19.78 6,19.5V4.5z"
+                + "M12,7.5C12,7.22 12.22,7 12.5,7h5C17.78,7 18,7.22 18,7.5v9c0,0.28 -0.22,0.5 -0.5,0.5h-5C12.22,17 12,16.78 12,16.5V7.5z"
+                + "M13.5,9c0,-0.41 0.34,-0.75 0.75,-0.75h1.5c0.41,0 0.75,0.34 0.75,0.75c0,0.75 -0.34,0.75 -0.75,0.75h-1.5C13.84,9.75 13.5,9.41 13.5,9z";
+        private final Path path;
         private final Paint paint;
         private final int intrinsicSize;
         private int alpha = 255;
@@ -116,13 +112,9 @@ final class ImeToolbarIcons {
         WeltWindowDrawable(int intrinsicSize, int color) {
             this.intrinsicSize = intrinsicSize;
             this.paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            this.paint.setStyle(Paint.Style.STROKE);
-            this.paint.setStrokeCap(Paint.Cap.ROUND);
-            this.paint.setStrokeJoin(Paint.Join.ROUND);
+            this.paint.setStyle(Paint.Style.FILL);
             this.paint.setColor(color);
-            for (int i = 0; i < PATH_DATA.length; i++) {
-                paths[i] = PathDataParser.parse(PATH_DATA[i]);
-            }
+            this.path = PathDataParser.parse(PATH_DATA);
         }
 
         @Override
@@ -134,13 +126,7 @@ final class ImeToolbarIcons {
             int save = canvas.save();
             canvas.translate(bounds.left, bounds.top);
             canvas.scale(bounds.width() / 24f, bounds.height() / 24f);
-            for (int i = 0; i < paths.length; i++) {
-                if (paths[i] == null) {
-                    continue;
-                }
-                paint.setStrokeWidth(STROKE_WIDTHS[i]);
-                canvas.drawPath(paths[i], paint);
-            }
+            canvas.drawPath(path, paint);
             canvas.restoreToCount(save);
         }
 
