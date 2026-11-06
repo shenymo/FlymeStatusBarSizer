@@ -45,7 +45,7 @@ public final class ImeWindowModeBridge {
     private static Method getVirtualWindowingModeByTask;
     private static Method getWindowModeBound;
     private static Method enterWindowMode;
-    private static Method moveWindowModeBound;
+    private static Method flingWindowMode;
 
     private ImeWindowModeBridge() {
     }
@@ -240,7 +240,7 @@ public final class ImeWindowModeBridge {
     private static void moveTargetToSideMini(
             Context context, Object windowManager, int displayId, int taskId, int currentMode) {
         if (currentMode == MINI_WINDOW_MODE) {
-            moveToEdge(context, windowManager, displayId, taskId);
+            flingMiniWindowUp(context, windowManager, displayId, taskId);
             return;
         }
         if (currentMode == FULLSCREEN_WINDOW_MODE) {
@@ -382,35 +382,38 @@ public final class ImeWindowModeBridge {
         return mode > 0 ? mode : FULLSCREEN_WINDOW_MODE;
     }
 
-    private static void moveToEdge(Context context, Object windowManager, int displayId, int taskId) {
+    private static void flingMiniWindowUp(
+            Context context, Object windowManager, int displayId, int taskId) {
         Rect bound = windowModeBound(windowManager, displayId, taskId, MINI_WINDOW_MODE);
         if (bound == null || bound.isEmpty()) {
-            Log.w(TAG, "move_ignored reason=no_bound taskId=" + taskId);
+            Log.w(TAG, "up_fling_ignored reason=no_mini_bound taskId=" + taskId);
             return;
         }
-        Log.i(TAG, "move_start taskId=" + taskId + " bound=" + bound);
         DisplayManager displayManager = context.getSystemService(DisplayManager.class);
         Display display = displayManager == null ? null : displayManager.getDisplay(displayId);
         if (display == null) {
-            Log.w(TAG, "move_ignored reason=no_display taskId=" + taskId
-                    + " displayId=" + displayId);
+            Log.w(TAG, "up_fling_ignored reason=no_display taskId=" + taskId);
             return;
         }
-        Point size = new Point();
-        display.getRealSize(size);
-        int width = size.x;
-        if (width <= 0) {
-            return;
+        int rotation = display.getRotation();
+        if (rotation == 0 || rotation == 2) {
+            Point start = new Point(bound.centerX(), bound.bottom);
+            float velocityY = -2000f;
+            Log.i(TAG, "up_fling_start taskId=" + taskId + " rotation=" + rotation
+                    + " bound=" + bound + " velocityX=0.0 velocityY=" + velocityY);
+            boolean started = (Boolean) invoke(windowManager,
+                    flingWindowMode(windowManager.getClass()), displayId, taskId,
+                    MINI_WINDOW_MODE, 0f, velocityY, start);
+            if (!started) {
+                Log.w(TAG, "up_fling_rejected taskId=" + taskId);
+                return;
+            }
+        } else {
+            Log.i(TAG, "up_fling_mode_switch taskId=" + taskId + " rotation=" + rotation);
+            enterWindowMode(windowManager, displayId, taskId, MINI_WINDOW_MODE,
+                    PINNED_WINDOW_MODE, null);
         }
-        int windowWidth = Math.min(bound.width(), width);
-        boolean left = bound.centerX() < width / 2;
-        int leftEdge = left ? 0 : width - windowWidth;
-        Rect edgeBound = new Rect(leftEdge, bound.top, leftEdge + windowWidth,
-                bound.top + bound.height());
-        invoke(windowManager, moveWindowModeBound(windowManager.getClass()),
-                displayId, taskId, MINI_WINDOW_MODE, edgeBound, null, null, true);
-        Log.i(TAG, "move_done taskId=" + taskId + " edgeBound=" + edgeBound);
-        logAllRootTasks(context, windowManager, "after");
+        logAllRootTasks(context, windowManager, "after_up_fling");
     }
 
     private static void finishFullscreenToMini(
@@ -420,7 +423,7 @@ public final class ImeWindowModeBridge {
         Log.i(TAG, "fullscreen_to_mini_check taskId=" + taskId + " currentMode="
                 + currentMode + " retry=" + retryCount);
         if (currentMode == MINI_WINDOW_MODE) {
-            moveToEdge(context, windowManager, displayId, taskId);
+            logAllRootTasks(context, windowManager, "after_mode_switch");
             return;
         }
         if (currentMode != FULLSCREEN_WINDOW_MODE || retryCount >= MODE_SWITCH_RETRY_COUNT) {
@@ -481,12 +484,12 @@ public final class ImeWindowModeBridge {
         return enterWindowMode;
     }
 
-    private static Method moveWindowModeBound(Class<?> type) {
-        if (moveWindowModeBound == null) {
-            moveWindowModeBound = method(type, "moveWindowModeBound", int.class, int.class,
-                    int.class, Rect.class, float[].class, float[].class, boolean.class);
+    private static Method flingWindowMode(Class<?> type) {
+        if (flingWindowMode == null) {
+            flingWindowMode = method(type, "flingWindowMode", int.class, int.class,
+                    int.class, float.class, float.class, Point.class);
         }
-        return moveWindowModeBound;
+        return flingWindowMode;
     }
 
     private static Method method(Class<?> type, String name, Class<?>... parameterTypes) {
