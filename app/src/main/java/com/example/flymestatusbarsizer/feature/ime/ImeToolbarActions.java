@@ -5,8 +5,10 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.inputmethodservice.InputMethodService;
 import android.os.SystemClock;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.View;
@@ -15,6 +17,8 @@ import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 
 final class ImeToolbarActions {
+    private static final String TAG = "FlymeImeWelt";
+
     private ImeToolbarActions() {
     }
 
@@ -41,9 +45,23 @@ final class ImeToolbarActions {
             } else if ("switch_ime".equals(action)) {
                 showInputMethodPicker(v.getContext());
             } else if ("welt_window".equals(action)) {
-                ImeWindowModeBridge.request(v.getContext());
+                String packageName = editorPackageName(inputMethodService);
+                Log.i(TAG, "button_click editorPackage=" + packageName
+                        + " service=" + inputMethodService.getClass().getName());
+                ImeWindowModeBridge.request(v.getContext(), packageName);
             }
         });
+    }
+
+    private static String editorPackageName(Object service) {
+        if (service instanceof InputMethodService) {
+            android.view.inputmethod.EditorInfo editorInfo =
+                    ((InputMethodService) service).getCurrentInputEditorInfo();
+            return editorInfo == null ? null : editorInfo.packageName;
+        }
+        Object value = FlymeStatusBarSizer.invokeNoArgCompat(service, "getCurrentInputEditorInfo");
+        return value instanceof android.view.inputmethod.EditorInfo
+                ? ((android.view.inputmethod.EditorInfo) value).packageName : null;
     }
 
     static void refreshActionButtonStates(Object inputMethodService, View root) {
