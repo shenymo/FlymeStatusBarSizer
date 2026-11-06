@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.taskswitcher;
 
 import android.content.Context;
+import android.content.ComponentCallbacks;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -133,6 +134,13 @@ public final class RecentTaskSwitcher {
                 updateDarkMode(root.getResources().getConfiguration());
             }
         };
+        private final ComponentCallbacks configurationCallbacks = new ComponentCallbacks() {
+            @Override public void onConfigurationChanged(Configuration configuration) {
+                updateDarkMode(configuration);
+            }
+
+            @Override public void onLowMemory() { }
+        };
         private final FrameLayout root;
         private final LinearLayout panel;
         private final AssistantPanelBlur panelBlur;
@@ -259,6 +267,7 @@ public final class RecentTaskSwitcher {
                     windowManager.addView(root, params);
                     attached = true;
                     closing = false;
+                    context.registerComponentCallbacks(configurationCallbacks);
                     context.getContentResolver().registerContentObserver(
                             Settings.System.getUriFor(FlymeRecentLockState.SETTING), false, lockObserver);
                     context.registerReceiver(configurationReceiver,
@@ -904,6 +913,7 @@ public final class RecentTaskSwitcher {
 
         private void finishClose() {
             panelBlur.stop();
+            context.unregisterComponentCallbacks(configurationCallbacks);
             context.getContentResolver().unregisterContentObserver(lockObserver);
             context.unregisterReceiver(configurationReceiver);
             if (attached) {

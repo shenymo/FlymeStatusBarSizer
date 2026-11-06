@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.assistant;
 
 import android.content.ComponentName;
+import android.content.ComponentCallbacks;
 import android.content.Context;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
@@ -240,6 +241,13 @@ final class AppLauncherPanel {
         private Runnable holdRunnable;
         private boolean holdTriggered;
         private boolean holdCanceled;
+        private final ComponentCallbacks configurationCallbacks = new ComponentCallbacks() {
+            @Override public void onConfigurationChanged(Configuration configuration) {
+                updateDarkMode(configuration);
+            }
+
+            @Override public void onLowMemory() { }
+        };
 
         Popup(Context context) {
             this.context = context;
@@ -344,6 +352,7 @@ final class AppLauncherPanel {
                     windowManager.addView(root, params);
                     attached = true;
                     closing = false;
+                    context.registerComponentCallbacks(configurationCallbacks);
                     root.requestFocus();
                     panelBlur.start();
                     panel.post(() -> {
@@ -770,6 +779,7 @@ final class AppLauncherPanel {
 
         private void finishClose() {
             panelBlur.stop();
+            context.unregisterComponentCallbacks(configurationCallbacks);
             try { windowManager.removeViewImmediate(root); } catch (Throwable ignored) { }
             attached = false;
             closing = false;

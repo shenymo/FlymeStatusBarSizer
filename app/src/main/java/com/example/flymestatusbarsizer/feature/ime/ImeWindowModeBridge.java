@@ -164,7 +164,9 @@ public final class ImeWindowModeBridge {
         Object allTasks = serviceType.getMethod("getAllRootTaskInfos").invoke(service);
         int focusedDisplayId = ReflectUtils.getIntField(focused, "displayId", 0);
         int focusedTaskId = ReflectUtils.getIntField(focused, "taskId", -1);
+        Object focusedApplicationTask = null;
         Object firstMiniTask = null;
+        Object firstFullscreenTask = null;
         Object matchingMiniTask = null;
         Object matchingFullscreenTask = null;
         Object focusedFullscreenTask = null;
@@ -174,6 +176,9 @@ public final class ImeWindowModeBridge {
                 int taskId = ReflectUtils.getIntField(task, "taskId", -1);
                 if (displayId != focusedDisplayId || taskId <= 0 || !isApplicationTask(task)) {
                     continue;
+                }
+                if (taskId == focusedTaskId) {
+                    focusedApplicationTask = task;
                 }
                 int mode = getCurrentWindowMode(windowManager, task, displayId, taskId);
                 String packageName = taskPackage(task);
@@ -188,6 +193,9 @@ public final class ImeWindowModeBridge {
                         matchingMiniTask = task;
                     }
                 } else if (mode == FULLSCREEN_WINDOW_MODE) {
+                    if (firstFullscreenTask == null) {
+                        firstFullscreenTask = task;
+                    }
                     if (taskId == focusedTaskId) {
                         focusedFullscreenTask = task;
                     }
@@ -197,12 +205,18 @@ public final class ImeWindowModeBridge {
                 }
             }
         }
+        if (targetPackage == null && focusedApplicationTask != null) {
+            return focusedApplicationTask;
+        }
         Object selectedMini = matchingMiniTask != null ? matchingMiniTask : firstMiniTask;
         if (selectedMini != null) {
             return selectedMini;
         }
         Object selectedFullscreen = matchingFullscreenTask != null
                 ? matchingFullscreenTask : focusedFullscreenTask;
+        if (selectedFullscreen == null && targetPackage == null) {
+            selectedFullscreen = firstFullscreenTask;
+        }
         if (selectedFullscreen != null) {
             return selectedFullscreen;
         }
@@ -249,7 +263,8 @@ public final class ImeWindowModeBridge {
                     && !"com.android.inputmethod.latin".equals(packageName)
                     && !"com.google.android.inputmethod.latin".equals(packageName)
                     && !"com.tencent.wetype".equals(packageName)
-                    && !"flyme.inputmethod".equals(packageName);
+                    && !"flyme.inputmethod".equals(packageName)
+                    && !BuildConfig.APPLICATION_ID.equals(packageName);
         }
         return true;
     }
