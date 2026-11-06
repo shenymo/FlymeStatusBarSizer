@@ -11,7 +11,6 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
-import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.view.View;
@@ -36,8 +35,7 @@ final class ImeToolbarIcons {
 
     static Drawable createIconDrawable(Context context, String iconType) {
         if ("welt_window".equals(iconType)) {
-            return context == null ? null : new TextDrawable(
-                    "贴边",
+            return context == null ? null : new WeltWindowDrawable(
                     Math.max(1, FlymeStatusBarSizer.dp(context, 24)),
                     resolveIconColor(context));
         }
@@ -100,20 +98,31 @@ final class ImeToolbarIcons {
         return "M480,760L240,520L296,464L480,647L664,464L720,520L480,760ZM480,520L240,280L296,224L480,407L664,224L720,280L480,520Z";
     }
 
-    private static final class TextDrawable extends Drawable {
-        private final String text;
-        private final int intrinsicSize;
+    private static final class WeltWindowDrawable extends Drawable {
+        private static final String[] PATH_DATA = {
+                "M7.5,2h9c1.38,0 2.5,1.12 2.5,2.5v15c0,1.38 -1.12,2.5 -2.5,2.5h-9C6.12,22 5,20.88 5,19.5v-15C5,3.12 6.12,2 7.5,2z",
+                "M10.5,4.2h3",
+                "M11,7h6c0.83,0 1.5,0.67 1.5,1.5v7.5c0,0.83 -0.67,1.5 -1.5,1.5h-6c-0.83,0 -1.5,-0.67 -1.5,-1.5v-7.5c0,-0.83 0.67,-1.5 1.5,-1.5z",
+                "M9.5,9.5h9",
+                "M11.5,12.5h5",
+                "M11.5,14.8h3"
+        };
+        private static final float[] STROKE_WIDTHS = {1.8f, 1.2f, 1.6f, 1.2f, 1.2f, 1.2f};
+        private final Path[] paths = new Path[PATH_DATA.length];
         private final Paint paint;
+        private final int intrinsicSize;
         private int alpha = 255;
 
-        TextDrawable(String text, int intrinsicSize, int color) {
-            this.text = text;
+        WeltWindowDrawable(int intrinsicSize, int color) {
             this.intrinsicSize = intrinsicSize;
             this.paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            this.paint.setStyle(Paint.Style.STROKE);
+            this.paint.setStrokeCap(Paint.Cap.ROUND);
+            this.paint.setStrokeJoin(Paint.Join.ROUND);
             this.paint.setColor(color);
-            this.paint.setTextAlign(Paint.Align.CENTER);
-            this.paint.setTypeface(Typeface.DEFAULT_BOLD);
-            this.paint.setTextSize(intrinsicSize * 0.37f);
+            for (int i = 0; i < PATH_DATA.length; i++) {
+                paths[i] = PathDataParser.parse(PATH_DATA[i]);
+            }
         }
 
         @Override
@@ -122,10 +131,17 @@ final class ImeToolbarIcons {
             if (bounds.isEmpty()) {
                 return;
             }
-            Paint.FontMetrics metrics = paint.getFontMetrics();
-            float x = bounds.centerX();
-            float y = bounds.centerY() - (metrics.ascent + metrics.descent) / 2f;
-            canvas.drawText(text, x, y, paint);
+            int save = canvas.save();
+            canvas.translate(bounds.left, bounds.top);
+            canvas.scale(bounds.width() / 24f, bounds.height() / 24f);
+            for (int i = 0; i < paths.length; i++) {
+                if (paths[i] == null) {
+                    continue;
+                }
+                paint.setStrokeWidth(STROKE_WIDTHS[i]);
+                canvas.drawPath(paths[i], paint);
+            }
+            canvas.restoreToCount(save);
         }
 
         @Override
@@ -355,6 +371,28 @@ final class ImeToolbarIcons {
                         }
                         break;
                     }
+                    case 'C': {
+                        while (hasNumber()) {
+                            float controlX1 = nextFloat();
+                            float controlY1 = nextFloat();
+                            float controlX2 = nextFloat();
+                            float controlY2 = nextFloat();
+                            float endX = nextFloat();
+                            float endY = nextFloat();
+                            if (relative) {
+                                controlX1 += currentX;
+                                controlY1 += currentY;
+                                controlX2 += currentX;
+                                controlY2 += currentY;
+                                endX += currentX;
+                                endY += currentY;
+                            }
+                            path.cubicTo(controlX1, controlY1, controlX2, controlY2, endX, endY);
+                            currentX = endX;
+                            currentY = endY;
+                        }
+                        break;
+                    }
                     case 'Z': {
                         path.close();
                         currentX = startX;
@@ -443,6 +481,8 @@ final class ImeToolbarIcons {
                 case 'v':
                 case 'Q':
                 case 'q':
+                case 'C':
+                case 'c':
                 case 'Z':
                 case 'z':
                     return true;

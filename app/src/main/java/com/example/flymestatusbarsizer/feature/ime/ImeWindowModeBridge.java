@@ -13,7 +13,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Process;
 import android.os.SystemClock;
-import android.util.Log;
 import android.view.Display;
 
 import com.example.flymestatusbarsizer.BuildConfig;
@@ -24,14 +23,12 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 public final class ImeWindowModeBridge {
-    private static final String TAG = "FlymeImeWelt";
     private static final String SYSTEM_UI_PACKAGE = "com.android.systemui";
     private static final String ACTION_WELT_WINDOW =
             "com.fiyme.statusbarsizer.action.IME_WELT_WINDOW";
     private static final int FULLSCREEN_WINDOW_MODE = 1;
     private static final int MINI_WINDOW_MODE = 11;
     private static final int PINNED_WINDOW_MODE = 12;
-    private static final int WELT_WINDOW_MODE = 268;
     private static final long MOVE_DELAY_MS = 220L;
     private static final long MODE_SWITCH_DELAY_MS = 350L;
     private static final int MODE_SWITCH_RETRY_COUNT = 5;
@@ -62,7 +59,6 @@ public final class ImeWindowModeBridge {
         if (targetPackage != null && !targetPackage.isEmpty()) {
             intent.putExtra(EXTRA_TARGET_PACKAGE, targetPackage);
         }
-        Log.i(TAG, "broadcast_send targetPackage=" + targetPackage);
         if (Build.VERSION.SDK_INT >= 34) {
             context.sendBroadcast(intent, null,
                     BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle());
@@ -110,7 +106,6 @@ public final class ImeWindowModeBridge {
                     return;
                 }
                 String targetPackage = intent.getStringExtra(EXTRA_TARGET_PACKAGE);
-                Log.i(TAG, "broadcast_receive targetPackage=" + targetPackage);
                 handleRequest(receiverContext, targetPackage);
             }
         };
@@ -141,8 +136,6 @@ public final class ImeWindowModeBridge {
         try {
             long now = SystemClock.uptimeMillis();
             if (now < requestBlockedUntil) {
-                Log.i(TAG, "request_ignored reason=debounce remainingMs="
-                        + (requestBlockedUntil - now));
                 return;
             }
             Object windowManager = windowManagerExt(context);
@@ -151,25 +144,18 @@ public final class ImeWindowModeBridge {
             }
             Object task = resolveTargetTask(targetPackage, windowManager);
             if (task == null || !isApplicationTask(task)) {
-                Log.w(TAG, "request_ignored reason=no_application_task targetPackage="
-                        + targetPackage + " task=" + taskSummary(task));
                 return;
             }
             int taskId = ReflectUtils.getIntField(task, "taskId", -1);
             int displayId = ReflectUtils.getIntField(task, "displayId", -1);
             if (taskId <= 0 || displayId < 0) {
-                Log.w(TAG, "request_ignored reason=invalid_task task=" + taskSummary(task));
                 return;
             }
-            logAllRootTasks(context, windowManager, "before");
             int currentMode = getCurrentWindowMode(windowManager, task, displayId, taskId);
             if (currentMode <= 0) {
-                Log.w(TAG, "request_ignored reason=invalid_mode task=" + taskSummary(task));
                 return;
             }
             requestBlockedUntil = now + REQUEST_DEBOUNCE_MS;
-            Log.i(TAG, "request_start targetPackage=" + targetPackage
-                    + " task=" + taskSummary(task) + " currentMode=" + currentMode);
             moveTargetToSideMini(context, windowManager, displayId, taskId, currentMode);
         } catch (Throwable error) {
             FlymeStatusBarSizer.logWindowModeWarning(
@@ -183,8 +169,6 @@ public final class ImeWindowModeBridge {
         Object service = activityTaskManager.getMethod("getService").invoke(null);
         Class<?> serviceType = Class.forName("android.app.IActivityTaskManager");
         Object focused = serviceType.getMethod("getFocusedRootTaskInfo").invoke(service);
-        Log.i(TAG, "focused_task targetPackage=" + targetPackage
-                + " task=" + taskSummary(focused));
         Object allTasks = serviceType.getMethod("getAllRootTaskInfos").invoke(service);
         int focusedDisplayId = ReflectUtils.getIntField(focused, "displayId", 0);
         int focusedTaskId = ReflectUtils.getIntField(focused, "taskId", -1);
@@ -223,17 +207,13 @@ public final class ImeWindowModeBridge {
         }
         Object selectedMini = matchingMiniTask != null ? matchingMiniTask : firstMiniTask;
         if (selectedMini != null) {
-            Log.i(TAG, "target_selected reason=normal_mini task=" + taskSummary(selectedMini));
             return selectedMini;
         }
         Object selectedFullscreen = matchingFullscreenTask != null
                 ? matchingFullscreenTask : focusedFullscreenTask;
         if (selectedFullscreen != null) {
-            Log.i(TAG, "target_selected reason=fullscreen_fallback task="
-                    + taskSummary(selectedFullscreen));
             return selectedFullscreen;
         }
-        Log.w(TAG, "target_missing targetPackage=" + targetPackage);
         return null;
     }
 
@@ -247,96 +227,9 @@ public final class ImeWindowModeBridge {
             enterWindowMode(windowManager, displayId, taskId, FULLSCREEN_WINDOW_MODE,
                     MINI_WINDOW_MODE, null);
             MAIN.postDelayed(() -> finishFullscreenToMini(
-                    context, windowManager, displayId, taskId, 0), MODE_SWITCH_DELAY_MS);
+                    windowManager, displayId, taskId, 0), MODE_SWITCH_DELAY_MS);
             return;
         }
-        Log.w(TAG, "request_ignored reason=unsupported_mode taskId=" + taskId
-                + " currentMode=" + currentMode);
-    }
-
-    private static String taskSummary(Object task) {
-        if (task == null) {
-            return "null";
-        }
-        Object configuration = ReflectUtils.getField(task, "configuration");
-        Object windowConfiguration = ReflectUtils.getField(configuration, "windowConfiguration");
-        int mode = ReflectUtils.invokeNoArgInt(windowConfiguration, "getWindowingMode", -1);
-        return "id=" + ReflectUtils.getIntField(task, "taskId", -1)
-                + ",display=" + ReflectUtils.getIntField(task, "displayId", -1)
-                + ",package=" + taskPackage(task) + ",mode=" + mode;
-    }
-
-    private static void logAllRootTasks(
-            Context context, Object windowManager, String phase) {
-        try {
-            Class<?> activityTaskManager = Class.forName("android.app.ActivityTaskManager");
-            Object service = activityTaskManager.getMethod("getService").invoke(null);
-            Class<?> serviceType = Class.forName("android.app.IActivityTaskManager");
-            Object value = serviceType.getMethod("getAllRootTaskInfos").invoke(service);
-            if (!(value instanceof List)) {
-                Log.w(TAG, "window_list phase=" + phase + " count=0 result=" + value);
-                return;
-            }
-            List<?> tasks = (List<?>) value;
-            Log.i(TAG, "window_list phase=" + phase + " count=" + tasks.size());
-            for (int i = 0; i < tasks.size(); i++) {
-                Object task = tasks.get(i);
-                int displayId = ReflectUtils.getIntField(task, "displayId", -1);
-                int taskId = ReflectUtils.getIntField(task, "taskId", -1);
-                int mode = displayId >= 0 && taskId > 0
-                        ? getCurrentWindowMode(windowManager, task, displayId, taskId)
-                        : taskWindowMode(task);
-                Rect bound = displayId >= 0 && taskId > 0
-                        ? windowModeBound(windowManager, displayId, taskId, mode) : null;
-                String packageName = taskPackage(task);
-                Log.i(TAG, "window_state phase=" + phase + " index=" + i
-                        + " taskId=" + taskId + " displayId=" + displayId
-                        + " app=" + applicationLabel(context, packageName)
-                        + " package=" + packageName + " mode=" + mode
-                        + "(" + windowModeName(mode) + ")"
-                        + " bound=" + bound);
-            }
-        } catch (Throwable error) {
-            Log.w(TAG, "window_list_failed phase=" + phase, error);
-        }
-    }
-
-    private static String applicationLabel(Context context, String packageName) {
-        if (context == null || packageName == null) {
-            return "unknown";
-        }
-        try {
-            return String.valueOf(context.getPackageManager()
-                    .getApplicationLabel(context.getPackageManager()
-                            .getApplicationInfo(packageName, 0)));
-        } catch (Throwable error) {
-            return packageName;
-        }
-    }
-
-    private static int taskWindowMode(Object task) {
-        Object configuration = ReflectUtils.getField(task, "configuration");
-        Object windowConfiguration = ReflectUtils.getField(configuration, "windowConfiguration");
-        return ReflectUtils.invokeNoArgInt(windowConfiguration, "getWindowingMode", -1);
-    }
-
-    private static String windowModeName(int mode) {
-        if (mode == FULLSCREEN_WINDOW_MODE) {
-            return "全屏";
-        }
-        if (mode == 11) {
-            return "小窗";
-        }
-        if (mode == PINNED_WINDOW_MODE) {
-            return "中间小窗";
-        }
-        if (mode == WELT_WINDOW_MODE) {
-            return "贴边";
-        }
-        if (mode == 1035) {
-            return "自由窗口";
-        }
-        return "未知";
     }
 
     private static String taskPackage(Object task) {
@@ -386,53 +279,41 @@ public final class ImeWindowModeBridge {
             Context context, Object windowManager, int displayId, int taskId) {
         Rect bound = windowModeBound(windowManager, displayId, taskId, MINI_WINDOW_MODE);
         if (bound == null || bound.isEmpty()) {
-            Log.w(TAG, "up_fling_ignored reason=no_mini_bound taskId=" + taskId);
             return;
         }
         DisplayManager displayManager = context.getSystemService(DisplayManager.class);
         Display display = displayManager == null ? null : displayManager.getDisplay(displayId);
         if (display == null) {
-            Log.w(TAG, "up_fling_ignored reason=no_display taskId=" + taskId);
             return;
         }
         int rotation = display.getRotation();
         if (rotation == 0 || rotation == 2) {
             Point start = new Point(bound.centerX(), bound.bottom);
             float velocityY = -2000f;
-            Log.i(TAG, "up_fling_start taskId=" + taskId + " rotation=" + rotation
-                    + " bound=" + bound + " velocityX=0.0 velocityY=" + velocityY);
             boolean started = (Boolean) invoke(windowManager,
                     flingWindowMode(windowManager.getClass()), displayId, taskId,
                     MINI_WINDOW_MODE, 0f, velocityY, start);
             if (!started) {
-                Log.w(TAG, "up_fling_rejected taskId=" + taskId);
                 return;
             }
         } else {
-            Log.i(TAG, "up_fling_mode_switch taskId=" + taskId + " rotation=" + rotation);
             enterWindowMode(windowManager, displayId, taskId, MINI_WINDOW_MODE,
                     PINNED_WINDOW_MODE, null);
         }
-        logAllRootTasks(context, windowManager, "after_up_fling");
     }
 
     private static void finishFullscreenToMini(
-            Context context, Object windowManager, int displayId, int taskId, int retryCount) {
+            Object windowManager, int displayId, int taskId, int retryCount) {
         int currentMode = ((Number) invoke(windowManager,
                 getVirtualWindowingModeByTask(windowManager.getClass()), displayId, taskId)).intValue();
-        Log.i(TAG, "fullscreen_to_mini_check taskId=" + taskId + " currentMode="
-                + currentMode + " retry=" + retryCount);
         if (currentMode == MINI_WINDOW_MODE) {
-            logAllRootTasks(context, windowManager, "after_mode_switch");
             return;
         }
         if (currentMode != FULLSCREEN_WINDOW_MODE || retryCount >= MODE_SWITCH_RETRY_COUNT) {
-            Log.w(TAG, "fullscreen_to_mini_abort taskId=" + taskId
-                    + " currentMode=" + currentMode);
             return;
         }
         MAIN.postDelayed(() -> finishFullscreenToMini(
-                context, windowManager, displayId, taskId, retryCount + 1), MOVE_DELAY_MS);
+                windowManager, displayId, taskId, retryCount + 1), MOVE_DELAY_MS);
     }
 
     private static Object windowManagerExt(Context context) throws ReflectiveOperationException {
@@ -448,8 +329,6 @@ public final class ImeWindowModeBridge {
 
     private static void enterWindowMode(
             Object windowManager, int displayId, int taskId, int oldMode, int newMode, Rect bound) {
-        Log.i(TAG, "enter_mode displayId=" + displayId + " taskId=" + taskId
-                + " oldMode=" + oldMode + " newMode=" + newMode + " bound=" + bound);
         Method method = enterWindowMode(windowManager.getClass());
         invoke(windowManager, method, displayId, taskId, oldMode, newMode, bound, 0f, true);
     }

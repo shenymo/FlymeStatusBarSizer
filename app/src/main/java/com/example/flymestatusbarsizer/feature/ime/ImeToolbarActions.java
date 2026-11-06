@@ -8,7 +8,6 @@ import android.content.Context;
 import android.inputmethodservice.InputMethodService;
 import android.os.SystemClock;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.View;
@@ -17,8 +16,6 @@ import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 
 final class ImeToolbarActions {
-    private static final String TAG = "FlymeImeWelt";
-
     private ImeToolbarActions() {
     }
 
@@ -46,8 +43,6 @@ final class ImeToolbarActions {
                 showInputMethodPicker(v.getContext());
             } else if ("welt_window".equals(action)) {
                 String packageName = editorPackageName(inputMethodService);
-                Log.i(TAG, "button_click editorPackage=" + packageName
-                        + " service=" + inputMethodService.getClass().getName());
                 ImeWindowModeBridge.request(v.getContext(), packageName);
             }
         });
