@@ -11,7 +11,6 @@ import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.Process;
 import android.view.Display;
 
 import com.example.flymestatusbarsizer.BuildConfig;
@@ -124,9 +123,7 @@ public final class ImeWindowModeBridge {
                 || "com.google.android.inputmethod.latin".equals(packageName)
                 || "com.tencent.wetype".equals(packageName)
                 || "flyme.inputmethod".equals(packageName)
-                || BuildConfig.APPLICATION_ID.equals(packageName)
-                || receiver.getSentFromUid() == Process.SHELL_UID
-                || receiver.getSentFromUid() == Process.ROOT_UID;
+                || BuildConfig.APPLICATION_ID.equals(packageName);
     }
 
     private static void handleRequest(Context context, String targetPackage) {
@@ -257,14 +254,18 @@ public final class ImeWindowModeBridge {
         }
         Object topActivity = ReflectUtils.getField(task, "topActivity");
         if (topActivity instanceof android.content.ComponentName) {
-            String packageName = ((android.content.ComponentName) topActivity).getPackageName();
+            android.content.ComponentName component =
+                    (android.content.ComponentName) topActivity;
+            String packageName = component.getPackageName();
             return !SYSTEM_UI_PACKAGE.equals(packageName)
                     && !"com.meizu.flyme.launcher".equals(packageName)
                     && !"com.android.inputmethod.latin".equals(packageName)
                     && !"com.google.android.inputmethod.latin".equals(packageName)
                     && !"com.tencent.wetype".equals(packageName)
                     && !"flyme.inputmethod".equals(packageName)
-                    && !BuildConfig.APPLICATION_ID.equals(packageName);
+                    && !(BuildConfig.APPLICATION_ID.equals(packageName)
+                    && "com.example.flymestatusbarsizer.feature.onehanded.WorkspaceDeepLinkActivity"
+                    .equals(component.getClassName()));
         }
         return true;
     }
