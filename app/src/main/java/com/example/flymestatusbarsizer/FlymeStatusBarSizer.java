@@ -6518,9 +6518,13 @@ public class FlymeStatusBarSizer extends XposedModule {
                 }
                 Handler handler = MAIN_HANDLER;
                 if (handler != null) {
+                    handler.post(() -> {
+                        AssistantHooks.refreshPopupThemes(newConfig);
+                    });
                     handler.post(NotificationHooks::refreshNotificationAppIconsForUiModeChange);
                     handler.post(ImeHooks::refreshTrackedInputMethodViews);
                 } else {
+                    AssistantHooks.refreshPopupThemes(newConfig);
                     NotificationHooks.refreshNotificationAppIconsForUiModeChange();
                     ImeHooks.refreshTrackedInputMethodViews();
                 }

@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer.feature.assistant;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.os.Message;
 import android.util.Log;
@@ -143,6 +144,12 @@ public final class AssistantHooks {
     public static void refresh() {
         AssistantClient.refresh();
         if (controller != null) controller.refresh();
+    }
+
+    public static void refreshPopupThemes(Configuration configuration) {
+        AppLauncherPanel.refreshActivePopup(configuration);
+        com.example.flymestatusbarsizer.feature.taskswitcher.RecentTaskSwitcher
+                .refreshActivePopup(configuration);
     }
 
     static void warn(String message, Throwable t) { Log.w("FlymeAssistantGesture", message, t); }

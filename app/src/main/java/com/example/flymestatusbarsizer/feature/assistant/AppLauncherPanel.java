@@ -1,7 +1,6 @@
 package com.example.flymestatusbarsizer.feature.assistant;
 
 import android.content.ComponentName;
-import android.content.ComponentCallbacks;
 import android.content.Context;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
@@ -146,7 +145,16 @@ final class AppLauncherPanel {
     private static void refreshActivePopup() {
         Popup popup;
         synchronized (AppLauncherPanel.class) { popup = active; }
-        if (popup != null) popup.refreshAfterPackageChange();
+        if (popup != null) {
+            popup.updateDarkMode(popup.context.getResources().getConfiguration());
+            popup.refreshAfterPackageChange();
+        }
+    }
+
+    static void refreshActivePopup(Configuration configuration) {
+        Popup popup;
+        synchronized (AppLauncherPanel.class) { popup = active; }
+        if (popup != null) popup.updateDarkMode(configuration);
     }
 
     private static final class AppEntry {
@@ -241,14 +249,6 @@ final class AppLauncherPanel {
         private Runnable holdRunnable;
         private boolean holdTriggered;
         private boolean holdCanceled;
-        private final ComponentCallbacks configurationCallbacks = new ComponentCallbacks() {
-            @Override public void onConfigurationChanged(Configuration configuration) {
-                updateDarkMode(configuration);
-            }
-
-            @Override public void onLowMemory() { }
-        };
-
         Popup(Context context) {
             this.context = context;
             darkMode = isNightMode(context.getResources().getConfiguration());
@@ -331,6 +331,7 @@ final class AppLauncherPanel {
         void show(boolean fromLeft, float anchorY) {
             this.fromLeft = fromLeft;
             this.anchorY = anchorY;
+            updateDarkMode(context.getResources().getConfiguration());
             synchronized (AppLauncherPanel.class) {
                 if (active != null && active != this) active.close();
                 active = this;
@@ -352,7 +353,6 @@ final class AppLauncherPanel {
                     windowManager.addView(root, params);
                     attached = true;
                     closing = false;
-                    context.registerComponentCallbacks(configurationCallbacks);
                     root.requestFocus();
                     panelBlur.start();
                     panel.post(() -> {
@@ -779,7 +779,6 @@ final class AppLauncherPanel {
 
         private void finishClose() {
             panelBlur.stop();
-            context.unregisterComponentCallbacks(configurationCallbacks);
             try { windowManager.removeViewImmediate(root); } catch (Throwable ignored) { }
             attached = false;
             closing = false;

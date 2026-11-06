@@ -1,7 +1,6 @@
 package com.example.flymestatusbarsizer.feature.taskswitcher;
 
 import android.content.Context;
-import android.content.ComponentCallbacks;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -73,6 +72,14 @@ public final class RecentTaskSwitcher {
 
     private RecentTaskSwitcher() { }
 
+    public static void refreshActivePopup(Configuration configuration) {
+        Popup popup;
+        synchronized (RecentTaskSwitcher.class) {
+            popup = active;
+        }
+        if (popup != null) popup.updateDarkMode(configuration);
+    }
+
     private static final class AppMetadata {
         final String label;
         final Drawable icon;
@@ -133,13 +140,6 @@ public final class RecentTaskSwitcher {
             @Override public void onReceive(Context receiverContext, Intent intent) {
                 updateDarkMode(root.getResources().getConfiguration());
             }
-        };
-        private final ComponentCallbacks configurationCallbacks = new ComponentCallbacks() {
-            @Override public void onConfigurationChanged(Configuration configuration) {
-                updateDarkMode(configuration);
-            }
-
-            @Override public void onLowMemory() { }
         };
         private final FrameLayout root;
         private final LinearLayout panel;
@@ -248,6 +248,7 @@ public final class RecentTaskSwitcher {
         void show(boolean fromLeft, float anchorY) {
             this.fromLeft = fromLeft;
             this.anchorY = anchorY;
+            updateDarkMode(context.getResources().getConfiguration());
             synchronized (RecentTaskSwitcher.class) {
                 if (active != null && active != this) active.close();
                 active = this;
@@ -267,7 +268,6 @@ public final class RecentTaskSwitcher {
                     windowManager.addView(root, params);
                     attached = true;
                     closing = false;
-                    context.registerComponentCallbacks(configurationCallbacks);
                     context.getContentResolver().registerContentObserver(
                             Settings.System.getUriFor(FlymeRecentLockState.SETTING), false, lockObserver);
                     context.registerReceiver(configurationReceiver,
@@ -610,7 +610,7 @@ public final class RecentTaskSwitcher {
         private void updateDarkMode(Configuration configuration) {
             boolean nextDarkMode = (configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK)
                     == Configuration.UI_MODE_NIGHT_YES;
-            if (!attached || darkMode == nextDarkMode) return;
+            if (darkMode == nextDarkMode) return;
             darkMode = nextDarkMode;
             panel.setBackground(panelBackground());
             closeAllButton.setTextColor(accentColor());
@@ -913,7 +913,6 @@ public final class RecentTaskSwitcher {
 
         private void finishClose() {
             panelBlur.stop();
-            context.unregisterComponentCallbacks(configurationCallbacks);
             context.getContentResolver().unregisterContentObserver(lockObserver);
             context.unregisterReceiver(configurationReceiver);
             if (attached) {
