@@ -493,14 +493,13 @@ public final class RecentTaskSwitcher {
             name.setTooltipText("长按锁定或解锁");
             int textHeight = name.getLineHeight();
 
-            TextView remove = new TextView(context);
-            remove.setText("×");
-            remove.setTextSize(17);
-            remove.setTextColor(paletteColor(0xff444444, 0xffd4d8dc));
-            remove.setGravity(Gravity.CENTER);
+            ImageButton remove = new ImageButton(context);
+            remove.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            remove.setPadding(dp(5), dp(5), dp(5), dp(5));
             remove.setContentDescription("关闭" + label);
             remove.setBackground(new RippleDrawable(
                     ColorStateList.valueOf(paletteColor(0x243a8885, 0x3877c6c1)), null, null));
+            setModuleIcon(remove, R.drawable.ic_task_close, android.R.drawable.ic_menu_close_clear_cancel);
             setButtonFeedback(remove);
 
             ImageView icon = new ImageView(context);
@@ -514,7 +513,7 @@ public final class RecentTaskSwitcher {
             lockIcon.setPadding(dp(5), dp(5), dp(5), dp(5));
             lockIcon.setContentDescription("已锁定应用");
             lockIcon.setTooltipText("已锁定");
-            setModuleIcon(lockIcon, R.drawable.quick_tool_lock, android.R.drawable.ic_lock_lock);
+            setModuleIcon(lockIcon, R.drawable.ic_task_lock, android.R.drawable.ic_lock_lock);
             lockIcon.setColorFilter(accentColor());
             lockIcon.setVisibility(locked ? View.VISIBLE : View.INVISIBLE);
             FrameLayout actionSlot = new FrameLayout(context);
@@ -625,7 +624,7 @@ public final class RecentTaskSwitcher {
             return lockedApps.contains(FlymeRecentLockState.key(card));
         }
 
-        private void toggleLock(TaskEntry entry, ImageView lockIcon, TextView remove) {
+        private void toggleLock(TaskEntry entry, ImageView lockIcon, View remove) {
             if (closingAll) return;
             String taskKey = FlymeRecentLockState.key(entry.card);
             boolean locked;
