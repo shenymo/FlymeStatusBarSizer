@@ -493,14 +493,13 @@ public final class RecentTaskSwitcher {
             name.setTooltipText("长按锁定或解锁");
             int textHeight = name.getLineHeight();
 
-            ImageButton remove = new ImageButton(context);
-            remove.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            remove.setPadding(dp(5), dp(5), dp(5), dp(5));
-            remove.setContentDescription("关闭" + label);
-            remove.setBackground(new RippleDrawable(
+            ImageButton actionButton = new ImageButton(context);
+            actionButton.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            actionButton.setPadding(dp(5), dp(5), dp(5), dp(5));
+            actionButton.setBackground(new RippleDrawable(
                     ColorStateList.valueOf(paletteColor(0x243a8885, 0x3877c6c1)), null, null));
-            setModuleIcon(remove, R.drawable.ic_task_close, android.R.drawable.ic_menu_close_clear_cancel);
-            setButtonFeedback(remove);
+            setActionIcon(actionButton, locked);
+            setButtonFeedback(actionButton);
 
             ImageView icon = new ImageView(context);
             if (entry.icon != null) icon.setImageDrawable(entry.icon);
@@ -508,17 +507,8 @@ public final class RecentTaskSwitcher {
             entry.nameView = name;
             entry.iconView = icon;
             int iconSize = dp(16);
-            ImageView lockIcon = new ImageView(context);
-            lockIcon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            lockIcon.setPadding(dp(5), dp(5), dp(5), dp(5));
-            lockIcon.setContentDescription("已锁定应用");
-            lockIcon.setTooltipText("已锁定");
-            setModuleIcon(lockIcon, R.drawable.ic_task_lock, android.R.drawable.ic_lock_lock);
-            lockIcon.setColorFilter(accentColor());
-            lockIcon.setVisibility(locked ? View.VISIBLE : View.INVISIBLE);
             FrameLayout actionSlot = new FrameLayout(context);
-            actionSlot.addView(remove, new FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER));
-            actionSlot.addView(lockIcon, new FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER));
+            actionSlot.addView(actionButton, new FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER));
             ImageButton miniWindow = new ImageButton(context);
             miniWindow.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
             miniWindow.setPadding(dp(5), dp(5), dp(5), dp(5));
@@ -528,13 +518,14 @@ public final class RecentTaskSwitcher {
             miniWindow.setTooltipText("以小窗打开");
             setModuleIcon(miniWindow, R.drawable.ic_task_window, android.R.drawable.ic_menu_view);
             setButtonFeedback(miniWindow);
-            remove.setVisibility(locked ? View.GONE : View.VISIBLE);
             name.setOnLongClickListener(view -> {
                 view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                toggleLock(entry, lockIcon, remove);
+                toggleLock(entry, actionButton);
                 return true;
             });
-            remove.setOnClickListener(view -> removeTask(card, row));
+            actionButton.setOnClickListener(view -> {
+                if (!isLocked(card)) removeTask(card, row);
+            });
             miniWindow.setOnClickListener(view -> openMiniWindow(card, miniWindow));
             if (fromLeft) {
                 row.addView(miniWindow, new LinearLayout.LayoutParams(dp(29), dp(29)));
@@ -624,7 +615,7 @@ public final class RecentTaskSwitcher {
             return lockedApps.contains(FlymeRecentLockState.key(card));
         }
 
-        private void toggleLock(TaskEntry entry, ImageView lockIcon, View remove) {
+        private void toggleLock(TaskEntry entry, ImageButton actionButton) {
             if (closingAll) return;
             String taskKey = FlymeRecentLockState.key(entry.card);
             boolean locked;
@@ -634,9 +625,22 @@ public final class RecentTaskSwitcher {
                 lockedApps.add(taskKey);
                 locked = true;
             }
-            lockIcon.setVisibility(locked ? View.VISIBLE : View.INVISIBLE);
-            remove.setVisibility(locked ? View.GONE : View.VISIBLE);
+            setActionIcon(actionButton, locked);
             FlymeRecentLockState.write(context, lockedApps);
+        }
+
+        private void setActionIcon(ImageButton button, boolean locked) {
+            int resource;
+            if (locked) {
+                resource = R.drawable.ic_task_lock;
+                button.setContentDescription("已锁定应用");
+                button.setTooltipText("已锁定");
+            } else {
+                resource = R.drawable.ic_task_close;
+                button.setContentDescription("关闭任务");
+                button.setTooltipText("关闭任务");
+            }
+            setModuleIcon(button, resource, android.R.drawable.ic_menu_close_clear_cancel);
         }
 
         private void openMiniWindow(RecentTaskCard card, ImageButton button) {

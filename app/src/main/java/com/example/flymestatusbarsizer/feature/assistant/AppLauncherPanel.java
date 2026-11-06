@@ -235,6 +235,7 @@ final class AppLauncherPanel {
         private final EditText search;
         private final LinearLayout rows;
         private final ScrollView scroll;
+        private final List<TextView> keyboardKeys = new ArrayList<>();
         private final List<String> query = new ArrayList<>();
         private final List<AppEntry> entries = new ArrayList<>();
         private boolean darkMode;
@@ -378,6 +379,7 @@ final class AppLauncherPanel {
                 button.setTextColor(paletteColor(0xff273134, 0xffe4e9ea));
                 button.setBackground(background(paletteColor(0x16000000, 0x20ffffff), dp(7), Color.TRANSPARENT));
                 button.setContentDescription("输入 " + key);
+                keyboardKeys.add(button);
                 button.setOnClickListener(view -> {
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                     query.add(key.toLowerCase(Locale.ROOT));
@@ -801,6 +803,11 @@ final class AppLauncherPanel {
             panel.setBackground(panelBackground());
             search.setTextColor(paletteColor(0xff202426, 0xfff2f4f5));
             search.setHintTextColor(paletteColor(0xff7d8589, 0xffaeb6ba));
+            for (TextView key : keyboardKeys) {
+                key.setTextColor(paletteColor(0xff273134, 0xffe4e9ea));
+                key.setBackground(background(
+                        paletteColor(0x16000000, 0x20ffffff), dp(7), Color.TRANSPARENT));
+            }
             renderRows();
         }
 
