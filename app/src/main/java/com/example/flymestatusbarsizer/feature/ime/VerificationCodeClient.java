@@ -26,6 +26,10 @@ final class VerificationCodeClient {
             return null;
         }
         ContentResolver resolver = context.getContentResolver();
-        return resolver.call(VerificationCodeProvider.URI, method, arg, null);
+        try {
+            return resolver.call(VerificationCodeProvider.URI, method, arg, null);
+        } catch (IllegalArgumentException unavailableProvider) {
+            return null;
+        }
     }
 }
