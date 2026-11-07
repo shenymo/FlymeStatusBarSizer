@@ -28,6 +28,7 @@ import java.util.Set;
 import io.github.libxposed.service.XposedService;
 
 public final class ImeToolbarEditor {
+    private static final String PHONE_PACKAGE = "com.android.phone";
     private final MainActivity activity;
     private final ArrayList<String> buttonSlots = new ArrayList<>();
 
@@ -47,7 +48,7 @@ public final class ImeToolbarEditor {
         details.setOrientation(LinearLayout.VERTICAL);
 
         activity.addActionButtonRow(details, "输入法作用域",
-                "只显示系统当前启用的输入法。新增范围需经 LSPosed 确认。",
+                "选择输入法及电话服务范围；验证码读取需要启用电话服务范围。新增范围需经 LSPosed 确认。",
                 "管理", this::showImeScopes);
         activity.addDivider(details);
 
@@ -104,47 +105,18 @@ public final class ImeToolbarEditor {
         LinearLayout list = new LinearLayout(activity);
         list.setOrientation(LinearLayout.VERTICAL);
         Set<String> displayedPackages = new HashSet<>();
+        if (displayedPackages.add(PHONE_PACKAGE)) {
+            addScopeCheckbox(list, "电话服务（短信验证码读取）", PHONE_PACKAGE,
+                    enabledScope.contains(PHONE_PACKAGE));
+        }
         for (InputMethodInfo inputMethod : inputMethods) {
             String packageName = inputMethod.getPackageName();
             if (!displayedPackages.add(packageName)) {
                 continue;
             }
-            CheckBox checkbox = new CheckBox(activity);
-            checkbox.setText(inputMethod.loadLabel(activity.getPackageManager())
-                    + "\n" + packageName);
-            checkbox.setTextColor(activity.textColor());
-            checkbox.setMinHeight(activity.dp(52));
-            checkbox.setChecked(enabledScope.contains(packageName));
-            checkbox.setOnCheckedChangeListener((button, checked) -> {
-                button.setEnabled(false);
-                if (checked) {
-                    RemoteSettingsSync.requestScope(List.of(packageName),
-                            new XposedService.OnScopeEventListener() {
-                                @Override
-                                public void onScopeRequestApproved(List<String> approved) {
-                                    activity.runOnUiThread(() -> {
-                                        button.setEnabled(true);
-                                        button.setChecked(true);
-                                        activity.showToast("已添加输入法作用域");
-                                    });
-                                }
-
-                                @Override
-                                public void onScopeRequestFailed(String message) {
-                                    activity.runOnUiThread(() -> {
-                                        button.setEnabled(true);
-                                        button.setChecked(false);
-                                        activity.showToast("添加失败：" + message);
-                                    });
-                                }
-                            });
-                } else {
-                    RemoteSettingsSync.removeScope(List.of(packageName));
-                    button.setEnabled(true);
-                    activity.showToast("已移除输入法作用域");
-                }
-            });
-            list.addView(checkbox, activity.matchWrap());
+            addScopeCheckbox(list,
+                    inputMethod.loadLabel(activity.getPackageManager()).toString(),
+                    packageName, enabledScope.contains(packageName));
         }
         ScrollView scroll = new ScrollView(activity);
         scroll.addView(list);
@@ -153,6 +125,45 @@ public final class ImeToolbarEditor {
                 .setView(scroll)
                 .setPositiveButton("完成", null)
                 .show();
+    }
+
+    private void addScopeCheckbox(LinearLayout list, String label, String packageName,
+            boolean enabled) {
+        CheckBox checkbox = new CheckBox(activity);
+        checkbox.setText(label + "\n" + packageName);
+        checkbox.setTextColor(activity.textColor());
+        checkbox.setMinHeight(activity.dp(52));
+        checkbox.setChecked(enabled);
+        checkbox.setOnCheckedChangeListener((button, checked) -> {
+            button.setEnabled(false);
+            if (checked) {
+                RemoteSettingsSync.requestScope(List.of(packageName),
+                        new XposedService.OnScopeEventListener() {
+                            @Override
+                            public void onScopeRequestApproved(List<String> approved) {
+                                activity.runOnUiThread(() -> {
+                                    button.setEnabled(true);
+                                    button.setChecked(true);
+                                    activity.showToast("已添加作用域");
+                                });
+                            }
+
+                            @Override
+                            public void onScopeRequestFailed(String message) {
+                                activity.runOnUiThread(() -> {
+                                    button.setEnabled(true);
+                                    button.setChecked(false);
+                                    activity.showToast("添加失败：" + message);
+                                });
+                            }
+                        });
+            } else {
+                RemoteSettingsSync.removeScope(List.of(packageName));
+                button.setEnabled(true);
+                activity.showToast("已移除作用域");
+            }
+        });
+        list.addView(checkbox, activity.matchWrap());
     }
 
     private void loadConfig() {

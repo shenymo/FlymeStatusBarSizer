@@ -1,6 +1,7 @@
 android
 system
 com.android.systemui
+com.android.phone
 com.android.intentresolver
 com.meizu.media.gallery
 com.meizu.pps

@@ -96,6 +96,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final String TAG = "FlymeStatusBarSizer";
     public static final String ONEMIND_LOG_TAG = "FSS-OneMind";
     private static final String SYSTEM_UI = "com.android.systemui";
+    private static final String PHONE_PACKAGE = "com.android.phone";
     private static final String FLYME_LAUNCHER = "com.meizu.flyme.launcher";
     private static final String FLYME_SYSTEMUI_TOOLS = "com.flyme.systemuitools";
     private static final String MEIZU_PPS = "com.meizu.pps";
@@ -251,7 +252,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
         String packageName = param.getPackageName();
-        if (!param.isFirstPackage() && !MEIZU_PPS.equals(packageName)) {
+        if (!param.isFirstPackage() && !MEIZU_PPS.equals(packageName)
+                && !PHONE_PACKAGE.equals(packageName)) {
             return;
         }
         MODULE = this;
@@ -287,6 +289,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         if ("com.meizu.safe".equals(packageName)) {
             MzSafeOptimizationHooks.install(this, loader);
+        }
+        if (PHONE_PACKAGE.equals(packageName)) {
+            com.example.flymestatusbarsizer.feature.ime.VerificationCodeHooks.install(this, loader);
         }
         ImeHooks.install(this, loader, packageName);
         if (!"android".equals(packageName) && !"system".equals(packageName)) {

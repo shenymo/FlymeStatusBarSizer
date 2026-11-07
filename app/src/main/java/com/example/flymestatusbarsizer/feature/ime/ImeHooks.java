@@ -3,7 +3,11 @@ package com.example.flymestatusbarsizer.feature.ime;
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import android.content.Context;
+import android.database.ContentObserver;
 import android.inputmethodservice.InputMethodService;
+import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -13,6 +17,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -25,6 +30,7 @@ public final class ImeHooks {
 
     private static final WeakHashMap<Object, View> TRACKED_INPUT_METHOD_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<Object, OverlayState> OVERLAY_STATES = new WeakHashMap<>();
+    private static boolean verificationCodeObserverRegistered;
 
     private ImeHooks() {
     }
@@ -69,6 +75,7 @@ public final class ImeHooks {
                     View inputView = (View) argument;
                     FlymeStatusBarSizer.rememberSystemUiContext(context);
                     FlymeStatusBarSizer.ensureConfigRefreshObserver(context);
+                    ensureVerificationCodeObserver(context);
                     TRACKED_INPUT_METHOD_VIEWS.put(service, inputView);
                     postRefresh(service, inputView);
                 }
@@ -95,6 +102,26 @@ public final class ImeHooks {
             });
         } catch (Throwable error) {
             FlymeStatusBarSizer.logImeWarning("Failed to hook InputMethodService", error);
+        }
+    }
+
+    private static void ensureVerificationCodeObserver(Context context) {
+        if (verificationCodeObserverRegistered) {
+            return;
+        }
+        synchronized (ImeHooks.class) {
+            if (verificationCodeObserverRegistered) {
+                return;
+            }
+            context.getContentResolver().registerContentObserver(
+                    VerificationCodeProvider.URI, false,
+                    new ContentObserver(new Handler(Looper.getMainLooper())) {
+                        @Override
+                        public void onChange(boolean selfChange, Uri uri) {
+                            refreshTrackedInputMethodViews();
+                        }
+                    });
+            verificationCodeObserverRegistered = true;
         }
     }
 
@@ -158,28 +185,47 @@ public final class ImeHooks {
                 FlymeStatusBarSizer.dp(context, 4),
                 FlymeStatusBarSizer.dp(context, 2));
         ArrayList<String> slots = ImeToolbarSpec.resolveButtonSlots(config);
-        for (String action : slots) {
+        for (int slotIndex = 0; slotIndex < slots.size(); slotIndex++) {
+            String action = slots.get(slotIndex);
             if (TextUtils.isEmpty(action)) {
                 View spacer = new View(context);
                 toolbar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
                 continue;
             }
-            ImageButton button = new ImageButton(context);
+            int span = ImeToolbarSpec.getButtonSpan(action);
+            View button;
+            if ("verification_code".equals(action)) {
+                TextView codeButton = new TextView(context);
+                codeButton.setGravity(Gravity.CENTER);
+                codeButton.setTextSize(14);
+                codeButton.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+                codeButton.setTextColor(ImeToolbarIcons.resolveIconColor(context));
+                codeButton.setContentDescription("验证码");
+                button = codeButton;
+            } else {
+                ImageButton iconButton = new ImageButton(context);
+                iconButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                iconButton.setImageDrawable(ImeToolbarSpec.isBackButton(action)
+                        ? ImeToolbarIcons.createKeyboardDismissDrawable(context)
+                        : ImeToolbarIcons.createIconDrawable(context, action));
+                iconButton.setContentDescription(ImeToolbarSpec.getButtonLabel(action));
+                iconButton.setBackgroundColor(0);
+                button = iconButton;
+            }
             button.setTag(action);
-            button.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            button.setImageDrawable(ImeToolbarSpec.isBackButton(action)
-                    ? ImeToolbarIcons.createKeyboardDismissDrawable(context)
-                    : ImeToolbarIcons.createIconDrawable(context, action));
-            button.setContentDescription(ImeToolbarSpec.getButtonLabel(action));
-            button.setBackgroundColor(0);
             int alpha = Math.max(10, Math.min(100, config.imeControlBarIconAlphaPercent));
-            button.setImageAlpha(Math.round(alpha * 2.55f));
+            if (button instanceof ImageButton) {
+                ((ImageButton) button).setImageAlpha(Math.round(alpha * 2.55f));
+            } else {
+                button.setAlpha(alpha / 100f);
+            }
             int scale = Math.max(60, Math.min(180, config.imeControlBarIconScalePercent));
             int padding = Math.max(0, Math.round((8f * 100f / scale)
                     * context.getResources().getDisplayMetrics().density));
             button.setPadding(padding, padding, padding, padding);
             toolbar.addView(button, new LinearLayout.LayoutParams(
-                    0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+                    0, ViewGroup.LayoutParams.MATCH_PARENT,
+                    span));
             if (ImeToolbarSpec.isBackButton(action)) {
                 button.setOnClickListener(v -> {
                     v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
@@ -188,6 +234,7 @@ public final class ImeHooks {
             } else {
                 ImeToolbarActions.bindActionButtonView(service, button);
             }
+            slotIndex += span - 1;
         }
         ImeToolbarActions.refreshActionButtonStates(service, toolbar);
         return toolbar;

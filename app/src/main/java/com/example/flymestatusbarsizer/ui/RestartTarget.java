@@ -18,6 +18,8 @@ public enum RestartTarget {
             "修改 OneMind 设置后，需重启 OneMind 才能生效。"),
     PHONE_MANAGER("com.meizu.safe", "手机管家",
             "修改后台优化设置后，需重启手机管家才能生效。"),
+    PHONE_SERVICE("com.android.phone", "电话服务",
+            "重启电话服务期间，通话和短信功能会短暂中断。"),
     CARLINK("com.upuphone.carlink", "CarLink",
             "修改应用流转和车机设置后，需重启 CarLink 才能生效。"),
     AOSP_IME("com.android.inputmethod.latin", "AOSP 输入法",
@@ -54,7 +56,7 @@ public enum RestartTarget {
             case PPS -> new String[]{
                     "cmd package set-stopped-state " + packageName + " false",
                     "pkill -f " + packageName, "killall " + packageName};
-            case PHONE_MANAGER, CARLINK, AOSP_IME, GBOARD, WECHAT_IME, FLYME_IME -> new String[]{
+            case PHONE_MANAGER, PHONE_SERVICE, CARLINK, AOSP_IME, GBOARD, WECHAT_IME, FLYME_IME -> new String[]{
                     "pkill -f '^" + packageName.replace(".", "[.]") + "(:[^[:space:]]+)?$'",
                     "killall " + packageName};
             case FRAMEWORK -> throw new IllegalStateException("Framework requires a separate device restart");

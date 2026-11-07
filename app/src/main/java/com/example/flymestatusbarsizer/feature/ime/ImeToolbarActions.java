@@ -44,6 +44,8 @@ final class ImeToolbarActions {
             } else if ("welt_window".equals(action)) {
                 String packageName = editorPackageName(inputMethodService);
                 ImeWindowModeBridge.request(v.getContext(), packageName);
+            } else if ("verification_code".equals(action)) {
+                performVerificationCodeAction(inputMethodService, v.getContext());
             }
         });
     }
@@ -80,6 +82,15 @@ final class ImeToolbarActions {
         String action = (String) button.getTag();
         if ("paste".equals(action)) {
             boolean enabled = getCurrentInputConnectionCompat(inputMethodService) != null;
+            button.setEnabled(enabled);
+            button.setAlpha(enabled ? 1f : 0.55f);
+        } else if ("verification_code".equals(action)) {
+            String code = VerificationCodeClient.read(button.getContext());
+            if (button instanceof android.widget.TextView) {
+                ((android.widget.TextView) button).setText(code == null ? "" : code);
+            }
+            boolean enabled = code != null
+                    && getCurrentInputConnectionCompat(inputMethodService) != null;
             button.setEnabled(enabled);
             button.setAlpha(enabled ? 1f : 0.55f);
         } else if (ImeToolbarSpec.isValidActionName(action)) {
@@ -157,6 +168,24 @@ final class ImeToolbarActions {
                 connection.commitText(text, 1);
             }
         }
+    }
+
+    private static void performVerificationCodeAction(Object service, Context context) {
+        InputConnection connection = getCurrentInputConnectionCompat(service);
+        String code = VerificationCodeClient.read(context);
+        if (connection == null || TextUtils.isEmpty(code)) {
+            return;
+        }
+        ClipboardManager clipboard =
+                (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null) {
+            return;
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText("验证码", code));
+        for (int i = 0; i < code.length(); i++) {
+            connection.commitText(code.substring(i, i + 1), 1);
+        }
+        VerificationCodeClient.clear(context);
     }
 
     private static InputConnection getCurrentInputConnectionCompat(Object service) {
