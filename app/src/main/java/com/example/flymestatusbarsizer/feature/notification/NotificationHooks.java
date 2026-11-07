@@ -62,6 +62,8 @@ public final class NotificationHooks {
             "com.flyme.notification.view.NotificationGroupCollapseContainer";
     private static final String LANDSCAPE_HEADS_UP_NOTIFICATION_VIEW =
             "com.flyme.notification.view.LandscapeHeadsUpNotificationView";
+    private static final String FLYME_MARQUEE_TICKER =
+            "com.flyme.systemui.statusbar.ticker.MarqueeTicker";
     private static final String EXTRA_NOTIFICATION_APP_ICON_REPLACED =
             "flyme_status_bar_sizer_notification_app_icon_replaced";
     private static final int DEFAULT_NOTIFICATION_APP_ICON_SIZE_DP = 20;
@@ -121,6 +123,8 @@ public final class NotificationHooks {
     private static final WeakHashMap<View, NotificationAppIconViewSignature>
             NOTIFICATION_APP_ICON_LAST_SIGNATURES = new WeakHashMap<>();
     private static final WeakHashMap<View, RenderedNotificationAppIcon> NOTIFICATION_APP_ICON_LAST_RENDERED_ICONS =
+            new WeakHashMap<>();
+    private static final WeakHashMap<Object, Integer> NOTIFICATION_TICKER_ICON_SOURCES =
             new WeakHashMap<>();
     private static final WeakHashMap<TextView, ColorStateList> NOTIFICATION_TEXT_COLOR_STATES =
             new WeakHashMap<>();
@@ -325,6 +329,131 @@ public final class NotificationHooks {
         hookNotificationShadeState(module, loader);
         hookNotificationIconTint(module, loader);
         hookNotificationStatusBarIconUpdate(module, loader);
+        hookNotificationTickerIcons(module, loader);
+    }
+
+    private static void hookNotificationTickerIcons(FlymeStatusBarSizer module, ClassLoader loader) {
+        try {
+            Class<?> clazz = Class.forName(FLYME_MARQUEE_TICKER, false, loader);
+            Method method = clazz.getDeclaredMethod("addEntry", StatusBarNotification.class);
+            method.setAccessible(true);
+            module.intercept(method, chain -> {
+                Object result = chain.proceed();
+                Object notification = chain.getArg(0);
+                if (notification instanceof StatusBarNotification) {
+                    refreshNotificationTickerIcon(
+                            chain.getThisObject(), (StatusBarNotification) notification);
+                }
+                applyNotificationTickerIconTintPolicy(chain.getThisObject());
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook notification ticker icons", t);
+        }
+        try {
+            Class<?> clazz = Class.forName(FLYME_MARQUEE_TICKER, false, loader);
+            Method darkChanged = clazz.getDeclaredMethod(
+                    "onDarkChanged", ArrayList.class, float.class, int.class);
+            darkChanged.setAccessible(true);
+            module.intercept(darkChanged, chain -> {
+                Object result = chain.proceed();
+                applyNotificationTickerIconTintPolicy(chain.getThisObject());
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook notification ticker tint", t);
+        }
+        try {
+            Class<?> advanceClass = Class.forName(FLYME_MARQUEE_TICKER + "$6", false, loader);
+            Method advance = advanceClass.getDeclaredMethod("run");
+            advance.setAccessible(true);
+            module.intercept(advance, chain -> {
+                Object result = chain.proceed();
+                Object ticker = FlymeStatusBarSizer.getFieldCompat(
+                        chain.getThisObject(), "this$0");
+                applyNotificationTickerIconTintPolicy(ticker);
+                return result;
+            });
+        } catch (Throwable t) {
+            FlymeStatusBarSizer.logNotificationWarning(
+                    "Failed to hook notification ticker advance", t);
+        }
+    }
+
+    private static void refreshNotificationTickerIcon(
+            Object ticker, StatusBarNotification notification) {
+        Object segmentsValue = FlymeStatusBarSizer.getFieldCompat(ticker, "mSegments");
+        Object switcherValue = FlymeStatusBarSizer.getFieldCompat(ticker, "mIconSwitcher");
+        Object currentView = FlymeStatusBarSizer.invokeNoArgCompat(switcherValue, "getCurrentView");
+        if (!(segmentsValue instanceof java.util.List) || !(currentView instanceof ImageView)) {
+            return;
+        }
+        ImageView iconView = (ImageView) currentView;
+        java.util.List<?> segments = (java.util.List<?>) segmentsValue;
+        for (Object segment : segments) {
+            Object notificationValue = FlymeStatusBarSizer.getFieldCompat(segment, "notification");
+            if (!(notificationValue instanceof StatusBarNotification)
+                    || !notification.getKey().equals(
+                            ((StatusBarNotification) notificationValue).getKey())) {
+                continue;
+            }
+            NotificationAppIconBinding binding = resolveNotificationAppIconBinding(
+                    iconView, notification);
+            if (binding != null) {
+                RenderedNotificationAppIcon renderedIcon =
+                        resolveNotificationStatusBarIconDrawable(iconView, binding);
+                if (renderedIcon != null && renderedIcon.drawable != null) {
+                    FlymeStatusBarSizer.setFieldCompat(segment, "icon", renderedIcon.drawable);
+                    synchronized (NOTIFICATION_TICKER_ICON_SOURCES) {
+                        NOTIFICATION_TICKER_ICON_SOURCES.put(segment, renderedIcon.iconSource);
+                    }
+                    Object currentTicker = FlymeStatusBarSizer.getFieldCompat(ticker, "mCurrentTicker");
+                    if (FlymeStatusBarSizer.getFieldCompat(currentTicker, "mSegment") == segment) {
+                        iconView.setImageDrawable(renderedIcon.drawable);
+                    }
+                }
+            }
+            return;
+        }
+    }
+
+    private static void applyNotificationTickerIconTintPolicy(Object ticker) {
+        Object currentTicker = FlymeStatusBarSizer.getFieldCompat(ticker, "mCurrentTicker");
+        Object segment = FlymeStatusBarSizer.getFieldCompat(currentTicker, "mSegment");
+        Object switcher = FlymeStatusBarSizer.getFieldCompat(ticker, "mIconSwitcher");
+        Object currentView = FlymeStatusBarSizer.invokeNoArgCompat(switcher, "getCurrentView");
+        if (!(currentView instanceof ImageView)) {
+            return;
+        }
+        ImageView iconView = (ImageView) currentView;
+        Integer iconSource;
+        synchronized (NOTIFICATION_TICKER_ICON_SOURCES) {
+            iconSource = NOTIFICATION_TICKER_ICON_SOURCES.get(segment);
+        }
+        if (iconSource == null) {
+            setNotificationAppIconActive(iconView, false);
+            synchronized (ANIP_TRACKED_ICON_VIEWS) {
+                ANIP_TRACKED_ICON_VIEWS.remove(iconView);
+            }
+            restoreNotificationAppIconTintState(iconView);
+            Object tint = FlymeStatusBarSizer.getFieldCompat(ticker, "mCurrentColor");
+            if (tint instanceof Integer) {
+                iconView.setColorFilter((Integer) tint);
+            }
+            return;
+        }
+        setNotificationAppIconActive(iconView, true);
+        Drawable drawable = iconView.getDrawable();
+        applyRenderedNotificationAppIcon(
+                iconView, new RenderedNotificationAppIcon(drawable, null, iconSource));
+        if (iconSource != ICON_SOURCE_APPLICATION) {
+            Object tint = FlymeStatusBarSizer.getFieldCompat(ticker, "mCurrentColor");
+            if (tint instanceof Integer) {
+                iconView.setColorFilter((Integer) tint);
+            }
+        }
     }
 
     private static void hookKeyguardStatusBarTint(
@@ -1803,7 +1932,7 @@ public final class NotificationHooks {
     }
 
     private static boolean shouldKeepNotificationAppIconOriginalColors(ImageView view) {
-        if (view == null || !isNotificationBackedStatusBarIconView(view)) {
+        if (view == null) {
             return false;
         }
         FlymeStatusBarSizer.NotificationConfigSnapshot config =
@@ -1820,16 +1949,23 @@ public final class NotificationHooks {
         if (view == null || !isNotificationBackedStatusBarIconView(view)) {
             return null;
         }
+        Object value = FlymeStatusBarSizer.invokeNoArgCompat(view, "getNotification");
+        if (!(value instanceof StatusBarNotification)) {
+            return null;
+        }
+        return resolveNotificationAppIconBinding(view, (StatusBarNotification) value);
+    }
+
+    private static NotificationAppIconBinding resolveNotificationAppIconBinding(
+            View view, StatusBarNotification sbn) {
+        if (view == null || sbn == null) {
+            return null;
+        }
         FlymeStatusBarSizer.NotificationConfigSnapshot config =
                 FlymeStatusBarSizer.loadNotificationConfig(view.getContext());
         if (!config.enabled || !config.notificationAppIconEnabled) {
             return null;
         }
-        Object value = FlymeStatusBarSizer.invokeNoArgCompat(view, "getNotification");
-        if (!(value instanceof StatusBarNotification)) {
-            return null;
-        }
-        StatusBarNotification sbn = (StatusBarNotification) value;
         String packageName = resolveNotificationSourcePackage(sbn);
         if (TextUtils.isEmpty(packageName)) {
             return null;
@@ -2734,6 +2870,7 @@ public final class NotificationHooks {
     /** All render paths must bind the actual source before a tint hook can observe the new icon. */
     private static void applyRenderedNotificationAppIcon(
             ImageView view, RenderedNotificationAppIcon renderedIcon) {
+        setNotificationAppIconActive(view, true);
         boolean isAnip = renderedIcon.iconSource == ICON_SOURCE_ANIP;
         synchronized (ANIP_TRACKED_ICON_VIEWS) {
             if (isAnip) {
