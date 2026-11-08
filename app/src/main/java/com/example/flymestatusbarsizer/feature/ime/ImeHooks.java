@@ -95,9 +95,9 @@ public final class ImeHooks {
                 return result;
             });
 
-            Method showWindow = clazz.getDeclaredMethod("showWindow", boolean.class);
-            showWindow.setAccessible(true);
-            module.intercept(showWindow, chain -> {
+            Method updateInputViewShown = clazz.getDeclaredMethod("updateInputViewShown");
+            updateInputViewShown.setAccessible(true);
+            module.intercept(updateInputViewShown, chain -> {
                 Object result = chain.proceed();
                 postTrackedRefresh(chain.getThisObject());
                 return result;
