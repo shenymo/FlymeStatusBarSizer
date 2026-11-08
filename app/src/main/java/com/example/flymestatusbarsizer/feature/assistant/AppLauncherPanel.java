@@ -789,6 +789,9 @@ final class AppLauncherPanel {
         private void close() {
             if (!attached || closing) return;
             closing = true;
+            loading = false;
+            indexRequested = false;
+            loadRequestId++;
             iconLoadRequestId++;
             cancelHold();
             panel.animate().cancel();
@@ -801,6 +804,9 @@ final class AppLauncherPanel {
         }
 
         private void closeImmediately() {
+            loading = false;
+            indexRequested = false;
+            loadRequestId++;
             if (!attached) {
                 synchronized (AppLauncherPanel.class) { if (active == this) active = null; }
                 return;
