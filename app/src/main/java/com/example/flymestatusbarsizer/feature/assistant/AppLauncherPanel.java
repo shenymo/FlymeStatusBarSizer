@@ -6,17 +6,23 @@ import android.content.BroadcastReceiver;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.LauncherApps;
+import android.content.pm.LauncherActivityInfo;
+import android.content.pm.LauncherUserInfo;
+import android.content.pm.PackageManager;
 import android.content.pm.ShortcutInfo;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.icu.text.Transliterator;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Process;
 import android.os.UserHandle;
 import android.util.Log;
 import android.view.Gravity;
@@ -35,6 +41,8 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.example.flymestatusbarsizer.BuildConfig;
+import com.example.flymestatusbarsizer.R;
 import com.example.flymestatusbarsizer.feature.windowmode.FlymeMiniWindowLauncher;
 import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
 
@@ -66,7 +74,7 @@ final class AppLauncherPanel {
     private static volatile List<AppEntry> cachedApps;
     private static final List<Popup> pendingPopups = new ArrayList<>();
     private static boolean receiverRegistered;
-    private static LauncherApps.Callback shortcutCallback;
+    private static LauncherApps.Callback launcherAppsCallback;
     private static final Runnable REFRESH_ACTIVE_POPUP = AppLauncherPanel::refreshActivePopup;
     private static boolean indexLoading;
     private static long cacheGeneration;
@@ -118,18 +126,30 @@ final class AppLauncherPanel {
             }
             LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
             if (launcherApps != null) {
-                shortcutCallback = new LauncherApps.Callback() {
-                    @Override public void onPackageRemoved(String packageName, UserHandle user) { }
-                    @Override public void onPackageAdded(String packageName, UserHandle user) { }
-                    @Override public void onPackageChanged(String packageName, UserHandle user) { }
-                    @Override public void onPackagesAvailable(String[] packageNames, UserHandle user, boolean replacing) { }
-                    @Override public void onPackagesUnavailable(String[] packageNames, UserHandle user, boolean replacing) { }
+                launcherAppsCallback = new LauncherApps.Callback() {
+                    @Override public void onPackageRemoved(String packageName, UserHandle user) {
+                        invalidateCache();
+                    }
+                    @Override public void onPackageAdded(String packageName, UserHandle user) {
+                        invalidateCache();
+                    }
+                    @Override public void onPackageChanged(String packageName, UserHandle user) {
+                        invalidateCache();
+                    }
+                    @Override public void onPackagesAvailable(
+                            String[] packageNames, UserHandle user, boolean replacing) {
+                        invalidateCache();
+                    }
+                    @Override public void onPackagesUnavailable(
+                            String[] packageNames, UserHandle user, boolean replacing) {
+                        invalidateCache();
+                    }
                     @Override public void onShortcutsChanged(
                             String packageName, List<ShortcutInfo> shortcuts, UserHandle user) {
                         invalidateCache();
                     }
                 };
-                launcherApps.registerCallback(shortcutCallback, MAIN);
+                launcherApps.registerCallback(launcherAppsCallback, MAIN);
             }
             receiverRegistered = true;
         }
@@ -167,16 +187,19 @@ final class AppLauncherPanel {
 
     private static final class AppEntry {
         final String label;
-        final Intent launchIntent;
+        final ComponentName component;
+        final LauncherActivityInfo launcherActivity;
         final String packageName;
         final String shortcutId;
         final UserHandle user;
         final String[] keys;
 
-        AppEntry(String label, Intent launchIntent, String packageName,
+        AppEntry(String label, ComponentName component, LauncherActivityInfo launcherActivity,
+                String packageName,
                 String shortcutId, UserHandle user, String[] keys) {
             this.label = label;
-            this.launchIntent = launchIntent;
+            this.component = component;
+            this.launcherActivity = launcherActivity;
             this.packageName = packageName;
             this.shortcutId = shortcutId;
             this.user = user;
@@ -186,7 +209,27 @@ final class AppLauncherPanel {
         boolean isShortcut() { return shortcutId != null; }
 
         Drawable loadIcon(Context context) {
-            android.content.pm.PackageManager pm = context.getPackageManager();
+            if (launcherActivity != null) {
+                Drawable icon = launcherActivity.getIcon(context.getResources()
+                        .getDisplayMetrics().densityDpi);
+                if (user != null && !Process.myUserHandle().equals(user)) {
+                    int badgeSize = Math.round(14f * context.getResources()
+                            .getDisplayMetrics().density);
+                    try {
+                        Context module = context.createPackageContext(BuildConfig.APPLICATION_ID,
+                                Context.CONTEXT_IGNORE_SECURITY);
+                        Drawable badge = module.getDrawable(R.drawable.ic_clone_badge).mutate();
+                        LayerDrawable layered = new LayerDrawable(new Drawable[]{icon, badge});
+                        int iconSize = Math.round(34f * context.getResources()
+                                .getDisplayMetrics().density);
+                        layered.setLayerSize(0, iconSize, iconSize);
+                        layered.setLayerGravity(1, Gravity.RIGHT | Gravity.BOTTOM);
+                        layered.setLayerSize(1, badgeSize, badgeSize);
+                        return layered;
+                    } catch (PackageManager.NameNotFoundException | Resources.NotFoundException ignored) { }
+                }
+                return icon;
+            }
             if (isShortcut()) {
                 LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
                 if (launcherApps == null) return null;
@@ -198,14 +241,19 @@ final class AppLauncherPanel {
                 try {
                     List<ShortcutInfo> shortcuts = launcherApps.getShortcuts(shortcutQuery, user);
                     if (shortcuts != null && !shortcuts.isEmpty()) {
-                        return launcherApps.getShortcutIconDrawable(shortcuts.get(0),
-                                Math.round(34f * context.getResources().getDisplayMetrics().density));
+                        Drawable icon = launcherApps.getShortcutIconDrawable(
+                                shortcuts.get(0), Math.round(34f * context.getResources()
+                                        .getDisplayMetrics().density));
+                        if (user != null && !Process.myUserHandle().equals(user)) {
+                            icon = context.getPackageManager().getUserBadgedDrawableForDensity(
+                                    icon, user, null, context.getResources().getDisplayMetrics().densityDpi);
+                        }
+                        return icon;
                     }
                 } catch (RuntimeException ignored) { }
                 return null;
             }
-            try { return pm.getActivityIcon(launchIntent.getComponent()); }
-            catch (android.content.pm.PackageManager.NameNotFoundException ignored) { return null; }
+            return null;
         }
 
         int matchScore(List<String> query) {
@@ -478,49 +526,57 @@ final class AppLauncherPanel {
 
         private static List<AppEntry> loadApps(Context context) {
             android.content.pm.PackageManager pm = context.getPackageManager();
-            Intent queryIntent = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
-            Map<String, AppEntry> found = new HashMap<>();
-            for (android.content.pm.ResolveInfo info : pm.queryIntentActivities(queryIntent, 0)) {
-                android.content.pm.ActivityInfo activity = info.activityInfo;
-                if (activity == null || activity.applicationInfo == null || !activity.enabled
-                        || !activity.applicationInfo.enabled
-                        || context.getPackageName().equals(activity.packageName)
-                        || found.containsKey(activity.packageName)) continue;
-                CharSequence rawLabel = info.loadLabel(pm);
-                String label = rawLabel == null ? activity.packageName : rawLabel.toString();
-                ComponentName component = new ComponentName(activity.packageName, activity.name);
-                Intent launch = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-                        .setComponent(component)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-                String latin = PINYIN.transliterate(label).toLowerCase(Locale.ROOT);
-                found.put(activity.packageName, new AppEntry(label, launch,
-                        activity.packageName, null, null, buildKeys(label)));
-            }
             LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
-            if (launcherApps != null) {
-                for (UserHandle user : launcherApps.getProfiles()) {
-                    LauncherApps.ShortcutQuery shortcutQuery = new LauncherApps.ShortcutQuery()
-                            .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED
-                                    | FLAG_MATCH_PINNED_BY_ANY_LAUNCHER);
-                    List<ShortcutInfo> shortcuts;
-                    try { shortcuts = launcherApps.getShortcuts(shortcutQuery, user); }
-                    catch (RuntimeException ignored) { continue; }
-                    if (shortcuts == null) continue;
-                    for (ShortcutInfo shortcut : shortcuts) {
-                        CharSequence rawLabel = shortcut.getShortLabel();
-                        if (rawLabel == null || rawLabel.length() == 0) rawLabel = shortcut.getLongLabel();
-                        if (rawLabel == null || rawLabel.length() == 0) continue;
-                        String packageName = shortcut.getPackage();
-                        android.content.pm.ApplicationInfo application;
-                        try { application = launcherApps.getApplicationInfo(packageName, 0, user); }
-                        catch (android.content.pm.PackageManager.NameNotFoundException ignored) { continue; }
-                        CharSequence appLabel = application.loadLabel(pm);
-                        String label = rawLabel.toString();
-                        found.put(packageName + "#" + user + "#" + shortcut.getId(),
-                                new AppEntry(label, null, packageName,
-                                        shortcut.getId(), user,
-                                        buildKeys(label, appLabel == null ? null : appLabel.toString())));
+            if (launcherApps == null) return Collections.emptyList();
+
+            List<UserHandle> users = new ArrayList<>();
+            UserHandle owner = Process.myUserHandle();
+            users.add(owner);
+            for (UserHandle user : launcherApps.getProfiles()) {
+                if (owner.equals(user)) continue;
+                if (Build.VERSION.SDK_INT >= 35) {
+                    LauncherUserInfo userInfo = launcherApps.getLauncherUserInfo(user);
+                    if (userInfo != null
+                            && "android.os.usertype.profile.CLONE".equals(userInfo.getUserType())) {
+                        users.add(user);
                     }
+                }
+            }
+
+            Map<String, AppEntry> found = new HashMap<>();
+            for (UserHandle user : users) {
+                for (LauncherActivityInfo activity : launcherApps.getActivityList(null, user)) {
+                    ComponentName component = activity.getComponentName();
+                    String packageName = component.getPackageName();
+                    if (context.getPackageName().equals(packageName)) continue;
+                    CharSequence rawLabel = activity.getLabel();
+                    String label = rawLabel == null ? packageName : rawLabel.toString();
+                    found.put(user + "#" + component.flattenToShortString(),
+                            new AppEntry(label, component, activity, packageName,
+                                    null, user, buildKeys(label)));
+                }
+
+                LauncherApps.ShortcutQuery shortcutQuery = new LauncherApps.ShortcutQuery()
+                        .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED
+                                | FLAG_MATCH_PINNED_BY_ANY_LAUNCHER);
+                List<ShortcutInfo> shortcuts;
+                try { shortcuts = launcherApps.getShortcuts(shortcutQuery, user); }
+                catch (RuntimeException ignored) { continue; }
+                if (shortcuts == null) continue;
+                for (ShortcutInfo shortcut : shortcuts) {
+                    CharSequence rawLabel = shortcut.getShortLabel();
+                    if (rawLabel == null || rawLabel.length() == 0) rawLabel = shortcut.getLongLabel();
+                    if (rawLabel == null || rawLabel.length() == 0) continue;
+                    String packageName = shortcut.getPackage();
+                    android.content.pm.ApplicationInfo application;
+                    try { application = launcherApps.getApplicationInfo(packageName, 0, user); }
+                    catch (android.content.pm.PackageManager.NameNotFoundException ignored) { continue; }
+                    CharSequence appLabel = application.loadLabel(pm);
+                    String label = rawLabel.toString();
+                    found.put(packageName + "#" + user + "#" + shortcut.getId(),
+                            new AppEntry(label, null, null, packageName,
+                                    shortcut.getId(), user,
+                                    buildKeys(label, appLabel == null ? null : appLabel.toString())));
                 }
             }
             List<AppEntry> result = new ArrayList<>(found.values());
@@ -711,7 +767,8 @@ final class AppLauncherPanel {
                     LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
                     launcherApps.startShortcut(entry.packageName, entry.shortcutId, null, null, entry.user);
                 } else {
-                    context.startActivity(entry.launchIntent);
+                    context.getSystemService(LauncherApps.class)
+                            .startMainActivity(entry.component, entry.user, null, null);
                 }
             } catch (Throwable ignored) { }
         }
@@ -724,8 +781,9 @@ final class AppLauncherPanel {
                     FlymeMiniWindowLauncher.startShortcutInMiniWindow(
                             context, launcherApps, entry.packageName, entry.shortcutId, entry.user);
                 } else {
-                    FlymeMiniWindowLauncher.startActivityInMiniWindow(
-                            context, entry.launchIntent, entry.packageName);
+                    FlymeMiniWindowLauncher.startLauncherActivityInMiniWindow(
+                            context, context.getSystemService(LauncherApps.class),
+                            entry.component, entry.user, entry.packageName);
                 }
             } catch (Throwable error) {
                 Toast.makeText(context, "无法打开小窗", Toast.LENGTH_SHORT).show();

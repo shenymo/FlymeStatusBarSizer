@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.windowmode;
 
 import android.app.ActivityOptions;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.LauncherApps;
@@ -52,6 +53,14 @@ public final class FlymeMiniWindowLauncher {
             Context context, Intent intent, String packageName) throws ReflectiveOperationException {
         setStartWindowMode(context, packageName);
         context.startActivity(intent, buildMiniWindowTaskOptions(context));
+    }
+
+    public static void startLauncherActivityInMiniWindow(
+            Context context, LauncherApps launcherApps, ComponentName component,
+            UserHandle user, String packageName) throws ReflectiveOperationException {
+        if (launcherApps == null) throw new IllegalStateException("Launcher activities are unavailable");
+        setStartWindowMode(context, packageName);
+        launcherApps.startMainActivity(component, user, null, buildMiniWindowTaskOptions(context));
     }
 
     public static void startShortcutInMiniWindow(
