@@ -61,21 +61,24 @@ final class ImeToolbarActions {
                 ? ((android.view.inputmethod.EditorInfo) value).packageName : null;
     }
 
-    static void refreshActionButtonStates(Object inputMethodService, View root) {
+    static void refreshActionButtonStates(Object inputMethodService, View root,
+            int alphaPercent) {
         if (root == null) {
             return;
         }
-        refreshActionButtonState(inputMethodService, root);
+        int normalizedAlpha = Math.max(10, Math.min(100, alphaPercent));
+        refreshActionButtonState(inputMethodService, root, normalizedAlpha);
         if (!(root instanceof ViewGroup)) {
             return;
         }
         ViewGroup group = (ViewGroup) root;
         for (int i = 0; i < group.getChildCount(); i++) {
-            refreshActionButtonStates(inputMethodService, group.getChildAt(i));
+            refreshActionButtonStates(inputMethodService, group.getChildAt(i), normalizedAlpha);
         }
     }
 
-    private static void refreshActionButtonState(Object inputMethodService, View button) {
+    private static void refreshActionButtonState(Object inputMethodService, View button,
+            int alphaPercent) {
         if (button == null || !(button.getTag() instanceof String)) {
             return;
         }
@@ -83,7 +86,7 @@ final class ImeToolbarActions {
         if ("paste".equals(action)) {
             boolean enabled = getCurrentInputConnectionCompat(inputMethodService) != null;
             button.setEnabled(enabled);
-            button.setAlpha(enabled ? 1f : 0.55f);
+            applyActionAlpha(button, enabled, alphaPercent);
         } else if ("verification_code".equals(action)) {
             String code = VerificationCodeClient.read(button.getContext());
             if (button instanceof android.widget.TextView) {
@@ -92,11 +95,16 @@ final class ImeToolbarActions {
             boolean enabled = code != null
                     && getCurrentInputConnectionCompat(inputMethodService) != null;
             button.setEnabled(enabled);
-            button.setAlpha(enabled ? 1f : 0.55f);
+            applyActionAlpha(button, enabled, alphaPercent);
         } else if (ImeToolbarSpec.isValidActionName(action)) {
             button.setEnabled(true);
-            button.setAlpha(1f);
+            applyActionAlpha(button, true, alphaPercent);
         }
+    }
+
+    private static void applyActionAlpha(View button, boolean enabled, int alphaPercent) {
+        float alpha = alphaPercent / 100f;
+        button.setAlpha(enabled ? alpha : alpha * 0.55f);
     }
 
     private static void performActionHapticFeedback(View button) {

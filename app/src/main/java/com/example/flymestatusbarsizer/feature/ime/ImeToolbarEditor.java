@@ -51,35 +51,32 @@ public final class ImeToolbarEditor {
         details.setOrientation(LinearLayout.VERTICAL);
 
         activity.addActionButtonRow(details, "输入法作用域",
-                "选择输入法及电话服务范围；验证码读取需要启用电话服务范围。新增范围需经 LSPosed 确认。",
+                "管理输入法和短信验证码读取范围。",
                 "管理", this::showImeScopes);
         activity.addDivider(details);
         activity.addSwitchRow(details, "显示扩展栏",
-                "在控制栏上方增加一行文字内容，高度为下栏的一半。",
+                "开启后在下栏上方显示半高文字栏。默认关闭。",
                 SettingsStore.KEY_IME_CONTROL_BAR_EXPANSION_ENABLED,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED);
         activity.addDivider(details);
 
         activity.addApplySliderRow(details, "输入法图标大小",
-                "调节覆盖层里图标的大小。数值越大，图标越大。",
+                null,
                 SettingsStore.KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
                 60, 180, "%");
         activity.addDivider(details);
         activity.addApplySliderRow(details, "输入法图标透明度",
-                "调节覆盖层图标透明度。100% 完全不透明，数值越小越淡。",
+                "验证码文字与图标共用此透明度。",
                 SettingsStore.KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
                 10, 100, "%");
         activity.addDivider(details);
         activity.addApplyPositionOffsetSliderRow(details, "输入法控制栏上下位置",
-                "正数向上、负数向下；滑块按 1dp 粗调，点右侧数值可输入 0.1dp。",
+                "正数上移，负数下移。",
                 SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10);
         activity.addDivider(details);
-        activity.addProfileSectionHeader(details, "按钮位置与显隐",
-                "长按按钮拖到下面固定槽位里就会显示；拖回按钮池就会隐藏。从左到右就是工具栏里的实际位置；拖拽后点击应用才会写入配置并刷新当前输入法界面。");
-
         buttonContainer = new LinearLayout(activity);
         buttonContainer.setOrientation(LinearLayout.VERTICAL);
         buttonContainer.setPadding(0, activity.dp(8), 0, 0);
@@ -194,9 +191,6 @@ public final class ImeToolbarEditor {
             return;
         }
         buttonContainer.removeAllViews();
-        activity.addProfileSectionHeader(buttonContainer, "按钮池",
-                "拖到下栏可放置普通按钮；文字内容可拖到上栏。拖回按钮池即可隐藏。");
-
         buttonPoolContainer = new LinearLayout(activity);
         buttonPoolContainer.setOrientation(LinearLayout.VERTICAL);
         buttonPoolContainer.setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8));
@@ -204,20 +198,15 @@ public final class ImeToolbarEditor {
         buttonPoolContainer.setOnDragListener(this::handlePoolDrag);
         buttonContainer.addView(buttonPoolContainer, activity.matchWrapWithTop(8));
 
-        activity.addProfileSectionHeader(buttonContainer, "下栏：7 个固定槽位",
-                "从左到右对应工具栏的实际位置；空槽位会保留占位。");
-
-        buttonSlotContainer = new LinearLayout(activity);
-        buttonSlotContainer.setOrientation(LinearLayout.HORIZONTAL);
-        buttonSlotContainer.setPadding(0, activity.dp(8), 0, 0);
-        buttonContainer.addView(buttonSlotContainer, activity.matchWrap());
-
-        activity.addProfileSectionHeader(buttonContainer, "上栏：文字内容",
-                "验证码占两个槽位；上栏仅放文字内容。扩展栏关闭时，上栏设置仍会保留。");
         textSlotContainer = new LinearLayout(activity);
         textSlotContainer.setOrientation(LinearLayout.HORIZONTAL);
         textSlotContainer.setPadding(0, activity.dp(8), 0, 0);
         buttonContainer.addView(textSlotContainer, activity.matchWrap());
+
+        buttonSlotContainer = new LinearLayout(activity);
+        buttonSlotContainer.setOrientation(LinearLayout.HORIZONTAL);
+        buttonSlotContainer.setPadding(0, activity.dp(8), 0, 0);
+        buttonContainer.addView(buttonSlotContainer, activity.matchWrapWithTop(12));
 
         LinearLayout actionRow = new LinearLayout(activity);
         actionRow.setOrientation(LinearLayout.HORIZONTAL);

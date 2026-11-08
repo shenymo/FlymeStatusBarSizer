@@ -156,7 +156,8 @@ public final class ImeHooks {
         if (current != null && current.inputView == inputView
                 && current.toolbar.getParent() == inputFrame
                 && current.matches(config, ImeToolbarIcons.resolveIconColor(inputView.getContext()))) {
-            ImeToolbarActions.refreshActionButtonStates(service, current.toolbar);
+            ImeToolbarActions.refreshActionButtonStates(service, current.toolbar,
+                    config.imeControlBarIconAlphaPercent);
             return;
         }
         detachOverlay(service);
@@ -193,7 +194,8 @@ public final class ImeHooks {
         toolbar.addView(buttonRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 FlymeStatusBarSizer.dp(context, TOOLBAR_HEIGHT_DP)));
-        ImeToolbarActions.refreshActionButtonStates(service, toolbar);
+        ImeToolbarActions.refreshActionButtonStates(service, toolbar,
+                config.imeControlBarIconAlphaPercent);
         return toolbar;
     }
 
@@ -239,10 +241,9 @@ public final class ImeHooks {
             button.setTag(action);
             int alpha = Math.max(10, Math.min(100, config.imeControlBarIconAlphaPercent));
             if (button instanceof ImageButton) {
-                ((ImageButton) button).setImageAlpha(Math.round(alpha * 2.55f));
-            } else {
-                button.setAlpha(alpha / 100f);
+                ((ImageButton) button).setImageAlpha(255);
             }
+            button.setAlpha(alpha / 100f);
             int scale = Math.max(60, Math.min(180, config.imeControlBarIconScalePercent));
             int padding = textOnly ? 0 : Math.max(0, Math.round((8f * 100f / scale)
                     * context.getResources().getDisplayMetrics().density));
