@@ -6509,8 +6509,10 @@ public class FlymeStatusBarSizer extends XposedModule {
                     // ==================== 关键新增：横竖屏切换时强制刷新布局 ====================
                     Handler handler = MAIN_HANDLER;
                     if (handler != null) {
+                        handler.post(AssistantHooks::dismissGesturePopupsForConfigurationChange);
                         handler.post(() -> refreshCameraCircleBatteryWindow());
                     } else {
+                        AssistantHooks.dismissGesturePopupsForConfigurationChange();
                         refreshCameraCircleBatteryWindow();
                     }
                     // =========================================================================

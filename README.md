@@ -1,8 +1,18 @@
 # FlymeStatusBarSizer
 
+<p align="center">
+  <img src="assets/flymebarsizer-icon.png" width="96" alt="FlymeBarSizer 应用图标">
+</p>
+
 让 Flyme 的系统界面更合心意。**FlymeStatusBarSizer** 是一个面向 Flyme 的 LSPosed 模块，应用名称为 **FlymeBarSizer**。首页支持功能搜索，部分设置提供预览。
 
 [下载 APK](https://github.com/shenymo/FlymeStatusBarSizer/releases) · [反馈问题](https://github.com/shenymo/FlymeStatusBarSizer/issues) · [开源许可](LICENSE)
+
+## 效果示例
+
+<p align="center">
+  <img src="assets/status-bar-example.png" alt="状态栏效果示例">
+</p>
 
 ## 功能
 

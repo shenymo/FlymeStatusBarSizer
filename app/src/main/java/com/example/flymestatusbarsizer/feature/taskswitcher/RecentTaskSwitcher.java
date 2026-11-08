@@ -19,6 +19,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.LruCache;
+import android.util.Log;
 import android.view.animation.PathInterpolator;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -53,6 +54,7 @@ import java.util.concurrent.Executors;
 /** Compact recent-task switcher opened by a configured side gesture. */
 public final class RecentTaskSwitcher {
     private static final int[] WINDOW_TYPES = {2041, 2017, 2040};
+    private static final String TAG = "FlymeRecentTaskSwitcher";
     private static final int INITIAL_TASK_COUNT = 0;
     private static final int APPEND_TASK_BATCH_SIZE = 4;
     private static final long DEFERRED_TASK_BATCH_DELAY_MS = 360L;
@@ -78,6 +80,12 @@ public final class RecentTaskSwitcher {
             popup = active;
         }
         if (popup != null) popup.updateDarkMode(configuration);
+    }
+
+    public static void dismissActivePopup() {
+        Popup popup;
+        synchronized (RecentTaskSwitcher.class) { popup = active; }
+        if (popup != null) popup.closeImmediately();
     }
 
     private static final class AppMetadata {
@@ -248,6 +256,7 @@ public final class RecentTaskSwitcher {
         void show(boolean fromLeft, float anchorY) {
             this.fromLeft = fromLeft;
             this.anchorY = anchorY;
+            updatePanelLayout();
             updateDarkMode(context.getResources().getConfiguration());
             synchronized (RecentTaskSwitcher.class) {
                 if (active != null && active != this) active.close();
@@ -262,6 +271,7 @@ public final class RecentTaskSwitcher {
                 return;
             }
             WindowManager.LayoutParams params = buildLayoutParams();
+            Throwable lastError = null;
             for (int type : WINDOW_TYPES) {
                 params.type = type;
                 try {
@@ -280,11 +290,29 @@ public final class RecentTaskSwitcher {
                     });
                     loadTasksAsync();
                     return;
-                } catch (Throwable ignored) {
+                } catch (Throwable error) {
+                    lastError = error;
                     try { windowManager.removeViewImmediate(root); } catch (Throwable ignoredAgain) { }
                 }
             }
+            if (lastError != null) Log.w(TAG, "Cannot attach recent task switcher popup", lastError);
             synchronized (RecentTaskSwitcher.class) { if (active == this) active = null; }
+        }
+
+        private void updatePanelLayout() {
+            int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
+            int panelWidth = Math.min(dp(160), Math.max(dp(147), screenWidth - dp(22)));
+            FrameLayout.LayoutParams panelParams = (FrameLayout.LayoutParams) panel.getLayoutParams();
+            panelParams.width = panelWidth;
+            panelParams.gravity = Gravity.TOP | (fromLeft ? Gravity.LEFT : Gravity.RIGHT);
+            panel.setLayoutParams(panelParams);
+
+            int availableHeight = context.getResources().getDisplayMetrics().heightPixels;
+            int rowsHeight = Math.min(dp(ROW_HEIGHT_DP * 9), Math.max(dp(ROW_HEIGHT_DP),
+                    (int) (availableHeight / 3f) - dp(33)));
+            LinearLayout.LayoutParams scrollParams = (LinearLayout.LayoutParams) scroll.getLayoutParams();
+            scrollParams.height = rowsHeight;
+            scroll.setLayoutParams(scrollParams);
         }
 
         private void alignToGestureAnchor() {
@@ -914,7 +942,22 @@ public final class RecentTaskSwitcher {
                     .withEndAction(this::finishClose).start();
         }
 
+        private void closeImmediately() {
+            if (!attached) {
+                synchronized (RecentTaskSwitcher.class) { if (active == this) active = null; }
+                return;
+            }
+            closing = true;
+            panel.animate().cancel();
+            finishClose();
+        }
+
         private void finishClose() {
+            if (!attached) {
+                closing = false;
+                synchronized (RecentTaskSwitcher.class) { if (active == this) active = null; }
+                return;
+            }
             panelBlur.stop();
             context.getContentResolver().unregisterContentObserver(lockObserver);
             context.unregisterReceiver(configurationReceiver);

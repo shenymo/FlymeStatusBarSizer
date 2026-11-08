@@ -18,6 +18,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.UserHandle;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
@@ -49,6 +50,7 @@ import java.util.concurrent.Executors;
 /** Compact app search panel opened by a side gesture. */
 final class AppLauncherPanel {
     private static final int[] WINDOW_TYPES = {2041, 2017, 2040};
+    private static final String TAG = "FlymeAppLauncher";
     private static final int FLAG_MATCH_PINNED_BY_ANY_LAUNCHER = 1 << 10;
     private static final String TITLE = "FlymeStatusBarSizer:AppLauncher";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -155,6 +157,12 @@ final class AppLauncherPanel {
         Popup popup;
         synchronized (AppLauncherPanel.class) { popup = active; }
         if (popup != null) popup.updateDarkMode(configuration);
+    }
+
+    static void dismissActivePopup() {
+        Popup popup;
+        synchronized (AppLauncherPanel.class) { popup = active; }
+        if (popup != null) popup.closeImmediately();
     }
 
     private static final class AppEntry {
@@ -332,6 +340,7 @@ final class AppLauncherPanel {
         void show(boolean fromLeft, float anchorY) {
             this.fromLeft = fromLeft;
             this.anchorY = anchorY;
+            updatePanelLayout();
             updateDarkMode(context.getResources().getConfiguration());
             synchronized (AppLauncherPanel.class) {
                 if (active != null && active != this) active.close();
@@ -348,6 +357,7 @@ final class AppLauncherPanel {
                 return;
             }
             WindowManager.LayoutParams params = buildLayoutParams();
+            Throwable lastError = null;
             for (int type : WINDOW_TYPES) {
                 params.type = type;
                 try {
@@ -361,11 +371,22 @@ final class AppLauncherPanel {
                         animateIn();
                     });
                     return;
-                } catch (Throwable ignored) {
+                } catch (Throwable error) {
+                    lastError = error;
                     try { windowManager.removeViewImmediate(root); } catch (Throwable ignoredAgain) { }
                 }
             }
+            if (lastError != null) Log.w(TAG, "Cannot attach app launcher popup", lastError);
             synchronized (AppLauncherPanel.class) { if (active == this) active = null; }
+        }
+
+        private void updatePanelLayout() {
+            int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
+            int width = Math.min(dp(193), Math.max(dp(165), screenWidth - dp(22)));
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) panel.getLayoutParams();
+            params.width = width;
+            params.gravity = Gravity.TOP | (fromLeft ? Gravity.LEFT : Gravity.RIGHT);
+            panel.setLayoutParams(params);
         }
 
         private void addKeyRow(LinearLayout keyboard, String[] keys) {
@@ -779,7 +800,23 @@ final class AppLauncherPanel {
                     .withEndAction(this::finishClose).start();
         }
 
+        private void closeImmediately() {
+            if (!attached) {
+                synchronized (AppLauncherPanel.class) { if (active == this) active = null; }
+                return;
+            }
+            closing = true;
+            cancelHold();
+            panel.animate().cancel();
+            finishClose();
+        }
+
         private void finishClose() {
+            if (!attached) {
+                closing = false;
+                synchronized (AppLauncherPanel.class) { if (active == this) active = null; }
+                return;
+            }
             panelBlur.stop();
             try { windowManager.removeViewImmediate(root); } catch (Throwable ignored) { }
             attached = false;

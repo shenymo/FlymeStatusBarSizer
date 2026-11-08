@@ -152,6 +152,12 @@ public final class AssistantHooks {
                 .refreshActivePopup(configuration);
     }
 
+    public static void dismissGesturePopupsForConfigurationChange() {
+        AppLauncherPanel.dismissActivePopup();
+        com.example.flymestatusbarsizer.feature.taskswitcher.RecentTaskSwitcher
+                .dismissActivePopup();
+    }
+
     static void warn(String message, Throwable t) { Log.w("FlymeAssistantGesture", message, t); }
 
     static AssistantWindowSession currentSession() {
