@@ -12,6 +12,9 @@ import java.util.regex.Pattern;
 
 public final class VerificationCodeHooks {
     private static final Pattern CODE_PATTERN = Pattern.compile("(?<![0-9])[0-9]{4,8}(?![0-9])");
+    private static final Pattern CODE_KEYWORD_PATTERN = Pattern.compile(
+            "(?:验\\s*证|动\\s*态|校\\s*验)[\\s、，,。:：;；\\-—_]*码");
+    private static final int KEYWORD_CODE_WINDOW = 32;
     private static boolean installed;
 
     private VerificationCodeHooks() {
@@ -132,8 +135,29 @@ public final class VerificationCodeHooks {
                     decodedParts > 0 ? "已解码 " + decodedParts + " 段短信内容"
                             : "没有可读取的短信内容");
         }
-        Matcher matcher = CODE_PATTERN.matcher(body);
-        if (!matcher.find()) {
+        String bodyText = body.toString();
+        String code = null;
+        Matcher keywordMatcher = CODE_KEYWORD_PATTERN.matcher(bodyText);
+        while (keywordMatcher.find() && code == null) {
+            int afterEnd = Math.min(bodyText.length(), keywordMatcher.end() + KEYWORD_CODE_WINDOW);
+            Matcher afterMatcher = CODE_PATTERN.matcher(bodyText.substring(keywordMatcher.end(), afterEnd));
+            if (afterMatcher.find()) {
+                code = afterMatcher.group();
+                break;
+            }
+            int beforeStart = Math.max(0, keywordMatcher.start() - KEYWORD_CODE_WINDOW);
+            Matcher beforeMatcher = CODE_PATTERN.matcher(bodyText.substring(beforeStart, keywordMatcher.start()));
+            while (beforeMatcher.find()) {
+                code = beforeMatcher.group();
+            }
+        }
+        if (code == null) {
+            Matcher matcher = CODE_PATTERN.matcher(bodyText);
+            if (matcher.find()) {
+                code = matcher.group();
+            }
+        }
+        if (code == null) {
             if (context != null) {
                 VerificationCodeClient.recordDiagnostic(context, "验证码匹配", false,
                         "未找到独立的 4 至 8 位数字");
@@ -144,6 +168,6 @@ public final class VerificationCodeHooks {
             VerificationCodeClient.recordDiagnostic(context, "验证码匹配", true,
                     "找到符合规则的数字验证码");
         }
-        return matcher.group();
+        return code;
     }
 }
