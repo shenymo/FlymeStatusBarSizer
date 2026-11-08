@@ -31,18 +31,55 @@ public final class VerificationCodeHooks {
             dispatch.setAccessible(true);
             module.intercept(dispatch, chain -> {
                 try {
-                    if ((Integer) chain.getArg(2) == -1 && shouldCapture()) {
-                        String code = extractCode(
-                                (byte[][]) chain.getArg(0), (String) chain.getArg(1));
-                        if (code != null) {
-                            Object value = FlymeStatusBarSizer.getFieldCompat(
-                                    chain.getThisObject(), "mContext");
-                            if (value instanceof Context) {
-                                VerificationCodeClient.publish((Context) value, code);
+                    Object value = FlymeStatusBarSizer.getFieldCompat(
+                            chain.getThisObject(), "mContext");
+                    Context context = value instanceof Context ? (Context) value : null;
+                    int destinationPort = (Integer) chain.getArg(2);
+                    if (context != null) {
+                        VerificationCodeClient.recordDiagnostic(context, "短信类型检查",
+                                destinationPort == -1,
+                                destinationPort == -1 ? "收到普通短信"
+                                        : "端口短信被跳过，端口值 " + destinationPort);
+                    }
+                    if (destinationPort == -1) {
+                        FlymeStatusBarSizer.ImeConfigSnapshot config =
+                                FlymeStatusBarSizer.loadImeConfig(null);
+                        String configFailure = config == null || !config.enabled
+                                ? "模块功能未启用"
+                                : !ImeToolbarSpec.containsVerificationCode(
+                                        config.imeControlBarButtonSlots,
+                                        config.imeControlBarTextSlots)
+                                                ? "工具栏未添加验证码按钮" : null;
+                        if (configFailure == null && !ImeToolbarSpec.hasVisibleVerificationCode(
+                                config.imeControlBarButtonSlots,
+                                config.imeControlBarTextSlots,
+                                config.imeControlBarExpansionEnabled)) {
+                            configFailure = "验证码在文字栏，但扩展栏未开启";
+                        }
+                        if (configFailure != null) {
+                            if (context != null) {
+                                VerificationCodeClient.recordDiagnostic(context, "配置检查",
+                                        false, configFailure);
                             }
+                            return chain.proceed();
+                        }
+                        if (context != null) {
+                            VerificationCodeClient.recordDiagnostic(context, "配置检查", true,
+                                    "验证码按钮已启用");
+                        }
+                        String code = extractCode(context,
+                                (byte[][]) chain.getArg(0), (String) chain.getArg(1));
+                        if (code != null && context != null) {
+                            VerificationCodeClient.publish(context, code);
                         }
                     }
                 } catch (Throwable error) {
+                    Object value = FlymeStatusBarSizer.getFieldCompat(
+                            chain.getThisObject(), "mContext");
+                    if (value instanceof Context) {
+                        VerificationCodeClient.recordDiagnostic((Context) value,
+                                "短信识别异常", false, "处理短信时发生异常，请检查模块日志");
+                    }
                     FlymeStatusBarSizer.logImeWarning(
                             "Failed to capture incoming SMS verification code", error);
                 }
@@ -73,25 +110,40 @@ public final class VerificationCodeHooks {
         return null;
     }
 
-    private static boolean shouldCapture() {
-        FlymeStatusBarSizer.ImeConfigSnapshot config =
-                FlymeStatusBarSizer.loadImeConfig(null);
-        return config != null && config.enabled
-                && ImeToolbarSpec.resolveButtonSlots(config).contains("verification_code");
-    }
-
-    private static String extractCode(byte[][] pdus, String format) {
+    private static String extractCode(Context context, byte[][] pdus, String format) {
         if (pdus == null || format == null) {
+            if (context != null) {
+                VerificationCodeClient.recordDiagnostic(context, "短信解码", false,
+                        "短信数据或编码格式为空");
+            }
             return null;
         }
         StringBuilder body = new StringBuilder();
+        int decodedParts = 0;
         for (byte[] pdu : pdus) {
             SmsMessage message = SmsMessage.createFromPdu(pdu, format);
             if (message != null && message.getMessageBody() != null) {
                 body.append(message.getMessageBody());
+                decodedParts++;
             }
         }
+        if (context != null) {
+            VerificationCodeClient.recordDiagnostic(context, "短信解码", decodedParts > 0,
+                    decodedParts > 0 ? "已解码 " + decodedParts + " 段短信内容"
+                            : "没有可读取的短信内容");
+        }
         Matcher matcher = CODE_PATTERN.matcher(body);
-        return matcher.find() ? matcher.group() : null;
+        if (!matcher.find()) {
+            if (context != null) {
+                VerificationCodeClient.recordDiagnostic(context, "验证码匹配", false,
+                        "未找到独立的 4 至 8 位数字");
+            }
+            return null;
+        }
+        if (context != null) {
+            VerificationCodeClient.recordDiagnostic(context, "验证码匹配", true,
+                    "找到符合规则的数字验证码");
+        }
+        return matcher.group();
     }
 }

@@ -466,6 +466,8 @@ public final class SettingsStore {
             "mback_pill_interaction_sync_enabled";
     public static final String KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR = "ime_force_stock_control_bar";
     public static final String KEY_IME_CONTROL_BAR_EXPANSION_ENABLED = "ime_control_bar_expansion_enabled";
+    public static final String KEY_IME_VERIFICATION_CODE_DIAGNOSTICS_ENABLED =
+            "ime_verification_code_diagnostics_enabled";
     public static final String KEY_IME_CONTROL_BAR_BUTTON_SLOTS = "ime_control_bar_button_slots";
     public static final String KEY_IME_CONTROL_BAR_TEXT_SLOTS = "ime_control_bar_text_slots";
     public static final String KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT = "ime_control_bar_icon_scale_percent";
@@ -699,6 +701,7 @@ public final class SettingsStore {
     public static final boolean DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED = false;
     public static final boolean DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR = false;
     public static final boolean DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED = false;
+    public static final boolean DEFAULT_IME_VERIFICATION_CODE_DIAGNOSTICS_ENABLED = true;
     public static final String DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS =
             "paste,undo,delete,select_all,copy,switch_ime,stock_back";
     public static final String DEFAULT_IME_CONTROL_BAR_TEXT_SLOTS = "";
@@ -968,6 +971,7 @@ public final class SettingsStore {
             KEY_MBACK_PILL_INTERACTION_SYNC_ENABLED,
             KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
             KEY_IME_CONTROL_BAR_EXPANSION_ENABLED,
+            KEY_IME_VERIFICATION_CODE_DIAGNOSTICS_ENABLED,
             KEY_TELEPHONY_DEBUG_ENABLED,
             KEY_WIFI_PERF_LOGGING_ENABLED,
             KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED,
@@ -1581,6 +1585,8 @@ public final class SettingsStore {
                 return DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR;
             case KEY_IME_CONTROL_BAR_EXPANSION_ENABLED:
                 return DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED;
+            case KEY_IME_VERIFICATION_CODE_DIAGNOSTICS_ENABLED:
+                return DEFAULT_IME_VERIFICATION_CODE_DIAGNOSTICS_ENABLED;
             case KEY_TELEPHONY_DEBUG_ENABLED:
                 return DEFAULT_TELEPHONY_DEBUG_ENABLED;
             case KEY_WORKSPACE_FLOW_LOGGING_ENABLED:

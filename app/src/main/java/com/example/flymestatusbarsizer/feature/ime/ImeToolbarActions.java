@@ -95,7 +95,7 @@ final class ImeToolbarActions {
             boolean enabled = code != null
                     && getCurrentInputConnectionCompat(inputMethodService) != null;
             button.setEnabled(enabled);
-            applyActionAlpha(button, enabled, alphaPercent);
+            button.setAlpha(Math.max(0.5f, alphaPercent / 100f));
         } else if (ImeToolbarSpec.isValidActionName(action)) {
             button.setEnabled(true);
             applyActionAlpha(button, true, alphaPercent);

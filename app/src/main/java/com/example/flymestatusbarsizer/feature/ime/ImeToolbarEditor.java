@@ -67,7 +67,7 @@ public final class ImeToolbarEditor {
                 60, 180, "%");
         activity.addDivider(details);
         activity.addApplySliderRow(details, "输入法图标透明度",
-                "验证码文字与图标共用此透明度。",
+                "验证码文字跟随此透明度，最低保持 50%。",
                 SettingsStore.KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
                 10, 100, "%");

@@ -107,6 +107,18 @@ public final class ImeToolbarSpec {
         return normalizeTextSlots(parseButtonSlots(slotRaw));
     }
 
+    public static boolean containsVerificationCode(String buttonSlots, String textSlots) {
+        return resolveButtonSlots(buttonSlots).contains("verification_code")
+                || resolveTextSlots(textSlots).contains("verification_code");
+    }
+
+    public static boolean hasVisibleVerificationCode(
+            String buttonSlots, String textSlots, boolean expansionEnabled) {
+        return resolveButtonSlots(buttonSlots).contains("verification_code")
+                || (expansionEnabled
+                        && resolveTextSlots(textSlots).contains("verification_code"));
+    }
+
     public static String serializeButtonSlots(ArrayList<String> slots) {
         return serializeSlots(normalizeButtonSlots(slots));
     }

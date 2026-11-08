@@ -32,6 +32,7 @@ public final class ImeHooks {
     private static final WeakHashMap<Object, View> TRACKED_INPUT_METHOD_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<Object, OverlayState> OVERLAY_STATES = new WeakHashMap<>();
     private static boolean verificationCodeObserverRegistered;
+    private static String lastToolbarDiagnostic;
 
     private ImeHooks() {
     }
@@ -144,12 +145,14 @@ public final class ImeHooks {
         FlymeStatusBarSizer.ImeConfigSnapshot config =
                 FlymeStatusBarSizer.loadImeConfig(inputView.getContext());
         if (config == null || !config.enabled) {
+            reportToolbarState(inputView.getContext(), false, "模块功能未启用");
             detachOverlay(service);
             return;
         }
         ViewGroup inputFrame = asViewGroup(
                 FlymeStatusBarSizer.getFieldCompat(service, "mInputFrame"));
         if (inputFrame == null) {
+            reportToolbarState(inputView.getContext(), false, "未找到输入法输入区域");
             return;
         }
         OverlayState current = OVERLAY_STATES.get(service);
@@ -172,10 +175,23 @@ public final class ImeHooks {
                 (config.imeControlBarYOffsetTenthDp / 10f)
                         * inputView.getResources().getDisplayMetrics().density);
         inputFrame.addView(toolbar, toolbarParams);
+        reportToolbarState(inputView.getContext(), true, "输入法控制栏已创建");
         OVERLAY_STATES.put(service, new OverlayState(
                 inputView, toolbar, config, ImeToolbarIcons.resolveIconColor(inputView.getContext())));
         inputFrame.requestLayout();
         inputFrame.invalidate();
+    }
+
+    private static void reportToolbarState(Context context, boolean success, String reason) {
+        if (!FlymeStatusBarSizer.loadImeConfig(context).imeVerificationCodeDiagnosticsEnabled) {
+            return;
+        }
+        String state = success + ":" + reason;
+        if (state.equals(lastToolbarDiagnostic)) {
+            return;
+        }
+        lastToolbarDiagnostic = state;
+        VerificationCodeClient.recordDiagnostic(context, "工具栏状态", success, reason);
     }
 
     private static LinearLayout createToolbar(
@@ -243,7 +259,11 @@ public final class ImeHooks {
             if (button instanceof ImageButton) {
                 ((ImageButton) button).setImageAlpha(255);
             }
-            button.setAlpha(alpha / 100f);
+            float buttonAlpha = alpha / 100f;
+            if (ImeToolbarSpec.isTextContentAction(action)) {
+                buttonAlpha = Math.max(0.5f, buttonAlpha);
+            }
+            button.setAlpha(buttonAlpha);
             int scale = Math.max(60, Math.min(180, config.imeControlBarIconScalePercent));
             int padding = textOnly ? 0 : Math.max(0, Math.round((8f * 100f / scale)
                     * context.getResources().getDisplayMetrics().density));
