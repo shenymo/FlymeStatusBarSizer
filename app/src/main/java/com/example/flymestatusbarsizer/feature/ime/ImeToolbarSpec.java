@@ -81,6 +81,10 @@ public final class ImeToolbarSpec {
         return "verification_code".equals(button) ? 2 : 1;
     }
 
+    public static boolean isTextContentAction(String action) {
+        return "verification_code".equals(action);
+    }
+
     static boolean isBackButton(String button) {
         return STOCK_CONTROL_BAR_BACK.equals(button);
     }
@@ -99,8 +103,19 @@ public final class ImeToolbarSpec {
         return parseButtonSlots(slotRaw);
     }
 
+    public static ArrayList<String> resolveTextSlots(String slotRaw) {
+        return normalizeTextSlots(parseButtonSlots(slotRaw));
+    }
+
     public static String serializeButtonSlots(ArrayList<String> slots) {
-        ArrayList<String> normalized = normalizeButtonSlots(slots);
+        return serializeSlots(normalizeButtonSlots(slots));
+    }
+
+    public static String serializeTextSlots(ArrayList<String> slots) {
+        return serializeSlots(normalizeTextSlots(slots));
+    }
+
+    private static String serializeSlots(ArrayList<String> normalized) {
         StringBuilder builder = new StringBuilder();
         for (int i = 0; i < normalized.size(); i++) {
             if (i > 0) {
@@ -146,6 +161,29 @@ public final class ImeToolbarSpec {
                     && i + span <= normalized.size()
                     && canPlaceButton(occupied, i, span)) {
                 normalized.set(i, button);
+                for (int j = 0; j < span; j++) {
+                    occupied[i + j] = true;
+                }
+            }
+        }
+        return normalized;
+    }
+
+    private static ArrayList<String> normalizeTextSlots(ArrayList<String> slots) {
+        ArrayList<String> normalized = emptySlotList();
+        if (slots == null) {
+            return normalized;
+        }
+        boolean[] occupied = new boolean[normalized.size()];
+        int slotCount = Math.min(slots.size(), normalized.size());
+        for (int i = 0; i < slotCount; i++) {
+            String action = slots.get(i);
+            int span = getButtonSpan(action);
+            if (isTextContentAction(action)
+                    && !normalized.contains(action)
+                    && i + span <= normalized.size()
+                    && canPlaceButton(occupied, i, span)) {
+                normalized.set(i, action);
                 for (int j = 0; j < span; j++) {
                     occupied[i + j] = true;
                 }

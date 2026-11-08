@@ -363,7 +363,9 @@ public final class ModuleConfig {
     public boolean mbackPillInteractionSyncEnabled =
             SettingsStore.DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED;
     public boolean imeReplaceOriginalControlBar = SettingsStore.DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR;
+    public boolean imeControlBarExpansionEnabled = SettingsStore.DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED;
     public String imeControlBarButtonSlots = SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;
+    public String imeControlBarTextSlots = SettingsStore.DEFAULT_IME_CONTROL_BAR_TEXT_SLOTS;
     public int imeControlBarIconScalePercent = SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT;
     public int imeControlBarIconAlphaPercent = SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT;
     public int imeControlBarYOffsetTenthDp = SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10;
@@ -1248,10 +1250,18 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
                     SettingsStore.DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR);
+            config.imeControlBarExpansionEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_IME_CONTROL_BAR_EXPANSION_ENABLED,
+                    SettingsStore.DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED);
             config.imeControlBarButtonSlots = SettingsStore.readString(
                     prefs,
                     SettingsStore.KEY_IME_CONTROL_BAR_BUTTON_SLOTS,
                     SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS);
+            config.imeControlBarTextSlots = SettingsStore.readString(
+                    prefs,
+                    SettingsStore.KEY_IME_CONTROL_BAR_TEXT_SLOTS,
+                    SettingsStore.DEFAULT_IME_CONTROL_BAR_TEXT_SLOTS);
             config.imeControlBarIconScalePercent = SettingsStore.normalizeImeControlBarIconScalePercent(
                     SettingsStore.readInt(
                             prefs,

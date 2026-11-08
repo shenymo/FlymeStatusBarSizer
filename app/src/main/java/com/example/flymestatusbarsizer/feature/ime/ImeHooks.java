@@ -27,6 +27,7 @@ public final class ImeHooks {
     private static final String PACKAGE_ANDROID = "android";
     private static final String PACKAGE_SYSTEM = "system";
     private static final int TOOLBAR_HEIGHT_DP = 40;
+    private static final int TEXT_ROW_HEIGHT_DP = 20;
 
     private static final WeakHashMap<Object, View> TRACKED_INPUT_METHOD_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<Object, OverlayState> OVERLAY_STATES = new WeakHashMap<>();
@@ -160,9 +161,11 @@ public final class ImeHooks {
         }
         detachOverlay(service);
         LinearLayout toolbar = createToolbar(inputView.getContext(), service, config);
+        int toolbarHeight = TOOLBAR_HEIGHT_DP
+                + (config.imeControlBarExpansionEnabled ? TEXT_ROW_HEIGHT_DP : 0);
         FrameLayout.LayoutParams toolbarParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                FlymeStatusBarSizer.dp(inputView.getContext(), TOOLBAR_HEIGHT_DP),
+                FlymeStatusBarSizer.dp(inputView.getContext(), toolbarHeight),
                 Gravity.BOTTOM);
         toolbarParams.bottomMargin = Math.round(
                 (config.imeControlBarYOffsetTenthDp / 10f)
@@ -177,27 +180,48 @@ public final class ImeHooks {
     private static LinearLayout createToolbar(
             Context context, Object service, FlymeStatusBarSizer.ImeConfigSnapshot config) {
         LinearLayout toolbar = new LinearLayout(context);
-        toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(
+        toolbar.setOrientation(LinearLayout.VERTICAL);
+        if (config.imeControlBarExpansionEnabled) {
+            LinearLayout textRow = createToolbarRow(context, service, config,
+                    ImeToolbarSpec.resolveTextSlots(config.imeControlBarTextSlots), true);
+            toolbar.addView(textRow, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    FlymeStatusBarSizer.dp(context, TEXT_ROW_HEIGHT_DP)));
+        }
+        LinearLayout buttonRow = createToolbarRow(context, service, config,
+                ImeToolbarSpec.resolveButtonSlots(config), false);
+        toolbar.addView(buttonRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                FlymeStatusBarSizer.dp(context, TOOLBAR_HEIGHT_DP)));
+        ImeToolbarActions.refreshActionButtonStates(service, toolbar);
+        return toolbar;
+    }
+
+    private static LinearLayout createToolbarRow(Context context, Object service,
+            FlymeStatusBarSizer.ImeConfigSnapshot config, ArrayList<String> slots,
+            boolean textOnly) {
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(
                 FlymeStatusBarSizer.dp(context, 4),
-                FlymeStatusBarSizer.dp(context, 2),
+                textOnly ? 0 : FlymeStatusBarSizer.dp(context, 2),
                 FlymeStatusBarSizer.dp(context, 4),
-                FlymeStatusBarSizer.dp(context, 2));
-        ArrayList<String> slots = ImeToolbarSpec.resolveButtonSlots(config);
+                textOnly ? 0 : FlymeStatusBarSizer.dp(context, 2));
         for (int slotIndex = 0; slotIndex < slots.size(); slotIndex++) {
             String action = slots.get(slotIndex);
-            if (TextUtils.isEmpty(action)) {
+            if (TextUtils.isEmpty(action)
+                    || (textOnly && !ImeToolbarSpec.isTextContentAction(action))) {
                 View spacer = new View(context);
-                toolbar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+                row.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
                 continue;
             }
             int span = ImeToolbarSpec.getButtonSpan(action);
             View button;
-            if ("verification_code".equals(action)) {
+            if (ImeToolbarSpec.isTextContentAction(action)) {
                 TextView codeButton = new TextView(context);
                 codeButton.setGravity(Gravity.CENTER);
-                codeButton.setTextSize(14);
+                codeButton.setTextSize(textOnly ? 12 : 14);
                 codeButton.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
                 codeButton.setTextColor(ImeToolbarIcons.resolveIconColor(context));
                 codeButton.setContentDescription("验证码");
@@ -220,10 +244,10 @@ public final class ImeHooks {
                 button.setAlpha(alpha / 100f);
             }
             int scale = Math.max(60, Math.min(180, config.imeControlBarIconScalePercent));
-            int padding = Math.max(0, Math.round((8f * 100f / scale)
+            int padding = textOnly ? 0 : Math.max(0, Math.round((8f * 100f / scale)
                     * context.getResources().getDisplayMetrics().density));
             button.setPadding(padding, padding, padding, padding);
-            toolbar.addView(button, new LinearLayout.LayoutParams(
+            row.addView(button, new LinearLayout.LayoutParams(
                     0, ViewGroup.LayoutParams.MATCH_PARENT,
                     span));
             if (ImeToolbarSpec.isBackButton(action)) {
@@ -236,8 +260,7 @@ public final class ImeHooks {
             }
             slotIndex += span - 1;
         }
-        ImeToolbarActions.refreshActionButtonStates(service, toolbar);
-        return toolbar;
+        return row;
     }
 
     private static void detachOverlay(Object service) {
@@ -270,6 +293,8 @@ public final class ImeHooks {
         final View inputView;
         final LinearLayout toolbar;
         final String buttonSlots;
+        final boolean expansionEnabled;
+        final String textSlots;
         final int iconScale;
         final int iconAlpha;
         final int yOffset;
@@ -280,6 +305,8 @@ public final class ImeHooks {
             this.inputView = inputView;
             this.toolbar = toolbar;
             this.buttonSlots = config.imeControlBarButtonSlots;
+            this.expansionEnabled = config.imeControlBarExpansionEnabled;
+            this.textSlots = config.imeControlBarTextSlots;
             this.iconScale = config.imeControlBarIconScalePercent;
             this.iconAlpha = config.imeControlBarIconAlphaPercent;
             this.yOffset = config.imeControlBarYOffsetTenthDp;
@@ -290,8 +317,10 @@ public final class ImeHooks {
             return iconScale == config.imeControlBarIconScalePercent
                     && iconAlpha == config.imeControlBarIconAlphaPercent
                     && yOffset == config.imeControlBarYOffsetTenthDp
+                    && expansionEnabled == config.imeControlBarExpansionEnabled
                     && iconColor == currentIconColor
-                    && java.util.Objects.equals(buttonSlots, config.imeControlBarButtonSlots);
+                    && java.util.Objects.equals(buttonSlots, config.imeControlBarButtonSlots)
+                    && java.util.Objects.equals(textSlots, config.imeControlBarTextSlots);
         }
     }
 }

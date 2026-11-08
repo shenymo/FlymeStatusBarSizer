@@ -31,13 +31,16 @@ public final class ImeToolbarEditor {
     private static final String PHONE_PACKAGE = "com.android.phone";
     private final MainActivity activity;
     private final ArrayList<String> buttonSlots = new ArrayList<>();
+    private final ArrayList<String> textSlots = new ArrayList<>();
 
     private LinearLayout buttonContainer;
     private LinearLayout buttonPoolContainer;
     private LinearLayout buttonSlotContainer;
+    private LinearLayout textSlotContainer;
     private TextView applyButton;
     private TextView applyStateView;
     private String appliedSlotsSerialized = SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;
+    private String appliedTextSlotsSerialized = SettingsStore.DEFAULT_IME_CONTROL_BAR_TEXT_SLOTS;
 
     public ImeToolbarEditor(MainActivity activity) {
         this.activity = activity;
@@ -50,6 +53,11 @@ public final class ImeToolbarEditor {
         activity.addActionButtonRow(details, "输入法作用域",
                 "选择输入法及电话服务范围；验证码读取需要启用电话服务范围。新增范围需经 LSPosed 确认。",
                 "管理", this::showImeScopes);
+        activity.addDivider(details);
+        activity.addSwitchRow(details, "显示扩展栏",
+                "在控制栏上方增加一行文字内容，高度为下栏的一半。",
+                SettingsStore.KEY_IME_CONTROL_BAR_EXPANSION_ENABLED,
+                SettingsStore.DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED);
         activity.addDivider(details);
 
         activity.addApplySliderRow(details, "输入法图标大小",
@@ -170,8 +178,15 @@ public final class ImeToolbarEditor {
         appliedSlotsSerialized = activity.readStringSetting(
                 SettingsStore.KEY_IME_CONTROL_BAR_BUTTON_SLOTS,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS);
+        appliedTextSlotsSerialized = activity.readStringSetting(
+                SettingsStore.KEY_IME_CONTROL_BAR_TEXT_SLOTS,
+                SettingsStore.DEFAULT_IME_CONTROL_BAR_TEXT_SLOTS);
         buttonSlots.clear();
         buttonSlots.addAll(ImeToolbarSpec.resolveButtonSlots(appliedSlotsSerialized));
+        textSlots.clear();
+        textSlots.addAll(ImeToolbarSpec.resolveTextSlots(appliedTextSlotsSerialized));
+        appliedTextSlotsSerialized = ImeToolbarSpec.serializeTextSlots(textSlots);
+        removeTextActionsFromButtonSlots();
     }
 
     private void renderEditor() {
@@ -180,7 +195,7 @@ public final class ImeToolbarEditor {
         }
         buttonContainer.removeAllViews();
         activity.addProfileSectionHeader(buttonContainer, "按钮池",
-                "长按这里的按钮拖到下方槽位就会显示；把下方按钮拖回这里就会隐藏。");
+                "拖到下栏可放置普通按钮；文字内容可拖到上栏。拖回按钮池即可隐藏。");
 
         buttonPoolContainer = new LinearLayout(activity);
         buttonPoolContainer.setOrientation(LinearLayout.VERTICAL);
@@ -189,13 +204,20 @@ public final class ImeToolbarEditor {
         buttonPoolContainer.setOnDragListener(this::handlePoolDrag);
         buttonContainer.addView(buttonPoolContainer, activity.matchWrapWithTop(8));
 
-        activity.addProfileSectionHeader(buttonContainer, "7 个固定槽位",
+        activity.addProfileSectionHeader(buttonContainer, "下栏：7 个固定槽位",
                 "从左到右对应工具栏的实际位置；空槽位会保留占位。");
 
         buttonSlotContainer = new LinearLayout(activity);
         buttonSlotContainer.setOrientation(LinearLayout.HORIZONTAL);
         buttonSlotContainer.setPadding(0, activity.dp(8), 0, 0);
         buttonContainer.addView(buttonSlotContainer, activity.matchWrap());
+
+        activity.addProfileSectionHeader(buttonContainer, "上栏：文字内容",
+                "验证码占两个槽位；上栏仅放文字内容。扩展栏关闭时，上栏设置仍会保留。");
+        textSlotContainer = new LinearLayout(activity);
+        textSlotContainer.setOrientation(LinearLayout.HORIZONTAL);
+        textSlotContainer.setPadding(0, activity.dp(8), 0, 0);
+        buttonContainer.addView(textSlotContainer, activity.matchWrap());
 
         LinearLayout actionRow = new LinearLayout(activity);
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -220,6 +242,7 @@ public final class ImeToolbarEditor {
     private void syncEditor() {
         renderPool();
         renderSlots();
+        renderTextSlots();
         syncApplyState();
     }
 
@@ -234,9 +257,14 @@ public final class ImeToolbarEditor {
                 poolButtons.remove(slotButton);
             }
         }
+        for (String slotButton : textSlots) {
+            if (!TextUtils.isEmpty(slotButton)) {
+                poolButtons.remove(slotButton);
+            }
+        }
         if (poolButtons.isEmpty()) {
             TextView empty = new TextView(activity);
-            empty.setText("所有按钮都已经放进下方槽位。");
+            empty.setText("所有按钮都已放入上下栏。");
             empty.setTextColor(activity.subtextColor());
             empty.setTextSize(13);
             empty.setGravity(Gravity.CENTER);
@@ -279,7 +307,7 @@ public final class ImeToolbarEditor {
         item.setMinHeight(activity.dp(40));
         item.setPadding(activity.dp(8), activity.dp(8), activity.dp(8), activity.dp(8));
         item.setBackground(activity.outlinedRect(activity.surfaceColor(), activity.strokeColor(), 1, 18));
-        item.setOnLongClickListener(v -> startDrag(v, button, -1));
+        item.setOnLongClickListener(v -> startDrag(v, button, -1, false));
         return item;
     }
 
@@ -291,7 +319,7 @@ public final class ImeToolbarEditor {
         for (int i = 0; i < ImeToolbarSpec.getButtonSlotCount(); i++) {
             String button = i < buttonSlots.size() ? buttonSlots.get(i) : null;
             int span = ImeToolbarSpec.getButtonSpan(button);
-            View slotView = buildSlotView(i, button);
+            View slotView = buildSlotView(i, button, false);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.WRAP_CONTENT, span);
             if (i > 0) {
@@ -304,8 +332,30 @@ public final class ImeToolbarEditor {
         }
     }
 
-    private View buildSlotView(int slotIndex, String button) {
-        boolean covered = isCoveredByWideButton(slotIndex);
+    private void renderTextSlots() {
+        if (textSlotContainer == null) {
+            return;
+        }
+        textSlotContainer.removeAllViews();
+        for (int i = 0; i < ImeToolbarSpec.getButtonSlotCount(); i++) {
+            String button = i < textSlots.size() ? textSlots.get(i) : null;
+            int span = ImeToolbarSpec.getButtonSpan(button);
+            View slotView = buildSlotView(i, button, true);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, span);
+            if (i > 0) {
+                lp.leftMargin = activity.dp(6);
+            }
+            textSlotContainer.addView(slotView, lp);
+            if (span > 1) {
+                i += span - 1;
+            }
+        }
+    }
+
+    private View buildSlotView(int slotIndex, String button, boolean textRow) {
+        ArrayList<String> slots = textRow ? textSlots : buttonSlots;
+        boolean covered = isCoveredByWideButton(slots, slotIndex);
         LinearLayout slot = new LinearLayout(activity);
         slot.setOrientation(LinearLayout.VERTICAL);
         slot.setGravity(Gravity.CENTER);
@@ -313,10 +363,11 @@ public final class ImeToolbarEditor {
         slot.setMinimumHeight(activity.dp(60));
         slot.setTag(Integer.valueOf(slotIndex));
         slot.setBackground(buildSlotBackground(!TextUtils.isEmpty(button) || covered, false));
-        slot.setOnDragListener(this::handleSlotDrag);
+        slot.setOnDragListener((target, event) -> handleSlotDrag(target, event, textRow));
         if (!TextUtils.isEmpty(button) && !covered) {
-            activity.addSearchItem(slot, ImeToolbarSpec.getButtonLabel(button), "输入法控制栏按钮");
-            slot.setOnLongClickListener(v -> startDrag(v, button, slotIndex));
+            activity.addSearchItem(slot, ImeToolbarSpec.getButtonLabel(button),
+                    textRow ? "输入法控制栏文字内容" : "输入法控制栏按钮");
+            slot.setOnLongClickListener(v -> startDrag(v, button, slotIndex, textRow));
         }
 
         TextView label = new TextView(activity);
@@ -329,13 +380,14 @@ public final class ImeToolbarEditor {
         return slot;
     }
 
-    private boolean startDrag(View view, String button, int sourceSlotIndex) {
+    private boolean startDrag(View view, String button, int sourceSlotIndex,
+            boolean sourceTextRow) {
         if (view == null || TextUtils.isEmpty(button)) {
             return false;
         }
         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         ClipData data = ClipData.newPlainText(MainActivity.IME_CONTROL_BAR_DRAG_LABEL, button);
-        DragState state = new DragState(view, button, sourceSlotIndex);
+        DragState state = new DragState(view, button, sourceSlotIndex, sourceTextRow);
         View.DragShadowBuilder shadow = new View.DragShadowBuilder(view);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             view.startDragAndDrop(data, shadow, state, 0);
@@ -375,32 +427,40 @@ public final class ImeToolbarEditor {
         }
     }
 
-    private boolean handleSlotDrag(View target, DragEvent event) {
+    private boolean handleSlotDrag(View target, DragEvent event, boolean textRow) {
         if (!(target.getTag() instanceof Integer)) {
             return false;
         }
         int slotIndex = (Integer) target.getTag();
         switch (event.getAction()) {
             case DragEvent.ACTION_DRAG_STARTED:
-                return event.getLocalState() instanceof DragState;
+                DragState dragState = event.getLocalState() instanceof DragState
+                        ? (DragState) event.getLocalState() : null;
+                return dragState != null
+                        && (!textRow || ImeToolbarSpec.isTextContentAction(dragState.button));
             case DragEvent.ACTION_DRAG_ENTERED:
-                target.setBackground(buildSlotBackground(isOccupied(slotIndex), true));
+                target.setBackground(buildSlotBackground(isOccupied(textRow ? textSlots : buttonSlots,
+                        slotIndex), true));
                 return true;
             case DragEvent.ACTION_DRAG_EXITED:
-                target.setBackground(buildSlotBackground(isOccupied(slotIndex), false));
+                target.setBackground(buildSlotBackground(isOccupied(textRow ? textSlots : buttonSlots,
+                        slotIndex), false));
                 return true;
             case DragEvent.ACTION_DROP:
-                target.setBackground(buildSlotBackground(isOccupied(slotIndex), false));
+                target.setBackground(buildSlotBackground(isOccupied(textRow ? textSlots : buttonSlots,
+                        slotIndex), false));
                 DragState state = event.getLocalState() instanceof DragState
                         ? (DragState) event.getLocalState() : null;
-                if (state == null) {
+                if (state == null || (textRow
+                        && !ImeToolbarSpec.isTextContentAction(state.button))) {
                     return false;
                 }
-                moveButtonToSlot(state.button, slotIndex);
+                moveButtonToSlot(state, slotIndex, textRow);
                 syncEditor();
                 return true;
             case DragEvent.ACTION_DRAG_ENDED:
-                target.setBackground(buildSlotBackground(isOccupied(slotIndex), false));
+                target.setBackground(buildSlotBackground(isOccupied(textRow ? textSlots : buttonSlots,
+                        slotIndex), false));
                 restoreDraggedView(event.getLocalState());
                 return true;
             default:
@@ -408,61 +468,90 @@ public final class ImeToolbarEditor {
         }
     }
 
-    private void moveButtonToSlot(String button, int targetSlotIndex) {
-        if (TextUtils.isEmpty(button) || targetSlotIndex < 0 || targetSlotIndex >= buttonSlots.size()) {
+    private void moveButtonToSlot(DragState state, int targetSlotIndex, boolean targetTextRow) {
+        String button = state.button;
+        ArrayList<String> targetSlots = targetTextRow ? textSlots : buttonSlots;
+        ArrayList<String> sourceSlots = state.sourceTextRow ? textSlots : buttonSlots;
+        if (TextUtils.isEmpty(button) || (targetTextRow
+                && !ImeToolbarSpec.isTextContentAction(button))
+                || targetSlotIndex < 0 || targetSlotIndex >= targetSlots.size()) {
             return;
         }
         int span = ImeToolbarSpec.getButtonSpan(button);
-        if (targetSlotIndex + span > buttonSlots.size()) {
-            targetSlotIndex = buttonSlots.size() - span;
+        if (targetSlotIndex + span > targetSlots.size()) {
+            targetSlotIndex = targetSlots.size() - span;
         }
-        int sourceSlotIndex = findButtonSlotIndex(button);
-        if (sourceSlotIndex == targetSlotIndex) {
+        int sourceSlotIndex = state.sourceSlotIndex < 0
+                ? -1 : findButtonSlotIndex(sourceSlots, button);
+        if (sourceSlots == targetSlots && sourceSlotIndex == targetSlotIndex) {
             return;
         }
         if (sourceSlotIndex >= 0) {
-            clearButtonSpan(sourceSlotIndex);
+            clearButtonSpan(sourceSlots, sourceSlotIndex);
         }
         for (int i = 0; i < span; i++) {
-            clearSlotOrOwner(targetSlotIndex + i);
+            clearSlotOrOwner(targetSlots, targetSlotIndex + i);
         }
-        buttonSlots.set(targetSlotIndex, button);
-        normalizeButtonSlots();
-    }
-
-    private void removeButtonFromSlots(String button) {
-        int slotIndex = findButtonSlotIndex(button);
-        if (slotIndex >= 0) {
-            clearButtonSpan(slotIndex);
+        targetSlots.set(targetSlotIndex, button);
+        if (targetTextRow) {
+            normalizeTextSlots();
+        } else {
             normalizeButtonSlots();
         }
     }
 
-    private int findButtonSlotIndex(String button) {
+    private void removeButtonFromSlots(String button) {
+        int slotIndex = findButtonSlotIndex(buttonSlots, button);
+        if (slotIndex >= 0) {
+            clearButtonSpan(buttonSlots, slotIndex);
+            normalizeButtonSlots();
+        }
+        slotIndex = findButtonSlotIndex(textSlots, button);
+        if (slotIndex >= 0) {
+            clearButtonSpan(textSlots, slotIndex);
+            normalizeTextSlots();
+        }
+    }
+
+    private void removeTextActionsFromButtonSlots() {
+        for (int i = 0; i < textSlots.size(); i++) {
+            String button = textSlots.get(i);
+            if (!TextUtils.isEmpty(button)) {
+                int lowerIndex = findButtonSlotIndex(buttonSlots, button);
+                if (lowerIndex >= 0) {
+                    clearButtonSpan(buttonSlots, lowerIndex);
+                }
+            }
+        }
+        normalizeButtonSlots();
+    }
+
+    private int findButtonSlotIndex(ArrayList<String> slots, String button) {
         if (TextUtils.isEmpty(button)) {
             return -1;
         }
-        for (int i = 0; i < buttonSlots.size(); i++) {
-            if (button.equals(buttonSlots.get(i))) {
+        for (int i = 0; i < slots.size(); i++) {
+            if (button.equals(slots.get(i))) {
                 return i;
             }
         }
         return -1;
     }
 
-    private boolean isOccupied(int slotIndex) {
-        return slotIndex < buttonSlots.size()
-                && (!TextUtils.isEmpty(buttonSlots.get(slotIndex)) || isCoveredByWideButton(slotIndex));
+    private boolean isOccupied(ArrayList<String> slots, int slotIndex) {
+        return slotIndex < slots.size()
+                && (!TextUtils.isEmpty(slots.get(slotIndex))
+                        || isCoveredByWideButton(slots, slotIndex));
     }
 
-    private boolean isCoveredByWideButton(int slotIndex) {
-        int owner = findWideButtonOwner(slotIndex);
+    private boolean isCoveredByWideButton(ArrayList<String> slots, int slotIndex) {
+        int owner = findWideButtonOwner(slots, slotIndex);
         return owner >= 0 && owner != slotIndex;
     }
 
-    private int findWideButtonOwner(int slotIndex) {
-        for (int i = 0; i < buttonSlots.size(); i++) {
-            String button = buttonSlots.get(i);
+    private int findWideButtonOwner(ArrayList<String> slots, int slotIndex) {
+        for (int i = 0; i < slots.size(); i++) {
+            String button = slots.get(i);
             int span = ImeToolbarSpec.getButtonSpan(button);
             if (!TextUtils.isEmpty(button) && span > 1 && slotIndex >= i && slotIndex < i + span) {
                 return i;
@@ -471,23 +560,23 @@ public final class ImeToolbarEditor {
         return -1;
     }
 
-    private void clearSlotOrOwner(int slotIndex) {
-        int owner = findWideButtonOwner(slotIndex);
+    private void clearSlotOrOwner(ArrayList<String> slots, int slotIndex) {
+        int owner = findWideButtonOwner(slots, slotIndex);
         if (owner >= 0) {
-            clearButtonSpan(owner);
-        } else if (slotIndex >= 0 && slotIndex < buttonSlots.size()) {
-            buttonSlots.set(slotIndex, null);
+            clearButtonSpan(slots, owner);
+        } else if (slotIndex >= 0 && slotIndex < slots.size()) {
+            slots.set(slotIndex, null);
         }
     }
 
-    private void clearButtonSpan(int slotIndex) {
-        if (slotIndex < 0 || slotIndex >= buttonSlots.size()) {
+    private void clearButtonSpan(ArrayList<String> slots, int slotIndex) {
+        if (slotIndex < 0 || slotIndex >= slots.size()) {
             return;
         }
-        String button = buttonSlots.get(slotIndex);
+        String button = slots.get(slotIndex);
         int span = ImeToolbarSpec.getButtonSpan(button);
-        for (int i = 0; i < span && slotIndex + i < buttonSlots.size(); i++) {
-            buttonSlots.set(slotIndex + i, null);
+        for (int i = 0; i < span && slotIndex + i < slots.size(); i++) {
+            slots.set(slotIndex + i, null);
         }
     }
 
@@ -496,6 +585,13 @@ public final class ImeToolbarEditor {
                 ImeToolbarSpec.resolveButtonSlots(ImeToolbarSpec.serializeButtonSlots(buttonSlots));
         buttonSlots.clear();
         buttonSlots.addAll(normalized);
+    }
+
+    private void normalizeTextSlots() {
+        ArrayList<String> normalized =
+                ImeToolbarSpec.resolveTextSlots(ImeToolbarSpec.serializeTextSlots(textSlots));
+        textSlots.clear();
+        textSlots.addAll(normalized);
     }
 
     private android.graphics.drawable.GradientDrawable buildPoolBackground(boolean active) {
@@ -525,7 +621,9 @@ public final class ImeToolbarEditor {
     }
 
     private boolean hasPendingChanges() {
-        return !TextUtils.equals(ImeToolbarSpec.serializeButtonSlots(buttonSlots), appliedSlotsSerialized);
+        return !TextUtils.equals(ImeToolbarSpec.serializeButtonSlots(buttonSlots), appliedSlotsSerialized)
+                || !TextUtils.equals(ImeToolbarSpec.serializeTextSlots(textSlots),
+                        appliedTextSlotsSerialized);
     }
 
     private void syncApplyState() {
@@ -552,8 +650,10 @@ public final class ImeToolbarEditor {
 
     private void saveConfig() {
         appliedSlotsSerialized = ImeToolbarSpec.serializeButtonSlots(buttonSlots);
+        appliedTextSlotsSerialized = ImeToolbarSpec.serializeTextSlots(textSlots);
         SharedPreferences.Editor editor = activity.prefs().edit();
         editor.putString(SettingsStore.KEY_IME_CONTROL_BAR_BUTTON_SLOTS, appliedSlotsSerialized);
+        editor.putString(SettingsStore.KEY_IME_CONTROL_BAR_TEXT_SLOTS, appliedTextSlotsSerialized);
         editor.remove(SettingsStore.KEY_IME_CONTROL_BAR_BUTTON_ORDER);
         editor.remove(SettingsStore.KEY_IME_CONTROL_BAR_HIDDEN_BUTTONS);
         editor.remove(SettingsStore.KEY_IME_CONTROL_BAR_ALIGNMENT);
@@ -566,11 +666,14 @@ public final class ImeToolbarEditor {
         private final View sourceView;
         private final String button;
         private final int sourceSlotIndex;
+        private final boolean sourceTextRow;
 
-        private DragState(View sourceView, String button, int sourceSlotIndex) {
+        private DragState(View sourceView, String button, int sourceSlotIndex,
+                boolean sourceTextRow) {
             this.sourceView = sourceView;
             this.button = button;
             this.sourceSlotIndex = sourceSlotIndex;
+            this.sourceTextRow = sourceTextRow;
         }
     }
 }
