@@ -283,10 +283,10 @@ public final class RecentTaskSwitcher {
                     context.registerReceiver(configurationReceiver,
                             new IntentFilter(Intent.ACTION_CONFIGURATION_CHANGED));
                     root.requestFocus();
-                    panelBlur.start();
                     panel.post(() -> {
                         alignToGestureAnchor();
                         animateIn();
+                        panel.postOnAnimation(panelBlur::start);
                     });
                     loadTasksAsync();
                     return;

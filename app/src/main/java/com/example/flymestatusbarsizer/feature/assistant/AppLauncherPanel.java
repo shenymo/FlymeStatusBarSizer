@@ -365,10 +365,10 @@ final class AppLauncherPanel {
                     attached = true;
                     closing = false;
                     root.requestFocus();
-                    panelBlur.start();
                     panel.post(() -> {
                         alignToGestureAnchor();
                         animateIn();
+                        panel.postOnAnimation(panelBlur::start);
                     });
                     return;
                 } catch (Throwable error) {
