@@ -32,6 +32,7 @@ public final class ImeHooks {
     private static final WeakHashMap<Object, View> TRACKED_INPUT_METHOD_VIEWS = new WeakHashMap<>();
     private static final WeakHashMap<Object, OverlayState> OVERLAY_STATES = new WeakHashMap<>();
     private static boolean verificationCodeObserverRegistered;
+    private static boolean verificationCodeObserverWarningLogged;
     private static String lastToolbarDiagnostic;
 
     private ImeHooks() {
@@ -77,9 +78,9 @@ public final class ImeHooks {
                     View inputView = (View) argument;
                     FlymeStatusBarSizer.rememberSystemUiContext(context);
                     FlymeStatusBarSizer.ensureConfigRefreshObserver(context);
-                    ensureVerificationCodeObserver(context);
                     TRACKED_INPUT_METHOD_VIEWS.put(service, inputView);
                     postRefresh(service, inputView);
+                    ensureVerificationCodeObserver(context);
                 }
                 return result;
             });
@@ -91,7 +92,11 @@ public final class ImeHooks {
             onStartInputView.setAccessible(true);
             module.intercept(onStartInputView, chain -> {
                 Object result = chain.proceed();
-                postTrackedRefresh(chain.getThisObject());
+                Object service = chain.getThisObject();
+                if (service instanceof Context) {
+                    ensureVerificationCodeObserver((Context) service);
+                }
+                postTrackedRefresh(service);
                 return result;
             });
 
@@ -115,15 +120,24 @@ public final class ImeHooks {
             if (verificationCodeObserverRegistered) {
                 return;
             }
-            context.getContentResolver().registerContentObserver(
-                    VerificationCodeProvider.URI, false,
-                    new ContentObserver(new Handler(Looper.getMainLooper())) {
-                        @Override
-                        public void onChange(boolean selfChange, Uri uri) {
-                            refreshTrackedInputMethodViews();
-                        }
-                    });
-            verificationCodeObserverRegistered = true;
+            try {
+                context.getContentResolver().registerContentObserver(
+                        VerificationCodeProvider.URI, false,
+                        new ContentObserver(new Handler(Looper.getMainLooper())) {
+                            @Override
+                            public void onChange(boolean selfChange, Uri uri) {
+                                refreshTrackedInputMethodViews();
+                            }
+                        });
+                verificationCodeObserverRegistered = true;
+                verificationCodeObserverWarningLogged = false;
+            } catch (SecurityException error) {
+                if (!verificationCodeObserverWarningLogged) {
+                    FlymeStatusBarSizer.logImeWarning(
+                            "Verification-code observer unavailable; toolbar will continue", error);
+                    verificationCodeObserverWarningLogged = true;
+                }
+            }
         }
     }
 
