@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.ime;
 
 import com.example.flymestatusbarsizer.MainActivity;
+import com.example.flymestatusbarsizer.R;
 import com.example.flymestatusbarsizer.config.RemoteSettingsSync;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 
@@ -15,9 +16,12 @@ import android.view.DragEvent;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
+import android.graphics.Typeface;
 import android.widget.LinearLayout;
 import android.widget.CheckBox;
+import android.widget.ImageView;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 
 import java.util.ArrayList;
@@ -37,6 +41,7 @@ public final class ImeToolbarEditor {
     private LinearLayout buttonPoolContainer;
     private LinearLayout buttonSlotContainer;
     private LinearLayout textSlotContainer;
+    private LinearLayout textSlotSection;
     private TextView applyButton;
     private TextView applyStateView;
     private String appliedSlotsSerialized = SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;
@@ -54,35 +59,74 @@ public final class ImeToolbarEditor {
                 "管理输入法和短信验证码读取范围。",
                 "管理", this::showImeScopes);
         activity.addDivider(details);
-        activity.addSwitchRow(details, "显示扩展栏",
-                "开启后在下栏上方显示半高文字栏。默认关闭。",
+        Switch expansionSwitch = activity.addSwitchRow(details, "拓展栏",
+                "在主控制栏上方显示文字栏。",
                 SettingsStore.KEY_IME_CONTROL_BAR_EXPANSION_ENABLED,
-                SettingsStore.DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED);
+                SettingsStore.DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED,
+                (buttonView, isChecked) -> {
+                    if (textSlotSection != null) {
+                        textSlotSection.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+                    }
+                });
         activity.addDivider(details);
 
-        activity.addApplySliderRow(details, "输入法图标大小",
-                null,
-                SettingsStore.KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
-                SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
-                60, 180, "%");
-        activity.addDivider(details);
-        activity.addApplySliderRow(details, "输入法图标透明度",
-                "验证码文字跟随此透明度，最低保持 50%。",
-                SettingsStore.KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
-                SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
-                10, 100, "%");
-        activity.addDivider(details);
-        activity.addApplyPositionOffsetSliderRow(details, "输入法控制栏上下位置",
-                "正数上移，负数下移。",
-                SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP,
-                SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10);
-        activity.addDivider(details);
         buttonContainer = new LinearLayout(activity);
         buttonContainer.setOrientation(LinearLayout.VERTICAL);
         buttonContainer.setPadding(0, activity.dp(8), 0, 0);
         details.addView(buttonContainer, activity.matchWrap());
         loadConfig();
         renderEditor();
+        textSlotSection.setVisibility(expansionSwitch.isChecked() ? View.VISIBLE : View.GONE);
+
+        activity.addDivider(details);
+        LinearLayout appearanceContent = new LinearLayout(activity);
+        appearanceContent.setOrientation(LinearLayout.VERTICAL);
+        activity.addApplySliderRow(appearanceContent, "图标大小",
+                null,
+                SettingsStore.KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
+                SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
+                60, 180, "%");
+        activity.addDivider(appearanceContent);
+        activity.addApplySliderRow(appearanceContent, "图标透明度",
+                "验证码文字跟随此透明度，最低保持 50%。",
+                SettingsStore.KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
+                SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
+                10, 100, "%");
+        activity.addDivider(appearanceContent);
+        activity.addApplyPositionOffsetSliderRow(appearanceContent, "控制栏上下位置",
+                "正数上移，负数下移。",
+                SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP,
+                SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10);
+        appearanceContent.setVisibility(View.GONE);
+
+        LinearLayout appearanceHeader = new LinearLayout(activity);
+        appearanceHeader.setOrientation(LinearLayout.HORIZONTAL);
+        appearanceHeader.setGravity(Gravity.CENTER_VERTICAL);
+        appearanceHeader.setMinimumHeight(activity.dp(52));
+        appearanceHeader.setPadding(activity.dp(4), activity.dp(8), activity.dp(4), activity.dp(8));
+        TextView appearanceTitle = new TextView(activity);
+        appearanceTitle.setText("控制栏外观");
+        appearanceTitle.setTextColor(activity.textColor());
+        appearanceTitle.setTextSize(16);
+        appearanceTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        appearanceHeader.addView(appearanceTitle, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        ImageView appearanceArrow = new ImageView(activity);
+        appearanceArrow.setImageResource(R.drawable.ic_section_expand);
+        appearanceArrow.setRotation(-90f);
+        appearanceArrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        appearanceHeader.addView(appearanceArrow, new LinearLayout.LayoutParams(
+                activity.dp(24), activity.dp(24)));
+        appearanceHeader.setContentDescription("控制栏外观，已收起，点击展开");
+        activity.setTapClickListener(appearanceHeader, v -> {
+            boolean expand = appearanceContent.getVisibility() != View.VISIBLE;
+            appearanceContent.setVisibility(expand ? View.VISIBLE : View.GONE);
+            appearanceArrow.setRotation(expand ? 0f : -90f);
+            appearanceHeader.setContentDescription("控制栏外观，"
+                    + (expand ? "已展开，点击收起" : "已收起，点击展开"));
+        });
+        details.addView(appearanceHeader, activity.matchWrap());
+        details.addView(appearanceContent, activity.matchWrap());
         return details;
     }
 
@@ -198,15 +242,30 @@ public final class ImeToolbarEditor {
         buttonPoolContainer.setOnDragListener(this::handlePoolDrag);
         buttonContainer.addView(buttonPoolContainer, activity.matchWrapWithTop(8));
 
+        textSlotSection = new LinearLayout(activity);
+        textSlotSection.setOrientation(LinearLayout.VERTICAL);
+        TextView textSlotTitle = new TextView(activity);
+        textSlotTitle.setText("拓展栏槽位");
+        textSlotTitle.setTextColor(activity.subtextColor());
+        textSlotTitle.setTextSize(13);
+        textSlotTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        textSlotSection.addView(textSlotTitle, activity.matchWrap());
         textSlotContainer = new LinearLayout(activity);
         textSlotContainer.setOrientation(LinearLayout.HORIZONTAL);
         textSlotContainer.setPadding(0, activity.dp(8), 0, 0);
-        buttonContainer.addView(textSlotContainer, activity.matchWrap());
+        textSlotSection.addView(textSlotContainer, activity.matchWrap());
+        buttonContainer.addView(textSlotSection, activity.matchWrapWithTop(8));
 
+        TextView buttonSlotTitle = new TextView(activity);
+        buttonSlotTitle.setText("主控制栏槽位");
+        buttonSlotTitle.setTextColor(activity.subtextColor());
+        buttonSlotTitle.setTextSize(13);
+        buttonSlotTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        buttonContainer.addView(buttonSlotTitle, activity.matchWrapWithTop(12));
         buttonSlotContainer = new LinearLayout(activity);
         buttonSlotContainer.setOrientation(LinearLayout.HORIZONTAL);
         buttonSlotContainer.setPadding(0, activity.dp(8), 0, 0);
-        buttonContainer.addView(buttonSlotContainer, activity.matchWrapWithTop(12));
+        buttonContainer.addView(buttonSlotContainer, activity.matchWrap());
 
         LinearLayout actionRow = new LinearLayout(activity);
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
