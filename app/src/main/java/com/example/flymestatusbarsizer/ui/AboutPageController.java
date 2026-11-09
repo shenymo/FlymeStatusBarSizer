@@ -5,7 +5,7 @@ import com.example.flymestatusbarsizer.MainActivity;
 
 import android.content.ComponentName;
 import android.content.pm.PackageManager;
-import android.graphics.drawable.GradientDrawable;
+import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -17,21 +17,18 @@ public final class AboutPageController {
     }
 
     public static void bind(MainActivity activity, LinearLayout root) {
-        root.addView(buildAppCard(activity, true), PageViewUtils.matchWrap());
-        root.addView(buildProjectCard(activity, true), PageViewUtils.matchWrapWithTop(activity, 8));
-        root.addView(buildBuildCard(activity, true), PageViewUtils.matchWrapWithTop(activity, 8));
-    }
+        addGroupTitle(activity, root, "应用入口");
+        LinearLayout appRow = new LinearLayout(activity);
+        appRow.setGravity(Gravity.CENTER_VERTICAL);
+        appRow.setMinimumHeight(PageViewUtils.dp(activity, 56));
+        TextView appTitle = buildText(activity, "隐藏桌面应用图标", 16, activity.textColor());
+        appRow.addView(appTitle, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
-    private static View buildAppCard(MainActivity activity, boolean expanded) {
         PackageManager packageManager = activity.getPackageManager();
         ComponentName launcher = new ComponentName(activity, MainActivity.class.getName() + "Alias");
         Switch toggle = new Switch(activity);
         activity.styleSwitch(toggle);
-        toggle.setText("隐藏桌面应用图标");
-        activity.addSearchItem(toggle, toggle.getText().toString(), "隐藏后请从 LSPosed 模块页面打开设置；关闭此开关即可恢复桌面图标。");
-        toggle.setTextColor(activity.textColor());
-        toggle.setTextSize(16);
-        toggle.setMinHeight(PageViewUtils.dp(activity, 44));
         toggle.setChecked(packageManager.getComponentEnabledSetting(launcher)
                 == PackageManager.COMPONENT_ENABLED_STATE_DISABLED);
         toggle.setOnCheckedChangeListener((button, hidden) -> {
@@ -51,138 +48,101 @@ public final class AboutPageController {
                 activity.showToast("桌面图标设置失败");
             }
         });
-        return activity.buildSectionCard("应用入口",
-                "隐藏后请从 LSPosed 模块页面打开设置；关闭此开关即可恢复桌面图标。", toggle, expanded);
+        appRow.addView(toggle, PageViewUtils.wrapWrap());
+        activity.addSearchItem(appRow, "隐藏桌面应用图标", null);
+        root.addView(appRow, PageViewUtils.matchWrap());
+
+        addGroupTitle(activity, root, "项目与交流");
+        addClickableRow(activity, root, "GitHub", null, "›",
+                () -> activity.openExternalLink(activity.githubUrl()));
+        addDivider(activity, root);
+        addClickableRow(activity, root, "QQ群", activity.qqGroupNumber(), "›",
+                () -> activity.openExternalLink(activity.qqGroupUrl()));
+        addDivider(activity, root);
+        addClickableRow(activity, root, "QQ频道", "FlymeBarSizer", "›",
+                () -> activity.openExternalLink(activity.qqChannelUrl()));
+
+        addGroupTitle(activity, root, "版本");
+        addValueRow(activity, root, "当前版本", BuildConfig.VERSION_NAME);
+        addDivider(activity, root);
+        addClickableRow(activity, root, "检查更新", null, "›", activity::checkForUpdatesManually);
+        addDivider(activity, root);
+        addClickableRow(activity, root, "版本与适用范围", null, "›",
+                () -> activity.openPage(MainActivity.Page.ABOUT_DETAILS));
     }
 
-    private static View buildProjectCard(MainActivity activity, boolean expanded) {
-        LinearLayout content = new LinearLayout(activity);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.addView(buildLinkRow(activity,
-                "GitHub",
-                "仓库地址",
-                activity.githubUrl(),
-                activity.githubUrl()),
-                PageViewUtils.matchWrap());
-        content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
-        content.addView(buildLinkRow(activity,
-                "QQ 群",
-                "QQ群 " + activity.qqGroupNumber(),
-                "加入群聊",
-                activity.qqGroupUrl()),
-                PageViewUtils.matchWrapWithTop(activity, 8));
-        content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
-        content.addView(buildLinkRow(activity,
-                "QQ 频道",
-                "QQ 群已满，可加入 QQ 频道“FlymeBarSizer”交流。",
-                "加入频道",
-                activity.qqChannelUrl()),
-                PageViewUtils.matchWrapWithTop(activity, 8));
-        return activity.buildSectionCard(
-                "项目与交流",
-                "提供项目仓库和交流入口。",
-                content,
-                expanded);
+    public static void bindDetails(MainActivity activity, LinearLayout root) {
+        addGroupTitle(activity, root, "版本");
+        addValueRow(activity, root, "当前版本", BuildConfig.VERSION_NAME);
+        addDivider(activity, root);
+        addValueRow(activity, root, "构建日期", BuildConfig.BUILD_DATE);
+
+        addGroupTitle(activity, root, "适用范围");
+        TextView scope = buildText(activity, activity.supportedScopesSummary(), 14,
+                activity.subtextColor());
+        scope.setPadding(0, PageViewUtils.dp(activity, 8), 0, PageViewUtils.dp(activity, 12));
+        activity.addSearchItem(scope, "适用范围", activity.supportedScopesSummary());
+        root.addView(scope, PageViewUtils.matchWrap());
     }
 
-    private static View buildBuildCard(MainActivity activity, boolean expanded) {
-        LinearLayout content = new LinearLayout(activity);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.addView(buildInfoRow(activity, "当前版本", BuildConfig.VERSION_NAME), PageViewUtils.matchWrap());
-        content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
-        content.addView(buildActionRow(activity, "检查更新", "检查 GitHub 是否有新的模块版本。", "检查更新",
-                activity::checkForUpdatesManually), PageViewUtils.matchWrapWithTop(activity, 8));
-        content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
-        content.addView(buildInfoRow(activity, "构建日期", BuildConfig.BUILD_DATE), PageViewUtils.matchWrapWithTop(activity, 8));
-        content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
-        content.addView(buildInfoRow(activity, "支持范围", activity.supportedScopesSummary()), PageViewUtils.matchWrapWithTop(activity, 8));
-        return activity.buildSectionCard(
-                "版本与适用范围",
-                "查看版本、构建日期和模块支持的应用范围。",
-                content,
-                expanded);
+    private static void addGroupTitle(MainActivity activity, LinearLayout root, String label) {
+        TextView title = buildText(activity, label, 13, activity.subtextColor());
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        title.setPadding(PageViewUtils.dp(activity, 4), 0, 0, 0);
+        root.addView(title, PageViewUtils.matchWrapWithTop(activity, 16));
     }
 
-    private static LinearLayout buildLinkRow(
-            MainActivity activity,
-            String titleText,
-            String summaryText,
-            String buttonText,
-            String url) {
-        return buildActionRow(activity, titleText, summaryText, buttonText,
-                () -> activity.openExternalLink(url));
-    }
-
-    private static LinearLayout buildActionRow(
-            MainActivity activity,
-            String titleText,
-            String summaryText,
-            String buttonText,
-            Runnable action) {
+    private static void addClickableRow(MainActivity activity, LinearLayout root, String label,
+            String value, String trailing, Runnable action) {
         LinearLayout row = new LinearLayout(activity);
-        row.setOrientation(LinearLayout.VERTICAL);
-
-        TextView title = new TextView(activity);
-        title.setText(titleText);
-        title.setTextColor(activity.textColor());
-        title.setTextSize(16);
-        row.addView(title, PageViewUtils.matchWrap());
-
-        TextView summary = new TextView(activity);
-        summary.setText(summaryText);
-        summary.setTextColor(activity.subtextColor());
-        summary.setTextSize(13);
-        summary.setPadding(0, PageViewUtils.dp(activity, 4), 0, 0);
-        row.addView(summary, PageViewUtils.matchWrap());
-
-        TextView button = new TextView(activity);
-        button.setText(buttonText);
-        button.setTextColor(activity.primaryColor());
-        button.setTextSize(13);
-        button.setGravity(Gravity.CENTER);
-        button.setPadding(
-                PageViewUtils.dp(activity, 14),
-                PageViewUtils.dp(activity, 6),
-                PageViewUtils.dp(activity, 14),
-                PageViewUtils.dp(activity, 6));
-        button.setBackground(buildOutlinedButtonBackground(activity));
-        button.setOnClickListener(v -> action.run());
-        activity.addSearchItem(row, titleText, summaryText);
-        row.addView(button, PageViewUtils.matchWrapWithTop(activity, 8));
-        return row;
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(PageViewUtils.dp(activity, 52));
+        row.setPadding(PageViewUtils.dp(activity, 4), PageViewUtils.dp(activity, 6),
+                PageViewUtils.dp(activity, 4), PageViewUtils.dp(activity, 6));
+        TextView title = buildText(activity, label, 16, activity.textColor());
+        row.addView(title, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        if (value != null) {
+            TextView valueView = buildText(activity, value, 14, activity.subtextColor());
+            valueView.setPadding(0, 0, PageViewUtils.dp(activity, 8), 0);
+            row.addView(valueView, PageViewUtils.wrapWrap());
+        }
+        TextView arrow = buildText(activity, trailing, 22, activity.subtextColor());
+        arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(arrow, PageViewUtils.wrapWrap());
+        activity.setTapClickListener(row, v -> action.run());
+        activity.addSearchItem(row, label, value);
+        root.addView(row, PageViewUtils.matchWrap());
     }
 
-    private static LinearLayout buildInfoRow(MainActivity activity, String titleText, String valueText) {
+    private static void addValueRow(MainActivity activity, LinearLayout root,
+            String label, String value) {
         LinearLayout row = new LinearLayout(activity);
-        row.setOrientation(LinearLayout.VERTICAL);
-
-        TextView title = new TextView(activity);
-        title.setText(titleText);
-        title.setTextColor(activity.textColor());
-        title.setTextSize(16);
-        row.addView(title, PageViewUtils.matchWrap());
-
-        TextView value = new TextView(activity);
-        value.setText(valueText);
-        value.setTextColor(activity.subtextColor());
-        value.setTextSize(13);
-        value.setPadding(0, PageViewUtils.dp(activity, 4), 0, 0);
-        row.addView(value, PageViewUtils.matchWrap());
-        return row;
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(PageViewUtils.dp(activity, 48));
+        TextView title = buildText(activity, label, 16, activity.textColor());
+        row.addView(title, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(buildText(activity, value, 14, activity.subtextColor()),
+                PageViewUtils.wrapWrap());
+        activity.addSearchItem(row, label, value);
+        root.addView(row, PageViewUtils.matchWrap());
     }
 
-    private static TextView buildDivider(MainActivity activity) {
-        TextView divider = new TextView(activity);
-        divider.setHeight(PageViewUtils.dp(activity, 1));
+    private static void addDivider(MainActivity activity, LinearLayout root) {
+        View divider = new View(activity);
         divider.setBackgroundColor(activity.strokeColor());
-        return divider;
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, PageViewUtils.dp(activity, 1));
+        params.leftMargin = PageViewUtils.dp(activity, 4);
+        root.addView(divider, params);
     }
 
-    private static GradientDrawable buildOutlinedButtonBackground(MainActivity activity) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(activity.surfaceColor());
-        drawable.setCornerRadius(PageViewUtils.dp(activity, 999));
-        drawable.setStroke(PageViewUtils.dp(activity, 1), activity.featureStrokeColor());
-        return drawable;
+    private static TextView buildText(MainActivity activity, String value, int size, int color) {
+        TextView text = new TextView(activity);
+        text.setText(value);
+        text.setTextSize(size);
+        text.setTextColor(color);
+        return text;
     }
 }

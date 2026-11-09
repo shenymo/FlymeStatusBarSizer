@@ -201,7 +201,8 @@ public class MainActivity extends Activity {
         SYSTEM_INTERACTION("手势与系统交互", "调整侧边手势、单手模式、MBack、小窗、输入法和最近任务。", null, true),
         SIDE_GESTURE_SETTINGS("侧边手势增强", "分别设置左右边缘的滑动动作和触发方式。", null, false),
         ADVANCED_DEBUG("工具与调试", "管理配置、性能日志、布局微调和调试工具。", null, true),
-        ABOUT("关于与支持", "查看项目地址、交流入口、版本信息和模块适用范围。", null, false),
+        ABOUT("关于与支持", null, null, false),
+        ABOUT_DETAILS("版本与适用范围", null, null, false),
         DONATION("捐赠", null, null, false),
         POSITION_TUNING("状态栏位置微调", "微调时钟、电池、移动网络、Wi-Fi 和输入法控制栏的位置。", null, true),
         CAMERA_CIRCLE_POSITION("环形电池位置", "调整环形电池相对摄像头挖孔中心的位置。", null, true),
@@ -346,6 +347,7 @@ public class MainActivity extends Activity {
                 SideGestureSettingsPageController::bind);
         registerPage(Page.ADVANCED_DEBUG, R.layout.page_advanced_debug, AdvancedDebugPageController::bind);
         registerPage(Page.ABOUT, R.layout.page_about, AboutPageController::bind);
+        registerPage(Page.ABOUT_DETAILS, R.layout.page_about, AboutPageController::bindDetails);
         registerPage(Page.DONATION, R.layout.page_donation, null);
         registerPage(Page.POSITION_TUNING, R.layout.page_position_tuning, PositionTuningPageController::bind);
         registerPage(Page.CAMERA_CIRCLE_POSITION, R.layout.page_position_tuning,
