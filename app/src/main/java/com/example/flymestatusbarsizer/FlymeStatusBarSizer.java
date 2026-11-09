@@ -7708,8 +7708,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final float stackLeftFadeDistanceRatio;
         public final float stackTitleFadeDistanceMultiplier;
         public final float stackLeftReleaseAlphaThreshold;
-        public final float stackScrollFrameRate;
-        public final long stackFrameRateReleaseDelayMs;
 
         private LauncherRecentsConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
@@ -7843,12 +7841,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     c -> c.launcherStackTitleFadeDistancePercent);
             stackLeftReleaseAlphaThreshold = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT,
                     c -> c.launcherStackLeftReleaseAlphaThresholdPercent);
-            stackScrollFrameRate = config == null
-                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_SCROLL_FRAME_RATE
-                    : config.launcherStackScrollFrameRate;
-            stackFrameRateReleaseDelayMs = config == null
-                    ? SettingsStore.DEFAULT_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS
-                    : config.launcherStackFrameRateReleaseDelayMs;
         }
 
         private static float percent(ModuleConfig config, int defaultValue, StackPercentReader reader) {

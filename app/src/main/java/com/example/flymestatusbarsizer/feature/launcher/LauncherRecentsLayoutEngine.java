@@ -505,7 +505,6 @@ final class LauncherRecentsLayoutEngine {
                                 "isScrollerFinished",
                                 true)) {
                             LauncherRecentsPerf.pulseSession("scroll", recentsView, 100L);
-                            LauncherRecentsFrameRateController.onActiveScroll(recentsView);
                         }
                         return result;
                     }
@@ -521,7 +520,6 @@ final class LauncherRecentsLayoutEngine {
                             "isScrollerFinished",
                             true)) {
                         LauncherRecentsPerf.pulseSession("scroll", recentsView, 100L);
-                        LauncherRecentsFrameRateController.onActiveScroll(recentsView);
                         if (LauncherRecentsState.isAppToRecentsTouchTakeoverActive(recentsView)) {
                             LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
                             applyStableStackLayout(recentsView, false, "entryTouchScroll");

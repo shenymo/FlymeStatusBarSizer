@@ -1029,12 +1029,6 @@ public final class SettingsCardFactory {
         addStackParam(content, "左侧卡片隐藏阈值", "左侧卡片透明度低于此值后不再参与显示。",
                 SettingsStore.KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT, 0, 100, "%");
 
-        content = addSection(root, "动画性能", "调整滑动时的刷新率和资源释放延迟。");
-        addStackParam(content, "滑动刷新率", "最近任务滑动时向系统请求的刷新率。",
-                SettingsStore.KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE, 30, 240, "Hz");
-        addStackParam(content, "帧率释放延迟", "停止滑动后恢复系统默认帧率的延迟。",
-                SettingsStore.KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS, 0, 30000, "ms");
-
         content = addSection(root, "参数备份与恢复", "");
         activity.addActionButtonRow(content, "导出最近任务参数",
                 "复制当前最近任务布局参数 JSON。",

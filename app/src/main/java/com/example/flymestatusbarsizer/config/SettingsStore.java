@@ -439,10 +439,6 @@ public final class SettingsStore {
             "launcher_stack_title_fade_distance_percent";
     public static final String KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT =
             "launcher_stack_left_release_alpha_threshold_percent";
-    public static final String KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE =
-            "launcher_stack_scroll_frame_rate";
-    public static final String KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS =
-            "launcher_stack_frame_rate_release_delay_ms";
     public static final String KEY_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED =
             "launcher_page_indicator_swipe_enabled";
     public static final String KEY_LAUNCHER_AICY_ENTRY_ENABLED = "launcher_aicy_entry_enabled";
@@ -681,8 +677,6 @@ public final class SettingsStore {
     public static final int DEFAULT_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT = 24;
     public static final int DEFAULT_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT = 160;
     public static final int DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT = 5;
-    public static final int DEFAULT_LAUNCHER_STACK_SCROLL_FRAME_RATE = 120;
-    public static final int DEFAULT_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS = 5000;
     public static final boolean DEFAULT_LAUNCHER_PAGE_INDICATOR_SWIPE_ENABLED = false;
     public static final boolean DEFAULT_LAUNCHER_AICY_ENTRY_ENABLED = false;
     public static final String DEFAULT_LAUNCHER_AICY_ENTRY_TEXT = "Aicy";
@@ -893,8 +887,6 @@ public final class SettingsStore {
             KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT,
             KEY_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT,
-            KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE,
-            KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS,
             KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT,
             KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
             KEY_IME_CONTROL_BAR_Y_OFFSET_DP,
@@ -1057,8 +1049,6 @@ public final class SettingsStore {
             KEY_LAUNCHER_STACK_LEFT_FADE_DISTANCE_PERCENT,
             KEY_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT,
             KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT,
-            KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE,
-            KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS
     };
 
     static boolean isLauncherStackParameterKey(String key) {
@@ -1458,10 +1448,6 @@ public final class SettingsStore {
                 return DEFAULT_LAUNCHER_STACK_TITLE_FADE_DISTANCE_PERCENT;
             case KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT:
                 return DEFAULT_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT;
-            case KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE:
-                return DEFAULT_LAUNCHER_STACK_SCROLL_FRAME_RATE;
-            case KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS:
-                return DEFAULT_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS;
             case KEY_IME_CONTROL_BAR_ICON_SCALE_PERCENT:
                 return DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT;
             case KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT:
@@ -2133,12 +2119,6 @@ public final class SettingsStore {
         }
         if (KEY_LAUNCHER_STACK_LEFT_RELEASE_ALPHA_THRESHOLD_PERCENT.equals(key)) {
             return Math.max(0, Math.min(100, value));
-        }
-        if (KEY_LAUNCHER_STACK_SCROLL_FRAME_RATE.equals(key)) {
-            return Math.max(30, Math.min(240, value));
-        }
-        if (KEY_LAUNCHER_STACK_FRAME_RATE_RELEASE_DELAY_MS.equals(key)) {
-            return Math.max(0, Math.min(30000, value));
         }
         return value;
     }
