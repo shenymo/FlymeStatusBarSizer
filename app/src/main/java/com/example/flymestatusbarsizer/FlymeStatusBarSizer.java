@@ -706,16 +706,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    public static boolean isLauncherRecentsPerfLoggingEnabled(Context context) {
-        ModuleConfig config = ModuleConfig.load(context);
-        return config != null && config.launcherRecentsPerfLoggingEnabled;
-    }
-
-    public static boolean isLauncherRecentsFlowLoggingEnabled(Context context) {
-        ModuleConfig config = ModuleConfig.load(context);
-        return config != null && config.launcherRecentsFlowLoggingEnabled;
-    }
-
     public static boolean isOneMindPerfDisableEnabled() {
         ModuleConfig config = ModuleConfig.load(null);
         return config != null && config.enabled && config.oneMindPerfDisableEnabled;
@@ -7665,8 +7655,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean launcherRecentsCardCornerRadiusEnabled;
         public final int launcherRecentsCardCornerRadiusDp;
         public final boolean launcherStackCurrentAppCentered;
-        public final boolean launcherRecentsPerfLoggingEnabled;
-        public final boolean launcherRecentsFlowLoggingEnabled;
         public final float stackRightVisibleRatio;
         public final float stackLeftMoveRatio;
         public final float stackLeftRestInsetRatio;
@@ -7728,12 +7716,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                     : config.launcherRecentsCardCornerRadiusDp;
             launcherStackCurrentAppCentered = launcherIosStackRecentsEnabled
                     && config.launcherStackCurrentAppCentered;
-            launcherRecentsPerfLoggingEnabled = enabled
-                    && config != null
-                    && config.launcherRecentsPerfLoggingEnabled;
-            launcherRecentsFlowLoggingEnabled = enabled
-                    && config != null
-                    && config.launcherRecentsFlowLoggingEnabled;
             stackRightVisibleRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT,
                     c -> c.launcherStackRightVisiblePercent);
             stackLeftMoveRatio = percent(config, SettingsStore.DEFAULT_LAUNCHER_STACK_LEFT_MOVE_PERCENT,

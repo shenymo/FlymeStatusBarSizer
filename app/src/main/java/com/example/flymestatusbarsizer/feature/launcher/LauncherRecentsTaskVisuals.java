@@ -722,23 +722,21 @@ final class LauncherRecentsTaskVisuals {
             return;
         }
         float clampedProgress = LauncherRecentsLayoutEngine.clamp(blurProgress, 0f, 1f);
-        LauncherRecentsPerf.measure("blur:applyProgress", taskView, () -> {
-            markStackTaskVisualStateDirty(taskView);
-            float blurPx = FlymeStatusBarSizer.dp(
-                    taskView.getContext(),
-                    stackContentMaxBlurDp(taskView)) * clampedProgress;
-            LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
-            if (targets == null) {
-                return;
-            }
-            for (int i = 0; i < targets.snapshotViews.length; i++) {
-                applyStackContentBlur(targets.snapshotViews[i], blurPx);
-                applyStackIconBlur(
-                        targets.iconViews[i],
-                        targets.iconAsViews[i],
-                        blurPx);
-            }
-        });
+        markStackTaskVisualStateDirty(taskView);
+        float blurPx = FlymeStatusBarSizer.dp(
+                taskView.getContext(),
+                stackContentMaxBlurDp(taskView)) * clampedProgress;
+        LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
+        if (targets == null) {
+            return;
+        }
+        for (int i = 0; i < targets.snapshotViews.length; i++) {
+            applyStackContentBlur(targets.snapshotViews[i], blurPx);
+            applyStackIconBlur(
+                    targets.iconViews[i],
+                    targets.iconAsViews[i],
+                    blurPx);
+        }
     }
 
     static float readStackContentBlurProgress(View taskView) {
@@ -765,18 +763,16 @@ final class LauncherRecentsTaskVisuals {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || taskView == null) {
             return;
         }
-        LauncherRecentsPerf.measure("blur:clearProgress", taskView, () -> {
-            LauncherRecentsState.StackContentTargets targets =
-                    LauncherRecentsState.STACK_CONTENT_TARGETS.get(taskView);
-            if (targets == null) {
-                return;
-            }
-            for (int i = 0; i < targets.snapshotViews.length; i++) {
-                clearStackContentTargetBlurIfApplied(targets.snapshotViews[i]);
-                clearStackIconBlurIfApplied(targets.iconAsViews[i]);
-            }
-            LauncherRecentsState.STACK_CONTENT_TARGETS.remove(taskView);
-        });
+        LauncherRecentsState.StackContentTargets targets =
+                LauncherRecentsState.STACK_CONTENT_TARGETS.get(taskView);
+        if (targets == null) {
+            return;
+        }
+        for (int i = 0; i < targets.snapshotViews.length; i++) {
+            clearStackContentTargetBlurIfApplied(targets.snapshotViews[i]);
+            clearStackIconBlurIfApplied(targets.iconAsViews[i]);
+        }
+        LauncherRecentsState.STACK_CONTENT_TARGETS.remove(taskView);
     }
 
     static void clearRecentsStackContentBlur(View recentsView) {

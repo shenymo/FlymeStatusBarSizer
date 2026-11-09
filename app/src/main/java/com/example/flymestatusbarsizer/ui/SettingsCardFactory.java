@@ -911,19 +911,9 @@ public final class SettingsCardFactory {
                 "开启后输出 Wi-Fi 更新过程的耗时日志，便于分析刷新开销。",
                 SettingsStore.KEY_WIFI_PERF_LOGGING_ENABLED,
                 SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED);
-        activity.addDivider(content);
-        activity.addSwitchRow(content, "最近任务性能日志",
-                "开启后输出堆叠最近任务交互的帧耗时、卡顿率和慢调用。",
-                SettingsStore.KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED,
-                SettingsStore.DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED);
-        activity.addDivider(content);
-        activity.addSwitchRow(content, "最近任务交互日志",
-                "开启后输出触摸、分页、删除和动画节点，不输出逐帧日志。",
-                SettingsStore.KEY_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED,
-                SettingsStore.DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED);
         return activity.buildSectionCard(
                 "性能日志",
-                "管理工作台、Wi-Fi 和最近任务的调试日志与性能数据输出。",
+                "管理工作台和 Wi-Fi 的调试日志与性能数据输出。",
                 content);
     }
 

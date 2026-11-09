@@ -150,17 +150,14 @@ final class LauncherRecentsTouchController {
             Class<?> pendingAnimationClass,
             Class<?> taskViewClass,
             long durationMs) {
-        LauncherRecentsPerf.beginSession("clearAll", recentsView);
         Object pendingAnimation = LauncherRecentsCompat.createPendingAnimationInstance(
                 pendingAnimationConstructor,
                 durationMs);
         if (pendingAnimation == null) {
-            LauncherRecentsPerf.finishSession("clearAll", recentsView, "abort");
             return false;
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
         if (taskViewCount <= 0) {
-            LauncherRecentsPerf.finishSession("clearAll", recentsView, "abort");
             return false;
         }
         Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
@@ -187,7 +184,6 @@ final class LauncherRecentsTouchController {
             }
         }
         if (visibleTasks.isEmpty()) {
-            LauncherRecentsPerf.finishSession("clearAll", recentsView, "abort");
             return false;
         }
 
@@ -209,7 +205,6 @@ final class LauncherRecentsTouchController {
                     pendingAnimation,
                     visibleTaskIndices.get(i) * 30L,
                     isRunningTask)) {
-                LauncherRecentsPerf.finishSession("clearAll", recentsView, "abort");
                 return false;
             }
         }
@@ -226,12 +221,10 @@ final class LauncherRecentsTouchController {
                 "addEndListener",
                 new Class<?>[]{Consumer.class},
                 endListener)) {
-            LauncherRecentsPerf.finishSession("clearAll", recentsView, "abort");
             return false;
         }
         Object animation = LauncherRecentsCompat.invokeCompat(pendingAnimation, "buildAnim");
         if (!(animation instanceof Animator)) {
-            LauncherRecentsPerf.finishSession("clearAll", recentsView, "abort");
             return false;
         }
         for (int i = 0; i < hiddenTasks.size(); i++) {
@@ -240,22 +233,6 @@ final class LauncherRecentsTouchController {
         LauncherRecentsCompat.writeField(recentsView, "mPendingAnimation", pendingAnimation);
         AnimatorSet animatorSet = new AnimatorSet();
         animatorSet.play((Animator) animation);
-        animatorSet.addListener(new AnimatorListenerAdapter() {
-            private boolean cancelled;
-
-            @Override
-            public void onAnimationCancel(Animator animation) {
-                cancelled = true;
-            }
-
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                LauncherRecentsPerf.finishSession(
-                        "clearAll",
-                        recentsView,
-                        cancelled ? "cancel" : "success");
-            }
-        });
         animatorSet.start();
         return true;
     }
@@ -316,24 +293,10 @@ final class LauncherRecentsTouchController {
                     if (shouldKeepStackDismissGestureAwayFromPagedView(
                             recentsView,
                             motionEvent)) {
-                        logStackFlow("touch:intercept:releaseToDismiss",
-                                recentsView, motionEvent, null);
                         releasePagedTouchForStackDismiss(recentsView);
                         return false;
                     }
-                    boolean stackLayout = LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(
-                            recentsView);
-                    long nativeStartNs = stackLayout
-                            ? LauncherRecentsPerf.start(recentsView)
-                            : 0L;
-                    try {
-                        return chain.proceed();
-                    } finally {
-                        LauncherRecentsPerf.end(
-                                "native:onInterceptTouchEvent",
-                                recentsView,
-                                nativeStartNs);
-                    }
+                    return chain.proceed();
                 }
                 return chain.proceed();
             });
@@ -379,14 +342,10 @@ final class LauncherRecentsTouchController {
                     if (shouldKeepStackDismissGestureAwayFromPagedView(
                             recentsView,
                             motionEvent)) {
-                        logStackFlow("touch:event:releaseToDismiss",
-                                recentsView, motionEvent, null);
                         releasePagedTouchForStackDismiss(recentsView);
                         return false;
                     }
                     if (shouldSkipBlankTapPagedRelease(recentsView, motionEvent)) {
-                        logStackFlow("touch:event:blankTapRelease",
-                                recentsView, motionEvent, null);
                         if (!LauncherRecentsTransitionController.isBlankTapHomeExitActive(
                                 recentsView)) {
                             LauncherRecentsCompat.invokeCompat(
@@ -408,9 +367,6 @@ final class LauncherRecentsTouchController {
                     }
                     boolean stackLayout = LauncherRecentsLayoutEngine.shouldUseInteractiveStackLayout(
                             recentsView);
-                    long nativeStartNs = stackLayout
-                            ? LauncherRecentsPerf.start(recentsView)
-                            : 0L;
                     boolean tuneHorizontalRelease = motionEvent.getActionMasked()
                             == MotionEvent.ACTION_UP
                             && stackLayout;
@@ -462,10 +418,6 @@ final class LauncherRecentsTouchController {
                                     "mFlingThresholdVelocity",
                                     originalFlingThresholdVelocity);
                         }
-                        LauncherRecentsPerf.end(
-                                "native:onTouchEvent",
-                                recentsView,
-                                nativeStartNs);
                     }
                     applyStackLayoutAfterPagedMove(recentsView, motionEvent);
                     if (entryTakeover
@@ -597,7 +549,6 @@ final class LauncherRecentsTouchController {
                         return result;
                     }
                     if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
-                        logStackFlow("freeScroll:settle:applied", recentsView, null, null);
                         return null;
                     }
                 }
@@ -628,7 +579,6 @@ final class LauncherRecentsTouchController {
                         return result;
                     }
                     if (LauncherRecentsLayoutEngine.applyDynamicStackLayoutIfNeeded(recentsView)) {
-                        logStackFlow("snapToDestination:applied", recentsView, null, null);
                         return null;
                     }
                 }
@@ -657,8 +607,7 @@ final class LauncherRecentsTouchController {
                         : null;
                 Boolean handled = handleStackDismissControllerTouch(
                         chain.getThisObject(),
-                        motionEvent,
-                        "intercept");
+                        motionEvent);
                 if (handled != null) {
                     return handled;
                 }
@@ -684,8 +633,7 @@ final class LauncherRecentsTouchController {
                         : null;
                 Boolean handled = handleStackDismissControllerTouch(
                         chain.getThisObject(),
-                        motionEvent,
-                        "touch");
+                        motionEvent);
                 if (handled != null) {
                     return handled;
                 }
@@ -708,7 +656,6 @@ final class LauncherRecentsTouchController {
                 || !isAppToRecentsEntryTouchTakeoverNeeded(recentsView)) {
             return;
         }
-        logStackFlow("touch:entryDownHeads", recentsView, motionEvent, null);
         LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
         recentsView.invalidate();
     }
@@ -760,10 +707,6 @@ final class LauncherRecentsTouchController {
         if (Math.abs(dx) <= touchSlop || Math.abs(dx) <= Math.abs(dy)) {
             return false;
         }
-        logStackFlow("touch:entryTakeover",
-                recentsView,
-                motionEvent,
-                "dx=" + Math.round(dx) + " dy=" + Math.round(dy));
         LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
         HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> takeoverVisualStates =
                 captureTakeoverVisualStates(recentsView);
@@ -929,10 +872,6 @@ final class LauncherRecentsTouchController {
         if (Math.abs(dx) <= touchSlop || Math.abs(dx) <= Math.abs(dy)) {
             return false;
         }
-        logStackFlow("touch:overviewTakeover",
-                recentsView,
-                motionEvent,
-                "dx=" + Math.round(dx) + " dy=" + Math.round(dy));
         LauncherRecentsTransitionController.forceRecentsTranslationZero(recentsView);
         LauncherRecentsStateAnimationController.finishOverviewStateStackAnimationForTouchTakeover(
                 recentsView);
@@ -1060,15 +999,12 @@ final class LauncherRecentsTouchController {
 
     private static Boolean handleStackDismissControllerTouch(
             Object controller,
-            MotionEvent motionEvent,
-            String source) {
+            MotionEvent motionEvent) {
         View recentsView = resolveControllerRecentsView(controller);
         if (recentsView == null || motionEvent == null) {
             return null;
         }
         if (!shouldHandleStackDismissTouch(recentsView)) {
-            logStackFlow("dismissController:" + source + ":notStack",
-                    recentsView, motionEvent, null);
             clearStackDismissGesture(recentsView, true);
             return null;
         }
@@ -1084,32 +1020,6 @@ final class LauncherRecentsTouchController {
         return value instanceof View ? (View) value : null;
     }
 
-    private static void logStackFlow(
-            String name,
-            View recentsView,
-            MotionEvent motionEvent,
-            String details) {
-        String message = "";
-        if (motionEvent != null) {
-            message = "action=" + MotionEvent.actionToString(motionEvent.getActionMasked())
-                    + " x=" + Math.round(motionEvent.getX())
-                    + " y=" + Math.round(motionEvent.getY());
-        }
-        if (details != null && !details.isEmpty()) {
-            message = message.isEmpty() ? details : message + " " + details;
-        }
-        LauncherRecentsPerf.flow(name, recentsView, message);
-    }
-
-    private static String taskDetails(View recentsView, View taskView) {
-        if (taskView == null) {
-            return "task=null";
-        }
-        return "taskIndex=" + findTaskViewIndex(recentsView, taskView)
-                + " taskAlpha=" + taskView.getAlpha()
-                + " taskShown=" + taskView.isShown();
-    }
-
     private static Boolean handleStackDismissTouch(View recentsView, MotionEvent motionEvent) {
         int action = motionEvent.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
@@ -1118,11 +1028,7 @@ final class LauncherRecentsTouchController {
                     recentsView,
                     motionEvent.getRawX(),
                     motionEvent.getRawY());
-            logStackFlow("dismiss:down", recentsView, motionEvent,
-                    taskDetails(recentsView, taskView));
             if (!isStackDismissTaskCandidate(recentsView, taskView)) {
-                logStackFlow("dismiss:down:noCandidate",
-                        recentsView, motionEvent, taskDetails(recentsView, taskView));
                 return null;
             }
             StackDismissGestureState state =
@@ -1136,8 +1042,6 @@ final class LauncherRecentsTouchController {
             return null;
         }
         if (!isStackDismissTaskCandidate(recentsView, state.taskView)) {
-            logStackFlow("dismiss:clearInvalidTask",
-                    recentsView, motionEvent, taskDetails(recentsView, state.taskView));
             clearStackDismissGesture(recentsView, true);
             return null;
         }
@@ -1153,10 +1057,6 @@ final class LauncherRecentsTouchController {
                 } else if (isStackMenuDragStart(state, dx, dy, touchSlop)) {
                     beginStackMenuDrag(state, motionEvent);
                 } else if (isStackDismissPrimaryGesture(state, dx, dy, touchSlop)) {
-                    logStackFlow("dismiss:primaryGesture",
-                            recentsView,
-                            motionEvent,
-                            "dx=" + Math.round(dx) + " dy=" + Math.round(dy));
                     clearStackDismissGesture(recentsView, true);
                     return null;
                 } else {
@@ -1176,8 +1076,6 @@ final class LauncherRecentsTouchController {
                 finishStackDismissGesture(state, action == MotionEvent.ACTION_CANCEL);
                 return true;
             }
-            logStackFlow("dismiss:end:notDragging",
-                    recentsView, motionEvent, taskDetails(recentsView, state.taskView));
             clearStackDismissGesture(recentsView, false);
             return false;
         }
@@ -1397,11 +1295,6 @@ final class LauncherRecentsTouchController {
     private static void beginStackDismissDrag(
             StackDismissGestureState state,
             MotionEvent motionEvent) {
-        logStackFlow("dismiss:beginDrag",
-                state.recentsView,
-                motionEvent,
-                taskDetails(state.recentsView, state.taskView));
-        LauncherRecentsPerf.beginSession("dismissTask", state.recentsView);
         state.dragging = true;
         LauncherRecentsState.setPositionOwner(
                 state.recentsView,
@@ -1437,11 +1330,6 @@ final class LauncherRecentsTouchController {
     private static void beginStackMenuDrag(
             StackDismissGestureState state,
             MotionEvent motionEvent) {
-        logStackFlow("menu:beginDrag",
-                state.recentsView,
-                motionEvent,
-                taskDetails(state.recentsView, state.taskView));
-        LauncherRecentsPerf.beginSession("dismissTask", state.recentsView);
         state.dragging = true;
         state.menuDragging = true;
         LauncherRecentsState.setPositionOwner(
@@ -1558,7 +1446,6 @@ final class LauncherRecentsTouchController {
         if (recentsView == null || !isAppToRecentsEntryTouchTakeoverNeeded(recentsView)) {
             return;
         }
-        logStackFlow("dismiss:entryTakeover", recentsView, null, null);
         LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
                 recentsView,
                 true);
@@ -1605,7 +1492,6 @@ final class LauncherRecentsTouchController {
                 recentsView)) {
             return;
         }
-        logStackFlow("dismiss:overviewEntryTakeover", recentsView, null, null);
         LauncherRecentsTransitionController.forceRecentsTranslationZero(recentsView);
         LauncherRecentsStateAnimationController.finishOverviewStateStackAnimationForTouchTakeover(
                 recentsView);
@@ -1679,8 +1565,6 @@ final class LauncherRecentsTouchController {
             return;
         }
         if (canceled) {
-            logStackFlow("dismiss:finish:canceled",
-                    state.recentsView, null, taskDetails(state.recentsView, state.taskView));
             animateStackDismissCancel(state);
             state.recycleVelocityTracker();
             return;
@@ -1691,13 +1575,6 @@ final class LauncherRecentsTouchController {
                         >= resolveStackDismissThreshold(state)
                         || state.dismissDirectionSign * velocity
                         >= stackDismissMinFlingVelocity(state.recentsView);
-        logStackFlow("dismiss:finish",
-                state.recentsView,
-                null,
-                "dismiss=" + dismiss
-                        + " translation=" + Math.round(state.currentDismissTranslation)
-                        + " velocity=" + Math.round(velocity)
-                        + " " + taskDetails(state.recentsView, state.taskView));
         if (dismiss) {
             animateStackDismissSuccess(state);
         } else {
@@ -1737,10 +1614,6 @@ final class LauncherRecentsTouchController {
             public void onAnimationEnd(Animator animation) {
                 state.animator = null;
                 resetStackDismissVisuals(state);
-                LauncherRecentsPerf.finishSession(
-                        "dismissTask",
-                        state.recentsView,
-                        showMenu ? "success" : "cancel");
             }
         });
         animator.start();
@@ -1751,8 +1624,6 @@ final class LauncherRecentsTouchController {
         if (!state.relayoutPrepared) {
             prepareStackDismissRelayoutForDrag(state);
         }
-        logStackFlow("dismiss:animateSuccess:start",
-                state.recentsView, null, taskDetails(state.recentsView, state.taskView));
         float start = state.currentDismissTranslation;
         float end = state.dismissDirectionSign * resolveStackDismissDistance(state);
         float startRelayoutProgress = state.relayoutProgress;
@@ -1781,8 +1652,6 @@ final class LauncherRecentsTouchController {
                 if (STACK_DISMISS_SUCCESS_ANIMATORS.get(state.recentsView) == animation) {
                     STACK_DISMISS_SUCCESS_ANIMATORS.remove(state.recentsView);
                 }
-                logStackFlow("dismiss:animateSuccess:end",
-                        state.recentsView, null, taskDetails(state.recentsView, state.taskView));
                 applyStackDismissProgress(state, end);
                 applyStackDismissRelayoutProgress(state, 1f);
                 finishStackDismissAfterSlideOut(state);
@@ -1827,22 +1696,12 @@ final class LauncherRecentsTouchController {
 
     private static void finishStackDismissAfterSlideOut(StackDismissGestureState state) {
         boolean dismissed = commitStackDismiss(state);
-        logStackFlow("dismiss:afterSlideOut",
-                state.recentsView,
-                null,
-                "dismissed=" + dismissed + " " + taskDetails(state.recentsView, state.taskView));
-        LauncherRecentsPerf.finishSession(
-                "dismissTask",
-                state.recentsView,
-                dismissed ? "success" : "abort");
         if (!dismissed) {
             resetStackDismissVisuals(state);
         }
     }
 
     private static void animateStackDismissCancel(StackDismissGestureState state) {
-        logStackFlow("dismiss:animateCancel:start",
-                state.recentsView, null, taskDetails(state.recentsView, state.taskView));
         float start = state.currentDismissTranslation;
         float startRelayoutProgress = state.relayoutProgress;
         ValueAnimator animator = ValueAnimator.ofFloat(start, state.startDismissTranslation);
@@ -1867,11 +1726,8 @@ final class LauncherRecentsTouchController {
             @Override
             public void onAnimationEnd(Animator animation) {
                 state.animator = null;
-                logStackFlow("dismiss:animateCancel:end",
-                        state.recentsView, null, taskDetails(state.recentsView, state.taskView));
                 applyStackDismissRelayoutProgress(state, 0f);
                 resetStackDismissVisuals(state);
-                LauncherRecentsPerf.finishSession("dismissTask", state.recentsView, "cancel");
             }
         });
         animator.start();
@@ -2183,9 +2039,6 @@ final class LauncherRecentsTouchController {
         if (state == null) {
             return;
         }
-        if (state.dragging) {
-            LauncherRecentsPerf.finishSession("dismissTask", recentsView, "abort");
-        }
         requestParentDisallowIntercept(recentsView, false);
         state.recycleVelocityTracker();
         if (resetVisuals) {
@@ -2265,8 +2118,6 @@ final class LauncherRecentsTouchController {
         View taskView = state != null ? state.taskView : null;
         Class<?> taskViewClass = resolveTaskViewBaseClass(taskView);
         if (!(recentsView instanceof ViewGroup) || taskViewClass == null) {
-            logStackFlow("dismiss:commit:missingClass",
-                    recentsView, null, taskDetails(recentsView, taskView));
             return false;
         }
         int taskViewCount = LauncherRecentsCompat.invokeInt(recentsView, "getTaskViewCount", 0);
@@ -2280,8 +2131,6 @@ final class LauncherRecentsTouchController {
                     new Class<?>[]{taskViewClass},
                     taskView);
             if (!removedTask) {
-                logStackFlow("dismiss:commit:removeFailed",
-                        recentsView, null, taskDetails(recentsView, taskView));
                 return false;
             }
             ((ViewGroup) recentsView).removeViewInLayout(taskView);
@@ -2356,8 +2205,6 @@ final class LauncherRecentsTouchController {
                 new Class<?>[]{taskViewClass},
                 taskView);
         if (!removedTask) {
-            logStackFlow("dismiss:commit:removeFailed",
-                    recentsView, null, taskDetails(recentsView, taskView));
             return false;
         }
         ((ViewGroup) recentsView).removeViewInLayout(taskView);
@@ -3426,7 +3273,6 @@ final class LauncherRecentsTouchController {
     }
 
     static void clearRecentsDeferredSnap(View recentsView) {
-        logStackFlow("deferredSnap:clear", recentsView, null, null);
         Object handlerValue = LauncherRecentsCompat.getFieldCompat(
                 recentsView,
                 "mMainHandlerForAbortScrollAndCheckSnap");

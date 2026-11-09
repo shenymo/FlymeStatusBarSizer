@@ -370,10 +370,6 @@ public final class ModuleConfig {
     public int imeControlBarYOffsetTenthDp = SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10;
     public boolean telephonyDebugEnabled = SettingsStore.DEFAULT_TELEPHONY_DEBUG_ENABLED;
     public boolean wifiPerfLoggingEnabled = SettingsStore.DEFAULT_WIFI_PERF_LOGGING_ENABLED;
-    public boolean launcherRecentsPerfLoggingEnabled =
-            SettingsStore.DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED;
-    public boolean launcherRecentsFlowLoggingEnabled =
-            SettingsStore.DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED;
     public boolean oneMindPerfDisableEnabled = SettingsStore.DEFAULT_ONEMIND_PERF_DISABLE_ENABLED;
     public boolean mzSafeBackgroundOptimizationEnabled =
             SettingsStore.DEFAULT_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED;
@@ -1287,14 +1283,6 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WORKSPACE_FLOW_LOGGING_ENABLED,
                     SettingsStore.DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED);
-            config.launcherRecentsPerfLoggingEnabled = SettingsStore.readBoolean(
-                    prefs,
-                    SettingsStore.KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED,
-                    SettingsStore.DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED);
-            config.launcherRecentsFlowLoggingEnabled = SettingsStore.readBoolean(
-                    prefs,
-                    SettingsStore.KEY_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED,
-                    SettingsStore.DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED);
             config.oneMindPerfDisableEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_ONEMIND_PERF_DISABLE_ENABLED,

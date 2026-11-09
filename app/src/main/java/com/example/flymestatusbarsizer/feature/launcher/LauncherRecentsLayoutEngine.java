@@ -429,9 +429,6 @@ final class LauncherRecentsLayoutEngine {
             module.intercept(method, chain -> {
                 Object thisObject = chain.getThisObject();
                 View recentsView = thisObject instanceof View ? (View) thisObject : null;
-                if (recentsView != null && shouldUseStackLayout(recentsView)) {
-                    LauncherRecentsPerf.pulseSession("scroll", recentsView, 100L);
-                }
                 if (recentsView != null) {
                     LauncherRecentsState.setInsideNativeScrollChange(recentsView, true);
                 }
@@ -504,7 +501,6 @@ final class LauncherRecentsLayoutEngine {
                                 recentsView,
                                 "isScrollerFinished",
                                 true)) {
-                            LauncherRecentsPerf.pulseSession("scroll", recentsView, 100L);
                         }
                         return result;
                     }
@@ -519,7 +515,6 @@ final class LauncherRecentsLayoutEngine {
                             recentsView,
                             "isScrollerFinished",
                             true)) {
-                        LauncherRecentsPerf.pulseSession("scroll", recentsView, 100L);
                         if (LauncherRecentsState.isAppToRecentsTouchTakeoverActive(recentsView)) {
                             LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
                             applyStableStackLayout(recentsView, false, "entryTouchScroll");
@@ -650,20 +645,14 @@ final class LauncherRecentsLayoutEngine {
                 || isLandscapeRecents(recentsView)) {
             return;
         }
-        long perfStartNs = LauncherRecentsPerf.start(recentsView);
         if (!(recentsView instanceof ViewGroup)) {
-            LauncherRecentsPerf.end("prepareRecentsView", recentsView, perfStartNs);
             return;
         }
-        try {
-            ViewGroup group = (ViewGroup) recentsView;
-            LauncherRecentsState.PrepareRecentsViewState state =
-                    prepareRecentsViewState(recentsView);
-            prepareRecentsViewOnce(group, state);
-            syncStackClearAllButton(recentsView, state, false);
-        } finally {
-            LauncherRecentsPerf.end("prepareRecentsView", recentsView, perfStartNs);
-        }
+        ViewGroup group = (ViewGroup) recentsView;
+        LauncherRecentsState.PrepareRecentsViewState state =
+                prepareRecentsViewState(recentsView);
+        prepareRecentsViewOnce(group, state);
+        syncStackClearAllButton(recentsView, state, false);
     }
 
     private static void prepareRecentsViewOnce(
@@ -1015,21 +1004,16 @@ final class LauncherRecentsLayoutEngine {
     }
 
     private static void captureStockTaskStatesForStackApply(View recentsView) {
-        long perfStartNs = LauncherRecentsPerf.start(recentsView);
-        try {
-            if (!LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
-                    recentsView)) {
-                LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
-                return;
-            }
-            if (LauncherRecentsState.isOverviewStateStackBaselineCaptured(recentsView)) {
-                return;
-            }
-            LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
-            LauncherRecentsState.setOverviewStateStackBaselineCaptured(recentsView, true);
-        } finally {
-            LauncherRecentsPerf.end("captureStockTaskStates", recentsView, perfStartNs);
+        if (!LauncherRecentsStateAnimationController.isOverviewStateStackAnimationActive(
+                recentsView)) {
+            LauncherRecentsTaskVisuals.captureStockTaskStates(recentsView);
+            return;
         }
+        if (LauncherRecentsState.isOverviewStateStackBaselineCaptured(recentsView)) {
+            return;
+        }
+        LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
+        LauncherRecentsState.setOverviewStateStackBaselineCaptured(recentsView, true);
     }
 
     private static boolean shouldCaptureStockTaskStatesForStackApply(View recentsView) {
@@ -1853,21 +1837,12 @@ final class LauncherRecentsLayoutEngine {
                 config)) {
             return false;
         }
-        int computedTaskCount = -1;
-        long layoutStartNs = LauncherRecentsPerf.start(recentsView);
-        try {
-            computedTaskCount = applyStackLayoutMeasured(
-                    recentsView,
-                    captureStockState,
-                    taskViewCount,
-                    stackLayoutRadius,
-                    config);
-        } finally {
-            LauncherRecentsPerf.end(
-                    "layoutCompute:" + source,
-                    recentsView,
-                    layoutStartNs);
-        }
+        int computedTaskCount = applyStackLayoutMeasured(
+                recentsView,
+                captureStockState,
+                taskViewCount,
+                stackLayoutRadius,
+                config);
         boolean layoutApplied = computedTaskCount >= 0;
         return layoutApplied;
     }

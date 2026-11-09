@@ -118,14 +118,11 @@ final class LauncherRecentsAttachController {
                         || !LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)) {
                     return chain.proceed();
                 }
-                LauncherRecentsPerf.flow("attach:gestureAnimationStart", recentsView);
-                LauncherRecentsPerf.finishSession("enterRecents", recentsView, "abort");
                 LauncherRecentsLaunchController.clearTaskLaunchFrozenForNewGesture(recentsView);
                 LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
                         recentsView,
                         true);
                 LauncherRecentsStateAnimationController.clearOverviewEntryState(recentsView);
-                LauncherRecentsPerf.beginSession("enterRecents", recentsView);
                 LauncherRecentsLayoutEngine.hideStackClearAllButton(recentsView);
                 LauncherRecentsState.clearAppToRecentsGestureState(recentsView);
                 LauncherRecentsState.setSwipeUpGestureActive(recentsView, true);
@@ -134,15 +131,7 @@ final class LauncherRecentsAttachController {
                         LauncherRecentsState.POSITION_OWNER_ENTER);
                 LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                 LauncherRecentsState.trackRecentsView(recentsView);
-                long nativeStartNs = LauncherRecentsPerf.start(recentsView);
-                try {
-                    return chain.proceed();
-                } finally {
-                    LauncherRecentsPerf.end(
-                            "native:onGestureAnimationStart",
-                            recentsView,
-                            nativeStartNs);
-                }
+                return chain.proceed();
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
@@ -167,20 +156,10 @@ final class LauncherRecentsAttachController {
                         : null;
                 boolean stackLayout = recentsView != null
                         && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView);
-                long nativeStartNs = stackLayout
-                        ? LauncherRecentsPerf.start(recentsView)
-                        : 0L;
-                Object result;
-                try {
-                    result = chain.proceed();
-                } finally {
-                    LauncherRecentsPerf.end("native:applyLoadPlan", recentsView, nativeStartNs);
-                }
+                Object result = chain.proceed();
                 if (stackLayout) {
-                    LauncherRecentsPerf.flow("attach:applyLoadPlan", recentsView);
                     LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                     LauncherRecentsState.trackRecentsView(recentsView);
-                    LauncherRecentsPerf.flow("attach:applyLoadPlan:applyDynamic", recentsView);
                     LauncherRecentsLayoutEngine.requestStackLayout(
                             recentsView,
                             "applyLoadPlan",
@@ -209,13 +188,8 @@ final class LauncherRecentsAttachController {
                 Object thisObject = chain.getThisObject();
                 boolean attached = chain.getArg(0) instanceof Boolean && (Boolean) chain.getArg(0);
                 View recentsView = resolveRecentsView(thisObject);
-                LauncherRecentsPerf.flow("attach:setRecentsAttached",
-                        recentsView,
-                        "attached=" + attached + " animate=" + chain.getArg(1));
                 if (!attached) {
                     if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
-                        LauncherRecentsPerf.flow("attach:setRecentsAttached:skipSwipeUp",
-                                recentsView);
                         return chain.proceed();
                     }
                     // Release 结束后系统还会 detach，需保留 stable 状态避免下一帧读到未收敛偏移。
@@ -225,14 +199,10 @@ final class LauncherRecentsAttachController {
                                     .isGestureRecentsStackReleaseAnimationActive(recentsView)
                                     || LauncherRecentsState.isAppToRecentsStackSettled(recentsView);
                     if (shouldKeepDeferred) {
-                        LauncherRecentsPerf.flow("attach:setRecentsAttached:keepDeferred",
-                                recentsView);
                         LauncherRecentsState.trackRecentsView(recentsView);
                         LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
                         return chain.proceed();
                     }
-                    LauncherRecentsPerf.flow("attach:setRecentsAttached:clearEntry",
-                            recentsView);
                     clearAppToRecentsEntrySession(recentsView, false);
                     return chain.proceed();
                 }
@@ -242,13 +212,9 @@ final class LauncherRecentsAttachController {
                         recentsView,
                         attached,
                         loader)) {
-                    LauncherRecentsPerf.flow("attach:setRecentsAttached:stock",
-                            recentsView);
                     return chain.proceed();
                 }
                 if (LauncherRecentsState.isOverviewPreReleaseStockMode(recentsView)) {
-                    LauncherRecentsPerf.flow("attach:setRecentsAttached:skipOverviewPeek",
-                            recentsView);
                     LauncherRecentsCompat.writeField(thisObject, "mIsAttachedToWindow", true);
                     LauncherRecentsCompat.writeField(thisObject, "mHasEverAttachedToWindow", true);
                     return null;
@@ -282,9 +248,6 @@ final class LauncherRecentsAttachController {
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsPerf.flow("attach:entrySession:clear",
-                recentsView, "keepExpanded=" + keepExpanded);
-        LauncherRecentsPerf.finishSession("enterRecents", recentsView, "abort");
         LauncherRecentsTransitionController.cancelGestureRecentsStackReleaseAnimation(
                 recentsView,
                 true);
@@ -301,7 +264,6 @@ final class LauncherRecentsAttachController {
         if (recentsView == null) {
             return;
         }
-        LauncherRecentsPerf.flow("attach:entrySession:endWithoutLayout", recentsView);
         LauncherRecentsState.clearAppToRecentsEntryState(recentsView);
         LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
     }

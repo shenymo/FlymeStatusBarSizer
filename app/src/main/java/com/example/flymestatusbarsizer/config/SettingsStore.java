@@ -478,10 +478,6 @@ public final class SettingsStore {
     public static final String KEY_IME_CONTROL_BAR_ALIGNMENT = "ime_control_bar_alignment";
     public static final String KEY_TELEPHONY_DEBUG_ENABLED = "telephony_debug_enabled";
     public static final String KEY_WIFI_PERF_LOGGING_ENABLED = "wifi_perf_logging_enabled";
-    public static final String KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED =
-            "launcher_recents_perf_logging_enabled";
-    public static final String KEY_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED =
-            "launcher_recents_flow_logging_enabled";
     public static final String KEY_ONEMIND_PERF_DISABLE_ENABLED =
             "onemind_perf_disable_enabled";
     public static final String KEY_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED =
@@ -708,8 +704,6 @@ public final class SettingsStore {
     public static final int DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP = 0;
     public static final boolean DEFAULT_TELEPHONY_DEBUG_ENABLED = false;
     public static final boolean DEFAULT_WIFI_PERF_LOGGING_ENABLED = false;
-    public static final boolean DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED = false;
-    public static final boolean DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED = false;
     public static final boolean DEFAULT_ONEMIND_PERF_DISABLE_ENABLED = false;
     public static final boolean DEFAULT_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED = false;
     public static final boolean DEFAULT_ONEMIND_LOGCAT_ENABLED = false;
@@ -970,8 +964,6 @@ public final class SettingsStore {
             KEY_IME_VERIFICATION_CODE_AUTO_COPY_ENABLED,
             KEY_TELEPHONY_DEBUG_ENABLED,
             KEY_WIFI_PERF_LOGGING_ENABLED,
-            KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED,
-            KEY_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED,
             KEY_ONEMIND_PERF_DISABLE_ENABLED,
             KEY_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED,
             KEY_ONEMIND_LOGCAT_ENABLED
@@ -1597,10 +1589,6 @@ public final class SettingsStore {
                 return DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED;
             case KEY_WIFI_PERF_LOGGING_ENABLED:
                 return DEFAULT_WIFI_PERF_LOGGING_ENABLED;
-            case KEY_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED:
-                return DEFAULT_LAUNCHER_RECENTS_PERF_LOGGING_ENABLED;
-            case KEY_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED:
-                return DEFAULT_LAUNCHER_RECENTS_FLOW_LOGGING_ENABLED;
             case KEY_ONEMIND_PERF_DISABLE_ENABLED:
                 return DEFAULT_ONEMIND_PERF_DISABLE_ENABLED;
             case KEY_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED:
