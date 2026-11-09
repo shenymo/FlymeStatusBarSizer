@@ -59,6 +59,11 @@ public final class ImeToolbarEditor {
                 "管理输入法和短信验证码自动复制的作用域。",
                 "管理", this::showImeScopes);
         activity.addDivider(details);
+        activity.addSwitchRow(details, "验证码自动复制",
+                "识别短信验证码后自动复制到系统剪贴板。需在输入法作用域中启用电话服务。",
+                SettingsStore.KEY_IME_VERIFICATION_CODE_AUTO_COPY_ENABLED,
+                SettingsStore.DEFAULT_IME_VERIFICATION_CODE_AUTO_COPY_ENABLED);
+        activity.addDivider(details);
         Switch expansionSwitch = activity.addSwitchRow(details, "拓展栏",
                 "在主控制栏上方显示文字栏。",
                 SettingsStore.KEY_IME_CONTROL_BAR_EXPANSION_ENABLED,

@@ -42,7 +42,8 @@ public final class VerificationCodeHooks {
                     if (destinationPort == -1) {
                         FlymeStatusBarSizer.ImeConfigSnapshot config =
                                 FlymeStatusBarSizer.loadImeConfig(null);
-                        if (config == null || !config.enabled) {
+                        if (config == null || !config.enabled
+                                || !config.imeVerificationCodeAutoCopyEnabled) {
                             return chain.proceed();
                         }
                         String code = extractCode(

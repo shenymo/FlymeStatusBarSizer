@@ -873,10 +873,6 @@ public final class SettingsCardFactory {
         activity.addActionButtonRow(content, "移动网络状态模拟",
                 "打开独立页面，模拟 SIM 卡数量、默认上网卡、网络类型和信号等级。",
                 "打开", activity::showTelephonyDebugPage);
-        activity.addDivider(content);
-        activity.addActionButtonRow(content, "验证码诊断",
-                "查看短信验证码识别、共享发布和输入法读取的最近记录。",
-                "打开", activity::showVerificationCodeDiagnosticsPage);
         return activity.buildSectionCard(
                 "高级工具",
                 "用于进一步调整布局或模拟移动网络状态。",

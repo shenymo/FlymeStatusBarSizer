@@ -25,7 +25,6 @@ import com.example.flymestatusbarsizer.ui.SideGestureZoneOverlay;
 import com.example.flymestatusbarsizer.ui.SystemAppearancePageController;
 import com.example.flymestatusbarsizer.ui.SystemInteractionPageController;
 import com.example.flymestatusbarsizer.ui.TelephonyDebugPageController;
-import com.example.flymestatusbarsizer.ui.VerificationCodeDiagnosticsPageController;
 import com.example.flymestatusbarsizer.ui.TimeNetworkPageController;
 
 import android.app.Activity;
@@ -206,8 +205,7 @@ public class MainActivity extends Activity {
         LAUNCHER_STACK_PARAMS("最近任务布局参数", "调整最近任务卡片的布局、动画、手势、视觉和性能。", null, true),
         LAUNCHER_ORGANIZER("AI 桌面整理", "生成应用分类并预览，确认后应用到 Flyme 桌面。", null, true),
         LAUNCHER_USAGE_SORT("按使用情况排序", "按最近使用频率整理桌面文件夹内的应用。", null, true),
-        TELEPHONY_DEBUG("移动网络状态模拟", "模拟 SIM 卡数量、网络类型和信号等级，用于检查状态栏图标布局。", null, true),
-        VERIFICATION_CODE_DEBUG("验证码自动复制", "查看短信 Hook 作用域和当前输入法状态。", null, true);
+        TELEPHONY_DEBUG("移动网络状态模拟", "模拟 SIM 卡数量、网络类型和信号等级，用于检查状态栏图标布局。", null, true);
 
         final String title;
         final String subtitle;
@@ -356,8 +354,6 @@ public class MainActivity extends Activity {
         registerPage(Page.LAUNCHER_USAGE_SORT, R.layout.page_system_appearance,
                 LauncherUsageSortPage::bind);
         registerPage(Page.TELEPHONY_DEBUG, R.layout.page_telephony_debug, TelephonyDebugPageController::bind);
-        registerPage(Page.VERIFICATION_CODE_DEBUG, R.layout.page_telephony_debug,
-                VerificationCodeDiagnosticsPageController::bind);
     }
 
     private void registerPage(Page page, int layoutResId, PageBinder binder) {
@@ -1401,10 +1397,6 @@ public class MainActivity extends Activity {
 
     public void showTelephonyDebugPage() {
         openPage(Page.TELEPHONY_DEBUG);
-    }
-
-    public void showVerificationCodeDiagnosticsPage() {
-        openPage(Page.VERIFICATION_CODE_DEBUG);
     }
 
     public void showPositionTuningPage() {
