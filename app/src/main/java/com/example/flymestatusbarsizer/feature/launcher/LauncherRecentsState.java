@@ -116,6 +116,7 @@ final class LauncherRecentsState {
         boolean taskLaunchRequestStarted;
         boolean swipeUpGestureActive;
         boolean blankTapHomeExitActive;
+        boolean insideNativeScrollChange;
         boolean stackLayoutFramePosted;
         int positionOwner;
         Float gestureStackReleaseProgress;
@@ -827,6 +828,20 @@ final class LauncherRecentsState {
         }
         state.stackLayoutFramePosted = true;
         return true;
+    }
+
+    static void setInsideNativeScrollChange(View recentsView, boolean inside) {
+        RecentsViewState state = inside
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.insideNativeScrollChange = inside;
+        }
+    }
+
+    static boolean isInsideNativeScrollChange(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.insideNativeScrollChange;
     }
 
     static ArrayList<Integer> getLastStackLayoutActiveIndices(View recentsView) {

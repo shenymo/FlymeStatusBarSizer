@@ -432,7 +432,17 @@ final class LauncherRecentsLayoutEngine {
                 if (recentsView != null && shouldUseStackLayout(recentsView)) {
                     LauncherRecentsPerf.pulseSession("scroll", recentsView, 100L);
                 }
-                Object result = chain.proceed();
+                if (recentsView != null) {
+                    LauncherRecentsState.setInsideNativeScrollChange(recentsView, true);
+                }
+                Object result;
+                try {
+                    result = chain.proceed();
+                } finally {
+                    if (recentsView != null) {
+                        LauncherRecentsState.setInsideNativeScrollChange(recentsView, false);
+                    }
+                }
                 if (thisObject instanceof View) {
                     recentsView = (View) thisObject;
                     LauncherRecentsState.trackRecentsView(recentsView);
@@ -489,6 +499,16 @@ final class LauncherRecentsLayoutEngine {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
+                    if (LauncherRecentsState.isInsideNativeScrollChange(recentsView)) {
+                        if (!LauncherRecentsCompat.invokeBoolean(
+                                recentsView,
+                                "isScrollerFinished",
+                                true)) {
+                            LauncherRecentsPerf.pulseSession("scroll", recentsView, 100L);
+                            LauncherRecentsFrameRateController.onActiveScroll(recentsView);
+                        }
+                        return result;
+                    }
                     // 动画帧已负责刷新布局，此处只跳过重复触发。
                     if (LauncherRecentsTransitionController
                             .isGestureRecentsStackReleaseAnimationActive(recentsView)
@@ -2005,7 +2025,9 @@ final class LauncherRecentsLayoutEngine {
 
         for (int index = 0; index < layout.processIndices.size(); index++) {
             int i = layout.processIndices.get(index);
-            View taskView = LauncherRecentsCompat.getTaskViewAt(recentsView, i);
+            View taskView = i >= 0 && i < layout.projectedTaskViews.length
+                    ? layout.projectedTaskViews[i]
+                    : null;
             if (taskView == null) {
                 continue;
             }
@@ -2019,7 +2041,7 @@ final class LauncherRecentsLayoutEngine {
                 hideLightStackTask(taskView);
                 continue;
             }
-            if (!layout.activeIndices.contains(i)) {
+            if (i >= layout.activeIndexFlags.length || !layout.activeIndexFlags[i]) {
                 hideLightStackTask(taskView);
                 continue;
             }
