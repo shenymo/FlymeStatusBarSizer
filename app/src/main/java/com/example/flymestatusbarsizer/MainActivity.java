@@ -26,6 +26,7 @@ import com.example.flymestatusbarsizer.ui.SystemAppearancePageController;
 import com.example.flymestatusbarsizer.ui.SystemInteractionPageController;
 import com.example.flymestatusbarsizer.ui.TelephonyDebugPageController;
 import com.example.flymestatusbarsizer.ui.TimeNetworkPageController;
+import com.example.flymestatusbarsizer.util.ReleaseUpdateChecker;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -187,6 +188,8 @@ public class MainActivity extends Activity {
     private final ImeToolbarEditor imeToolbarEditor = new ImeToolbarEditor(this);
     private final SettingsCardFactory settingsCardFactory = new SettingsCardFactory(this);
     private final SettingsUiFactory settingsUiFactory = new SettingsUiFactory(this);
+    private boolean updateCheckStarted;
+    private boolean updateCheckRunning;
     private SideGestureZoneOverlay sideGestureZoneOverlay;
     private Runnable sideGestureActionsChangedListener;
 
@@ -238,6 +241,7 @@ public class MainActivity extends Activity {
         bindHostViews();
         bindPages();
         showPage(Page.HOME);
+        checkForUpdates(false);
     }
 
     @Override
@@ -2953,6 +2957,65 @@ public class MainActivity extends Activity {
 
     public void showToast(String message) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
+
+    public void checkForUpdatesManually() {
+        checkForUpdates(true);
+    }
+
+    private void checkForUpdates(boolean manual) {
+        if (updateCheckRunning) {
+            if (manual) {
+                showToast("正在检查更新，请稍候");
+            }
+            return;
+        }
+        if (!manual && updateCheckStarted) {
+            return;
+        }
+        updateCheckStarted = true;
+        updateCheckRunning = true;
+        new Thread(() -> {
+            ReleaseUpdateChecker.Result result = ReleaseUpdateChecker.check(BuildConfig.VERSION_NAME);
+            scopeHandler.post(() -> {
+                updateCheckRunning = false;
+                if (isFinishing() || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 && isDestroyed())) {
+                    return;
+                }
+                handleUpdateResult(result, manual);
+            });
+        }, "release-update-check").start();
+    }
+
+    private void handleUpdateResult(ReleaseUpdateChecker.Result result, boolean manual) {
+        ReleaseUpdateChecker.ReleaseInfo release = result.release();
+        if (!result.isSuccessful()) {
+            if (manual) {
+                showToast("检查更新失败");
+            }
+            return;
+        }
+        if (release == null) {
+            if (manual) {
+                showToast("当前已是最新版本");
+            }
+            return;
+        }
+        if (!manual && release.version().equals(
+                prefs.getString(SettingsStore.KEY_UPDATE_LAST_PROMPTED_VERSION, ""))) {
+            return;
+        }
+        prefs.edit().putString(SettingsStore.KEY_UPDATE_LAST_PROMPTED_VERSION, release.version()).apply();
+        String changelog = release.changelog().isEmpty() ? "暂无更新日志" : release.changelog();
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("发现新版本")
+                .setMessage("当前版本：" + BuildConfig.VERSION_NAME + "\n新版本：" + release.version()
+                        + "\n\n更新内容\n" + changelog)
+                .setNegativeButton("稍后", null)
+                .setPositiveButton("打开 Release 页面", (d, which) -> openExternalLink(release.pageUrl()))
+                .create();
+        dialog.setOnShowListener(d -> attachDialogButtonHaptics(dialog));
+        dialog.show();
     }
 
     public void bindRestartCardContent(LinearLayout content) {

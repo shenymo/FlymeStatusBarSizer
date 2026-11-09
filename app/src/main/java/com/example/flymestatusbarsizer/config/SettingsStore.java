@@ -19,6 +19,7 @@ public final class SettingsStore {
             "status_bar_tint_control_center", "status_bar_tint_lockscreen"
     };
     static final String PREFS = "status_bar_sizer";
+    public static final String KEY_UPDATE_LAST_PROMPTED_VERSION = "update_last_prompted_version";
     static final String KEY_POSITION_OFFSET_STORAGE_VERSION = "__position_offset_storage_version";
     static final int POSITION_OFFSET_STORAGE_VERSION_LEGACY_DP = 0;
     static final int POSITION_OFFSET_STORAGE_VERSION_TENTH_DP = 1;

@@ -90,6 +90,9 @@ public final class AboutPageController {
         content.setOrientation(LinearLayout.VERTICAL);
         content.addView(buildInfoRow(activity, "当前版本", BuildConfig.VERSION_NAME), PageViewUtils.matchWrap());
         content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
+        content.addView(buildActionRow(activity, "检查更新", "检查 GitHub 是否有新的模块版本。", "检查更新",
+                activity::checkForUpdatesManually), PageViewUtils.matchWrapWithTop(activity, 8));
+        content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
         content.addView(buildInfoRow(activity, "构建日期", BuildConfig.BUILD_DATE), PageViewUtils.matchWrapWithTop(activity, 8));
         content.addView(buildDivider(activity), PageViewUtils.matchWrapWithTop(activity, 8));
         content.addView(buildInfoRow(activity, "支持范围", activity.supportedScopesSummary()), PageViewUtils.matchWrapWithTop(activity, 8));
@@ -106,6 +109,16 @@ public final class AboutPageController {
             String summaryText,
             String buttonText,
             String url) {
+        return buildActionRow(activity, titleText, summaryText, buttonText,
+                () -> activity.openExternalLink(url));
+    }
+
+    private static LinearLayout buildActionRow(
+            MainActivity activity,
+            String titleText,
+            String summaryText,
+            String buttonText,
+            Runnable action) {
         LinearLayout row = new LinearLayout(activity);
         row.setOrientation(LinearLayout.VERTICAL);
 
@@ -133,7 +146,7 @@ public final class AboutPageController {
                 PageViewUtils.dp(activity, 14),
                 PageViewUtils.dp(activity, 6));
         button.setBackground(buildOutlinedButtonBackground(activity));
-        button.setOnClickListener(v -> activity.openExternalLink(url));
+        button.setOnClickListener(v -> action.run());
         activity.addSearchItem(row, titleText, summaryText);
         row.addView(button, PageViewUtils.matchWrapWithTop(activity, 8));
         return row;
