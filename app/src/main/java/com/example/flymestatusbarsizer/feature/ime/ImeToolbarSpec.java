@@ -9,12 +9,11 @@ import java.util.ArrayList;
 public final class ImeToolbarSpec {
     static final String STOCK_CONTROL_BAR_BACK = "stock_back";
     private static final String[] ACTION_BUTTONS = {
-            "paste", "undo", "delete", "select_all", "copy", "switch_ime", "welt_window",
-            "verification_code"
+            "paste", "undo", "delete", "select_all", "copy", "switch_ime", "welt_window"
     };
     private static final String[] ALL_BUTTONS = {
             "paste", "undo", "delete", "select_all", "copy", "switch_ime", "welt_window",
-            STOCK_CONTROL_BAR_BACK, "verification_code"
+            STOCK_CONTROL_BAR_BACK
     };
     private static final String[] DEFAULT_BUTTONS = {
             "paste", "undo", "delete", "select_all", "copy", "switch_ime",
@@ -68,9 +67,6 @@ public final class ImeToolbarSpec {
         if ("welt_window".equals(button)) {
             return "贴边";
         }
-        if ("verification_code".equals(button)) {
-            return "验证码";
-        }
         if (STOCK_CONTROL_BAR_BACK.equals(button)) {
             return "返回";
         }
@@ -78,11 +74,11 @@ public final class ImeToolbarSpec {
     }
 
     public static int getButtonSpan(String button) {
-        return "verification_code".equals(button) ? 2 : 1;
+        return 1;
     }
 
     public static boolean isTextContentAction(String action) {
-        return "verification_code".equals(action);
+        return false;
     }
 
     static boolean isBackButton(String button) {
@@ -107,16 +103,20 @@ public final class ImeToolbarSpec {
         return normalizeTextSlots(parseButtonSlots(slotRaw));
     }
 
-    public static boolean containsVerificationCode(String buttonSlots, String textSlots) {
-        return resolveButtonSlots(buttonSlots).contains("verification_code")
-                || resolveTextSlots(textSlots).contains("verification_code");
-    }
-
-    public static boolean hasVisibleVerificationCode(
-            String buttonSlots, String textSlots, boolean expansionEnabled) {
-        return resolveButtonSlots(buttonSlots).contains("verification_code")
-                || (expansionEnabled
-                        && resolveTextSlots(textSlots).contains("verification_code"));
+    public static String removeLegacyVerificationCodeSlots(String raw) {
+        if (TextUtils.isEmpty(raw)) {
+            return raw;
+        }
+        StringBuilder filtered = new StringBuilder();
+        String[] tokens = raw.split(",", -1);
+        for (int i = 0; i < tokens.length; i++) {
+            if (i > 0) {
+                filtered.append(',');
+            }
+            String token = tokens[i];
+            filtered.append("verification_code".equals(token.trim()) ? SLOT_EMPTY_TOKEN : token);
+        }
+        return filtered.toString();
     }
 
     public static String serializeButtonSlots(ArrayList<String> slots) {

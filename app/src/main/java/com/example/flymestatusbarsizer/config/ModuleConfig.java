@@ -364,8 +364,6 @@ public final class ModuleConfig {
             SettingsStore.DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED;
     public boolean imeReplaceOriginalControlBar = SettingsStore.DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR;
     public boolean imeControlBarExpansionEnabled = SettingsStore.DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED;
-    public boolean imeVerificationCodeDiagnosticsEnabled =
-            SettingsStore.DEFAULT_IME_VERIFICATION_CODE_DIAGNOSTICS_ENABLED;
     public String imeControlBarButtonSlots = SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS;
     public String imeControlBarTextSlots = SettingsStore.DEFAULT_IME_CONTROL_BAR_TEXT_SLOTS;
     public int imeControlBarIconScalePercent = SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_SCALE_PERCENT;
@@ -1256,10 +1254,6 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_IME_CONTROL_BAR_EXPANSION_ENABLED,
                     SettingsStore.DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED);
-            config.imeVerificationCodeDiagnosticsEnabled = SettingsStore.readBoolean(
-                    prefs,
-                    SettingsStore.KEY_IME_VERIFICATION_CODE_DIAGNOSTICS_ENABLED,
-                    SettingsStore.DEFAULT_IME_VERIFICATION_CODE_DIAGNOSTICS_ENABLED);
             config.imeControlBarButtonSlots = SettingsStore.readString(
                     prefs,
                     SettingsStore.KEY_IME_CONTROL_BAR_BUTTON_SLOTS,

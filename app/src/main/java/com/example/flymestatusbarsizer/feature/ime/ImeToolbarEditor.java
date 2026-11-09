@@ -56,7 +56,7 @@ public final class ImeToolbarEditor {
         details.setOrientation(LinearLayout.VERTICAL);
 
         activity.addActionButtonRow(details, "输入法作用域",
-                "管理输入法和短信验证码读取范围。",
+                "管理输入法和短信验证码自动复制的作用域。",
                 "管理", this::showImeScopes);
         activity.addDivider(details);
         Switch expansionSwitch = activity.addSwitchRow(details, "拓展栏",
@@ -88,7 +88,7 @@ public final class ImeToolbarEditor {
                 60, 180, "%");
         activity.addDivider(appearanceContent);
         activity.addApplySliderRow(appearanceContent, "图标透明度",
-                "验证码文字跟随此透明度，最低保持 50%。",
+                "调整控制栏图标透明度。",
                 SettingsStore.KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
                 10, 100, "%");
@@ -155,7 +155,7 @@ public final class ImeToolbarEditor {
         list.setOrientation(LinearLayout.VERTICAL);
         Set<String> displayedPackages = new HashSet<>();
         if (displayedPackages.add(PHONE_PACKAGE)) {
-            addScopeCheckbox(list, "电话服务（短信验证码读取）", PHONE_PACKAGE,
+            addScopeCheckbox(list, "电话服务（短信验证码自动复制）", PHONE_PACKAGE,
                     enabledScope.contains(PHONE_PACKAGE));
         }
         for (InputMethodInfo inputMethod : inputMethods) {

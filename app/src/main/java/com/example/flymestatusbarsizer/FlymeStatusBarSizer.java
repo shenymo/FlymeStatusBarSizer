@@ -7518,7 +7518,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         public final boolean enabled;
         public final boolean imeReplaceOriginalControlBar;
         public final boolean imeControlBarExpansionEnabled;
-        public final boolean imeVerificationCodeDiagnosticsEnabled;
         public final String imeControlBarButtonSlots;
         public final String imeControlBarTextSlots;
         public final int imeControlBarIconScalePercent;
@@ -7530,8 +7529,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             imeReplaceOriginalControlBar = config != null && config.imeReplaceOriginalControlBar;
             imeControlBarExpansionEnabled = config != null
                     && config.imeControlBarExpansionEnabled;
-            imeVerificationCodeDiagnosticsEnabled = config == null
-                    || config.imeVerificationCodeDiagnosticsEnabled;
             imeControlBarButtonSlots = config == null
                     ? SettingsStore.DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS
                     : config.imeControlBarButtonSlots;

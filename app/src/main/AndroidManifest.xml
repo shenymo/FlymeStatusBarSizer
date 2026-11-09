@@ -29,7 +29,6 @@
         <package android:name="com.google.android.inputmethod.latin" />
         <package android:name="com.tencent.wetype" />
         <package android:name="flyme.inputmethod" />
-        <provider android:authorities="${applicationId}.verificationcode" />
     </queries>
 
     <application
@@ -114,9 +113,5 @@
             android:authorities="${applicationId}.organizer"
             android:exported="true" />
 
-        <provider
-            android:name=".feature.ime.VerificationCodeProvider"
-            android:authorities="${applicationId}.verificationcode"
-            android:exported="true" />
     </application>
 </manifest>
