@@ -113,7 +113,6 @@ final class LauncherRecentsTransitionController {
                     LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
                     markPendingGestureRecentsStackRelease(recentsView, true);
                     prepareStackRecentsView(recentsView);
-                    LauncherRecentsState.setLightweightEntryVisuals(recentsView, true);
                     LauncherRecentsTaskVisuals.clearRecentsStackContentBlur(recentsView);
                     for (View taskView : startVisualStates.keySet()) {
                         LauncherRecentsTaskVisuals.restoreTaskShadow(taskView);
@@ -732,6 +731,16 @@ final class LauncherRecentsTransitionController {
         if (preload == null || preload.ready) {
             return;
         }
+        Object runningTaskObject = LauncherRecentsCompat.invokeCompat(
+                recentsView,
+                "getRunningTaskView");
+        Object taskIdsObject = runningTaskObject instanceof View
+                ? LauncherRecentsCompat.invokeCompat(runningTaskObject, "getTaskIds")
+                : null;
+        if (taskIdsObject instanceof int[]
+                && java.util.Arrays.equals(preload.taskIds, (int[]) taskIdsObject)) {
+            return;
+        }
         Runnable onReady = preload.onReady;
         LauncherRecentsState.clearGestureScreenshotPreload(recentsView);
         preloadGestureRunningTaskScreenshot(recentsView);
@@ -1109,6 +1118,7 @@ final class LauncherRecentsTransitionController {
                     stackAnchorPage,
                     resolveScrollForPage(recentsView, stackAnchorPage, resolvePrimaryScroll(recentsView)));
             LauncherRecentsState.clearAppToRecentsEntryState(recentsView);
+            LauncherRecentsState.setLightweightEntryVisuals(recentsView, true);
             LauncherRecentsState.setAppToRecentsStackSettled(recentsView, false);
             LauncherRecentsLayoutEngine.captureGestureStackReleaseTaskStates(
                     recentsView,
