@@ -8,6 +8,7 @@ import android.view.View;
 import android.view.ViewOutlineProvider;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.WeakHashMap;
 
 final class LauncherRecentsState {
@@ -29,6 +30,8 @@ final class LauncherRecentsState {
     static final WeakHashMap<View, GestureReleaseTaskState> GESTURE_STACK_RELEASE_TASK_STATES =
             new WeakHashMap<>();
     static final WeakHashMap<View, GestureReleaseTaskState> OVERVIEW_STATE_STACK_ENTRY_TASK_STATES =
+            new WeakHashMap<>();
+    static final WeakHashMap<View, GestureScreenshotPreload> GESTURE_SCREENSHOT_PRELOADS =
             new WeakHashMap<>();
 
     // Home exit animation.
@@ -199,6 +202,18 @@ final class LauncherRecentsState {
                 LauncherRecentsTaskVisuals.StackTaskVisualState targetVisualState) {
             this.startVisualState = startVisualState;
             this.targetVisualState = targetVisualState;
+        }
+    }
+
+    static final class GestureScreenshotPreload {
+        final int[] taskIds;
+        HashMap<Integer, Object> thumbnails;
+        Runnable onReady;
+        boolean prepared;
+        boolean ready;
+
+        GestureScreenshotPreload(int[] taskIds) {
+            this.taskIds = taskIds;
         }
     }
 
@@ -434,6 +449,7 @@ final class LauncherRecentsState {
     }
 
     static void clearAppToRecentsEntryState(View recentsView) {
+        clearGestureScreenshotPreload(recentsView);
         RecentsViewState state = findRecentsViewState(recentsView);
         if (state == null) {
             return;
@@ -484,6 +500,73 @@ final class LauncherRecentsState {
     static boolean isAppToRecentsGestureReleased(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
         return state != null && state.appToRecentsGestureReleased;
+    }
+
+    static GestureScreenshotPreload beginGestureScreenshotPreload(
+            View recentsView,
+            int[] taskIds) {
+        if (recentsView == null || taskIds == null || taskIds.length == 0) {
+            return null;
+        }
+        GestureScreenshotPreload current = GESTURE_SCREENSHOT_PRELOADS.get(recentsView);
+        if (current != null) {
+            return current;
+        }
+        GestureScreenshotPreload created = new GestureScreenshotPreload(taskIds);
+        GESTURE_SCREENSHOT_PRELOADS.put(recentsView, created);
+        return created;
+    }
+
+    static GestureScreenshotPreload getGestureScreenshotPreload(View recentsView) {
+        return GESTURE_SCREENSHOT_PRELOADS.get(recentsView);
+    }
+
+    static void setGestureScreenshotPreloadReadyCallback(
+            View recentsView,
+            GestureScreenshotPreload preload,
+            Runnable callback) {
+        if (preload == null || GESTURE_SCREENSHOT_PRELOADS.get(recentsView) != preload) {
+            return;
+        }
+        preload.onReady = callback;
+        if (preload.prepared && callback != null) {
+            callback.run();
+        }
+    }
+
+    static void completeGestureScreenshotPreload(
+            View recentsView,
+            GestureScreenshotPreload preload,
+            HashMap<Integer, Object> thumbnails) {
+        if (preload == null || GESTURE_SCREENSHOT_PRELOADS.get(recentsView) != preload) {
+            return;
+        }
+        preload.thumbnails = thumbnails;
+        preload.prepared = true;
+        Runnable callback = preload.onReady;
+        preload.onReady = null;
+        if (callback != null) {
+            callback.run();
+        }
+    }
+
+    static void markGestureScreenshotReady(GestureScreenshotPreload preload) {
+        if (preload != null) {
+            preload.ready = true;
+        }
+    }
+
+    static void clearGestureScreenshotPreload(View recentsView) {
+        GestureScreenshotPreload preload = GESTURE_SCREENSHOT_PRELOADS.remove(recentsView);
+        if (preload != null) {
+            preload.onReady = null;
+        }
+    }
+
+    static boolean isGestureScreenshotPreloadCurrent(
+            View recentsView,
+            GestureScreenshotPreload preload) {
+        return preload != null && GESTURE_SCREENSHOT_PRELOADS.get(recentsView) == preload;
     }
 
     static void setAppToRecentsStackSettled(View recentsView, boolean settled) {

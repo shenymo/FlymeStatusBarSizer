@@ -5,6 +5,7 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import android.graphics.Canvas;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Trace;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
@@ -1319,28 +1320,33 @@ final class LauncherRecentsLayoutEngine {
         if (!hasCachedGestureReleaseVisualStates(recentsView)) {
             return false;
         }
-        int expectedCount = LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.size();
-        int appliedCount = 0;
-        for (View taskView : LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.keySet()) {
-            if (taskView == null
-                    || taskView.getParent() == null
-                    || LauncherRecentsCompat.isDesktopTask(taskView)) {
-                continue;
+        Trace.beginSection("FSBS/app/release_visuals");
+        try {
+            int expectedCount = LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.size();
+            int appliedCount = 0;
+            for (View taskView : LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.keySet()) {
+                if (taskView == null
+                        || taskView.getParent() == null
+                        || LauncherRecentsCompat.isDesktopTask(taskView)) {
+                    continue;
+                }
+                LauncherRecentsState.GestureReleaseTaskState state =
+                        LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView);
+                if (state == null) {
+                    continue;
+                }
+                ensureStackTaskViewVisible(taskView);
+                LauncherRecentsTaskVisuals.applyStackTaskEntryAnimationFrame(
+                        taskView,
+                        state.startVisualState,
+                        state.targetVisualState,
+                        progress);
+                appliedCount++;
             }
-            LauncherRecentsState.GestureReleaseTaskState state =
-                    LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView);
-            if (state == null) {
-                continue;
-            }
-            ensureStackTaskViewVisible(taskView);
-            LauncherRecentsTaskVisuals.applyStackTaskEntryAnimationFrame(
-                    taskView,
-                    state.startVisualState,
-                    state.targetVisualState,
-                    progress);
-            appliedCount++;
+            return appliedCount == expectedCount;
+        } finally {
+            Trace.endSection();
         }
-        return appliedCount == expectedCount;
     }
 
     static boolean applyCachedOverviewStateFrame(View recentsView) {
@@ -1348,27 +1354,32 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.isEmpty()) {
             return false;
         }
-        float progress = smoothStep(resolveOverviewPeekToOverviewProgress(recentsView));
-        int expectedCount = LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.size();
-        int appliedCount = 0;
-        for (View taskView
-                : LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.keySet()) {
-            LauncherRecentsState.GestureReleaseTaskState state =
-                    LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.get(taskView);
-            if (taskView == null
-                    || taskView.getParent() == null
-                    || state == null
-                    || state.startVisualState == null
-                    || state.targetVisualState == null) {
-                continue;
+        Trace.beginSection("FSBS/desktop/visuals");
+        try {
+            float progress = smoothStep(resolveOverviewPeekToOverviewProgress(recentsView));
+            int expectedCount = LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.size();
+            int appliedCount = 0;
+            for (View taskView
+                    : LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.keySet()) {
+                LauncherRecentsState.GestureReleaseTaskState state =
+                        LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.get(taskView);
+                if (taskView == null
+                        || taskView.getParent() == null
+                        || state == null
+                        || state.startVisualState == null
+                        || state.targetVisualState == null) {
+                    continue;
+                }
+                ensureStackTaskViewVisible(taskView);
+                LauncherRecentsTaskVisuals.applyStackTaskVisualState(
+                        taskView,
+                        state.startVisualState.lerpTo(state.targetVisualState, progress));
+                appliedCount++;
             }
-            ensureStackTaskViewVisible(taskView);
-            LauncherRecentsTaskVisuals.applyStackTaskVisualState(
-                    taskView,
-                    state.startVisualState.lerpTo(state.targetVisualState, progress));
-            appliedCount++;
+            return appliedCount == expectedCount;
+        } finally {
+            Trace.endSection();
         }
-        return appliedCount == expectedCount;
     }
 
     private static boolean isCachedGestureReleaseFrameActive(View recentsView) {
@@ -1985,52 +1996,63 @@ final class LauncherRecentsLayoutEngine {
                     recentsView,
                     LauncherRecentsTransitionController.readBlankTapHomeExitProgress(recentsView));
         }
-        ComputedStackLayout layout = computeStackLayoutInternal(
-                recentsView,
-                taskViewCount,
-                stackLayoutRadius,
-                config,
-                null,
-                null);
-        LauncherRecentsState.setLastStackLayoutActiveIndices(
-                recentsView,
-                new ArrayList<>(layout.activeIndices));
+        ComputedStackLayout layout;
+        Trace.beginSection("FSBS/stack/compute");
+        try {
+            layout = computeStackLayoutInternal(
+                    recentsView,
+                    taskViewCount,
+                    stackLayoutRadius,
+                    config,
+                    null,
+                    null);
+        } finally {
+            Trace.endSection();
+        }
+        Trace.beginSection("FSBS/stack/apply_visuals");
+        try {
+            LauncherRecentsState.setLastStackLayoutActiveIndices(
+                    recentsView,
+                    new ArrayList<>(layout.activeIndices));
 
-        for (int index = 0; index < layout.processIndices.size(); index++) {
-            int i = layout.processIndices.get(index);
-            View taskView = i >= 0 && i < layout.projectedTaskViews.length
-                    ? layout.projectedTaskViews[i]
-                    : null;
-            if (taskView == null) {
-                continue;
+            for (int index = 0; index < layout.processIndices.size(); index++) {
+                int i = layout.processIndices.get(index);
+                View taskView = i >= 0 && i < layout.projectedTaskViews.length
+                        ? layout.projectedTaskViews[i]
+                        : null;
+                if (taskView == null) {
+                    continue;
+                }
+                if (LauncherRecentsCompat.isDesktopTask(taskView)) {
+                    restoreTaskTransform(taskView);
+                    continue;
+                }
+                if (taskView != layout.runningTaskView
+                        && sharesTaskIds(taskView, layout.runningTaskIds)) {
+                    restoreTaskTransform(taskView);
+                    hideLightStackTask(taskView);
+                    continue;
+                }
+                if (i >= layout.activeIndexFlags.length || !layout.activeIndexFlags[i]) {
+                    hideLightStackTask(taskView);
+                    continue;
+                }
+                LauncherRecentsTaskVisuals.StackTaskVisualState visualState =
+                        layout.visualStates.get(taskView);
+                if (visualState == null) {
+                    continue;
+                }
+                if (captureStockState) {
+                    LauncherRecentsTaskVisuals.captureStockTaskState(taskView);
+                }
+                if (layout.coreOnlyTaskViews.contains(taskView)) {
+                    LauncherRecentsTaskVisuals.applyStackTaskCoreVisualState(taskView, visualState);
+                } else {
+                    LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, visualState);
+                }
             }
-            if (LauncherRecentsCompat.isDesktopTask(taskView)) {
-                restoreTaskTransform(taskView);
-                continue;
-            }
-            if (taskView != layout.runningTaskView
-                    && sharesTaskIds(taskView, layout.runningTaskIds)) {
-                restoreTaskTransform(taskView);
-                hideLightStackTask(taskView);
-                continue;
-            }
-            if (i >= layout.activeIndexFlags.length || !layout.activeIndexFlags[i]) {
-                hideLightStackTask(taskView);
-                continue;
-            }
-            LauncherRecentsTaskVisuals.StackTaskVisualState visualState =
-                    layout.visualStates.get(taskView);
-            if (visualState == null) {
-                continue;
-            }
-            if (captureStockState) {
-                LauncherRecentsTaskVisuals.captureStockTaskState(taskView);
-            }
-            if (layout.coreOnlyTaskViews.contains(taskView)) {
-                LauncherRecentsTaskVisuals.applyStackTaskCoreVisualState(taskView, visualState);
-            } else {
-                LauncherRecentsTaskVisuals.applyStackTaskVisualState(taskView, visualState);
-            }
+        } finally {
+            Trace.endSection();
         }
         return layout.visualStates.size();
     }

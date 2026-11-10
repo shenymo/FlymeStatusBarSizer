@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer.feature.launcher;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
+import android.os.Trace;
 import android.util.SparseBooleanArray;
 import android.view.View;
 
@@ -62,42 +63,47 @@ final class LauncherRecentsAttachController {
                 .isGestureRecentsStackReleaseAnimationActive(recentsView))) {
             return;
         }
-        Object trackedData = LauncherRecentsCompat.getFieldCompat(
-                recentsView,
-                "mHasVisibleTaskData");
-        if (!(trackedData instanceof SparseBooleanArray)) {
-            return;
-        }
-        HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> entryTasks =
-                LauncherRecentsLayoutEngine.computeStackLayout(
-                        recentsView,
-                        LauncherRecentsLayoutEngine.stackEntryLightRadius(recentsView),
-                        null,
-                        null);
-        SparseBooleanArray loadedTaskIds = (SparseBooleanArray) trackedData;
-        for (View taskView : entryTasks.keySet()) {
-            Object taskIds = LauncherRecentsCompat.invokeCompat(taskView, "getTaskIds");
-            if (!(taskIds instanceof int[])) {
-                continue;
+        Trace.beginSection("FSBS/app/preload_data");
+        try {
+            Object trackedData = LauncherRecentsCompat.getFieldCompat(
+                    recentsView,
+                    "mHasVisibleTaskData");
+            if (!(trackedData instanceof SparseBooleanArray)) {
+                return;
             }
-            boolean needsLoad = false;
-            for (int taskId : (int[]) taskIds) {
-                needsLoad |= taskId >= 0 && !loadedTaskIds.get(taskId);
-            }
-            if (!needsLoad) {
-                continue;
-            }
-            LauncherRecentsCompat.invokeCompat(
-                    taskView,
-                    "onTaskListVisibilityChanged",
-                    LauncherRecentsCompat.BOOLEAN_INT_ARG,
-                    true,
-                    changes);
-            for (int taskId : (int[]) taskIds) {
-                if (taskId >= 0) {
-                    loadedTaskIds.put(taskId, true);
+            HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> entryTasks =
+                    LauncherRecentsLayoutEngine.computeStackLayout(
+                            recentsView,
+                            LauncherRecentsLayoutEngine.stackEntryLightRadius(recentsView),
+                            null,
+                            null);
+            SparseBooleanArray loadedTaskIds = (SparseBooleanArray) trackedData;
+            for (View taskView : entryTasks.keySet()) {
+                Object taskIds = LauncherRecentsCompat.invokeCompat(taskView, "getTaskIds");
+                if (!(taskIds instanceof int[])) {
+                    continue;
+                }
+                boolean needsLoad = false;
+                for (int taskId : (int[]) taskIds) {
+                    needsLoad |= taskId >= 0 && !loadedTaskIds.get(taskId);
+                }
+                if (!needsLoad) {
+                    continue;
+                }
+                LauncherRecentsCompat.invokeCompat(
+                        taskView,
+                        "onTaskListVisibilityChanged",
+                        LauncherRecentsCompat.BOOLEAN_INT_ARG,
+                        true,
+                        changes);
+                for (int taskId : (int[]) taskIds) {
+                    if (taskId >= 0) {
+                        loadedTaskIds.put(taskId, true);
+                    }
                 }
             }
+        } finally {
+            Trace.endSection();
         }
     }
 
@@ -131,7 +137,9 @@ final class LauncherRecentsAttachController {
                         LauncherRecentsState.POSITION_OWNER_ENTER);
                 LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                 LauncherRecentsState.trackRecentsView(recentsView);
-                return chain.proceed();
+                Object result = chain.proceed();
+                LauncherRecentsTransitionController.preloadGestureRunningTaskScreenshot(recentsView);
+                return result;
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
@@ -160,6 +168,8 @@ final class LauncherRecentsAttachController {
                 if (stackLayout) {
                     LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                     LauncherRecentsState.trackRecentsView(recentsView);
+                    LauncherRecentsTransitionController.refreshGestureRunningTaskScreenshot(
+                            recentsView);
                     LauncherRecentsLayoutEngine.requestStackLayout(
                             recentsView,
                             "applyLoadPlan",
