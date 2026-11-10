@@ -794,6 +794,11 @@ final class LauncherRecentsTransitionController {
             Runnable onScreenshotDrawn) {
         Trace.beginSection("FSBS/app/screenshot_request_cached");
         try {
+            LauncherRecentsCompat.invokeCompat(
+                    recentsView,
+                    "setRunningTaskHidden",
+                    LauncherRecentsCompat.BOOLEAN_ARG,
+                    false);
             Runnable finish = () -> {
                 Trace.beginSection("FSBS/app/screenshot_drawn");
                 try {
@@ -1140,6 +1145,11 @@ final class LauncherRecentsTransitionController {
         }
         Trace.beginSection("FSBS/app/screenshot_fallback");
         try {
+            LauncherRecentsCompat.invokeCompat(
+                    recentsView,
+                    "setRunningTaskHidden",
+                    LauncherRecentsCompat.BOOLEAN_ARG,
+                    false);
             LauncherRecentsCompat.invokeCompat(
                     recentsView,
                     "setEnableDrawingLiveTile",
