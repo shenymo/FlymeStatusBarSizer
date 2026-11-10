@@ -5,7 +5,6 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import android.graphics.Canvas;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.Trace;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
@@ -1320,12 +1319,12 @@ final class LauncherRecentsLayoutEngine {
         if (!hasCachedGestureReleaseVisualStates(recentsView)) {
             return false;
         }
-        Trace.beginSection("FSBS/app/release_visuals");
+        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/release_visuals");
         try {
             int expectedCount = LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.size();
             int appliedCount = 0;
             int skippedCount = 0;
-            Trace.beginSection("FSBS/app/release_tasks");
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/release_tasks");
             try {
                 for (View taskView : LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.keySet()) {
                     if (taskView == null
@@ -1350,14 +1349,14 @@ final class LauncherRecentsLayoutEngine {
                     appliedCount++;
                 }
             } finally {
-                Trace.endSection();
+                if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
             }
-            Trace.setCounter("FSBS/app/release_tasks_expected", expectedCount);
-            Trace.setCounter("FSBS/app/release_tasks_applied", appliedCount);
-            Trace.setCounter("FSBS/app/release_tasks_skipped", skippedCount);
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.setCounter("FSBS/app/release_tasks_expected", expectedCount);
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.setCounter("FSBS/app/release_tasks_applied", appliedCount);
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.setCounter("FSBS/app/release_tasks_skipped", skippedCount);
             return appliedCount == expectedCount;
         } finally {
-            Trace.endSection();
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
         }
     }
 
@@ -1366,7 +1365,7 @@ final class LauncherRecentsLayoutEngine {
                 || LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.isEmpty()) {
             return false;
         }
-        Trace.beginSection("FSBS/desktop/visuals");
+        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/desktop/visuals");
         try {
             float progress = smoothStep(resolveOverviewPeekToOverviewProgress(recentsView));
             int expectedCount = LauncherRecentsState.OVERVIEW_STATE_STACK_ENTRY_TASK_STATES.size();
@@ -1393,7 +1392,7 @@ final class LauncherRecentsLayoutEngine {
             }
             return appliedCount == expectedCount;
         } finally {
-            Trace.endSection();
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
         }
     }
 
@@ -2012,7 +2011,7 @@ final class LauncherRecentsLayoutEngine {
                     LauncherRecentsTransitionController.readBlankTapHomeExitProgress(recentsView));
         }
         ComputedStackLayout layout;
-        Trace.beginSection("FSBS/stack/compute");
+        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/stack/compute");
         try {
             layout = computeStackLayoutInternal(
                     recentsView,
@@ -2022,9 +2021,9 @@ final class LauncherRecentsLayoutEngine {
                     null,
                     null);
         } finally {
-            Trace.endSection();
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
         }
-        Trace.beginSection("FSBS/stack/apply_visuals");
+        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/stack/apply_visuals");
         try {
             LauncherRecentsState.setLastStackLayoutActiveIndices(
                     recentsView,
@@ -2067,7 +2066,7 @@ final class LauncherRecentsLayoutEngine {
                 }
             }
         } finally {
-            Trace.endSection();
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
         }
         return layout.visualStates.size();
     }

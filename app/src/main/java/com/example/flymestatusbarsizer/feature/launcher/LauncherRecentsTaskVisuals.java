@@ -13,7 +13,6 @@ import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
-import android.os.Trace;
 import android.view.View;
 
 import java.util.List;
@@ -229,7 +228,7 @@ final class LauncherRecentsTaskVisuals {
             return;
         }
         float value = LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f);
-        Trace.beginSection("FSBS/app/release_task_geometry");
+        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/release_task_geometry");
         try {
             if (!approximatelyEqual(taskView.getPivotX(), target.pivotX)) {
                 taskView.setPivotX(target.pivotX);
@@ -250,9 +249,9 @@ final class LauncherRecentsTaskVisuals {
             setTranslationZ(taskView, LauncherRecentsLayoutEngine.lerp(
                     start.translationZ, target.translationZ, value));
         } finally {
-            Trace.endSection();
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
         }
-        Trace.beginSection("FSBS/app/release_task_alpha");
+        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/release_task_alpha");
         try {
             setAttachAlpha(taskView, LauncherRecentsLayoutEngine.lerp(
                     start.attachAlpha, target.attachAlpha, value));
@@ -261,10 +260,10 @@ final class LauncherRecentsTaskVisuals {
             setTaskHeadContentAlpha(taskView, 1f);
             setActivityTitleAlpha(taskView, target.activityTitleAlpha);
         } finally {
-            Trace.endSection();
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
         }
         if (!lightweight) {
-            Trace.beginSection("FSBS/app/release_task_blur");
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/release_task_blur");
             try {
                 if (target.stackContentBlurEnabled) {
                     setStackContentBlurProgress(taskView, LauncherRecentsLayoutEngine.lerp(
@@ -273,16 +272,16 @@ final class LauncherRecentsTaskVisuals {
                     clearStackContentBlurIfApplied(taskView);
                 }
             } finally {
-                Trace.endSection();
+                if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
             }
         }
-        Trace.beginSection("FSBS/app/release_task_state_commit");
+        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/release_task_state_commit");
         try {
             if (value >= 1f) {
                 LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.put(taskView, target);
             }
         } finally {
-            Trace.endSection();
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
         }
     }
 

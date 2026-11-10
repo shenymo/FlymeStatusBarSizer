@@ -5,7 +5,6 @@ import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
-import android.os.Trace;
 import android.view.View;
 
 import io.github.libxposed.api.XposedInterface;
@@ -324,31 +323,31 @@ final class LauncherRecentsStateAnimationController {
                 "addOnFrameCallback",
                 new Class<?>[]{Runnable.class},
                 (Runnable) () -> {
-                    Trace.beginSection("FSBS/desktop/frame");
+                    if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/desktop/frame");
                     try {
                         if (isOverviewStateStackAnimationActive(recentsView)) {
-                            Trace.beginSection("FSBS/desktop/cached");
+                            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/desktop/cached");
                             boolean applied;
                             try {
                                 applied = LauncherRecentsLayoutEngine
                                         .applyCachedOverviewStateFrame(recentsView);
                             } finally {
-                                Trace.endSection();
+                                if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
                             }
                             if (!applied) {
-                                Trace.beginSection("FSBS/desktop/fallback");
+                                if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/desktop/fallback");
                                 try {
                                     applied = LauncherRecentsLayoutEngine.applyStackLayout(
                                             recentsView,
                                             false,
                                             "overviewStateFrameFallback");
                                 } finally {
-                                    Trace.endSection();
+                                    if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
                                 }
                             }
                         }
                     } finally {
-                        Trace.endSection();
+                        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
                     }
                 });
         LauncherRecentsCompat.invokeMethodReflectively(

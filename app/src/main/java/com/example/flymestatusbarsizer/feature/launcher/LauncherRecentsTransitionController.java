@@ -7,7 +7,6 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ValueAnimator;
 import android.graphics.PointF;
-import android.os.Trace;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
@@ -51,7 +50,7 @@ final class LauncherRecentsTransitionController {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
-                    Trace.beginSection("FSBS/app/home_exit_start");
+                    if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/home_exit_start");
                     try {
                         if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
                             return chain.proceed();
@@ -69,7 +68,7 @@ final class LauncherRecentsTransitionController {
                                 false);
                         return chain.proceed();
                     } finally {
-                        Trace.endSection();
+                        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
                     }
                 }
                 return chain.proceed();
@@ -312,7 +311,7 @@ final class LauncherRecentsTransitionController {
     }
 
     private static void finishAppToRecentsGestureEnd(View recentsView) {
-        Trace.beginSection("FSBS/app/transition_end/app_to_recents");
+        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/transition_end/app_to_recents");
         try {
             LauncherRecentsState.trackRecentsView(recentsView);
             LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
@@ -367,7 +366,7 @@ final class LauncherRecentsTransitionController {
             LauncherRecentsLayoutEngine.ensureStackClearAllButtonReady(recentsView);
             recentsView.invalidate();
         } finally {
-            Trace.endSection();
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
         }
     }
 
@@ -696,11 +695,11 @@ final class LauncherRecentsTransitionController {
                 "UI_HELPER_EXECUTOR",
                 recentsView.getClass().getClassLoader());
         Runnable capture = () -> {
-            Trace.beginSection("FSBS/app/screenshot_preload");
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/screenshot_preload");
             try {
                 HashMap<Integer, Object> thumbnails = new HashMap<>();
                 for (int taskId : taskIds) {
-                    Trace.beginSection("FSBS/app/screenshot_request");
+                    if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/screenshot_request");
                     try {
                         thumbnails.put(
                                 taskId,
@@ -710,7 +709,7 @@ final class LauncherRecentsTransitionController {
                                         LauncherRecentsCompat.INT_ARG,
                                         taskId));
                     } finally {
-                        Trace.endSection();
+                        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
                     }
                 }
                 android.os.Handler mainHandler = LauncherRecentsState.ensureMainHandler();
@@ -721,7 +720,7 @@ final class LauncherRecentsTransitionController {
                             thumbnails));
                 }
             } finally {
-                Trace.endSection();
+                if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
             }
         };
         if (!LauncherRecentsCompat.invokeMethodReflectively(
@@ -780,19 +779,19 @@ final class LauncherRecentsTransitionController {
             refreshGestureRunningTaskScreenshot(recentsView);
             return;
         }
-        Trace.beginSection("FSBS/app/screenshot_apply");
+        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/screenshot_apply");
         try {
-            Trace.beginSection("FSBS/app/screenshot_complete");
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/screenshot_complete");
             try {
                 LauncherRecentsState.completeGestureScreenshotPreload(
                         recentsView,
                         preload,
                         thumbnails);
             } finally {
-                Trace.endSection();
+                if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
             }
         } finally {
-            Trace.endSection();
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
         }
     }
 
@@ -800,7 +799,7 @@ final class LauncherRecentsTransitionController {
             View recentsView,
             LauncherRecentsState.GestureScreenshotPreload preload,
             Runnable onScreenshotDrawn) {
-        Trace.beginSection("FSBS/app/screenshot_request_cached");
+        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/screenshot_request_cached");
         try {
             LauncherRecentsCompat.invokeCompat(
                     recentsView,
@@ -808,7 +807,7 @@ final class LauncherRecentsTransitionController {
                     LauncherRecentsCompat.BOOLEAN_ARG,
                     false);
             Runnable finish = () -> {
-                Trace.beginSection("FSBS/app/screenshot_drawn");
+                if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/screenshot_drawn");
                 try {
                     if (!LauncherRecentsState.isGestureScreenshotPreloadCurrent(
                             recentsView,
@@ -825,7 +824,7 @@ final class LauncherRecentsTransitionController {
                     LauncherRecentsState.clearGestureScreenshotPreload(recentsView);
                     onScreenshotDrawn.run();
                 } finally {
-                    Trace.endSection();
+                    if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
                 }
             };
             if (preload != null && preload.thumbnails != null
@@ -844,7 +843,7 @@ final class LauncherRecentsTransitionController {
                     true);
             finish.run();
         } finally {
-            Trace.endSection();
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
         }
     }
 
@@ -916,7 +915,7 @@ final class LauncherRecentsTransitionController {
         animator.setDuration(gestureStackReleaseDurationMs(recentsView));
         animator.setInterpolator(GESTURE_STACK_RELEASE_INTERPOLATOR);
         animator.addUpdateListener(animation -> {
-            Trace.beginSection("FSBS/app/release_frame");
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/release_frame");
             try {
                 Object value = animation.getAnimatedValue();
                 float progress = value instanceof Float ? (Float) value : 1f;
@@ -939,7 +938,7 @@ final class LauncherRecentsTransitionController {
                         handoffProgress);
                 recentsView.invalidate();
             } finally {
-                Trace.endSection();
+                if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
             }
         });
         animator.addListener(new AnimatorListenerAdapter() {
@@ -959,7 +958,7 @@ final class LauncherRecentsTransitionController {
 
             @Override
             public void onAnimationEnd(Animator animation) {
-                Trace.beginSection("FSBS/app/transition_end/gesture_release");
+                if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/transition_end/gesture_release");
                 try {
                     LauncherRecentsState.ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS.remove(recentsView);
                     if (cancelled) {
@@ -1001,7 +1000,7 @@ final class LauncherRecentsTransitionController {
                             LauncherRecentsState.POSITION_OWNER_ENTER);
                     recentsView.invalidate();
                 } finally {
-                    Trace.endSection();
+                    if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
                 }
             }
         });
@@ -1010,7 +1009,7 @@ final class LauncherRecentsTransitionController {
             handoffStartTranslationX[0] = recentsView.getTranslationX();
             handoffStartTranslationY[0] = recentsView.getTranslationY();
             handoffStartScroll[0] = resolvePrimaryScroll(recentsView);
-            Trace.beginSection("FSBS/app/handoff_precompute");
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/handoff_precompute");
             try {
                 beginGestureRecentsStackReleaseHandoff(
                         recentsView,
@@ -1020,7 +1019,7 @@ final class LauncherRecentsTransitionController {
                         false,
                         startVisualStates);
             } finally {
-                Trace.endSection();
+                if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
             }
             if (ensureRunningTaskScreenshot) {
                 if (animator.isStarted()) {
@@ -1084,7 +1083,7 @@ final class LauncherRecentsTransitionController {
         if (recentsView == null) {
             return;
         }
-        Trace.beginSection("FSBS/app/handoff_prepare");
+        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/handoff_prepare");
         try {
             LauncherRecentsTaskVisuals.captureCurrentTaskStatesAsBaseline(recentsView);
             HashMap<View, LauncherRecentsTaskVisuals.StackTaskVisualState> handoffStartVisualStates =
@@ -1141,7 +1140,7 @@ final class LauncherRecentsTransitionController {
             setGestureRecentsStackReleaseProgress(recentsView, 0f);
             recentsView.invalidate();
         } finally {
-            Trace.endSection();
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
         }
     }
 
@@ -1151,7 +1150,7 @@ final class LauncherRecentsTransitionController {
         if (recentsView == null) {
             return;
         }
-        Trace.beginSection("FSBS/app/screenshot_fallback");
+        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/screenshot_fallback");
         try {
             LauncherRecentsCompat.invokeCompat(
                     recentsView,
@@ -1172,7 +1171,7 @@ final class LauncherRecentsTransitionController {
             LauncherRecentsState.clearGestureScreenshotPreload(recentsView);
             onScreenshotDrawn.run();
         } finally {
-            Trace.endSection();
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
         }
     }
 

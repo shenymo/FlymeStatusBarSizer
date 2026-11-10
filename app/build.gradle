@@ -52,6 +52,7 @@ signingConfigs {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            buildConfigField "boolean", "ENABLE_LAUNCHER_TRACE", "false"
             
             // 引用上方定义的 signingConfigs.release
             signingConfig signingConfigs.release
@@ -59,6 +60,7 @@ signingConfigs {
         
         debug {
             // debug 默认使用 Android 自动生成的 debug.keystore 签名，无需额外配置
+            buildConfigField "boolean", "ENABLE_LAUNCHER_TRACE", "true"
         }
     }
 

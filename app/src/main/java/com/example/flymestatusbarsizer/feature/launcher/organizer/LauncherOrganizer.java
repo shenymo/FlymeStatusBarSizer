@@ -5,6 +5,7 @@ import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import android.app.Activity;
+import android.content.ContentProviderClient;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
@@ -109,7 +110,15 @@ public final class LauncherOrganizer {
         boolean locked = false;
         boolean reloaded = false;
         try {
-            Bundle mailbox = activity.getContentResolver().call(LauncherOrganizerProvider.URI, "take", null, null);
+            ContentProviderClient client = activity.getContentResolver()
+                    .acquireUnstableContentProviderClient(LauncherOrganizerProvider.URI);
+            if (client == null) throw new IllegalStateException("桌面通信服务不可用");
+            Bundle mailbox;
+            try {
+                mailbox = client.call("take", null, null);
+            } finally {
+                client.close();
+            }
             String text = mailbox == null ? "" : mailbox.getString("request", "");
             if (text.isEmpty()) return;
             JSONObject request = new JSONObject(text);
@@ -184,7 +193,16 @@ public final class LauncherOrganizer {
             });
             BUSY.set(false);
             if (id != null) {
-                try { activity.getContentResolver().call(LauncherOrganizerProvider.URI, "finish", id, reply); }
+                try {
+                    ContentProviderClient client = activity.getContentResolver()
+                            .acquireUnstableContentProviderClient(LauncherOrganizerProvider.URI);
+                    if (client == null) throw new IllegalStateException("桌面通信服务不可用");
+                    try {
+                        client.call("finish", id, reply);
+                    } finally {
+                        client.close();
+                    }
+                }
                 catch (Throwable error) { FlymeStatusBarSizer.logLauncherWarning("Desktop organizer reply failed", error); }
             }
         }

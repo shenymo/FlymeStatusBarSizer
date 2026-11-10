@@ -2,7 +2,6 @@ package com.example.flymestatusbarsizer.feature.launcher;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
-import android.os.Trace;
 import android.util.SparseBooleanArray;
 import android.view.View;
 
@@ -64,7 +63,7 @@ final class LauncherRecentsAttachController {
                 .isGestureRecentsStackReleaseAnimationActive(recentsView))) {
             return;
         }
-        Trace.beginSection("FSBS/app/preload_data");
+        if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/app/preload_data");
         try {
             Object trackedData = LauncherRecentsCompat.getFieldCompat(
                     recentsView,
@@ -105,7 +104,7 @@ final class LauncherRecentsAttachController {
             }
             LauncherRecentsState.setStackEntryTaskDataPreloaded(recentsView, true);
         } finally {
-            Trace.endSection();
+            if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
         }
     }
 
@@ -166,7 +165,7 @@ final class LauncherRecentsAttachController {
                         : null;
                 boolean stackLayout = recentsView != null
                         && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView);
-                Trace.beginSection("FSBS/apply_load_plan");
+                if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.beginSection("FSBS/apply_load_plan");
                 try {
                     Object result = chain.proceed();
                     if (stackLayout) {
@@ -182,7 +181,7 @@ final class LauncherRecentsAttachController {
                     }
                     return result;
                 } finally {
-                    Trace.endSection();
+                    if (LauncherRecentsTrace.ENABLED) LauncherRecentsTrace.endSection();
                 }
             });
         } catch (Throwable t) {
