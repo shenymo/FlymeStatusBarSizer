@@ -55,6 +55,7 @@ final class LauncherRecentsAttachController {
 
     private static void preloadStackEntryTaskData(View recentsView, int changes) {
         if (recentsView == null
+                || LauncherRecentsState.isStackEntryTaskDataPreloaded(recentsView)
                 || (!LauncherRecentsState.isSwipeUpGestureActive(recentsView)
                 && !LauncherRecentsState.isAppToRecentsEntrySessionActive(recentsView)
                 && !LauncherRecentsState.isAppToRecentsGestureReleased(recentsView)
@@ -102,6 +103,7 @@ final class LauncherRecentsAttachController {
                     }
                 }
             }
+            LauncherRecentsState.setStackEntryTaskDataPreloaded(recentsView, true);
         } finally {
             Trace.endSection();
         }
@@ -168,6 +170,7 @@ final class LauncherRecentsAttachController {
                 if (stackLayout) {
                     LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
                     LauncherRecentsState.trackRecentsView(recentsView);
+                    LauncherRecentsState.setStackEntryTaskDataPreloaded(recentsView, false);
                     LauncherRecentsTransitionController.refreshGestureRunningTaskScreenshot(
                             recentsView);
                     LauncherRecentsLayoutEngine.requestStackLayout(

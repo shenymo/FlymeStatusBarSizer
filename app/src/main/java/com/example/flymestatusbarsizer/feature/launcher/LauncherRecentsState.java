@@ -118,6 +118,7 @@ final class LauncherRecentsState {
         boolean launcherQuickSwitchStockMode;
         boolean taskLaunchRequestStarted;
         boolean swipeUpGestureActive;
+        boolean stackEntryTaskDataPreloaded;
         boolean blankTapHomeExitActive;
         boolean insideNativeScrollChange;
         boolean stackLayoutFramePosted;
@@ -459,6 +460,7 @@ final class LauncherRecentsState {
         state.pendingGestureRecentsStackRelease = false;
         state.pendingGestureRecentsStackReleaseHandoff = false;
         state.appToRecentsTouchTakeoverActive = false;
+        state.stackEntryTaskDataPreloaded = false;
     }
 
     static void clearAppToRecentsGestureState(View recentsView) {
@@ -479,7 +481,24 @@ final class LauncherRecentsState {
                 ? ensureRecentsViewState(recentsView)
                 : findRecentsViewState(recentsView);
         if (state != null) {
+            if (active && !state.appToRecentsEntrySessionActive) {
+                state.stackEntryTaskDataPreloaded = false;
+            }
             state.appToRecentsEntrySessionActive = active;
+        }
+    }
+
+    static boolean isStackEntryTaskDataPreloaded(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.stackEntryTaskDataPreloaded;
+    }
+
+    static void setStackEntryTaskDataPreloaded(View recentsView, boolean preloaded) {
+        RecentsViewState state = preloaded
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.stackEntryTaskDataPreloaded = preloaded;
         }
     }
 

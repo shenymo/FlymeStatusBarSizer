@@ -723,9 +723,9 @@ final class LauncherRecentsTaskVisuals {
         }
         float clampedProgress = LauncherRecentsLayoutEngine.clamp(blurProgress, 0f, 1f);
         markStackTaskVisualStateDirty(taskView);
-        float blurPx = FlymeStatusBarSizer.dp(
+        float blurPx = Math.round(FlymeStatusBarSizer.dp(
                 taskView.getContext(),
-                stackContentMaxBlurDp(taskView)) * clampedProgress;
+                stackContentMaxBlurDp(taskView)) * clampedProgress);
         LauncherRecentsState.StackContentTargets targets = resolveStackContentTargets(taskView);
         if (targets == null) {
             return;

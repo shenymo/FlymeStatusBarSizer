@@ -1371,9 +1371,11 @@ final class LauncherRecentsLayoutEngine {
                     continue;
                 }
                 ensureStackTaskViewVisible(taskView);
-                LauncherRecentsTaskVisuals.applyStackTaskVisualState(
+                LauncherRecentsTaskVisuals.applyStackTaskEntryAnimationFrame(
                         taskView,
-                        state.startVisualState.lerpTo(state.targetVisualState, progress));
+                        state.startVisualState,
+                        state.targetVisualState,
+                        progress);
                 appliedCount++;
             }
             return appliedCount == expectedCount;
