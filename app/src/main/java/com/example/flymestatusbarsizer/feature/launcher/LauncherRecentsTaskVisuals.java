@@ -223,7 +223,8 @@ final class LauncherRecentsTaskVisuals {
             View taskView,
             StackTaskVisualState start,
             StackTaskVisualState target,
-            float progress) {
+            float progress,
+            boolean lightweight) {
         if (taskView == null || start == null || target == null) {
             return;
         }
@@ -262,16 +263,18 @@ final class LauncherRecentsTaskVisuals {
         } finally {
             Trace.endSection();
         }
-        Trace.beginSection("FSBS/app/release_task_blur");
-        try {
-            if (target.stackContentBlurEnabled) {
-                setStackContentBlurProgress(taskView, LauncherRecentsLayoutEngine.lerp(
-                        start.blurProgress, target.blurProgress, value));
-            } else {
-                clearStackContentBlurIfApplied(taskView);
+        if (!lightweight) {
+            Trace.beginSection("FSBS/app/release_task_blur");
+            try {
+                if (target.stackContentBlurEnabled) {
+                    setStackContentBlurProgress(taskView, LauncherRecentsLayoutEngine.lerp(
+                            start.blurProgress, target.blurProgress, value));
+                } else {
+                    clearStackContentBlurIfApplied(taskView);
+                }
+            } finally {
+                Trace.endSection();
             }
-        } finally {
-            Trace.endSection();
         }
         Trace.beginSection("FSBS/app/release_task_state_commit");
         try {

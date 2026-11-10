@@ -104,6 +104,7 @@ final class LauncherRecentsState {
 
     static final class RecentsViewState {
         boolean appToRecentsEntrySessionActive;
+        boolean lightweightEntryVisuals;
         boolean appToRecentsGestureReleased;
         boolean appToRecentsStackSettled;
         boolean pendingGestureRecentsStackRelease;
@@ -456,6 +457,7 @@ final class LauncherRecentsState {
             return;
         }
         state.appToRecentsEntrySessionActive = false;
+        state.lightweightEntryVisuals = false;
         state.appToRecentsGestureReleased = false;
         state.pendingGestureRecentsStackRelease = false;
         state.pendingGestureRecentsStackReleaseHandoff = false;
@@ -505,6 +507,20 @@ final class LauncherRecentsState {
     static boolean isAppToRecentsEntrySessionActive(View recentsView) {
         RecentsViewState state = findRecentsViewState(recentsView);
         return state != null && state.appToRecentsEntrySessionActive;
+    }
+
+    static void setLightweightEntryVisuals(View recentsView, boolean active) {
+        RecentsViewState state = active
+                ? ensureRecentsViewState(recentsView)
+                : findRecentsViewState(recentsView);
+        if (state != null) {
+            state.lightweightEntryVisuals = active;
+        }
+    }
+
+    static boolean isLightweightEntryVisuals(View recentsView) {
+        RecentsViewState state = findRecentsViewState(recentsView);
+        return state != null && state.lightweightEntryVisuals;
     }
 
     static void setAppToRecentsGestureReleased(View recentsView, boolean released) {

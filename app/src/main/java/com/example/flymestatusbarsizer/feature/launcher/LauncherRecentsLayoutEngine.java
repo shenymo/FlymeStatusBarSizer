@@ -1345,7 +1345,8 @@ final class LauncherRecentsLayoutEngine {
                             taskView,
                             state.startVisualState,
                             state.targetVisualState,
-                            progress);
+                            progress,
+                            LauncherRecentsState.isLightweightEntryVisuals(recentsView));
                     appliedCount++;
                 }
             } finally {
@@ -1386,7 +1387,8 @@ final class LauncherRecentsLayoutEngine {
                         taskView,
                         state.startVisualState,
                         state.targetVisualState,
-                        progress);
+                        progress,
+                        false);
                 appliedCount++;
             }
             return appliedCount == expectedCount;
@@ -1543,7 +1545,7 @@ final class LauncherRecentsLayoutEngine {
         try {
             return computeStackLayout(
                     recentsView,
-                    stackStableVisibleRadius(recentsView),
+                    stackGestureReleaseCoreRadius(recentsView),
                     null,
                     targetScroll);
         } finally {
@@ -4077,14 +4079,14 @@ final class LauncherRecentsLayoutEngine {
 
     static int stackEntryLightRadius(View view) {
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
-        return config == null ? STACK_ENTRY_LIGHT_RADIUS : config.stackEntryLightRadius;
+        return Math.min(1, config == null ? STACK_ENTRY_LIGHT_RADIUS : config.stackEntryLightRadius);
     }
 
     static int stackGestureReleaseCoreRadius(View view) {
         FlymeStatusBarSizer.LauncherRecentsConfigSnapshot config = stackConfig(view);
-        return config == null
+        return Math.min(1, config == null
                 ? STACK_GESTURE_RELEASE_CORE_RADIUS
-                : config.stackGestureReleaseCoreRadius;
+                : config.stackGestureReleaseCoreRadius);
     }
 
     static boolean isTaskVisibleInViewport(

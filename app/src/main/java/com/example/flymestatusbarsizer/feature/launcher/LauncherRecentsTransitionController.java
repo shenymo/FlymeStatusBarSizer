@@ -113,6 +113,11 @@ final class LauncherRecentsTransitionController {
                     LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
                     markPendingGestureRecentsStackRelease(recentsView, true);
                     prepareStackRecentsView(recentsView);
+                    LauncherRecentsState.setLightweightEntryVisuals(recentsView, true);
+                    LauncherRecentsTaskVisuals.clearRecentsStackContentBlur(recentsView);
+                    for (View taskView : startVisualStates.keySet()) {
+                        LauncherRecentsTaskVisuals.restoreTaskShadow(taskView);
+                    }
                     if (chain.getArg(0) instanceof AnimatorSet) {
                         startGestureRecentsStackReleaseAnimation(
                                 recentsView,
@@ -827,6 +832,7 @@ final class LauncherRecentsTransitionController {
     }
 
     static void cancelGestureRecentsStackReleaseAnimation(View recentsView, boolean clearProgress) {
+        LauncherRecentsState.setLightweightEntryVisuals(recentsView, false);
         ValueAnimator animator =
                 LauncherRecentsState.ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS.remove(recentsView);
         if (animator != null) {
@@ -935,17 +941,23 @@ final class LauncherRecentsTransitionController {
                 try {
                     LauncherRecentsState.ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS.remove(recentsView);
                     if (cancelled) {
+                        LauncherRecentsState.setLightweightEntryVisuals(recentsView, false);
                         markGestureRecentsStackReleaseHandoffPending(recentsView, false);
                         clearGestureRecentsStackReleaseProgress(recentsView);
                         clearForcedRecentsTranslationX(recentsView);
                         clearForcedRecentsTranslationY(recentsView);
                         LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
+                        LauncherRecentsLayoutEngine.applyStableStackLayout(
+                                recentsView,
+                                false,
+                                "gestureReleaseCancelSync");
                         LauncherRecentsState.clearPositionOwner(
                                 recentsView,
                                 LauncherRecentsState.POSITION_OWNER_ENTER);
                         return;
                     }
                     LauncherRecentsState.clearGestureScreenshotPreload(recentsView);
+                    LauncherRecentsState.setLightweightEntryVisuals(recentsView, false);
                     markGestureRecentsStackReleaseHandoffPending(recentsView, false);
                     setForcedRecentsTranslationX(recentsView, 0f);
                     setForcedRecentsTranslationY(recentsView, 0f);
