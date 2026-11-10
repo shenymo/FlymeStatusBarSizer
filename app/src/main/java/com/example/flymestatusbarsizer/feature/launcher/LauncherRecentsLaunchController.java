@@ -262,6 +262,11 @@ final class LauncherRecentsLaunchController {
                         return chain.proceed();
                     }
                     View recentsView = LauncherRecentsCompat.resolveOwningRecentsView(taskView);
+                    if (!LauncherRecentsCompat.isDesktopTask(taskView)
+                            && LauncherRecentsTransitionController
+                            .shouldIgnoreTaskClickDuringGestureRelease(recentsView)) {
+                        return null;
+                    }
                     boolean preparedTransitionGeometry =
                             shouldPrepareTaskLaunchTransitionGeometry(taskView, recentsView);
                     if (preparedTransitionGeometry) {

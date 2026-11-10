@@ -650,6 +650,14 @@ final class LauncherRecentsTransitionController {
                 || hasGestureRecentsStackReleaseProgress(recentsView));
     }
 
+    static boolean shouldIgnoreTaskClickDuringGestureRelease(View recentsView) {
+        return recentsView != null
+                && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
+                && (LauncherRecentsState.isPendingGestureRecentsStackRelease(recentsView)
+                || isGestureRecentsStackReleaseHandoffPending(recentsView)
+                || isGestureRecentsStackReleaseAnimationActive(recentsView));
+    }
+
     static boolean shouldSuppressGestureReleaseStockTaskVisuals(View recentsView) {
         return recentsView != null
                 && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView)
