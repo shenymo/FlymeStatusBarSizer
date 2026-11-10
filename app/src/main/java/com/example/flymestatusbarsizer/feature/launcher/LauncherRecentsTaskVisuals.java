@@ -13,6 +13,7 @@ import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
+import android.os.Trace;
 import android.view.View;
 
 import java.util.List;
@@ -227,38 +228,58 @@ final class LauncherRecentsTaskVisuals {
             return;
         }
         float value = LauncherRecentsLayoutEngine.clamp(progress, 0f, 1f);
-        if (!approximatelyEqual(taskView.getPivotX(), target.pivotX)) {
-            taskView.setPivotX(target.pivotX);
+        Trace.beginSection("FSBS/app/release_task_geometry");
+        try {
+            if (!approximatelyEqual(taskView.getPivotX(), target.pivotX)) {
+                taskView.setPivotX(target.pivotX);
+            }
+            if (!approximatelyEqual(taskView.getPivotY(), target.pivotY)) {
+                taskView.setPivotY(target.pivotY);
+            }
+            setHorizontalOffsetTranslationX(taskView, LauncherRecentsLayoutEngine.lerp(
+                    start.horizontalOffsetX, target.horizontalOffsetX, value));
+            setTaskOffsetTranslationX(taskView, LauncherRecentsLayoutEngine.lerp(
+                    start.taskOffsetX, target.taskOffsetX, value));
+            setTaskOffsetTranslationY(taskView, LauncherRecentsLayoutEngine.lerp(
+                    start.taskOffsetY, target.taskOffsetY, value));
+            setBoxTranslationY(taskView, LauncherRecentsLayoutEngine.lerp(
+                    start.boxTranslationY, target.boxTranslationY, value));
+            setNonGridScale(taskView, LauncherRecentsLayoutEngine.lerp(
+                    start.scale, target.scale, value));
+            setTranslationZ(taskView, LauncherRecentsLayoutEngine.lerp(
+                    start.translationZ, target.translationZ, value));
+        } finally {
+            Trace.endSection();
         }
-        if (!approximatelyEqual(taskView.getPivotY(), target.pivotY)) {
-            taskView.setPivotY(target.pivotY);
+        Trace.beginSection("FSBS/app/release_task_alpha");
+        try {
+            setAttachAlpha(taskView, LauncherRecentsLayoutEngine.lerp(
+                    start.attachAlpha, target.attachAlpha, value));
+            setStableAlpha(taskView, LauncherRecentsLayoutEngine.lerp(
+                    start.stableAlpha, target.stableAlpha, value));
+            setTaskHeadContentAlpha(taskView, 1f);
+            setActivityTitleAlpha(taskView, target.activityTitleAlpha);
+        } finally {
+            Trace.endSection();
         }
-        setHorizontalOffsetTranslationX(taskView, LauncherRecentsLayoutEngine.lerp(
-                start.horizontalOffsetX, target.horizontalOffsetX, value));
-        setTaskOffsetTranslationX(taskView, LauncherRecentsLayoutEngine.lerp(
-                start.taskOffsetX, target.taskOffsetX, value));
-        setTaskOffsetTranslationY(taskView, LauncherRecentsLayoutEngine.lerp(
-                start.taskOffsetY, target.taskOffsetY, value));
-        setBoxTranslationY(taskView, LauncherRecentsLayoutEngine.lerp(
-                start.boxTranslationY, target.boxTranslationY, value));
-        setNonGridScale(taskView, LauncherRecentsLayoutEngine.lerp(
-                start.scale, target.scale, value));
-        setAttachAlpha(taskView, LauncherRecentsLayoutEngine.lerp(
-                start.attachAlpha, target.attachAlpha, value));
-        setStableAlpha(taskView, LauncherRecentsLayoutEngine.lerp(
-                start.stableAlpha, target.stableAlpha, value));
-        setTaskHeadContentAlpha(taskView, 1f);
-        setActivityTitleAlpha(taskView, target.activityTitleAlpha);
-        setTranslationZ(taskView, LauncherRecentsLayoutEngine.lerp(
-                start.translationZ, target.translationZ, value));
-        if (target.stackContentBlurEnabled) {
-            setStackContentBlurProgress(taskView, LauncherRecentsLayoutEngine.lerp(
-                    start.blurProgress, target.blurProgress, value));
-        } else {
-            clearStackContentBlurIfApplied(taskView);
+        Trace.beginSection("FSBS/app/release_task_blur");
+        try {
+            if (target.stackContentBlurEnabled) {
+                setStackContentBlurProgress(taskView, LauncherRecentsLayoutEngine.lerp(
+                        start.blurProgress, target.blurProgress, value));
+            } else {
+                clearStackContentBlurIfApplied(taskView);
+            }
+        } finally {
+            Trace.endSection();
         }
-        if (value >= 1f) {
-            LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.put(taskView, target);
+        Trace.beginSection("FSBS/app/release_task_state_commit");
+        try {
+            if (value >= 1f) {
+                LauncherRecentsState.LAST_APPLIED_STACK_TASK_VISUAL_STATES.put(taskView, target);
+            }
+        } finally {
+            Trace.endSection();
         }
     }
 

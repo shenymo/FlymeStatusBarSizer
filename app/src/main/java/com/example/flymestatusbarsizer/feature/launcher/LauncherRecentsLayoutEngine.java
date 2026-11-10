@@ -1324,25 +1324,36 @@ final class LauncherRecentsLayoutEngine {
         try {
             int expectedCount = LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.size();
             int appliedCount = 0;
-            for (View taskView : LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.keySet()) {
-                if (taskView == null
-                        || taskView.getParent() == null
-                        || LauncherRecentsCompat.isDesktopTask(taskView)) {
-                    continue;
+            int skippedCount = 0;
+            Trace.beginSection("FSBS/app/release_tasks");
+            try {
+                for (View taskView : LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.keySet()) {
+                    if (taskView == null
+                            || taskView.getParent() == null
+                            || LauncherRecentsCompat.isDesktopTask(taskView)) {
+                        skippedCount++;
+                        continue;
+                    }
+                    LauncherRecentsState.GestureReleaseTaskState state =
+                            LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView);
+                    if (state == null) {
+                        skippedCount++;
+                        continue;
+                    }
+                    ensureStackTaskViewVisible(taskView);
+                    LauncherRecentsTaskVisuals.applyStackTaskEntryAnimationFrame(
+                            taskView,
+                            state.startVisualState,
+                            state.targetVisualState,
+                            progress);
+                    appliedCount++;
                 }
-                LauncherRecentsState.GestureReleaseTaskState state =
-                        LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.get(taskView);
-                if (state == null) {
-                    continue;
-                }
-                ensureStackTaskViewVisible(taskView);
-                LauncherRecentsTaskVisuals.applyStackTaskEntryAnimationFrame(
-                        taskView,
-                        state.startVisualState,
-                        state.targetVisualState,
-                        progress);
-                appliedCount++;
+            } finally {
+                Trace.endSection();
             }
+            Trace.setCounter("FSBS/app/release_tasks_expected", expectedCount);
+            Trace.setCounter("FSBS/app/release_tasks_applied", appliedCount);
+            Trace.setCounter("FSBS/app/release_tasks_skipped", skippedCount);
             return appliedCount == expectedCount;
         } finally {
             Trace.endSection();
