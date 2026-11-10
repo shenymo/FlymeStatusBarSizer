@@ -51,20 +51,26 @@ final class LauncherRecentsTransitionController {
                 Object thisObject = chain.getThisObject();
                 if (thisObject instanceof View) {
                     View recentsView = (View) thisObject;
-                    if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
+                    Trace.beginSection("FSBS/app/home_exit_start");
+                    try {
+                        if (LauncherRecentsState.isSwipeUpGestureActive(recentsView)) {
+                            return chain.proceed();
+                        }
+                        LauncherRecentsState.trackRecentsView(recentsView);
+                        LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+                        if (shouldAnimateBlankTapHomeExit(recentsView)) {
+                            prepareBlankTapHomeExitAnimation(recentsView);
+                            return chain.proceed();
+                        }
+                        LauncherRecentsState.setAppToRecentsStackSettled(recentsView, false);
+                        LauncherRecentsStateAnimationController.clearOverviewEntryState(recentsView);
+                        LauncherRecentsAttachController.clearAppToRecentsEntrySession(
+                                recentsView,
+                                false);
                         return chain.proceed();
+                    } finally {
+                        Trace.endSection();
                     }
-                    LauncherRecentsState.trackRecentsView(recentsView);
-                    LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-                    if (shouldAnimateBlankTapHomeExit(recentsView)) {
-                        prepareBlankTapHomeExitAnimation(recentsView);
-                        return chain.proceed();
-                    }
-                    LauncherRecentsState.setAppToRecentsStackSettled(recentsView, false);
-                    LauncherRecentsStateAnimationController.clearOverviewEntryState(recentsView);
-                    LauncherRecentsAttachController.clearAppToRecentsEntrySession(
-                            recentsView,
-                            false);
                 }
                 return chain.proceed();
             });
@@ -302,58 +308,63 @@ final class LauncherRecentsTransitionController {
     }
 
     private static void finishAppToRecentsGestureEnd(View recentsView) {
-        LauncherRecentsState.trackRecentsView(recentsView);
-        LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
-        LauncherRecentsCompat.writeField(recentsView, "mActiveGestureGroupedTaskInfo", null);
-        Object orientationState = LauncherRecentsCompat.getFieldCompat(
-                recentsView,
-                "mOrientationState");
-        Object gestureChanged = LauncherRecentsCompat.invokeCompat(
-                orientationState,
-                "setGestureActive",
-                LauncherRecentsCompat.BOOLEAN_ARG,
-                false);
-        if (gestureChanged instanceof Boolean && (Boolean) gestureChanged) {
-            LauncherRecentsCompat.invokeCompat(
+        Trace.beginSection("FSBS/app/transition_end/app_to_recents");
+        try {
+            LauncherRecentsState.trackRecentsView(recentsView);
+            LauncherRecentsLayoutEngine.prepareRecentsView(recentsView);
+            LauncherRecentsCompat.writeField(recentsView, "mActiveGestureGroupedTaskInfo", null);
+            Object orientationState = LauncherRecentsCompat.getFieldCompat(
                     recentsView,
-                    "updateOrientationHandler",
+                    "mOrientationState");
+            Object gestureChanged = LauncherRecentsCompat.invokeCompat(
+                    orientationState,
+                    "setGestureActive",
                     LauncherRecentsCompat.BOOLEAN_ARG,
                     false);
+            if (gestureChanged instanceof Boolean && (Boolean) gestureChanged) {
+                LauncherRecentsCompat.invokeCompat(
+                        recentsView,
+                        "updateOrientationHandler",
+                        LauncherRecentsCompat.BOOLEAN_ARG,
+                        false);
+            }
+            LauncherRecentsCompat.invokeCompat(
+                    recentsView,
+                    "setEnableFreeScroll",
+                    new Class[]{boolean.class, boolean.class},
+                    true,
+                    true);
+            LauncherRecentsCompat.invokeCompat(
+                    recentsView,
+                    "setEnableDrawingLiveTile",
+                    LauncherRecentsCompat.BOOLEAN_ARG,
+                    false);
+            LauncherRecentsCompat.invokeCompat(
+                    recentsView,
+                    "setRunningTaskViewShowScreenshot",
+                    LauncherRecentsCompat.BOOLEAN_ARG,
+                    true);
+            LauncherRecentsCompat.invokeCompat(
+                    recentsView,
+                    "setRunningTaskHidden",
+                    LauncherRecentsCompat.BOOLEAN_ARG,
+                    false);
+            LauncherRecentsCompat.writeField(recentsView, "mCurrentGestureEndTarget", null);
+            LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
+            LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
+            markPendingGestureRecentsStackRelease(recentsView, false);
+            LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
+            LauncherRecentsTaskVisuals.clearRecentsStackContentBlur(recentsView);
+            LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
+            LauncherRecentsLayoutEngine.applyStableStackLayout(
+                    recentsView,
+                    false,
+                    "finishGestureEndSync");
+            LauncherRecentsLayoutEngine.ensureStackClearAllButtonReady(recentsView);
+            recentsView.invalidate();
+        } finally {
+            Trace.endSection();
         }
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "setEnableFreeScroll",
-                new Class[]{boolean.class, boolean.class},
-                true,
-                true);
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "setEnableDrawingLiveTile",
-                LauncherRecentsCompat.BOOLEAN_ARG,
-                false);
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "setRunningTaskViewShowScreenshot",
-                LauncherRecentsCompat.BOOLEAN_ARG,
-                true);
-        LauncherRecentsCompat.invokeCompat(
-                recentsView,
-                "setRunningTaskHidden",
-                LauncherRecentsCompat.BOOLEAN_ARG,
-                false);
-        LauncherRecentsCompat.writeField(recentsView, "mCurrentGestureEndTarget", null);
-        LauncherRecentsState.setAppToRecentsGestureReleased(recentsView, false);
-        LauncherRecentsState.setSwipeUpGestureActive(recentsView, false);
-        markPendingGestureRecentsStackRelease(recentsView, false);
-        LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
-        LauncherRecentsTaskVisuals.clearRecentsStackContentBlur(recentsView);
-        LauncherRecentsState.setLastStackLayoutApply(recentsView, null);
-        LauncherRecentsLayoutEngine.applyStableStackLayout(
-                recentsView,
-                false,
-                "finishGestureEndSync");
-        LauncherRecentsLayoutEngine.ensureStackClearAllButtonReady(recentsView);
-        recentsView.invalidate();
     }
 
     private static void hookAbsSwipeUpHandlerGestureEnded(
@@ -677,13 +688,18 @@ final class LauncherRecentsTransitionController {
             try {
                 HashMap<Integer, Object> thumbnails = new HashMap<>();
                 for (int taskId : taskIds) {
-                    thumbnails.put(
-                            taskId,
-                            LauncherRecentsCompat.invokeCompat(
-                                    controller,
-                                    "screenshotTask",
-                                    LauncherRecentsCompat.INT_ARG,
-                                    taskId));
+                    Trace.beginSection("FSBS/app/screenshot_request");
+                    try {
+                        thumbnails.put(
+                                taskId,
+                                LauncherRecentsCompat.invokeCompat(
+                                        controller,
+                                        "screenshotTask",
+                                        LauncherRecentsCompat.INT_ARG,
+                                        taskId));
+                    } finally {
+                        Trace.endSection();
+                    }
                 }
                 android.os.Handler mainHandler = LauncherRecentsState.ensureMainHandler();
                 if (mainHandler != null) {
@@ -744,10 +760,15 @@ final class LauncherRecentsTransitionController {
         }
         Trace.beginSection("FSBS/app/screenshot_apply");
         try {
-            LauncherRecentsState.completeGestureScreenshotPreload(
-                    recentsView,
-                    preload,
-                    thumbnails);
+            Trace.beginSection("FSBS/app/screenshot_complete");
+            try {
+                LauncherRecentsState.completeGestureScreenshotPreload(
+                        recentsView,
+                        preload,
+                        thumbnails);
+            } finally {
+                Trace.endSection();
+            }
         } finally {
             Trace.endSection();
         }
@@ -910,39 +931,44 @@ final class LauncherRecentsTransitionController {
 
             @Override
             public void onAnimationEnd(Animator animation) {
-                LauncherRecentsState.ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS.remove(recentsView);
-                if (cancelled) {
+                Trace.beginSection("FSBS/app/transition_end/gesture_release");
+                try {
+                    LauncherRecentsState.ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS.remove(recentsView);
+                    if (cancelled) {
+                        markGestureRecentsStackReleaseHandoffPending(recentsView, false);
+                        clearGestureRecentsStackReleaseProgress(recentsView);
+                        clearForcedRecentsTranslationX(recentsView);
+                        clearForcedRecentsTranslationY(recentsView);
+                        LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
+                        LauncherRecentsState.clearPositionOwner(
+                                recentsView,
+                                LauncherRecentsState.POSITION_OWNER_ENTER);
+                        return;
+                    }
+                    LauncherRecentsState.clearGestureScreenshotPreload(recentsView);
                     markGestureRecentsStackReleaseHandoffPending(recentsView, false);
+                    setForcedRecentsTranslationX(recentsView, 0f);
+                    setForcedRecentsTranslationY(recentsView, 0f);
+                    setGestureRecentsStackReleaseProgress(recentsView, 1f);
+                    normalizeAppToRecentsStackAnchor(
+                            recentsView,
+                            stackAnchorPage,
+                            stackAnchorTargetScroll);
+                    LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
                     clearGestureRecentsStackReleaseProgress(recentsView);
-                    clearForcedRecentsTranslationX(recentsView);
-                    clearForcedRecentsTranslationY(recentsView);
                     LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
+                    LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
+                    LauncherRecentsLayoutEngine.applyStableStackLayout(
+                            recentsView,
+                            false,
+                            "gestureReleaseEndSync");
                     LauncherRecentsState.clearPositionOwner(
                             recentsView,
                             LauncherRecentsState.POSITION_OWNER_ENTER);
-                    return;
+                    recentsView.invalidate();
+                } finally {
+                    Trace.endSection();
                 }
-                LauncherRecentsState.clearGestureScreenshotPreload(recentsView);
-                markGestureRecentsStackReleaseHandoffPending(recentsView, false);
-                setForcedRecentsTranslationX(recentsView, 0f);
-                setForcedRecentsTranslationY(recentsView, 0f);
-                setGestureRecentsStackReleaseProgress(recentsView, 1f);
-                normalizeAppToRecentsStackAnchor(
-                        recentsView,
-                        stackAnchorPage,
-                        stackAnchorTargetScroll);
-                LauncherRecentsState.setAppToRecentsStackSettled(recentsView, true);
-                clearGestureRecentsStackReleaseProgress(recentsView);
-                LauncherRecentsState.GESTURE_STACK_RELEASE_TASK_STATES.clear();
-                LauncherRecentsTaskVisuals.forceRecentsTaskHeadsVisible(recentsView);
-                LauncherRecentsLayoutEngine.applyStableStackLayout(
-                        recentsView,
-                        false,
-                        "gestureReleaseEndSync");
-                LauncherRecentsState.clearPositionOwner(
-                        recentsView,
-                        LauncherRecentsState.POSITION_OWNER_ENTER);
-                recentsView.invalidate();
             }
         });
         LauncherRecentsState.ACTIVE_GESTURE_STACK_RELEASE_ANIMATORS.put(recentsView, animator);

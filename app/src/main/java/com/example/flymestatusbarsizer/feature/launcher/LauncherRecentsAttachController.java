@@ -166,19 +166,24 @@ final class LauncherRecentsAttachController {
                         : null;
                 boolean stackLayout = recentsView != null
                         && LauncherRecentsLayoutEngine.shouldUseStackLayout(recentsView);
-                Object result = chain.proceed();
-                if (stackLayout) {
-                    LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
-                    LauncherRecentsState.trackRecentsView(recentsView);
-                    LauncherRecentsState.setStackEntryTaskDataPreloaded(recentsView, false);
-                    LauncherRecentsTransitionController.refreshGestureRunningTaskScreenshot(
-                            recentsView);
-                    LauncherRecentsLayoutEngine.requestStackLayout(
-                            recentsView,
-                            "applyLoadPlan",
-                            true);
+                Trace.beginSection("FSBS/apply_load_plan");
+                try {
+                    Object result = chain.proceed();
+                    if (stackLayout) {
+                        LauncherRecentsTouchController.clearStackAppFlowVisibilityCache();
+                        LauncherRecentsState.trackRecentsView(recentsView);
+                        LauncherRecentsState.setStackEntryTaskDataPreloaded(recentsView, false);
+                        LauncherRecentsTransitionController.refreshGestureRunningTaskScreenshot(
+                                recentsView);
+                        LauncherRecentsLayoutEngine.requestStackLayout(
+                                recentsView,
+                                "applyLoadPlan",
+                                true);
+                    }
+                    return result;
+                } finally {
+                    Trace.endSection();
                 }
-                return result;
             });
         } catch (Throwable t) {
             FlymeStatusBarSizer.logLauncherWarning(
