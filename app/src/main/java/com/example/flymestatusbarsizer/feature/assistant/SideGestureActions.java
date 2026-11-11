@@ -2,19 +2,26 @@ package com.example.flymestatusbarsizer.feature.assistant;
 
 import android.app.ActivityManager;
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
+import android.widget.Toast;
 
 import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.config.SideGestureTargetStore;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
+import com.example.flymestatusbarsizer.feature.tasks.TaskProcessStopper;
 import com.example.flymestatusbarsizer.feature.windowmode.WindowModeSideGestureHooks;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /** Keeps action availability and execution separate from edge gesture recognition. */
 public final class SideGestureActions {
+    private static final ExecutorService TASK_WORKER = Executors.newSingleThreadExecutor();
     public static final String ACTION_CORNER_GESTURE =
             "com.fiyme.statusbarsizer.action.CORNER_GESTURE";
     public interface Action {
@@ -77,14 +84,20 @@ public final class SideGestureActions {
                                         || ReflectUtils.invokeNoArgInt(task, "getActivityType", -1) != 1
                                         || "com.android.systemui".equals(
                                                 task.topActivity.getPackageName())) return;
-                                Object service = Class.forName("android.app.ActivityTaskManager")
-                                        .getMethod("getService").invoke(null);
-                                Object result = Class.forName("android.app.IActivityTaskManager")
-                                        .getMethod("removeTask", int.class).invoke(service, task.taskId);
-                                if (Boolean.FALSE.equals(result)) {
-                                    AssistantHooks.warn("Cannot end current task", null);
-                                    return;
-                                }
+                                int userId = ReflectUtils.getIntField(task, "userId", -1);
+                                if (userId < 0) return;
+                                Handler main = new Handler(Looper.getMainLooper());
+                                TASK_WORKER.execute(() -> {
+                                    try {
+                                        TaskProcessStopper.remove(context, task.taskId,
+                                                task.topActivity.getPackageName(), userId);
+                                        if (onSuccess != null) main.post(onSuccess);
+                                    } catch (Exception error) {
+                                        AssistantHooks.warn("Cannot end current task", error);
+                                        main.post(() -> Toast.makeText(context, "结束任务失败", Toast.LENGTH_SHORT).show());
+                                    }
+                                });
+                                return;
                             }
                             if (onSuccess != null) onSuccess.run();
                         } catch (ReflectiveOperationException | RuntimeException error) {

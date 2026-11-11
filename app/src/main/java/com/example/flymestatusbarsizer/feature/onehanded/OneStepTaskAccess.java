@@ -14,6 +14,7 @@ import android.os.UserHandle;
 import com.example.flymestatusbarsizer.BuildConfig;
 import com.example.flymestatusbarsizer.feature.tasks.OneStepRecentTasks;
 import com.example.flymestatusbarsizer.feature.tasks.RecentTaskCard;
+import com.example.flymestatusbarsizer.feature.tasks.TaskProcessStopper;
 import com.example.flymestatusbarsizer.feature.windowmode.FlymeMiniWindowLauncher;
 
 import com.example.flymestatusbarsizer.util.ReflectUtils;
@@ -28,7 +29,6 @@ public final class OneStepTaskAccess {
     private final Object service;
     private final Method roots;
     private final Method launch;
-    private final Method removeTask;
     private final Method focusTask;
     private final OneStepRecentTasks recent;
     private Object taskListener;
@@ -39,7 +39,6 @@ public final class OneStepTaskAccess {
         Class<?> tasks = Class.forName("android.app.IActivityTaskManager");
         roots = tasks.getMethod("getAllRootTaskInfos");
         launch = tasks.getMethod("startActivityFromRecents", int.class, Bundle.class);
-        removeTask = tasks.getMethod("removeTask", int.class);
         focusTask = tasks.getMethod("setFocusedTask", int.class);
         recent = new OneStepRecentTasks(context);
     }
@@ -205,9 +204,8 @@ public final class OneStepTaskAccess {
         throw new IllegalStateException("Flyme mini window was not entered");
     }
 
-    public void remove(RecentTaskCard requested) throws ReflectiveOperationException {
-        Object result = removeTask.invoke(service, requested.taskId);
-        if (Boolean.FALSE.equals(result)) throw new IllegalStateException("Cannot remove recent task");
+    public void remove(RecentTaskCard requested) throws Exception {
+        TaskProcessStopper.remove(context, requested.taskId, requested.lockPackageName, requested.userId);
     }
 
     int defaultFocusedTaskId() throws ReflectiveOperationException {

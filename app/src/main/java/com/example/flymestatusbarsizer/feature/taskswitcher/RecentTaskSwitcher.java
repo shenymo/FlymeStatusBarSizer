@@ -708,6 +708,7 @@ public final class RecentTaskSwitcher {
                     getTaskAccess(context).remove(card);
                     failed = false;
                 } catch (Exception error) {
+                    Log.w(TAG, "Cannot close task=" + card.taskId + " package=" + card.lockPackageName, error);
                     failed = true;
                 }
                 boolean taskFailed = failed;
@@ -761,6 +762,7 @@ public final class RecentTaskSwitcher {
                     try {
                         tasks.remove(card);
                     } catch (Exception error) {
+                        Log.w(TAG, "Cannot close task=" + card.taskId + " package=" + card.lockPackageName, error);
                         failedCards.add(card);
                     }
                 }
@@ -792,7 +794,8 @@ public final class RecentTaskSwitcher {
                     }
                     if (entries.isEmpty()) renderRows();
                     if (!remaining.isEmpty()) {
-                        Toast.makeText(context, "部分任务关闭失败", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(context, remaining.size() == removing.size()
+                                ? "全部任务关闭失败" : "部分任务关闭失败", Toast.LENGTH_SHORT).show();
                     }
                 });
             });
