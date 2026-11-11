@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="flyme_background">#101216</color>
+    <color name="flyme_surface">#191D23</color>
+    <color name="flyme_surface_low">#20262E</color>
+    <color name="flyme_surface_container">#252C35</color>
+    <color name="flyme_surface_container_high">#2B333E</color>
+    <color name="flyme_surface_container_highest">#343E4A</color>
+    <color name="flyme_outline">#9AA6B5</color>
+    <color name="flyme_outline_variant">#3C4653</color>
+    <color name="flyme_text">#F0F3F7</color>
+    <color name="flyme_subtext">#B4BFCC</color>
+    <color name="flyme_primary">#8DB2FF</color>
+    <color name="flyme_primary_deep">#B6CCFF</color>
+    <color name="flyme_primary_container">#243A5D</color>
+    <color name="flyme_primary_soft">#243A5D</color>
+    <color name="flyme_secondary">#B6C3D5</color>
+    <color name="flyme_secondary_soft">#303945</color>
+    <color name="flyme_tertiary">#D2B899</color>
+    <color name="flyme_tertiary_soft">#3D3329</color>
+    <color name="flyme_error">#F2B8B5</color>
+    <color name="flyme_error_soft">#4A2726</color>
+    <color name="flyme_on_primary">#14243D</color>
+</resources>

@@ -243,11 +243,17 @@ public final class SideGestureZoneOverlay {
         private RectF pressedButtonControl;
         private float dragOffsetX;
         private float dragOffsetY;
+        private final int overlaySurfaceColor;
+        private final int overlayTextColor;
+        private final int overlayMutedColor;
 
         OverlayView(Context context) {
             super(context);
             density = getResources().getDisplayMetrics().density;
             scaledDensity = getResources().getDisplayMetrics().scaledDensity;
+            overlaySurfaceColor = activity.surfaceColor();
+            overlayTextColor = activity.textColor();
+            overlayMutedColor = activity.subtextColor();
             setFocusable(false);
             thresholdPaint.setColor(0xff69a9ff);
             thresholdPaint.setStyle(Paint.Style.STROKE);
@@ -269,9 +275,9 @@ public final class SideGestureZoneOverlay {
             longHandlePaint.setAlpha(220);
             farHandlePaint.setColor(0xff6de1ad);
             farHandlePaint.setAlpha(220);
-            controlPaint.setColor(0xcc20262f);
+            controlPaint.setColor(overlaySurfaceColor);
             selectedControlPaint.setColor(accentColor);
-            textPaint.setColor(Color.WHITE);
+            textPaint.setColor(overlayTextColor);
             textPaint.setTextAlign(Paint.Align.CENTER);
             textPaint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
             labelBackgroundPaint.setColor(0xd869a9ff);
@@ -305,7 +311,9 @@ public final class SideGestureZoneOverlay {
                         (centerY - top - dp(118)) / maxDistance));
             }
 
-            canvas.drawColor(0xb8000000);
+            int background = activity.backgroundColor();
+            canvas.drawColor(Color.argb(0xe6, Color.red(background),
+                    Color.green(background), Color.blue(background)));
             int save = canvas.save();
             canvas.clipRect(0, top, width, bottom);
             drawZones(canvas);
@@ -711,8 +719,9 @@ public final class SideGestureZoneOverlay {
                 }
                 float left = margin + tier * (tierWidth + gap);
                 rect.set(left, tierTop, left + tierWidth, tierTop + dp(48));
-                controlPaint.setColor(0xcc20262f);
+                controlPaint.setColor(overlaySurfaceColor);
                 canvas.drawRoundRect(rect, dp(10), dp(10), controlPaint);
+                textPaint.setColor(overlayTextColor);
                 textPaint.setTextSize(14f * scaledDensity);
                 canvas.drawText(splitEnabled ? TIER_NAMES[tier] : "触发设置",
                         rect.centerX(), rect.centerY() - dp(3), textPaint);
@@ -729,22 +738,22 @@ public final class SideGestureZoneOverlay {
             drawControl(canvas, exitControl, "退出", false);
             drawControl(canvas, saveControl, "保存", true);
             textPaint.setTextSize(11f * scaledDensity);
-            textPaint.setColor(0xeeffffff);
-            canvas.drawText("点顶部按钮设置距离与动作，点击保存后生效", width / 2f,
-                    buttonTop - dp(26), textPaint);
-            canvas.drawText(cornerMode ? "拖动圆点调距离；点色块选动作"
-                            : "拖动圆点调距离、角度和竖向范围；点区域选动作", width / 2f,
+            textPaint.setColor(overlayMutedColor);
+            canvas.drawText(cornerMode ? "拖动圆点调整距离 · 点区域设置动作"
+                            : "拖动圆点调整范围 · 点区域设置动作", width / 2f,
                     buttonTop - dp(10), textPaint);
-            textPaint.setColor(Color.WHITE);
+            textPaint.setColor(overlayTextColor);
         }
 
         private void drawControl(Canvas canvas, RectF rect, String text, boolean selected) {
-            controlPaint.setColor(selected ? accentColor : 0xcc20262f);
+            controlPaint.setColor(selected ? accentColor : overlaySurfaceColor);
             canvas.drawRoundRect(rect, dp(10), dp(10), controlPaint);
+            textPaint.setColor(selected ? Color.WHITE : overlayTextColor);
             textPaint.setTextSize(14f * scaledDensity);
             Paint.FontMetrics metrics = textPaint.getFontMetrics();
             float baseline = rect.centerY() - (metrics.ascent + metrics.descent) / 2f;
             canvas.drawText(text, rect.centerX(), baseline, textPaint);
+            textPaint.setColor(overlayTextColor);
         }
 
         @Override
