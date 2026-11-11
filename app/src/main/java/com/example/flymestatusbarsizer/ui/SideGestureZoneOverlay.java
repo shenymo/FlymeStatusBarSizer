@@ -11,6 +11,7 @@ import android.app.AlertDialog;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Matrix;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
@@ -32,6 +33,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.example.flymestatusbarsizer.MainActivity;
+import com.example.flymestatusbarsizer.feature.assistant.AssistantGestureGeometry;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.config.SideGestureTargetStore;
 
@@ -328,10 +330,7 @@ public final class SideGestureZoneOverlay {
             edge = leftSide ? 0f : width;
             direction = leftSide ? 1f : -1f;
             originX = edge;
-            int maxSideDistance = farEnabled ? SettingsStore.MAX_ASSISTANT_GESTURE_FAR_DISTANCE_DP
-                    : splitEnabled ? SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP
-                    : SettingsStore.MAX_ASSISTANT_GESTURE_DISTANCE_DP;
-            scale = Math.min(density, (width - dp(28)) / maxSideDistance);
+            scale = density;
             if (cornerMode) {
                 centerY = bottom - dp(108);
                 int maxDistance = farEnabled ? 720 : splitEnabled ? 480 : 240;
@@ -359,21 +358,25 @@ public final class SideGestureZoneOverlay {
                 drawCornerZones(canvas);
                 return;
             }
-            if (splitEnabled) {
-                if (longDistanceDp >= shortDistanceDp) {
-                    if (longDistanceDp > shortDistanceDp) {
-                        drawTriggerRegion(canvas, shortDistanceDp, shortDistanceDp, longDistanceDp,
-                                shortRegionPaint);
-                    }
+            AssistantGestureGeometry geometry = new AssistantGestureGeometry(shortDistanceDp,
+                    angleDegrees(upAngle), angleDegrees(downAngle), minVerticalDp);
+            int[] distances = {shortDistanceDp, longDistanceDp, farDistanceDp};
+            Paint[] fills = {shortRegionPaint, longRegionPaint, farRegionPaint};
+            Paint[] strokes = {thresholdPaint, longThresholdPaint, farThresholdPaint};
+            int count = farEnabled ? 3 : splitEnabled ? 2 : 1;
+            Matrix transform = new Matrix();
+            transform.setScale(direction * scale, scale);
+            transform.postTranslate(originX, centerY);
+            for (int tier = 0; tier < count; tier++) {
+                float outer = tier + 1 < count ? distances[tier + 1] : Float.POSITIVE_INFINITY;
+                for (int zone = 0; zone < 3; zone++) {
+                    Path path = geometry.region(zone, distances[tier], outer, getWidth() / scale,
+                            (centerY - statusBarHeight()) / scale,
+                            (getHeight() - navigationBarHeight() - centerY) / scale);
+                    path.transform(transform);
+                    canvas.drawPath(path, fills[tier]);
+                    canvas.drawPath(path, strokes[tier]);
                 }
-                drawTriggerRegion(canvas, shortDistanceDp,
-                        Math.max(shortDistanceDp, longDistanceDp), farEnabled ? farDistanceDp : -1,
-                        longRegionPaint);
-                if (farEnabled) {
-                    drawTriggerRegion(canvas, shortDistanceDp, farDistanceDp, -1, farRegionPaint);
-                }
-            } else {
-                drawTriggerRegion(canvas, shortDistanceDp, shortDistanceDp, -1, shortRegionPaint);
             }
             drawThreshold(canvas, shortDistanceDp, thresholdPaint, handlePaint);
             int offset = leftSide ? 0 : 3;
@@ -394,7 +397,8 @@ public final class SideGestureZoneOverlay {
             textPaint.setTextSize(11f * scaledDensity);
             textPaint.setColor(Color.WHITE);
             textPaint.setTextAlign(leftSide ? Paint.Align.LEFT : Paint.Align.RIGHT);
-            canvas.drawText("起点", originX + direction * dp(12), centerY - dp(10), textPaint);
+            canvas.drawText("起点（实际跟随落指位置）", originX + direction * dp(12),
+                    centerY - dp(10), textPaint);
             textPaint.setTextAlign(Paint.Align.CENTER);
         }
 
@@ -438,110 +442,6 @@ public final class SideGestureZoneOverlay {
             textPaint.setTextAlign(Paint.Align.CENTER);
         }
 
-        private void drawTriggerRegion(Canvas canvas, int readyDistanceDp, int radialMinDp,
-                float radialMaxDp, Paint fill) {
-            float verticalLimit = Math.max((centerY - statusBarHeight()) / scale,
-                    (getHeight() - navigationBarHeight() - centerY) / scale);
-            float screenWidthDp = getWidth() / scale;
-            float screenRadiusDp = (float) Math.hypot(screenWidthDp, verticalLimit);
-            float end = radialMaxDp > 0 ? Math.min(radialMaxDp, screenRadiusDp)
-                    : screenRadiusDp;
-            if (end <= readyDistanceDp) return;
-            drawDiagonalRegion(canvas, readyDistanceDp, radialMinDp, end, verticalLimit,
-                    fill, true);
-            drawDiagonalRegion(canvas, readyDistanceDp, radialMinDp, end, verticalLimit,
-                    fill, false);
-            drawHorizontalRegion(canvas, readyDistanceDp, radialMinDp, end, verticalLimit, fill,
-                    true);
-            drawHorizontalRegion(canvas, readyDistanceDp, radialMinDp, end, verticalLimit, fill,
-                    false);
-        }
-
-        private void drawDiagonalRegion(Canvas canvas, int readyDistanceDp, int radialMinDp,
-                float maxDistanceDp, float verticalLimit, Paint fill, boolean upper) {
-            float startX = readyDistanceDp * 0.35f;
-            float endX = Math.min(maxDistanceDp, getWidth() / scale);
-            Path region = new Path();
-            boolean started = false;
-            int steps = 96;
-            for (int i = 0; i <= steps; i++) {
-                float x = startX + (endX - startX) * i / steps;
-                float lower = diagonalBoundaryY(x, radialMinDp, upper);
-                float upperY = Math.min(verticalLimit,
-                        (float) Math.sqrt(Math.max(0f,
-                                maxDistanceDp * maxDistanceDp - x * x)));
-                if (lower >= upperY) continue;
-                float y = upper ? upperY : lower;
-                float screenY = centerY + (upper ? -1f : 1f) * y * scale;
-                if (!started) {
-                    region.moveTo(screenX(x), screenY);
-                    started = true;
-                } else {
-                    region.lineTo(screenX(x), screenY);
-                }
-            }
-            if (!started) return;
-            for (int i = steps; i >= 0; i--) {
-                float x = startX + (endX - startX) * i / steps;
-                float lower = diagonalBoundaryY(x, radialMinDp, upper);
-                float upperY = Math.min(verticalLimit,
-                        (float) Math.sqrt(Math.max(0f,
-                                maxDistanceDp * maxDistanceDp - x * x)));
-                if (lower >= upperY) continue;
-                float y = upper ? lower : upperY;
-                float screenY = centerY + (upper ? -1f : 1f) * y * scale;
-                region.lineTo(screenX(x), screenY);
-            }
-            region.close();
-            canvas.drawPath(region, fill);
-        }
-
-        private void drawHorizontalRegion(Canvas canvas, int readyDistanceDp, int radialMinDp,
-                float maxDistanceDp, float verticalLimit, Paint fill, boolean upper) {
-            float startX = readyDistanceDp;
-            float endX = Math.min(maxDistanceDp, getWidth() / scale);
-            if (endX <= startX) return;
-            Path region = new Path();
-            int steps = 96;
-            boolean started = false;
-            for (int i = 0; i <= steps; i++) {
-                float x = startX + (endX - startX) * i / steps;
-                float inner = radialMinDp > 0 ? (float) Math.sqrt(Math.max(0f,
-                        radialMinDp * radialMinDp - x * x)) : 0f;
-                float outer = maxDistanceDp > 0 ? (float) Math.sqrt(Math.max(0f,
-                        maxDistanceDp * maxDistanceDp - x * x)) : verticalLimit;
-                float y = directionBandY(x, upper);
-                float edge = Math.min(verticalLimit, Math.min(y, outer));
-                if (edge <= inner) continue;
-                if (!started) {
-                    region.moveTo(screenX(x), centerY + (upper ? -1f : 1f) * edge * scale);
-                    started = true;
-                } else {
-                    region.lineTo(screenX(x), centerY + (upper ? -1f : 1f) * edge * scale);
-                }
-            }
-            if (!started) return;
-            for (int i = steps; i >= 0; i--) {
-                float x = startX + (endX - startX) * i / steps;
-                float inner = radialMinDp > 0 ? (float) Math.sqrt(Math.max(0f,
-                        radialMinDp * radialMinDp - x * x)) : 0f;
-                float outer = maxDistanceDp > 0 ? (float) Math.sqrt(Math.max(0f,
-                        maxDistanceDp * maxDistanceDp - x * x)) : verticalLimit;
-                float y = directionBandY(x, upper);
-                float edge = Math.min(verticalLimit, Math.min(y, outer));
-                if (edge > inner) region.lineTo(screenX(x), centerY + (upper ? -1f : 1f) * inner * scale);
-            }
-            region.close();
-            canvas.drawPath(region, fill);
-        }
-
-        private float diagonalBoundaryY(float x, int minDistanceDp, boolean upper) {
-            float distanceLimit = x < minDistanceDp
-                    ? (float) Math.sqrt(Math.max(0f,
-                    minDistanceDp * minDistanceDp - x * x)) : 0f;
-            return Math.max(directionBandY(x, upper), distanceLimit);
-        }
-
         private float directionBandY(float x, boolean upper) {
             float angle = (float) Math.tan(Math.toRadians(angleDegrees(upper ? upAngle : downAngle)));
             return Math.max(minVerticalDp, x * angle);
@@ -552,7 +452,11 @@ public final class SideGestureZoneOverlay {
         }
 
         private void drawThreshold(Canvas canvas, int distanceDp, Paint paint, Paint handle) {
-            drawThresholdContour(canvas, paint, distanceDp);
+            if (cornerMode) {
+                float radius = distanceDp * scale;
+                canvas.drawArc(originX - radius, centerY - radius, originX + radius,
+                        centerY + radius, leftSide ? 270f : 180f, 90f, false, paint);
+            }
             float x = handleX(distanceDp);
             float y = cornerMode ? centerY - distanceDp * scale * 0.7071f : centerY;
             canvas.drawCircle(x, y, dp(13), controlPaint);
@@ -639,40 +543,6 @@ public final class SideGestureZoneOverlay {
             return angleTenths % 10 == 0
                     ? Integer.toString(angleTenths / 10)
                     : (angleTenths / 10) + "." + (angleTenths % 10);
-        }
-
-        private void drawThresholdContour(Canvas canvas, Paint paint, int distanceDp) {
-            if (cornerMode) {
-                float radius = distanceDp * scale;
-                canvas.drawArc(originX - radius, centerY - radius, originX + radius,
-                        centerY + radius, leftSide ? 270f : 180f, 90f, false, paint);
-                return;
-            }
-            float x = screenX(distanceDp);
-            float upperBand = directionBandY(distanceDp, true) * scale;
-            float lowerBand = directionBandY(distanceDp, false) * scale;
-            canvas.drawLine(x, centerY - upperBand, x, centerY + lowerBand, paint);
-            float screenWidthDp = getWidth() / scale;
-            float startX = distanceDp * 0.35f;
-            float endX = Math.min(screenWidthDp, (float) Math.hypot(screenWidthDp,
-                    Math.max((centerY - statusBarHeight()) / scale,
-                            (getHeight() - navigationBarHeight() - centerY) / scale)));
-            if (startX >= endX) return;
-            for (int side = -1; side <= 1; side += 2) {
-                Path boundary = new Path();
-                int steps = 96;
-                for (int i = 0; i <= steps; i++) {
-                    float dx = startX + (endX - startX) * i / steps;
-                    float radialLimit = dx < distanceDp
-                            ? (float) Math.sqrt(Math.max(0f,
-                            distanceDp * distanceDp - dx * dx)) : 0f;
-                    float dy = Math.max(directionBandY(dx, side < 0), radialLimit);
-                    float screenY = centerY + side * dy * scale;
-                    if (i == 0) boundary.moveTo(screenX(dx), screenY);
-                    else boundary.lineTo(screenX(dx), screenY);
-                }
-                canvas.drawPath(boundary, paint);
-            }
         }
 
         private void drawActionLabels(Canvas canvas, int distanceDp, Paint arcPaint,
@@ -913,11 +783,10 @@ public final class SideGestureZoneOverlay {
                 if (inward > 0 && y > topInset() && y < getHeight() - navigationBarHeight()) {
                     float dy = y - centerY;
                     float distanceDp = (float) Math.hypot(inward, dy) / scale;
-                    float angle = angleDegrees(dy < 0 ? upAngle : downAngle);
-                    int directionIndex = Math.abs(dy) < Math.max(minVerticalDp * scale,
-                            inward * (float) Math.tan(Math.toRadians(angle)))
-                            ? 0 : dy < 0 ? 1 : 2;
-                    if (distanceDp > 8f) {
+                    AssistantGestureGeometry geometry = new AssistantGestureGeometry(shortDistanceDp,
+                            angleDegrees(upAngle), angleDegrees(downAngle), minVerticalDp);
+                    int directionIndex = geometry.direction(inward / scale, dy / scale);
+                    if (geometry.ready(inward / scale, dy / scale)) {
                         openActionForSlot(directionIndex, SettingsStore.sideGestureTier(distanceDp,
                                 splitEnabled ? longDistanceDp : Float.POSITIVE_INFINITY,
                                 farEnabled ? farDistanceDp : Float.POSITIVE_INFINITY));

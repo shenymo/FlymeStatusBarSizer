@@ -140,9 +140,7 @@ final class AssistantGestureZoneOverlay {
         private float shortDistance;
         private float longDistance;
         private float farDistance;
-        private float upAngleTan;
-        private float downAngleTan;
-        private float minVertical;
+        private AssistantGestureGeometry geometry;
         private boolean fromLeft;
 
         ZoneView(Context context) {
@@ -186,9 +184,7 @@ final class AssistantGestureZoneOverlay {
             this.shortDistance = shortDistance;
             this.longDistance = longDistance;
             this.farDistance = farDistance;
-            upAngleTan = (float) Math.tan(Math.toRadians(upAngle));
-            downAngleTan = (float) Math.tan(Math.toRadians(downAngle));
-            this.minVertical = minVertical;
+            geometry = new AssistantGestureGeometry(shortDistance, upAngle, downAngle, minVertical);
             setPointer(startX, startY);
         }
 
@@ -204,156 +200,24 @@ final class AssistantGestureZoneOverlay {
             float revealRadius = dp(revealRadiusDp);
             canvas.clipRect(pointerX - revealRadius, pointerY - revealRadius,
                     pointerX + revealRadius, pointerY + revealRadius);
-            boolean splitEnabled = Float.isFinite(longDistance);
-            boolean farEnabled = Float.isFinite(farDistance);
-            if (!splitEnabled || longDistance > shortDistance) {
-                drawMode(canvas, availableX, upperY, lowerY, direction,
-                        shortDistance, splitEnabled ? longDistance : 0f, shortFill, shortStroke);
+            float[] distances = {shortDistance, longDistance, farDistance};
+            Paint[] fills = {shortFill, longFill, farFill};
+            Paint[] strokes = {shortStroke, longStroke, farStroke};
+            int count = Float.isFinite(farDistance) ? 3 : Float.isFinite(longDistance) ? 2 : 1;
+            Matrix transform = new Matrix();
+            transform.setScale(direction, 1f);
+            transform.postTranslate(startX, startY);
+            for (int tier = 0; tier < count; tier++) {
+                float outer = tier + 1 < count ? distances[tier + 1] : Float.POSITIVE_INFINITY;
+                for (int zone = 0; zone < 3; zone++) {
+                    Path path = geometry.region(zone, distances[tier], outer,
+                            availableX, upperY, lowerY);
+                    path.transform(transform);
+                    canvas.drawPath(path, fills[tier]);
+                    canvas.drawPath(path, strokes[tier]);
+                }
             }
-            if (splitEnabled) {
-                drawMode(canvas, availableX, upperY, lowerY, direction,
-                        Math.max(shortDistance, longDistance), farEnabled ? farDistance : 0f,
-                        longFill, longStroke);
-            }
-            if (farEnabled) {
-                drawMode(canvas, availableX, upperY, lowerY, direction,
-                        farDistance, 0f, farFill, farStroke);
-            }
-            drawThresholds(canvas);
             canvas.restore();
-        }
-
-        private void drawMode(Canvas canvas, float availableX, float upperY, float lowerY,
-                int direction, float minRadius, float maxRadius,
-                Paint fill, Paint stroke) {
-            drawHorizontal(canvas, availableX, upperY, lowerY, direction, minRadius, maxRadius,
-                    fill, stroke);
-            drawDiagonal(canvas, availableX, upperY, lowerY, direction, minRadius, maxRadius,
-                    true, fill, stroke);
-            drawDiagonal(canvas, availableX, upperY, lowerY, direction, minRadius, maxRadius,
-                    false, fill, stroke);
-        }
-
-        private void drawHorizontal(Canvas canvas, float availableX, float upperY, float lowerY,
-                int direction, float minRadius, float maxRadius, Paint fill, Paint stroke) {
-            float start = Math.max(0f, shortDistance);
-            float end = maxRadius > 0f ? Math.min(availableX, maxRadius) : availableX;
-            if (end <= start) return;
-            drawHorizontalSide(canvas, start, end, upperY, direction, minRadius, maxRadius,
-                    true, fill, stroke);
-            drawHorizontalSide(canvas, start, end, lowerY, direction, minRadius, maxRadius,
-                    false, fill, stroke);
-        }
-
-        private void drawHorizontalSide(Canvas canvas, float start, float end, float verticalLimit,
-                int direction, float minRadius, float maxRadius, boolean upper, Paint fill,
-                Paint stroke) {
-            Path path = new Path();
-            boolean started = false;
-            int steps = 96;
-            for (int i = 0; i <= steps; i++) {
-                float x = start + (end - start) * i / steps;
-                float inner = radialLower(x, minRadius);
-                float outer = radialUpper(x, maxRadius);
-                float band = angleBand(x, upper);
-                float high = Math.min(verticalLimit, Math.min(band, outer));
-                if (high <= inner) continue;
-                float y = upper ? startY - high : startY + high;
-                if (!started) {
-                    path.moveTo(screenX(x, direction), y);
-                    started = true;
-                } else {
-                    path.lineTo(screenX(x, direction), y);
-                }
-            }
-            if (!started) return;
-            for (int i = steps; i >= 0; i--) {
-                float x = start + (end - start) * i / steps;
-                float inner = radialLower(x, minRadius);
-                float outer = radialUpper(x, maxRadius);
-                float band = angleBand(x, upper);
-                float high = Math.min(verticalLimit, Math.min(band, outer));
-                if (high > inner) {
-                    path.lineTo(screenX(x, direction), upper
-                            ? startY - inner : startY + inner);
-                }
-            }
-            path.close();
-            canvas.drawPath(path, fill);
-            canvas.drawPath(path, stroke);
-        }
-
-        private void drawDiagonal(Canvas canvas, float availableX, float upperY, float lowerY,
-                int direction, float minRadius, float maxRadius, boolean upper, Paint fill,
-                Paint stroke) {
-            float start = shortDistance * 0.35f;
-            float end = maxRadius > 0f ? Math.min(availableX, maxRadius) : availableX;
-            if (end <= start) return;
-            float verticalLimit = upper ? upperY : lowerY;
-            Path path = new Path();
-            boolean started = false;
-            int steps = 96;
-            for (int i = 0; i <= steps; i++) {
-                float x = start + (end - start) * i / steps;
-                float inner = radialLower(x, minRadius);
-                float outer = radialUpper(x, maxRadius);
-                float band = angleBand(x, upper);
-                float low = Math.max(band, inner);
-                float high = Math.min(verticalLimit, outer);
-                if (high <= low) continue;
-                float y = upper ? startY - high : startY + high;
-                if (!started) {
-                    path.moveTo(screenX(x, direction), y);
-                    started = true;
-                } else {
-                    path.lineTo(screenX(x, direction), y);
-                }
-            }
-            if (!started) return;
-            for (int i = steps; i >= 0; i--) {
-                float x = start + (end - start) * i / steps;
-                float inner = radialLower(x, minRadius);
-                float outer = radialUpper(x, maxRadius);
-                float band = angleBand(x, upper);
-                float low = Math.max(band, inner);
-                float high = Math.min(verticalLimit, outer);
-                if (high > low) {
-                    path.lineTo(screenX(x, direction), upper
-                            ? startY - low : startY + low);
-                }
-            }
-            path.close();
-            canvas.drawPath(path, fill);
-            canvas.drawPath(path, stroke);
-        }
-
-        private void drawThresholds(Canvas canvas) {
-            canvas.drawCircle(startX, startY, shortDistance, shortStroke);
-            if (Float.isFinite(longDistance)) {
-                canvas.drawCircle(startX, startY, longDistance, longStroke);
-            }
-            if (Float.isFinite(farDistance)) {
-                canvas.drawCircle(startX, startY, farDistance, farStroke);
-            }
-        }
-
-        private float radialLower(float x, float radius) {
-            if (radius <= 0f || x >= radius) return 0f;
-            return (float) Math.sqrt(Math.max(0f, radius * radius - x * x));
-        }
-
-        private float radialUpper(float x, float radius) {
-            if (radius <= 0f) return Float.POSITIVE_INFINITY;
-            if (x >= radius) return 0f;
-            return (float) Math.sqrt(Math.max(0f, radius * radius - x * x));
-        }
-
-        private float angleBand(float x, boolean upper) {
-            return Math.max(minVertical, x * (upper ? upAngleTan : downAngleTan));
-        }
-
-        private float screenX(float distance, int direction) {
-            return startX + direction * distance;
         }
 
         private float dp(float value) {

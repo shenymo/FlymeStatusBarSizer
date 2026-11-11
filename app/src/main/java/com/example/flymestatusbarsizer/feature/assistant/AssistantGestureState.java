@@ -7,8 +7,8 @@ final class AssistantGestureState {
     static final int DOWN = 2;
     private boolean tracking;
     private boolean claimed;
-    private float startX, startY, dx, dy, distance, backwardLimit;
-    private float upAngleTan, downAngleTan, minVertical;
+    private float startX, startY, dx, dy, backwardLimit;
+    private AssistantGestureGeometry geometry;
     private int inwardDirection;
 
     void begin(float x, float y, float distance, float backwardLimit, boolean leftEdge,
@@ -19,11 +19,9 @@ final class AssistantGestureState {
         startX = x;
         startY = y;
         dx = dy = 0;
-        this.distance = distance;
         this.backwardLimit = backwardLimit;
-        upAngleTan = (float) Math.tan(Math.toRadians(upAngleDegrees));
-        downAngleTan = (float) Math.tan(Math.toRadians(downAngleDegrees));
-        this.minVertical = minVertical;
+        geometry = new AssistantGestureGeometry(distance, upAngleDegrees, downAngleDegrees,
+                minVertical);
     }
 
     void move(float x, float y, int pointerCount) {
@@ -34,16 +32,11 @@ final class AssistantGestureState {
     }
 
     boolean ready() {
-        if (!tracking || claimed || dx <= 0f) return false;
-        int direction = direction();
-        if (direction == HORIZONTAL) return dx >= distance;
-        return (float) Math.hypot(dx, dy) >= distance && dx >= distance * 0.35f;
+        return tracking && !claimed && geometry.ready(dx, dy);
     }
 
     int direction() {
-        if (dx <= 0) return HORIZONTAL;
-        float threshold = Math.max(minVertical, dx * (dy < 0 ? upAngleTan : downAngleTan));
-        return Math.abs(dy) < threshold ? HORIZONTAL : (dy < 0 ? UP : DOWN);
+        return dx <= 0f ? HORIZONTAL : geometry.direction(dx, dy);
     }
 
     float startY() { return startY; }
