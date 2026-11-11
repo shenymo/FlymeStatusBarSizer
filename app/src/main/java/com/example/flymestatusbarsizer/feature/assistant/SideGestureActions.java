@@ -97,7 +97,8 @@ public final class SideGestureActions {
         if (context != null && SideGestureTargetStore.isDynamicAction(action)) {
             SideGestureTargetStore.Target target = SideGestureTargetStore.find(
                     ModuleConfig.load(context).sideGestureTargetsJson, action);
-            if (target != null) return "打开：" + SideGestureTargetStore.shortLabel(target);
+            if (target != null) return target.customName.isEmpty()
+                    ? "打开：" + SideGestureTargetStore.shortLabel(target) : target.customName;
         }
         return label(action);
     }

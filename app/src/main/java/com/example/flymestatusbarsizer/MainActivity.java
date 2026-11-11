@@ -778,36 +778,74 @@ public class MainActivity extends Activity {
     }
 
     public void configureSideGestureTarget(int type, IntConsumer onSelected) {
-        if (type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI) {
-            showTextInputDialog("输入 Intent URI", "", "输入 Android intent: URI。",
-                    "intent:#Intent;...;end", false, value -> {
-                        if (value.trim().isEmpty()) return;
-                        int id = appendSideGestureTarget(type, value.trim(), value.trim());
-                        if (onSelected != null) onSelected.accept(id);
-                    });
-            return;
-        }
-        if (type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL) {
-            showTextInputDialog("输入 Scheme URL", "", "输入 https:// 或自定义 scheme URL。",
-                    "https://example.com 或 app://...", false, value -> {
-                        if (value.trim().isEmpty()) return;
-                        int id = appendSideGestureTarget(type, value.trim(), value.trim());
-                        if (onSelected != null) onSelected.accept(id);
-                    });
+        if (type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI
+                || type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL) {
+            boolean intentUri = type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI;
+            LinearLayout form = new LinearLayout(this);
+            form.setOrientation(LinearLayout.VERTICAL);
+            form.setPadding(dp(18), dp(4), dp(18), dp(8));
+            EditText urlInput = activityTargetInput(intentUri
+                    ? "intent:#Intent;...;end" : "https://example.com 或 app://...", false);
+            urlInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+            EditText nameInput = activityTargetInput("动作名称（可选，留空使用默认名称）", false);
+            form.addView(urlInput);
+            form.addView(nameInput);
+            AlertDialog dialog = new AlertDialog.Builder(this)
+                    .setTitle(intentUri ? "输入 Intent URI" : "输入 Scheme URL")
+                    .setView(form)
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("保存", null)
+                    .create();
+            dialog.show();
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                String value = urlInput.getText().toString().trim();
+                if (value.isEmpty()) {
+                    urlInput.setError("请输入链接");
+                    return;
+                }
+                int id = appendSideGestureTarget(type, value, value,
+                        nameInput.getText().toString().trim());
+                if (onSelected != null) onSelected.accept(id);
+                dialog.dismiss();
+            });
+            styleDialog(dialog);
+            attachDialogButtonHaptics(dialog);
             return;
         }
         if (type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY) {
             showActivityAppPicker(onSelected);
             return;
         }
-        showInstalledAppPicker("选择指定应用", true, choice -> {
-            int id = appendSideGestureTarget(type, choice.label, choice.packageName);
+        showInstalledAppPicker("选择指定应用", true, choice ->
+                showSideGestureNameDialog("", customName -> {
+            int id = appendSideGestureTarget(type, choice.label, choice.packageName, customName);
             if (onSelected != null) onSelected.accept(id);
-        });
+        }));
+    }
+
+    private void showSideGestureNameDialog(String currentName, Consumer<String> onSaved) {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(18), dp(4), dp(18), dp(8));
+        EditText input = activityTargetInput("动作名称（可选，留空使用默认名称）", false);
+        input.setText(currentName);
+        input.setSelection(input.length());
+        form.addView(input);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("设置动作名称")
+                .setView(form)
+                .setNegativeButton("取消", null)
+                .setNeutralButton("恢复默认", (d, which) -> onSaved.accept(""))
+                .setPositiveButton("保存", (d, which) ->
+                        onSaved.accept(input.getText().toString().trim()))
+                .create();
+        dialog.show();
+        styleDialog(dialog);
+        attachDialogButtonHaptics(dialog);
     }
 
     public void showSideGestureTargetDetails(SideGestureTargetStore.Target target,
-            Runnable onReplace) {
+            Runnable onReplace, IntConsumer onRenamed) {
         String title;
         switch (target.type) {
             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP:
@@ -842,7 +880,8 @@ public class MainActivity extends Activity {
                     || target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL
                     ? target.value : target.label + "\n\n" + target.value;
         }
-        details.setText(detailText);
+        details.setText("动作名称：" + (target.customName.isEmpty() ? "默认" : target.customName)
+                + "\n\n" + detailText);
         details.setTextSize(15f);
         details.setTextColor(colorText);
         details.setTextIsSelectable(true);
@@ -851,6 +890,19 @@ public class MainActivity extends Activity {
                 .setTitle(title)
                 .setView(details)
                 .setNegativeButton("关闭", null)
+                .setNeutralButton("修改名称", (d, which) ->
+                        showSideGestureNameDialog(target.customName, customName -> {
+                            if (customName.equals(target.customName)) return;
+                            List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
+                                    SideGestureTargetStore.readRaw(prefs));
+                            int id = SideGestureTargetStore.nextId(targets);
+                            targets.add(new SideGestureTargetStore.Target(id, target.type,
+                                    target.label, target.value, target.dataUri, target.extras,
+                                    target.action, target.newTask, target.root, customName));
+                            putStringSetting(SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON,
+                                    SideGestureTargetStore.encode(targets));
+                            onRenamed.accept(id);
+                        }))
                 .setPositiveButton("更换目标", (d, which) -> {
                     if (onReplace != null) onReplace.run();
                 })
@@ -1198,6 +1250,8 @@ public class MainActivity extends Activity {
         componentView.setPadding(0, dp(4), 0, dp(10));
         form.addView(componentView);
 
+        EditText nameInput = activityTargetInput("动作名称（可选，留空使用默认名称）", false);
+        form.addView(nameInput);
         EditText dataInput = activityTargetInput("附加 Data (Uri)", false);
         EditText extrasInput = activityTargetInput("附加 Extra（每行一个，key=value）", true);
         form.addView(dataInput);
@@ -1261,7 +1315,8 @@ public class MainActivity extends Activity {
                             component,
                             dataInput.getText().toString().trim(),
                             extrasInput.getText().toString(), action,
-                            newTask.isChecked(), root.isChecked());
+                            newTask.isChecked(), root.isChecked(),
+                            nameInput.getText().toString().trim());
                     if (onSelected != null) onSelected.accept(id);
                 })
                 .create();
@@ -1295,7 +1350,7 @@ public class MainActivity extends Activity {
     }
 
     private int appendSideGestureActivityTarget(String label, String component, String dataUri,
-            String extras, String action, boolean newTask, boolean root) {
+            String extras, String action, boolean newTask, boolean root, String customName) {
         List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
                 SideGestureTargetStore.readRaw(prefs));
         for (SideGestureTargetStore.Target target : targets) {
@@ -1303,7 +1358,7 @@ public class MainActivity extends Activity {
                     && target.label.equals(label) && target.value.equals(component)
                     && target.dataUri.equals(dataUri) && target.extras.equals(extras)
                     && target.action.equals(action) && target.newTask == newTask
-                    && target.root == root) {
+                    && target.root == root && target.customName.equals(customName)) {
                 showToast("已使用已有启动目标");
                 return target.id;
             }
@@ -1311,7 +1366,7 @@ public class MainActivity extends Activity {
         int id = SideGestureTargetStore.nextId(targets);
         targets.add(new SideGestureTargetStore.Target(id,
                 SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY, label, component,
-                dataUri, extras, action, newTask, root));
+                dataUri, extras, action, newTask, root, customName));
         putStringSetting(SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON,
                 SideGestureTargetStore.encode(targets));
         showToast("已添加启动目标");
@@ -1326,17 +1381,18 @@ public class MainActivity extends Activity {
         return text;
     }
 
-    private int appendSideGestureTarget(int type, String label, String value) {
+    private int appendSideGestureTarget(int type, String label, String value, String customName) {
         List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
                 SideGestureTargetStore.readRaw(prefs));
         for (SideGestureTargetStore.Target target : targets) {
-            if (target.type == type && target.label.equals(label) && target.value.equals(value)) {
+            if (target.type == type && target.label.equals(label) && target.value.equals(value)
+                    && target.customName.equals(customName)) {
                 showToast("已使用已有启动目标");
                 return target.id;
             }
         }
         int id = SideGestureTargetStore.nextId(targets);
-        targets.add(new SideGestureTargetStore.Target(id, type, label, value));
+        targets.add(new SideGestureTargetStore.Target(id, type, label, value, customName));
         putStringSetting(SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON,
                 SideGestureTargetStore.encode(targets));
         showToast("已添加启动目标");

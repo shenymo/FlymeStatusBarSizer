@@ -15,6 +15,7 @@ public final class SideGestureTargetStore {
         public final int id;
         public final int type;
         public final String label;
+        public final String customName;
         public final String value;
         public final String dataUri;
         public final String extras;
@@ -22,15 +23,16 @@ public final class SideGestureTargetStore {
         public final boolean newTask;
         public final boolean root;
 
-        public Target(int id, int type, String label, String value) {
-            this(id, type, label, value, "", "", "", true, false);
+        public Target(int id, int type, String label, String value, String customName) {
+            this(id, type, label, value, "", "", "", true, false, customName);
         }
 
         public Target(int id, int type, String label, String value, String dataUri,
-                String extras, String action, boolean newTask, boolean root) {
+                String extras, String action, boolean newTask, boolean root, String customName) {
             this.id = id;
             this.type = type;
             this.label = label;
+            this.customName = customName;
             this.value = value;
             this.dataUri = dataUri;
             this.extras = extras;
@@ -61,7 +63,8 @@ public final class SideGestureTargetStore {
                         item.optString("extras", ""),
                         item.optString("action", "").trim(),
                         item.optBoolean("newTask", true),
-                        item.optBoolean("root", false)));
+                        item.optBoolean("root", false),
+                        item.optString("customName", "").trim()));
             }
         } catch (Exception ignored) {
             return new ArrayList<>();
@@ -77,6 +80,7 @@ public final class SideGestureTargetStore {
                 item.put("id", target.id);
                 item.put("type", target.type);
                 item.put("label", target.label);
+                item.put("customName", target.customName);
                 item.put("value", target.value);
                 item.put("dataUri", target.dataUri);
                 item.put("extras", target.extras);

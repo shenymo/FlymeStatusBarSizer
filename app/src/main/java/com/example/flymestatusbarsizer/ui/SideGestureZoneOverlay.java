@@ -993,7 +993,10 @@ public final class SideGestureZoneOverlay {
                                     activity.configureSideGestureTarget(target.type, targetId -> {
                                         actions[tier][slot] = targetId;
                                         invalidate();
-                                    })));
+                                    }), targetId -> {
+                                actions[tier][slot] = targetId;
+                                invalidate();
+                            }));
                 }
             }
             AlertDialog dialog = builder.create();
@@ -1112,6 +1115,7 @@ public final class SideGestureZoneOverlay {
                             SettingsStore.readString(prefs,
                                     SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON, "[]"), action);
                     if (target != null) {
+                        if (!target.customName.isEmpty()) return target.customName;
                         switch (target.type) {
                             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP: return "打开应用";
                             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY: return "打开 Activity";
