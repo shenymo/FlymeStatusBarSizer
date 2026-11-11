@@ -7,9 +7,11 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
 
+import com.example.flymestatusbarsizer.BuildConfig;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.config.SideGestureTargetStore;
+import com.example.flymestatusbarsizer.feature.onehanded.ImeWeltWindowProtocol;
 
 final class SideGestureLaunchAction {
     private SideGestureLaunchAction() { }
@@ -65,6 +67,10 @@ final class SideGestureLaunchAction {
     }
 
     private static Intent resolveIntent(Context context, int actionId) {
+        if (actionId == SettingsStore.SIDE_GESTURE_ACTION_WELT_WINDOW) {
+            return new Intent(Intent.ACTION_VIEW, Uri.parse(ImeWeltWindowProtocol.URI))
+                    .setPackage(BuildConfig.APPLICATION_ID);
+        }
         SideGestureTargetStore.Target target = findTarget(context, actionId);
         if (target != null) return resolveTargetIntent(context, target);
         ModuleConfig config = ModuleConfig.load(context);

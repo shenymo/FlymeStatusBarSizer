@@ -60,6 +60,7 @@ public final class SideGestureActions {
             case SettingsStore.SIDE_GESTURE_ACTION_WINDOWMODE_PANEL:
                 return context == null ? null : WindowModeSideGestureHooks.action(context);
             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP:
+            case SettingsStore.SIDE_GESTURE_ACTION_WELT_WINDOW:
             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY:
             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI:
             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL:
@@ -83,6 +84,7 @@ public final class SideGestureActions {
             case SettingsStore.SIDE_GESTURE_ACTION_QUICK_TOOLS: return "快捷工具";
             case SettingsStore.SIDE_GESTURE_ACTION_APP_LAUNCHER: return "应用启动器";
             case SettingsStore.SIDE_GESTURE_ACTION_WINDOWMODE_PANEL: return "小窗选择面板";
+            case SettingsStore.SIDE_GESTURE_ACTION_WELT_WINDOW: return "贴边";
             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP: return "打开指定应用";
             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY: return "打开 Activity";
             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI: return "打开 Intent URI";

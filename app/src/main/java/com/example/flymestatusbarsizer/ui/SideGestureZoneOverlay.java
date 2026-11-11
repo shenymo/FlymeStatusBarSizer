@@ -37,6 +37,7 @@ public final class SideGestureZoneOverlay {
             SettingsStore.SIDE_GESTURE_ACTION_HOME,
             SettingsStore.SIDE_GESTURE_ACTION_RECENTS,
             SettingsStore.SIDE_GESTURE_ACTION_WINDOWMODE_PANEL,
+            SettingsStore.SIDE_GESTURE_ACTION_WELT_WINDOW,
             SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER,
             SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT,
             SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE,
@@ -48,7 +49,7 @@ public final class SideGestureZoneOverlay {
             SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL
     };
     private static final String[] ACTION_LABELS = {
-            "无动作", "返回", "返回桌面", "最近任务", "小窗选择面板", "任务切换器", "全局负一屏", "多应用工作台",
+            "无动作", "返回", "返回桌面", "最近任务", "小窗选择面板", "贴边", "任务切换器", "全局负一屏", "多应用工作台",
             "快捷工具", "应用启动器", "打开指定应用", "打开 Activity", "打开 Intent URI", "打开 Scheme URL"
     };
     private static final int DRAG_NONE = 0;
@@ -1101,6 +1102,7 @@ public final class SideGestureZoneOverlay {
                 case SettingsStore.SIDE_GESTURE_ACTION_QUICK_TOOLS: return "快捷工具";
                 case SettingsStore.SIDE_GESTURE_ACTION_APP_LAUNCHER: return "应用启动器";
                 case SettingsStore.SIDE_GESTURE_ACTION_WINDOWMODE_PANEL: return "小窗选择面板";
+                case SettingsStore.SIDE_GESTURE_ACTION_WELT_WINDOW: return "贴边";
                 case SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP: return "指定应用";
                 case SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY: return "指定 Activity";
                 case SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI: return "Intent URI";
